@@ -14,6 +14,7 @@ cat \
   replace-content-with-icon.js \
   change-record-limit.js \
   lock-fields.js \
+  truncate-expand-function.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
