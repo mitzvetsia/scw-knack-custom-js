@@ -16,6 +16,7 @@ cat \
   src/features/lock-fields.js \
   src/features/truncate-expand-function.js \
   src/features/checkbox-grid.field_739.js \
+  src/features/sync-checkboxes \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
