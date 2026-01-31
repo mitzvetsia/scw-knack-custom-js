@@ -16,7 +16,7 @@ fi
 
 
 echo "📦 Building bundle..."
-bash bundle.sh
+bash build.sh
 
 echo "📝 Staging changes..."
 git add -A
