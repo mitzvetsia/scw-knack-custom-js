@@ -14,12 +14,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-echo "⬇️  Pulling latest changes..."
-git pull
 
 echo "📦 Building bundle..."
-chmod +x bundle.sh
-./bundle.sh
+bash bundle.sh
 
 echo "📝 Staging changes..."
 git add -A
