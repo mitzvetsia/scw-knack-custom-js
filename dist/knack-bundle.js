@@ -1122,7 +1122,7 @@ window.SCW = window.SCW || {};
       color: '#ffffff',
       tdPadding: '8px 12px',
       collapsedOpacity: '0.92',
-      textalign: 'center',
+      textalign: 'right',
     };
 
     const L2 = {
@@ -1130,7 +1130,7 @@ window.SCW = window.SCW || {};
       fontWeight: '400',
       bg: 'aliceblue',
       color: '#07467c',
-      tdPadding: '20px 12px',
+      tdPadding: '10px 0px 10px 50px',
       collapsedOpacity: '0.88',
     };
 
