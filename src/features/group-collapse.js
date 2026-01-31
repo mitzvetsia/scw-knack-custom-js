@@ -60,7 +60,7 @@
       fontWeight: '400',
       bg: 'aliceblue',
       color: '#07467c',
-      tdPadding: '10px 0px 10px 50px',
+      tdPadding: '10px 10px 10px 50px',
       collapsedOpacity: '0.88',
     };
 
