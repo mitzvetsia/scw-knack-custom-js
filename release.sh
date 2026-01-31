@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 VERSION="$1"
 
 if [[ -z "$VERSION" ]]; then
@@ -8,15 +11,16 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-echo "🔍 Checking git status..."
+echo "🔍 Checking git status (release expects a clean tree before build)..."
 if [[ -n "$(git status --porcelain)" ]]; then
-  echo "❌ Working tree not clean. Commit or stash first."
+  echo "❌ Working tree not clean. Commit or stash changes before releasing so only build artifacts are added."
+  git status --short
   exit 1
 fi
 
 
 echo "📦 Building bundle..."
-bash build.sh
+bash "$SCRIPT_DIR/build.sh"
 
 echo "📝 Staging changes..."
 git add -A
