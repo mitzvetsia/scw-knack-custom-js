@@ -11,6 +11,7 @@ cat \
   src/features/group-collapse.js \
   src/features/sow-line-item-dto-hide-show-fields.js \
   highlight-duplicate-cells.js \
+  replace-content-with-icon.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
