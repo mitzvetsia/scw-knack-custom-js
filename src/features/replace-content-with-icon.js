@@ -37,7 +37,7 @@
   }
 
   VIEW_IDS.forEach((VIEW_ID) => {
-    $(document).on(`knack-view-render.${VIEW_ID}`, function () {
+    SCW.onViewRender(VIEW_ID, function () {
       injectCssOnce();
 
       const $view = $("#" + VIEW_ID);
@@ -52,10 +52,9 @@
         $cell.empty().append(ICON_HTML);
         $cell.data("scwReplacedWithIcon", true);
       });
-    });
+    }, 'replace-content-with-icon');
   });
 })();
 
 /********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
-
 

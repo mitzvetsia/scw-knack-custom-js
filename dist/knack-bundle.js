@@ -3,7 +3,26 @@ window.SCW = window.SCW || {};
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev"
 };
+window.SCW = window.SCW || {};
 
+(function initBindingsHelpers(namespace) {
+  function normalizeNamespace(ns) {
+    if (!ns) return '.scw';
+    return ns.startsWith('.') ? ns : `.${ns}`;
+  }
+
+  namespace.onViewRender = function onViewRender(viewId, handler, ns) {
+    if (!viewId || typeof handler !== 'function') return;
+    const eventName = `knack-view-render.${viewId}${normalizeNamespace(ns)}`;
+    $(document).off(eventName).on(eventName, handler);
+  };
+
+  namespace.onSceneRender = function onSceneRender(sceneId, handler, ns) {
+    if (!sceneId || typeof handler !== 'function') return;
+    const eventName = `knack-scene-render.${sceneId}${normalizeNamespace(ns)}`;
+    $(document).off(eventName).on(eventName, handler);
+  };
+})(window.SCW);
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
@@ -1569,7 +1588,7 @@ $(document).on('knack-view-render.view_3313', function () {
   }
 
   VIEW_IDS.forEach((VIEW_ID) => {
-    $(document).on(`knack-view-render.${VIEW_ID}`, function () {
+    SCW.onViewRender(VIEW_ID, function () {
       injectCssOnce();
 
       const $view = $("#" + VIEW_ID);
@@ -1584,12 +1603,11 @@ $(document).on('knack-view-render.view_3313', function () {
         $cell.empty().append(ICON_HTML);
         $cell.data("scwReplacedWithIcon", true);
       });
-    });
+    }, 'replace-content-with-icon');
   });
 })();
 
 /********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
-
 
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
@@ -2651,7 +2669,7 @@ $(".kn-navigation-bar").hide();
  * ⚠ Contains likely bug: document.querySelector('text#field_1365') should probably be input#field_1365
  **************************************************************************************************/
 (function mcgandyExperiment_scene213() {
-  $(document).on('knack-scene-render.scene_213', function (event, view, record) {
+  SCW.onSceneRender('scene_213', function (event, view, record) {
     setTimeout(function () {
 
       // subcontractor cost changed
@@ -2708,7 +2726,7 @@ $(".kn-navigation-bar").hide();
       });
 
     }, 1);
-  });
+  }, 'mcgandy-experiment');
 })();
 /*** END FEATURE: McGandy’s Experiment ********************************************************************/
 

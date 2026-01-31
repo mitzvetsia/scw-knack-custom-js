@@ -3,7 +3,7 @@
  * ⚠ Contains likely bug: document.querySelector('text#field_1365') should probably be input#field_1365
  **************************************************************************************************/
 (function mcgandyExperiment_scene213() {
-  $(document).on('knack-scene-render.scene_213', function (event, view, record) {
+  SCW.onSceneRender('scene_213', function (event, view, record) {
     setTimeout(function () {
 
       // subcontractor cost changed
@@ -60,6 +60,6 @@
       });
 
     }, 1);
-  });
+  }, 'mcgandy-experiment');
 })();
 /*** END FEATURE: McGandy’s Experiment ********************************************************************/
