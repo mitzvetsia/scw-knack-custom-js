@@ -1122,7 +1122,7 @@ window.SCW = window.SCW || {};
       color: '#ffffff',
       tdPadding: '8px 12px',
       collapsedOpacity: '0.92',
-      textalign: 'right',
+      textalign: 'left',
     };
 
     const L2 = {
