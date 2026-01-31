@@ -7,8 +7,6 @@ if [[ -z "$MSG" ]]; then
   exit 1
 fi
 
-git pull --rebase
-
 # Stage everything…
 git add -A
 

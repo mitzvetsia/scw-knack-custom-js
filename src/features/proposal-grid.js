@@ -163,12 +163,27 @@
     const rows = $rows.get();
 
     for (let i = 0; i < rows.length; i++) {
-      const cell = rows[i].querySelector(`td.${fieldKey}`);
-      if (!cell) continue;
-      const num = parseFloat(cell.textContent.replace(/[^\d.-]/g, ''));
+      const num = getRowNumericValue(rows[i], fieldKey);
       if (Number.isFinite(num)) total += num;
     }
     return total;
+  }
+
+  function sumFields($rows, fieldKeys) {
+    const totals = {};
+    fieldKeys.forEach((key) => {
+      totals[key] = 0;
+    });
+
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (const key of fieldKeys) {
+        const num = getRowNumericValue(row, key);
+        if (Number.isFinite(num)) totals[key] += num;
+      }
+    }
+    return totals;
   }
 
   function norm(s) {
@@ -187,6 +202,42 @@
   function isBlankish(v) {
     const t = norm(v);
     return !t || t === '-' || t === '—' || t === '–';
+  }
+
+  let rowCache = new WeakMap();
+  function getRowCache(row) {
+    let cache = rowCache.get(row);
+    if (!cache) {
+      cache = { cells: new Map(), nums: new Map(), texts: new Map() };
+      rowCache.set(row, cache);
+    }
+    return cache;
+  }
+
+  function getRowCell(row, fieldKey) {
+    const cache = getRowCache(row);
+    if (cache.cells.has(fieldKey)) return cache.cells.get(fieldKey);
+    const cell = row.querySelector(`td.${fieldKey}`);
+    cache.cells.set(fieldKey, cell || null);
+    return cell;
+  }
+
+  function getRowCellText(row, fieldKey) {
+    const cache = getRowCache(row);
+    if (cache.texts.has(fieldKey)) return cache.texts.get(fieldKey);
+    const cell = getRowCell(row, fieldKey);
+    const text = cell ? cell.textContent.trim() : '';
+    cache.texts.set(fieldKey, text);
+    return text;
+  }
+
+  function getRowNumericValue(row, fieldKey) {
+    const cache = getRowCache(row);
+    if (cache.nums.has(fieldKey)) return cache.nums.get(fieldKey);
+    const cell = getRowCell(row, fieldKey);
+    const value = cell ? parseFloat(cell.textContent.replace(/[^\d.-]/g, '')) : NaN;
+    cache.nums.set(fieldKey, value);
+    return value;
   }
 
   // ✅ NEW: read group label text (works for L3/L4)
@@ -432,12 +483,8 @@
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const prefixCell = row.querySelector(`td.${CONCAT.prefixFieldKey}`);
-      const numCell = row.querySelector(`td.${CONCAT.numberFieldKey}`);
-      if (!prefixCell || !numCell) continue;
-
-      const prefix = prefixCell.textContent.trim();
-      const numRaw = numCell.textContent.trim();
+      const prefix = getRowCellText(row, CONCAT.prefixFieldKey);
+      const numRaw = getRowCellText(row, CONCAT.numberFieldKey);
       if (!prefix || !numRaw) continue;
 
       const digits = numRaw.replace(/\D/g, '');
@@ -544,7 +591,7 @@
     const cell = firstRow.querySelector(`td.${EACH_COLUMN.fieldKey}`);
     if (!cell) return;
 
-    const num = parseFloat(cell.textContent.replace(/[^\d.-]/g, ''));
+    const num = getRowNumericValue(firstRow, EACH_COLUMN.fieldKey);
     if (!Number.isFinite(num)) return;
 
     $target.html(`
@@ -569,11 +616,12 @@
     qtyFieldKey,
     costFieldKey,
     costSourceKey,
+    totals,
   }) {
     const leftText = labelOverride || groupLabel || '';
 
-    const qty = sumField($rowsToSum, qtyFieldKey);
-    const cost = sumField($rowsToSum, costSourceKey);
+    const qty = totals?.[qtyFieldKey] ?? sumField($rowsToSum, qtyFieldKey);
+    const cost = totals?.[costSourceKey] ?? sumField($rowsToSum, costSourceKey);
 
     const $row = $(`
       <tr
@@ -607,6 +655,7 @@
 
     nearestL2Cache = new WeakMap();
     normKeyCache.clear();
+    rowCache = new WeakMap();
 
     $tbody
       .find('tr')
@@ -655,6 +704,8 @@
       const $rowsToSum = $groupBlock.filter('tr[id]');
       if (!$rowsToSum.length) return;
 
+      const totals = sumFields($rowsToSum, [QTY_FIELD_KEY, LABOR_FIELD_KEY, HARDWARE_FIELD_KEY, COST_FIELD_KEY]);
+
       // Level 1: Headers only
       if (level === 1) {
         if (!$groupRow.data('scwHeaderCellsAdded')) {
@@ -698,8 +749,8 @@
           injectConcatIntoLevel3HeaderForMounting({ $groupRow, $rowsToSum, runId });
         }
 
-        const qty = sumField($rowsToSum, QTY_FIELD_KEY);
-        const hardware = sumField($rowsToSum, HARDWARE_FIELD_KEY);
+        const qty = totals[QTY_FIELD_KEY];
+        const hardware = totals[HARDWARE_FIELD_KEY];
 
         $groupRow.find(`td.${QTY_FIELD_KEY}`).html(`<strong>${Math.round(qty)}</strong>`);
         $groupRow.find(`td.${COST_FIELD_KEY}`).html(`<strong>${escapeHtml(formatMoney(hardware))}</strong>`);
@@ -738,8 +789,8 @@
 
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
 
-        const qty = sumField($rowsToSum, QTY_FIELD_KEY);
-        const labor = sumField($rowsToSum, LABOR_FIELD_KEY);
+        const qty = totals[QTY_FIELD_KEY];
+        const labor = totals[LABOR_FIELD_KEY];
 
         $groupRow.find(`td.${QTY_FIELD_KEY}`).html(`<strong>${Math.round(qty)}</strong>`);
         $groupRow.find(`td.${COST_FIELD_KEY}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
@@ -757,6 +808,7 @@
           $groupBlock,
           $cellsTemplate,
           $rowsToSum,
+          totals,
         });
       }
     });
@@ -798,6 +850,7 @@
           qtyFieldKey: QTY_FIELD_KEY,
           costFieldKey: COST_FIELD_KEY,
           costSourceKey: COST_FIELD_KEY,
+          totals: item.totals,
         });
 
         fragment.appendChild($row[0]);
@@ -816,6 +869,7 @@
   function normalizeField2019ForGrouping(viewId) {
     const cells = document.querySelectorAll(`#${viewId} .kn-table td.field_2019`);
     for (const cell of cells) {
+      if (cell.dataset.scwNormalized === '1') continue;
       let html = sanitizeAllowOnlyBrAndB(decodeEntities(cell.innerHTML || ''));
       html = html
         .replace(/\s*<br\s*\/?>\s*/gi, '<br>')
@@ -823,6 +877,7 @@
         .replace(/\s*<\/b>\s*/gi, '</b>')
         .trim();
       cell.innerHTML = html;
+      cell.dataset.scwNormalized = '1';
     }
   }
 
