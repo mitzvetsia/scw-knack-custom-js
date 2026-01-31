@@ -19,7 +19,8 @@ cat \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
   src/features/calc-install-fee-adjustment.js \
-  src/features/instructions-placement.js
+  src/features/instructions-placement.js \
+  src/features/sales-edit-proposal-refresh-controls.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \
   src/features/legacy/add-checkboxes.js \
