@@ -9,12 +9,13 @@ cat \
   src/features/ratking.js \
   src/features/proposals.js \
   src/features/group-collapse.js \
-  src/features/sow-line-item-dto-hide-show-fields.js \
-  highlight-duplicate-cells.js \
-  replace-content-with-icon.js \
-  change-record-limit.js \
-  lock-fields.js \
-  truncate-expand-function.js \
+  src/features/add-sow-line-item-dto-hide-show-fields.js \
+  src/features/highlight-duplicate-cells.js \
+  src/features/replace-content-with-icon.js \
+  src/features/change-record-limit.js \
+  src/features/lock-fields.js \
+  src/features/truncate-expand-function.js \
+  src/features/checkbox-grid.field_739.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
