@@ -2397,733 +2397,6 @@ $(document).on('click', '.delete.close-modal', function() {
 
 
 
-/*************  // view_3332 - truncate field_1949 with click-to-expand **************************/
-
-// view_3332 - truncate field_1949 with click-to-expand
-(function () {
-  const VIEW_ID = 'view_3332';
-  const FIELD_CLASS = 'field_1949';
-  const MAX = 25;
-
-  function escapeHtml(str) {
-    return String(str)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
-  }
-
-  function applyTruncate(viewEl) {
-    const cells = viewEl.querySelectorAll(`td.${FIELD_CLASS}`);
-    cells.forEach((td) => {
-      // Avoid double-processing on re-render/pagination
-      if (td.dataset.scwTruncated === '1') return;
-
-      const full = (td.textContent || '').trim();
-      if (!full) return;
-
-      // If short already, leave it
-      if (full.length <= MAX) {
-        td.dataset.scwTruncated = '1';
-        return;
-      }
-
-      const preview = full.slice(0, MAX);
-
-      td.dataset.scwTruncated = '1';
-      td.dataset.scwFull = full;
-      td.dataset.scwPreview = preview;
-      td.dataset.scwExpanded = '0';
-
-      td.innerHTML = `
-        <a href="#" class="scw-trunc-toggle" style="text-decoration: underline;">
-          <span class="scw-trunc-text">${escapeHtml(preview)}…</span>
-        </a>
-      `;
-    });
-  }
-
-  // On view render, truncate
-  $(document).on(`knack-view-render.${VIEW_ID}`, function (e, view) {
-    const viewEl = document.getElementById(VIEW_ID);
-    if (!viewEl) return;
-    applyTruncate(viewEl);
-  });
-
-  // Delegate click handler (works after pagination/filter refresh)
-  $(document).on('click', `#${VIEW_ID} td.${FIELD_CLASS} .scw-trunc-toggle`, function (e) {
-    e.preventDefault();
-
-    const td = this.closest(`td.${FIELD_CLASS}`);
-    if (!td) return;
-
-    const expanded = td.dataset.scwExpanded === '1';
-    const nextText = expanded ? (td.dataset.scwPreview + '…') : td.dataset.scwFull;
-
-    td.dataset.scwExpanded = expanded ? '0' : '1';
-
-    // Keep it clickable for toggling back
-    this.querySelector('.scw-trunc-text').textContent = nextText;
-  });
-})();
-
-
-/*************  // view_3332 - truncate field_1949 with click-to-expand **************************/
-
-
-
-
-
-
-
-/*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
-
-
-(function () {
-  const VIEW_IDS = ['view_3301', 'view_3341'];
-  const LIMIT_VALUE = '1000';
-  const EVENT_NS = '.scwLimit1000';
-
-  VIEW_IDS.forEach((VIEW_ID) => {
-    $(document)
-      .off(`knack-view-render.${VIEW_ID}${EVENT_NS}`)
-      .on(`knack-view-render.${VIEW_ID}${EVENT_NS}`, function () {
-        const $view = $('#' + VIEW_ID);
-        if (!$view.length) return;
-
-        // Run-once guard per view instance
-        if ($view.data('scwLimitSet')) return;
-        $view.data('scwLimitSet', true);
-
-        const $limit = $view.find('select[name="limit"]');
-        if (!$limit.length) return;
-
-        if ($limit.val() !== LIMIT_VALUE) {
-          $limit.val(LIMIT_VALUE).trigger('change');
-        }
-      });
-  });
-})();
-
-
-/*************  SET RECORD CONTROL to 1000 and HIDE view_3313 **************************/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
-
-// Replace *whatever* is rendered in field_1946 cells with an icon
-// Runs on multiple grid views
-(function () {
-  const VIEW_IDS = [
-    "view_3313",
-    "view_3332"   // ← add the second view id here
-  ];
-
-  const FIELD_KEY = "field_1946";
-
-  const ICON_HTML =
-    '<i class="fa fa-solid fa-sort" aria-hidden="true" title="Changing Location" style="font-size:30px; vertical-align:middle;"></i>';
-
-  // Inject CSS once (covers all target views)
-  function injectCssOnce() {
-    const id = "scw-field1946-icon-css";
-    if (document.getElementById(id)) return;
-
-    const selectors = VIEW_IDS
-      .map(v => `#${v} td.${FIELD_KEY}`)
-      .join(", ");
-
-    const css = `
-      ${selectors} {
-        display: table-cell !important;
-        text-align: center;
-      }
-    `;
-
-    const style = document.createElement("style");
-    style.id = id;
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
-
-  VIEW_IDS.forEach((VIEW_ID) => {
-    $(document).on(`knack-view-render.${VIEW_ID}`, function () {
-      injectCssOnce();
-
-      const $view = $("#" + VIEW_ID);
-      if (!$view.length) return;
-
-      $view.find(`table.kn-table tbody td.${FIELD_KEY}`).each(function () {
-        const $cell = $(this);
-
-        // idempotent
-        if ($cell.data("scwReplacedWithIcon")) return;
-
-        $cell.empty().append(ICON_HTML);
-        $cell.data("scwReplacedWithIcon", true);
-      });
-    });
-  });
-})();
-
-/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
-
-
-
-
-
-
-////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
-
-
-$(document).on('knack-view-render.view_3313', function () {
-
-  const FIELD_KEY = 'field_1950';
-  const DUP_BG = '#ffe2e2'; // light red highlight
-
-  const valueMap = {};
-
-  // Gather values from the column
-  $('#view_3313 td.' + FIELD_KEY).each(function () {
-    const value = $(this).text().trim();
-
-    if (!value) return;
-
-    if (!valueMap[value]) {
-      valueMap[value] = [];
-    }
-
-    valueMap[value].push(this);
-  });
-
-  // Highlight duplicates
-  Object.keys(valueMap).forEach(value => {
-    if (valueMap[value].length > 1) {
-      valueMap[value].forEach(cell => {
-        $(cell).css({
-          'background-color': DUP_BG,
-          'font-weight': '600'
-        });
-      });
-    }
-  });
-
-});
-////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
-
-
-
-////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
-
-(function () {
-  'use strict';
-
-  // ======================
-  // CONFIG
-  // ======================
-  const VIEW_IDS = ['view_3329']; // add more views
-  const BUCKET_FIELD_KEY = 'field_2223';
-  const EVENT_NS = '.scwBucketRules';
-  const CSS_ID = 'scw-bucket-visibility-css';
-
-  // Readable mapping
-  const BUCKET_RULES_HUMAN = {
-    //cameras or readers
-    '6481e5ba38f283002898113c': [
-      ['field_2182', 'REL_scope of work'],
-      ['field_2211', 'REL_mdf-idf_required'],
-      ['field_2183', 'INPUT_product quantity'],
-      ['field_2193', 'REL_products_cameras+cabling'],
-      ['field_2206', 'REL_product accessories'],
-      ['field_2241', 'INPUT_DROP: Pre-fix'],
-      ['field_2184', 'INPUT_DROP: label number'],
-      ['field_2186', 'INPUT_DROP: mount_cable_both'],
-      ['field_2187', 'INPUT_DROP: variables'],
-    ],
-    //networking or headend
-    '647953bb54b4e1002931ed97': [
-      ['field_2182', 'REL_scope of work'],
-      ['field_2211', 'REL_mdf-idf_required'],
-      ['field_2194', 'REL_products_for networking'],
-      ['field_2183', 'INPUT_product quantity'],
-      ['field_2206', 'REL_product accessories'],
-    ],
-    //other equipment
-    '5df12ce036f91b0015404d78': [
-      ['field_2182', 'REL_scope of work'],
-      ['field_2211', 'REL_mdf-idf_required'],
-      ['field_2195', 'REL_products_for other equipment'],
-      ['field_2183', 'INPUT_product quantity'],
-    ],
-    //service
-    '6977caa7f246edf67b52cbcd': [
-      ['field_2182', 'REL_scope of work'],
-      ['field_2180', 'REL_mdf-idf_optional'],
-      ['field_2233', 'INPUT_exepcted sub bid #'],
-      ['field_2183', 'INPUT_product quantity'],
-      ['field_2210', 'INPUT_service description'],
-    ],
-    //assumptions
-    '6977ad1234ba695a17190963': [
-      ['field_2182', 'REL_scope of work'],
-      ['field_2204', 'REL_assumptions'],
-    ],
-    //licenses
-    '645554dce6f3a60028362a6a': [
-      ['field_2182', 'REL_scope of work'],
-      ['field_2183', 'INPUT_product quantity'],
-      ['field_2224', 'REL_products for licenses'],
-    ],
-  };
-
-  const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224',
-    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233',
-  ];
-
-  function compileRules(human) {
-    const out = {};
-    Object.keys(human || {}).forEach((bucket) => {
-      out[bucket] = (human[bucket] || [])
-        .map((x) => (Array.isArray(x) ? x[0] : x))
-        .filter(Boolean);
-    });
-    return out;
-  }
-  const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
-
-  // ============================================================
-  // ✅ EARLY CSS: inject immediately so there’s no initial “flash”
-  // ============================================================
-  function injectGlobalCssOnce() {
-    let el = document.getElementById(CSS_ID);
-    if (el) return;
-
-    el = document.createElement('style');
-    el.id = CSS_ID;
-
-    // Hide all fields inside the target views immediately.
-    // Then only show ones marked scw-visible, plus the bucket input failsafe.
-    const blocks = VIEW_IDS.map((viewId) => `
-#${viewId} .kn-input { display: none !important; }
-#${viewId} .kn-input.scw-visible { display: block !important; }
-#${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
-    `.trim()).join('\n\n');
-
-    el.appendChild(document.createTextNode('\n' + blocks + '\n'));
-    document.head.appendChild(el);
-  }
-
-  // Run ASAP (before Knack paints the view)
-  injectGlobalCssOnce();
-
-  // ======================
-  // DOM helpers
-  // ======================
-  function $wrapForKeyWithinScope($scope, key) {
-    let $w = $scope.find('#kn-input-' + key);
-    if ($w.length) return $w;
-
-    $w = $scope.find('.kn-input[data-input-id="' + key + '"]');
-    if ($w.length) return $w;
-
-    return $();
-  }
-
-  function hideField($scope, key) {
-    const $w = $wrapForKeyWithinScope($scope, key);
-    if ($w.length) $w.removeClass('scw-visible');
-  }
-
-  function showField($scope, key) {
-    const $w = $wrapForKeyWithinScope($scope, key);
-    if ($w.length) $w.addClass('scw-visible');
-  }
-
-  function hideAllExceptBucket($scope) {
-    ALL_FIELD_KEYS.forEach((k) => {
-      if (k === BUCKET_FIELD_KEY) return;
-      hideField($scope, k);
-    });
-    showField($scope, BUCKET_FIELD_KEY);
-  }
-
-  function findBucketSelectInScope($scope, viewId) {
-    let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
-    if ($sel.length) return $sel;
-    return $scope.find('select[name="' + BUCKET_FIELD_KEY + '"]');
-  }
-
-  function getBucketValue($scope, viewId) {
-    const $sel = findBucketSelectInScope($scope, viewId);
-    return (($sel.val() || '') + '').trim();
-  }
-
-  function applyRules($scope, viewId) {
-    const bucketValue = getBucketValue($scope, viewId);
-
-    hideAllExceptBucket($scope);
-    if (!bucketValue) return;
-
-    (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
-  }
-
-  // ======================
-  // Binding strategy
-  // ======================
-  function bindDelegatedChange(viewId) {
-    const sel = `#${viewId} select[name="${BUCKET_FIELD_KEY}"], #${viewId} #${viewId}-${BUCKET_FIELD_KEY}`;
-
-    $(document)
-      .off('change' + EVENT_NS, sel)
-      .on('change' + EVENT_NS, sel, function () {
-        const $bucketWrap = $(this).closest('.kn-input');
-        const $scope = $bucketWrap.closest('form, .kn-form, .kn-view').length
-          ? $bucketWrap.closest('form, .kn-form, .kn-view')
-          : $('#' + viewId);
-
-        applyRules($scope, viewId);
-      });
-  }
-
-  function initView(viewId) {
-    bindDelegatedChange(viewId);
-
-    const $view = $('#' + viewId);
-    const $bucketWrap = $view.find('#kn-input-' + BUCKET_FIELD_KEY);
-    const $scope = $bucketWrap.closest('form, .kn-form, .kn-view').length
-      ? $bucketWrap.closest('form, .kn-form, .kn-view')
-      : $view;
-
-    applyRules($scope, viewId);
-  }
-
-  VIEW_IDS.forEach((viewId) => {
-    $(document)
-      .off('knack-view-render.' + viewId + EVENT_NS)
-      .on('knack-view-render.' + viewId + EVENT_NS, function () {
-        initView(viewId);
-      });
-  });
-})();
-
-////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
-
-
-
-
-
-
-
-
-/***************************** DISABLE QUANTITY CELL ON DESIGNATED QUANTITY 1 ONLY LINE ITEM TYPES *******************************/
-(function () {
-  // ============================================================
-  // SCW / Knack: Row-based cell locks (multi-view, multi-rule)
-  // - Locks target cells on specific rows based on a detect field value
-  // - Prevents inline edit by killing events in CAPTURE phase
-  // - Adds per-rule message tooltip + optional “Locked” badge
-  // - Avoids rewriting cell HTML (safe for REL/connection fields like field_1957)
-  // ============================================================
-
-  const EVENT_NS = ".scwRowLocks";
-
-  // ============================================================
-  // CONFIG
-  // ============================================================
-  const VIEWS = [
-    {
-      viewId: "view_3332",
-      rules: [
-        {
-          detectFieldKey: "field_2230",      // qty limit boolean
-          when: "yes",
-          lockFieldKeys: ["field_1964"],     // lock qty
-          message: "Qty locked (must be 1)"
-        },
-        {
-          detectFieldKey: "field_2231",      // <-- was field_2232; field_2231 exists in your DOM
-          when: "no",
-          lockFieldKeys: ["field_1957"],     // lock map connections field
-          message: "This field is locked until map connections = Yes"
-        }
-      ]
-    },
-
-    // Example for adding more views:
-    // {
-    //   viewId: "view_1953",
-    //   rules: [
-    //     { detectFieldKey: "field_2230", when: "yes", lockFieldKeys: ["field_1964"], message: "Qty locked" }
-    //   ]
-    // }
-  ];
-
-  // ============================================================
-  // INTERNALS
-  // ============================================================
-  const LOCK_ATTR = "data-scw-locked";
-  const LOCK_MSG_ATTR = "data-scw-locked-msg";
-  const LOCK_CLASS = "scw-cell-locked";
-  const ROW_CLASS = "scw-row-has-locks";
-
-  function normText(s) {
-    return (s || "").trim().replace(/\s+/g, " ").toLowerCase();
-  }
-
-  function readCellValue($cell) {
-    return normText($cell.text());
-  }
-
-  function matchesWhen(cellVal, when) {
-    if (typeof when === "function") return !!when(cellVal);
-    if (when === true) return cellVal === "yes" || cellVal === "true" || cellVal === "1";
-    if (when === false) return cellVal === "no" || cellVal === "false" || cellVal === "0" || cellVal === "";
-    return cellVal === normText(String(when));
-  }
-
-  // Safer lock: do NOT replace the cell HTML (important for REL/connection fields)
-  function lockTd($td, msg) {
-    if (!$td || !$td.length) return;
-    if ($td.attr(LOCK_ATTR) === "1") return;
-
-    const m = (msg || "N/A").trim();
-
-    $td
-      .attr(LOCK_ATTR, "1")
-      .attr(LOCK_MSG_ATTR, m)
-      .addClass(LOCK_CLASS)
-      .attr("title", m);
-
-    // Remove common Knack/KTL inline-edit hooks
-    $td.removeClass("cell-edit ktlInlineEditableCellsStyle");
-    $td.find(".cell-edit, .ktlInlineEditableCellsStyle").removeClass("cell-edit ktlInlineEditableCellsStyle");
-
-    // Belt-and-suspenders: if KTL uses pointer events, kill them in locked cells
-    // (We also have capture-blocker below.)
-  }
-
-  function applyLocksForView(viewCfg) {
-    const { viewId, rules } = viewCfg;
-    const $view = $("#" + viewId);
-    if (!$view.length) return;
-
-    const $tbody = $view.find("table.kn-table-table tbody");
-    if (!$tbody.length) return;
-
-    $tbody.find("tr").each(function () {
-      const $tr = $(this);
-
-      // Skip group/header rows
-      if ($tr.hasClass("kn-table-group") || $tr.hasClass("kn-table-group-container")) return;
-
-      let rowLocked = false;
-
-      rules.forEach((rule) => {
-        const $detect = $tr.find(`td.${rule.detectFieldKey}`);
-        if (!$detect.length) return;
-
-        const cellVal = readCellValue($detect);
-        if (!matchesWhen(cellVal, rule.when)) return;
-
-        (rule.lockFieldKeys || []).forEach((fk) => {
-          const $td = $tr.find(`td.${fk}`);
-          if ($td.length) {
-            lockTd($td, rule.message);
-            rowLocked = true;
-          }
-        });
-      });
-
-      if (rowLocked) $tr.addClass(ROW_CLASS);
-    });
-  }
-
-  function applyWithRetries(viewCfg, tries = 12) {
-    let i = 0;
-    (function tick() {
-      i++;
-      applyLocksForView(viewCfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
-
-  // Capture-phase event killer: blocks Knack’s delegated inline-edit before it runs
-  function installCaptureBlockerOnce() {
-    if (window.__scwRowLocksCaptureInstalled) return;
-    window.__scwRowLocksCaptureInstalled = true;
-
-    const kill = (e) => {
-      const td = e.target.closest && e.target.closest(`td[${LOCK_ATTR}="1"]`);
-      if (!td) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
-      return false;
-    };
-
-    ["mousedown", "mouseup", "click", "dblclick", "touchstart", "keydown"].forEach((evt) => {
-      document.addEventListener(evt, kill, true); // capture phase
-    });
-  }
-
-  // MutationObserver per view: if KTL/Knack re-renders tbody, re-apply locks
-  function installObserver(viewCfg) {
-    const { viewId } = viewCfg;
-    const $view = $("#" + viewId);
-    if (!$view.length) return;
-
-    if ($view.data("scwRowLocksObserver")) return;
-    $view.data("scwRowLocksObserver", true);
-
-    const el = $view.find("table.kn-table-table tbody").get(0);
-    if (!el) return;
-
-    const obs = new MutationObserver(() => applyLocksForView(viewCfg));
-    obs.observe(el, { childList: true, subtree: true });
-  }
-
-  function bindTriggers(viewCfg) {
-    const { viewId, rules } = viewCfg;
-
-    const triggers = new Set();
-    rules.forEach((r) => (r.triggerFieldKeys || []).forEach((k) => triggers.add(k)));
-    if (triggers.size === 0) triggers.add("*");
-
-    $(document)
-      .off(`click${EVENT_NS}`, `#${viewId} td`)
-      .on(`click${EVENT_NS}`, `#${viewId} td`, function () {
-        const $td = $(this);
-        const cls = ($td.attr("class") || "").split(/\s+/);
-
-        const triggered = triggers.has("*") || cls.some((c) => triggers.has(c));
-        if (!triggered) return;
-
-        setTimeout(() => applyLocksForView(viewCfg), 50);
-        setTimeout(() => applyLocksForView(viewCfg), 300);
-      });
-  }
-
-  function injectLockCssOnce() {
-    const id = "scw-row-locks-css";
-    if (document.getElementById(id)) return;
-
-    const css = `
-      /* Locked look + no interaction */
-      td.${LOCK_CLASS} {
-        position: relative;
-        cursor: not-allowed !important;
-      }
-      td.${LOCK_CLASS} * {
-        cursor: not-allowed !important;
-      }
-
-      /* Hide any KTL inline-edit hover affordance inside locked cells */
-      td.${LOCK_CLASS} .ktlInlineEditableCellsStyle,
-      td.${LOCK_CLASS} .cell-edit {
-        pointer-events: none !important;
-      }
-
-      /* Optional: add a small badge */
-      td.${LOCK_CLASS}::after{
-        content: "N/A";
-        position: absolute;
-        top: 2px;
-        right: 4px;
-        font-size: 10px;
-        opacity: .7;
-        padding: 1px 4px;
-        border-radius: 3px;
-        background: rgba(0,0,0,.06);
-      }
-
-      td.scw-cell-locked {
-        background-color: slategray;
-      }
-
-      /* Hide only the Knack-rendered value */
-      td.field_1964.scw-cell-locked span[class^="col-"] {
-         visibility: hidden;
-      }
-
-
-      /* Tooltip bubble using per-cell message */
-      td.${LOCK_CLASS}:hover::before{
-        content: attr(${LOCK_MSG_ATTR});
-        position: absolute;
-        bottom: 100%;
-        left: 0;
-        margin-bottom: 6px;
-        max-width: 260px;
-        white-space: normal;
-        font-size: 12px;
-        line-height: 1.2;
-        padding: 6px 8px;
-        border-radius: 6px;
-        box-shadow: 0 2px 10px rgba(0,0,0,.15);
-        background: #fff;
-        color: #111;
-        z-index: 999999;
-      }
-    `;
-
-    const style = document.createElement("style");
-    style.id = id;
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
-
-  // ============================================================
-  // INIT
-  // ============================================================
-  injectLockCssOnce();
-  installCaptureBlockerOnce();
-
-  VIEWS.forEach((viewCfg) => {
-    const viewId = viewCfg.viewId;
-
-    $(document)
-      .off(`knack-view-render.${viewId}${EVENT_NS}`)
-      .on(`knack-view-render.${viewId}${EVENT_NS}`, function () {
-        applyWithRetries(viewCfg);
-        installObserver(viewCfg);
-        bindTriggers(viewCfg);
-      });
-  });
-})();
-
-/***************************** DISABLE QUANTITY CELL ON DESIGNATED QUANTITY 1 ONLY LINE ITEM TYPES *******************************/
-
-
-
-
-
-
-
-
 
 
 
@@ -4290,3 +3563,678 @@ $(document).on('knack-view-render.view_3313', function () {
 
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
 
+
+////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+
+(function () {
+  'use strict';
+
+  // ======================
+  // CONFIG
+  // ======================
+  const VIEW_IDS = ['view_3329']; // add more views
+  const BUCKET_FIELD_KEY = 'field_2223';
+  const EVENT_NS = '.scwBucketRules';
+  const CSS_ID = 'scw-bucket-visibility-css';
+
+  // Readable mapping
+  const BUCKET_RULES_HUMAN = {
+    //cameras or readers
+    '6481e5ba38f283002898113c': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2211', 'REL_mdf-idf_required'],
+      ['field_2183', 'INPUT_product quantity'],
+      ['field_2193', 'REL_products_cameras+cabling'],
+      ['field_2206', 'REL_product accessories'],
+      ['field_2241', 'INPUT_DROP: Pre-fix'],
+      ['field_2184', 'INPUT_DROP: label number'],
+      ['field_2186', 'INPUT_DROP: mount_cable_both'],
+      ['field_2187', 'INPUT_DROP: variables'],
+    ],
+    //networking or headend
+    '647953bb54b4e1002931ed97': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2211', 'REL_mdf-idf_required'],
+      ['field_2194', 'REL_products_for networking'],
+      ['field_2183', 'INPUT_product quantity'],
+      ['field_2206', 'REL_product accessories'],
+    ],
+    //other equipment
+    '5df12ce036f91b0015404d78': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2211', 'REL_mdf-idf_required'],
+      ['field_2195', 'REL_products_for other equipment'],
+      ['field_2183', 'INPUT_product quantity'],
+    ],
+    //service
+    '6977caa7f246edf67b52cbcd': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2180', 'REL_mdf-idf_optional'],
+      ['field_2233', 'INPUT_exepcted sub bid #'],
+      ['field_2183', 'INPUT_product quantity'],
+      ['field_2210', 'INPUT_service description'],
+    ],
+    //assumptions
+    '6977ad1234ba695a17190963': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2204', 'REL_assumptions'],
+    ],
+    //licenses
+    '645554dce6f3a60028362a6a': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2183', 'INPUT_product quantity'],
+      ['field_2224', 'REL_products for licenses'],
+    ],
+  };
+
+  const ALL_FIELD_KEYS = [
+    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224',
+    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233',
+  ];
+
+  function compileRules(human) {
+    const out = {};
+    Object.keys(human || {}).forEach((bucket) => {
+      out[bucket] = (human[bucket] || [])
+        .map((x) => (Array.isArray(x) ? x[0] : x))
+        .filter(Boolean);
+    });
+    return out;
+  }
+  const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
+
+  // ============================================================
+  // ✅ EARLY CSS: inject immediately so there’s no initial “flash”
+  // ============================================================
+  function injectGlobalCssOnce() {
+    let el = document.getElementById(CSS_ID);
+    if (el) return;
+
+    el = document.createElement('style');
+    el.id = CSS_ID;
+
+    // Hide all fields inside the target views immediately.
+    // Then only show ones marked scw-visible, plus the bucket input failsafe.
+    const blocks = VIEW_IDS.map((viewId) => `
+#${viewId} .kn-input { display: none !important; }
+#${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
+    `.trim()).join('\n\n');
+
+    el.appendChild(document.createTextNode('\n' + blocks + '\n'));
+    document.head.appendChild(el);
+  }
+
+  // Run ASAP (before Knack paints the view)
+  injectGlobalCssOnce();
+
+  // ======================
+  // DOM helpers
+  // ======================
+  function $wrapForKeyWithinScope($scope, key) {
+    let $w = $scope.find('#kn-input-' + key);
+    if ($w.length) return $w;
+
+    $w = $scope.find('.kn-input[data-input-id="' + key + '"]');
+    if ($w.length) return $w;
+
+    return $();
+  }
+
+  function hideField($scope, key) {
+    const $w = $wrapForKeyWithinScope($scope, key);
+    if ($w.length) $w.removeClass('scw-visible');
+  }
+
+  function showField($scope, key) {
+    const $w = $wrapForKeyWithinScope($scope, key);
+    if ($w.length) $w.addClass('scw-visible');
+  }
+
+  function hideAllExceptBucket($scope) {
+    ALL_FIELD_KEYS.forEach((k) => {
+      if (k === BUCKET_FIELD_KEY) return;
+      hideField($scope, k);
+    });
+    showField($scope, BUCKET_FIELD_KEY);
+  }
+
+  function findBucketSelectInScope($scope, viewId) {
+    let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
+    if ($sel.length) return $sel;
+    return $scope.find('select[name="' + BUCKET_FIELD_KEY + '"]');
+  }
+
+  function getBucketValue($scope, viewId) {
+    const $sel = findBucketSelectInScope($scope, viewId);
+    return (($sel.val() || '') + '').trim();
+  }
+
+  function applyRules($scope, viewId) {
+    const bucketValue = getBucketValue($scope, viewId);
+
+    hideAllExceptBucket($scope);
+    if (!bucketValue) return;
+
+    (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+  }
+
+  // ======================
+  // Binding strategy
+  // ======================
+  function bindDelegatedChange(viewId) {
+    const sel = `#${viewId} select[name="${BUCKET_FIELD_KEY}"], #${viewId} #${viewId}-${BUCKET_FIELD_KEY}`;
+
+    $(document)
+      .off('change' + EVENT_NS, sel)
+      .on('change' + EVENT_NS, sel, function () {
+        const $bucketWrap = $(this).closest('.kn-input');
+        const $scope = $bucketWrap.closest('form, .kn-form, .kn-view').length
+          ? $bucketWrap.closest('form, .kn-form, .kn-view')
+          : $('#' + viewId);
+
+        applyRules($scope, viewId);
+      });
+  }
+
+  function initView(viewId) {
+    bindDelegatedChange(viewId);
+
+    const $view = $('#' + viewId);
+    const $bucketWrap = $view.find('#kn-input-' + BUCKET_FIELD_KEY);
+    const $scope = $bucketWrap.closest('form, .kn-form, .kn-view').length
+      ? $bucketWrap.closest('form, .kn-form, .kn-view')
+      : $view;
+
+    applyRules($scope, viewId);
+  }
+
+  VIEW_IDS.forEach((viewId) => {
+    $(document)
+      .off('knack-view-render.' + viewId + EVENT_NS)
+      .on('knack-view-render.' + viewId + EVENT_NS, function () {
+        initView(viewId);
+      });
+  });
+})();
+
+////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
+
+
+$(document).on('knack-view-render.view_3313', function () {
+
+  const FIELD_KEY = 'field_1950';
+  const DUP_BG = '#ffe2e2'; // light red highlight
+
+  const valueMap = {};
+
+  // Gather values from the column
+  $('#view_3313 td.' + FIELD_KEY).each(function () {
+    const value = $(this).text().trim();
+
+    if (!value) return;
+
+    if (!valueMap[value]) {
+      valueMap[value] = [];
+    }
+
+    valueMap[value].push(this);
+  });
+
+  // Highlight duplicates
+  Object.keys(valueMap).forEach(value => {
+    if (valueMap[value].length > 1) {
+      valueMap[value].forEach(cell => {
+        $(cell).css({
+          'background-color': DUP_BG,
+          'font-weight': '600'
+        });
+      });
+    }
+  });
+
+});
+////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
+/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
+
+// Replace *whatever* is rendered in field_1946 cells with an icon
+// Runs on multiple grid views
+
+(function () {
+  const VIEW_IDS = [
+    "view_3313",
+    "view_3332"   // ← add the second view id here
+  ];
+
+  const FIELD_KEY = "field_1946";
+
+  const ICON_HTML =
+    '<i class="fa fa-solid fa-sort" aria-hidden="true" title="Changing Location" style="font-size:30px; vertical-align:middle;"></i>';
+
+  // Inject CSS once (covers all target views)
+  function injectCssOnce() {
+    const id = "scw-field1946-icon-css";
+    if (document.getElementById(id)) return;
+
+    const selectors = VIEW_IDS
+      .map(v => `#${v} td.${FIELD_KEY}`)
+      .join(", ");
+
+    const css = `
+      ${selectors} {
+        display: table-cell !important;
+        text-align: center;
+      }
+    `;
+
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  VIEW_IDS.forEach((VIEW_ID) => {
+    $(document).on(`knack-view-render.${VIEW_ID}`, function () {
+      injectCssOnce();
+
+      const $view = $("#" + VIEW_ID);
+      if (!$view.length) return;
+
+      $view.find(`table.kn-table tbody td.${FIELD_KEY}`).each(function () {
+        const $cell = $(this);
+
+        // idempotent
+        if ($cell.data("scwReplacedWithIcon")) return;
+
+        $cell.empty().append(ICON_HTML);
+        $cell.data("scwReplacedWithIcon", true);
+      });
+    });
+  });
+})();
+
+/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
+
+
+/*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
+
+(function () {
+  const VIEW_IDS = ['view_3301', 'view_3341'];
+  const LIMIT_VALUE = '1000';
+  const EVENT_NS = '.scwLimit1000';
+
+  VIEW_IDS.forEach((VIEW_ID) => {
+    $(document)
+      .off(`knack-view-render.${VIEW_ID}${EVENT_NS}`)
+      .on(`knack-view-render.${VIEW_ID}${EVENT_NS}`, function () {
+        const $view = $('#' + VIEW_ID);
+        if (!$view.length) return;
+
+        // Run-once guard per view instance
+        if ($view.data('scwLimitSet')) return;
+        $view.data('scwLimitSet', true);
+
+        const $limit = $view.find('select[name="limit"]');
+        if (!$limit.length) return;
+
+        if ($limit.val() !== LIMIT_VALUE) {
+          $limit.val(LIMIT_VALUE).trigger('change');
+        }
+      });
+  });
+})();
+
+
+/*************  SET RECORD CONTROL to 1000 and HIDE view_3313 **************************/
+/***************************** DISABLE QUANTITY CELL ON DESIGNATED QUANTITY 1 ONLY LINE ITEM TYPES *******************************/
+(function () {
+  // ============================================================
+  // SCW / Knack: Row-based cell locks (multi-view, multi-rule)
+  // - Locks target cells on specific rows based on a detect field value
+  // - Prevents inline edit by killing events in CAPTURE phase
+  // - Adds per-rule message tooltip + optional “Locked” badge
+  // - Avoids rewriting cell HTML (safe for REL/connection fields like field_1957)
+  // ============================================================
+
+  const EVENT_NS = ".scwRowLocks";
+
+  // ============================================================
+  // CONFIG
+  // ============================================================
+  const VIEWS = [
+    {
+      viewId: "view_3332",
+      rules: [
+        {
+          detectFieldKey: "field_2230",      // qty limit boolean
+          when: "yes",
+          lockFieldKeys: ["field_1964"],     // lock qty
+          message: "Qty locked (must be 1)"
+        },
+        {
+          detectFieldKey: "field_2231",      // <-- was field_2232; field_2231 exists in your DOM
+          when: "no",
+          lockFieldKeys: ["field_1957"],     // lock map connections field
+          message: "This field is locked until map connections = Yes"
+        }
+      ]
+    },
+
+    // Example for adding more views:
+    // {
+    //   viewId: "view_1953",
+    //   rules: [
+    //     { detectFieldKey: "field_2230", when: "yes", lockFieldKeys: ["field_1964"], message: "Qty locked" }
+    //   ]
+    // }
+  ];
+
+  // ============================================================
+  // INTERNALS
+  // ============================================================
+  const LOCK_ATTR = "data-scw-locked";
+  const LOCK_MSG_ATTR = "data-scw-locked-msg";
+  const LOCK_CLASS = "scw-cell-locked";
+  const ROW_CLASS = "scw-row-has-locks";
+
+  function normText(s) {
+    return (s || "").trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  function readCellValue($cell) {
+    return normText($cell.text());
+  }
+
+  function matchesWhen(cellVal, when) {
+    if (typeof when === "function") return !!when(cellVal);
+    if (when === true) return cellVal === "yes" || cellVal === "true" || cellVal === "1";
+    if (when === false) return cellVal === "no" || cellVal === "false" || cellVal === "0" || cellVal === "";
+    return cellVal === normText(String(when));
+  }
+
+  // Safer lock: do NOT replace the cell HTML (important for REL/connection fields)
+  function lockTd($td, msg) {
+    if (!$td || !$td.length) return;
+    if ($td.attr(LOCK_ATTR) === "1") return;
+
+    const m = (msg || "N/A").trim();
+
+    $td
+      .attr(LOCK_ATTR, "1")
+      .attr(LOCK_MSG_ATTR, m)
+      .addClass(LOCK_CLASS)
+      .attr("title", m);
+
+    // Remove common Knack/KTL inline-edit hooks
+    $td.removeClass("cell-edit ktlInlineEditableCellsStyle");
+    $td.find(".cell-edit, .ktlInlineEditableCellsStyle").removeClass("cell-edit ktlInlineEditableCellsStyle");
+
+    // Belt-and-suspenders: if KTL uses pointer events, kill them in locked cells
+    // (We also have capture-blocker below.)
+  }
+
+  function applyLocksForView(viewCfg) {
+    const { viewId, rules } = viewCfg;
+    const $view = $("#" + viewId);
+    if (!$view.length) return;
+
+    const $tbody = $view.find("table.kn-table-table tbody");
+    if (!$tbody.length) return;
+
+    $tbody.find("tr").each(function () {
+      const $tr = $(this);
+
+      // Skip group/header rows
+      if ($tr.hasClass("kn-table-group") || $tr.hasClass("kn-table-group-container")) return;
+
+      let rowLocked = false;
+
+      rules.forEach((rule) => {
+        const $detect = $tr.find(`td.${rule.detectFieldKey}`);
+        if (!$detect.length) return;
+
+        const cellVal = readCellValue($detect);
+        if (!matchesWhen(cellVal, rule.when)) return;
+
+        (rule.lockFieldKeys || []).forEach((fk) => {
+          const $td = $tr.find(`td.${fk}`);
+          if ($td.length) {
+            lockTd($td, rule.message);
+            rowLocked = true;
+          }
+        });
+      });
+
+      if (rowLocked) $tr.addClass(ROW_CLASS);
+    });
+  }
+
+  function applyWithRetries(viewCfg, tries = 12) {
+    let i = 0;
+    (function tick() {
+      i++;
+      applyLocksForView(viewCfg);
+      if (i < tries) setTimeout(tick, 250);
+    })();
+  }
+
+  // Capture-phase event killer: blocks Knack’s delegated inline-edit before it runs
+  function installCaptureBlockerOnce() {
+    if (window.__scwRowLocksCaptureInstalled) return;
+    window.__scwRowLocksCaptureInstalled = true;
+
+    const kill = (e) => {
+      const td = e.target.closest && e.target.closest(`td[${LOCK_ATTR}="1"]`);
+      if (!td) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+      return false;
+    };
+
+    ["mousedown", "mouseup", "click", "dblclick", "touchstart", "keydown"].forEach((evt) => {
+      document.addEventListener(evt, kill, true); // capture phase
+    });
+  }
+
+  // MutationObserver per view: if KTL/Knack re-renders tbody, re-apply locks
+  function installObserver(viewCfg) {
+    const { viewId } = viewCfg;
+    const $view = $("#" + viewId);
+    if (!$view.length) return;
+
+    if ($view.data("scwRowLocksObserver")) return;
+    $view.data("scwRowLocksObserver", true);
+
+    const el = $view.find("table.kn-table-table tbody").get(0);
+    if (!el) return;
+
+    const obs = new MutationObserver(() => applyLocksForView(viewCfg));
+    obs.observe(el, { childList: true, subtree: true });
+  }
+
+  function bindTriggers(viewCfg) {
+    const { viewId, rules } = viewCfg;
+
+    const triggers = new Set();
+    rules.forEach((r) => (r.triggerFieldKeys || []).forEach((k) => triggers.add(k)));
+    if (triggers.size === 0) triggers.add("*");
+
+    $(document)
+      .off(`click${EVENT_NS}`, `#${viewId} td`)
+      .on(`click${EVENT_NS}`, `#${viewId} td`, function () {
+        const $td = $(this);
+        const cls = ($td.attr("class") || "").split(/\s+/);
+
+        const triggered = triggers.has("*") || cls.some((c) => triggers.has(c));
+        if (!triggered) return;
+
+        setTimeout(() => applyLocksForView(viewCfg), 50);
+        setTimeout(() => applyLocksForView(viewCfg), 300);
+      });
+  }
+
+  function injectLockCssOnce() {
+    const id = "scw-row-locks-css";
+    if (document.getElementById(id)) return;
+
+    const css = `
+      /* Locked look + no interaction */
+      td.${LOCK_CLASS} {
+        position: relative;
+        cursor: not-allowed !important;
+      }
+      td.${LOCK_CLASS} * {
+        cursor: not-allowed !important;
+      }
+
+      /* Hide any KTL inline-edit hover affordance inside locked cells */
+      td.${LOCK_CLASS} .ktlInlineEditableCellsStyle,
+      td.${LOCK_CLASS} .cell-edit {
+        pointer-events: none !important;
+      }
+
+      /* Optional: add a small badge */
+      td.${LOCK_CLASS}::after{
+        content: "N/A";
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        font-size: 10px;
+        opacity: .7;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: rgba(0,0,0,.06);
+      }
+
+      td.scw-cell-locked {
+        background-color: slategray;
+      }
+
+      /* Hide only the Knack-rendered value */
+      td.field_1964.scw-cell-locked span[class^="col-"] {
+         visibility: hidden;
+      }
+
+
+      /* Tooltip bubble using per-cell message */
+      td.${LOCK_CLASS}:hover::before{
+        content: attr(${LOCK_MSG_ATTR});
+        position: absolute;
+        bottom: 100%;
+        left: 0;
+        margin-bottom: 6px;
+        max-width: 260px;
+        white-space: normal;
+        font-size: 12px;
+        line-height: 1.2;
+        padding: 6px 8px;
+        border-radius: 6px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.15);
+        background: #fff;
+        color: #111;
+        z-index: 999999;
+      }
+    `;
+
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  injectLockCssOnce();
+  installCaptureBlockerOnce();
+
+  VIEWS.forEach((viewCfg) => {
+    const viewId = viewCfg.viewId;
+
+    $(document)
+      .off(`knack-view-render.${viewId}${EVENT_NS}`)
+      .on(`knack-view-render.${viewId}${EVENT_NS}`, function () {
+        applyWithRetries(viewCfg);
+        installObserver(viewCfg);
+        bindTriggers(viewCfg);
+      });
+  });
+})();
+
+/***************************** DISABLE QUANTITY CELL ON DESIGNATED QUANTITY 1 ONLY LINE ITEM TYPES *******************************/
+/*************  // view_3332 - truncate field_1949 with click-to-expand **************************/
+
+// view_3332 - truncate field_1949 with click-to-expand
+(function () {
+  const VIEW_ID = 'view_3332';
+  const FIELD_CLASS = 'field_1949';
+  const MAX = 25;
+
+  function escapeHtml(str) {
+    return String(str)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function applyTruncate(viewEl) {
+    const cells = viewEl.querySelectorAll(`td.${FIELD_CLASS}`);
+    cells.forEach((td) => {
+      // Avoid double-processing on re-render/pagination
+      if (td.dataset.scwTruncated === '1') return;
+
+      const full = (td.textContent || '').trim();
+      if (!full) return;
+
+      // If short already, leave it
+      if (full.length <= MAX) {
+        td.dataset.scwTruncated = '1';
+        return;
+      }
+
+      const preview = full.slice(0, MAX);
+
+      td.dataset.scwTruncated = '1';
+      td.dataset.scwFull = full;
+      td.dataset.scwPreview = preview;
+      td.dataset.scwExpanded = '0';
+
+      td.innerHTML = `
+        <a href="#" class="scw-trunc-toggle" style="text-decoration: underline;">
+          <span class="scw-trunc-text">${escapeHtml(preview)}…</span>
+        </a>
+      `;
+    });
+  }
+
+  // On view render, truncate
+  $(document).on(`knack-view-render.${VIEW_ID}`, function (e, view) {
+    const viewEl = document.getElementById(VIEW_ID);
+    if (!viewEl) return;
+    applyTruncate(viewEl);
+  });
+
+  // Delegate click handler (works after pagination/filter refresh)
+  $(document).on('click', `#${VIEW_ID} td.${FIELD_CLASS} .scw-trunc-toggle`, function (e) {
+    e.preventDefault();
+
+    const td = this.closest(`td.${FIELD_CLASS}`);
+    if (!td) return;
+
+    const expanded = td.dataset.scwExpanded === '1';
+    const nextText = expanded ? (td.dataset.scwPreview + '…') : td.dataset.scwFull;
+
+    td.dataset.scwExpanded = expanded ? '0' : '1';
+
+    // Keep it clickable for toggling back
+    this.querySelector('.scw-trunc-text').textContent = nextText;
+  });
+})();
+
+
+/*************  // view_3332 - truncate field_1949 with click-to-expand **************************/
