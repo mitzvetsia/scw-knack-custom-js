@@ -1,0 +1,154 @@
+
+
+/***************************** SURVEY / PROJECT FORM - network device mapping *******************/
+
+
+const checkboxStateByView = {};
+
+function enableCheckboxSelectSync({ viewId, selectFieldId }) {
+  checkboxStateByView[viewId] = checkboxStateByView[viewId] || [];
+
+  $(document).on(`knack-view-render.${viewId}`, function () {
+    console.log(`✅ View ${viewId} rendered`);
+
+    const $selectInput = $(`#${viewId}-${selectFieldId}`);
+    if (!$selectInput.length) {
+      console.error(`❌ Select input not found in ${viewId}`);
+      return;
+    }
+
+    // ✅ Force open to trigger Knack to populate options
+    $selectInput.trigger('focus').trigger('mousedown');
+
+    // ✅ MutationObserver for normal (multi-option) cases
+    const observer = new MutationObserver(() => {
+      const options = $selectInput.find('option');
+      if (options.length === 0) return;
+
+      console.log(`📋 ${options.length} options detected in ${viewId}`);
+      syncSelectedToCheckboxState(options, viewId);
+      observer.disconnect();
+      renderCheckboxes();
+      bindCheckboxListeners();
+    });
+
+    observer.observe($selectInput[0], { childList: true, subtree: true });
+
+    // ✅ Fallback polling in case only one quote and Knack injects slowly
+    const fallbackPoll = setInterval(() => {
+      const options = $selectInput.find('option');
+      if (options.length > 0) {
+        clearInterval(fallbackPoll);
+        console.log(`⏳ Fallback: camera options detected in ${viewId}`);
+        syncSelectedToCheckboxState(options, viewId);
+        renderCheckboxes();
+        bindCheckboxListeners();
+      }
+    }, 100);
+
+    // ✅ Handle quote field change (clear + wait for new camera list)
+    $(document).off(`change.quote-${viewId}`);
+    $(document).on(`change.quote-${viewId}`, `#${viewId}-field_1864`, function () {
+      console.log(`🔁 Quote field changed in ${viewId}`);
+
+      $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
+        const val = $(this).val();
+        const label = $(this).parent().text().trim();
+        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
+          checkboxStateByView[viewId].push({ value: val, label });
+        }
+      });
+
+      const reobserve = new MutationObserver(() => {
+        const options = $selectInput.find('option');
+        if (options.length === 0) return;
+
+        reobserve.disconnect();
+        renderCheckboxes();
+        bindCheckboxListeners();
+      });
+
+      $selectInput.trigger('focus').trigger('mousedown');
+      reobserve.observe($selectInput[0], { childList: true, subtree: true });
+    });
+
+    function syncSelectedToCheckboxState(options, viewId) {
+      options.filter(':selected').each(function () {
+        const val = $(this).val();
+        const label = $(this).text();
+        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
+          checkboxStateByView[viewId].push({ value: val, label });
+        }
+      });
+    }
+
+    function renderCheckboxes() {
+      const $chosen = $selectInput.siblings('.chzn-container');
+      if ($chosen.length) $chosen.hide();
+
+      $(`#custom-checkboxes-${viewId}`).remove();
+
+      $selectInput.find('option').prop('selected', false);
+      checkboxStateByView[viewId].forEach(({ value }) => {
+        $selectInput.find(`option[value="${value}"]`).prop('selected', true);
+      });
+      $selectInput.trigger('change').trigger('chosen:updated');
+
+      let html = `<div id="custom-checkboxes-${viewId}" style="margin-top:10px;">`;
+      const seen = {};
+
+      checkboxStateByView[viewId].forEach(({ value, label }) => {
+        html += `<label style="display:block;margin:5px 0;">
+                   <input type="checkbox" value="${value}" checked> ${label}
+                 </label>`;
+        seen[value] = true;
+      });
+
+      $selectInput.find('option').each(function () {
+        const val = $(this).val();
+        const label = $(this).text();
+        if (!seen[val]) {
+          html += `<label style="display:block;margin:5px 0;">
+                     <input type="checkbox" value="${val}"> ${label}
+                   </label>`;
+        }
+      });
+
+      html += '</div>';
+      $selectInput.after(html);
+    }
+
+    function bindCheckboxListeners() {
+      $(document).off(`change.checkbox-${viewId}`);
+      $(document).on(`change.checkbox-${viewId}`, `#custom-checkboxes-${viewId} input[type="checkbox"]`, function () {
+        $selectInput.find('option').prop('selected', false);
+        checkboxStateByView[viewId] = [];
+
+        $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
+          const val = $(this).val();
+          const label = $(this).parent().text().trim();
+          checkboxStateByView[viewId].push({ value: val, label });
+          $selectInput.find(`option[value="${val}"]`).prop('selected', true);
+        });
+
+        $selectInput.trigger('change').trigger('chosen:updated');
+      });
+    }
+  });
+}
+
+// ✅ Activate for each view
+enableCheckboxSelectSync({
+  viewId: 'view_2688',
+  selectFieldId: 'field_1656'
+});
+
+enableCheckboxSelectSync({
+  viewId: 'view_2697',
+  selectFieldId: 'field_1656'
+});
+
+/*
+
+
+
