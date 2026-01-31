@@ -18,7 +18,8 @@ echo "⬇️  Pulling latest changes..."
 git pull
 
 echo "📦 Building bundle..."
-npm run build
+chmod +x bundle.sh
+./bundle.sh
 
 echo "📝 Staging changes..."
 git add -A
