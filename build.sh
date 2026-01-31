@@ -6,7 +6,13 @@ mkdir -p dist
 cat \
   src/config.js \
   src/util.js \
-  src/features/ratking.js \
+  src/features/ratking/modal-backdrop-click-disable.js \
+  src/features/ratking/default-field-values.js \
+  src/features/ratking/post-inline-edit-behavior.js \
+  src/features/ratking/timepicker-init.js \
+  src/features/ratking/discount-copy-tweaks.js \
+  src/features/ratking/hash-bump-record-update.js \
+  src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
   src/features/group-collapse.js \
   src/features/add-sow-line-item-dto-hide-show-fields.js \
