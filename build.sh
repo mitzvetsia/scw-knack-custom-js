@@ -15,11 +15,12 @@ cat \
   src/features/change-record-limit.js \
   src/features/lock-fields.js \
   src/features/truncate-expand-function.js \
-  src/features/checkbox-grid.field_739.js \
+  src/features/legacy/checkbox-grid.field_739.js \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
-  src/features/expand-collapse-legacy-function.js \
+  src/features/legacy/expand-collapse-legacy-function.js \
+  src/features/calc-install-fee-adjustment.js
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
