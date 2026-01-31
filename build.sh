@@ -21,6 +21,7 @@ cat \
   src/features/calc-install-fee-adjustment.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \
+  src/features/legacy/add-checkboxes.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
