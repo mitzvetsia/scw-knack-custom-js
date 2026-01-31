@@ -1103,6 +1103,7 @@ window.SCW = window.SCW || {};
       }
       ${S} .kn-table-group.kn-group-level-1.scw-group-header > td {
         padding: ${L1.tdPadding} !important;
+        text-align: ${L1.textalign} !important;
       }
       ${S} .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
         opacity: ${L1.collapsedOpacity};
@@ -1315,7 +1316,6 @@ window.SCW = window.SCW || {};
 
 
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
-
 
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
