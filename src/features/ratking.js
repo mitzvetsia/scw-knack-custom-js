@@ -1,5 +1,5 @@
 
-
+// DEPRECATE? fairly certain Knack's new native setting "keep open till action" obviates the need for this
 /* Change the below scene_1 to the specific scene for your application or use `any` to enable for all scenes */
 /* Turns off modal pages closing when clicking off to the side? */
   $(document).on('knack-scene-render.any', function(event, scene) {
