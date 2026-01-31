@@ -5,667 +5,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 };
 
 
-
-
-
-(function () {
-  const applyCheckboxGrid = () => {
-    document.querySelectorAll('#connection-picker-checkbox-field_739').forEach(container => {
-      if (!container.classList.contains('multi-column-processed')) {
-        container.style.display = 'grid';
-        container.style.gridTemplateColumns = 'repeat(4, 1fr)';
-        container.style.gap = '0.5em';
-        container.classList.add('multi-column-processed');
-
-        container.querySelectorAll('.control').forEach(ctrl => {
-          ctrl.style.marginBottom = '0.25em';
-        });
-      }
-    });
-  };
-
-  // MutationObserver to watch for popups / form changes
-  const observer = new MutationObserver(() => applyCheckboxGrid());
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  // Apply once on DOM ready
-  document.addEventListener('DOMContentLoaded', applyCheckboxGrid);
-})();
-
-
-
-
-
-
-/***************************** SURVEY / PROJECT FORM - network device mapping *******************/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const checkboxStateByView = {};
-
-function enableCheckboxSelectSync({ viewId, selectFieldId }) {
-  checkboxStateByView[viewId] = checkboxStateByView[viewId] || [];
-
-  $(document).on(`knack-view-render.${viewId}`, function () {
-    console.log(`✅ View ${viewId} rendered`);
-
-    const $selectInput = $(`#${viewId}-${selectFieldId}`);
-    if (!$selectInput.length) {
-      console.error(`❌ Select input not found in ${viewId}`);
-      return;
-    }
-
-    // ✅ Force open to trigger Knack to populate options
-    $selectInput.trigger('focus').trigger('mousedown');
-
-    // ✅ MutationObserver for normal (multi-option) cases
-    const observer = new MutationObserver(() => {
-      const options = $selectInput.find('option');
-      if (options.length === 0) return;
-
-      console.log(`📋 ${options.length} options detected in ${viewId}`);
-      syncSelectedToCheckboxState(options, viewId);
-      observer.disconnect();
-      renderCheckboxes();
-      bindCheckboxListeners();
-    });
-
-    observer.observe($selectInput[0], { childList: true, subtree: true });
-
-    // ✅ Fallback polling in case only one quote and Knack injects slowly
-    const fallbackPoll = setInterval(() => {
-      const options = $selectInput.find('option');
-      if (options.length > 0) {
-        clearInterval(fallbackPoll);
-        console.log(`⏳ Fallback: camera options detected in ${viewId}`);
-        syncSelectedToCheckboxState(options, viewId);
-        renderCheckboxes();
-        bindCheckboxListeners();
-      }
-    }, 100);
-
-    // ✅ Handle quote field change (clear + wait for new camera list)
-    $(document).off(`change.quote-${viewId}`);
-    $(document).on(`change.quote-${viewId}`, `#${viewId}-field_1864`, function () {
-      console.log(`🔁 Quote field changed in ${viewId}`);
-
-      $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
-        const val = $(this).val();
-        const label = $(this).parent().text().trim();
-        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
-          checkboxStateByView[viewId].push({ value: val, label });
-        }
-      });
-
-      const reobserve = new MutationObserver(() => {
-        const options = $selectInput.find('option');
-        if (options.length === 0) return;
-
-        reobserve.disconnect();
-        renderCheckboxes();
-        bindCheckboxListeners();
-      });
-
-      $selectInput.trigger('focus').trigger('mousedown');
-      reobserve.observe($selectInput[0], { childList: true, subtree: true });
-    });
-
-    function syncSelectedToCheckboxState(options, viewId) {
-      options.filter(':selected').each(function () {
-        const val = $(this).val();
-        const label = $(this).text();
-        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
-          checkboxStateByView[viewId].push({ value: val, label });
-        }
-      });
-    }
-
-    function renderCheckboxes() {
-      const $chosen = $selectInput.siblings('.chzn-container');
-      if ($chosen.length) $chosen.hide();
-
-      $(`#custom-checkboxes-${viewId}`).remove();
-
-      $selectInput.find('option').prop('selected', false);
-      checkboxStateByView[viewId].forEach(({ value }) => {
-        $selectInput.find(`option[value="${value}"]`).prop('selected', true);
-      });
-      $selectInput.trigger('change').trigger('chosen:updated');
-
-      let html = `<div id="custom-checkboxes-${viewId}" style="margin-top:10px;">`;
-      const seen = {};
-
-      checkboxStateByView[viewId].forEach(({ value, label }) => {
-        html += `<label style="display:block;margin:5px 0;">
-                   <input type="checkbox" value="${value}" checked> ${label}
-                 </label>`;
-        seen[value] = true;
-      });
-
-      $selectInput.find('option').each(function () {
-        const val = $(this).val();
-        const label = $(this).text();
-        if (!seen[val]) {
-          html += `<label style="display:block;margin:5px 0;">
-                     <input type="checkbox" value="${val}"> ${label}
-                   </label>`;
-        }
-      });
-
-      html += '</div>';
-      $selectInput.after(html);
-    }
-
-    function bindCheckboxListeners() {
-      $(document).off(`change.checkbox-${viewId}`);
-      $(document).on(`change.checkbox-${viewId}`, `#custom-checkboxes-${viewId} input[type="checkbox"]`, function () {
-        $selectInput.find('option').prop('selected', false);
-        checkboxStateByView[viewId] = [];
-
-        $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
-          const val = $(this).val();
-          const label = $(this).parent().text().trim();
-          checkboxStateByView[viewId].push({ value: val, label });
-          $selectInput.find(`option[value="${val}"]`).prop('selected', true);
-        });
-
-        $selectInput.trigger('change').trigger('chosen:updated');
-      });
-    }
-  });
-}
-
-// ✅ Activate for each view
-enableCheckboxSelectSync({
-  viewId: 'view_2688',
-  selectFieldId: 'field_1656'
-});
-
-enableCheckboxSelectSync({
-  viewId: 'view_2697',
-  selectFieldId: 'field_1656'
-});
-
-/*
-
-
-
-
-
-
-
-
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
-
-// Working version + Different message for each situation 🎯
-
-$(document).on('knack-view-render.view_3094', function(event, view, data) {
-  console.log('✅ View 3094 loaded');
-
-  const uploadFields = ['field_1808_upload', 'field_1809_upload'];
-
-  uploadFields.forEach(function(inputFieldId) {
-    const $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
-    const $fileInput = $('#' + inputFieldId);
-
-    let existingFilename = '';
-
-    if ($uploadWrapper.length && $fileInput.length) {
-      console.log('🔎 Upload wrapper exists for', inputFieldId);
-
-      // Style wrapper
-      $uploadWrapper.css({
-        position: 'relative',
-        width: '100%',
-        height: '150px',
-        minHeight: '150px',
-        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Default RED
-        transition: 'background-color 0.5s ease'
-      });
-
-      $fileInput.css({
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        opacity: 0,
-        cursor: 'pointer',
-        zIndex: 2
-      });
-
-      // Add overlay (only once)
-      if ($uploadWrapper.find('.upload-message').length === 0) {
-        $uploadWrapper.append(`
-          <div class="upload-message" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px dashed #1890ff;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            color: #1890ff;
-            text-align: center;
-            pointer-events: none;
-            z-index: 1;
-          ">
-            📂 Drop your file here or click to upload
-          </div>
-        `);
-      }
-
-      function getFilenameFromAsset(assetElement) {
-        if (!assetElement) return '';
-        const link = assetElement.querySelector('a');
-        if (link) {
-          return link.innerText.trim();
-        } else {
-          return assetElement.innerText.replace(/remove/i, '').trim();
-        }
-      }
-
-      function setUploadMessage(currentFilename, newFilename = '', mode = 'normal') {
-        const $message = $uploadWrapper.find('.upload-message');
-
-        if (mode === 'uploading-new') {
-          // Uploading a file where none existed
-          $message.html(`
-            <div style="padding: 20px;">
-              📂 Please click UPDATE to upload this file:<br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
-        } else if (mode === 'uploading-replacement') {
-          // Replacing an existing file
-          $message.html(`
-            <div style="padding: 20px;">
-              ♻️ Click UPDATE to replace <br><strong>${currentFilename}</strong><br> with <br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
-        } else if (currentFilename) {
-          // File already uploaded
-          $message.html(`
-            <div style="padding: 20px;">
-              📄 Good Job!
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)'); // GREEN
-        } else {
-          // Default state (no file)
-          $message.html(`📂 Drop your file here or click to upload`);
-          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)'); // RED
-        }
-      }
-
-      function hideAssetCurrent() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        if (assetCurrentNow) {
-          $(assetCurrentNow).hide();
-        }
-      }
-
-      function checkExistingUpload() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        const filename = getFilenameFromAsset(assetCurrentNow);
-
-        console.log('📦 Existing upload detected for', inputFieldId, ':', filename);
-
-        if (filename) {
-          existingFilename = filename;
-          setUploadMessage(existingFilename);
-        } else {
-          setUploadMessage('');
-        }
-
-        hideAssetCurrent();
-      }
-
-      checkExistingUpload();
-
-      // MutationObserver for each upload field
-      const observeTarget = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-      if (observeTarget) {
-        const observer = new MutationObserver(function(mutationsList, observer) {
-          for (const mutation of mutationsList) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-              console.log('🛰️ Upload updated for', inputFieldId);
-
-              const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-              const filename = getFilenameFromAsset(assetCurrentNow);
-
-              console.log('🛰️ Found filename:', filename);
-
-              if (filename) {
-                if (existingFilename && filename !== existingFilename) {
-                  // Replacing an existing file
-                  setUploadMessage(existingFilename, filename, 'uploading-replacement');
-                } else if (!existingFilename) {
-                  // Uploading a new file where there was none
-                  setUploadMessage('', filename, 'uploading-new');
-                } else {
-                  // No change
-                  existingFilename = filename;
-                  setUploadMessage(filename);
-                }
-              } else {
-                setUploadMessage('', '', 'empty');
-              }
-
-              hideAssetCurrent();
-            }
-          }
-        });
-
-        observer.observe(observeTarget, { childList: true, subtree: true });
-        console.log('🔭 Observer initialized for', inputFieldId);
-      } else {
-        console.log('🚫 No observer target for', inputFieldId);
-      }
-
-    } else {
-      console.log('🚫 Upload wrapper or input not found for', inputFieldId);
-    }
-  });
-
-});
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
-
-
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: YES WATTBOX SECTION *******************/
-
-// Working version + Different message for each situation 🎯
-
-$(document).on('knack-view-render.view_3297', function(event, view, data) {
-  console.log('✅ View 3297 loaded');
-
-  const uploadFields = ['field_1808_upload', 'field_1809_upload', 'field_1930_upload'];
-
-  uploadFields.forEach(function(inputFieldId) {
-    const $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
-    const $fileInput = $('#' + inputFieldId);
-
-    let existingFilename = '';
-
-    if ($uploadWrapper.length && $fileInput.length) {
-      console.log('🔎 Upload wrapper exists for', inputFieldId);
-
-      // Style wrapper
-      $uploadWrapper.css({
-        position: 'relative',
-        width: '100%',
-        height: '150px',
-        minHeight: '150px',
-        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Default RED
-        transition: 'background-color 0.5s ease'
-      });
-
-      $fileInput.css({
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        opacity: 0,
-        cursor: 'pointer',
-        zIndex: 2
-      });
-
-      // Add overlay (only once)
-      if ($uploadWrapper.find('.upload-message').length === 0) {
-        $uploadWrapper.append(`
-          <div class="upload-message" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px dashed #1890ff;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            color: #1890ff;
-            text-align: center;
-            pointer-events: none;
-            z-index: 1;
-          ">
-            📂 Drop your file here or click to upload
-          </div>
-        `);
-      }
-
-      function getFilenameFromAsset(assetElement) {
-        if (!assetElement) return '';
-        const link = assetElement.querySelector('a');
-        if (link) {
-          return link.innerText.trim();
-        } else {
-          return assetElement.innerText.replace(/remove/i, '').trim();
-        }
-      }
-
-      function setUploadMessage(currentFilename, newFilename = '', mode = 'normal') {
-        const $message = $uploadWrapper.find('.upload-message');
-
-        if (mode === 'uploading-new') {
-          // Uploading a file where none existed
-          $message.html(`
-            <div style="padding: 20px;">
-              📂 Please click UPDATE to upload this file:<br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
-        } else if (mode === 'uploading-replacement') {
-          // Replacing an existing file
-          $message.html(`
-            <div style="padding: 20px;">
-              ♻️ Click UPDATE to replace <br><strong>${currentFilename}</strong><br> with <br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
-        } else if (currentFilename) {
-          // File already uploaded
-          $message.html(`
-            <div style="padding: 20px;">
-              📄 Good Job!
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)'); // GREEN
-        } else {
-          // Default state (no file)
-          $message.html(`📂 Drop your file here or click to upload`);
-          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)'); // RED
-        }
-      }
-
-      function hideAssetCurrent() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        if (assetCurrentNow) {
-          $(assetCurrentNow).hide();
-        }
-      }
-
-      function checkExistingUpload() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        const filename = getFilenameFromAsset(assetCurrentNow);
-
-        console.log('📦 Existing upload detected for', inputFieldId, ':', filename);
-
-        if (filename) {
-          existingFilename = filename;
-          setUploadMessage(existingFilename);
-        } else {
-          setUploadMessage('');
-        }
-
-        hideAssetCurrent();
-      }
-
-      checkExistingUpload();
-
-      // MutationObserver for each upload field
-      const observeTarget = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-      if (observeTarget) {
-        const observer = new MutationObserver(function(mutationsList, observer) {
-          for (const mutation of mutationsList) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-              console.log('🛰️ Upload updated for', inputFieldId);
-
-              const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-              const filename = getFilenameFromAsset(assetCurrentNow);
-
-              console.log('🛰️ Found filename:', filename);
-
-              if (filename) {
-                if (existingFilename && filename !== existingFilename) {
-                  // Replacing an existing file
-                  setUploadMessage(existingFilename, filename, 'uploading-replacement');
-                } else if (!existingFilename) {
-                  // Uploading a new file where there was none
-                  setUploadMessage('', filename, 'uploading-new');
-                } else {
-                  // No change
-                  existingFilename = filename;
-                  setUploadMessage(filename);
-                }
-              } else {
-                setUploadMessage('', '', 'empty');
-              }
-
-              hideAssetCurrent();
-            }
-          }
-        });
-
-        observer.observe(observeTarget, { childList: true, subtree: true });
-        console.log('🔭 Observer initialized for', inputFieldId);
-      } else {
-        console.log('🚫 No observer target for', inputFieldId);
-      }
-
-    } else {
-      console.log('🚫 Upload wrapper or input not found for', inputFieldId);
-    }
-  });
-
-});
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
-
-
-
-
-
-
-
-
-// PM REVIEW SYSTEM QUESTIONNAIRE
-$(document).on('knack-scene-render.scene_1003', function (event, scene) {
-//$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-//$(".kn-title").hide();
-$(".kn-info-bar").hide();
-//$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-
-
-
-
-// NEW Q1 2024 Technician SOW View
-$(document).on('knack-scene-render.scene_915', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-$(".kn-title").hide();
-$(".kn-info-bar").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-
-
-
-// NEW Q2 2023 Customer Quote View-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_828', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-$(".kn-title").hide();
-$(".kn-info-bar").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-// NEW Q2 2023 Scope of Work-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_833', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-$(".kn-title").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-$(".kn-menu.view_44").hide();
-});
-
-// NEW Q3 2023 DRAFT Quote View-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_873', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-//$(".kn-title").hide();
-$(".kn-info-bar").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-// NEW Q2 2023 DRAFT Scope of Work-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_886', function (event, scene) {
-$(".kn-back-link").hide();
-$(".kn-crumbtrail").hide();
-//$(".kn-title").hide();
-$(".kn-info-bar").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-$(".kn-menu.view_44").hide();
-});
-
-
+// DEPRECATE? fairly certain Knack's new native setting "keep open till action" obviates the need for this
 /* Change the below scene_1 to the specific scene for your application or use `any` to enable for all scenes */
 /* Turns off modal pages closing when clicking off to the side? */
   $(document).on('knack-scene-render.any', function(event, scene) {
@@ -763,76 +103,6 @@ maxTime: '16:30:00'        //  7:00 PM,  Change as necessary
 
 
 
-
-// Project Summary View-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_292', function (event, scene) {
-//$('.kn-back-link').hide();
-//$(".kn-crumbtrail").hide();
-//$(".kn-title").hide();
-//$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-
-
-// Customer Quote View-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_212', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-//$(".kn-title").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-// Request site Visit View-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_733', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-//$(".kn-title").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu.view_44").hide();
-});
-
-
-
-// Customer Project Summary View-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_401', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-$(".kn-title").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu").hide();
-
-
-});
-
-// Customer Camera Location Sign Off-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_689', function (event, scene) {
-$(".kn-back-link").hide();
-$(".kn-crumbtrail").hide();
-$(".kn-title").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu").hide();
-
-
-});
-
-// Customer Final Approval Sign Off-Hide all options to navigate except for print
-$(document).on('knack-scene-render.scene_696', function (event, scene) {
-$('.kn-back-link').hide();
-$(".kn-crumbtrail").hide();
-// $(".kn-title").hide();
-$(".kn-app-header").hide();
-$(".kn-navigation-bar").hide();
-  $(".kn-menu").hide();
-
-
-});
 
 
 //Call the function when your table renders
@@ -1262,75 +532,6 @@ var addCheckboxes = function(view) {
 
 
 
-/**** CHANGE VIEW_ID TO YOUR OWN VIEW ID ****/
-$(document).on('knack-view-render.view_1224', function(event, view) {
-
-
-   
-  // Add an update button
-  $('<button id="update"; style="font-weight: 300; margin:10px; padding: 5px; font-size: 12pt;">Mark Tasks Complete</button>'
-   ).insertBefore('#' + view.key + '.kn-table thead tr');
-  
-  // Add checkboxes to our table
-  addCheckboxes(view);
-  
-  
-  
-  // Click event for the update button
-  $('#update').click(function () {
-    
-    // We need an array of record IDs
-    
-var record_ids = [];
-    
-// Populate the record IDs using all checked rows
-$('#' + view.key + ' tbody input[type=checkbox]:checked').each(function() {
-record_ids.push($(this).closest('tr').attr('id')); // record id
-});
-
-Knack.showSpinner();
-     
-    // Define the fields you want to update
-    var data = {
-      field_700: 'Yes'
-    };
-    
-   // seet the delay to prevent hitting API rate limit (milliseconds)
-var myDelay = 100;
-
-//call updateRecords function
-$(function() {
-updateRecords(record_ids.shift(), record_ids, data);
-});
-
-var selectedRecords = record_ids.length + 1
-function updateRecords(id, records, data) {
-
-$.ajax({
-//CHANGE OBJECT_ID TO YOUR OWN OBJECT ID
-url: 'https://api.knackhq.com/v1/objects/object_52/records/' + id,
-type: 'PUT',
-/***** CHANGE TO YOUR OWN APPID AND API KEY HERE *****/
-headers: {
-'X-Knack-Application-ID': '594319f83817c2580c853138',
-'X-Knack-REST-API-Key': 'f8371b90-524d-11e7-abaf-870b3d262aa2'
-},
-data: data,
-success: function(response) {
-if (record_ids.length > 0) {
-// Every time a call is made, the array is shifted by 1.
-// If the array still has a length, re-run updateRecords()
-setTimeout(updateRecords(record_ids.shift(), record_ids, data), myDelay);
-} else {
-alert(selectedRecords + " Updated");
-Knack.hideSpinner();
-location.reload();
-}
-}
-})
-}
-})
-});
 
 /**** CHANGE VIEW_ID TO YOUR OWN VIEW ID ****/
 $(document).on('knack-view-render.view_1509', function(event, view) {
@@ -4238,3 +3439,707 @@ $(document).on('knack-view-render.view_3313', function () {
 
 
 /*************  // view_3332 - truncate field_1949 with click-to-expand **************************/
+
+(function () {
+  const applyCheckboxGrid = () => {
+    document.querySelectorAll('#connection-picker-checkbox-field_739').forEach(container => {
+      if (!container.classList.contains('multi-column-processed')) {
+        container.style.display = 'grid';
+        container.style.gridTemplateColumns = 'repeat(4, 1fr)';
+        container.style.gap = '0.5em';
+        container.classList.add('multi-column-processed');
+
+        container.querySelectorAll('.control').forEach(ctrl => {
+          ctrl.style.marginBottom = '0.25em';
+        });
+      }
+    });
+  };
+
+  // MutationObserver to watch for popups / form changes
+  const observer = new MutationObserver(() => applyCheckboxGrid());
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Apply once on DOM ready
+  document.addEventListener('DOMContentLoaded', applyCheckboxGrid);
+})();
+
+
+
+
+/***************************** SURVEY / PROJECT FORM - network device mapping *******************/
+
+
+const checkboxStateByView = {};
+
+function enableCheckboxSelectSync({ viewId, selectFieldId }) {
+  checkboxStateByView[viewId] = checkboxStateByView[viewId] || [];
+
+  $(document).on(`knack-view-render.${viewId}`, function () {
+    console.log(`✅ View ${viewId} rendered`);
+
+    const $selectInput = $(`#${viewId}-${selectFieldId}`);
+    if (!$selectInput.length) {
+      console.error(`❌ Select input not found in ${viewId}`);
+      return;
+    }
+
+    // ✅ Force open to trigger Knack to populate options
+    $selectInput.trigger('focus').trigger('mousedown');
+
+    // ✅ MutationObserver for normal (multi-option) cases
+    const observer = new MutationObserver(() => {
+      const options = $selectInput.find('option');
+      if (options.length === 0) return;
+
+      console.log(`📋 ${options.length} options detected in ${viewId}`);
+      syncSelectedToCheckboxState(options, viewId);
+      observer.disconnect();
+      renderCheckboxes();
+      bindCheckboxListeners();
+    });
+
+    observer.observe($selectInput[0], { childList: true, subtree: true });
+
+    // ✅ Fallback polling in case only one quote and Knack injects slowly
+    const fallbackPoll = setInterval(() => {
+      const options = $selectInput.find('option');
+      if (options.length > 0) {
+        clearInterval(fallbackPoll);
+        console.log(`⏳ Fallback: camera options detected in ${viewId}`);
+        syncSelectedToCheckboxState(options, viewId);
+        renderCheckboxes();
+        bindCheckboxListeners();
+      }
+    }, 100);
+
+    // ✅ Handle quote field change (clear + wait for new camera list)
+    $(document).off(`change.quote-${viewId}`);
+    $(document).on(`change.quote-${viewId}`, `#${viewId}-field_1864`, function () {
+      console.log(`🔁 Quote field changed in ${viewId}`);
+
+      $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
+        const val = $(this).val();
+        const label = $(this).parent().text().trim();
+        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
+          checkboxStateByView[viewId].push({ value: val, label });
+        }
+      });
+
+      const reobserve = new MutationObserver(() => {
+        const options = $selectInput.find('option');
+        if (options.length === 0) return;
+
+        reobserve.disconnect();
+        renderCheckboxes();
+        bindCheckboxListeners();
+      });
+
+      $selectInput.trigger('focus').trigger('mousedown');
+      reobserve.observe($selectInput[0], { childList: true, subtree: true });
+    });
+
+    function syncSelectedToCheckboxState(options, viewId) {
+      options.filter(':selected').each(function () {
+        const val = $(this).val();
+        const label = $(this).text();
+        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
+          checkboxStateByView[viewId].push({ value: val, label });
+        }
+      });
+    }
+
+    function renderCheckboxes() {
+      const $chosen = $selectInput.siblings('.chzn-container');
+      if ($chosen.length) $chosen.hide();
+
+      $(`#custom-checkboxes-${viewId}`).remove();
+
+      $selectInput.find('option').prop('selected', false);
+      checkboxStateByView[viewId].forEach(({ value }) => {
+        $selectInput.find(`option[value="${value}"]`).prop('selected', true);
+      });
+      $selectInput.trigger('change').trigger('chosen:updated');
+
+      let html = `<div id="custom-checkboxes-${viewId}" style="margin-top:10px;">`;
+      const seen = {};
+
+      checkboxStateByView[viewId].forEach(({ value, label }) => {
+        html += `<label style="display:block;margin:5px 0;">
+                   <input type="checkbox" value="${value}" checked> ${label}
+                 </label>`;
+        seen[value] = true;
+      });
+
+      $selectInput.find('option').each(function () {
+        const val = $(this).val();
+        const label = $(this).text();
+        if (!seen[val]) {
+          html += `<label style="display:block;margin:5px 0;">
+                     <input type="checkbox" value="${val}"> ${label}
+                   </label>`;
+        }
+      });
+
+      html += '</div>';
+      $selectInput.after(html);
+    }
+
+    function bindCheckboxListeners() {
+      $(document).off(`change.checkbox-${viewId}`);
+      $(document).on(`change.checkbox-${viewId}`, `#custom-checkboxes-${viewId} input[type="checkbox"]`, function () {
+        $selectInput.find('option').prop('selected', false);
+        checkboxStateByView[viewId] = [];
+
+        $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
+          const val = $(this).val();
+          const label = $(this).parent().text().trim();
+          checkboxStateByView[viewId].push({ value: val, label });
+          $selectInput.find(`option[value="${val}"]`).prop('selected', true);
+        });
+
+        $selectInput.trigger('change').trigger('chosen:updated');
+      });
+    }
+  });
+}
+
+// ✅ Activate for each view
+enableCheckboxSelectSync({
+  viewId: 'view_2688',
+  selectFieldId: 'field_1656'
+});
+
+enableCheckboxSelectSync({
+  viewId: 'view_2697',
+  selectFieldId: 'field_1656'
+});
+
+/*
+
+
+
+
+/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
+
+// Working version + Different message for each situation 🎯
+
+$(document).on('knack-view-render.view_3094', function(event, view, data) {
+  console.log('✅ View 3094 loaded');
+
+  const uploadFields = ['field_1808_upload', 'field_1809_upload'];
+
+  uploadFields.forEach(function(inputFieldId) {
+    const $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
+    const $fileInput = $('#' + inputFieldId);
+
+    let existingFilename = '';
+
+    if ($uploadWrapper.length && $fileInput.length) {
+      console.log('🔎 Upload wrapper exists for', inputFieldId);
+
+      // Style wrapper
+      $uploadWrapper.css({
+        position: 'relative',
+        width: '100%',
+        height: '150px',
+        minHeight: '150px',
+        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Default RED
+        transition: 'background-color 0.5s ease'
+      });
+
+      $fileInput.css({
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        opacity: 0,
+        cursor: 'pointer',
+        zIndex: 2
+      });
+
+      // Add overlay (only once)
+      if ($uploadWrapper.find('.upload-message').length === 0) {
+        $uploadWrapper.append(`
+          <div class="upload-message" style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #1890ff;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #1890ff;
+            text-align: center;
+            pointer-events: none;
+            z-index: 1;
+          ">
+            📂 Drop your file here or click to upload
+          </div>
+        `);
+      }
+
+      function getFilenameFromAsset(assetElement) {
+        if (!assetElement) return '';
+        const link = assetElement.querySelector('a');
+        if (link) {
+          return link.innerText.trim();
+        } else {
+          return assetElement.innerText.replace(/remove/i, '').trim();
+        }
+      }
+
+      function setUploadMessage(currentFilename, newFilename = '', mode = 'normal') {
+        const $message = $uploadWrapper.find('.upload-message');
+
+        if (mode === 'uploading-new') {
+          // Uploading a file where none existed
+          $message.html(`
+            <div style="padding: 20px;">
+              📂 Please click UPDATE to upload this file:<br><strong>${newFilename}</strong>
+            </div>
+          `);
+          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
+        } else if (mode === 'uploading-replacement') {
+          // Replacing an existing file
+          $message.html(`
+            <div style="padding: 20px;">
+              ♻️ Click UPDATE to replace <br><strong>${currentFilename}</strong><br> with <br><strong>${newFilename}</strong>
+            </div>
+          `);
+          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
+        } else if (currentFilename) {
+          // File already uploaded
+          $message.html(`
+            <div style="padding: 20px;">
+              📄 Good Job!
+            </div>
+          `);
+          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)'); // GREEN
+        } else {
+          // Default state (no file)
+          $message.html(`📂 Drop your file here or click to upload`);
+          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)'); // RED
+        }
+      }
+
+      function hideAssetCurrent() {
+        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+        if (assetCurrentNow) {
+          $(assetCurrentNow).hide();
+        }
+      }
+
+      function checkExistingUpload() {
+        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+        const filename = getFilenameFromAsset(assetCurrentNow);
+
+        console.log('📦 Existing upload detected for', inputFieldId, ':', filename);
+
+        if (filename) {
+          existingFilename = filename;
+          setUploadMessage(existingFilename);
+        } else {
+          setUploadMessage('');
+        }
+
+        hideAssetCurrent();
+      }
+
+      checkExistingUpload();
+
+      // MutationObserver for each upload field
+      const observeTarget = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+      if (observeTarget) {
+        const observer = new MutationObserver(function(mutationsList, observer) {
+          for (const mutation of mutationsList) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+              console.log('🛰️ Upload updated for', inputFieldId);
+
+              const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+              const filename = getFilenameFromAsset(assetCurrentNow);
+
+              console.log('🛰️ Found filename:', filename);
+
+              if (filename) {
+                if (existingFilename && filename !== existingFilename) {
+                  // Replacing an existing file
+                  setUploadMessage(existingFilename, filename, 'uploading-replacement');
+                } else if (!existingFilename) {
+                  // Uploading a new file where there was none
+                  setUploadMessage('', filename, 'uploading-new');
+                } else {
+                  // No change
+                  existingFilename = filename;
+                  setUploadMessage(filename);
+                }
+              } else {
+                setUploadMessage('', '', 'empty');
+              }
+
+              hideAssetCurrent();
+            }
+          }
+        });
+
+        observer.observe(observeTarget, { childList: true, subtree: true });
+        console.log('🔭 Observer initialized for', inputFieldId);
+      } else {
+        console.log('🚫 No observer target for', inputFieldId);
+      }
+
+    } else {
+      console.log('🚫 Upload wrapper or input not found for', inputFieldId);
+    }
+  });
+
+});
+
+
+/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
+
+
+
+
+/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: YES WATTBOX SECTION *******************/
+
+// Working version + Different message for each situation 🎯
+
+$(document).on('knack-view-render.view_3297', function(event, view, data) {
+  console.log('✅ View 3297 loaded');
+
+  const uploadFields = ['field_1808_upload', 'field_1809_upload', 'field_1930_upload'];
+
+  uploadFields.forEach(function(inputFieldId) {
+    const $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
+    const $fileInput = $('#' + inputFieldId);
+
+    let existingFilename = '';
+
+    if ($uploadWrapper.length && $fileInput.length) {
+      console.log('🔎 Upload wrapper exists for', inputFieldId);
+
+      // Style wrapper
+      $uploadWrapper.css({
+        position: 'relative',
+        width: '100%',
+        height: '150px',
+        minHeight: '150px',
+        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Default RED
+        transition: 'background-color 0.5s ease'
+      });
+
+      $fileInput.css({
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        opacity: 0,
+        cursor: 'pointer',
+        zIndex: 2
+      });
+
+      // Add overlay (only once)
+      if ($uploadWrapper.find('.upload-message').length === 0) {
+        $uploadWrapper.append(`
+          <div class="upload-message" style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #1890ff;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #1890ff;
+            text-align: center;
+            pointer-events: none;
+            z-index: 1;
+          ">
+            📂 Drop your file here or click to upload
+          </div>
+        `);
+      }
+
+      function getFilenameFromAsset(assetElement) {
+        if (!assetElement) return '';
+        const link = assetElement.querySelector('a');
+        if (link) {
+          return link.innerText.trim();
+        } else {
+          return assetElement.innerText.replace(/remove/i, '').trim();
+        }
+      }
+
+      function setUploadMessage(currentFilename, newFilename = '', mode = 'normal') {
+        const $message = $uploadWrapper.find('.upload-message');
+
+        if (mode === 'uploading-new') {
+          // Uploading a file where none existed
+          $message.html(`
+            <div style="padding: 20px;">
+              📂 Please click UPDATE to upload this file:<br><strong>${newFilename}</strong>
+            </div>
+          `);
+          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
+        } else if (mode === 'uploading-replacement') {
+          // Replacing an existing file
+          $message.html(`
+            <div style="padding: 20px;">
+              ♻️ Click UPDATE to replace <br><strong>${currentFilename}</strong><br> with <br><strong>${newFilename}</strong>
+            </div>
+          `);
+          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
+        } else if (currentFilename) {
+          // File already uploaded
+          $message.html(`
+            <div style="padding: 20px;">
+              📄 Good Job!
+            </div>
+          `);
+          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)'); // GREEN
+        } else {
+          // Default state (no file)
+          $message.html(`📂 Drop your file here or click to upload`);
+          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)'); // RED
+        }
+      }
+
+      function hideAssetCurrent() {
+        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+        if (assetCurrentNow) {
+          $(assetCurrentNow).hide();
+        }
+      }
+
+      function checkExistingUpload() {
+        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+        const filename = getFilenameFromAsset(assetCurrentNow);
+
+        console.log('📦 Existing upload detected for', inputFieldId, ':', filename);
+
+        if (filename) {
+          existingFilename = filename;
+          setUploadMessage(existingFilename);
+        } else {
+          setUploadMessage('');
+        }
+
+        hideAssetCurrent();
+      }
+
+      checkExistingUpload();
+
+      // MutationObserver for each upload field
+      const observeTarget = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+      if (observeTarget) {
+        const observer = new MutationObserver(function(mutationsList, observer) {
+          for (const mutation of mutationsList) {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+              console.log('🛰️ Upload updated for', inputFieldId);
+
+              const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+              const filename = getFilenameFromAsset(assetCurrentNow);
+
+              console.log('🛰️ Found filename:', filename);
+
+              if (filename) {
+                if (existingFilename && filename !== existingFilename) {
+                  // Replacing an existing file
+                  setUploadMessage(existingFilename, filename, 'uploading-replacement');
+                } else if (!existingFilename) {
+                  // Uploading a new file where there was none
+                  setUploadMessage('', filename, 'uploading-new');
+                } else {
+                  // No change
+                  existingFilename = filename;
+                  setUploadMessage(filename);
+                }
+              } else {
+                setUploadMessage('', '', 'empty');
+              }
+
+              hideAssetCurrent();
+            }
+          }
+        });
+
+        observer.observe(observeTarget, { childList: true, subtree: true });
+        console.log('🔭 Observer initialized for', inputFieldId);
+      } else {
+        console.log('🚫 No observer target for', inputFieldId);
+      }
+
+    } else {
+      console.log('🚫 Upload wrapper or input not found for', inputFieldId);
+    }
+  });
+
+});
+
+
+/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
+
+
+
+
+// PM REVIEW SYSTEM QUESTIONNAIRE
+$(document).on('knack-scene-render.scene_1003', function (event, scene) {
+//$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+//$(".kn-title").hide();
+$(".kn-info-bar").hide();
+//$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+
+
+
+
+// NEW Q1 2024 Technician SOW View
+$(document).on('knack-scene-render.scene_915', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+$(".kn-title").hide();
+$(".kn-info-bar").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+
+
+
+// NEW Q2 2023 Customer Quote View-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_828', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+$(".kn-title").hide();
+$(".kn-info-bar").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+// NEW Q2 2023 Scope of Work-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_833', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+$(".kn-title").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+$(".kn-menu.view_44").hide();
+});
+
+// NEW Q3 2023 DRAFT Quote View-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_873', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+//$(".kn-title").hide();
+$(".kn-info-bar").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+// NEW Q2 2023 DRAFT Scope of Work-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_886', function (event, scene) {
+$(".kn-back-link").hide();
+$(".kn-crumbtrail").hide();
+//$(".kn-title").hide();
+$(".kn-info-bar").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+$(".kn-menu.view_44").hide();
+});
+
+
+
+
+
+// Project Summary View-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_292', function (event, scene) {
+//$('.kn-back-link').hide();
+//$(".kn-crumbtrail").hide();
+//$(".kn-title").hide();
+//$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+
+
+// Customer Quote View-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_212', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+//$(".kn-title").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+// Request site Visit View-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_733', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+//$(".kn-title").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu.view_44").hide();
+});
+
+
+
+// Customer Project Summary View-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_401', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+$(".kn-title").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu").hide();
+
+
+});
+
+// Customer Camera Location Sign Off-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_689', function (event, scene) {
+$(".kn-back-link").hide();
+$(".kn-crumbtrail").hide();
+$(".kn-title").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu").hide();
+
+
+});
+
+// Customer Final Approval Sign Off-Hide all options to navigate except for print
+$(document).on('knack-scene-render.scene_696', function (event, scene) {
+$('.kn-back-link').hide();
+$(".kn-crumbtrail").hide();
+// $(".kn-title").hide();
+$(".kn-app-header").hide();
+$(".kn-navigation-bar").hide();
+  $(".kn-menu").hide();
+
+
+});
