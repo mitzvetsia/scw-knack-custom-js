@@ -19,6 +19,7 @@ cat \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
+  src/features/expand-collapse-legacy-function.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
