@@ -13,6 +13,7 @@ cat \
   highlight-duplicate-cells.js \
   replace-content-with-icon.js \
   change-record-limit.js \
+  lock-fields.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
