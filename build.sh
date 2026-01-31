@@ -18,6 +18,7 @@ cat \
   src/features/checkbox-grid.field_739.js \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
+  src/features/hide-navigation.js \
   > dist/knack-bundle.js
 
 echo "✔ Built dist/knack-bundle.js"
