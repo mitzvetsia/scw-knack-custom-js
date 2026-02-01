@@ -1152,20 +1152,27 @@ window.SCW = window.SCW || {};
         height: 1.6em;
         margin-right: 0.4em;
         border-radius: 999px;
-        font-size: 0;
+        font-size: 0.85rem;
         font-weight: 700;
+<<<<<<< ours
         vertical-align: middle;
         transition: transform 160ms ease, background-color 160ms ease;
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon::before {
         content: '▸';
         font-size: 0.85rem;
+=======
+>>>>>>> theirs
         line-height: 1;
-        display: block;
-        transform: rotate(0deg);
-        transition: transform 160ms ease;
+        vertical-align: middle;
+        flex-shrink: 0;
+        transition: transform 160ms ease, background-color 160ms ease;
       }
+<<<<<<< ours
       ${S} .scw-group-collapse-enabled tr.scw-group-header:not(.scw-collapsed) .scw-collapse-icon::before {
+=======
+      ${S} .scw-group-collapse-enabled tr.scw-group-header:not(.scw-collapsed) .scw-collapse-icon {
+>>>>>>> theirs
         transform: rotate(90deg);
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header:hover .scw-collapse-icon {
@@ -1268,12 +1275,12 @@ window.SCW = window.SCW || {};
   function ensureIcon($tr) {
     const $cell = $tr.children('td,th').first();
     if (!$cell.find('.scw-collapse-icon').length) {
-      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">▼</span>');
+      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">▸</span>');
     }
   }
 
-  function buildKey($tr, level) {
-    const label = $tr
+  function getRowLabel($tr) {
+    return $tr
       .clone()
       .find('.scw-collapse-icon')
       .remove()
@@ -1281,6 +1288,17 @@ window.SCW = window.SCW || {};
       .text()
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  function buildKey($tr, level) {
+    const label = getRowLabel($tr);
+    if (level === 2) {
+      const $parent = $tr.prevAll('tr.kn-group-level-1').first();
+      if ($parent.length) {
+        const parentLabel = getRowLabel($parent);
+        return `L1:${parentLabel}|L2:${label}`;
+      }
+    }
     return `L${level}:${label}`;
   }
 
@@ -1309,7 +1327,6 @@ window.SCW = window.SCW || {};
 
   function setCollapsed($header, collapsed) {
     $header.toggleClass('scw-collapsed', collapsed);
-    $header.find('.scw-collapse-icon').text(collapsed ? '▶' : '▼');
     rowsUntilNextRelevantGroup($header).toggle(!collapsed);
   }
 
