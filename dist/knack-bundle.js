@@ -1160,7 +1160,7 @@ window.SCW = window.SCW || {};
         opacity: .95;
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
-        transform: rotate(-90deg);
+        transform: rotate(0deg);
         opacity: .9;
       }
 
@@ -1258,7 +1258,7 @@ window.SCW = window.SCW || {};
         transform-origin: 50% 50%;
       }
       ${S} #hideShow_view_3332_arrow.ktlDown {
-        transform: rotate(90deg); /* ◀ → ▼ */
+        transform: rotate(0deg); /* ◀ → ▼ */
       }
       ${S} #hideShow_view_3332_arrow:not(.ktlDown) {
         transform: rotate(0deg); /* ◀ → ▶ */
