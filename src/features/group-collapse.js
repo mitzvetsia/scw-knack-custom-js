@@ -62,7 +62,11 @@
          1) GLOBAL SECTION HEADERS (KTL hide/show)
       ========================= */
       ${S} .ktlHideShowButton {
+<<<<<<< ours
         background: #0b4f82 !important;
+=======
+        background: #07467c !important;
+>>>>>>> theirs
         color: #fff !important;
         font-weight: 650 !important;
         border-radius: 10px !important;
@@ -70,6 +74,10 @@
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
+<<<<<<< ours
+=======
+        width: 100% !important;
+>>>>>>> theirs
         letter-spacing: 0.2px !important;
       }
 
@@ -131,13 +139,21 @@
       }
 
       ${S} .kn-table-group.kn-group-level-1 > td {
+<<<<<<< ours
         background: #3f6e9a !important;
+=======
+        background: #07467c !important;
+>>>>>>> theirs
         color: #ffffff !important;
         font-weight: 700 !important;
         font-size: 1.05em !important;
         padding-top: 12px !important;
         padding-bottom: 12px !important;
+<<<<<<< ours
         border-left: 6px solid #1f4f7a !important;
+=======
+        border-left: 6px solid #07467c !important;
+>>>>>>> theirs
       }
 
       ${S} .kn-table-group.kn-group-level-2 > td {
