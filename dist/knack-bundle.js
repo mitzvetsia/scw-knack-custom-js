@@ -1114,6 +1114,7 @@ window.SCW = window.SCW || {};
       .join(', ');
     const S = sceneScopes || '';
 
+    // ---------- THEME TOKENS ----------
     const L1 = {
       fontSize: '16px',
       fontWeight: '600',
@@ -1134,13 +1135,16 @@ window.SCW = window.SCW || {};
     };
 
     const css = `
-      /* Guardrails: only in enabled scenes + views touched by this script */
+      /* ==========================================================================
+         Guardrails: only apply styling inside enabled scenes AND views touched
+         by this feature (scw-group-collapse-enabled is added by JS).
+         ========================================================================== */
       ${S} .scw-group-collapse-enabled tr.scw-group-header {
         cursor: pointer;
         user-select: none;
       }
 
-      /* Caret/icon polish (inline) */
+      /* ===== Caret/icon polish (inline; only affects our injected .scw-collapse-icon) ===== */
       ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon {
         display: inline-flex;
         align-items: center;
@@ -1156,12 +1160,14 @@ window.SCW = window.SCW || {};
         opacity: .95;
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
-        transform: rotate(0deg);
+        transform: rotate(-90deg);
         opacity: .9;
       }
 
-      /* Shared cell polish */
-      ${S} .scw-group-collapse-enabled tr.scw-group-header > td { position: relative; }
+      /* ===== Shared cell polish ===== */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header > td {
+        position: relative;
+      }
       ${S} .scw-group-collapse-enabled tr.scw-group-header > td:before {
         content: "";
         position: absolute;
@@ -1172,15 +1178,17 @@ window.SCW = window.SCW || {};
         transition: opacity 160ms ease;
       }
 
-      /* Hover/focus */
-      ${S} .scw-group-collapse-enabled tr.scw-group-header:hover > td:before { opacity: 1; }
+      /* Hover/focus: subtle */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header:hover > td:before {
+        opacity: 1;
+      }
       ${S} .scw-group-collapse-enabled tr.scw-group-header:focus-within > td:before {
         opacity: 1;
         outline: 2px solid rgba(7,70,124,.28);
         outline-offset: -2px;
       }
 
-      /* LEVEL 1 */
+      /* ===== LEVEL 1 ===== */
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header {
         font-size: ${L1.fontSize};
         font-weight: ${L1.fontWeight} !important;
@@ -1206,7 +1214,7 @@ window.SCW = window.SCW || {};
         filter: brightness(1.06);
       }
 
-      /* LEVEL 2 */
+      /* ===== LEVEL 2 ===== */
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header {
         font-size: ${L2.fontSize};
         font-weight: ${L2.fontWeight} !important;
@@ -1237,6 +1245,23 @@ window.SCW = window.SCW || {};
       }
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:hover {
         filter: brightness(0.985);
+      }
+
+      /* ==========================================================================
+         ✅ KTL Hide/Show Arrow Fix (ONLY this element)
+         - Collapsed (no .ktlDown): points RIGHT
+         - Expanded (.ktlDown): points DOWN
+         ========================================================================== */
+      ${S} #hideShow_view_3332_arrow {
+        display: inline-block;
+        transition: transform 160ms ease;
+        transform-origin: 50% 50%;
+      }
+      ${S} #hideShow_view_3332_arrow.ktlDown {
+        transform: rotate(90deg); /* ◀ → ▼ */
+      }
+      ${S} #hideShow_view_3332_arrow:not(.ktlDown) {
+        transform: rotate(0deg); /* ◀ → ▶ */
       }
     `;
 
@@ -1282,10 +1307,12 @@ window.SCW = window.SCW || {};
 
   function buildKey($tr, level) {
     const label = getRowLabelText($tr);
+
     if (level === 2) {
       const parent = getParentLevel1Label($tr);
       return `L2:${parent}::${label}`;
     }
+
     return `L1:${label}`;
   }
 
@@ -1313,11 +1340,10 @@ window.SCW = window.SCW || {};
     return $rows;
   }
 
-  // ✅ NEW: When expanding a Level-1 group, restore Level-2 collapsed states beneath it
+  // When expanding a Level-1 group, restore Level-2 collapsed states beneath it
   function restoreLevel2StatesUnderLevel1($level1Header) {
     const $sectionRows = rowsUntilNextRelevantGroup($level1Header);
 
-    // For each Level-2 header in this section, apply its current collapsed class to its children
     $sectionRows
       .filter('tr.kn-table-group.kn-group-level-2.scw-group-header')
       .each(function () {
@@ -1398,7 +1424,7 @@ window.SCW = window.SCW || {};
   }
 
   // ======================
-  // CLICK HANDLER (DELEGATED)
+  // CLICK HANDLER
   // ======================
   function bindClicksOnce() {
     $(document)
