@@ -1153,7 +1153,7 @@ window.SCW = window.SCW || {};
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.25em;
+        width: 1.25em;  
         height: 1.25em;
         margin-right: .5em;
         font-weight: 900;
