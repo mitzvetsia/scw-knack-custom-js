@@ -1133,7 +1133,11 @@ window.SCW = window.SCW || {};
       ========================= */
       ${S} .ktlHideShowButton {
 <<<<<<< ours
+<<<<<<< ours
         background: #0b4f82 !important;
+=======
+        background: #07467c !important;
+>>>>>>> theirs
 =======
         background: #07467c !important;
 >>>>>>> theirs
@@ -1144,6 +1148,7 @@ window.SCW = window.SCW || {};
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
+<<<<<<< ours
 <<<<<<< ours
 =======
         width: 100% !important;
@@ -1200,6 +1205,70 @@ window.SCW = window.SCW || {};
         background: #f1f7fc !important;
       }
 
+=======
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        letter-spacing: 0.2px !important;
+      }
+
+      ${S} .ktlHideShowButton .ktlArrow {
+        margin-left: auto !important;
+      }
+
+      ${S} .kn-view .view-header .kn-title {
+        margin-bottom: 10px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        display: block !important;
+      }
+
+      ${S} .ktlHideShowSection.ktlBoxWithBorder {
+        border: 1px solid rgba(0,0,0,.10) !important;
+        border-radius: 12px !important;
+        padding: 12px !important;
+        background: #ffffff !important;
+      }
+
+      ${S} .ktlArrow,
+      ${S} .ktlHideShowButton .ktlArrow {
+        color: rgba(255,255,255,.85) !important;
+      }
+
+      /* =========================
+         2) TABLE BASELINE (calmer grid)
+      ========================= */
+      ${S} .kn-table {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+      }
+
+      ${S} .kn-table thead th {
+        background: #f2f5f8 !important;
+        color: #243447 !important;
+        font-weight: 650 !important;
+        border-bottom: 1px solid rgba(0,0,0,.10) !important;
+      }
+
+      ${S} .kn-table td,
+      ${S} .kn-table th {
+        border-color: rgba(0,0,0,.08) !important;
+      }
+
+      ${S} .kn-table td {
+        color: #1f2d3d !important;
+        line-height: 1.35 !important;
+      }
+
+      ${S} .kn-table tbody tr:nth-child(even) td {
+        background: #fafafa !important;
+      }
+
+      ${S} .kn-table tbody tr:hover td {
+        background: #f1f7fc !important;
+      }
+
+>>>>>>> theirs
       /* =========================
          3) GROUP HEADER HIERARCHY (Knack grouped rows)
       ========================= */
@@ -1208,10 +1277,17 @@ window.SCW = window.SCW || {};
         border-bottom: 1px solid rgba(0,0,0,.10) !important;
       }
 
+<<<<<<< ours
       ${S} .kn-table-group.kn-group-level-1 > td {
 <<<<<<< ours
         background: #3f6e9a !important;
 =======
+        background: #07467c !important;
+>>>>>>> theirs
+=======
+      ${S} .kn-table-group.kn-group-level-1,
+      ${S} .kn-table-group.kn-group-level-1 > td,
+      ${S} .kn-table-group.kn-group-level-1 > th {
         background: #07467c !important;
 >>>>>>> theirs
         color: #ffffff !important;
@@ -1220,7 +1296,11 @@ window.SCW = window.SCW || {};
         padding-top: 12px !important;
         padding-bottom: 12px !important;
 <<<<<<< ours
+<<<<<<< ours
         border-left: 6px solid #1f4f7a !important;
+=======
+        border-left: 6px solid #07467c !important;
+>>>>>>> theirs
 =======
         border-left: 6px solid #07467c !important;
 >>>>>>> theirs
