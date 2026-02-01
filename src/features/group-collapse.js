@@ -45,7 +45,6 @@
     const S = sceneScopes || '';
 
     // ---------- THEME TOKENS ----------
-    // Note: keep these simple; we’re styling <tr>/<td> (table layout constraints apply).
     const L1 = {
       fontSize: '16px',
       fontWeight: '600',
@@ -59,9 +58,9 @@
     const L2 = {
       fontSize: '14px',
       fontWeight: '600',
-      bg: '#f3f8ff', // softer than aliceblue
+      bg: '#f3f8ff',
       color: '#07467c',
-      tdPadding: '10px 14px 10px 26px', // reduce height + indent
+      tdPadding: '10px 14px 10px 26px',
       collapsedOpacity: '0.90',
     };
 
@@ -90,8 +89,6 @@
         transition: transform 160ms ease, opacity 160ms ease;
         opacity: .95;
       }
-
-      /* When collapsed, rotate a bit so it feels animated even though we swap glyphs */
       ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
         transform: rotate(-90deg);
         opacity: .9;
@@ -158,7 +155,6 @@
         padding: ${L2.tdPadding} !important;
         border-bottom: 1px solid rgba(7,70,124,.12);
       }
-      /* Left accent stripe to show nesting */
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td:after {
         content: "";
         position: absolute;
@@ -205,8 +201,8 @@
     }
   }
 
-  function buildKey($tr, level) {
-    const label = $tr
+  function getRowLabelText($tr) {
+    return $tr
       .clone()
       .find('.scw-collapse-icon')
       .remove()
@@ -214,10 +210,27 @@
       .text()
       .replace(/\s+/g, ' ')
       .trim();
-    return `L${level}:${label}`;
   }
 
-  // 🔑 LEVEL-AWARE ROW COLLECTION (THIS IS THE BIG FIX)
+  // ✅ NEW: Level-2 keys must include their parent Level-1 label to prevent collisions
+  function getParentLevel1Label($tr) {
+    const $l1 = $tr.prevAll('tr.kn-table-group.kn-group-level-1').first();
+    return $l1.length ? getRowLabelText($l1) : '';
+  }
+
+  function buildKey($tr, level) {
+    const label = getRowLabelText($tr);
+
+    if (level === 2) {
+      const parent = getParentLevel1Label($tr);
+      // Include parent context so identical L2 labels in other L1 groups don’t share state
+      return `L2:${parent}::${label}`;
+    }
+
+    return `L1:${label}`;
+  }
+
+  // 🔑 LEVEL-AWARE ROW COLLECTION
   function rowsUntilNextRelevantGroup($headerRow) {
     const isLevel2 = $headerRow.hasClass('kn-group-level-2');
     let $rows = $();
@@ -274,7 +287,7 @@
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
-    // ✅ CRITICAL FIX: Scope to the scene root so we don't touch hidden/other scenes
+    // ✅ Scope to the scene root so we don't touch hidden/other scenes
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
@@ -319,7 +332,6 @@
         const $view = $tr.closest('.kn-view[id^="view_"]');
         const viewId = $view.attr('id') || 'unknown_view';
 
-        // keep css scoping consistent
         $view.addClass('scw-group-collapse-enabled');
 
         $tr.addClass('scw-group-header');
@@ -347,11 +359,8 @@
 
     let raf = 0;
     const obs = new MutationObserver(() => {
-      // Only react while an enabled scene is currently visible
       const current = getCurrentSceneId();
       if (!isEnabledScene(current)) return;
-
-      // If multiple enabled scenes ever exist, only enhance for the active one
       if (current !== sceneId) return;
 
       if (raf) cancelAnimationFrame(raf);
