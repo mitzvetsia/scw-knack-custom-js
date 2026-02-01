@@ -1144,16 +1144,12 @@ window.SCW = window.SCW || {};
         user-select: none;
       }
 
-      /* ===== L1/L2 caret we inject (.scw-collapse-icon) =====
-         Mirror behavior:
-           - open (default): points DOWN
-           - collapsed (.scw-collapsed): points RIGHT
-      */
+      /* ===== Caret/icon polish (inline; only affects our injected .scw-collapse-icon) ===== */
       ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.25em;  
+        width: 1.25em;
         height: 1.25em;
         margin-right: .5em;
         font-weight: 900;
@@ -1162,10 +1158,9 @@ window.SCW = window.SCW || {};
         transform-origin: 50% 55%;
         transition: transform 160ms ease, opacity 160ms ease;
         opacity: .95;
-        transform: rotate(0deg); /* ▼ (open) */
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
-        transform: rotate(0deg); /* ▶ (collapsed) */
+        transform: rotate(0deg);
         opacity: .9;
       }
 
@@ -1254,23 +1249,23 @@ window.SCW = window.SCW || {};
 
       /* ==========================================================================
          ✅ KTL Hide/Show Arrow Fix (ALL views)
-         KTL pattern: id="hideShow_view_XXXX_arrow", class toggles .ktlDown when open
-         Mirror behavior (same as L1/L2):
-           - open (.ktlDown): points DOWN
-           - collapsed (no .ktlDown): points RIGHT
+         You said: "collapsed should point DOWN".
+         Given glyph is ◀:
+           - ktlUp (collapsed)   => rotate(-90deg)  => ▼
+           - ktlDown (expanded)  => rotate(180deg)  => ▶
          ========================================================================== */
       ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
         display: inline-block;
         transition: transform 160ms ease, opacity 160ms ease;
         transform-origin: 50% 50%;
       }
-      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
-        transform: rotate(180deg); /* ◀ → ▼ */
-        opacity: 1;
-      }
-      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"]:not(.ktlDown) {
-        transform: rotate(0deg); /* ◀ → ▶ */
+      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlUp {
+        transform: rotate(-90deg); /* ◀ -> ▼ (collapsed) */
         opacity: .95;
+      }
+      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
+        transform: rotate(180deg); /* ◀ -> ▶ (expanded) */
+        opacity: 1;
       }
     `;
 
@@ -1308,6 +1303,7 @@ window.SCW = window.SCW || {};
       .trim();
   }
 
+  // Parent Level-1 label for a Level-2 row (prevents key collisions across sections)
   function getParentLevel1Label($tr) {
     const $l1 = $tr.prevAll('tr.kn-table-group.kn-group-level-1').first();
     return $l1.length ? getRowLabelText($l1) : '';
@@ -1315,13 +1311,16 @@ window.SCW = window.SCW || {};
 
   function buildKey($tr, level) {
     const label = getRowLabelText($tr);
+
     if (level === 2) {
       const parent = getParentLevel1Label($tr);
       return `L2:${parent}::${label}`;
     }
+
     return `L1:${label}`;
   }
 
+  // Collect rows controlled by a header row
   function rowsUntilNextRelevantGroup($headerRow) {
     const isLevel2 = $headerRow.hasClass('kn-group-level-2');
     let $rows = $();
@@ -1330,18 +1329,22 @@ window.SCW = window.SCW || {};
       const $tr = $(this);
 
       if (isLevel2) {
+        // Level 2: stop at ANY next group row (L1 or L2)
         if ($tr.hasClass('kn-table-group')) return false;
         $rows = $rows.add($tr);
         return;
       }
 
+      // Level 1: stop only at NEXT Level 1
       if ($tr.hasClass('kn-group-level-1')) return false;
+
       $rows = $rows.add($tr);
     });
 
     return $rows;
   }
 
+  // When expanding a Level-1 group, restore Level-2 collapsed states beneath it
   function restoreLevel2StatesUnderLevel1($level1Header) {
     const $sectionRows = rowsUntilNextRelevantGroup($level1Header);
 
@@ -1361,11 +1364,15 @@ window.SCW = window.SCW || {};
     $header.find('.scw-collapse-icon').text(collapsed ? '▶' : '▼');
 
     if (isLevel2) {
+      // Level 2 controls only its own detail rows
       rowsUntilNextRelevantGroup($header).toggle(!collapsed);
       return;
     }
 
+    // Level 1 hides/shows the entire section...
     rowsUntilNextRelevantGroup($header).toggle(!collapsed);
+
+    // ...but when expanding, we must re-hide children of collapsed Level-2 groups
     if (!collapsed) restoreLevel2StatesUnderLevel1($header);
   }
 
@@ -1396,6 +1403,7 @@ window.SCW = window.SCW || {};
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
+    // Scope to the scene root
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
