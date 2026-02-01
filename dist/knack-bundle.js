@@ -1115,74 +1115,140 @@ window.SCW = window.SCW || {};
     const S = sceneScopes || '';
 
     // ---------- THEME TOKENS ----------
+    // Note: keep these simple; we’re styling <tr>/<td> (table layout constraints apply).
     const L1 = {
-      fontSize: '18px',
-      fontWeight: '200',
+      fontSize: '16px',
+      fontWeight: '600',
       bg: '#07467c',
       color: '#ffffff',
-      tdPadding: '8px 12px',
+      tdPadding: '10px 14px',
       collapsedOpacity: '0.92',
-      textalign: 'center',
+      textalign: 'left',
     };
 
     const L2 = {
-      fontSize: '15px',
-      fontWeight: '400',
-      bg: 'aliceblue',
+      fontSize: '14px',
+      fontWeight: '600',
+      bg: '#f3f8ff', // softer than aliceblue
       color: '#07467c',
-      tdPadding: '20px 12px',
-      collapsedOpacity: '0.88',
+      tdPadding: '10px 14px 10px 26px', // reduce height + indent
+      collapsedOpacity: '0.90',
     };
 
     const css = `
-      /* ===== Shared group header behavior ===== */
-      ${S} tr.scw-group-header {
+      /* ==========================================================================
+         Guardrails: only apply styling inside enabled scenes AND views touched
+         by this feature (scw-group-collapse-enabled is added by JS).
+         ========================================================================== */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header {
         cursor: pointer;
         user-select: none;
       }
-      ${S} tr.scw-group-header .scw-collapse-icon {
-        display: inline-block;
-        width: 1.2em;
-        text-align: center;
-        margin-right: .35em;
-        font-weight: 700;
+
+      /* ===== Caret/icon polish (must remain inline; KTL button not full-width) ===== */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.25em;
+        height: 1.25em;
+        margin-right: .5em;
+        font-weight: 900;
+        line-height: 1;
+        vertical-align: middle;
+        transform-origin: 50% 55%;
+        transition: transform 160ms ease, opacity 160ms ease;
+        opacity: .95;
       }
 
-      /* ===== LEVEL 1 (MDF / IDF) ===== */
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header {
+      /* When collapsed, rotate a bit so it feels animated even though we swap glyphs */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
+        transform: rotate(-90deg);
+        opacity: .9;
+      }
+
+      /* ===== Shared cell polish ===== */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header > td {
+        position: relative;
+      }
+      ${S} .scw-group-collapse-enabled tr.scw-group-header > td:before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 6px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 160ms ease;
+      }
+
+      /* Hover/focus: subtle, not loud */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header:hover > td:before {
+        opacity: 1;
+      }
+      ${S} .scw-group-collapse-enabled tr.scw-group-header:focus-within > td:before {
+        opacity: 1;
+        outline: 2px solid rgba(7,70,124,.28);
+        outline-offset: -2px;
+      }
+
+      /* ===== LEVEL 1 ===== */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header {
         font-size: ${L1.fontSize};
         font-weight: ${L1.fontWeight} !important;
         background-color: ${L1.bg} !important;
         color: ${L1.color} !important;
         text-align: ${L1.textalign} !important;
       }
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td {
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td {
         padding: ${L1.tdPadding} !important;
+        border-bottom: 1px solid rgba(255,255,255,.14);
       }
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td:before {
+        box-shadow: 0 1px 0 rgba(255,255,255,.10) inset, 0 1px 10px rgba(0,0,0,.10);
+      }
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
         opacity: ${L1.collapsedOpacity};
       }
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td,
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td * {
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td,
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td * {
         color: ${L1.color} !important;
       }
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover {
+        filter: brightness(1.06);
+      }
 
-      /* ===== LEVEL 2 (Bucket) ===== */
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header {
+      /* ===== LEVEL 2 ===== */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header {
         font-size: ${L2.fontSize};
         font-weight: ${L2.fontWeight} !important;
         background-color: ${L2.bg} !important;
         color: ${L2.color} !important;
       }
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td {
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td {
         padding: ${L2.tdPadding} !important;
+        border-bottom: 1px solid rgba(7,70,124,.12);
       }
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed {
+      /* Left accent stripe to show nesting */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td:after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 2px;
+        background: rgba(7,70,124,.28);
+        pointer-events: none;
+      }
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed {
         opacity: ${L2.collapsedOpacity};
       }
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td,
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td * {
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td,
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td * {
         color: ${L2.color} !important;
+      }
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:hover {
+        filter: brightness(0.985);
       }
     `;
 
@@ -1230,12 +1296,13 @@ window.SCW = window.SCW || {};
       const $tr = $(this);
 
       if (isLevel2) {
+        // For a level-2 header, stop at ANY next group row (level 1 or 2)
         if ($tr.hasClass('kn-table-group')) return false;
         $rows = $rows.add($tr);
         return;
       }
 
-      // Level 1: stop only at NEXT Level 1
+      // For a level-1 header, stop only at next level-1 header
       if ($tr.hasClass('kn-group-level-1')) return false;
 
       $rows = $rows.add($tr);
@@ -1277,10 +1344,17 @@ window.SCW = window.SCW || {};
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
-    $(GROUP_ROW_SEL).each(function () {
+    // ✅ CRITICAL FIX: Scope to the scene root so we don't touch hidden/other scenes
+    const $sceneRoot = $(`#kn-${sceneId}`);
+    if (!$sceneRoot.length) return;
+
+    $sceneRoot.find(GROUP_ROW_SEL).each(function () {
       const $tr = $(this);
       const $view = $tr.closest('.kn-view[id^="view_"]');
       const viewId = $view.attr('id') || 'unknown_view';
+
+      // ✅ CSS guard class so only touched views get styled
+      $view.addClass('scw-group-collapse-enabled');
 
       const state = loadState(sceneId, viewId);
 
@@ -1289,8 +1363,7 @@ window.SCW = window.SCW || {};
 
       const level = getGroupLevel($tr);
       const key = buildKey($tr, level);
-      const shouldCollapse =
-        key in state ? !!state[key] : COLLAPSED_BY_DEFAULT;
+      const shouldCollapse = key in state ? !!state[key] : COLLAPSED_BY_DEFAULT;
 
       setCollapsed($tr, shouldCollapse);
     });
@@ -1309,8 +1382,15 @@ window.SCW = window.SCW || {};
         if (!isEnabledScene(sceneId)) return;
 
         const $tr = $(this);
+
+        // ✅ Guard: only allow clicks from rows inside the active enabled scene root
+        if (!$tr.closest(`#kn-${sceneId}`).length) return;
+
         const $view = $tr.closest('.kn-view[id^="view_"]');
         const viewId = $view.attr('id') || 'unknown_view';
+
+        // keep css scoping consistent
+        $view.addClass('scw-group-collapse-enabled');
 
         $tr.addClass('scw-group-header');
         ensureIcon($tr);
@@ -1337,7 +1417,13 @@ window.SCW = window.SCW || {};
 
     let raf = 0;
     const obs = new MutationObserver(() => {
-      if (!isEnabledScene(getCurrentSceneId())) return;
+      // Only react while an enabled scene is currently visible
+      const current = getCurrentSceneId();
+      if (!isEnabledScene(current)) return;
+
+      // If multiple enabled scenes ever exist, only enhance for the active one
+      if (current !== sceneId) return;
+
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => enhanceAllGroupedGrids(sceneId));
     });
@@ -1367,8 +1453,6 @@ window.SCW = window.SCW || {};
     startObserverForScene(initialScene);
   }
 })();
-
-
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
