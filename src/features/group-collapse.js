@@ -86,7 +86,7 @@
         opacity: .95;
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
-        transform: rotate(-90deg);
+        transform: rotate(-180deg);
         opacity: .9;
       }
 
