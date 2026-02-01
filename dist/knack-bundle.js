@@ -1162,7 +1162,7 @@ window.SCW = window.SCW || {};
         transform-origin: 50% 55%;
         transition: transform 160ms ease, opacity 160ms ease;
         opacity: .95;
-        transform: rotate(90deg); /* ▼ (open) */
+        transform: rotate(0deg); /* ▼ (open) */
       }
       ${S} .scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon {
         transform: rotate(0deg); /* ▶ (collapsed) */
@@ -1265,7 +1265,7 @@ window.SCW = window.SCW || {};
         transform-origin: 50% 50%;
       }
       ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
-        transform: rotate(90deg); /* ◀ → ▼ */
+        transform: rotate(180deg); /* ◀ → ▼ */
         opacity: 1;
       }
       ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"]:not(.ktlDown) {
