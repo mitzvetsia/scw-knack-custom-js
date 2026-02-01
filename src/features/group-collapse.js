@@ -44,7 +44,6 @@
       .join(', ');
     const S = sceneScopes || '';
 
-    // ---------- THEME TOKENS ----------
     const L1 = {
       fontSize: '16px',
       fontWeight: '600',
@@ -65,16 +64,11 @@
     };
 
     const css = `
-      /* ==========================================================================
-         Guardrails: only apply styling inside enabled scenes AND views touched
-         by this feature (scw-group-collapse-enabled is added by JS).
-         ========================================================================== */
       ${S} .scw-group-collapse-enabled tr.scw-group-header {
         cursor: pointer;
         user-select: none;
       }
 
-      /* ===== Caret/icon polish (inline; only affects our injected .scw-collapse-icon) ===== */
       ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon {
         display: inline-flex;
         align-items: center;
@@ -94,7 +88,6 @@
         opacity: .9;
       }
 
-      /* ===== Shared cell polish ===== */
       ${S} .scw-group-collapse-enabled tr.scw-group-header > td {
         position: relative;
       }
@@ -107,8 +100,6 @@
         opacity: 0;
         transition: opacity 160ms ease;
       }
-
-      /* Hover/focus: subtle */
       ${S} .scw-group-collapse-enabled tr.scw-group-header:hover > td:before {
         opacity: 1;
       }
@@ -118,7 +109,6 @@
         outline-offset: -2px;
       }
 
-      /* ===== LEVEL 1 ===== */
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header {
         font-size: ${L1.fontSize};
         font-weight: ${L1.fontWeight} !important;
@@ -144,7 +134,6 @@
         filter: brightness(1.06);
       }
 
-      /* ===== LEVEL 2 ===== */
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header {
         font-size: ${L2.fontSize};
         font-weight: ${L2.fontWeight} !important;
@@ -177,27 +166,18 @@
         filter: brightness(0.985);
       }
 
-      /* ==========================================================================
-         ✅ KTL Hide/Show Arrow Fix (ALL views in this scene)
-         Your rule: collapsed should point DOWN.
-         KTL uses:
-           - .ktlUp   = collapsed
-           - .ktlDown = open
-         Glyph is ◀ so:
-           - collapsed (ktlUp)   rotate(-90deg) => ▼
-           - open (ktlDown)      rotate(180deg) => ▶
-         ========================================================================== */
+      /* KTL arrows: collapsed (.ktlUp) => DOWN; open (.ktlDown) => RIGHT */
       ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
         display: inline-block;
         transition: transform 160ms ease, opacity 160ms ease;
         transform-origin: 50% 50%;
       }
       ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlUp {
-        transform: rotate(-90deg); /* ◀ -> ▼ */
+        transform: rotate(-90deg);
         opacity: .95;
       }
       ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
-        transform: rotate(180deg); /* ◀ -> ▶ */
+        transform: rotate(180deg);
         opacity: 1;
       }
     `;
@@ -236,7 +216,6 @@
       .trim();
   }
 
-  // Parent Level-1 label for a Level-2 row (prevents key collisions across sections)
   function getParentLevel1Label($tr) {
     const $l1 = $tr.prevAll('tr.kn-table-group.kn-group-level-1').first();
     return $l1.length ? getRowLabelText($l1) : '';
@@ -244,16 +223,13 @@
 
   function buildKey($tr, level) {
     const label = getRowLabelText($tr);
-
     if (level === 2) {
       const parent = getParentLevel1Label($tr);
       return `L2:${parent}::${label}`;
     }
-
     return `L1:${label}`;
   }
 
-  // Collect rows controlled by a header row
   function rowsUntilNextRelevantGroup($headerRow) {
     const isLevel2 = $headerRow.hasClass('kn-group-level-2');
     let $rows = $();
@@ -262,31 +238,45 @@
       const $tr = $(this);
 
       if (isLevel2) {
-        // Level 2: stop at ANY next group row (L1 or L2)
         if ($tr.hasClass('kn-table-group')) return false;
         $rows = $rows.add($tr);
         return;
       }
 
-      // Level 1: stop only at NEXT Level 1
       if ($tr.hasClass('kn-group-level-1')) return false;
-
       $rows = $rows.add($tr);
     });
 
     return $rows;
   }
 
-  // When expanding a Level-1 group, restore Level-2 collapsed states beneath it
   function restoreLevel2StatesUnderLevel1($level1Header) {
-    const $sectionRows = rowsUntilNextRelevantGroup($level1Header);
-
-    $sectionRows
+    rowsUntilNextRelevantGroup($level1Header)
       .filter('tr.kn-table-group.kn-group-level-2.scw-group-header')
       .each(function () {
         const $l2 = $(this);
-        const l2Collapsed = $l2.hasClass('scw-collapsed');
-        rowsUntilNextRelevantGroup($l2).toggle(!l2Collapsed);
+        const collapsed = $l2.hasClass('scw-collapsed');
+        rowsUntilNextRelevantGroup($l2).toggle(!collapsed);
+      });
+  }
+
+  // NEW: when collapsing L1, force-collapse all child L2 headers and persist
+  function collapseAllLevel2UnderLevel1($level1Header, sceneId, viewId, state) {
+    rowsUntilNextRelevantGroup($level1Header)
+      .filter('tr.kn-table-group.kn-group-level-2.scw-group-header')
+      .each(function () {
+        const $l2 = $(this);
+
+        // force state + class
+        $l2.addClass('scw-collapsed');
+        $l2.find('.scw-collapse-icon').text('▶');
+
+        // hide its detail rows (even though L1 is hiding everything, this keeps it consistent)
+        rowsUntilNextRelevantGroup($l2).hide();
+
+        // persist
+        const key = buildKey($l2, 2);
+        state[key] = 1;
       });
   }
 
@@ -297,15 +287,12 @@
     $header.find('.scw-collapse-icon').text(collapsed ? '▶' : '▼');
 
     if (isLevel2) {
-      // Level 2 controls only its own detail rows
       rowsUntilNextRelevantGroup($header).toggle(!collapsed);
       return;
     }
 
-    // Level 1 hides/shows the entire section...
     rowsUntilNextRelevantGroup($header).toggle(!collapsed);
 
-    // ...but when expanding, we must re-hide children of collapsed Level-2 groups
     if (!collapsed) restoreLevel2StatesUnderLevel1($header);
   }
 
@@ -336,7 +323,6 @@
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
-    // Scope to the scene root
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
@@ -389,7 +375,14 @@
         const state = loadState(sceneId, viewId);
         const collapseNow = !$tr.hasClass('scw-collapsed');
 
+        // apply collapse/expand
         setCollapsed($tr, collapseNow);
+
+        // NEW: if this was an L1 collapse, also collapse all nested L2 groups + persist
+        if (level === 1 && collapseNow) {
+          collapseAllLevel2UnderLevel1($tr, sceneId, viewId, state);
+        }
+
         state[key] = collapseNow ? 1 : 0;
         saveState(sceneId, viewId, state);
       });
