@@ -66,7 +66,11 @@
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
+<<<<<<< ours
         background: #0b4f82 !important;
+=======
+        background: #07467c !important;
+>>>>>>> theirs
 =======
         background: #07467c !important;
 >>>>>>> theirs
@@ -90,6 +94,7 @@
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
+<<<<<<< ours
 =======
         width: 100% !important;
 >>>>>>> theirs
@@ -144,6 +149,8 @@
 =======
 =======
 >>>>>>> theirs
+=======
+>>>>>>> theirs
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -151,7 +158,14 @@
       }
 
       ${S} .ktlHideShowButton .ktlArrow {
+<<<<<<< ours
         margin-left: auto !important;
+=======
+        position: absolute !important;
+        right: 14px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+>>>>>>> theirs
       }
 
       ${S} .kn-view .view-header .kn-title {
@@ -165,6 +179,10 @@
         width: 100% !important;
         max-width: 100% !important;
         display: block !important;
+<<<<<<< ours
+=======
+        position: relative !important;
+>>>>>>> theirs
       }
 
       ${S} .ktlHideShowSection.ktlBoxWithBorder {
@@ -209,6 +227,9 @@
       }
 
 <<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
 =======
 >>>>>>> theirs
@@ -216,6 +237,7 @@
         background: #f1f7fc !important;
       }
 
+<<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
 =======
@@ -286,6 +308,8 @@
 >>>>>>> theirs
 =======
 >>>>>>> theirs
+=======
+>>>>>>> theirs
       /* =========================
          3) GROUP HEADER HIERARCHY (Knack grouped rows)
       ========================= */
@@ -294,6 +318,7 @@
         border-bottom: 1px solid rgba(0,0,0,.10) !important;
       }
 
+<<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
@@ -319,11 +344,20 @@
 >>>>>>> theirs
 =======
 >>>>>>> theirs
+=======
+      ${S} tr.kn-table-group.kn-group-level-1,
+      ${S} tr.kn-table-group.kn-group-level-1 > td,
+      ${S} tr.kn-table-group.kn-group-level-1 > th,
+      ${S} tr.kn-table-group.kn-group-level-1 td,
+      ${S} tr.kn-table-group.kn-group-level-1 th {
+        background: #07467c !important;
+>>>>>>> theirs
         color: #ffffff !important;
         font-weight: 700 !important;
         font-size: 1.05em !important;
         padding-top: 12px !important;
         padding-bottom: 12px !important;
+<<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
@@ -344,6 +378,15 @@
       }
 
       ${S} .kn-table-group.kn-group-level-2 > td {
+=======
+        border-left: 6px solid #07467c !important;
+      }
+
+      ${S} tr.kn-table-group.kn-group-level-2 > td,
+      ${S} tr.kn-table-group.kn-group-level-2 > th,
+      ${S} tr.kn-table-group.kn-group-level-2 td,
+      ${S} tr.kn-table-group.kn-group-level-2 th {
+>>>>>>> theirs
         background: #eef4f9 !important;
         color: #1f2d3d !important;
         font-weight: 600 !important;
