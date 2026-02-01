@@ -44,26 +44,6 @@
       .join(', ');
     const S = sceneScopes || '';
 
-    // ---------- THEME TOKENS ----------
-    const L1 = {
-      fontSize: '18px',
-      fontWeight: '200',
-      bg: '#07467c',
-      color: '#ffffff',
-      tdPadding: '8px 12px',
-      collapsedOpacity: '0.92',
-      textalign: 'left',
-    };
-
-    const L2 = {
-      fontSize: '15px',
-      fontWeight: '400',
-      bg: 'aliceblue',
-      color: '#07467c',
-      tdPadding: '10px 10px 10px 50px',
-      collapsedOpacity: '0.88',
-    };
-
     const css = `
       /* ===== Shared group header behavior ===== */
       ${S} tr.scw-group-header {
@@ -78,42 +58,126 @@
         font-weight: 700;
       }
 
-      /* ===== LEVEL 1 (MDF / IDF) ===== */
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header {
-        font-size: ${L1.fontSize};
-        font-weight: ${L1.fontWeight} !important;
-        background-color: ${L1.bg} !important;
-        color: ${L1.color} !important;
-        text-align: ${L1.textalign} !important;
-      }
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td {
-        padding: ${L1.tdPadding} !important;
-        text-align: ${L1.textalign} !important;
-      }
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
-        opacity: ${L1.collapsedOpacity};
-      }
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td,
-      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td * {
-        color: ${L1.color} !important;
+      /* =========================
+         1) GLOBAL SECTION HEADERS (KTL hide/show)
+      ========================= */
+      ${S} .ktlHideShowButton {
+        background: #0b4f82 !important;
+        color: #fff !important;
+        font-weight: 650 !important;
+        border-radius: 10px !important;
+        padding: 10px 14px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        letter-spacing: 0.2px !important;
       }
 
-      /* ===== LEVEL 2 (Bucket) ===== */
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header {
-        font-size: ${L2.fontSize};
-        font-weight: ${L2.fontWeight} !important;
-        background-color: ${L2.bg} !important;
-        color: ${L2.color} !important;
+      ${S} .kn-view .view-header .kn-title {
+        margin-bottom: 10px !important;
       }
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td {
-        padding: ${L2.tdPadding} !important;
+
+      ${S} .ktlHideShowSection.ktlBoxWithBorder {
+        border: 1px solid rgba(0,0,0,.10) !important;
+        border-radius: 12px !important;
+        padding: 12px !important;
+        background: #ffffff !important;
       }
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed {
-        opacity: ${L2.collapsedOpacity};
+
+      ${S} .ktlArrow,
+      ${S} .ktlHideShowButton .ktlArrow {
+        color: rgba(255,255,255,.85) !important;
       }
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td,
-      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td * {
-        color: ${L2.color} !important;
+
+      /* =========================
+         2) TABLE BASELINE (calmer grid)
+      ========================= */
+      ${S} .kn-table {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+      }
+
+      ${S} .kn-table thead th {
+        background: #f2f5f8 !important;
+        color: #243447 !important;
+        font-weight: 650 !important;
+        border-bottom: 1px solid rgba(0,0,0,.10) !important;
+      }
+
+      ${S} .kn-table td,
+      ${S} .kn-table th {
+        border-color: rgba(0,0,0,.08) !important;
+      }
+
+      ${S} .kn-table td {
+        color: #1f2d3d !important;
+        line-height: 1.35 !important;
+      }
+
+      ${S} .kn-table tbody tr:nth-child(even) td {
+        background: #fafafa !important;
+      }
+
+      ${S} .kn-table tbody tr:hover td {
+        background: #f1f7fc !important;
+      }
+
+      /* =========================
+         3) GROUP HEADER HIERARCHY (Knack grouped rows)
+      ========================= */
+      ${S} .kn-table-group > td {
+        border-top: 1px solid rgba(0,0,0,.10) !important;
+        border-bottom: 1px solid rgba(0,0,0,.10) !important;
+      }
+
+      ${S} .kn-table-group.kn-group-level-1 > td {
+        background: #3f6e9a !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 1.05em !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        border-left: 6px solid #1f4f7a !important;
+      }
+
+      ${S} .kn-table-group.kn-group-level-2 > td {
+        background: #eef4f9 !important;
+        color: #1f2d3d !important;
+        font-weight: 600 !important;
+        font-size: 0.98em !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+        border-left: 6px solid #9fc0de !important;
+      }
+
+      ${S} .kn-table-group.kn-group-level-3 > td {
+        background: #f6f8fb !important;
+        color: #2b3a4a !important;
+        font-weight: 600 !important;
+        font-size: 0.95em !important;
+        border-left: 6px solid #d7e3ee !important;
+      }
+
+      ${S} .kn-table-group.kn-group-level-4 > td {
+        background: #fbfcfe !important;
+        color: #2b3a4a !important;
+        font-weight: 600 !important;
+        font-size: 0.93em !important;
+        border-left: 6px solid #e9f0f7 !important;
+      }
+
+      ${S} tr.scw-group-header.kn-group-level-1 > td {}
+      ${S} tr.scw-group-header.kn-group-level-2 > td {}
+
+      /* =========================
+         5) OPTIONAL: Collapsed/expanded affordance
+      ========================= */
+      ${S} .scw-group-header.is-expanded > td {
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.18) !important;
+      }
+
+      ${S} .scw-group-header.is-collapsed > td {
+        opacity: 0.95 !important;
       }
     `;
 
@@ -177,6 +241,8 @@
 
   function setCollapsed($header, collapsed) {
     $header.toggleClass('scw-collapsed', collapsed);
+    $header.toggleClass('is-collapsed', collapsed);
+    $header.toggleClass('is-expanded', !collapsed);
     $header.find('.scw-collapse-icon').text(collapsed ? '▶' : '▼');
     rowsUntilNextRelevantGroup($header).toggle(!collapsed);
   }
@@ -301,4 +367,3 @@
 
 
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
-
