@@ -178,23 +178,26 @@
       }
 
       /* ==========================================================================
-         ✅ KTL Hide/Show Arrow Fix (ALL views)
-         You said: "collapsed should point DOWN".
-         Given glyph is ◀:
-           - ktlUp (collapsed)   => rotate(-90deg)  => ▼
-           - ktlDown (expanded)  => rotate(180deg)  => ▶
+         ✅ KTL Hide/Show Arrow Fix (ALL views in this scene)
+         Your rule: collapsed should point DOWN.
+         KTL uses:
+           - .ktlUp   = collapsed
+           - .ktlDown = open
+         Glyph is ◀ so:
+           - collapsed (ktlUp)   rotate(-90deg) => ▼
+           - open (ktlDown)      rotate(180deg) => ▶
          ========================================================================== */
-      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
+      ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
         display: inline-block;
         transition: transform 160ms ease, opacity 160ms ease;
         transform-origin: 50% 50%;
       }
-      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlUp {
-        transform: rotate(-90deg); /* ◀ -> ▼ (collapsed) */
+      ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlUp {
+        transform: rotate(-90deg); /* ◀ -> ▼ */
         opacity: .95;
       }
-      ${S} .scw-group-collapse-enabled span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
-        transform: rotate(180deg); /* ◀ -> ▶ (expanded) */
+      ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
+        transform: rotate(180deg); /* ◀ -> ▶ */
         opacity: 1;
       }
     `;
