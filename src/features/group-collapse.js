@@ -46,143 +46,73 @@
 
     // ---------- THEME TOKENS ----------
     const L1 = {
-      fontSize: '16px',
-      fontWeight: '600',
+      fontSize: '18px',
+      fontWeight: '200',
       bg: '#07467c',
       color: '#ffffff',
-      tdPadding: '6px 12px',
+      tdPadding: '8px 12px',
       collapsedOpacity: '0.92',
       textalign: 'center',
-      divider: 'rgba(255, 255, 255, 0.18)',
-      shadow: 'rgba(8, 25, 44, 0.2)',
     };
 
     const L2 = {
-      fontSize: '14px',
-      fontWeight: '500',
+      fontSize: '15px',
+      fontWeight: '400',
       bg: 'aliceblue',
       color: '#07467c',
-      tdPadding: '6px 12px 6px 24px',
+      tdPadding: '20px 12px',
       collapsedOpacity: '0.88',
-      accent: 'rgba(7, 70, 124, 0.35)',
-      divider: 'rgba(7, 70, 124, 0.12)',
     };
 
     const css = `
       /* ===== Shared group header behavior ===== */
-      ${S} .scw-group-collapse-enabled tr.scw-group-header {
+      ${S} tr.scw-group-header {
         cursor: pointer;
         user-select: none;
       }
-      ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 1.6em;
-        height: 1.6em;
-        margin-right: 0.4em;
-        border-radius: 999px;
-        font-size: 0.85rem;
+      ${S} tr.scw-group-header .scw-collapse-icon {
+        display: inline-block;
+        width: 1.2em;
+        text-align: center;
+        margin-right: .35em;
         font-weight: 700;
-<<<<<<< ours
-        vertical-align: middle;
-        transition: transform 160ms ease, background-color 160ms ease;
-      }
-      ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon::before {
-        content: '▸';
-        font-size: 0.85rem;
-=======
->>>>>>> theirs
-        line-height: 1;
-        vertical-align: middle;
-        flex-shrink: 0;
-        transition: transform 160ms ease, background-color 160ms ease;
-      }
-<<<<<<< ours
-      ${S} .scw-group-collapse-enabled tr.scw-group-header:not(.scw-collapsed) .scw-collapse-icon::before {
-=======
-      ${S} .scw-group-collapse-enabled tr.scw-group-header:not(.scw-collapsed) .scw-collapse-icon {
->>>>>>> theirs
-        transform: rotate(90deg);
-      }
-      ${S} .scw-group-collapse-enabled tr.scw-group-header:hover .scw-collapse-icon {
-        background-color: rgba(255, 255, 255, 0.18);
-      }
-      ${S} .scw-group-collapse-enabled tr.scw-group-header:focus-within .scw-collapse-icon {
-        box-shadow: 0 0 0 2px rgba(7, 70, 124, 0.35);
       }
 
       /* ===== LEVEL 1 (MDF / IDF) ===== */
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header {
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header {
         font-size: ${L1.fontSize};
         font-weight: ${L1.fontWeight} !important;
+        background-color: ${L1.bg} !important;
         color: ${L1.color} !important;
         text-align: ${L1.textalign} !important;
-        letter-spacing: 0.02em;
       }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td {
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td {
         padding: ${L1.tdPadding} !important;
-        background-color: ${L1.bg} !important;
-        border-bottom: 1px solid ${L1.divider};
-        box-shadow: 0 1px 0 ${L1.shadow};
       }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td:first-child {
-        border-top-left-radius: 6px;
-        border-bottom-left-radius: 6px;
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td:last-child {
-        border-top-right-radius: 6px;
-        border-bottom-right-radius: 6px;
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
         opacity: ${L1.collapsedOpacity};
       }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td,
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td * {
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td,
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td * {
         color: ${L1.color} !important;
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover > td {
-        filter: brightness(1.05);
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:focus-within > td {
-        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
       }
 
       /* ===== LEVEL 2 (Bucket) ===== */
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header {
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header {
         font-size: ${L2.fontSize};
         font-weight: ${L2.fontWeight} !important;
-        color: ${L2.color} !important;
-        letter-spacing: 0.01em;
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td {
-        padding: ${L2.tdPadding} !important;
         background-color: ${L2.bg} !important;
-        border-bottom: 1px solid ${L2.divider};
-        position: relative;
+        color: ${L2.color} !important;
       }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td::before {
-        content: '';
-        position: absolute;
-        left: 8px;
-        top: 6px;
-        bottom: 6px;
-        width: 3px;
-        border-radius: 2px;
-        background-color: ${L2.accent};
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td {
+        padding: ${L2.tdPadding} !important;
       }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed {
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed {
         opacity: ${L2.collapsedOpacity};
       }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td,
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td * {
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td,
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td * {
         color: ${L2.color} !important;
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:hover > td {
-        background-color: #e7f1fb !important;
-      }
-      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:focus-within > td {
-        box-shadow: inset 0 0 0 2px rgba(7, 70, 124, 0.2);
       }
     `;
 
@@ -205,12 +135,12 @@
   function ensureIcon($tr) {
     const $cell = $tr.children('td,th').first();
     if (!$cell.find('.scw-collapse-icon').length) {
-      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">▸</span>');
+      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">▼</span>');
     }
   }
 
-  function getRowLabel($tr) {
-    return $tr
+  function buildKey($tr, level) {
+    const label = $tr
       .clone()
       .find('.scw-collapse-icon')
       .remove()
@@ -218,17 +148,6 @@
       .text()
       .replace(/\s+/g, ' ')
       .trim();
-  }
-
-  function buildKey($tr, level) {
-    const label = getRowLabel($tr);
-    if (level === 2) {
-      const $parent = $tr.prevAll('tr.kn-group-level-1').first();
-      if ($parent.length) {
-        const parentLabel = getRowLabel($parent);
-        return `L1:${parentLabel}|L2:${label}`;
-      }
-    }
     return `L${level}:${label}`;
   }
 
@@ -257,6 +176,7 @@
 
   function setCollapsed($header, collapsed) {
     $header.toggleClass('scw-collapsed', collapsed);
+    $header.find('.scw-collapse-icon').text(collapsed ? '▶' : '▼');
     rowsUntilNextRelevantGroup($header).toggle(!collapsed);
   }
 
@@ -290,7 +210,6 @@
     $(GROUP_ROW_SEL).each(function () {
       const $tr = $(this);
       const $view = $tr.closest('.kn-view[id^="view_"]');
-      $view.addClass('scw-group-collapse-enabled');
       const viewId = $view.attr('id') || 'unknown_view';
 
       const state = loadState(sceneId, viewId);
