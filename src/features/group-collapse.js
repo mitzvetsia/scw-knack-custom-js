@@ -53,6 +53,8 @@
       tdPadding: '8px 12px',
       collapsedOpacity: '0.92',
       textalign: 'center',
+      divider: 'rgba(255, 255, 255, 0.18)',
+      shadow: 'rgba(8, 25, 44, 0.2)',
     };
 
     const L2 = {
@@ -60,8 +62,10 @@
       fontWeight: '400',
       bg: 'aliceblue',
       color: '#07467c',
-      tdPadding: '20px 12px',
+      tdPadding: '10px 12px 10px 20px',
       collapsedOpacity: '0.88',
+      accent: 'rgba(7, 70, 124, 0.35)',
+      divider: 'rgba(7, 70, 124, 0.12)',
     };
 
     const css = `
@@ -71,23 +75,55 @@
         user-select: none;
       }
       ${S} tr.scw-group-header .scw-collapse-icon {
-        display: inline-block;
-        width: 1.2em;
-        text-align: center;
-        margin-right: .35em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.4em;
+        height: 1.4em;
+        margin-right: 0.35em;
+        border-radius: 999px;
+        font-size: 0;
         font-weight: 700;
+        transition: transform 160ms ease, background-color 160ms ease;
+      }
+      ${S} tr.scw-group-header .scw-collapse-icon::before {
+        content: '▸';
+        font-size: 0.9rem;
+        line-height: 1;
+        display: block;
+        transform: rotate(0deg);
+        transition: transform 160ms ease;
+      }
+      ${S} tr.scw-group-header:not(.scw-collapsed) .scw-collapse-icon::before {
+        transform: rotate(90deg);
+      }
+      ${S} tr.scw-group-header:hover .scw-collapse-icon {
+        background-color: rgba(255, 255, 255, 0.18);
+      }
+      ${S} tr.scw-group-header:focus-within .scw-collapse-icon {
+        box-shadow: 0 0 0 2px rgba(7, 70, 124, 0.35);
       }
 
       /* ===== LEVEL 1 (MDF / IDF) ===== */
       ${S} .kn-table-group.kn-group-level-1.scw-group-header {
         font-size: ${L1.fontSize};
         font-weight: ${L1.fontWeight} !important;
-        background-color: ${L1.bg} !important;
         color: ${L1.color} !important;
         text-align: ${L1.textalign} !important;
       }
       ${S} .kn-table-group.kn-group-level-1.scw-group-header > td {
         padding: ${L1.tdPadding} !important;
+        background-color: ${L1.bg} !important;
+        border-bottom: 1px solid ${L1.divider};
+        box-shadow: 0 2px 0 ${L1.shadow};
+      }
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td:first-child {
+        border-top-left-radius: 6px;
+        border-bottom-left-radius: 6px;
+      }
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header > td:last-child {
+        border-top-right-radius: 6px;
+        border-bottom-right-radius: 6px;
       }
       ${S} .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed {
         opacity: ${L1.collapsedOpacity};
@@ -96,16 +132,34 @@
       ${S} .kn-table-group.kn-group-level-1.scw-group-header > td * {
         color: ${L1.color} !important;
       }
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header:hover > td {
+        filter: brightness(1.05);
+      }
+      ${S} .kn-table-group.kn-group-level-1.scw-group-header:focus-within > td {
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+      }
 
       /* ===== LEVEL 2 (Bucket) ===== */
       ${S} .kn-table-group.kn-group-level-2.scw-group-header {
         font-size: ${L2.fontSize};
         font-weight: ${L2.fontWeight} !important;
-        background-color: ${L2.bg} !important;
         color: ${L2.color} !important;
       }
       ${S} .kn-table-group.kn-group-level-2.scw-group-header > td {
         padding: ${L2.tdPadding} !important;
+        background-color: ${L2.bg} !important;
+        border-bottom: 1px solid ${L2.divider};
+        position: relative;
+      }
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header > td::before {
+        content: '';
+        position: absolute;
+        left: 6px;
+        top: 20%;
+        bottom: 20%;
+        width: 3px;
+        border-radius: 2px;
+        background-color: ${L2.accent};
       }
       ${S} .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed {
         opacity: ${L2.collapsedOpacity};
@@ -113,6 +167,12 @@
       ${S} .kn-table-group.kn-group-level-2.scw-group-header > td,
       ${S} .kn-table-group.kn-group-level-2.scw-group-header > td * {
         color: ${L2.color} !important;
+      }
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header:hover > td {
+        filter: brightness(1.03);
+      }
+      ${S} .kn-table-group.kn-group-level-2.scw-group-header:focus-within > td {
+        box-shadow: inset 0 0 0 2px rgba(7, 70, 124, 0.2);
       }
     `;
 
