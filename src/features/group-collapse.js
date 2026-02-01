@@ -65,7 +65,11 @@
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
+<<<<<<< ours
         background: #0b4f82 !important;
+=======
+        background: #07467c !important;
+>>>>>>> theirs
 =======
         background: #07467c !important;
 >>>>>>> theirs
@@ -82,6 +86,7 @@
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
+<<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
@@ -137,6 +142,8 @@
       }
 
 =======
+=======
+>>>>>>> theirs
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -201,11 +208,15 @@
         background: #fafafa !important;
       }
 
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
       ${S} .kn-table tbody tr:hover td {
         background: #f1f7fc !important;
       }
 
+<<<<<<< ours
 <<<<<<< ours
 =======
         width: 100% !important;
@@ -273,6 +284,8 @@
 >>>>>>> theirs
 =======
 >>>>>>> theirs
+=======
+>>>>>>> theirs
       /* =========================
          3) GROUP HEADER HIERARCHY (Knack grouped rows)
       ========================= */
@@ -281,6 +294,7 @@
         border-bottom: 1px solid rgba(0,0,0,.10) !important;
       }
 
+<<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
       ${S} .kn-table-group.kn-group-level-1 > td {
@@ -292,11 +306,16 @@
 =======
 =======
 >>>>>>> theirs
+=======
+>>>>>>> theirs
       ${S} .kn-table-group.kn-group-level-1,
       ${S} .kn-table-group.kn-group-level-1 > td,
       ${S} .kn-table-group.kn-group-level-1 > th {
         background: #07467c !important;
 <<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
 =======
 >>>>>>> theirs
@@ -308,7 +327,11 @@
 <<<<<<< ours
 <<<<<<< ours
 <<<<<<< ours
+<<<<<<< ours
         border-left: 6px solid #1f4f7a !important;
+=======
+        border-left: 6px solid #07467c !important;
+>>>>>>> theirs
 =======
         border-left: 6px solid #07467c !important;
 >>>>>>> theirs
