@@ -1,66 +1,68 @@
 (function () {
-  'use strict';
-
   // ======================
   // CONFIG
   // ======================
-  const CONFIG = {
-    removeEntireView: true, // true = remove #view_3364 block; false = remove only KTL section wrapper
-    viewIds: ['view_3364'],
-  };
+  const VIEW_IDS = ['view_3364'];
+  const EVENT_NS = '.scwHideEmptyGrid_v2';
 
-  const EVENT_NS = '.scwHideEmptyGrid';
-  const OBS_BY_VIEW = new Map(); // viewId -> MutationObserver
+  // Flip these as needed:
+  const REMOVE_SCOPE = 'group'; 
+  // 'view'  = remove #view_3364 only
+  // 'group' = remove the closest .view-group wrapper (usually what you want)
+
+  const DEBUG = true;
 
   // ======================
-  // CORE
+  // HELPERS
   // ======================
-  function isEmptyGrid($view) {
-    return $view.find('tbody tr.kn-tr-nodata').length > 0;
+  function log(...args) {
+    if (DEBUG && window.console) console.log('[scwHideEmptyGrid]', ...args);
   }
 
-  function removeEmpty($view, viewId) {
-    if (CONFIG.removeEntireView) {
-      $view.remove();
-      return true;
+  function markRunning($view) {
+    if (!DEBUG) return;
+    // red outline shows script is touching the view at all
+    $view.css('outline', '2px dashed red');
+  }
+
+  function findRemovalTarget($view) {
+    if (REMOVE_SCOPE === 'group') {
+      const $group = $view.closest('.view-group');
+      if ($group.length) return $group;
+    }
+    return $view; // fallback
+  }
+
+  function hasNoData($view) {
+    // Your exact DOM signal
+    return $view.find('tbody tr.kn-tr-nodata, tbody td.kn-td-nodata').length > 0;
+  }
+
+  function hideIfEmpty(viewId) {
+    const $view = $('#' + viewId);
+    if (!$view.length) {
+      log('View not found in DOM yet:', viewId);
+      return false;
     }
 
-    // remove only the KTL wrapper section inside the view (keeps header/title)
-    const $section = $view.find('section.hideShow_' + viewId);
-    if ($section.length) $section.remove();
-    else $view.find('.kn-table-wrapper').closest('section, .kn-table-wrapper').remove();
+    markRunning($view);
 
+    const empty = hasNoData($view);
+    log('Evaluated', viewId, { empty });
+
+    if (!empty) return false;
+
+    const $target = findRemovalTarget($view);
+    log('Removing target:', $target.get(0));
+
+    $target.remove();
     return true;
   }
 
-  function evaluate(viewId) {
-    const $view = $('#' + viewId);
-    if (!$view.length) return;
-
-    if (isEmptyGrid($view)) {
-      // stop observing once removed
-      stopObserver(viewId);
-      removeEmpty($view, viewId);
-    }
-  }
-
-  function startObserver(viewId) {
-    stopObserver(viewId);
-
-    const el = document.getElementById(viewId);
-    if (!el) return;
-
-    // Evaluate immediately (in case "No data" already exists)
-    evaluate(viewId);
-
-    const obs = new MutationObserver(function () {
-      // Any DOM change inside the view: re-check for no-data row
-      evaluate(viewId);
-    });
-
-    obs.observe(el, { childList: true, subtree: true });
-    OBS_BY_VIEW.set(viewId, obs);
-  }
+  // ======================
+  // OBSERVER (handles KTL rebuilds)
+  // ======================
+  const OBS_BY_VIEW = new Map();
 
   function stopObserver(viewId) {
     const obs = OBS_BY_VIEW.get(viewId);
@@ -68,29 +70,44 @@
     OBS_BY_VIEW.delete(viewId);
   }
 
-  function initAll() {
-    CONFIG.viewIds.forEach(startObserver);
+  function startObserver(viewId) {
+    stopObserver(viewId);
+
+    // Try immediately
+    hideIfEmpty(viewId);
+
+    // Observe the *document body* because KTL sometimes swaps nodes above the view
+    const obs = new MutationObserver(function () {
+      // Each mutation: try again, and stop if we removed it
+      const removed = hideIfEmpty(viewId);
+      if (removed) stopObserver(viewId);
+    });
+
+    obs.observe(document.body, { childList: true, subtree: true });
+    OBS_BY_VIEW.set(viewId, obs);
+
+    log('Observer started for', viewId);
   }
 
   // ======================
-  // HOOKS (multiple ways)
+  // HOOKS
   // ======================
-  // 1) Immediately on DOM ready (helps when script loads late)
-  $(initAll);
+  function init() {
+    VIEW_IDS.forEach(startObserver);
+  }
 
-  // 2) On any scene render (Knack page navigation)
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
-    .on('knack-scene-render.any' + EVENT_NS, function () {
-      initAll();
-    });
+    .on('knack-scene-render.any' + EVENT_NS, init);
 
-  // 3) On view render (Knack refreshes)
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function (event, view) {
-      if (!view || !CONFIG.viewIds.includes(view.key)) return;
-      // Kick the observer again because KTL sometimes rebuilds nodes
+      if (!view || !VIEW_IDS.includes(view.key)) return;
+      log('knack-view-render fired for', view.key);
       startObserver(view.key);
     });
+
+  // Also run once on DOM ready (in case events already fired)
+  $(init);
 })();
