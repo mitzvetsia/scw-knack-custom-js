@@ -10,6 +10,7 @@
 
   const WARNING_BG = '#7a0f16'; // dark red
   const WARNING_FG = '#ffffff';
+  const RADIUS = 20;            // px
 
   // ======================
   // CSS (ONCE)
@@ -19,16 +20,21 @@
     if (document.getElementById(id)) return;
 
     const css = `
-      /* Card background (your working pattern) */
+      /* Card background (your working :has() pattern) */
       .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
         margin-bottom: 2px !important;
         background-color: ${WARNING_BG} !important;
         max-width: 100% !important;
-        border-radius: 20px !important;
+
+        border-top-left-radius: ${RADIUS}px !important;
+        border-top-right-radius: ${RADIUS}px !important;
+        border-bottom-left-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+
         overflow: hidden !important;
       }
 
-      /* Make the KTL button itself the red pill/bar */
+      /* KTL button as the red bar (top corners only) */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
         display: flex !important;
         align-items: center !important;
@@ -42,13 +48,18 @@
         border: 0 !important;
         box-shadow: none !important;
         box-sizing: border-box !important;
+
+        border-top-left-radius: ${RADIUS}px !important;
+        border-top-right-radius: ${RADIUS}px !important;
+        border-bottom-left-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
       }
 
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] *{
         color: ${WARNING_FG} !important;
       }
 
-      /* ✅ Icon injected via CSS so KTL can’t wipe it */
+      /* Icon via CSS so KTL can't wipe it */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]::before{
         content: "⚠️";
         display: inline-block;
@@ -70,9 +81,9 @@
   // ======================
   // HELPERS
   // ======================
-  function removeEntireBlock($view) {
-    const $group = $view.closest('.view-group');
-    ($group.length ? $group : $view).remove();
+  function removeOnlyThisView(viewId) {
+    // IMPORTANT: do NOT remove .view-group (it may contain sibling views)
+    $('#' + viewId).remove();
   }
 
   function gridHasRealRows($view) {
@@ -92,15 +103,16 @@
     const $view = $('#' + viewId);
     if (!$view.length) return;
 
+    // Preferred: Knack record count
     if (data && typeof data.total_records === 'number') {
-      if (data.total_records === 0) removeEntireBlock($view);
+      if (data.total_records === 0) removeOnlyThisView(viewId);
       else markAsException(viewId);
       return;
     }
 
-    // Fallback DOM logic
+    // Fallback: DOM
     if (gridHasRealRows($view)) markAsException(viewId);
-    else removeEntireBlock($view);
+    else removeOnlyThisView(viewId);
   }
 
   // ======================
