@@ -20,40 +20,48 @@
     if (document.getElementById(id)) return;
 
     const css = `
-      /* === Card/background wrapper (your exact working pattern, but scoped to active exception views) === */
+      /* === Card/background wrapper (same pattern that works for your blue cards) === */
       .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
         margin-bottom: 2px !important;
         background-color: ${WARNING_BG} !important;
         max-width: 100% !important;
         border-radius: 20px !important;
-        overflow: hidden !important;  /* helps the rounded corners read correctly */
+        overflow: hidden !important;
       }
 
-      /* Optional but often necessary so the background is actually visible around inner content */
-      .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) > * {
-        border-radius: inherit;
-      }
-
-      /* === KTL button/header bar === */
+      /* === KTL button should ALSO be red (this is what you lost) === */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
         display: flex !important;
         align-items: center !important;
         width: 100% !important;
-        background-color: rgba(0,0,0,0.18) !important; /* subtle contrast on top of red card */
+
+        background-color: ${WARNING_BG} !important;   /* <- key change */
         color: ${WARNING_FG} !important;
-        padding: 10px 14px !important;
+
+        padding: 12px 18px !important;
+        border-radius: 20px !important;
+
+        border: 0 !important;
+        box-shadow: none !important;
         box-sizing: border-box !important;
       }
 
+      /* Ensure all nested text inherits white */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] *{
         color: ${WARNING_FG} !important;
       }
 
+      /* Icon spacing */
       .kn-view.scw-exception-grid-active .scw-exception-icon{
         display: inline-flex !important;
         align-items: center !important;
-        margin-right: 10px !important;
+        margin-right: 12px !important;
         line-height: 1 !important;
+      }
+
+      /* Optional: hover */
+      .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]:hover{
+        filter: brightness(1.06);
       }
     `;
 
@@ -124,5 +132,4 @@
       if (!view || !VIEW_IDS.includes(view.key)) return;
       handleView(view, data);
     });
-})();
-/*************  Exception Grid: hide if empty, warn if any records  **************************/
+})()
