@@ -3107,7 +3107,7 @@ $(".kn-navigation-bar").hide();
         max-width: 100% !important;
 
         border-top-left-radius: ${RADIUS}px !important;
-        border-top-right-radius: 0 !important;
+        border-top-right-radius: ${RADIUS}px !important;
         border-bottom-left-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
 
@@ -3131,7 +3131,7 @@ $(".kn-navigation-bar").hide();
         box-sizing: border-box !important;
 
         border-top-left-radius: ${RADIUS}px !important;
-        border-top-right-radius: ${RADIUS}px !important;
+        border-top-right-radius: 0 !important;
         border-bottom-left-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
       }
