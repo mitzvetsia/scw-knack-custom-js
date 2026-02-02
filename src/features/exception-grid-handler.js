@@ -24,12 +24,12 @@
       /* PRIMARY view "card" (top corners only) */
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_${PRIMARY_VIEW_ID}_"][id$="_button"]),
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
-        margin-bottom: 2px !important;
+        margin-bottom: 0px !important;
         background-color: ${WARNING_BG} !important;
         max-width: 100% !important;
 
         border-top-left-radius: ${RADIUS}px !important;
-        border-top-right-radius: ${RADIUS}px !important;
+        border-top-right-radius: 0 !important;
         border-bottom-left-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
 
