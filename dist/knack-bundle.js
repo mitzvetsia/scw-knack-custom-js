@@ -3086,10 +3086,6 @@ $(".kn-navigation-bar").hide();
   const VIEW_IDS = ['view_3364']; // add more view IDs as needed
   const EVENT_NS = '.scwExceptionGrid';
 
-  // If you want this scoped to scenes, add scene IDs here; otherwise leave empty for global
-  // Example: const SCENE_IDS = ['scene_1085'];
-  const SCENE_IDS = []; // optional
-
   // Theme
   const WARNING_BG = '#7a0f16'; // dark red
   const WARNING_FG = '#ffffff';
@@ -3101,39 +3097,41 @@ $(".kn-navigation-bar").hide();
     const id = 'scw-exception-grid-css';
     if (document.getElementById(id)) return;
 
-    const sceneScopes = (SCENE_IDS || []).map((s) => `#kn-${s}`).join(', ');
-    const S = sceneScopes ? `${sceneScopes} ` : ''; // include trailing space when scoped
-
     const css = `
-      /* When a view is flagged as an exception, style the KTL header button as a full-width bar */
-      ${S}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
+      /* === Card/background wrapper (your exact working pattern, but scoped to active exception views) === */
+      .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
+        margin-bottom: 2px !important;
+        background-color: ${WARNING_BG} !important;
+        max-width: 100% !important;
+        border-radius: 20px !important;
+        overflow: hidden !important;  /* helps the rounded corners read correctly */
+      }
+
+      /* Optional but often necessary so the background is actually visible around inner content */
+      .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) > * {
+        border-radius: inherit;
+      }
+
+      /* === KTL button/header bar === */
+      .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
         display: flex !important;
         align-items: center !important;
         width: 100% !important;
-        background-color: ${WARNING_BG} !important;
+        background-color: rgba(0,0,0,0.18) !important; /* subtle contrast on top of red card */
         color: ${WARNING_FG} !important;
         padding: 10px 14px !important;
-        border-radius: 6px !important;
         box-sizing: border-box !important;
       }
 
-      /* Ensure all nested text inherits white */
-      ${S}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] *{
+      .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] *{
         color: ${WARNING_FG} !important;
       }
 
-      /* Icon spacing */
-      ${S}.scw-exception-grid-active .scw-exception-icon{
+      .kn-view.scw-exception-grid-active .scw-exception-icon{
         display: inline-flex !important;
         align-items: center !important;
         margin-right: 10px !important;
-        font-size: 1.05em !important;
         line-height: 1 !important;
-      }
-
-      /* Optional: slightly brighten on hover so it's clearly interactive */
-      ${S}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]:hover{
-        filter: brightness(1.06);
       }
     `;
 
@@ -3147,7 +3145,6 @@ $(".kn-navigation-bar").hide();
   // HELPERS
   // ======================
   function removeEntireBlock($view) {
-    // Prefer removing the view-group wrapper (kills whitespace + column wrapper)
     const $group = $view.closest('.view-group');
     ($group.length ? $group : $view).remove();
   }
@@ -3155,7 +3152,6 @@ $(".kn-navigation-bar").hide();
   function gridHasRealRows($view) {
     const $rows = $view.find('tbody tr');
     if (!$rows.length) return false;
-    // "No data" case
     if ($rows.filter('.kn-tr-nodata').length) return false;
     return true;
   }
@@ -3164,15 +3160,11 @@ $(".kn-navigation-bar").hide();
     const $view = $('#' + viewId);
     if (!$view.length) return;
 
-    // Add a class to the view so CSS can target within it
     $view.addClass('scw-exception-grid-active');
 
-    // Add icon to the KTL button text (this is the clickable header)
     const $btn = $('#hideShow_' + viewId + '_button');
     if ($btn.length && !$btn.find('.scw-exception-icon').length) {
-      $btn.prepend(
-        '<span class="scw-exception-icon" aria-hidden="true">⚠️</span>'
-      );
+      $btn.prepend('<span class="scw-exception-icon" aria-hidden="true">⚠️</span>');
     }
   }
 
@@ -3181,7 +3173,7 @@ $(".kn-navigation-bar").hide();
     const $view = $('#' + viewId);
     if (!$view.length) return;
 
-    // Preferred: use Knack-provided record count if present
+    // Preferred: count from Knack
     if (data && typeof data.total_records === 'number') {
       if (data.total_records === 0) {
         removeEntireBlock($view);
@@ -3191,7 +3183,7 @@ $(".kn-navigation-bar").hide();
       return;
     }
 
-    // Fallback: inspect DOM
+    // Fallback: DOM
     if (gridHasRealRows($view)) {
       markAsException(viewId);
     } else {
