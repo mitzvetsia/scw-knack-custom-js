@@ -5,10 +5,9 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3364']; // add more view IDs as needed
+  const VIEW_IDS = ['view_3364'];
   const EVENT_NS = '.scwExceptionGrid';
 
-  // Theme
   const WARNING_BG = '#7a0f16'; // dark red
   const WARNING_FG = '#ffffff';
 
@@ -20,7 +19,7 @@
     if (document.getElementById(id)) return;
 
     const css = `
-      /* === Card/background wrapper (same pattern that works for your blue cards) === */
+      /* Card background (your working pattern) */
       .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
         margin-bottom: 2px !important;
         background-color: ${WARNING_BG} !important;
@@ -29,42 +28,34 @@
         overflow: hidden !important;
       }
 
-      /* === KTL button should ALSO be red === */
+      /* Make the KTL button itself the red pill/bar */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
         display: flex !important;
-        align-items: center !important;          /* vertical */
-        justify-content: flex-start !important;  /* left */
-        gap: 12px !important;                   /* spacing between icon + text */
+        align-items: center !important;
+        justify-content: flex-start !important;
 
         width: 100% !important;
-        min-height: 44px !important;
-
         background-color: ${WARNING_BG} !important;
         color: ${WARNING_FG} !important;
 
         padding: 12px 18px !important;
-
         border: 0 !important;
         box-shadow: none !important;
         box-sizing: border-box !important;
       }
 
-      /* Ensure all nested text inherits white */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] *{
         color: ${WARNING_FG} !important;
       }
 
-      /* Icon: make it unmissable */
-      .kn-view.scw-exception-grid-active .scw-exception-icon{
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        flex: 0 0 auto !important;
-        font-size: 1.1em !important;
-        line-height: 1 !important;
+      /* ✅ Icon injected via CSS so KTL can’t wipe it */
+      .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]::before{
+        content: "⚠️";
+        display: inline-block;
+        margin-right: 12px;
+        line-height: 1;
       }
 
-      /* Optional: hover */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]:hover{
         filter: brightness(1.06);
       }
@@ -93,15 +84,7 @@
 
   function markAsException(viewId) {
     const $view = $('#' + viewId);
-    if (!$view.length) return;
-
-    $view.addClass('scw-exception-grid-active');
-
-    const $btn = $('#hideShow_' + viewId + '_button');
-    if ($btn.length && !$btn.find('.scw-exception-icon').length) {
-      // put icon first inside the button
-      $btn.prepend('<span class="scw-exception-icon" aria-hidden="true">⚠️</span>');
-    }
+    if ($view.length) $view.addClass('scw-exception-grid-active');
   }
 
   function handleView(view, data) {
@@ -109,22 +92,15 @@
     const $view = $('#' + viewId);
     if (!$view.length) return;
 
-    // Preferred: count from Knack
     if (data && typeof data.total_records === 'number') {
-      if (data.total_records === 0) {
-        removeEntireBlock($view);
-      } else {
-        markAsException(viewId);
-      }
+      if (data.total_records === 0) removeEntireBlock($view);
+      else markAsException(viewId);
       return;
     }
 
-    // Fallback: DOM
-    if (gridHasRealRows($view)) {
-      markAsException(viewId);
-    } else {
-      removeEntireBlock($view);
-    }
+    // Fallback DOM logic
+    if (gridHasRealRows($view)) markAsException(viewId);
+    else removeEntireBlock($view);
   }
 
   // ======================
