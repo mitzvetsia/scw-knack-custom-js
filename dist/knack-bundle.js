@@ -3076,44 +3076,13 @@ $(".kn-navigation-bar").hide();
 })();
 
 /*** END FEATURE: Quote/publish gating refresh bundle ******************************************************/
-(function () {
-  'use strict';
+/**
+ * Exception Grid Handler
+ *
+ * - 0 records  → hide entire view group
+ * - ≥1 record → highlight header as warning
+ */
 
-  // ======================
-  // CONFIG
-  // ======================
-  const VIEW_IDS = ['view_3364']; // add more view ids as needed
-  const EVENT_NS = '.scwHideEmptyGridSimple';
-
-  function hideView(viewId) {
-    $('#' + viewId).remove(); // removes header + table + whitespace
-  }
-
-  function viewHasNoDataRow(viewId) {
-    const $view = $('#' + viewId);
-    return $view.find('tbody tr.kn-tr-nodata, tbody td.kn-td-nodata').length > 0;
-  }
-
-  // ======================
-  // EVENT
-  // ======================
-  $(document)
-    .off('knack-view-render.any' + EVENT_NS)
-    .on('knack-view-render.any' + EVENT_NS, function (event, view, data) {
-      if (!view || !VIEW_IDS.includes(view.key)) return;
-
-      // Preferred: Knack-provided count
-      if (data && typeof data.total_records === 'number' && data.total_records === 0) {
-        hideView(view.key);
-        return;
-      }
-
-      // Fallback: DOM signal ("No data" row)
-      if (viewHasNoDataRow(view.key)) {
-        hideView(view.key);
-      }
-    });
-})();
 (function () {
   'use strict';
 
@@ -3121,33 +3090,79 @@ $(".kn-navigation-bar").hide();
   // CONFIG
   // ======================
   const VIEW_IDS = ['view_3364'];
-  const EVENT_NS = '.scwExceptionHeader';
+  const EVENT_NS = '.scwExceptionGrid';
 
-  // SCW-ish dark blue (tweak if you want)
-  const HEADER_BG = '#950606';
+  const HEADER_BG = '#950606'; // dark red
+  const ICON_HTML =
+    '<span class="scw-warning-icon fa fa-exclamation-triangle" ' +
+    'style="margin-right:8px;"></span>';
 
-  function styleHeader(viewId) {
-    const $view   = $('#' + viewId);
+  // ======================
+  // HELPERS
+  // ======================
+  function removeEntireBlock($view) {
+    // Removes title + table + spacing
+    const $group = $view.closest('.view-group');
+    ($group.length ? $group : $view).remove();
+  }
+
+  function gridHasRealRows($view) {
+    const $rows = $view.find('tbody tr');
+    if (!$rows.length) return false;
+    return $rows.filter('.kn-tr-nodata').length === 0;
+  }
+
+  function styleWarningHeader(viewId) {
+    const $view = $('#' + viewId);
+    if (!$view.length) return;
+
     const $header = $view.find('.view-header');
+    if ($header.length) {
+      $header.css({
+        background: HEADER_BG,
+        color: '#fff',
+        padding: '8px 12px',
+        borderRadius: '4px'
+      });
+    }
 
-    if (!$header.length) return;
+    // Inject icon into the actual clickable KTL button
+    const $btn = $('#hideShow_' + viewId + '_button');
+    if ($btn.length && !$btn.find('.scw-warning-icon').length) {
+      $btn.prepend(ICON_HTML);
+      return;
+    }
 
-    // Style header
-    $header.css({
-      background: HEADER_BG,
-      color: '#fff',
-      padding: '8px 12px',
-      borderRadius: '4px'
-    });
+    // Fallback: title element
+    const $title = $view.find('.view-header .kn-title');
+    if ($title.length && !$title.find('.scw-warning-icon').length) {
+      $title.prepend(ICON_HTML);
+    }
+  }
 
-    // Title element
-    const $title = $header.find('.kn-title');
+  // ======================
+  // MAIN HANDLER
+  // ======================
+  function handleView(view, data) {
+    const viewId = view.key;
+    const $view = $('#' + viewId);
+    if (!$view.length) return;
 
-    // Prevent double-icon injection
-    if ($title.find('.scw-warning-icon').length === 0) {
-      $title.prepend(
-        '<span class="scw-warning-icon" style="margin-right:8px;">⚠️</span>'
-      );
+    // Preferred: Knack record count
+    if (data && typeof data.total_records === 'number') {
+      if (data.total_records === 0) {
+        removeEntireBlock($view);
+      } else {
+        styleWarningHeader(viewId);
+      }
+      return;
+    }
+
+    // Fallback: DOM inspection
+    if (gridHasRealRows($view)) {
+      styleWarningHeader(viewId);
+    } else {
+      removeEntireBlock($view);
     }
   }
 
@@ -3158,11 +3173,7 @@ $(".kn-navigation-bar").hide();
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function (event, view, data) {
       if (!view || !VIEW_IDS.includes(view.key)) return;
-
-      // If there ARE records, flag it visually
-      if (data && typeof data.total_records === 'number' && data.total_records > 0) {
-        styleHeader(view.key);
-      }
+      handleView(view, data);
     });
 })();
 
