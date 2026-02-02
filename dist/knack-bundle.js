@@ -3107,13 +3107,17 @@ $(".kn-navigation-bar").hide();
         overflow: hidden !important;
       }
 
-      /* === KTL button should ALSO be red (this is what you lost) === */
+      /* === KTL button should ALSO be red === */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
         display: flex !important;
-        align-items: left !important;
-        width: 100% !important;
+        align-items: center !important;          /* vertical */
+        justify-content: flex-start !important;  /* left */
+        gap: 12px !important;                   /* spacing between icon + text */
 
-        background-color: ${WARNING_BG} !important;   /* <- key change */
+        width: 100% !important;
+        min-height: 44px !important;
+
+        background-color: ${WARNING_BG} !important;
         color: ${WARNING_FG} !important;
 
         padding: 12px 18px !important;
@@ -3128,11 +3132,13 @@ $(".kn-navigation-bar").hide();
         color: ${WARNING_FG} !important;
       }
 
-      /* Icon spacing */
+      /* Icon: make it unmissable */
       .kn-view.scw-exception-grid-active .scw-exception-icon{
         display: inline-flex !important;
-        align-items: left !important;
-        margin-right: 12px !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex: 0 0 auto !important;
+        font-size: 1.1em !important;
         line-height: 1 !important;
       }
 
@@ -3171,6 +3177,7 @@ $(".kn-navigation-bar").hide();
 
     const $btn = $('#hideShow_' + viewId + '_button');
     if ($btn.length && !$btn.find('.scw-exception-icon').length) {
+      // put icon first inside the button
       $btn.prepend('<span class="scw-exception-icon" aria-hidden="true">⚠️</span>');
     }
   }
@@ -3209,7 +3216,8 @@ $(".kn-navigation-bar").hide();
       if (!view || !VIEW_IDS.includes(view.key)) return;
       handleView(view, data);
     });
-})()
+})();
+/*************  Exception Grid: hide if empty, warn if any records  **************************/
 
 (function () {
   const applyCheckboxGrid = () => {
