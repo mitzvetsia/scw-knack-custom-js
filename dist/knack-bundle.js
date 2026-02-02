@@ -3110,14 +3110,13 @@ $(".kn-navigation-bar").hide();
       /* === KTL button should ALSO be red (this is what you lost) === */
       .kn-view.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]{
         display: flex !important;
-        align-items: center !important;
+        align-items: left !important;
         width: 100% !important;
 
         background-color: ${WARNING_BG} !important;   /* <- key change */
         color: ${WARNING_FG} !important;
 
         padding: 12px 18px !important;
-        border-radius: 20px !important;
 
         border: 0 !important;
         box-shadow: none !important;
@@ -3132,7 +3131,7 @@ $(".kn-navigation-bar").hide();
       /* Icon spacing */
       .kn-view.scw-exception-grid-active .scw-exception-icon{
         display: inline-flex !important;
-        align-items: center !important;
+        align-items: left !important;
         margin-right: 12px !important;
         line-height: 1 !important;
       }
