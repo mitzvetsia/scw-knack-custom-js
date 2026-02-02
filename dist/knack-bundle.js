@@ -3150,6 +3150,15 @@ $(".kn-navigation-bar").hide();
         line-height: 1;
       }
 
+      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_${PRIMARY_VIEW_ID}_"][id$="_button"]::after,
+      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]::after{
+        content: "⚠️";
+        display: inline-block;
+        margin-right: 12px;
+        line-height: 1;
+      }
+
+
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_${PRIMARY_VIEW_ID}_"][id$="_button"]:hover,
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]:hover{
         filter: brightness(1.06);
