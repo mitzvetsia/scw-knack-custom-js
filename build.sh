@@ -28,6 +28,7 @@ cat \
   src/features/instructions-placement.js \
   src/features/sales-edit-proposal-refresh-controls.js \
   src/features/hide-grid-0-records.js \
+  src/features/warning-grid.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \
   src/features/legacy/add-checkboxes.js \
