@@ -3124,7 +3124,7 @@ $(".kn-navigation-bar").hide();
   const EVENT_NS = '.scwExceptionHeader';
 
   // SCW-ish dark blue (tweak if you want)
-  const HEADER_BG = '#0b3a5a';
+  const HEADER_BG = '#950606';
 
   function styleHeader(viewId) {
     const $view   = $('#' + viewId);
