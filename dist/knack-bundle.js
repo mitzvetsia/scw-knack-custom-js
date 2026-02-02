@@ -3079,8 +3079,13 @@ $(".kn-navigation-bar").hide();
 /**
  * Exception Grid Handler
  *
- * - 0 records  → hide entire view group
- * - ≥1 record → highlight header as warning
+ * - 0 records  → hide entire view group (title + table + whitespace)
+ * - ≥1 record → highlight header as WARNING (dark red background, white text, icon)
+ *
+ * Notes:
+ * - Uses data.total_records when available
+ * - Falls back to DOM check (kn-tr-nodata) when total_records is missing
+ * - KTL-friendly: styles the hide/show button (#hideShow_<viewId>_button)
  */
 
 (function () {
@@ -3089,11 +3094,12 @@ $(".kn-navigation-bar").hide();
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3364'];
+  const VIEW_IDS = ['view_3364']; // add more views as needed
   const EVENT_NS = '.scwExceptionGrid';
 
-  const HEADER_BG = '#950606'; // dark red
-  const ICON_HTML =
+  // WARNING header style
+  const WARNING_BG = '#7a0f16'; // dark red
+  const WARNING_ICON_HTML =
     '<span class="scw-warning-icon fa fa-exclamation-triangle" ' +
     'style="margin-right:8px;"></span>';
 
@@ -3101,7 +3107,7 @@ $(".kn-navigation-bar").hide();
   // HELPERS
   // ======================
   function removeEntireBlock($view) {
-    // Removes title + table + spacing
+    // Removes title + table + spacing (preferred in Knack layouts)
     const $group = $view.closest('.view-group');
     ($group.length ? $group : $view).remove();
   }
@@ -3109,46 +3115,60 @@ $(".kn-navigation-bar").hide();
   function gridHasRealRows($view) {
     const $rows = $view.find('tbody tr');
     if (!$rows.length) return false;
-    return $rows.filter('.kn-tr-nodata').length === 0;
+    // If the "No data" row exists, treat as empty
+    if ($rows.filter('.kn-tr-nodata').length) return false;
+    return true;
   }
 
   function styleWarningHeader(viewId) {
     const $view = $('#' + viewId);
     if (!$view.length) return;
 
-    const $header = $view.find('.view-header');
-    if ($header.length) {
-      $header.css({
-        background: HEADER_BG,
+    // KTL hide/show button is the visible header bar in your DOM
+    const $btn = $('#hideShow_' + viewId + '_button');
+
+    if ($btn.length) {
+      $btn.css({
+        background: WARNING_BG,
+        color: '#fff',
+        padding: '8px 12px',
+        borderRadius: '4px',
+        display: 'inline-flex',
+        alignItems: 'center'
+        // Optional full-width bar:
+        // width: '100%'
+      });
+
+      // Prevent duplicate icon on re-render
+      if ($btn.find('.scw-warning-icon').length === 0) {
+        $btn.prepend(WARNING_ICON_HTML);
+      }
+
+      return;
+    }
+
+    // Fallback (non-KTL header)
+    const $title = $view.find('.view-header .kn-title');
+    if ($title.length) {
+      $title.css({
+        background: WARNING_BG,
         color: '#fff',
         padding: '8px 12px',
         borderRadius: '4px'
       });
-    }
 
-    // Inject icon into the actual clickable KTL button
-    const $btn = $('#hideShow_' + viewId + '_button');
-    if ($btn.length && !$btn.find('.scw-warning-icon').length) {
-      $btn.prepend(ICON_HTML);
-      return;
-    }
-
-    // Fallback: title element
-    const $title = $view.find('.view-header .kn-title');
-    if ($title.length && !$title.find('.scw-warning-icon').length) {
-      $title.prepend(ICON_HTML);
+      if ($title.find('.scw-warning-icon').length === 0) {
+        $title.prepend(WARNING_ICON_HTML);
+      }
     }
   }
 
-  // ======================
-  // MAIN HANDLER
-  // ======================
   function handleView(view, data) {
     const viewId = view.key;
     const $view = $('#' + viewId);
     if (!$view.length) return;
 
-    // Preferred: Knack record count
+    // Preferred: Knack-provided record count
     if (data && typeof data.total_records === 'number') {
       if (data.total_records === 0) {
         removeEntireBlock($view);
