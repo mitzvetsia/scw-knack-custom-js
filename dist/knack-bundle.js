@@ -3128,7 +3128,7 @@ $(".kn-navigation-bar").hide();
         box-sizing: border-box !important;
 
         border-top-left-radius: ${RADIUS}px !important;
-        border-top-right-radius: ${RADIUS}px !important;
+        border-top-right-radius: 0 !important;
         border-bottom-left-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
       }
@@ -3159,7 +3159,98 @@ $(".kn-navigation-bar").hide();
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        hei
+        height: 1.1em;
+        line-height: 1;
+        pointer-events: none;
+      }
+
+      /* Arrow pinned right */
+      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton .ktlArrow{
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%) rotate(-90deg);
+      }
+
+      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton:hover{
+        filter: brightness(1.06);
+      }
+
+      /* FOLLOW view continuity */
+      #${FOLLOW_VIEW_ID}.scw-exception-follow-connected{
+        border-top-left-radius: 0 !important;
+        border-top-right-radius: 0 !important;
+      }
+    `;
+
+    const style = document.createElement('style');
+    style.id = id;
+    style.appendChild(document.createTextNode(css));
+    document.head.appendChild(style);
+  }
+
+  // ======================
+  // HELPERS
+  // ======================
+  function removeOnlyPrimaryView() {
+    $('#' + PRIMARY_VIEW_ID).remove();
+    syncFollowView(false);
+  }
+
+  function syncFollowView(active) {
+    const $follow = $('#' + FOLLOW_VIEW_ID);
+    if (!$follow.length) return;
+    $follow.toggleClass('scw-exception-follow-connected', !!active);
+  }
+
+  function gridHasRealRows($view) {
+    const $rows = $view.find('tbody tr');
+    if (!$rows.length) return false;
+    return !$rows.filter('.kn-tr-nodata').length;
+  }
+
+  function markPrimaryActive() {
+    const $primary = $('#' + PRIMARY_VIEW_ID);
+    if (!$primary.length) return;
+    $primary.addClass('scw-exception-grid-active');
+    syncFollowView(true);
+  }
+
+  function handlePrimary(view, data) {
+    if (!view || view.key !== PRIMARY_VIEW_ID) return;
+
+    const $primary = $('#' + PRIMARY_VIEW_ID);
+    if (!$primary.length) return;
+
+    if (data && typeof data.total_records === 'number') {
+      if (data.total_records === 0) removeOnlyPrimaryView();
+      else markPrimaryActive();
+      return;
+    }
+
+    if (gridHasRealRows($primary)) markPrimaryActive();
+    else removeOnlyPrimaryView();
+  }
+
+  function syncIfFollowRendersLater(view) {
+    if (!view || view.key !== FOLLOW_VIEW_ID) return;
+    const active = $('#' + PRIMARY_VIEW_ID).hasClass('scw-exception-grid-active');
+    syncFollowView(active);
+  }
+
+  // ======================
+  // INIT
+  // ======================
+  injectCssOnce();
+
+  $(document)
+    .off('knack-view-render.any' + EVENT_NS)
+    .on('knack-view-render.any' + EVENT_NS, function (event, view, data) {
+      handlePrimary(view, data);
+      syncIfFollowRendersLater(view);
+    });
+})();
+/*************  Exception Grid: hide if empty, warn if any records  **************************/
 
 (function () {
   const applyCheckboxGrid = () => {
