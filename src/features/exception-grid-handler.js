@@ -22,7 +22,7 @@
     const css = `
       /* Card background (your working :has() pattern) */
       .kn-view.scw-exception-grid-active:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
-        margin-bottom: 2px !important;
+        margin-bottom: 0px !important;
         background-color: ${WARNING_BG} !important;
         max-width: 100% !important;
 
@@ -50,7 +50,7 @@
         box-sizing: border-box !important;
 
         border-top-left-radius: ${RADIUS}px !important;
-        border-top-right-radius: ${RADIUS}px !important;
+        border-top-right-radius: 0 !important;
         border-bottom-left-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
       }
