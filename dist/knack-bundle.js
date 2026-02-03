@@ -3080,9 +3080,6 @@ $(".kn-navigation-bar").hide();
 (function () {
   'use strict';
 
-  // ======================
-  // CONFIG
-  // ======================
   const PRIMARY_VIEW_ID = 'view_3364';
   const FOLLOW_VIEW_ID  = 'view_3359';
 
@@ -3091,16 +3088,13 @@ $(".kn-navigation-bar").hide();
   const WARNING_FG = '#ffffff';
   const RADIUS = 20;
 
-  // ======================
-  // CSS (ONCE)
-  // ======================
   function injectCssOnce() {
     const id = 'scw-exception-grid-css';
     if (document.getElementById(id)) return;
 
     const css = `
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active:has(.ktlHideShowButton){
-        margin-bottom: 2px !important;
+        margin-bottom: 0px !important;
         background-color: ${WARNING_BG} !important;
         max-width: 100% !important;
 
@@ -3137,7 +3131,7 @@ $(".kn-navigation-bar").hide();
         color: ${WARNING_FG} !important;
       }
 
-      /* LEFT icon – centered (FIX) */
+      /* LEFT icon – centered */
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton::before{
         content: "⚠️";
         display: inline-flex;
@@ -3149,7 +3143,7 @@ $(".kn-navigation-bar").hide();
         margin-right: 12px;
       }
 
-      /* RIGHT icon – centered + positioned (FIX) */
+      /* RIGHT icon – positioned */
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton::after{
         content: "⚠️";
         position: absolute;
@@ -3164,19 +3158,20 @@ $(".kn-navigation-bar").hide();
         pointer-events: none;
       }
 
-      /* Arrow pinned right */
+      /* ✅ Arrow pinned right + vertically centered WITHOUT transform (prevents KTL transform collisions) */
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton .ktlArrow{
         position: absolute;
         right: 12px;
-        top: 50%;
-        transform: translateY(-50%) rotate(-90deg);
+        top: 0;
+        bottom: 0;
+        margin: auto 0;
+        height: 1em;
       }
 
       #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton:hover{
         filter: brightness(1.06);
       }
 
-      /* FOLLOW view continuity */
       #${FOLLOW_VIEW_ID}.scw-exception-follow-connected{
         border-top-left-radius: 0 !important;
         border-top-right-radius: 0 !important;
@@ -3189,9 +3184,6 @@ $(".kn-navigation-bar").hide();
     document.head.appendChild(style);
   }
 
-  // ======================
-  // HELPERS
-  // ======================
   function removeOnlyPrimaryView() {
     $('#' + PRIMARY_VIEW_ID).remove();
     syncFollowView(false);
@@ -3238,9 +3230,6 @@ $(".kn-navigation-bar").hide();
     syncFollowView(active);
   }
 
-  // ======================
-  // INIT
-  // ======================
   injectCssOnce();
 
   $(document)
