@@ -1721,7 +1721,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     //cameras or readers
     '6481e5ba38f283002898113c': [
       ['field_2182', 'REL_scope of work'],
-      ['field_2211', 'REL_mdf-idf_required'],
+      ['field_2211', 'REL_mdf-idf_mandatory single select'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2193', 'REL_products_cameras+cabling'],
       ['field_2206', 'REL_product accessories'],
@@ -1734,7 +1734,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     //networking or headend
     '647953bb54b4e1002931ed97': [
       ['field_2182', 'REL_scope of work'],
-      ['field_2211', 'REL_mdf-idf_required'],
+      ['field_2180', 'REL_mdf-idf_mandatory multi select'],
       ['field_2194', 'REL_products_for networking'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2246', 'REL_unified product field'],
@@ -1743,7 +1743,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     //other equipment
     '5df12ce036f91b0015404d78': [
       ['field_2182', 'REL_scope of work'],
-      ['field_2211', 'REL_mdf-idf_required'],
+      ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2195', 'REL_products_for other equipment'],
       ['field_2246', 'REL_unified product field'],
       ['field_2183', 'INPUT_product quantity'],
@@ -1751,7 +1751,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     //service
     '6977caa7f246edf67b52cbcd': [
       ['field_2182', 'REL_scope of work'],
-      ['field_2180', 'REL_mdf-idf_optional'],
+      ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2233', 'INPUT_exepcted sub bid #'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2210', 'INPUT_service description'],
@@ -1759,7 +1759,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     //assumptions
     '697b7a023a31502ec68b3303': [
       ['field_2182', 'REL_scope of work'],
-      ['field_2250', 'REL_mdf-idf multi select for assumptions'],
+      ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2248', 'REL_products for assumptions'],
     ],
     //licenses
