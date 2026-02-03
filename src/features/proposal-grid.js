@@ -24,7 +24,7 @@
  *  - ✅ Hide Level-2 footer subtotal row when L2 label is "Assumptions" OR record ID is 697b7a023a31502ec68b3303
  *
  * PATCH (2026-02-03c):
- *  - ✅ Reorder Level-1 groups by numeric sort field (field_2252) using DOM reflow (Option 2)
+ *  - ✅ Reorder Level-2 groups by numeric sort field (field_2252) using DOM reflow (Option 2)
  */
 (function () {
   'use strict';
@@ -45,8 +45,8 @@
   const HARDWARE_FIELD_KEY = 'field_2201';
   const COST_FIELD_KEY = 'field_2203';
 
-  // ✅ NEW: L1 sort key (numeric field on the record rows within each L1 group)
-  const L1_SORT = {
+  // ✅ NEW: L2 sort key (numeric field on record rows within each L2 group)
+  const L2_SORT = {
     enabled: true,
     sortFieldKey: 'field_2252', // number field
     missingSortGoesLast: true,
@@ -349,21 +349,27 @@
   }
 
   // ======================
-  // ✅ L1 GROUP REORDER (Option 2)
+  // ✅ L2 GROUP REORDER (Option 2) — within each L1 section
   // ======================
 
-  function getSortValueForL1Block(startL1El, nextL1El) {
-    // Scan for first data row within this L1 section and read td.field_2252
-    let cur = startL1El.nextElementSibling;
+  function getSortValueForL2Block(l2HeaderEl, stopEl) {
+    // Scan forward until stopEl (next L2 or next L1 or end) and read td.field_2252 from first data row found
+    let cur = l2HeaderEl.nextElementSibling;
 
-    while (cur && cur !== nextL1El) {
+    while (cur && cur !== stopEl) {
       if (cur.id && cur.tagName === 'TR') {
-        const cell = cur.querySelector(`td.${L1_SORT.sortFieldKey}`);
+        const cell = cur.querySelector(`td.${L2_SORT.sortFieldKey}`);
         if (cell) {
           const raw = norm(cell.textContent || '');
           const num = parseFloat(String(raw).replace(/[^\d.-]/g, ''));
           if (Number.isFinite(num)) return num;
         }
+      }
+      // stop if we hit any group header that is <= level 2 (safety)
+      if (cur.classList?.contains('kn-table-group')) {
+        const m = cur.className.match(/kn-group-level-(\d+)/);
+        const lvl = m ? parseInt(m[1], 10) : null;
+        if (lvl !== null && lvl <= 2) break;
       }
       cur = cur.nextElementSibling;
     }
@@ -371,56 +377,98 @@
     return null;
   }
 
-  function reorderLevel1GroupsBySortField($tbody, viewId, runId) {
-    if (!L1_SORT.enabled) return;
+  function reorderLevel2GroupsBySortField($tbody, viewId, runId) {
+    if (!L2_SORT.enabled) return;
     const tbody = $tbody?.[0];
     if (!tbody) return;
 
-    // Prevent thrash if Knack re-triggers within the same render tick
-    const stampKey = 'scwL1ReorderStamp';
+    // prevent repeated work per render cycle
+    const stampKey = 'scwL2ReorderStamp';
     if (tbody.dataset[stampKey] === String(runId)) return;
     tbody.dataset[stampKey] = String(runId);
 
-    const l1 = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
-    if (l1.length < 2) return;
+    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
+    if (!l1Headers.length) return;
 
-    const blocks = l1.map((l1El, idx) => {
-      const nextL1El = idx + 1 < l1.length ? l1[idx + 1] : null;
+    const missing = L2_SORT.missingSortGoesLast ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
 
-      // Capture nodes for this L1 block: header + everything until next L1
-      const nodes = [];
-      let cur = l1El;
+    for (let i = 0; i < l1Headers.length; i++) {
+      const l1El = l1Headers[i];
+      const nextL1El = i + 1 < l1Headers.length ? l1Headers[i + 1] : null;
+
+      // Collect all nodes in this L1 section (excluding the L1 header itself)
+      const sectionNodes = [];
+      let cur = l1El.nextElementSibling;
       while (cur && cur !== nextL1El) {
-        nodes.push(cur);
+        sectionNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+      if (!sectionNodes.length) continue;
+
+      // Find L2 headers within this section
+      const l2Headers = sectionNodes.filter(
+        (n) =>
+          n.classList &&
+          n.classList.contains('kn-table-group') &&
+          n.classList.contains('kn-group-level-2')
+      );
+      if (l2Headers.length < 2) continue;
+
+      const firstL2 = l2Headers[0];
+
+      // Preserve any nodes BEFORE the first L2 (rare, but safe)
+      const prefixNodes = [];
+      cur = l1El.nextElementSibling;
+      while (cur && cur !== nextL1El && cur !== firstL2) {
+        prefixNodes.push(cur);
         cur = cur.nextElementSibling;
       }
 
-      const sortVal = getSortValueForL1Block(l1El, nextL1El);
-      return {
-        idx,
-        sortVal,
-        nodes,
-      };
-    });
+      // Build L2 blocks: header + everything until next L2 or next L1
+      const blocks = l2Headers.map((l2El, idx) => {
+        const nextL2El = idx + 1 < l2Headers.length ? l2Headers[idx + 1] : null;
 
-    const missing = L1_SORT.missingSortGoesLast ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+        const nodes = [];
+        let n = l2El;
+        while (n && n !== nextL1El && n !== nextL2El) {
+          nodes.push(n);
+          n = n.nextElementSibling;
+        }
 
-    blocks.sort((a, b) => {
-      const av = Number.isFinite(a.sortVal) ? a.sortVal : missing;
-      const bv = Number.isFinite(b.sortVal) ? b.sortVal : missing;
-      if (av !== bv) return av - bv;
-      return a.idx - b.idx; // stable
-    });
+        const sortVal = getSortValueForL2Block(l2El, nextL2El || nextL1El);
+        return { idx, sortVal, nodes };
+      });
 
-    const frag = document.createDocumentFragment();
-    for (const block of blocks) {
-      for (const node of block.nodes) frag.appendChild(node); // moves node
+      // Anything after the last L2 block but before next L1 (again, rare)
+      const lastBlockLastNode = blocks[blocks.length - 1].nodes[blocks[blocks.length - 1].nodes.length - 1];
+      const suffixNodes = [];
+      cur = lastBlockLastNode ? lastBlockLastNode.nextElementSibling : null;
+      while (cur && cur !== nextL1El) {
+        suffixNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+
+      // Sort blocks by numeric sortVal
+      blocks.sort((a, b) => {
+        const av = Number.isFinite(a.sortVal) ? a.sortVal : missing;
+        const bv = Number.isFinite(b.sortVal) ? b.sortVal : missing;
+        if (av !== bv) return av - bv;
+        return a.idx - b.idx; // stable
+      });
+
+      // Reinsert: prefixNodes + sorted blocks + suffixNodes, placed immediately after L1 header
+      const frag = document.createDocumentFragment();
+      for (const n of prefixNodes) frag.appendChild(n); // moves node
+      for (const block of blocks) for (const n of block.nodes) frag.appendChild(n);
+      for (const n of suffixNodes) frag.appendChild(n);
+
+      // Insert before nextL1El (or append at end); nodes are already moved out of place by fragment appends
+      if (nextL1El) tbody.insertBefore(frag, nextL1El);
+      else tbody.appendChild(frag);
     }
 
-    // Clear and re-append (tbody now contains only what wasn't moved; should be empty)
-    tbody.appendChild(frag);
-    // Debug hook if you ever need it:
-    // console.debug(`[SCW totals][${viewId}] Reordered L1 groups by ${L1_SORT.sortFieldKey}`, blocks.map(b => ({i:b.idx, sort:b.sortVal})));
+    // Debug hook:
+    // console.debug(`[SCW totals][${viewId}] Reordered L2 groups by ${L2_SORT.sortFieldKey}`);
   }
 
   // ======================
@@ -1043,8 +1091,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       .find(`tr.kn-table-group.kn-group-level-3.${L2_SPECIALS.classOnLevel3}`)
       .removeClass(L2_SPECIALS.classOnLevel3);
 
-    // ✅ Reorder L1 groups BEFORE we compute blocks/totals and before label rewrites
-    reorderLevel1GroupsBySortField($tbody, view.key, runId);
+    // ✅ Reorder L2 groups BEFORE computing blocks/totals and BEFORE label rewrites
+    reorderLevel2GroupsBySortField($tbody, view.key, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
@@ -1191,10 +1239,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       }
 
       if (level === 1 || level === 2) {
-        // ✅ Use stable label for L1; and for L2 use sectionContext.level2 (already extracted)
         const levelInfo = level === 2 ? sectionContext.level2 : getLevel2InfoFromGroupRow($groupRow);
 
-        // ✅ NEW: skip enqueueing L2 footer for assumptions (label or record id)
         if (level === 2 && shouldHideLevel2Footer(levelInfo)) {
           return;
         }
