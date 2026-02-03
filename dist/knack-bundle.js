@@ -449,13 +449,14 @@ window.SCW = window.SCW || {};
   }
 
   // ======================
-  // CSS (INJECTED) — NOW APPLIES TO ALL VIEW_IDS
+  // CSS (INJECTED) — FIXED MULTI-VIEW SELECTORS
   // ======================
 
   let cssInjected = false;
   function injectCssOnce() {
     if (cssInjected) return;
 
+    // If the style tag already exists (navigation back/forward or multiple bundles), don't duplicate.
     if (document.getElementById('scw-totals-css')) {
       cssInjected = true;
       return;
@@ -464,7 +465,13 @@ window.SCW = window.SCW || {};
     cssInjected = true;
 
     const sceneSelectors = STYLE_SCENE_IDS.map((id) => `#kn-${id}`).join(', ');
-    const viewSelectors = VIEW_IDS.map((id) => `#${id}`).join(', ');
+
+    // ✅ IMPORTANT: build a comma-list where EACH selector includes the suffix
+    //    e.g. sel('.kn-pagination .kn-select') =>
+    //    "#view_3301 .kn-pagination .kn-select, #view_3341 .kn-pagination .kn-select, #view_3371 .kn-pagination .kn-select"
+    function sel(suffix) {
+      return VIEW_IDS.map((id) => `#${id}${suffix.startsWith('>') ? ' ' : ' '}${suffix}`.replace('  ', ' ')).join(', ');
+    }
 
     const style = document.createElement('style');
     style.id = 'scw-totals-css';
@@ -497,17 +504,23 @@ tr.scw-hide-level4-header { display: none !important; }
 
 
 /* ============================================================
-   YOUR PROVIDED CSS (generalized to all VIEW_IDS)
+   YOUR PROVIDED CSS — APPLIED TO ALL VIEW_IDS (correctly)
    ============================================================ */
 
 /********************* OVERAL -- GRID ***********************/
 ${sceneSelectors} h2 {font-weight: 800; color: #07467c; font-size: 24px;}
-${viewSelectors} .kn-pagination .kn-select { display: none !important;}
-${viewSelectors} > div.kn-records-nav > div.level > div.level-left > div.kn-entries-summary {display: none;}
-${viewSelectors} .kn-table tbody tr[id] {display: none !important;}
 
-${viewSelectors} .kn-table th, ${viewSelectors} .kn-table td { border-left: none !important; border-right: none !important; }
-${viewSelectors} .kn-table tbody td { vertical-align: middle; }
+${sel('.kn-pagination .kn-select')} { display: none !important; }
+${sel('> div.kn-records-nav > div.level > div.level-left > div.kn-entries-summary')} { display: none !important; }
+
+/* This hides all data rows (leaves only group headers + totals rows) */
+${sel('.kn-table tbody tr[id]')} { display: none !important; }
+
+/* Hide vertical borders in the grid */
+${sel('.kn-table th')},
+${sel('.kn-table td')} { border-left: none !important; border-right: none !important; }
+
+${sel('.kn-table tbody td')} { vertical-align: middle; }
 /********************* OVERAL -- GRID ***********************/
 
 
@@ -526,7 +539,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-1 {
 ${sceneSelectors} .kn-table-group.kn-group-level-1 td:first-child {font-size: 24px; font-weight: 200 !important;}
 ${sceneSelectors} .kn-table-group.kn-group-level-1 td {border-bottom-width: 20px !important; border-color: #07467c !important;}
 
-${viewSelectors} tr.scw-subtotal--level-1 td {
+${sel('tr.scw-subtotal--level-1 td')} {
   background: RGB(7, 70, 124, 1);
   border-top:1px solid #dadada;
   font-weight:600;
@@ -536,8 +549,8 @@ ${viewSelectors} tr.scw-subtotal--level-1 td {
   border-color: transparent;
   font-size: 16px;
 }
-${viewSelectors} tr.scw-grand-total-sep td { height:10px; background:transparent; border:none !important; }
-${viewSelectors} tr.scw-grand-total-row td {
+${sel('tr.scw-grand-total-sep td')} { height:10px; background:transparent; border:none !important; }
+${sel('tr.scw-grand-total-row td')} {
   background:white;
   border-top:2px solid #bbb !important;
   font-weight:800;
@@ -557,7 +570,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-2 {
 }
 ${sceneSelectors} .kn-table-group.kn-group-level-2 td {padding: 5px 0px 5px 20px !important; border-top: 20px solid transparent !important;}
 
-${viewSelectors} tr.scw-subtotal--level-2 td {
+${sel('tr.scw-subtotal--level-2 td')} {
   background: aliceblue;
   border-top:1px solid #dadada;
   font-weight:800 !important;
@@ -566,7 +579,7 @@ ${viewSelectors} tr.scw-subtotal--level-2 td {
   border-bottom-width: 20px !important;
   border-color: transparent;
 }
-${viewSelectors} tr.scw-subtotal--level-2 td:first-child {text-align: right !important;}
+${sel('tr.scw-subtotal--level-2 td:first-child')} {text-align: right !important;}
 /********************* LEVEL 2 (BUCKET) ***********************/
 
 
@@ -576,7 +589,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td {padding-top: 10px !import
 ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {font-size: 20px;}
 ${sceneSelectors} .kn-table-group.kn-group-level-3 td:nth-last-child(-n+3) {font-weight:600 !important;}
 
-${viewSelectors} tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first-child {
+${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first-child')} {
   padding-left: 80px !important;
   font-size: 14px !important;
   font-weight: 400 !important;
@@ -593,8 +606,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 .scw-l4-2019 b {font-weight: 600 !important;}
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
+
     document.head.appendChild(style);
   }
+
 
   // ======================
   // RECORD-ID EXTRACTION
