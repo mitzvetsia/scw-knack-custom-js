@@ -1820,7 +1820,7 @@ style.textContent = `
   const CONFIG = [
     {
       scenes: ["any"],            // or ["scene_123", "scene_456"]
-      viewIds: ["view_XXXX"],     // <-- put your form view id(s) here
+      viewIds: ["view_3329"],     // <-- put your form view id(s) here
       parentFieldKeys: ["field_2193", "field_2194", "field_2195"],
       unifiedFieldKey: "field_2246",
     },
