@@ -1635,6 +1635,7 @@ style.textContent = `
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2186', 'INPUT_DROP: mount_cable_both'],
+      ['field_2246', 'REL_unified product field'],
       ['field_2187', 'INPUT_DROP: variables'],
     ],
     //networking or headend
@@ -1651,6 +1652,7 @@ style.textContent = `
       ['field_2182', 'REL_scope of work'],
       ['field_2211', 'REL_mdf-idf_required'],
       ['field_2195', 'REL_products_for other equipment'],
+      ['field_2246', 'REL_unified product field'],
       ['field_2183', 'INPUT_product quantity'],
     ],
     //service
