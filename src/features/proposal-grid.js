@@ -1,6 +1,3 @@
-
-
-/////************* PROPOSAL VIEW OF SOW (effective Q1 2026) ***************//////
 /////************* PROPOSAL VIEW OF SOW (effective Q1 2026) ***************//////
 /**
  * SCW Totals Script - Optimized Version
@@ -14,6 +11,7 @@
  *  - ✅ NEW: When Level-2 is "Mounting Hardware", inject camera label list into Level-3 header (not Level-4)
  *  - ✅ FIX: Mounting Hardware L3 concat gating is centralized + normalized (no brittle string match inside injector)
  *  - ✅ NEW PATCH (2026-01-30): Hide stray blank Level-4 header rows (Knack creates a group for empty L4 grouping values)
+ *  - ✅ RESTORE PATCH (2026-02-02): Inject field_2020 limited HTML (<b>, <br>) into L4 summary header (span)
  */
 (function () {
   'use strict';
@@ -30,6 +28,9 @@
   const LABOR_FIELD_KEY = 'field_2028';
   const HARDWARE_FIELD_KEY = 'field_2201';
   const COST_FIELD_KEY = 'field_2203';
+
+  // ✅ RESTORED: limited-HTML note injection into Level-4 group header label cell
+  const L4_HTML_NOTE_FIELD_KEY = 'field_2020';
 
   // ✅ Hide L3 group header if product-name group label is blank-ish
   const HIDE_LEVEL3_WHEN_FIELD_BLANK = {
@@ -240,7 +241,7 @@
     return value;
   }
 
-  // ✅ NEW: read group label text (works for L3/L4)
+  // ✅ read group label text (works for L3/L4)
   function getGroupLabelText($groupRow) {
     const $td = $groupRow.children('td').first();
     return $td.length ? norm($td.text()) : '';
@@ -258,6 +259,7 @@
       tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
       .scw-concat-cameras { line-height: 1.2; }
       .scw-l4-2019 { line-height: 1.2; }
+      .scw-l4-2020 { display: inline-block; margin-top: 2px; line-height: 1.2; }
       .scw-each { line-height: 1.1; }
       .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
 
@@ -546,9 +548,10 @@
   }
 
   // ======================
-  // FIELD_2019 INJECTION
+  // FIELD_2019 / FIELD_2020 INJECTION
   // ======================
 
+  // ✅ 2019 stays non-destructive (appends/updates a container instead of overwriting the whole label cell)
   function injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId }) {
     if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
     if ($groupRow.data('scwL4_2019_RunId') === runId) return;
@@ -571,7 +574,47 @@
 
     if (!textContent) return;
 
-    labelCell.innerHTML = `<div class="scw-l4-2019">${html}</div>`;
+    let container = labelCell.querySelector('.scw-l4-2019');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'scw-l4-2019';
+      labelCell.appendChild(container);
+    }
+    container.innerHTML = html;
+  }
+
+  // ✅ RESTORED: pull field_2020 HTML, allow only <b>/<br>, inject into a span in the L4 header label cell
+  function injectField2020IntoLevel4SummarySpan({ level, $groupRow, $rowsToSum, runId }) {
+    if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
+    if ($groupRow.data('scwL4_2020_RunId') === runId) return;
+    $groupRow.data('scwL4_2020_RunId', runId);
+
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return;
+
+    const firstRow = $rowsToSum[0];
+    const fieldCell = firstRow ? firstRow.querySelector(`td.${L4_HTML_NOTE_FIELD_KEY}`) : null;
+    if (!fieldCell) return;
+
+    let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
+
+    const textContent = html
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<\/?b>/gi, '')
+      .replace(/&nbsp;/gi, ' ')
+      .trim();
+
+    if (!textContent) return;
+
+    let span = labelCell.querySelector('.scw-l4-2020');
+    if (!span) {
+      // put it on its own line under whatever the label cell currently has
+      labelCell.appendChild(document.createElement('br'));
+      span = document.createElement('span');
+      span.className = 'scw-l4-2020';
+      labelCell.appendChild(span);
+    }
+    span.innerHTML = html;
   }
 
   // ======================
@@ -663,6 +706,7 @@
         'scwConcatRunId',
         'scwConcatL3MountRunId',
         'scwL4_2019_RunId',
+        'scwL4_2020_RunId',
         'scwL3EachRunId',
         'scwHeaderCellsAdded',
       ]);
@@ -770,7 +814,7 @@
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        // ✅ NEW PATCH: hide stray blank L4 header rows
+        // ✅ hide stray blank L4 header rows
         if (HIDE_LEVEL4_WHEN_HEADER_BLANK.enabled) {
           const headerText = getGroupLabelText($groupRow);
 
@@ -781,13 +825,18 @@
             field2019Text = cell2019 ? norm(cell2019.textContent || '') : '';
           }
 
-          if (isBlankish(headerText) && (!HIDE_LEVEL4_WHEN_HEADER_BLANK.requireField2019AlsoBlank || isBlankish(field2019Text))) {
+          if (
+            isBlankish(headerText) &&
+            (!HIDE_LEVEL4_WHEN_HEADER_BLANK.requireField2019AlsoBlank || isBlankish(field2019Text))
+          ) {
             $groupRow.addClass(HIDE_LEVEL4_WHEN_HEADER_BLANK.cssClass);
             // DO NOT return; keep totals/subtotals working for these rows
           }
         }
 
+        // ✅ inject limited HTML blocks into the label cell (non-destructive)
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
+        injectField2020IntoLevel4SummarySpan({ level, $groupRow, $rowsToSum, runId });
 
         const qty = totals[QTY_FIELD_KEY];
         const labor = totals[LABOR_FIELD_KEY];
