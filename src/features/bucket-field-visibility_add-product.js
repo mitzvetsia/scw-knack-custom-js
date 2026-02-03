@@ -1,12 +1,12 @@
-////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL + persistent safe) *************////
+////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL rebuild-proof) *************////
 (function () {
   'use strict';
 
   // ============================================================
-  // CONFIG
+  // CONFIG (multi-form ready)
   // ============================================================
   const EVENT_NS = '.scwBucketRules';
-  const CSS_ID   = 'scw-bucket-visibility-css';
+  const OBS_NS   = '.scwBucketRulesObserver';
 
   const FORMS = [
     {
@@ -71,9 +71,7 @@
           ['field_2242','FLAG_limit to quantity 1'],
         ],
 
-        '6977caa7f246edf67b52cbcd': [
-          // intentionally empty
-        ],
+        '6977caa7f246edf67b52cbcd': [],
 
         '697b7a023a31502ec68b3303': [
           ['field_133','REL_equipment bucket'],
@@ -106,7 +104,7 @@
   ];
 
   // ============================================================
-  // Utilities
+  // Helpers
   // ============================================================
   function compileRules(human) {
     const out = {};
@@ -118,66 +116,77 @@
     return out;
   }
 
-  function rootSelectorsFor(viewKey) {
-    // In your DOM you have BOTH:
-    //   <div class="kn-form ... view_466" id="view_466">
-    //   <section class="hideShow_view_466 ...">
+  function viewRoots(cfg) {
+    // We will re-init against BOTH the Knack view and the KTL wrapper.
+    // KTL can move/rebuild the form, so we treat either as valid roots.
     return [
-      `#${viewKey}`,
-      `.hideShow_${viewKey}`,
-      `.kn-view.${viewKey}`, // extra safety
+      `#${cfg.viewKey}`,
+      `.hideShow_${cfg.viewKey}`,
     ];
   }
 
-  function findRoots(cfg) {
-    const sels = rootSelectorsFor(cfg.viewKey).join(',');
-    return $(sels).filter(function () {
-      return $(this).find('#kn-input-' + cfg.bucketFieldKey).length > 0;
+  function findActiveScopes(cfg) {
+    const roots = viewRoots(cfg).join(',');
+    const $roots = $(roots);
+
+    // Prefer a real <form> if present. Return 0..n scopes (because KTL may duplicate briefly).
+    const scopes = [];
+    $roots.each(function () {
+      const $root = $(this);
+      const $forms = $root.find('form');
+      if ($forms.length) {
+        $forms.each(function () { scopes.push($(this)); });
+      } else if ($root.find('.kn-input').length) {
+        scopes.push($root);
+      }
+    });
+
+    // De-dupe by DOM node
+    const seen = new Set();
+    return scopes.filter(($s) => {
+      const el = $s.get(0);
+      if (!el || seen.has(el)) return false;
+      seen.add(el);
+      return true;
     });
   }
 
-  function pickScope($root) {
-    // Prefer the form element if present; otherwise operate on the root.
-    const $form = $root.find('form').first();
-    return $form.length ? $form : $root;
-  }
-
-  function $wrapForKeyWithinScope($scope, key) {
+  function $wrap($scope, key) {
+    // Works in your DOM (id="kn-input-field_35", data-input-id="field_35")
     let $w = $scope.find('#kn-input-' + key);
     if ($w.length) return $w;
-
     $w = $scope.find('.kn-input[data-input-id="' + key + '"]');
     if ($w.length) return $w;
-
     return $();
   }
 
-  function hideField($scope, key) {
-    const $w = $wrapForKeyWithinScope($scope, key);
-    if ($w.length) $w.removeClass('scw-visible');
+  // ============================================================
+  // HARD OVERRIDE VISIBILITY (inline style)
+  // ============================================================
+  function forceHide($scope, key) {
+    const $w = $wrap($scope, key);
+    if ($w.length) $w.css('display', 'none');
   }
 
-  function showField($scope, key) {
-    const $w = $wrapForKeyWithinScope($scope, key);
-    if ($w.length) $w.addClass('scw-visible');
+  function forceShow($scope, key) {
+    const $w = $wrap($scope, key);
+    if ($w.length) $w.css('display', '');
   }
 
   function hideAllExceptBucket($scope, cfg) {
     (cfg.allFieldKeys || []).forEach((k) => {
       if (k === cfg.bucketFieldKey) return;
-      hideField($scope, k);
+      forceHide($scope, k);
     });
-    showField($scope, cfg.bucketFieldKey);
+    forceShow($scope, cfg.bucketFieldKey);
   }
 
   function findBucketSelect($scope, cfg) {
-    // Underlying select (hidden by Chosen) is still the source of truth.
+    // Underlying select (hidden by Chosen) is still there and has the value (you confirmed .val() works).
     let $sel = $scope.find('#' + cfg.viewKey + '-' + cfg.bucketFieldKey);
     if ($sel.length) return $sel;
-
     $sel = $scope.find('select[name="' + cfg.bucketFieldKey + '"]');
     if ($sel.length) return $sel;
-
     return $();
   }
 
@@ -186,85 +195,113 @@
     return (($sel.val() || '') + '').trim();
   }
 
-  function applyRules($scope, cfg) {
+  function applyRulesToScope($scope, cfg) {
     const bucketValue = getBucketValue($scope, cfg);
 
     hideAllExceptBucket($scope, cfg);
-
-    // If bucket isn't set yet (common on first paint), just keep bucket visible.
     if (!bucketValue) return;
 
-    (cfg._compiledRules[bucketValue] || []).forEach((k) => showField($scope, k));
+    const keys = cfg._compiledRules[bucketValue] || [];
+    keys.forEach((k) => forceShow($scope, k));
   }
 
   // ============================================================
-  // ✅ EARLY CSS (no flash)
+  // BINDINGS (delegated + chosen-safe)
   // ============================================================
-  function injectGlobalCssOnce() {
-    let el = document.getElementById(CSS_ID);
-    if (el) return;
-
-    el = document.createElement('style');
-    el.id = CSS_ID;
-
-    const blocks = FORMS.map((cfg) => {
-      const roots = rootSelectorsFor(cfg.viewKey).join(', ');
-      return `
-${roots} .kn-input { display: none !important; }
-${roots} .kn-input.scw-visible { display: block !important; }
-${roots} #kn-input-${cfg.bucketFieldKey} { display: block !important; } /* bucket always visible */
-      `.trim();
-    }).join('\n\n');
-
-    el.appendChild(document.createTextNode('\n' + blocks + '\n'));
-    document.head.appendChild(el);
-  }
-  injectGlobalCssOnce();
-
-  // ============================================================
-  // Binding (Chosen-safe delegated handler)
-  // ============================================================
-  function bindDelegatedChange(cfg) {
-    const roots = rootSelectorsFor(cfg.viewKey).join(', ');
+  function bindChangeHandlers(cfg) {
+    const roots = viewRoots(cfg).join(', ');
     const sel = `${roots} select[name="${cfg.bucketFieldKey}"], ${roots} #${cfg.viewKey}-${cfg.bucketFieldKey}`;
 
+    // Underlying select change
     $(document)
       .off('change' + EVENT_NS, sel)
       .on('change' + EVENT_NS, sel, function () {
-        const $root = $(this).closest(roots);
-        const $scope = $root.length ? pickScope($root) : $(this).closest('form, .kn-form, .kn-view, section');
-        applyRules($scope, cfg);
+        const $scopes = findActiveScopes(cfg);
+        $scopes.forEach(($s) => applyRulesToScope($s, cfg));
+      });
+
+    // Chosen UI clicks can change value without firing a normal change immediately in some setups.
+    // Re-apply after user interacts with the chosen container.
+    $(document)
+      .off('click' + EVENT_NS, `${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn, ${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn *`)
+      .on('click' + EVENT_NS, `${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn, ${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn *`, function () {
+        setTimeout(function () {
+          const $scopes = findActiveScopes(cfg);
+          $scopes.forEach(($s) => applyRulesToScope($s, cfg));
+        }, 0);
       });
   }
 
   // ============================================================
-  // “Boot” (runs even if you missed knack-view-render)
+  // INIT + RE-INIT (handles KTL “rebuild/move”)
   // ============================================================
   function initEverywhere(cfg) {
     if (!cfg._compiledRules) cfg._compiledRules = compileRules(cfg.bucketRulesHuman || {});
-    bindDelegatedChange(cfg);
+    bindChangeHandlers(cfg);
 
-    const $roots = findRoots(cfg);
-    if (!$roots.length) return;
+    const $scopes = findActiveScopes(cfg);
+    if (!$scopes.length) return;
 
-    $roots.each(function () {
-      const $root = $(this);
-      const $scope = pickScope($root);
+    $scopes.forEach(($s) => {
+      applyRulesToScope($s, cfg);
 
-      // Apply immediately…
-      applyRules($scope, cfg);
-
-      // …and again shortly after (covers late Chosen/value set + persistent form quirks)
-      setTimeout(() => applyRules($scope, cfg), 50);
-      setTimeout(() => applyRules($scope, cfg), 250);
+      // KTL / Chosen / persistent forms: value can settle a beat later
+      setTimeout(() => applyRulesToScope($s, cfg), 50);
+      setTimeout(() => applyRulesToScope($s, cfg), 250);
+      setTimeout(() => applyRulesToScope($s, cfg), 800);
     });
+  }
+
+  // ============================================================
+  // MutationObserver: re-run when KTL rebuilds or moves nodes
+  // ============================================================
+  function installObservers() {
+    // Single observer for the whole document (cheap enough)
+    const target = document.body;
+    if (!target) return;
+
+    // Avoid double-install
+    if (window.__scwBucketRulesObserverInstalled) return;
+    window.__scwBucketRulesObserverInstalled = true;
+
+    const obs = new MutationObserver(function (mutations) {
+      // Only act if something relevant was added/removed
+      for (const m of mutations) {
+        if (!m.addedNodes || !m.addedNodes.length) continue;
+
+        // If any mutation touches our view or KTL wrapper, re-init.
+        for (const node of m.addedNodes) {
+          if (!(node instanceof Element)) continue;
+
+          // quick checks (fast)
+          if (node.id && node.id.startsWith('view_')) {
+            FORMS.forEach(initEverywhere);
+            return;
+          }
+          if (node.classList && [...node.classList].some((c) => c.startsWith('hideShow_view_'))) {
+            FORMS.forEach(initEverywhere);
+            return;
+          }
+
+          // deeper check: if it contains our view
+          if (node.querySelector && (node.querySelector('#view_466') || node.querySelector('.hideShow_view_466'))) {
+            FORMS.forEach(initEverywhere);
+            return;
+          }
+        }
+      }
+    });
+
+    obs.observe(target, { childList: true, subtree: true });
+
+    // store for debugging if needed
+    window.__scwBucketRulesObserver = obs;
   }
 
   // ============================================================
   // Hooks
   // ============================================================
   FORMS.forEach((cfg) => {
-    // Standard Knack render hook
     $(document)
       .off('knack-view-render.' + cfg.viewKey + EVENT_NS)
       .on('knack-view-render.' + cfg.viewKey + EVENT_NS, function () {
@@ -272,23 +309,23 @@ ${roots} #kn-input-${cfg.bucketFieldKey} { display: block !important; } /* bucke
       });
   });
 
-  // Scene render hook (catches cases where view-render already happened)
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
       FORMS.forEach(initEverywhere);
     });
 
-  // Immediate + delayed boots (catches late bundle load / KTL persistent forms)
-  $(function () { FORMS.forEach(initEverywhere); });
-  setTimeout(() => FORMS.forEach(initEverywhere), 250);
-  setTimeout(() => FORMS.forEach(initEverywhere), 1000);
-
-  // KTL shrink/expand can toggle without re-render
+  // KTL toggles can rebuild without a Knack re-render
   $(document)
     .off('click' + EVENT_NS, '#hideShow_view_466_button, #hideShow_view_466_shrink_link')
     .on('click' + EVENT_NS, '#hideShow_view_466_button, #hideShow_view_466_shrink_link', function () {
       setTimeout(() => FORMS.forEach(initEverywhere), 50);
     });
+
+  // Boot
+  installObservers();
+  $(function () { FORMS.forEach(initEverywhere); });
+  setTimeout(() => FORMS.forEach(initEverywhere), 250);
+  setTimeout(() => FORMS.forEach(initEverywhere), 1000);
 })();
-////************* /SCW: FORM BUCKET → FIELD VISIBILITY testing.... *************////
+////************* /SCW: FORM BUCKET → FIELD VISIBILITY *************////
