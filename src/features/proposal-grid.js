@@ -13,6 +13,12 @@
  *  - ✅ BR NORMALIZE: preserve <br>, <br/>, <br />, and even </br> by normalizing all to "<br />"
  *  - ✅ NEW: When Level-2 is "Mounting Hardware", inject camera label list into Level-3 header (not Level-4)
  *  - ✅ NEW PATCH (2026-01-30): Hide stray blank Level-4 header rows (Knack creates a group for empty L4 grouping values)
+ *
+ * PATCH (2026-02-03):
+ *  - L2_SECTION_RULES-driven behaviors for Services + Assumptions (by record id)
+ *  - Hide subtotal filter when any matching L2 rule requests it
+ *  - Hide Qty/Cost columns via visibility (preserve table alignment)
+ *  - Add explicit class hook: .scw-l2--assumptions-id on L2 header row (assumptions record id)
  */
 (function () {
   'use strict';
@@ -329,8 +335,6 @@
     const sceneSelectors = STYLE_SCENE_IDS.map((id) => `#kn-${id}`).join(', ');
 
     // ✅ IMPORTANT: build a comma-list where EACH selector includes the suffix
-    //    e.g. sel('.kn-pagination .kn-select') =>
-    //    "#view_3301 .kn-pagination .kn-select, #view_3341 .kn-pagination .kn-select, #view_3371 .kn-pagination .kn-select"
     function sel(suffix) {
       return VIEW_IDS.map((id) => `#${id}${suffix.startsWith('>') ? ' ' : ' '}${suffix}`.replace('  ', ' ')).join(', ');
     }
@@ -363,8 +367,10 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 
 tr.scw-hide-level3-header { display: none !important; }
 tr.scw-hide-level4-header { display: none !important; }
+
+/* ✅ Hide Qty/Cost content while preserving column layout */
 tr.scw-hide-qty-cost td.${QTY_FIELD_KEY},
-tr.scw-hide-qty-cost td.${COST_FIELD_KEY} { display: none !important; }
+tr.scw-hide-qty-cost td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
 
 /* ============================================================
@@ -475,7 +481,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     document.head.appendChild(style);
   }
 
-
   // ======================
   // RECORD-ID EXTRACTION
   // ======================
@@ -567,6 +572,12 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   function applyLevel2Styling($groupRow, rule) {
     if (!rule || !$groupRow?.length) return;
     $groupRow.addClass(`scw-l2--${rule.key}`);
+
+    // ✅ explicit hook for assumptions record-id bucket
+    if (rule.key === 'assumptions') {
+      $groupRow.addClass('scw-l2--assumptions-id');
+    }
+
     if (rule.headerBackground) $groupRow.css('background-color', rule.headerBackground);
     if (rule.headerTextColor) $groupRow.css('color', rule.headerTextColor);
   }
@@ -753,9 +764,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const looksLikeSameText =
       currentLabelPlain &&
-      (currentLabelPlain === fieldPlain ||
-        currentLabelPlain.includes(fieldPlain) ||
-        fieldPlain.includes(currentLabelPlain));
+      (currentLabelPlain === fieldPlain || currentLabelPlain.includes(fieldPlain) || fieldPlain.includes(currentLabelPlain));
 
     if (looksLikeSameText) {
       labelCell.innerHTML = `<span class="scw-l4-2019">${html}</span>`;
@@ -920,13 +929,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     $tbody
       .find('tr')
-      .removeData([
-        'scwConcatRunId',
-        'scwConcatL3MountRunId',
-        'scwL4_2019_RunId',
-        'scwL3EachRunId',
-        'scwHeaderCellsAdded',
-      ]);
+      .removeData(['scwConcatRunId', 'scwConcatL3MountRunId', 'scwL4_2019_RunId', 'scwL3EachRunId', 'scwHeaderCellsAdded']);
 
     $tbody.find('tr.scw-level-total-row').remove();
     $tbody
@@ -967,9 +970,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         shouldHideSubtotalFilter = shouldHideSubtotalFilter || Boolean(sectionContext.rule?.hideSubtotalFilter);
 
         applyLevel2Styling($groupRow, sectionContext.rule);
-        if (sectionContext.hideQtyCostColumns) {
-          $groupRow.addClass('scw-hide-qty-cost');
-        }
+
+        // NOTE: don't apply scw-hide-qty-cost to L2 rows; keep table layout stable.
       }
 
       const $groupBlock = getGroupBlock($groupRow, level);
@@ -1056,7 +1058,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
             field2019Text = cell2019 ? norm(cell2019.textContent || '') : '';
           }
 
-          if (isBlankish(headerText) && (!HIDE_LEVEL4_WHEN_HEADER_BLANK.requireField2019AlsoBlank || isBlankish(field2019Text))) {
+          if (
+            isBlankish(headerText) &&
+            (!HIDE_LEVEL4_WHEN_HEADER_BLANK.requireField2019AlsoBlank || isBlankish(field2019Text))
+          ) {
             $groupRow.addClass(HIDE_LEVEL4_WHEN_HEADER_BLANK.cssClass);
           }
         }
@@ -1147,11 +1152,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const viewEl = document.getElementById(viewId);
     if (!viewEl) return;
 
-    const filterSelectors = [
-      '.kn-filters .kn-filter',
-      '.kn-table-filters .kn-filter',
-      '.kn-records-nav .kn-filter',
-    ];
+    const filterSelectors = ['.kn-filters .kn-filter', '.kn-table-filters .kn-filter', '.kn-records-nav .kn-filter'];
 
     const filters = viewEl.querySelectorAll(filterSelectors.join(', '));
     for (const filter of filters) {
