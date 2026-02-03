@@ -19,6 +19,9 @@
     // If unified is SINGLE connection, pick first non-empty in this order:
     SINGLE_PRIORITY: ["field_2193", "field_2194", "field_2195"],
 
+    // ✅ PATCH: hide unified visually (but keep in DOM)
+    HIDE_UNIFIED_FIELD: true,
+
     DEBUG: false
   };
 
@@ -49,6 +52,49 @@
   function inAllowedScene(sceneKey) {
     if (!CONFIG.SCENES || !CONFIG.SCENES.length) return true;
     return CONFIG.SCENES.includes(sceneKey);
+  }
+
+  // ======================
+  // ✅ PATCH: Safe hide (keep in DOM)
+  // ======================
+  const SAFE_HIDE_CLASS = "scw-safe-hidden";
+  const SAFE_HIDE_CSS_ID = "scw-safe-hide-css";
+
+  function injectSafeHideCssOnce() {
+    if (document.getElementById(SAFE_HIDE_CSS_ID)) return;
+
+    const css = `
+.${SAFE_HIDE_CLASS} {
+  position: absolute !important;
+  left: -10000px !important;
+  top: auto !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+
+  /* critical: DO NOT let anything set display:none */
+  display: block !important;
+  visibility: visible !important;
+}
+`;
+    const style = document.createElement("style");
+    style.id = SAFE_HIDE_CSS_ID;
+    style.appendChild(document.createTextNode(css));
+    document.head.appendChild(style);
+  }
+
+  function safeHideUnifiedField($view) {
+    if (!CONFIG.HIDE_UNIFIED_FIELD) return;
+
+    injectSafeHideCssOnce();
+
+    const $wrap = $view.find(`#kn-input-${CONFIG.UNIFIED}`).first();
+    if (!$wrap.length) return;
+
+    // ensure it's not display:none (we must keep DOM + chosen happy)
+    $wrap.css({ display: "block" }).addClass(SAFE_HIDE_CLASS);
   }
 
   // ======================
@@ -194,6 +240,9 @@
   function bind(viewId) {
     const $view = $viewRoot(viewId);
     if (!$view.length) return;
+
+    // ✅ PATCH: hide unified field visually, but keep it in DOM + active
+    safeHideUnifiedField($view);
 
     const sync = debounce(() => setUnifiedFromParents($view, viewId), 80);
 
