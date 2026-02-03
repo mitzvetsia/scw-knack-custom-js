@@ -21,8 +21,11 @@
   // CONFIG
   // ======================
 
-  const VIEW_IDS = ['view_3301', 'view_3341','view_3371'];
+  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3371'];
   const EVENT_NS = '.scwTotals';
+
+  // Your CSS references scene_1096; keep as explicit scene scope
+  const STYLE_SCENE_IDS = ['scene_1096'];
 
   // Field keys
   const QTY_FIELD_KEY = 'field_1964';
@@ -173,18 +176,11 @@
       .replace(/<\s*br\s*\/?\s*>/gi, '<br />'); // normalize all <br> forms
   }
 
-  // ✅ Fix Knack stripping spaces around <b> boundaries:
-  //    e.g. "patch<b>panel</b>if" -> "patch <b>panel</b> if"
   function normalizeBoldSpacing(html) {
     if (!html) return '';
     let out = String(html);
-
-    // insert space before <b> if preceded by a non-space and not a tag boundary
     out = out.replace(/([^\s>])\s*<b\b/gi, '$1 <b');
-
-    // insert space after </b> if immediately followed by a non-space/non-tag char
     out = out.replace(/<\/b>\s*([^\s<])/gi, '</b> $1');
-
     return out;
   }
 
@@ -199,11 +195,9 @@
     );
   }
 
-  // plain-text version of our limited HTML (used for "replace-if-same" detection)
   function plainTextFromLimitedHtml(html) {
     const tmp = document.createElement('div');
     tmp.innerHTML = String(html || '');
-    // textContent will preserve inserted spaces from normalizeBoldSpacing()
     return norm(tmp.textContent || '');
   }
 
@@ -276,20 +270,17 @@
     return totals;
   }
 
-  // ✅ read group label text (works for L3/L4)
   function getGroupLabelText($groupRow) {
     const $td = $groupRow.children('td').first();
     return $td.length ? norm($td.text()) : '';
   }
 
-  // ✅ current label text excluding our injected nodes
   function getLabelCellTextWithoutInjected(labelCell) {
     const clone = labelCell.cloneNode(true);
     clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
     return norm(clone.textContent || '');
   }
 
-  // ✅ get label HTML excluding our injected nodes (for concat base)
   function getLabelCellHtmlWithoutInjected(labelCell) {
     const clone = labelCell.cloneNode(true);
     clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
@@ -297,39 +288,149 @@
   }
 
   // ======================
-  // CSS
+  // CSS (INJECTED) — NOW APPLIES TO ALL VIEW_IDS
   // ======================
 
   let cssInjected = false;
   function injectCssOnce() {
     if (cssInjected) return;
+
+    if (document.getElementById('scw-totals-css')) {
+      cssInjected = true;
+      return;
+    }
+
     cssInjected = true;
+
+    const sceneSelectors = STYLE_SCENE_IDS.map((id) => `#kn-${id}`).join(', ');
+    const viewSelectors = VIEW_IDS.map((id) => `#${id}`).join(', ');
 
     const style = document.createElement('style');
     style.id = 'scw-totals-css';
-style.textContent = `
-  tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
-  tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
 
-  .scw-concat-cameras { line-height: 1.2; }
-  .scw-concat-cameras--mounting { line-height: 1.15; }
+    style.textContent = `
+/* ============================================================
+   SCW Totals helper CSS (existing)
+   ============================================================ */
+tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
+tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
 
-  .scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
-  .scw-l4-2019-br { line-height: 0; }
+.scw-concat-cameras { line-height: 1.2; }
+.scw-concat-cameras--mounting { line-height: 1.15; }
 
-  /* ✅ FORCE BOLD inside injected HTML (Knack table CSS can flatten <b>) */
-  .scw-l4-2019 b,
-  .scw-concat-cameras b,
-  .scw-l4-2019 strong,
-  .scw-concat-cameras strong {
-    font-weight: 800 !important;
-  }
+.scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
+.scw-l4-2019-br { line-height: 0; }
 
-  .scw-each { line-height: 1.1; }
-  .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
+.scw-l4-2019 b,
+.scw-concat-cameras b,
+.scw-l4-2019 strong,
+.scw-concat-cameras strong {
+  font-weight: 800 !important;
+}
 
-  tr.scw-hide-level3-header { display: none !important; }
-  tr.scw-hide-level4-header { display: none !important; }
+.scw-each { line-height: 1.1; }
+.scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
+
+tr.scw-hide-level3-header { display: none !important; }
+tr.scw-hide-level4-header { display: none !important; }
+
+
+/* ============================================================
+   YOUR PROVIDED CSS (generalized to all VIEW_IDS)
+   ============================================================ */
+
+/********************* OVERAL -- GRID ***********************/
+${sceneSelectors} h2 {font-weight: 800; color: #07467c; font-size: 24px;}
+${viewSelectors} .kn-pagination .kn-select { display: none !important;}
+${viewSelectors} > div.kn-records-nav > div.level > div.level-left > div.kn-entries-summary {display: none;}
+${viewSelectors} .kn-table tbody tr[id] {display: none !important;}
+
+${viewSelectors} .kn-table th, ${viewSelectors} .kn-table td { border-left: none !important; border-right: none !important; }
+${viewSelectors} .kn-table tbody td { vertical-align: middle; }
+/********************* OVERAL -- GRID ***********************/
+
+
+/********************* LEVEL 1 (MDF/IDF) ***********************/
+${sceneSelectors} .kn-table-group.kn-group-level-1 {
+  font-size: 16px;
+  font-weight: 600;
+  background-color: white !important;
+  color: #07467c !important;
+  padding-right: 20% !important;
+  padding-left: 20px !important;
+  padding-top: 30px !important;
+  padding-bottom: 0px !important;
+  text-align: center !important;
+}
+${sceneSelectors} .kn-table-group.kn-group-level-1 td:first-child {font-size: 24px; font-weight: 200 !important;}
+${sceneSelectors} .kn-table-group.kn-group-level-1 td {border-bottom-width: 20px !important; border-color: #07467c !important;}
+
+${viewSelectors} tr.scw-subtotal--level-1 td {
+  background: RGB(7, 70, 124, 1);
+  border-top:1px solid #dadada;
+  font-weight:600;
+  color: white;
+  text-align: right;
+  border-bottom-width: 80px;
+  border-color: transparent;
+  font-size: 16px;
+}
+${viewSelectors} tr.scw-grand-total-sep td { height:10px; background:transparent; border:none !important; }
+${viewSelectors} tr.scw-grand-total-row td {
+  background:white;
+  border-top:2px solid #bbb !important;
+  font-weight:800;
+  color: #07467c;
+  font-size: 20px;
+  text-align: right;
+}
+/********************* LEVEL 1 (MDF/IDF) ***********************/
+
+
+/********************* LEVEL 2 (BUCKET) ***********************/
+${sceneSelectors} .kn-table-group.kn-group-level-2 {
+  font-size: 16px;
+  font-weight: 400 !important;
+  background-color: aliceblue !important;
+  color: #07467c;
+}
+${sceneSelectors} .kn-table-group.kn-group-level-2 td {padding: 5px 0px 5px 20px !important; border-top: 20px solid transparent !important;}
+
+${viewSelectors} tr.scw-subtotal--level-2 td {
+  background: aliceblue;
+  border-top:1px solid #dadada;
+  font-weight:800 !important;
+  color: #07467c;
+  text-align: center !important;
+  border-bottom-width: 20px !important;
+  border-color: transparent;
+}
+${viewSelectors} tr.scw-subtotal--level-2 td:first-child {text-align: right !important;}
+/********************* LEVEL 2 (BUCKET) ***********************/
+
+
+/********************* LEVEL 3 (PRODUCT) ***********************/
+${sceneSelectors} .kn-table-group.kn-group-level-3 {background-color: white !important; color: #07467c;}
+${sceneSelectors} .kn-table-group.kn-group-level-3 td {padding-top: 10px !important; font-weight: 300 !important;}
+${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {font-size: 20px;}
+${sceneSelectors} .kn-table-group.kn-group-level-3 td:nth-last-child(-n+3) {font-weight:600 !important;}
+
+${viewSelectors} tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first-child {
+  padding-left: 80px !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+/********************* LEVEL 3 (PRODUCT) ***********************/
+
+
+/********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
+${sceneSelectors} .kn-table-group.kn-group-level-4 {background-color: white !important; color: #07467c;}
+${sceneSelectors} .kn-table-group.kn-group-level-4 td:nth-last-child(-n+3) {font-weight:600 !important; color: #07467c !important;}
+${sceneSelectors} .kn-table-group.kn-group-level-4 td {padding-top: 5px !important; font-weight: 300;}
+${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:80px !important;}
+
+.scw-l4-2019 b {font-weight: 600 !important;}
+/********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
     document.head.appendChild(style);
   }
@@ -572,7 +673,6 @@ style.textContent = `
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
 
-    // Always remove prior injected nodes (don’t rely on data flags; KTL/Knack re-renders can reuse DOM)
     labelCell.querySelectorAll('.scw-l4-2019').forEach((n) => n.remove());
     labelCell.querySelectorAll('br.scw-l4-2019-br').forEach((n) => n.remove());
 
@@ -580,14 +680,12 @@ style.textContent = `
     const fieldCell = firstRow ? firstRow.querySelector('td.field_2019') : null;
     if (!fieldCell) return;
 
-    // sanitized HTML from field_2019 (preserve <b>, <br />)
     let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
     const fieldPlain = plainTextFromLimitedHtml(html);
     if (!fieldPlain) return;
 
     const currentLabelPlain = getLabelCellTextWithoutInjected(labelCell);
 
-    // ✅ robust replace-if-same
     const looksLikeSameText =
       currentLabelPlain &&
       (currentLabelPlain === fieldPlain ||
@@ -595,13 +693,11 @@ style.textContent = `
         fieldPlain.includes(currentLabelPlain));
 
     if (looksLikeSameText) {
-      // Replace whole label (prevents the “plain text + rich text” duplicate)
       labelCell.innerHTML = `<span class="scw-l4-2019">${html}</span>`;
       $groupRow.data('scwL4_2019_RunId', runId);
       return;
     }
 
-    // Otherwise append underneath
     const br = document.createElement('br');
     br.className = 'scw-l4-2019-br';
     labelCell.appendChild(br);
@@ -615,7 +711,7 @@ style.textContent = `
   }
 
   // ======================
-  // CONCAT INJECTION (L4 "drop") — FIXED to not double-print
+  // CONCAT INJECTION (L4 "drop")
   // ======================
 
   function injectConcatIntoHeader({ level, contextKey, $groupRow, $rowsToSum, runId }) {
@@ -629,19 +725,16 @@ style.textContent = `
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
 
-    // ✅ If field_2019 already injected (replace or append), use it as the base label.
     const injected = labelCell.querySelector('.scw-l4-2019');
     let baseHtml = '';
 
     if (injected) {
       baseHtml = injected.innerHTML || '';
     } else {
-      // Otherwise use label html BUT strip any injected nodes (defensive)
       baseHtml = getLabelCellHtmlWithoutInjected(labelCell);
       baseHtml = sanitizeAllowOnlyBrAndB(decodeEntities(baseHtml));
     }
 
-    // Put back the concat wrapper (base + camera list) with consistent <br />
     const composed =
       `<div class="scw-concat-cameras">` +
       `${sanitizeAllowOnlyBrAndB(decodeEntities(baseHtml))}` +
@@ -694,9 +787,6 @@ style.textContent = `
     if (!$target.length) return;
 
     const firstRow = $rowsToSum[0];
-    const cell = firstRow.querySelector(`td.${EACH_COLUMN.fieldKey}`);
-    if (!cell) return;
-
     const num = getRowNumericValue(firstRow, EACH_COLUMN.fieldKey);
     if (!Number.isFinite(num)) return;
 
@@ -756,7 +846,6 @@ style.textContent = `
   function addGroupTotalsRuleDriven(view) {
     const runId = Date.now();
     const $tbody = $(`#${view.key} .kn-table tbody`);
-
     if (!$tbody.length || $tbody.find('.kn-tr-nodata').length) return;
 
     nearestL2Cache = new WeakMap();
@@ -812,20 +901,17 @@ style.textContent = `
 
       const totals = sumFields($rowsToSum, [QTY_FIELD_KEY, LABOR_FIELD_KEY, HARDWARE_FIELD_KEY, COST_FIELD_KEY]);
 
-      // Level 1: Headers only
       if (level === 1) {
         if (!$groupRow.data('scwHeaderCellsAdded')) {
           $groupRow.find('td').removeAttr('colspan');
           $groupRow.append($cellsTemplate.clone());
           $groupRow.data('scwHeaderCellsAdded', true);
         }
-
         $groupRow.find(`td.${QTY_FIELD_KEY}`).html('<strong>Qty</strong>');
         $groupRow.find(`td.${COST_FIELD_KEY}`).html('<strong>Cost</strong>');
         $groupRow.find(`td.${HARDWARE_FIELD_KEY},td.${LABOR_FIELD_KEY}`).empty();
       }
 
-      // Level 3
       if (level === 3) {
         $groupRow.removeClass('scw-hide-level3-header').show();
 
@@ -844,11 +930,9 @@ style.textContent = `
         }
 
         const nearestL2 = getNearestLevel2Info($groupRow);
-
         const isMounting =
           (L2_SPECIALS.mountingHardwareId && nearestL2.recordId === L2_SPECIALS.mountingHardwareId) ||
-          (!L2_SPECIALS.mountingHardwareId &&
-            norm(nearestL2.label) === norm(L2_SPECIALS.mountingHardwareLabel));
+          (!L2_SPECIALS.mountingHardwareId && norm(nearestL2.label) === norm(L2_SPECIALS.mountingHardwareLabel));
 
         if (isMounting) {
           $groupRow.addClass(L2_SPECIALS.classOnLevel3);
@@ -865,7 +949,6 @@ style.textContent = `
         injectEachIntoLevel3Header({ level, $groupRow, $rowsToSum, runId });
       }
 
-      // Level 4
       if (level === 4) {
         $groupRow.removeClass(HIDE_LEVEL4_WHEN_HEADER_BLANK.cssClass).show();
 
@@ -875,7 +958,6 @@ style.textContent = `
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        // hide stray blank L4 header rows
         if (HIDE_LEVEL4_WHEN_HEADER_BLANK.enabled) {
           const headerText = getGroupLabelText($groupRow);
 
@@ -891,7 +973,6 @@ style.textContent = `
           }
         }
 
-        // 1) inject rich field_2019 (replace/append)
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
 
         const qty = totals[QTY_FIELD_KEY];
@@ -901,11 +982,9 @@ style.textContent = `
         $groupRow.find(`td.${COST_FIELD_KEY}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
         $groupRow.find(`td.${HARDWARE_FIELD_KEY},td.${LABOR_FIELD_KEY}`).empty();
 
-        // 2) then inject concat (fixed so it doesn't double-print base label)
         injectConcatIntoHeader({ level, contextKey: sectionContext.key, $groupRow, $rowsToSum, runId });
       }
 
-      // Queue footers for L1 and L2
       if (level === 1 || level === 2) {
         footerQueue.push({
           level,
@@ -923,7 +1002,6 @@ style.textContent = `
     for (const item of footerQueue) {
       const anchorEl = item.$groupBlock.last()[0];
       if (!anchorEl) continue;
-
       if (!footersByAnchor.has(anchorEl)) footersByAnchor.set(anchorEl, []);
       footersByAnchor.get(anchorEl).push(item);
     }
