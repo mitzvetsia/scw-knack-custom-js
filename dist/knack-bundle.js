@@ -168,11 +168,10 @@ window.SCW = window.SCW || {};
  * PATCHES:
  *  - Hide Level-3 header row when product-name group label is blank-ish (grouped by field_2208)
  *  - Restore camera concat for "drop" (Cameras/Entries) by expanding L2_CONTEXT.byLabel variants
- *  - L4 field_2019 injection is non-destructive (never hides L4 header)
+ *  - ✅ RESTORE PATCH (2026-02-02): Inject field_2019 limited HTML (<b>, <br>) into L4 summary header (span; non-destructive)
  *  - ✅ NEW: When Level-2 is "Mounting Hardware", inject camera label list into Level-3 header (not Level-4)
  *  - ✅ FIX: Mounting Hardware L3 concat gating is centralized + normalized (no brittle string match inside injector)
  *  - ✅ NEW PATCH (2026-01-30): Hide stray blank Level-4 header rows (Knack creates a group for empty L4 grouping values)
- *  - ✅ RESTORE PATCH (2026-02-02): Inject field_2020 limited HTML (<b>, <br>) into L4 summary header (span)
  */
 (function () {
   'use strict';
@@ -189,9 +188,6 @@ window.SCW = window.SCW || {};
   const LABOR_FIELD_KEY = 'field_2028';
   const HARDWARE_FIELD_KEY = 'field_2201';
   const COST_FIELD_KEY = 'field_2203';
-
-  // ✅ RESTORED: limited-HTML note injection into Level-4 group header label cell
-  const L4_HTML_NOTE_FIELD_KEY = 'field_2020';
 
   // ✅ Hide L3 group header if product-name group label is blank-ish
   const HIDE_LEVEL3_WHEN_FIELD_BLANK = {
@@ -419,8 +415,7 @@ window.SCW = window.SCW || {};
       tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
       tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
       .scw-concat-cameras { line-height: 1.2; }
-      .scw-l4-2019 { line-height: 1.2; }
-      .scw-l4-2020 { display: inline-block; margin-top: 2px; line-height: 1.2; }
+      .scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
       .scw-each { line-height: 1.1; }
       .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
 
@@ -430,7 +425,7 @@ window.SCW = window.SCW || {};
       /* optional: slightly tighter list for Mounting Hardware L3 */
       .scw-concat-cameras--mounting { line-height: 1.15; }
 
-      /* ✅ NEW: hard-hide stray blank L4 header rows when flagged */
+      /* ✅ hard-hide stray blank L4 header rows when flagged */
       tr.scw-hide-level4-header { display: none !important; }
     `;
     document.head.appendChild(style);
@@ -709,10 +704,9 @@ window.SCW = window.SCW || {};
   }
 
   // ======================
-  // FIELD_2019 / FIELD_2020 INJECTION
+  // FIELD_2019 INJECTION (RESTORED AS SPAN; NON-DESTRUCTIVE)
   // ======================
 
-  // ✅ 2019 stays non-destructive (appends/updates a container instead of overwriting the whole label cell)
   function injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId }) {
     if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
     if ($groupRow.data('scwL4_2019_RunId') === runId) return;
@@ -735,46 +729,15 @@ window.SCW = window.SCW || {};
 
     if (!textContent) return;
 
-    let container = labelCell.querySelector('.scw-l4-2019');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'scw-l4-2019';
-      labelCell.appendChild(container);
-    }
-    container.innerHTML = html;
-  }
-
-  // ✅ RESTORED: pull field_2020 HTML, allow only <b>/<br>, inject into a span in the L4 header label cell
-  function injectField2020IntoLevel4SummarySpan({ level, $groupRow, $rowsToSum, runId }) {
-    if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
-    if ($groupRow.data('scwL4_2020_RunId') === runId) return;
-    $groupRow.data('scwL4_2020_RunId', runId);
-
-    const labelCell = $groupRow[0].querySelector('td:first-child');
-    if (!labelCell) return;
-
-    const firstRow = $rowsToSum[0];
-    const fieldCell = firstRow ? firstRow.querySelector(`td.${L4_HTML_NOTE_FIELD_KEY}`) : null;
-    if (!fieldCell) return;
-
-    let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
-
-    const textContent = html
-      .replace(/<br\s*\/?>/gi, ' ')
-      .replace(/<\/?b>/gi, '')
-      .replace(/&nbsp;/gi, ' ')
-      .trim();
-
-    if (!textContent) return;
-
-    let span = labelCell.querySelector('.scw-l4-2020');
+    // ✅ Create or update a SPAN under the existing label cell content
+    let span = labelCell.querySelector('.scw-l4-2019');
     if (!span) {
-      // put it on its own line under whatever the label cell currently has
       labelCell.appendChild(document.createElement('br'));
       span = document.createElement('span');
-      span.className = 'scw-l4-2020';
+      span.className = 'scw-l4-2019';
       labelCell.appendChild(span);
     }
+
     span.innerHTML = html;
   }
 
@@ -867,7 +830,6 @@ window.SCW = window.SCW || {};
         'scwConcatRunId',
         'scwConcatL3MountRunId',
         'scwL4_2019_RunId',
-        'scwL4_2020_RunId',
         'scwL3EachRunId',
         'scwHeaderCellsAdded',
       ]);
@@ -995,9 +957,8 @@ window.SCW = window.SCW || {};
           }
         }
 
-        // ✅ inject limited HTML blocks into the label cell (non-destructive)
+        // ✅ restored span injection for field_2019
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
-        injectField2020IntoLevel4SummarySpan({ level, $groupRow, $rowsToSum, runId });
 
         const qty = totals[QTY_FIELD_KEY];
         const labor = totals[LABOR_FIELD_KEY];
