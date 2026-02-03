@@ -1,18 +1,9 @@
-////************* SCW: FORM BUCKET → FIELD VISIBILITY (Knack + KTL safe) *************////
-/**
- * What this fixes (everywhere):
- *  - Works whether the view root is #view_466 (normal Knack) OR a KTL wrapper like .hideShow_view_466
- *  - CSS no-flash works for both root types
- *  - Change bindings work even if KTL wraps/moves the form
- *  - Scope detection is resilient (section/form/.kn-view)
- *
- * Add more views/pages by adding more entries to FORMS[] (supports multiple).
- */
+////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL + persistent safe) *************////
 (function () {
   'use strict';
 
   // ============================================================
-  // CONFIG (multi-form ready)
+  // CONFIG
   // ============================================================
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID   = 'scw-bucket-visibility-css';
@@ -22,115 +13,100 @@
       viewKey: 'view_466',
       bucketFieldKey: 'field_133',
 
-      // Readable mapping (your existing rules)
       bucketRulesHuman: {
-        // cameras or readers
         '6481e5ba38f283002898113c': [
-          ['field_133',  'REL_equipment bucket'],
-          ['field_956',  'FLAG_product status'],
-          ['field_1563', 'FLAG_type of system'],
-          ['field_35',   'INPUT_product name'],
-          ['field_56',   'INPUT_sku'],
-          ['field_57',   'INPUT_description'],
-          ['field_74',   'INPUT_default quantity'],
-          ['field_146',  'INPUT_retail price'],
-          ['field_1562', 'FLAG_eligible for discount'],
-          ['field_1926', 'INPUT_source'],
-          // install relevant
-          ['field_2021', 'INPUT_default labor description'],
-          ['field_2166', 'INPUT_default sub bid'],
-          ['field_1517', 'INPUT_default installation hours'],
-          ['field_2220', 'FLAG_deliverables schema'],
-          ['field_2232', 'FLAG: map incoming camera or reader connections'],
-          ['field_2242', 'FLAG_limit to quantity 1'],
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_56','INPUT_sku'],
+          ['field_57','INPUT_description'],
+          ['field_74','INPUT_default quantity'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_1926','INPUT_source'],
+          ['field_2021','INPUT_default labor description'],
+          ['field_2166','INPUT_default sub bid'],
+          ['field_1517','INPUT_default installation hours'],
+          ['field_2220','FLAG_deliverables schema'],
+          ['field_2232','FLAG: map incoming camera or reader connections'],
+          ['field_2242','FLAG_limit to quantity 1'],
         ],
 
-        // networking or headend
         '647953bb54b4e1002931ed97': [
-          ['field_133',  'REL_equipment bucket'],
-          ['field_956',  'FLAG_product status'],
-          ['field_1563', 'FLAG_type of system'],
-          ['field_35',   'INPUT_product name'],
-          ['field_56',   'INPUT_sku'],
-          ['field_57',   'INPUT_description'],
-          ['field_74',   'INPUT_default quantity'],
-          ['field_146',  'INPUT_retail price'],
-          ['field_1562', 'FLAG_eligible for discount'],
-          ['field_1926', 'INPUT_source'],
-          // install relevant
-          ['field_2021', 'INPUT_default labor description'],
-          ['field_2166', 'INPUT_default sub bid'],
-          ['field_1517', 'INPUT_default installation hours'],
-          ['field_2220', 'FLAG_deliverables schema'],
-          ['field_2232', 'FLAG: map incoming camera or reader connections'],
-          ['field_2242', 'FLAG_limit to quantity 1'],
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_56','INPUT_sku'],
+          ['field_57','INPUT_description'],
+          ['field_74','INPUT_default quantity'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_1926','INPUT_source'],
+          ['field_2021','INPUT_default labor description'],
+          ['field_2166','INPUT_default sub bid'],
+          ['field_1517','INPUT_default installation hours'],
+          ['field_2220','FLAG_deliverables schema'],
+          ['field_2232','FLAG: map incoming camera or reader connections'],
+          ['field_2242','FLAG_limit to quantity 1'],
         ],
 
-        // other equipment
         '5df12ce036f91b0015404d78': [
-          ['field_133',  'REL_equipment bucket'],
-          ['field_956',  'FLAG_product status'],
-          ['field_1563', 'FLAG_type of system'],
-          ['field_35',   'INPUT_product name'],
-          ['field_56',   'INPUT_sku'],
-          ['field_57',   'INPUT_description'],
-          ['field_74',   'INPUT_default quantity'],
-          ['field_146',  'INPUT_retail price'],
-          ['field_1562', 'FLAG_eligible for discount'],
-          ['field_1926', 'INPUT_source'],
-          // install relevant
-          ['field_2021', 'INPUT_default labor description'],
-          ['field_2166', 'INPUT_default sub bid'],
-          ['field_1517', 'INPUT_default installation hours'],
-          ['field_2220', 'FLAG_deliverables schema'],
-          ['field_2232', 'FLAG: map incoming camera or reader connections'],
-          ['field_2242', 'FLAG_limit to quantity 1'],
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_56','INPUT_sku'],
+          ['field_57','INPUT_description'],
+          ['field_74','INPUT_default quantity'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_1926','INPUT_source'],
+          ['field_2021','INPUT_default labor description'],
+          ['field_2166','INPUT_default sub bid'],
+          ['field_1517','INPUT_default installation hours'],
+          ['field_2220','FLAG_deliverables schema'],
+          ['field_2232','FLAG: map incoming camera or reader connections'],
+          ['field_2242','FLAG_limit to quantity 1'],
         ],
 
-        // service
         '6977caa7f246edf67b52cbcd': [
-          // (intentionally empty per your rules)
+          // intentionally empty
         ],
 
-        // assumptions
         '697b7a023a31502ec68b3303': [
-          ['field_133',  'REL_equipment bucket'],
-          ['field_956',  'FLAG_product status'],
-          ['field_1563', 'FLAG_type of system'],
-          ['field_35',   'INPUT_product name'],
-          // install relevant
-          ['field_2021', 'INPUT_default labor description'],
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_2021','INPUT_default labor description'],
         ],
 
-        // licenses
         '645554dce6f3a60028362a6a': [
-          ['field_133',  'REL_equipment bucket'],
-          ['field_956',  'FLAG_product status'],
-          ['field_1563', 'FLAG_type of system'],
-          ['field_35',   'INPUT_product name'],
-          ['field_56',   'INPUT_sku'],
-          ['field_57',   'INPUT_description'],
-          ['field_74',   'INPUT_default quantity'],
-          ['field_146',  'INPUT_retail price'],
-          ['field_1562', 'FLAG_eligible for discount'],
-          ['field_1926', 'INPUT_source'],
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_56','INPUT_sku'],
+          ['field_57','INPUT_description'],
+          ['field_74','INPUT_default quantity'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_1926','INPUT_source'],
         ],
       },
 
-      // All field keys in the form (used for hide-all baseline)
       allFieldKeys: [
         'field_35','field_56','field_57','field_2021','field_133','field_146','field_2166','field_956','field_1926','field_2232',
         'field_2242','field_1562','field_2205','field_2236','field_974','field_2220','field_1655','field_1563','field_1841','field_74',
         'field_1667','field_1554','field_1582','field_1754','field_1755','field_1909','field_1928','field_1517','field_2075','field_2249',
       ],
     },
-
-    // ✅ Add more pages/views like this:
-    // { viewKey:'view_XXXX', bucketFieldKey:'field_YYYY', bucketRulesHuman:{...}, allFieldKeys:[...] },
   ];
 
   // ============================================================
-  // Helpers
+  // Utilities
   // ============================================================
   function compileRules(human) {
     const out = {};
@@ -142,37 +118,28 @@
     return out;
   }
 
-  // “View root” selectors that cover:
-  //  - Normal Knack: #view_466
-  //  - KTL wrapper: .hideShow_view_466
-  //  - Occasional variants: [data-view-key="view_466"]
   function rootSelectorsFor(viewKey) {
+    // In your DOM you have BOTH:
+    //   <div class="kn-form ... view_466" id="view_466">
+    //   <section class="hideShow_view_466 ...">
     return [
       `#${viewKey}`,
       `.hideShow_${viewKey}`,
-      `[data-view-key="${viewKey}"]`,
-      // sometimes KTL/other wrappers include view key as class:
-      `.${viewKey}`,
+      `.kn-view.${viewKey}`, // extra safety
     ];
   }
 
-  function resolveRoots(viewKey) {
-    const sels = rootSelectorsFor(viewKey);
-    const $roots = $(sels.join(',')).filter(function () {
-      // keep only roots that actually contain inputs for this view render
-      return $(this).find('.kn-input, form').length > 0;
+  function findRoots(cfg) {
+    const sels = rootSelectorsFor(cfg.viewKey).join(',');
+    return $(sels).filter(function () {
+      return $(this).find('#kn-input-' + cfg.bucketFieldKey).length > 0;
     });
-    return $roots;
   }
 
   function pickScope($root) {
-    // Prefer the actual form element when present
+    // Prefer the form element if present; otherwise operate on the root.
     const $form = $root.find('form').first();
-    if ($form.length) return $form;
-
-    // Otherwise, something reasonable
-    const $scope = $root.closest('section, .kn-view, .kn-form');
-    return $scope.length ? $scope : $root;
+    return $form.length ? $form : $root;
   }
 
   function $wrapForKeyWithinScope($scope, key) {
@@ -203,20 +170,19 @@
     showField($scope, cfg.bucketFieldKey);
   }
 
-  function findBucketSelectInScope($scope, cfg) {
-    // In your DOM: id="view_466-field_133" and name="field_133"
+  function findBucketSelect($scope, cfg) {
+    // Underlying select (hidden by Chosen) is still the source of truth.
     let $sel = $scope.find('#' + cfg.viewKey + '-' + cfg.bucketFieldKey);
     if ($sel.length) return $sel;
 
     $sel = $scope.find('select[name="' + cfg.bucketFieldKey + '"]');
     if ($sel.length) return $sel;
 
-    // fallback: hidden connection input exists too, but select is what we want
     return $();
   }
 
   function getBucketValue($scope, cfg) {
-    const $sel = findBucketSelectInScope($scope, cfg);
+    const $sel = findBucketSelect($scope, cfg);
     return (($sel.val() || '') + '').trim();
   }
 
@@ -224,14 +190,15 @@
     const bucketValue = getBucketValue($scope, cfg);
 
     hideAllExceptBucket($scope, cfg);
+
+    // If bucket isn't set yet (common on first paint), just keep bucket visible.
     if (!bucketValue) return;
 
-    const rules = cfg._bucketRulesCompiled || {};
-    (rules[bucketValue] || []).forEach((k) => showField($scope, k));
+    (cfg._compiledRules[bucketValue] || []).forEach((k) => showField($scope, k));
   }
 
   // ============================================================
-  // ✅ EARLY CSS (no flash) — covers normal + KTL wrappers
+  // ✅ EARLY CSS (no flash)
   // ============================================================
   function injectGlobalCssOnce() {
     let el = document.getElementById(CSS_ID);
@@ -255,7 +222,7 @@ ${roots} #kn-input-${cfg.bucketFieldKey} { display: block !important; } /* bucke
   injectGlobalCssOnce();
 
   // ============================================================
-  // Binding (delegated, resilient)
+  // Binding (Chosen-safe delegated handler)
   // ============================================================
   function bindDelegatedChange(cfg) {
     const roots = rootSelectorsFor(cfg.viewKey).join(', ');
@@ -265,50 +232,63 @@ ${roots} #kn-input-${cfg.bucketFieldKey} { display: block !important; } /* bucke
       .off('change' + EVENT_NS, sel)
       .on('change' + EVENT_NS, sel, function () {
         const $root = $(this).closest(roots);
-        const $scope = $root.length ? pickScope($root) : $(this).closest('form, section, .kn-form, .kn-view');
+        const $scope = $root.length ? pickScope($root) : $(this).closest('form, .kn-form, .kn-view, section');
         applyRules($scope, cfg);
       });
   }
 
-  function initViewEverywhere(cfg) {
-    // compile once
-    if (!cfg._bucketRulesCompiled) cfg._bucketRulesCompiled = compileRules(cfg.bucketRulesHuman || {});
-
+  // ============================================================
+  // “Boot” (runs even if you missed knack-view-render)
+  // ============================================================
+  function initEverywhere(cfg) {
+    if (!cfg._compiledRules) cfg._compiledRules = compileRules(cfg.bucketRulesHuman || {});
     bindDelegatedChange(cfg);
 
-    // apply to all discovered roots (normal + KTL)
-    const $roots = resolveRoots(cfg.viewKey);
+    const $roots = findRoots(cfg);
     if (!$roots.length) return;
 
     $roots.each(function () {
       const $root = $(this);
       const $scope = pickScope($root);
+
+      // Apply immediately…
       applyRules($scope, cfg);
+
+      // …and again shortly after (covers late Chosen/value set + persistent form quirks)
+      setTimeout(() => applyRules($scope, cfg), 50);
+      setTimeout(() => applyRules($scope, cfg), 250);
     });
   }
 
   // ============================================================
-  // Wire up to Knack render events (works in modal/page/KTL)
+  // Hooks
   // ============================================================
   FORMS.forEach((cfg) => {
+    // Standard Knack render hook
     $(document)
       .off('knack-view-render.' + cfg.viewKey + EVENT_NS)
       .on('knack-view-render.' + cfg.viewKey + EVENT_NS, function () {
-        initViewEverywhere(cfg);
+        initEverywhere(cfg);
       });
   });
 
-  // ============================================================
-  // Extra safety: if KTL shrink/expand toggles DOM without a re-render,
-  // re-apply rules after clicking the shrink link.
-  // ============================================================
+  // Scene render hook (catches cases where view-render already happened)
   $(document)
-    .off('click' + EVENT_NS, 'a.ktlShrinkLink')
-    .on('click' + EVENT_NS, 'a.ktlShrinkLink', function () {
-      // small delay so KTL can finish toggling
-      setTimeout(function () {
-        FORMS.forEach(initViewEverywhere);
-      }, 50);
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      FORMS.forEach(initEverywhere);
+    });
+
+  // Immediate + delayed boots (catches late bundle load / KTL persistent forms)
+  $(function () { FORMS.forEach(initEverywhere); });
+  setTimeout(() => FORMS.forEach(initEverywhere), 250);
+  setTimeout(() => FORMS.forEach(initEverywhere), 1000);
+
+  // KTL shrink/expand can toggle without re-render
+  $(document)
+    .off('click' + EVENT_NS, '#hideShow_view_466_button, #hideShow_view_466_shrink_link')
+    .on('click' + EVENT_NS, '#hideShow_view_466_button, #hideShow_view_466_shrink_link', function () {
+      setTimeout(() => FORMS.forEach(initEverywhere), 50);
     });
 })();
 ////************* /SCW: FORM BUCKET → FIELD VISIBILITY *************////
