@@ -14,6 +14,8 @@
       bucketFieldKey: 'field_133',
 
       bucketRulesHuman: {
+
+//cameras or readers
         '6481e5ba38f283002898113c': [
           ['field_133','REL_equipment bucket'],
           ['field_956','FLAG_product status'],
@@ -29,10 +31,9 @@
           ['field_2166','INPUT_default sub bid'],
           ['field_1517','INPUT_default installation hours'],
           ['field_2220','FLAG_deliverables schema'],
-          ['field_2232','FLAG: map incoming camera or reader connections'],
-          ['field_2242','FLAG_limit to quantity 1'],
         ],
 
+//networking or headend
         '647953bb54b4e1002931ed97': [
           ['field_133','REL_equipment bucket'],
           ['field_956','FLAG_product status'],
@@ -52,6 +53,7 @@
           ['field_2242','FLAG_limit to quantity 1'],
         ],
 
+//other equipment
         '5df12ce036f91b0015404d78': [
           ['field_133','REL_equipment bucket'],
           ['field_956','FLAG_product status'],
@@ -67,12 +69,26 @@
           ['field_2166','INPUT_default sub bid'],
           ['field_1517','INPUT_default installation hours'],
           ['field_2220','FLAG_deliverables schema'],
-          ['field_2232','FLAG: map incoming camera or reader connections'],
-          ['field_2242','FLAG_limit to quantity 1'],
         ],
 
+//mounting hardware
+        '594a94536877675816984cb9': [
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_56','INPUT_sku'],
+          ['field_57','INPUT_description'],
+          ['field_74','INPUT_default quantity'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_1926','INPUT_source'],
+        ],
+
+//other services
         '6977caa7f246edf67b52cbcd': [],
 
+//assumptions
         '697b7a023a31502ec68b3303': [
           ['field_133','REL_equipment bucket'],
           ['field_956','FLAG_product status'],
@@ -81,6 +97,7 @@
           ['field_2021','INPUT_default labor description'],
         ],
 
+//licenses
         '645554dce6f3a60028362a6a': [
           ['field_133','REL_equipment bucket'],
           ['field_956','FLAG_product status'],
