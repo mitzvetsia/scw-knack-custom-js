@@ -7,7 +7,7 @@
  * PATCHES:
  *  - Hide Level-3 header row when product-name group label is blank-ish (grouped by field_2208)
  *  - Restore camera concat for "drop" (Cameras/Entries) by expanding L2_CONTEXT.byLabel variants
- *  - ✅ RESTORE (2026-02-02): Inject field_2019 limited HTML (<b>, <br>) into L4 header label as a span (non-destructive + idempotent)
+ *  - ✅ RESTORE (2026-02-02): Inject field_2019 limited HTML (<b>, <br>) into L4 header label (replace-if-same, else append)
  *  - ✅ BR NORMALIZE: preserve <br />, <br/>, <br>, and even </br> by normalizing all to "<br />"
  *  - ✅ NEW: When Level-2 is "Mounting Hardware", inject camera label list into Level-3 header (not Level-4)
  *  - ✅ FIX: Mounting Hardware L3 concat gating is centralized + normalized (no brittle string match inside injector)
@@ -159,7 +159,7 @@
     return normalizeBrVariants(html)
       .replace(sanitizeRegex, (tag) => tag.replace(/strong/gi, 'b'))
       .replace(removeTagsRegex, '')
-      // re-normalize after stripping (in case tags were removed around br)
+      // re-normalize after stripping
       .replace(/<\/\s*br\s*>/gi, '<br />')
       .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
   }
@@ -255,6 +255,23 @@
   function getGroupLabelText($groupRow) {
     const $td = $groupRow.children('td').first();
     return $td.length ? norm($td.text()) : '';
+  }
+
+  // ✅ helper: current label cell text excluding our injected span/br
+  function getLabelCellTextWithoutInjected(labelCell) {
+    const clone = labelCell.cloneNode(true);
+    clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
+    return norm(clone.textContent || '');
+  }
+
+  // ✅ helper: plain-text version of our limited HTML
+  function plainTextFromLimitedHtml(html) {
+    return norm(
+      String(html || '')
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/<\/?b>/gi, '')
+        .replace(/&nbsp;/gi, ' ')
+    );
   }
 
   let cssInjected = false;
@@ -561,7 +578,7 @@
   }
 
   // ======================
-  // FIELD_2019 INJECTION (SPAN; NON-DESTRUCTIVE + IDEMPOTENT)
+  // FIELD_2019 INJECTION (REPLACE-IF-SAME, ELSE APPEND)
   // ======================
 
   function injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId }) {
@@ -570,7 +587,7 @@
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
 
-    // ✅ HARD IDEMPOTENT: always remove prior injected nodes (prevents double-inject across multiple renders)
+    // HARD IDEMPOTENT: remove prior injected nodes every run
     labelCell.querySelectorAll('.scw-l4-2019').forEach((n) => n.remove());
     labelCell.querySelectorAll('br.scw-l4-2019-br').forEach((n) => n.remove());
 
@@ -579,15 +596,22 @@
     if (!fieldCell) return;
 
     let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
+    const fieldPlain = plainTextFromLimitedHtml(html);
+    if (!fieldPlain) return;
 
-    // Strip tags for "is this meaningful" check, but KEEP br variants by converting them to spaces
-    const textContent = html
-      .replace(/<br\s*\/?>/gi, ' ')
-      .replace(/<\/?b>/gi, '')
-      .replace(/&nbsp;/gi, ' ')
-      .trim();
+    const currentLabelPlain = getLabelCellTextWithoutInjected(labelCell);
 
-    if (!textContent) return;
+    const looksLikeSameText =
+      currentLabelPlain &&
+      (currentLabelPlain === fieldPlain ||
+        currentLabelPlain.includes(fieldPlain) ||
+        fieldPlain.includes(currentLabelPlain));
+
+    if (looksLikeSameText) {
+      labelCell.innerHTML = `<span class="scw-l4-2019">${html}</span>`;
+      $groupRow.data('scwL4_2019_RunId', runId);
+      return;
+    }
 
     const br = document.createElement('br');
     br.className = 'scw-l4-2019-br';
@@ -595,7 +619,7 @@
 
     const span = document.createElement('span');
     span.className = 'scw-l4-2019';
-    span.innerHTML = html; // contains only <b> and <br /> after sanitize/normalize
+    span.innerHTML = html;
     labelCell.appendChild(span);
 
     $groupRow.data('scwL4_2019_RunId', runId);
@@ -817,7 +841,7 @@
           }
         }
 
-        // ✅ inject limited HTML from field_2019 as a span under the label cell (idempotent)
+        // ✅ replace-if-same (fixes duplication when grouping label == description)
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
 
         const qty = totals[QTY_FIELD_KEY];
@@ -902,7 +926,6 @@
     for (const cell of cells) {
       if (cell.dataset.scwNormalized === '1') continue;
 
-      // sanitize + normalize all br variants to "<br />"
       let html = sanitizeAllowOnlyBrAndB(decodeEntities(cell.innerHTML || ''));
       html = normalizeBrVariants(html)
         .replace(/\s*<br\s*\/?>\s*/gi, '<br />')
