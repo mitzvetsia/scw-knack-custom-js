@@ -3946,7 +3946,7 @@ $(".kn-navigation-bar").hide();
 	['field_2232', 'FLAG: map incoming camera or reader connections'],
 	['field_2242', 'FLAG_limit to quantity 1'],
     ],
-    ],
+    
     //other equipment
     '5df12ce036f91b0015404d78': [
 	['field_133',  'REL_equipment bucket'],
@@ -3967,9 +3967,11 @@ $(".kn-navigation-bar").hide();
 	['field_2232', 'FLAG: map incoming camera or reader connections'],
 	['field_2242', 'FLAG_limit to quantity 1'],
     ],
+
     //service
     '6977caa7f246edf67b52cbcd': [
     ],
+
     //assumptions
     '697b7a023a31502ec68b3303': [
 	['field_133',  'REL_equipment bucket'],
@@ -3980,6 +3982,7 @@ $(".kn-navigation-bar").hide();
 	//install relevant
 	['field_2021', 'INPUT_default labor description'],
     ],
+
     //licenses
     '645554dce6f3a60028362a6a': [
 	['field_133',  'REL_equipment bucket'],
