@@ -16,8 +16,8 @@
     // unified field
     UNIFIED: "field_2246",
 
-    // when this field changes, unified and parent fields must be cleared
-    RESET_ON_FIELD: ["field_2223","field_2193", "field_2194", "field_2195"], 
+    // bucket field: when this changes, clear ALL parents + unified
+    RESET_ON_FIELD: "field_2223",
 
     // If unified is SINGLE connection, pick first non-empty in this order:
     SINGLE_PRIORITY: ["field_2193", "field_2194", "field_2195"],
@@ -89,12 +89,10 @@
     return encodeURIComponent(JSON.stringify(payload));
   }
 
-  // Read selected IDs AND their display labels from a parent select
   function readSelectedIdToLabelMap($select) {
     const out = {};
     if (!$select || !$select.length) return out;
 
-    // Works for both single and multi
     $select.find("option:selected").each(function () {
       const id = $(this).attr("value") || "";
       const label = ($(this).text() || "").trim();
@@ -114,7 +112,6 @@
     return out;
   }
 
-  // Ensure unified select contains <option value="id">Label</option> for each selected id
   function ensureOptions($unifiedSelect, idToLabel) {
     if (!$unifiedSelect || !$unifiedSelect.length) return;
 
@@ -123,7 +120,6 @@
         const label = idToLabel[id] || id;
         $unifiedSelect.append(new Option(label, id, false, false));
       } else {
-        // If option exists but is blank, update label
         const $opt = $unifiedSelect.find(`option[value="${id}"]`).first();
         if (!($opt.text() || "").trim()) $opt.text(idToLabel[id] || id);
       }
@@ -137,7 +133,6 @@
     const $wrap = $view.find(`#kn-input-${CONFIG.UNIFIED}`).first();
     if (!$wrap.length) return;
 
-    // keep it in DOM; avoid display:none
     $wrap.css({
       position: "absolute",
       left: "-99999px",
@@ -147,7 +142,6 @@
       overflow: "hidden"
     });
 
-    // also hide chosen container if present
     $wrap.find(".chzn-container, .chosen-container").css({
       position: "absolute",
       left: "-99999px",
@@ -172,7 +166,6 @@
   }
 
   function computeSinglePick(unionIds, $view, viewId) {
-    // Pick first non-empty in priority order
     for (const fk of CONFIG.SINGLE_PRIORITY) {
       const $sel = getSelect($view, viewId, fk);
       const ids = asArray($sel.val());
@@ -192,8 +185,6 @@
 
     const { unionIds, idToLabel } = computeUnionIdsAndLabels($view, viewId);
 
-    // WAIT CONDITION: only run after any parent has a selection.
-    // If all empty, clear unified.
     if (!unionIds.length) {
       const isMulti = isMultiSelect($unifiedSelect);
       const encodedClear = encodeConnValue([], isMulti);
@@ -207,13 +198,10 @@
     const unifiedIsMulti = isMultiSelect($unifiedSelect);
     const finalIds = unifiedIsMulti ? unionIds : computeSinglePick(unionIds, $view, viewId);
 
-    // Make sure Chosen has the options available so it can display selections
     ensureOptions($unifiedSelect, idToLabel);
 
-    // Apply selection to the SELECT (so UI updates)
     $unifiedSelect.val(unifiedIsMulti ? finalIds : (finalIds[0] || "")).trigger("change");
 
-    // Also set hidden explicitly (so Knack definitely submits it)
     const encoded = encodeConnValue(finalIds, unifiedIsMulti);
     $unifiedHidden.val(encoded).trigger("change");
 
@@ -222,26 +210,49 @@
     log("Unified set", { unifiedIsMulti, finalIds, encoded });
   }
 
-  // ✅ NEW: clear unified immediately (select + hidden)
-  function clearUnifiedField($view, viewId) {
-    const $unifiedSelect = getSelect($view, viewId, CONFIG.UNIFIED);
-    const $unifiedHidden = getHiddenConn($view, CONFIG.UNIFIED);
+  // ======================
+  // CLEAR HELPERS
+  // ======================
+  function clearConnField($view, viewId, fieldKey) {
+    const $sel = getSelect($view, viewId, fieldKey);
+    const $hidden = getHiddenConn($view, fieldKey);
 
-    if (!$unifiedSelect.length || !$unifiedHidden.length) return;
+    // Parent fields might not have the hidden connection input in the same shape as UNIFIED,
+    // but if it exists we clear it too.
+    const hasSelect = $sel && $sel.length;
+    const hasHidden = $hidden && $hidden.length;
 
-    const isMulti = isMultiSelect($unifiedSelect);
+    if (!hasSelect && !hasHidden) return;
+
+    let isMulti = false;
+    if (hasSelect) isMulti = isMultiSelect($sel);
+
     const clearedVal = isMulti ? [] : "";
 
-    // Clear visible select
-    $unifiedSelect.val(clearedVal).trigger("change");
+    if (hasSelect) {
+      $sel.val(clearedVal).trigger("change");
+      chosenUpdate($sel);
+    }
 
-    // Clear hidden connection (Knack submission source)
-    const encodedClear = encodeConnValue([], isMulti);
-    $unifiedHidden.val(encodedClear).trigger("change");
+    if (hasHidden) {
+      const encodedClear = encodeConnValue([], isMulti);
+      $hidden.val(encodedClear).trigger("change");
+    }
 
-    chosenUpdate($unifiedSelect);
+    log("Cleared field", fieldKey);
+  }
 
-    log("Unified field cleared due to reset trigger");
+  function clearUnifiedField($view, viewId) {
+    clearConnField($view, viewId, CONFIG.UNIFIED);
+  }
+
+  function clearAllParents($view, viewId) {
+    CONFIG.PARENTS.forEach((fk) => clearConnField($view, viewId, fk));
+  }
+
+  function clearParentsAndUnified($view, viewId) {
+    clearAllParents($view, viewId);
+    clearUnifiedField($view, viewId);
   }
 
   // ======================
@@ -251,19 +262,22 @@
     const $view = $viewRoot(viewId);
     if (!$view.length) return;
 
-    // Keep unified hidden but present
     safeHideUnifiedField($view);
 
     const sync = debounce(() => setUnifiedFromParents($view, viewId), 80);
 
-    // 🔁 RESET: clear unified whenever field_2223 changes
+    // ✅ RESET: when bucket changes, clear ALL parent product fields AND unified
     if (CONFIG.RESET_ON_FIELD) {
-      const $resetSel = getSelect($view, viewId, CONFIG.RESET_ON_FIELD);
-      if ($resetSel.length) {
-        $resetSel
+      const $bucket = getSelect($view, viewId, CONFIG.RESET_ON_FIELD);
+      if ($bucket.length) {
+        $bucket
           .off(`change${EVENT_NS}-reset`)
           .on(`change${EVENT_NS}-reset`, function () {
-            clearUnifiedField($view, viewId);
+            clearParentsAndUnified($view, viewId);
+
+            // optional: one more pass to ensure unified stays cleared
+            // (since parents are now empty, sync will clear unified anyway)
+            sync();
           });
       }
     }
