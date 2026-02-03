@@ -1,16 +1,17 @@
 /////************* PROPOSAL VIEW OF SOW (effective Q1 2026) ***************//////
 /**
  * SCW Totals Script - Optimized Version
- * Version: 2.0 - Fixed WeakMap.clear() issue
- * Last Updated: 2025-01-26
+ * Version: 2.0 - Fixes L4 duplication + preserves limited HTML (<b>, <br />)
+ * Last Updated: 2026-02-02
  *
  * PATCHES:
  *  - Hide Level-3 header row when product-name group label is blank-ish (grouped by field_2208)
  *  - Restore camera concat for "drop" (Cameras/Entries) by expanding L2_CONTEXT.byLabel variants
- *  - ✅ RESTORE (2026-02-02): Inject field_2019 limited HTML (<b>, <br>) into L4 header label (replace-if-same, else append)
- *  - ✅ BR NORMALIZE: preserve <br />, <br/>, <br>, and even </br> by normalizing all to "<br />"
+ *  - L4 field_2019 injection is non-destructive + IDPOTENT
+ *  - ✅ FIX: Prevent duplicate L4 label text when concat runs (concat now uses base label WITHOUT injected nodes)
+ *  - ✅ FIX: Replace-if-same works even when Knack strips spaces around <b> tags (we normalize spacing)
+ *  - ✅ BR NORMALIZE: preserve <br>, <br/>, <br />, and even </br> by normalizing all to "<br />"
  *  - ✅ NEW: When Level-2 is "Mounting Hardware", inject camera label list into Level-3 header (not Level-4)
- *  - ✅ FIX: Mounting Hardware L3 concat gating is centralized + normalized (no brittle string match inside injector)
  *  - ✅ NEW PATCH (2026-01-30): Hide stray blank Level-4 header rows (Knack creates a group for empty L4 grouping values)
  */
 (function () {
@@ -35,12 +36,10 @@
     fieldKey: 'field_2208',
   };
 
-  // ✅ NEW: Hide stray blank Level-4 headers
-  // (Knack creates a Level-4 group for empty grouping values; we hide header-only if there’s no usable label.)
+  // ✅ Hide stray blank Level-4 headers
   const HIDE_LEVEL4_WHEN_HEADER_BLANK = {
     enabled: true,
     cssClass: 'scw-hide-level4-header',
-    // If field_2019 has meaningful text, we keep the header (because injectField2019IntoLevel4Header may fill it).
     requireField2019AlsoBlank: true,
   };
 
@@ -89,7 +88,7 @@
     numberFieldKey: 'field_1951',
   };
 
-  // ✅ NEW: For Mounting Hardware, inject camera list into Level-3 header (not Level-4)
+  // ✅ For Mounting Hardware, inject camera list into Level-3 header (not Level-4)
   const CONCAT_L3_FOR_MOUNTING = {
     enabled: true,
     level2Label: 'Mounting Hardware',
@@ -141,64 +140,8 @@
     return decoderElement.value;
   }
 
-  // Allow only <b> and <br> (normalize all BR variants to "<br />")
-  const sanitizeRegex = /<\/?strong\b[^>]*>/gi;
-  const removeTagsRegex = /<(?!\/?(br|b)\b)[^>]*>/gi;
-
-  function normalizeBrVariants(html) {
-    if (!html) return '';
-    return String(html)
-      // tolerate invalid closing </br>
-      .replace(/<\/\s*br\s*>/gi, '<br />')
-      // normalize <br>, <br/>, <br />, <br    />
-      .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
-  }
-
-  function sanitizeAllowOnlyBrAndB(html) {
-    if (!html) return '';
-    return normalizeBrVariants(html)
-      .replace(sanitizeRegex, (tag) => tag.replace(/strong/gi, 'b'))
-      .replace(removeTagsRegex, '')
-      // re-normalize after stripping
-      .replace(/<\/\s*br\s*>/gi, '<br />')
-      .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
-  }
-
-  function formatMoney(n) {
-    const num = Number(n || 0);
-    return '$' + Knack.formatNumberWithCommas(num.toFixed(2));
-  }
-
-  function sumField($rows, fieldKey) {
-    let total = 0;
-    const rows = $rows.get();
-
-    for (let i = 0; i < rows.length; i++) {
-      const num = getRowNumericValue(rows[i], fieldKey);
-      if (Number.isFinite(num)) total += num;
-    }
-    return total;
-  }
-
-  function sumFields($rows, fieldKeys) {
-    const totals = {};
-    fieldKeys.forEach((key) => {
-      totals[key] = 0;
-    });
-
-    const rows = $rows.get();
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      for (const key of fieldKeys) {
-        const num = getRowNumericValue(row, key);
-        if (Number.isFinite(num)) totals[key] += num;
-      }
-    }
-    return totals;
-  }
-
   function norm(s) {
-    return String(s || '').replace(/\u00A0/g, ' ').trim();
+    return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   const normKeyCache = new Map();
@@ -214,6 +157,64 @@
     const t = norm(v);
     return !t || t === '-' || t === '—' || t === '–';
   }
+
+  // ----------------------
+  // LIMITED HTML SANITIZE
+  // ----------------------
+
+  // Allow only <b> and <br>
+  const sanitizeRegex = /<\/?strong\b[^>]*>/gi;
+  const removeTagsRegex = /<(?!\/?(br|b)\b)[^>]*>/gi;
+
+  function normalizeBrVariants(html) {
+    if (!html) return '';
+    return String(html)
+      .replace(/<\/\s*br\s*>/gi, '<br />') // tolerate invalid closing </br>
+      .replace(/<\s*br\s*\/?\s*>/gi, '<br />'); // normalize all <br> forms
+  }
+
+  // ✅ Fix Knack stripping spaces around <b> boundaries:
+  //    e.g. "patch<b>panel</b>if" -> "patch <b>panel</b> if"
+  function normalizeBoldSpacing(html) {
+    if (!html) return '';
+    let out = String(html);
+
+    // insert space before <b> if preceded by a non-space and not a tag boundary
+    out = out.replace(/([^\s>])\s*<b\b/gi, '$1 <b');
+
+    // insert space after </b> if immediately followed by a non-space/non-tag char
+    out = out.replace(/<\/b>\s*([^\s<])/gi, '</b> $1');
+
+    return out;
+  }
+
+  function sanitizeAllowOnlyBrAndB(html) {
+    if (!html) return '';
+    return normalizeBoldSpacing(
+      normalizeBrVariants(html)
+        .replace(sanitizeRegex, (tag) => tag.replace(/strong/gi, 'b'))
+        .replace(removeTagsRegex, '')
+        .replace(/<\/\s*br\s*>/gi, '<br />')
+        .replace(/<\s*br\s*\/?\s*>/gi, '<br />')
+    );
+  }
+
+  // plain-text version of our limited HTML (used for "replace-if-same" detection)
+  function plainTextFromLimitedHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = String(html || '');
+    // textContent will preserve inserted spaces from normalizeBoldSpacing()
+    return norm(tmp.textContent || '');
+  }
+
+  function formatMoney(n) {
+    const num = Number(n || 0);
+    return '$' + Knack.formatNumberWithCommas(num.toFixed(2));
+  }
+
+  // ----------------------
+  // ROW CACHE
+  // ----------------------
 
   let rowCache = new WeakMap();
   function getRowCache(row) {
@@ -251,28 +252,53 @@
     return value;
   }
 
+  function sumField($rows, fieldKey) {
+    let total = 0;
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const num = getRowNumericValue(rows[i], fieldKey);
+      if (Number.isFinite(num)) total += num;
+    }
+    return total;
+  }
+
+  function sumFields($rows, fieldKeys) {
+    const totals = {};
+    fieldKeys.forEach((key) => (totals[key] = 0));
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      for (const key of fieldKeys) {
+        const num = getRowNumericValue(row, key);
+        if (Number.isFinite(num)) totals[key] += num;
+      }
+    }
+    return totals;
+  }
+
   // ✅ read group label text (works for L3/L4)
   function getGroupLabelText($groupRow) {
     const $td = $groupRow.children('td').first();
     return $td.length ? norm($td.text()) : '';
   }
 
-  // ✅ helper: current label cell text excluding our injected span/br
+  // ✅ current label text excluding our injected nodes
   function getLabelCellTextWithoutInjected(labelCell) {
     const clone = labelCell.cloneNode(true);
     clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
     return norm(clone.textContent || '');
   }
 
-  // ✅ helper: plain-text version of our limited HTML
-  function plainTextFromLimitedHtml(html) {
-    return norm(
-      String(html || '')
-        .replace(/<br\s*\/?>/gi, ' ')
-        .replace(/<\/?b>/gi, '')
-        .replace(/&nbsp;/gi, ' ')
-    );
+  // ✅ get label HTML excluding our injected nodes (for concat base)
+  function getLabelCellHtmlWithoutInjected(labelCell) {
+    const clone = labelCell.cloneNode(true);
+    clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
+    return clone.innerHTML || '';
   }
+
+  // ======================
+  // CSS
+  // ======================
 
   let cssInjected = false;
   function injectCssOnce() {
@@ -284,22 +310,17 @@
     style.textContent = `
       tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
       tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
-      .scw-concat-cameras { line-height: 1.2; }
 
-      /* injected field_2019 span */
+      .scw-concat-cameras { line-height: 1.2; }
+      .scw-concat-cameras--mounting { line-height: 1.15; }
+
       .scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
       .scw-l4-2019-br { line-height: 0; }
 
       .scw-each { line-height: 1.1; }
       .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
 
-      /* hard-hide L3 header rows when flagged */
       tr.scw-hide-level3-header { display: none !important; }
-
-      /* optional: slightly tighter list for Mounting Hardware L3 */
-      .scw-concat-cameras--mounting { line-height: 1.15; }
-
-      /* ✅ hard-hide stray blank L4 header rows when flagged */
       tr.scw-hide-level4-header { display: none !important; }
     `;
     document.head.appendChild(style);
@@ -533,6 +554,62 @@
     return items.map((it) => escapeHtml(it.text)).join(', ');
   }
 
+  // ======================
+  // FIELD_2019 INJECTION (L4)
+  // ======================
+
+  function injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId }) {
+    if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
+
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return;
+
+    // Always remove prior injected nodes (don’t rely on data flags; KTL/Knack re-renders can reuse DOM)
+    labelCell.querySelectorAll('.scw-l4-2019').forEach((n) => n.remove());
+    labelCell.querySelectorAll('br.scw-l4-2019-br').forEach((n) => n.remove());
+
+    const firstRow = $rowsToSum[0];
+    const fieldCell = firstRow ? firstRow.querySelector('td.field_2019') : null;
+    if (!fieldCell) return;
+
+    // sanitized HTML from field_2019 (preserve <b>, <br />)
+    let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
+    const fieldPlain = plainTextFromLimitedHtml(html);
+    if (!fieldPlain) return;
+
+    const currentLabelPlain = getLabelCellTextWithoutInjected(labelCell);
+
+    // ✅ robust replace-if-same
+    const looksLikeSameText =
+      currentLabelPlain &&
+      (currentLabelPlain === fieldPlain ||
+        currentLabelPlain.includes(fieldPlain) ||
+        fieldPlain.includes(currentLabelPlain));
+
+    if (looksLikeSameText) {
+      // Replace whole label (prevents the “plain text + rich text” duplicate)
+      labelCell.innerHTML = `<span class="scw-l4-2019">${html}</span>`;
+      $groupRow.data('scwL4_2019_RunId', runId);
+      return;
+    }
+
+    // Otherwise append underneath
+    const br = document.createElement('br');
+    br.className = 'scw-l4-2019-br';
+    labelCell.appendChild(br);
+
+    const span = document.createElement('span');
+    span.className = 'scw-l4-2019';
+    span.innerHTML = html;
+    labelCell.appendChild(span);
+
+    $groupRow.data('scwL4_2019_RunId', runId);
+  }
+
+  // ======================
+  // CONCAT INJECTION (L4 "drop") — FIXED to not double-print
+  // ======================
+
   function injectConcatIntoHeader({ level, contextKey, $groupRow, $rowsToSum, runId }) {
     if (!CONCAT.enabled || level !== CONCAT.onlyLevel || contextKey !== CONCAT.onlyContextKey) return;
     if ($groupRow.data('scwConcatRunId') === runId) return;
@@ -541,16 +618,34 @@
     const cameraListHtml = buildCameraListHtml($rowsToSum);
     if (!cameraListHtml) return;
 
-    const $labelCell = $groupRow.find('td:first');
-    if (!$labelCell.length) return;
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return;
 
-    const currentHtml = $labelCell.html() || '';
-    const sanitizedBase = sanitizeAllowOnlyBrAndB(decodeEntities(currentHtml));
+    // ✅ If field_2019 already injected (replace or append), use it as the base label.
+    const injected = labelCell.querySelector('.scw-l4-2019');
+    let baseHtml = '';
 
-    $labelCell.html(
-      `<div class="scw-concat-cameras">${sanitizedBase}<br /><b style="color:orange;"> (${cameraListHtml})</b></div>`
-    );
+    if (injected) {
+      baseHtml = injected.innerHTML || '';
+    } else {
+      // Otherwise use label html BUT strip any injected nodes (defensive)
+      baseHtml = getLabelCellHtmlWithoutInjected(labelCell);
+      baseHtml = sanitizeAllowOnlyBrAndB(decodeEntities(baseHtml));
+    }
+
+    // Put back the concat wrapper (base + camera list) with consistent <br />
+    const composed =
+      `<div class="scw-concat-cameras">` +
+      `${sanitizeAllowOnlyBrAndB(decodeEntities(baseHtml))}` +
+      `<br /><b style="color:orange;"> (${cameraListHtml})</b>` +
+      `</div>`;
+
+    labelCell.innerHTML = composed;
   }
+
+  // ======================
+  // CONCAT INJECTION (L3 Mounting Hardware)
+  // ======================
 
   function injectConcatIntoLevel3HeaderForMounting({ $groupRow, $rowsToSum, runId }) {
     if (!CONCAT.enabled) return;
@@ -575,54 +670,6 @@
         `<b style="color:orange;">(${cameraListHtml})</b>` +
         `</div>`
     );
-  }
-
-  // ======================
-  // FIELD_2019 INJECTION (REPLACE-IF-SAME, ELSE APPEND)
-  // ======================
-
-  function injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId }) {
-    if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
-
-    const labelCell = $groupRow[0].querySelector('td:first-child');
-    if (!labelCell) return;
-
-    // HARD IDEMPOTENT: remove prior injected nodes every run
-    labelCell.querySelectorAll('.scw-l4-2019').forEach((n) => n.remove());
-    labelCell.querySelectorAll('br.scw-l4-2019-br').forEach((n) => n.remove());
-
-    const firstRow = $rowsToSum[0];
-    const fieldCell = firstRow ? firstRow.querySelector('td.field_2019') : null;
-    if (!fieldCell) return;
-
-    let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
-    const fieldPlain = plainTextFromLimitedHtml(html);
-    if (!fieldPlain) return;
-
-    const currentLabelPlain = getLabelCellTextWithoutInjected(labelCell);
-
-    const looksLikeSameText =
-      currentLabelPlain &&
-      (currentLabelPlain === fieldPlain ||
-        currentLabelPlain.includes(fieldPlain) ||
-        fieldPlain.includes(currentLabelPlain));
-
-    if (looksLikeSameText) {
-      labelCell.innerHTML = `<span class="scw-l4-2019">${html}</span>`;
-      $groupRow.data('scwL4_2019_RunId', runId);
-      return;
-    }
-
-    const br = document.createElement('br');
-    br.className = 'scw-l4-2019-br';
-    labelCell.appendChild(br);
-
-    const span = document.createElement('span');
-    span.className = 'scw-l4-2019';
-    span.innerHTML = html;
-    labelCell.appendChild(span);
-
-    $groupRow.data('scwL4_2019_RunId', runId);
   }
 
   // ======================
@@ -784,7 +831,7 @@
           const labelText = getGroupLabelText($groupRow);
           if (isBlankish(labelText)) {
             $groupRow.addClass('scw-hide-level3-header');
-            return; // Level-4 will still be processed
+            return;
           }
         }
 
@@ -812,7 +859,6 @@
 
       // Level 4
       if (level === 4) {
-        // reset any prior hide flag this run
         $groupRow.removeClass(HIDE_LEVEL4_WHEN_HEADER_BLANK.cssClass).show();
 
         if (!$groupRow.data('scwHeaderCellsAdded')) {
@@ -821,7 +867,7 @@
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        // ✅ hide stray blank L4 header rows
+        // hide stray blank L4 header rows
         if (HIDE_LEVEL4_WHEN_HEADER_BLANK.enabled) {
           const headerText = getGroupLabelText($groupRow);
 
@@ -832,16 +878,12 @@
             field2019Text = cell2019 ? norm(cell2019.textContent || '') : '';
           }
 
-          if (
-            isBlankish(headerText) &&
-            (!HIDE_LEVEL4_WHEN_HEADER_BLANK.requireField2019AlsoBlank || isBlankish(field2019Text))
-          ) {
+          if (isBlankish(headerText) && (!HIDE_LEVEL4_WHEN_HEADER_BLANK.requireField2019AlsoBlank || isBlankish(field2019Text))) {
             $groupRow.addClass(HIDE_LEVEL4_WHEN_HEADER_BLANK.cssClass);
-            // DO NOT return; keep totals/subtotals working for these rows
           }
         }
 
-        // ✅ replace-if-same (fixes duplication when grouping label == description)
+        // 1) inject rich field_2019 (replace/append)
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
 
         const qty = totals[QTY_FIELD_KEY];
@@ -851,6 +893,7 @@
         $groupRow.find(`td.${COST_FIELD_KEY}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
         $groupRow.find(`td.${HARDWARE_FIELD_KEY},td.${LABOR_FIELD_KEY}`).empty();
 
+        // 2) then inject concat (fixed so it doesn't double-print base label)
         injectConcatIntoHeader({ level, contextKey: sectionContext.key, $groupRow, $rowsToSum, runId });
       }
 
