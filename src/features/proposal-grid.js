@@ -7,7 +7,8 @@
  * PATCHES:
  *  - Hide Level-3 header row when product-name group label is blank-ish (grouped by field_2208)
  *  - Restore camera concat for "drop" (Cameras/Entries) by expanding L2_CONTEXT.byLabel variants
- *  - ✅ RESTORE PATCH (2026-02-02): Inject field_2019 limited HTML (<b>, <br>) into L4 summary header (span; non-destructive)
+ *  - ✅ RESTORE (2026-02-02): Inject field_2019 limited HTML (<b>, <br>) into L4 header label as a span (non-destructive + idempotent)
+ *  - ✅ BR NORMALIZE: preserve <br />, <br/>, <br>, and even </br> by normalizing all to "<br />"
  *  - ✅ NEW: When Level-2 is "Mounting Hardware", inject camera label list into Level-3 header (not Level-4)
  *  - ✅ FIX: Mounting Hardware L3 concat gating is centralized + normalized (no brittle string match inside injector)
  *  - ✅ NEW PATCH (2026-01-30): Hide stray blank Level-4 header rows (Knack creates a group for empty L4 grouping values)
@@ -140,14 +141,27 @@
     return decoderElement.value;
   }
 
+  // Allow only <b> and <br> (normalize all BR variants to "<br />")
   const sanitizeRegex = /<\/?strong\b[^>]*>/gi;
   const removeTagsRegex = /<(?!\/?(br|b)\b)[^>]*>/gi;
 
+  function normalizeBrVariants(html) {
+    if (!html) return '';
+    return String(html)
+      // tolerate invalid closing </br>
+      .replace(/<\/\s*br\s*>/gi, '<br />')
+      // normalize <br>, <br/>, <br />, <br    />
+      .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
+  }
+
   function sanitizeAllowOnlyBrAndB(html) {
     if (!html) return '';
-    return html
+    return normalizeBrVariants(html)
       .replace(sanitizeRegex, (tag) => tag.replace(/strong/gi, 'b'))
-      .replace(removeTagsRegex, '');
+      .replace(removeTagsRegex, '')
+      // re-normalize after stripping (in case tags were removed around br)
+      .replace(/<\/\s*br\s*>/gi, '<br />')
+      .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
   }
 
   function formatMoney(n) {
@@ -254,7 +268,11 @@
       tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
       tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
       .scw-concat-cameras { line-height: 1.2; }
+
+      /* injected field_2019 span */
       .scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
+      .scw-l4-2019-br { line-height: 0; }
+
       .scw-each { line-height: 1.1; }
       .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
 
@@ -513,7 +531,7 @@
     const sanitizedBase = sanitizeAllowOnlyBrAndB(decodeEntities(currentHtml));
 
     $labelCell.html(
-      `<div class="scw-concat-cameras">${sanitizedBase}<br/><b style="color:orange;"> (${cameraListHtml})</b></div>`
+      `<div class="scw-concat-cameras">${sanitizedBase}<br /><b style="color:orange;"> (${cameraListHtml})</b></div>`
     );
   }
 
@@ -536,23 +554,25 @@
 
     $labelCell.html(
       `<div class="scw-concat-cameras ${CONCAT_L3_FOR_MOUNTING.cssClass}">` +
-        `${sanitizedBase}<br/>` +
+        `${sanitizedBase}<br />` +
         `<b style="color:orange;">(${cameraListHtml})</b>` +
         `</div>`
     );
   }
 
   // ======================
-  // FIELD_2019 INJECTION (RESTORED AS SPAN; NON-DESTRUCTIVE)
+  // FIELD_2019 INJECTION (SPAN; NON-DESTRUCTIVE + IDEMPOTENT)
   // ======================
 
   function injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId }) {
     if (level !== 4 || !$groupRow.length || !$rowsToSum.length) return;
-    if ($groupRow.data('scwL4_2019_RunId') === runId) return;
-    $groupRow.data('scwL4_2019_RunId', runId);
 
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
+
+    // ✅ HARD IDEMPOTENT: always remove prior injected nodes (prevents double-inject across multiple renders)
+    labelCell.querySelectorAll('.scw-l4-2019').forEach((n) => n.remove());
+    labelCell.querySelectorAll('br.scw-l4-2019-br').forEach((n) => n.remove());
 
     const firstRow = $rowsToSum[0];
     const fieldCell = firstRow ? firstRow.querySelector('td.field_2019') : null;
@@ -560,6 +580,7 @@
 
     let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
 
+    // Strip tags for "is this meaningful" check, but KEEP br variants by converting them to spaces
     const textContent = html
       .replace(/<br\s*\/?>/gi, ' ')
       .replace(/<\/?b>/gi, '')
@@ -568,16 +589,16 @@
 
     if (!textContent) return;
 
-    // ✅ Create or update a SPAN under the existing label cell content
-    let span = labelCell.querySelector('.scw-l4-2019');
-    if (!span) {
-      labelCell.appendChild(document.createElement('br'));
-      span = document.createElement('span');
-      span.className = 'scw-l4-2019';
-      labelCell.appendChild(span);
-    }
+    const br = document.createElement('br');
+    br.className = 'scw-l4-2019-br';
+    labelCell.appendChild(br);
 
-    span.innerHTML = html;
+    const span = document.createElement('span');
+    span.className = 'scw-l4-2019';
+    span.innerHTML = html; // contains only <b> and <br /> after sanitize/normalize
+    labelCell.appendChild(span);
+
+    $groupRow.data('scwL4_2019_RunId', runId);
   }
 
   // ======================
@@ -796,7 +817,7 @@
           }
         }
 
-        // ✅ restored span injection for field_2019
+        // ✅ inject limited HTML from field_2019 as a span under the label cell (idempotent)
         injectField2019IntoLevel4Header({ level, $groupRow, $rowsToSum, runId });
 
         const qty = totals[QTY_FIELD_KEY];
@@ -873,19 +894,22 @@
   }
 
   // ======================
-  // FIELD_2019 NORMALIZE
+  // FIELD_2019 NORMALIZE (FOR GROUPING)
   // ======================
 
   function normalizeField2019ForGrouping(viewId) {
     const cells = document.querySelectorAll(`#${viewId} .kn-table td.field_2019`);
     for (const cell of cells) {
       if (cell.dataset.scwNormalized === '1') continue;
+
+      // sanitize + normalize all br variants to "<br />"
       let html = sanitizeAllowOnlyBrAndB(decodeEntities(cell.innerHTML || ''));
-      html = html
-        .replace(/\s*<br\s*\/?>\s*/gi, '<br>')
+      html = normalizeBrVariants(html)
+        .replace(/\s*<br\s*\/?>\s*/gi, '<br />')
         .replace(/\s*<b>\s*/gi, '<b>')
         .replace(/\s*<\/b>\s*/gi, '</b>')
         .trim();
+
       cell.innerHTML = html;
       cell.dataset.scwNormalized = '1';
     }
