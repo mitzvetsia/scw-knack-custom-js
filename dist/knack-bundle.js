@@ -1759,6 +1759,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     //assumptions
     '6977ad1234ba695a17190963': [
       ['field_2182', 'REL_scope of work'],
+      ['field_2250', 'REL_mdf-idf multi select for assumptions'],
       ['field_2248', 'REL_products for assumptions'],
     ],
     //licenses
@@ -1770,7 +1771,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248',
+    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250'
     'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233','field_2246',
   ];
 
