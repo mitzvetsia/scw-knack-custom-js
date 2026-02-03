@@ -22,6 +22,9 @@
  *
  * PATCH (2026-02-03b):
  *  - ✅ Hide Level-2 footer subtotal row when L2 label is "Assumptions" OR record ID is 697b7a023a31502ec68b3303
+ *
+ * PATCH (2026-02-03c):
+ *  - ✅ Reorder Level-1 groups by numeric sort field (field_2252) using DOM reflow (Option 2)
  */
 (function () {
   'use strict';
@@ -41,6 +44,13 @@
   const LABOR_FIELD_KEY = 'field_2028';
   const HARDWARE_FIELD_KEY = 'field_2201';
   const COST_FIELD_KEY = 'field_2203';
+
+  // ✅ NEW: L1 sort key (numeric field on the record rows within each L1 group)
+  const L1_SORT = {
+    enabled: true,
+    sortFieldKey: 'field_2252', // number field
+    missingSortGoesLast: true,
+  };
 
   // ✅ Hide L3 group header if product-name group label is blank-ish
   const HIDE_LEVEL3_WHEN_FIELD_BLANK = {
@@ -336,6 +346,81 @@
     const clone = labelCell.cloneNode(true);
     clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
     return clone.innerHTML || '';
+  }
+
+  // ======================
+  // ✅ L1 GROUP REORDER (Option 2)
+  // ======================
+
+  function getSortValueForL1Block(startL1El, nextL1El) {
+    // Scan for first data row within this L1 section and read td.field_2252
+    let cur = startL1El.nextElementSibling;
+
+    while (cur && cur !== nextL1El) {
+      if (cur.id && cur.tagName === 'TR') {
+        const cell = cur.querySelector(`td.${L1_SORT.sortFieldKey}`);
+        if (cell) {
+          const raw = norm(cell.textContent || '');
+          const num = parseFloat(String(raw).replace(/[^\d.-]/g, ''));
+          if (Number.isFinite(num)) return num;
+        }
+      }
+      cur = cur.nextElementSibling;
+    }
+
+    return null;
+  }
+
+  function reorderLevel1GroupsBySortField($tbody, viewId, runId) {
+    if (!L1_SORT.enabled) return;
+    const tbody = $tbody?.[0];
+    if (!tbody) return;
+
+    // Prevent thrash if Knack re-triggers within the same render tick
+    const stampKey = 'scwL1ReorderStamp';
+    if (tbody.dataset[stampKey] === String(runId)) return;
+    tbody.dataset[stampKey] = String(runId);
+
+    const l1 = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
+    if (l1.length < 2) return;
+
+    const blocks = l1.map((l1El, idx) => {
+      const nextL1El = idx + 1 < l1.length ? l1[idx + 1] : null;
+
+      // Capture nodes for this L1 block: header + everything until next L1
+      const nodes = [];
+      let cur = l1El;
+      while (cur && cur !== nextL1El) {
+        nodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+
+      const sortVal = getSortValueForL1Block(l1El, nextL1El);
+      return {
+        idx,
+        sortVal,
+        nodes,
+      };
+    });
+
+    const missing = L1_SORT.missingSortGoesLast ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+
+    blocks.sort((a, b) => {
+      const av = Number.isFinite(a.sortVal) ? a.sortVal : missing;
+      const bv = Number.isFinite(b.sortVal) ? b.sortVal : missing;
+      if (av !== bv) return av - bv;
+      return a.idx - b.idx; // stable
+    });
+
+    const frag = document.createDocumentFragment();
+    for (const block of blocks) {
+      for (const node of block.nodes) frag.appendChild(node); // moves node
+    }
+
+    // Clear and re-append (tbody now contains only what wasn't moved; should be empty)
+    tbody.appendChild(frag);
+    // Debug hook if you ever need it:
+    // console.debug(`[SCW totals][${viewId}] Reordered L1 groups by ${L1_SORT.sortFieldKey}`, blocks.map(b => ({i:b.idx, sort:b.sortVal})));
   }
 
   // ======================
@@ -957,6 +1042,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     $tbody
       .find(`tr.kn-table-group.kn-group-level-3.${L2_SPECIALS.classOnLevel3}`)
       .removeClass(L2_SPECIALS.classOnLevel3);
+
+    // ✅ Reorder L1 groups BEFORE we compute blocks/totals and before label rewrites
+    reorderLevel1GroupsBySortField($tbody, view.key, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
