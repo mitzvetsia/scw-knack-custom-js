@@ -21,7 +21,7 @@
   // CONFIG
   // ======================
 
-  const VIEW_IDS = ['view_3301', 'view_3341'];
+  const VIEW_IDS = ['view_3301', 'view_3341','view_3371'];
   const EVENT_NS = '.scwTotals';
 
   // Field keys
