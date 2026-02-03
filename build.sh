@@ -15,7 +15,7 @@ cat \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
   src/features/group-collapse.js \
-  src/features/add-sow-line-item-dto-hide-show-fields.js \
+  src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/highlight-duplicate-cells.js \
   src/features/replace-content-with-icon.js \
   src/features/change-record-limit.js \
