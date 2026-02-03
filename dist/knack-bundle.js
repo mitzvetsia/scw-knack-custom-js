@@ -468,22 +468,30 @@ window.SCW = window.SCW || {};
 
     const style = document.createElement('style');
     style.id = 'scw-totals-css';
-    style.textContent = `
-      tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
-      tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
+style.textContent = `
+  tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
+  tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
 
-      .scw-concat-cameras { line-height: 1.2; }
-      .scw-concat-cameras--mounting { line-height: 1.15; }
+  .scw-concat-cameras { line-height: 1.2; }
+  .scw-concat-cameras--mounting { line-height: 1.15; }
 
-      .scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
-      .scw-l4-2019-br { line-height: 0; }
+  .scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
+  .scw-l4-2019-br { line-height: 0; }
 
-      .scw-each { line-height: 1.1; }
-      .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
+  /* ✅ FORCE BOLD inside injected HTML (Knack table CSS can flatten <b>) */
+  .scw-l4-2019 b,
+  .scw-concat-cameras b,
+  .scw-l4-2019 strong,
+  .scw-concat-cameras strong {
+    font-weight: 800 !important;
+  }
 
-      tr.scw-hide-level3-header { display: none !important; }
-      tr.scw-hide-level4-header { display: none !important; }
-    `;
+  .scw-each { line-height: 1.1; }
+  .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
+
+  tr.scw-hide-level3-header { display: none !important; }
+  tr.scw-hide-level4-header { display: none !important; }
+`;
     document.head.appendChild(style);
   }
 
