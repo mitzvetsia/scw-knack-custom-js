@@ -287,6 +287,29 @@ window.SCW = window.SCW || {};
     classOnLevel3: 'scw-level3--mounting-hardware',
   };
 
+  const L2_SECTION_RULES = [
+    {
+      key: 'services',
+      recordIds: ['6977caa7f246edf67b52cbcd'],
+      labels: ['Services'],
+      hideLevel3Summary: true,
+      hideQtyCostColumns: true,
+      hideSubtotalFilter: true,
+      headerBackground: '',
+      headerTextColor: '',
+    },
+    {
+      key: 'assumptions',
+      recordIds: ['697b7a023a31502ec68b3303'],
+      labels: ['Assumptions'],
+      hideLevel3Summary: true,
+      hideQtyCostColumns: true,
+      hideSubtotalFilter: true,
+      headerBackground: '#f0f7ff',
+      headerTextColor: '',
+    },
+  ];
+
   // ======================
   // CACHED UTILITIES
   // ======================
@@ -501,6 +524,8 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 
 tr.scw-hide-level3-header { display: none !important; }
 tr.scw-hide-level4-header { display: none !important; }
+tr.scw-hide-qty-cost td.${QTY_FIELD_KEY},
+tr.scw-hide-qty-cost td.${COST_FIELD_KEY} { display: none !important; }
 
 
 /* ============================================================
@@ -569,6 +594,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-2 {
   color: #07467c;
 }
 ${sceneSelectors} .kn-table-group.kn-group-level-2 td {padding: 5px 0px 5px 20px !important; border-top: 20px solid transparent !important;}
+${sceneSelectors} .kn-table-group.kn-group-level-2.scw-l2--assumptions td {font-weight: 600 !important;}
 
 ${sel('tr.scw-subtotal--level-2 td')} {
   background: aliceblue;
@@ -660,6 +686,23 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     return 'default';
   }
 
+  function matchesLevel2Rule(level2Info, rule) {
+    if (!level2Info || !rule) return false;
+    const id = level2Info.recordId ? level2Info.recordId.trim() : '';
+    if (id && Array.isArray(rule.recordIds) && rule.recordIds.includes(id)) return true;
+
+    const label = norm(level2Info.label);
+    if (!label || !Array.isArray(rule.labels)) return false;
+    return rule.labels.some((entry) => norm(entry) === label);
+  }
+
+  function getLevel2Rule(level2Info) {
+    for (const rule of L2_SECTION_RULES) {
+      if (matchesLevel2Rule(level2Info, rule)) return rule;
+    }
+    return null;
+  }
+
   let nearestL2Cache = new WeakMap();
   function getNearestLevel2Info($row) {
     const el = $row[0];
@@ -680,6 +723,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const result = { label: null, recordId: null };
     nearestL2Cache.set(el, result);
     return result;
+  }
+
+  function applyLevel2Styling($groupRow, rule) {
+    if (!rule || !$groupRow?.length) return;
+    $groupRow.addClass(`scw-l2--${rule.key}`);
+    if (rule.headerBackground) $groupRow.css('background-color', rule.headerBackground);
+    if (rule.headerTextColor) $groupRow.css('color', rule.headerTextColor);
   }
 
   // ======================
@@ -989,6 +1039,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     costFieldKey,
     costSourceKey,
     totals,
+    hideQtyCost,
   }) {
     const leftText = labelOverride || groupLabel || '';
 
@@ -997,7 +1048,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const $row = $(`
       <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}"
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${hideQtyCost ? ' scw-hide-qty-cost' : ''}"
         data-scw-subtotal-level="${level}"
         data-scw-context="${escapeHtml(contextKey || 'default')}"
         data-scw-group-label="${escapeHtml(groupLabel || '')}"
@@ -1052,9 +1103,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const sectionContext = {
       level2: { label: null, recordId: null },
       key: 'default',
+      rule: null,
+      hideLevel3Summary: false,
+      hideQtyCostColumns: false,
     };
 
     const footerQueue = [];
+    let shouldHideSubtotalFilter = false;
 
     $allGroupRows.each(function () {
       const $groupRow = $(this);
@@ -1067,6 +1122,15 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         const info = getLevel2InfoFromGroupRow($groupRow);
         sectionContext.level2 = info;
         sectionContext.key = contextKeyFromLevel2Info(info);
+        sectionContext.rule = getLevel2Rule(info);
+        sectionContext.hideLevel3Summary = Boolean(sectionContext.rule?.hideLevel3Summary);
+        sectionContext.hideQtyCostColumns = Boolean(sectionContext.rule?.hideQtyCostColumns);
+        shouldHideSubtotalFilter = shouldHideSubtotalFilter || Boolean(sectionContext.rule?.hideSubtotalFilter);
+
+        applyLevel2Styling($groupRow, sectionContext.rule);
+        if (sectionContext.hideQtyCostColumns) {
+          $groupRow.addClass('scw-hide-qty-cost');
+        }
       }
 
       const $groupBlock = getGroupBlock($groupRow, level);
@@ -1097,6 +1161,11 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
+        if (sectionContext.hideLevel3Summary) {
+          $groupRow.addClass('scw-hide-level3-header');
+          return;
+        }
+
         if (HIDE_LEVEL3_WHEN_FIELD_BLANK.enabled) {
           const labelText = getGroupLabelText($groupRow);
           if (isBlankish(labelText)) {
@@ -1121,6 +1190,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         $groupRow.find(`td.${QTY_FIELD_KEY}`).html(`<strong>${Math.round(qty)}</strong>`);
         $groupRow.find(`td.${COST_FIELD_KEY}`).html(`<strong>${escapeHtml(formatMoney(hardware))}</strong>`);
         $groupRow.find(`td.${HARDWARE_FIELD_KEY},td.${LABOR_FIELD_KEY}`).empty();
+
+        if (sectionContext.hideQtyCostColumns) {
+          $groupRow.addClass('scw-hide-qty-cost');
+        }
 
         injectEachIntoLevel3Header({ level, $groupRow, $rowsToSum, runId });
       }
@@ -1158,6 +1231,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         $groupRow.find(`td.${COST_FIELD_KEY}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
         $groupRow.find(`td.${HARDWARE_FIELD_KEY},td.${LABOR_FIELD_KEY}`).empty();
 
+        if (sectionContext.hideQtyCostColumns) {
+          $groupRow.addClass('scw-hide-qty-cost');
+        }
+
         injectConcatIntoHeader({ level, contextKey: sectionContext.key, $groupRow, $rowsToSum, runId });
       }
 
@@ -1166,6 +1243,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           level,
           label: getLevel2InfoFromGroupRow($groupRow).label,
           contextKey: sectionContext.key,
+          hideQtyCostColumns: sectionContext.hideQtyCostColumns,
           $groupBlock,
           $cellsTemplate,
           $rowsToSum,
@@ -1211,6 +1289,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           costFieldKey: COST_FIELD_KEY,
           costSourceKey: COST_FIELD_KEY,
           totals: item.totals,
+          hideQtyCost: item.hideQtyCostColumns,
         });
 
         fragment.appendChild($row[0]);
@@ -1220,6 +1299,30 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     }
 
     applyLevel2LabelRewrites($tbody, runId);
+    if (shouldHideSubtotalFilter) {
+      hideSubtotalFilter(view.key);
+    }
+  }
+
+  function hideSubtotalFilter(viewId) {
+    const viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+
+    const filterSelectors = [
+      '.kn-filters .kn-filter',
+      '.kn-table-filters .kn-filter',
+      '.kn-records-nav .kn-filter',
+    ];
+
+    const filters = viewEl.querySelectorAll(filterSelectors.join(', '));
+    for (const filter of filters) {
+      if (filter.dataset.scwHideSubtotalFilter === '1') continue;
+      const text = normKey(filter.textContent || '');
+      if (text.includes('subtotal')) {
+        filter.style.display = 'none';
+        filter.dataset.scwHideSubtotalFilter = '1';
+      }
+    }
   }
 
   // ======================
