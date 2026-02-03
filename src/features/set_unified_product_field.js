@@ -16,10 +16,13 @@
     // unified field
     UNIFIED: "field_2246",
 
+    // when this field changes, unified must be cleared
+    RESET_ON_FIELD: "field_2223",
+
     // If unified is SINGLE connection, pick first non-empty in this order:
     SINGLE_PRIORITY: ["field_2193", "field_2194", "field_2195"],
 
-    // ✅ PATCH: hide unified visually (but keep in DOM)
+    // Hide unified visually but keep it in the DOM
     HIDE_UNIFIED_FIELD: true,
 
     DEBUG: false
@@ -52,49 +55,6 @@
   function inAllowedScene(sceneKey) {
     if (!CONFIG.SCENES || !CONFIG.SCENES.length) return true;
     return CONFIG.SCENES.includes(sceneKey);
-  }
-
-  // ======================
-  // ✅ PATCH: Safe hide (keep in DOM)
-  // ======================
-  const SAFE_HIDE_CLASS = "scw-safe-hidden";
-  const SAFE_HIDE_CSS_ID = "scw-safe-hide-css";
-
-  function injectSafeHideCssOnce() {
-    if (document.getElementById(SAFE_HIDE_CSS_ID)) return;
-
-    const css = `
-.${SAFE_HIDE_CLASS} {
-  position: absolute !important;
-  left: -10000px !important;
-  top: auto !important;
-  width: 1px !important;
-  height: 1px !important;
-  overflow: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-
-  /* critical: DO NOT let anything set display:none */
-  display: block !important;
-  visibility: visible !important;
-}
-`;
-    const style = document.createElement("style");
-    style.id = SAFE_HIDE_CSS_ID;
-    style.appendChild(document.createTextNode(css));
-    document.head.appendChild(style);
-  }
-
-  function safeHideUnifiedField($view) {
-    if (!CONFIG.HIDE_UNIFIED_FIELD) return;
-
-    injectSafeHideCssOnce();
-
-    const $wrap = $view.find(`#kn-input-${CONFIG.UNIFIED}`).first();
-    if (!$wrap.length) return;
-
-    // ensure it's not display:none (we must keep DOM + chosen happy)
-    $wrap.css({ display: "block" }).addClass(SAFE_HIDE_CLASS);
   }
 
   // ======================
@@ -170,6 +130,34 @@
     });
   }
 
+  // Hide unified input row visually, without removing it from DOM
+  function safeHideUnifiedField($view) {
+    if (!CONFIG.HIDE_UNIFIED_FIELD) return;
+
+    const $wrap = $view.find(`#kn-input-${CONFIG.UNIFIED}`).first();
+    if (!$wrap.length) return;
+
+    // keep it in DOM; avoid display:none
+    $wrap.css({
+      position: "absolute",
+      left: "-99999px",
+      top: "auto",
+      width: "1px",
+      height: "1px",
+      overflow: "hidden"
+    });
+
+    // also hide chosen container if present
+    $wrap.find(".chzn-container, .chosen-container").css({
+      position: "absolute",
+      left: "-99999px",
+      top: "auto",
+      width: "1px",
+      height: "1px",
+      overflow: "hidden"
+    });
+  }
+
   // ======================
   // CORE: set unified based on parents
   // ======================
@@ -234,6 +222,28 @@
     log("Unified set", { unifiedIsMulti, finalIds, encoded });
   }
 
+  // ✅ NEW: clear unified immediately (select + hidden)
+  function clearUnifiedField($view, viewId) {
+    const $unifiedSelect = getSelect($view, viewId, CONFIG.UNIFIED);
+    const $unifiedHidden = getHiddenConn($view, CONFIG.UNIFIED);
+
+    if (!$unifiedSelect.length || !$unifiedHidden.length) return;
+
+    const isMulti = isMultiSelect($unifiedSelect);
+    const clearedVal = isMulti ? [] : "";
+
+    // Clear visible select
+    $unifiedSelect.val(clearedVal).trigger("change");
+
+    // Clear hidden connection (Knack submission source)
+    const encodedClear = encodeConnValue([], isMulti);
+    $unifiedHidden.val(encodedClear).trigger("change");
+
+    chosenUpdate($unifiedSelect);
+
+    log("Unified field cleared due to reset trigger");
+  }
+
   // ======================
   // BINDING
   // ======================
@@ -241,10 +251,22 @@
     const $view = $viewRoot(viewId);
     if (!$view.length) return;
 
-    // ✅ PATCH: hide unified field visually, but keep it in DOM + active
+    // Keep unified hidden but present
     safeHideUnifiedField($view);
 
     const sync = debounce(() => setUnifiedFromParents($view, viewId), 80);
+
+    // 🔁 RESET: clear unified whenever field_2223 changes
+    if (CONFIG.RESET_ON_FIELD) {
+      const $resetSel = getSelect($view, viewId, CONFIG.RESET_ON_FIELD);
+      if ($resetSel.length) {
+        $resetSel
+          .off(`change${EVENT_NS}-reset`)
+          .on(`change${EVENT_NS}-reset`, function () {
+            clearUnifiedField($view, viewId);
+          });
+      }
+    }
 
     // Bind to parent field changes only (your sequencing request)
     CONFIG.PARENTS.forEach((fk) => {
