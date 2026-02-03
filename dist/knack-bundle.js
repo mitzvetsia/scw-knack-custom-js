@@ -1808,156 +1808,6 @@ style.textContent = `
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
 
-
-
-
-(function () {
-  "use strict";
-
-  // ============================================================
-  // CONFIG (multi-scene / multi-view ready)
-  // ============================================================
-  const CONFIG = [
-    {
-      scenes: ["any"],            // or ["scene_123", "scene_456"]
-      viewIds: ["view_3329"],     // <-- put your form view id(s) here
-      parentFieldKeys: ["field_2193", "field_2194", "field_2195"],
-      unifiedFieldKey: "field_2246",
-    },
-  ];
-
-  const EVENT_NS = ".scwUnifiedProducts";
-
-  // ============================================================
-  // Helpers
-  // ============================================================
-  function sceneMatches(sceneKey, allowed) {
-    return !allowed || !allowed.length || allowed.includes("any") || allowed.includes(sceneKey);
-  }
-
-  function getSelectEl($scope, fieldKey) {
-    // Typical: #field_#### exists
-    // Fallbacks cover some Knack render variants
-    return $scope
-      .find(`#${fieldKey}, select[name='${fieldKey}'], .kn-input-${fieldKey} select`)
-      .first();
-  }
-
-  function asArray(val) {
-    if (!val) return [];
-    return Array.isArray(val) ? val.filter(Boolean) : [val].filter(Boolean);
-  }
-
-  function uniq(arr) {
-    return Array.from(new Set(arr));
-  }
-
-  function sameSet(a, b) {
-    const A = uniq(asArray(a)).sort();
-    const B = uniq(asArray(b)).sort();
-    if (A.length !== B.length) return false;
-    for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) return false;
-    return true;
-  }
-
-  // ============================================================
-  // Core
-  // ============================================================
-  function computeUnifiedIds($view, cfg) {
-    const ids = cfg.parentFieldKeys.flatMap((fk) => {
-      const $sel = getSelectEl($view, fk);
-      return asArray($sel.val());
-    });
-    return uniq(ids);
-  }
-
-  function setUnifiedFieldValue($view, cfg, unifiedIds) {
-    const $unified = getSelectEl($view, cfg.unifiedFieldKey);
-    if (!$unified.length) return;
-
-    // Prevent endless change loops
-    if ($unified.data("scw-setting")) return;
-
-    // Determine if unified select is multi or single
-    const isMulti = $unified.prop("multiple");
-
-    // If nothing selected: for multi use [], for single use ""
-    const nextVal = isMulti ? unifiedIds : (unifiedIds[0] || "");
-
-    // If unchanged, do nothing
-    if (sameSet($unified.val(), nextVal)) return;
-
-    $unified.data("scw-setting", 1);
-    $unified.val(nextVal).trigger("change");
-    $unified.data("scw-setting", 0);
-  }
-
-  function syncUnifiedField($view, cfg) {
-    const unifiedIds = computeUnifiedIds($view, cfg);
-    setUnifiedFieldValue($view, cfg, unifiedIds);
-  }
-
-  // Wait until unified field has options loaded (Knack can populate later),
-  // then set value. This avoids the “value won’t stick because option isn’t in DOM yet” problem.
-  function syncWithRetry($view, cfg, attemptsLeft) {
-    const $unified = getSelectEl($view, cfg.unifiedFieldKey);
-    if (!$unified.length) return;
-
-    const unifiedIds = computeUnifiedIds($view, cfg);
-    if (!unifiedIds.length) {
-      setUnifiedFieldValue($view, cfg, unifiedIds);
-      return;
-    }
-
-    // Check whether the unified select currently has all needed option values.
-    // If not, retry shortly (Knack often injects options after render / after filters resolve).
-    const optionVals = new Set($unified.find("option").map((_, o) => $(o).attr("value")).get().filter(Boolean));
-    const missing = unifiedIds.some((id) => !optionVals.has(id));
-
-    if (!missing) {
-      setUnifiedFieldValue($view, cfg, unifiedIds);
-      return;
-    }
-
-    if (attemptsLeft <= 0) {
-      // Failsafe: still attempt; if Knack rejects, at least we tried
-      setUnifiedFieldValue($view, cfg, unifiedIds);
-      return;
-    }
-
-    setTimeout(() => syncWithRetry($view, cfg, attemptsLeft - 1), 150);
-  }
-
-  // ============================================================
-  // Wire-up
-  // ============================================================
-  CONFIG.forEach((cfg) => {
-    cfg.viewIds.forEach((viewId) => {
-      $(document).on(`knack-view-render.${viewId}${EVENT_NS}`, function () {
-        const sceneKey = (Knack.router && Knack.router.scene_key) || "";
-        if (!sceneMatches(sceneKey, cfg.scenes)) return;
-
-        const $view = $(`#${viewId}`);
-        if (!$view.length) return;
-
-        // Bind changes on all parent fields
-        cfg.parentFieldKeys.forEach((fk) => {
-          const $sel = getSelectEl($view, fk);
-          if (!$sel.length) return;
-
-          $sel.off(`change${EVENT_NS}`).on(`change${EVENT_NS}`, function () {
-            // Use retry because the unified field options may be filtered / async-loaded
-            syncWithRetry($view, cfg, 12);
-          });
-        });
-
-        // Initial sync on render (edit forms / prefilled values)
-        syncWithRetry($view, cfg, 12);
-      });
-    });
-  });
-})();
-
 ////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
 
 
@@ -3501,6 +3351,202 @@ $(".kn-navigation-bar").hide();
     });
 })();
 /*************  Exception Grid: hide if empty, warn if any records  **************************/
+////************* DTO: Unified Products (field_2246) = UNION of 2193/2194/2195 *************////
+/**
+ * SCW - Unified Product Connection Union
+ *
+ * Goal:
+ *  - field_2246 (REL_unified product field) should always contain the UNION of:
+ *      - field_2193 (REL_products_cameras+cabling)      [single]
+ *      - field_2194 (REL_products_for networking)       [single]
+ *      - field_2195 (REL_products_for other equipment)  [multi]
+ *
+ * Why this works even when the select has no options loaded:
+ *  - Knack submits connection values via: input.connection[name="field_xxxx"]
+ *  - That input expects URL-encoded JSON:
+ *      single: "recordId"
+ *      multi : ["id1","id2",...]
+ *
+ * Supports:
+ *  - Multiple views, scenes
+ *  - Chosen pickers
+ *  - Debounced updates to avoid event storms
+ */
+
+(function () {
+  "use strict";
+
+  // ======================
+  // CONFIG
+  // ======================
+  const EVENT_NS = ".scwUnifiedProducts";
+  const CONFIG = {
+    // If you want to scope to specific scenes, add them here. Leave empty for all.
+    SCENES: [],
+
+    // Views containing the form(s)
+    VIEWS: ["view_3329"],
+
+    // Parent product connection fields
+    PARENT_FIELDS: ["field_2193", "field_2194", "field_2195"],
+
+    // Unified connection field (should be MULTI connection in Knack for true union)
+    UNIFIED_FIELD: "field_2246",
+
+    // Debug logging
+    DEBUG: false
+  };
+
+  // ======================
+  // UTILS
+  // ======================
+  function log(...args) {
+    if (CONFIG.DEBUG && window.console) console.log("[scwUnified2246]", ...args);
+  }
+
+  function uniq(arr) {
+    return Array.from(new Set((arr || []).filter(Boolean)));
+  }
+
+  function asArray(v) {
+    if (!v) return [];
+    return Array.isArray(v) ? v.filter(Boolean) : [v].filter(Boolean);
+  }
+
+  function encodeConnValue(ids, isMulti) {
+    const payload = isMulti ? ids : (ids[0] || "");
+    return encodeURIComponent(JSON.stringify(payload));
+  }
+
+  function debounce(fn, wait) {
+    let t;
+    return function debounced(...args) {
+      clearTimeout(t);
+      t = setTimeout(() => fn.apply(this, args), wait);
+    };
+  }
+
+  function inAllowedScene(sceneKey) {
+    if (!CONFIG.SCENES || !CONFIG.SCENES.length) return true;
+    return CONFIG.SCENES.includes(sceneKey);
+  }
+
+  // ======================
+  // DOM HELPERS (Chosen + Knack)
+  // ======================
+  function $viewRoot(viewId) {
+    return $(`#${viewId}`);
+  }
+
+  function getSelect($view, viewId, fieldKey) {
+    // Common Knack form select id is `${viewId}-${fieldKey}`
+    return $view.find(`#${viewId}-${fieldKey}, #${fieldKey}, select[name='${fieldKey}']`).first();
+  }
+
+  function getHiddenConn($view, fieldKey) {
+    // The hidden input actually submitted by Knack for connection fields
+    return $view.find(`#kn-input-${fieldKey} input.connection[name='${fieldKey}']`).first();
+  }
+
+  function isMultiSelect($select) {
+    return !!$select.prop("multiple");
+  }
+
+  function updateChosen($select) {
+    // Chosen legacy + newer events
+    $select.trigger("liszt:updated");
+    $select.trigger("chosen:updated");
+  }
+
+  // ======================
+  // CORE LOGIC
+  // ======================
+  function readParentIds($view, viewId) {
+    const ids = CONFIG.PARENT_FIELDS.flatMap((fk) => {
+      const $sel = getSelect($view, viewId, fk);
+      return asArray($sel.val());
+    });
+    return uniq(ids);
+  }
+
+  function unifiedIsMulti($view, viewId) {
+    const $sel = getSelect($view, viewId, CONFIG.UNIFIED_FIELD);
+    return isMultiSelect($sel);
+  }
+
+  function setUnified($view, viewId) {
+    const ids = readParentIds($view, viewId);
+
+    const $hidden = getHiddenConn($view, CONFIG.UNIFIED_FIELD);
+    if (!$hidden.length) {
+      log("No hidden connection input found for", CONFIG.UNIFIED_FIELD);
+      return;
+    }
+
+    const multi = unifiedIsMulti($view, viewId);
+    const encoded = encodeConnValue(ids, multi);
+
+    // Guard: avoid loops
+    if ($hidden.data("scwSetting")) return;
+
+    // No-op if already correct
+    if (($hidden.val() || "") === encoded) return;
+
+    log("Setting unified field:", { ids, multi, encoded });
+
+    $hidden.data("scwSetting", 1);
+    $hidden.val(encoded).trigger("change");
+
+    // Best-effort: refresh chosen UI (may still show Select if options aren't loaded)
+    const $unifiedSelect = getSelect($view, viewId, CONFIG.UNIFIED_FIELD);
+    if ($unifiedSelect.length) updateChosen($unifiedSelect);
+
+    $hidden.data("scwSetting", 0);
+  }
+
+  function bindView(viewId) {
+    const $view = $viewRoot(viewId);
+    if (!$view.length) return;
+
+    const sync = debounce(() => setUnified($view, viewId), 50);
+
+    // Bind parent changes
+    CONFIG.PARENT_FIELDS.forEach((fk) => {
+      const $sel = getSelect($view, viewId, fk);
+      if (!$sel.length) return;
+
+      $sel.off(`change${EVENT_NS}`).on(`change${EVENT_NS}`, function () {
+        sync();
+      });
+
+      // Some pickers fire blur/input as well; cheap coverage
+      $sel.off(`blur${EVENT_NS}`).on(`blur${EVENT_NS}`, function () {
+        sync();
+      });
+    });
+
+    // Initial
+    sync();
+  }
+
+  // ======================
+  // EVENT WIRING (multi-view, multi-scene)
+  // ======================
+  // If you want strict scene scoping, replace ".any" with your scene key(s).
+  $(document).on(`knack-scene-render.any${EVENT_NS}`, function (event, scene) {
+    if (!inAllowedScene(scene.key)) return;
+
+    CONFIG.VIEWS.forEach((viewId) => {
+      // Hook on view render so DOM exists
+      $(document)
+        .off(`knack-view-render.${viewId}${EVENT_NS}`)
+        .on(`knack-view-render.${viewId}${EVENT_NS}`, function () {
+          bindView(viewId);
+        });
+    });
+  });
+
+})();
 
 (function () {
   const applyCheckboxGrid = () => {
