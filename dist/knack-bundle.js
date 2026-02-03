@@ -185,7 +185,7 @@ window.SCW = window.SCW || {};
  *  - ✅ Hide Level-2 footer subtotal row when L2 label is "Assumptions" OR record ID is 697b7a023a31502ec68b3303
  *
  * PATCH (2026-02-03c):
- *  - ✅ Reorder Level-2 groups by numeric sort field (field_2252) using DOM reflow (Option 2)
+ *  - ✅ Reorder Level-2 groups by numeric sort field (field_2218) using DOM reflow (Option 2)
  */
 (function () {
   'use strict';
@@ -209,7 +209,7 @@ window.SCW = window.SCW || {};
   // ✅ NEW: L2 sort key (numeric field on record rows within each L2 group)
   const L2_SORT = {
     enabled: true,
-    sortFieldKey: 'field_2252', // number field
+    sortFieldKey: 'field_2218', // number field
     missingSortGoesLast: true,
   };
 
@@ -514,7 +514,7 @@ window.SCW = window.SCW || {};
   // ======================
 
   function getSortValueForL2Block(l2HeaderEl, stopEl) {
-    // Scan forward until stopEl (next L2 or next L1 or end) and read td.field_2252 from first data row found
+    // Scan forward until stopEl (next L2 or next L1 or end) and read td.field_2218 from first data row found
     let cur = l2HeaderEl.nextElementSibling;
 
     while (cur && cur !== stopEl) {
