@@ -1805,6 +1805,158 @@ style.textContent = `
 })();
 
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+
+
+
+
+
+(function () {
+  "use strict";
+
+  // ============================================================
+  // CONFIG (multi-scene / multi-view ready)
+  // ============================================================
+  const CONFIG = [
+    {
+      scenes: ["any"],            // or ["scene_123", "scene_456"]
+      viewIds: ["view_XXXX"],     // <-- put your form view id(s) here
+      parentFieldKeys: ["field_2193", "field_2194", "field_2195"],
+      unifiedFieldKey: "field_2246",
+    },
+  ];
+
+  const EVENT_NS = ".scwUnifiedProducts";
+
+  // ============================================================
+  // Helpers
+  // ============================================================
+  function sceneMatches(sceneKey, allowed) {
+    return !allowed || !allowed.length || allowed.includes("any") || allowed.includes(sceneKey);
+  }
+
+  function getSelectEl($scope, fieldKey) {
+    // Typical: #field_#### exists
+    // Fallbacks cover some Knack render variants
+    return $scope
+      .find(`#${fieldKey}, select[name='${fieldKey}'], .kn-input-${fieldKey} select`)
+      .first();
+  }
+
+  function asArray(val) {
+    if (!val) return [];
+    return Array.isArray(val) ? val.filter(Boolean) : [val].filter(Boolean);
+  }
+
+  function uniq(arr) {
+    return Array.from(new Set(arr));
+  }
+
+  function sameSet(a, b) {
+    const A = uniq(asArray(a)).sort();
+    const B = uniq(asArray(b)).sort();
+    if (A.length !== B.length) return false;
+    for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) return false;
+    return true;
+  }
+
+  // ============================================================
+  // Core
+  // ============================================================
+  function computeUnifiedIds($view, cfg) {
+    const ids = cfg.parentFieldKeys.flatMap((fk) => {
+      const $sel = getSelectEl($view, fk);
+      return asArray($sel.val());
+    });
+    return uniq(ids);
+  }
+
+  function setUnifiedFieldValue($view, cfg, unifiedIds) {
+    const $unified = getSelectEl($view, cfg.unifiedFieldKey);
+    if (!$unified.length) return;
+
+    // Prevent endless change loops
+    if ($unified.data("scw-setting")) return;
+
+    // Determine if unified select is multi or single
+    const isMulti = $unified.prop("multiple");
+
+    // If nothing selected: for multi use [], for single use ""
+    const nextVal = isMulti ? unifiedIds : (unifiedIds[0] || "");
+
+    // If unchanged, do nothing
+    if (sameSet($unified.val(), nextVal)) return;
+
+    $unified.data("scw-setting", 1);
+    $unified.val(nextVal).trigger("change");
+    $unified.data("scw-setting", 0);
+  }
+
+  function syncUnifiedField($view, cfg) {
+    const unifiedIds = computeUnifiedIds($view, cfg);
+    setUnifiedFieldValue($view, cfg, unifiedIds);
+  }
+
+  // Wait until unified field has options loaded (Knack can populate later),
+  // then set value. This avoids the “value won’t stick because option isn’t in DOM yet” problem.
+  function syncWithRetry($view, cfg, attemptsLeft) {
+    const $unified = getSelectEl($view, cfg.unifiedFieldKey);
+    if (!$unified.length) return;
+
+    const unifiedIds = computeUnifiedIds($view, cfg);
+    if (!unifiedIds.length) {
+      setUnifiedFieldValue($view, cfg, unifiedIds);
+      return;
+    }
+
+    // Check whether the unified select currently has all needed option values.
+    // If not, retry shortly (Knack often injects options after render / after filters resolve).
+    const optionVals = new Set($unified.find("option").map((_, o) => $(o).attr("value")).get().filter(Boolean));
+    const missing = unifiedIds.some((id) => !optionVals.has(id));
+
+    if (!missing) {
+      setUnifiedFieldValue($view, cfg, unifiedIds);
+      return;
+    }
+
+    if (attemptsLeft <= 0) {
+      // Failsafe: still attempt; if Knack rejects, at least we tried
+      setUnifiedFieldValue($view, cfg, unifiedIds);
+      return;
+    }
+
+    setTimeout(() => syncWithRetry($view, cfg, attemptsLeft - 1), 150);
+  }
+
+  // ============================================================
+  // Wire-up
+  // ============================================================
+  CONFIG.forEach((cfg) => {
+    cfg.viewIds.forEach((viewId) => {
+      $(document).on(`knack-view-render.${viewId}${EVENT_NS}`, function () {
+        const sceneKey = (Knack.router && Knack.router.scene_key) || "";
+        if (!sceneMatches(sceneKey, cfg.scenes)) return;
+
+        const $view = $(`#${viewId}`);
+        if (!$view.length) return;
+
+        // Bind changes on all parent fields
+        cfg.parentFieldKeys.forEach((fk) => {
+          const $sel = getSelectEl($view, fk);
+          if (!$sel.length) return;
+
+          $sel.off(`change${EVENT_NS}`).on(`change${EVENT_NS}`, function () {
+            // Use retry because the unified field options may be filtered / async-loaded
+            syncWithRetry($view, cfg, 12);
+          });
+        });
+
+        // Initial sync on render (edit forms / prefilled values)
+        syncWithRetry($view, cfg, 12);
+      });
+    });
+  });
+})();
+
 ////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
 
 
