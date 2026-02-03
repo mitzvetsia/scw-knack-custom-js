@@ -16,8 +16,8 @@
     // unified field
     UNIFIED: "field_2246",
 
-    // when this field changes, unified must be cleared
-    RESET_ON_FIELD: "field_2223",
+    // when this field changes, unified and parent fields must be cleared
+    RESET_ON_FIELD: ["field_2223","field_2193", "field_2194", "field_2195"], 
 
     // If unified is SINGLE connection, pick first non-empty in this order:
     SINGLE_PRIORITY: ["field_2193", "field_2194", "field_2195"],
