@@ -510,6 +510,17 @@ ${sel('tr.scw-grand-total-row td')} {
 /********************* LEVEL 1 (MDF/IDF) ***********************/
 
 
+/* 🔧 PATCH: force L1 subtotal row background to apply to all TDs */
+${sel('tr.scw-level-total-row.scw-subtotal--level-1')} {
+  background: RGB(7, 70, 124, 1) !important;
+}
+
+${sel('tr.scw-level-total-row.scw-subtotal--level-1 td')} {
+  background: inherit !important;
+}
+
+
+
 /********************* LEVEL 2 (BUCKET) ***********************/
 ${sceneSelectors} .kn-table-group.kn-group-level-2 {
   font-size: 16px;
