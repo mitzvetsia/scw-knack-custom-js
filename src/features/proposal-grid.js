@@ -4,15 +4,9 @@
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
- * GOALS OF THIS REFACTOR:
- *  - Support MULTIPLE views with DIFFERENT field keys (per-view mapping)
- *  - Keep ALL existing behavior (totals, injections, hiding rules, L2 reorder, etc.)
- *  - Make it easy to add fields/views by editing CONFIG only
- *  - Break logic into discreet "features" (functions) without changing output
- *
- * IMPORTANT RULE:
- *  - No hard-coded #view_#### selectors inside feature logic (only via ctx.$root)
- *  - Field keys are read from ctx.keys (per-view) rather than globals
+ * PATCH (2026-02-03d):
+ *  - ✅ FIX: Level-1 subtotal row background sometimes white on label TD
+ *    Force row-level background + td inherit (scoped to configured views).
  */
 (function () {
   'use strict';
@@ -33,12 +27,12 @@
           cost: 'field_2203',
 
           // fields used for injections / grouping / context
-          field2019: 'field_2019',     // limited HTML injected into L4 header
-          prefix: 'field_2240',        // camera prefix
-          number: 'field_1951',        // camera number
-          l2Sort: 'field_2218',        // numeric sort order for L2 blocks
-          l2Selector: 'field_2228',    // section "Video / Access Control" selector used for label rewrites
-          l3BlankLabelField: 'field_2208', // L3 grouping label blankish detection (header text comes from group row)
+          field2019: 'field_2019',        // limited HTML injected into L4 header
+          prefix: 'field_2240',           // camera prefix
+          number: 'field_1951',           // camera number
+          l2Sort: 'field_2218',           // numeric sort order for L2 blocks
+          l2Selector: 'field_2228',       // section "Video / Access Control" selector used for label rewrites
+          l3BlankLabelField: 'field_2208' // (kept for compatibility; blank check is header label text)
         },
       },
       view_3341: {
@@ -52,7 +46,7 @@
           number: 'field_1951',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
-          l3BlankLabelField: 'field_2208',
+          l3BlankLabelField: 'field_2208'
         },
       },
       view_3371: {
@@ -66,7 +60,7 @@
           number: 'field_1951',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
-          l3BlankLabelField: 'field_2208',
+          l3BlankLabelField: 'field_2208'
         },
       },
     },
@@ -78,8 +72,18 @@
     features: {
       l2Sort: { enabled: true, missingSortGoesLast: true },
       hideL3WhenBlank: { enabled: true },
-      hideBlankL4Headers: { enabled: true, cssClass: 'scw-hide-level4-header', requireField2019AlsoBlank: true },
-      hideL2Footer: { enabled: true, labels: ['Assumptions'], recordIds: ['697b7a023a31502ec68b3303'] },
+
+      hideBlankL4Headers: {
+        enabled: true,
+        cssClass: 'scw-hide-level4-header',
+        requireField2019AlsoBlank: true,
+      },
+
+      hideL2Footer: {
+        enabled: true,
+        labels: ['Assumptions'],
+        recordIds: ['697b7a023a31502ec68b3303'],
+      },
 
       // L2 label rewriting (per L1 section)
       level2LabelRewrite: {
@@ -147,7 +151,7 @@
       },
     },
 
-    // Special section rules (Services / Assumptions etc.)
+    // Section rules (Services / Assumptions etc.)
     l2SectionRules: [
       {
         key: 'services',
@@ -178,7 +182,6 @@
       classOnLevel3: 'scw-level3--mounting-hardware',
     },
 
-    // Internal
     debug: false,
     eventNs: '.scwTotals',
     cssId: 'scw-totals-css',
@@ -353,7 +356,7 @@
     const $root = $(root);
     const $tbody = $root.find('.kn-table tbody');
 
-    const ctx = {
+    return {
       viewId,
       view,
       $root,
@@ -364,8 +367,6 @@
       l2SectionRules: CONFIG.l2SectionRules,
       l2Specials: CONFIG.l2Specials,
     };
-
-    return ctx;
   }
 
   function getGroupLabelText($groupRow) {
@@ -393,7 +394,6 @@
   function injectCssOnce() {
     if (cssInjected) return;
 
-    // If the style tag already exists (navigation back/forward or multiple bundles), don't duplicate.
     if (document.getElementById(CONFIG.cssId)) {
       cssInjected = true;
       return;
@@ -408,18 +408,14 @@
       return viewIds.map((id) => `#${id} ${suffix}`.trim()).join(', ');
     }
 
-    // NOTE: This CSS is intentionally identical to your current output,
-    // just rebuilt to support many views via viewIds.
-    const style = document.createElement('style');
-    style.id = CONFIG.cssId;
-
-    // We need the "Qty/Cost hide via visibility" selectors to be computed,
-    // but those depend on per-view keys. Since your keys are the same today,
-    // we use view_3301's keys as the default for the CSS portion. If you ever
-    // vary qty/cost keys per view, we can generate per-view CSS blocks.
+    // NOTE: Qty/Cost hide CSS assumes consistent keys across views. If you vary them per view later,
+    // we can generate per-view blocks.
     const anyView = CONFIG.views[viewIds[0]];
     const QTY_FIELD_KEY = anyView?.keys?.qty || 'field_1964';
     const COST_FIELD_KEY = anyView?.keys?.cost || 'field_2203';
+
+    const style = document.createElement('style');
+    style.id = CONFIG.cssId;
 
     style.textContent = `
 /* ============================================================
@@ -498,6 +494,15 @@ ${sel('tr.scw-subtotal--level-1 td')} {
   border-color: transparent;
   font-size: 16px;
 }
+
+/* ✅ PATCH (2026-02-03d): force L1 subtotal row background to apply to all TDs */
+${sel('tr.scw-level-total-row.scw-subtotal--level-1')} {
+  background: RGB(7, 70, 124, 1) !important;
+}
+${sel('tr.scw-level-total-row.scw-subtotal--level-1 td')} {
+  background: inherit !important;
+}
+
 ${sel('tr.scw-grand-total-sep td')} { height:10px; background:transparent; border:none !important; }
 ${sel('tr.scw-grand-total-row td')} {
   background:white;
@@ -508,17 +513,6 @@ ${sel('tr.scw-grand-total-row td')} {
   text-align: right;
 }
 /********************* LEVEL 1 (MDF/IDF) ***********************/
-
-
-/* 🔧 PATCH: force L1 subtotal row background to apply to all TDs */
-${sel('tr.scw-level-total-row.scw-subtotal--level-1')} {
-  background: RGB(7, 70, 124, 1) !important;
-}
-
-${sel('tr.scw-level-total-row.scw-subtotal--level-1 td')} {
-  background: inherit !important;
-}
-
 
 
 /********************* LEVEL 2 (BUCKET) ***********************/
@@ -572,7 +566,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Record-ID extraction (used for L2 rules + footer hiding)
+  // FEATURE: Record-ID extraction
   // ============================================================
 
   function extractRecordIdFromElement(el) {
@@ -641,7 +635,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     if (!rule || !$groupRow?.length) return;
     $groupRow.addClass(`scw-l2--${rule.key}`);
 
-    // ✅ explicit hook for assumptions record-id bucket
+    // explicit hook for assumptions record-id bucket
     if (rule.key === 'assumptions') {
       $groupRow.addClass('scw-l2--assumptions-id');
     }
@@ -663,7 +657,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Nearest L2 cache (used for mounting detection in L3)
+  // FEATURE: Nearest L2 cache
   // ============================================================
 
   function getNearestLevel2Info(caches, $row) {
@@ -823,8 +817,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   // FEATURE: L2 group reorder (Option 2) — within each L1 section
   // ============================================================
 
-  function getSortValueForL2Block(ctx, caches, l2HeaderEl, stopEl) {
-    // Scan forward until stopEl and read td.<l2Sort> from first data row found
+  function getSortValueForL2Block(ctx, l2HeaderEl, stopEl) {
     const sortKey = ctx.keys.l2Sort;
     let cur = l2HeaderEl.nextElementSibling;
 
@@ -838,7 +831,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         }
       }
 
-      // stop if we hit any group header that is <= level 2 (safety)
       if (cur.classList?.contains('kn-table-group')) {
         const m = cur.className.match(/kn-group-level-(\d+)/);
         const lvl = m ? parseInt(m[1], 10) : null;
@@ -870,7 +862,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       const l1El = l1Headers[i];
       const nextL1El = i + 1 < l1Headers.length ? l1Headers[i + 1] : null;
 
-      // Collect all nodes in this L1 section (excluding the L1 header itself)
       const sectionNodes = [];
       let cur = l1El.nextElementSibling;
       while (cur && cur !== nextL1El) {
@@ -903,12 +894,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           n = n.nextElementSibling;
         }
 
-        const sortVal = getSortValueForL2Block(ctx, null, l2El, nextL2El || nextL1El);
+        const sortVal = getSortValueForL2Block(ctx, l2El, nextL2El || nextL1El);
         return { idx, sortVal, nodes };
       });
 
       const lastBlock = blocks[blocks.length - 1];
       const lastBlockLastNode = lastBlock.nodes[lastBlock.nodes.length - 1];
+
       const suffixNodes = [];
       cur = lastBlockLastNode ? lastBlockLastNode.nextElementSibling : null;
       while (cur && cur !== nextL1El) {
@@ -978,7 +970,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const fieldCell = firstRow ? firstRow.querySelector(`td.${ctx.keys.field2019}`) : null;
     if (!fieldCell) return;
 
-    let html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
+    const html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
     const fieldPlain = plainTextFromLimitedHtml(html);
     if (!fieldPlain) return;
 
@@ -1188,7 +1180,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // MAIN PROCESSOR (feature pipeline over the view)
+  // MAIN PROCESSOR (pipeline over the view)
   // ============================================================
 
   function runTotalsPipeline(ctx) {
@@ -1196,14 +1188,20 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const $tbody = ctx.$tbody;
     if (!$tbody.length || $tbody.find('.kn-tr-nodata').length) return;
 
-    // Per-run caches
     normKeyCache.clear();
     const caches = makeRunCaches();
 
     // Clear per-run tags and previous totals
     $tbody
       .find('tr')
-      .removeData(['scwConcatRunId', 'scwConcatL3MountRunId', 'scwL4_2019_RunId', 'scwL3EachRunId', 'scwHeaderCellsAdded']);
+      .removeData([
+        'scwConcatRunId',
+        'scwConcatL3MountRunId',
+        'scwL4_2019_RunId',
+        'scwL3EachRunId',
+        'scwHeaderCellsAdded',
+        'scwL2Rewrite_' + runId,
+      ]);
 
     $tbody.find('tr.scw-level-total-row').remove();
     $tbody
@@ -1249,7 +1247,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         sectionContext.rule = getLevel2Rule(ctx, info);
         sectionContext.hideLevel3Summary = Boolean(sectionContext.rule?.hideLevel3Summary);
         sectionContext.hideQtyCostColumns = Boolean(sectionContext.rule?.hideQtyCostColumns);
-        shouldHideSubtotalFilterFlag = shouldHideSubtotalFilterFlag || Boolean(sectionContext.rule?.hideSubtotalFilter);
+        shouldHideSubtotalFilterFlag =
+          shouldHideSubtotalFilterFlag || Boolean(sectionContext.rule?.hideSubtotalFilter);
 
         applyLevel2Styling($groupRow, sectionContext.rule);
       }
@@ -1364,7 +1363,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           $groupRow.addClass('scw-hide-qty-cost');
         }
 
-        injectConcatIntoHeader(ctx, caches, { level, contextKey: sectionContext.key, $groupRow, $rowsToSum, runId });
+        injectConcatIntoHeader(ctx, caches, {
+          level,
+          contextKey: sectionContext.key,
+          $groupRow,
+          $rowsToSum,
+          runId,
+        });
       }
 
       // Queue footers for L1 & L2
@@ -1402,7 +1407,11 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       .sort((a, b) => {
         if (a === b) return 0;
         const pos = a.compareDocumentPosition(b);
-        return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : pos & Node.DOCUMENT_POSITION_PRECEDING ? 1 : 0;
+        return pos & Node.DOCUMENT_POSITION_FOLLOWING
+          ? -1
+          : pos & Node.DOCUMENT_POSITION_PRECEDING
+          ? 1
+          : 0;
       })
       .reverse();
 
