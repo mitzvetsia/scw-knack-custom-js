@@ -190,6 +190,14 @@ window.SCW = window.SCW || {};
  * PATCH (2026-02-03d):
  *  - ✅ FIX: Never apply scw-hide-qty-cost to Level-1 subtotal rows
  *    (L1 subtotal should always show Qty/Cost; only L2 may hide)
+ *
+ * PATCH (2026-02-05):
+ *  - ✅ NEW: L1 Subtotal Footer Discount Stack
+ *    - Discounts read from field_2267 on record rows (discount amount)
+ *    - L1 footer label shows stacked:
+ *        Pre-Discount
+ *        Discounts (negative)
+ *        Final Total (existing subtotal cost)
  */
 (function () {
   'use strict';
@@ -209,6 +217,20 @@ window.SCW = window.SCW || {};
   const LABOR_FIELD_KEY = 'field_2028';
   const HARDWARE_FIELD_KEY = 'field_2201';
   const COST_FIELD_KEY = 'field_2203';
+
+  // ✅ NEW: Discount amount (applies at L3 records; present in DOM as td.field_2267)
+  const DISCOUNT_STACK = {
+    enabled: true,
+    fieldKey: 'field_2267',
+    labels: {
+      pre: 'Pre-Discount',
+      disc: 'Discounts',
+      final: 'Final Total',
+    },
+    // If your field_2267 sometimes stores negative values already,
+    // we still display Discounts as a negative number and compute pre-discount accordingly.
+    useAbsoluteSum: true,
+  };
 
   // ✅ NEW: L2 sort key (numeric field on record rows within each L2 group)
   const L2_SORT = {
@@ -482,6 +504,16 @@ window.SCW = window.SCW || {};
     return total;
   }
 
+  function sumAbsField($rows, fieldKey) {
+    let total = 0;
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const num = getRowNumericValue(rows[i], fieldKey);
+      if (Number.isFinite(num) && num !== 0) total += Math.abs(num);
+    }
+    return total;
+  }
+
   function sumFields($rows, fieldKeys) {
     const totals = {};
     fieldKeys.forEach((key) => (totals[key] = 0));
@@ -691,6 +723,54 @@ tr.scw-hide-level4-header { display: none !important; }
 /* ✅ Hide Qty/Cost content while preserving column layout */
 tr.scw-hide-qty-cost td.${QTY_FIELD_KEY},
 tr.scw-hide-qty-cost td.${COST_FIELD_KEY} { visibility: hidden !important; }
+
+/* ============================================================
+   ✅ NEW: L1 Discount Stack (single-row, stacked values)
+   - Designed to sit inside the L1 subtotal label cell
+   - Works on blue background (your current L1 subtotal style)
+   ============================================================ */
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack')}{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  line-height:1.15;
+  margin-top:6px;
+  max-width:560px;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__row')}{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  font-size:12px;
+  font-variant-numeric: tabular-nums;
+  white-space:nowrap;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__label')}{
+  opacity:.75;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__value')}{
+  opacity:.95;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__row--pre')}{
+  opacity:.75;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__row--disc .scw-discount-stack__label')}{
+  color:#FBBF24; /* amber */
+  opacity:1;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__row--disc .scw-discount-stack__value')}{
+  color:#FBBF24; /* amber */
+  opacity:1;
+  font-weight:700;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__row--final .scw-discount-stack__label')}{
+  font-weight:800;
+  opacity:1;
+}
+${sel('tr.scw-subtotal--level-1 .scw-level-total-label .scw-discount-stack__row--final .scw-discount-stack__value')}{
+  font-weight:900;
+  opacity:1;
+}
 
 
 /* ============================================================
@@ -1194,6 +1274,58 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ======================
+  // ✅ DISCOUNT STACK INJECTION (L1 subtotal label cell)
+  // ======================
+
+  function buildDiscountStackHtml({ preDiscount, discountAbs, finalTotal }) {
+    const labels = DISCOUNT_STACK.labels || {};
+    const discText = `–${formatMoney(Math.abs(discountAbs || 0))}`;
+
+    return `
+      <div class="scw-discount-stack" data-scw-discount-stack="1">
+        <div class="scw-discount-stack__row scw-discount-stack__row--pre">
+          <div class="scw-discount-stack__label">${escapeHtml(labels.pre || 'Pre-Discount')}:</div>
+          <div class="scw-discount-stack__value">${escapeHtml(formatMoney(preDiscount || 0))}</div>
+        </div>
+        <div class="scw-discount-stack__row scw-discount-stack__row--disc">
+          <div class="scw-discount-stack__label">${escapeHtml(labels.disc || 'Discounts')}:</div>
+          <div class="scw-discount-stack__value">${escapeHtml(discText)}</div>
+        </div>
+        <div class="scw-discount-stack__row scw-discount-stack__row--final">
+          <div class="scw-discount-stack__label">${escapeHtml(labels.final || 'Final Total')}:</div>
+          <div class="scw-discount-stack__value">${escapeHtml(formatMoney(finalTotal || 0))}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function injectDiscountStackIntoL1SubtotalRow($subtotalRow, { $rowsToSum, finalTotal }) {
+    if (!DISCOUNT_STACK.enabled) return;
+    if (!$subtotalRow?.length) return;
+
+    const $labelTd = $subtotalRow.find('td.scw-level-total-label').first();
+    if (!$labelTd.length) return;
+
+    // Idempotency (though subtotal rows are re-created each render)
+    if ($labelTd.find('.scw-discount-stack[data-scw-discount-stack="1"]').length) return;
+
+    const discountAbs = DISCOUNT_STACK.useAbsoluteSum
+      ? sumAbsField($rowsToSum, DISCOUNT_STACK.fieldKey)
+      : Math.abs(sumField($rowsToSum, DISCOUNT_STACK.fieldKey));
+
+    // If there are no discounts, still show $0.00 (matches your ask)
+    const preDiscount = Number(finalTotal || 0) + Number(discountAbs || 0);
+
+    $labelTd.append(
+      buildDiscountStackHtml({
+        preDiscount,
+        discountAbs,
+        finalTotal,
+      })
+    );
+  }
+
+  // ======================
   // ROW BUILDERS
   // ======================
 
@@ -1231,6 +1363,11 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     $row.find(`td.${qtyFieldKey}`).html(`<strong>${Math.round(qty)}</strong>`);
     $row.find(`td.${costFieldKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${HARDWARE_FIELD_KEY},td.${LABOR_FIELD_KEY}`).empty();
+
+    // ✅ NEW: L1 stacked discount summary (in label cell)
+    if (level === 1 && DISCOUNT_STACK.enabled) {
+      injectDiscountStackIntoL1SubtotalRow($row, { $rowsToSum, finalTotal: cost });
+    }
 
     return $row;
   }
@@ -1340,7 +1477,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         const nearestL2 = getNearestLevel2Info($groupRow);
         const isMounting =
           (L2_SPECIALS.mountingHardwareId && nearestL2.recordId === L2_SPECIALS.mountingHardwareId) ||
-          (!L2_SPECIALS.mountingHardwareId && norm(nearestL2.label) === norm(L2_SPECIALS.mountingHardwareLabel));
+          (!L2_SPECIALs?.mountingHardwareId && norm(nearestL2.label) === norm(L2_SPECIALS.mountingHardwareLabel));
 
         if (isMounting) {
           $groupRow.addClass(L2_SPECIALS.classOnLevel3);
