@@ -7,7 +7,17 @@
  * PATCH (2026-02-05):
  *  - ✅ NEW: Level-1 footer “Single Row, Stacked Values” layout:
  *      Pre-Discount, Discounts (field_2267), Final Total
- *    (keeps ONE L1 footer row; makes discount obvious; proposal-grade)
+ *
+ * PATCH (2026-02-05b):
+ *  - ✅ FIX: scw-hide-qty-cost was leaking onto LEVEL-1 subtotal rows
+ *    Root cause:
+ *      L1 footerQueue items were inheriting sectionContext.hideQtyCostColumns (from last-seen L2 bucket),
+ *      so the L1 subtotal row sometimes got class scw-hide-qty-cost and triggered:
+ *        tr.scw-hide-qty-cost td.field_1964, td.field_2203 { visibility:hidden }
+ *    Fix (belt + suspenders):
+ *      1) Logic: never set hideQtyCostColumns on L1 footerQueue items.
+ *      2) Build: even if it somehow gets the class, do NOT apply scw-hide-qty-cost to L1 rows.
+ *      3) CSS guard: scope the visibility rule to NOT(.scw-subtotal--level-1).
  *
  * PATCH (2026-02-03d):
  *  - ✅ FIX: Level-1 subtotal row background sometimes white on label TD
@@ -21,26 +31,23 @@
   // ============================================================
 
   const CONFIG = {
-    // Bind on these views (easy add)
     views: {
       view_3301: {
         keys: {
-          // columns used for totals output
           qty: 'field_1964',
           labor: 'field_2028',
           hardware: 'field_2201',
           cost: 'field_2203',
 
-          // ✅ discount amount (sum at L1 for stacked footer)
+          // ✅ discount amount field
           discount: 'field_2267',
 
-          // fields used for injections / grouping / context
-          field2019: 'field_2019',        // limited HTML injected into L4 header
-          prefix: 'field_2240',           // camera prefix
-          number: 'field_1951',           // camera number
-          l2Sort: 'field_2218',           // numeric sort order for L2 blocks
-          l2Selector: 'field_2228',       // section "Video / Access Control" selector used for label rewrites
-          l3BlankLabelField: 'field_2208' // (kept for compatibility; blank check is header label text)
+          field2019: 'field_2019',
+          prefix: 'field_2240',
+          number: 'field_1951',
+          l2Sort: 'field_2218',
+          l2Selector: 'field_2228',
+          l3BlankLabelField: 'field_2208',
         },
       },
       view_3341: {
@@ -55,7 +62,7 @@
           number: 'field_1951',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
-          l3BlankLabelField: 'field_2208'
+          l3BlankLabelField: 'field_2208',
         },
       },
       view_3371: {
@@ -70,15 +77,13 @@
           number: 'field_1951',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
-          l3BlankLabelField: 'field_2208'
+          l3BlankLabelField: 'field_2208',
         },
       },
     },
 
-    // Your CSS references explicit scene scope; keep it explicit
     styleSceneIds: ['scene_1096'],
 
-    // Feature flags (global defaults; can override per view if needed)
     features: {
       l2Sort: { enabled: true, missingSortGoesLast: true },
       hideL3WhenBlank: { enabled: true },
@@ -95,7 +100,6 @@
         recordIds: ['697b7a023a31502ec68b3303'],
       },
 
-      // L2 label rewriting (per L1 section)
       level2LabelRewrite: {
         enabled: true,
         rules: [
@@ -125,13 +129,10 @@
         ],
       },
 
-      // "each" column injection
       eachColumn: { enabled: false, fieldKey: 'field_1960' },
 
-      // concat injection for drop context on L4
       concat: { enabled: true, onlyContextKey: 'drop', onlyLevel: 4 },
 
-      // concat injection for mounting hardware on L3
       concatL3Mounting: {
         enabled: true,
         level2Label: 'Mounting Hardware',
@@ -140,7 +141,6 @@
       },
     },
 
-    // Context mapping by L2 label/id
     l2Context: {
       byId: {},
       byLabel: {
@@ -157,11 +157,10 @@
         'NVR, Switches, and Networking': 'headend',
         'AC Controllers, Switches, and Networking': 'headend',
 
-        'Services': 'services',
+        Services: 'services',
       },
     },
 
-    // Section rules (Services / Assumptions etc.)
     l2SectionRules: [
       {
         key: 'services',
@@ -185,7 +184,6 @@
       },
     ],
 
-    // Mounting hardware behaviors
     l2Specials: {
       mountingHardwareId: '',
       mountingHardwareLabel: 'Mounting Hardware',
@@ -198,7 +196,7 @@
   };
 
   // ============================================================
-  // SMALL UTILITIES (shared)
+  // SMALL UTILITIES
   // ============================================================
 
   const decoderElement = document.createElement('textarea');
@@ -258,8 +256,8 @@
   function normalizeBrVariants(html) {
     if (!html) return '';
     return String(html)
-      .replace(/<\/\s*br\s*>/gi, '<br />') // tolerate invalid closing </br>
-      .replace(/<\s*br\s*\/?\s*>/gi, '<br />'); // normalize all <br> forms
+      .replace(/<\/\s*br\s*>/gi, '<br />')
+      .replace(/<\s*br\s*\/?\s*>/gi, '<br />');
   }
 
   function normalizeBoldSpacing(html) {
@@ -423,8 +421,6 @@
       return viewIds.map((id) => `#${id} ${suffix}`.trim()).join(', ');
     }
 
-    // NOTE: Qty/Cost hide CSS assumes consistent keys across views. If you vary them per view later,
-    // we can generate per-view blocks.
     const anyView = CONFIG.views[viewIds[0]];
     const QTY_FIELD_KEY = anyView?.keys?.qty || 'field_1964';
     const COST_FIELD_KEY = anyView?.keys?.cost || 'field_2203';
@@ -434,7 +430,7 @@
 
     style.textContent = `
 /* ============================================================
-   SCW Totals helper CSS (existing)
+   SCW Totals helper CSS
    ============================================================ */
 tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
 tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
@@ -448,9 +444,7 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 .scw-l4-2019 b,
 .scw-concat-cameras b,
 .scw-l4-2019 strong,
-.scw-concat-cameras strong {
-  font-weight: 800 !important;
-}
+.scw-concat-cameras strong { font-weight: 800 !important; }
 
 .scw-each { line-height: 1.1; }
 .scw-each__label { font-weight: 700; opacity: .9; margin-bottom: 2px; }
@@ -458,12 +452,13 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 tr.scw-hide-level3-header { display: none !important; }
 tr.scw-hide-level4-header { display: none !important; }
 
-/* ✅ Hide Qty/Cost content while preserving column layout */
-tr.scw-hide-qty-cost td.${QTY_FIELD_KEY},
-tr.scw-hide-qty-cost td.${COST_FIELD_KEY} { visibility: hidden !important; }
+/* ✅ Hide Qty/Cost content while preserving column layout
+   ✅ GUARD: never hide qty/cost on L1 subtotal rows */
+tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY},
+tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
 /* ============================================================
-   ✅ NEW: L1 stacked footer layout (single row)
+   ✅ L1 stacked footer layout (single row)
    ============================================================ */
 ${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} { text-align: left !important; }
 ${sel('tr.scw-subtotal--level-1 td.scw-l1-stack-cell')} { text-align: right !important; }
@@ -481,7 +476,6 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-stack-cell')} { text-align: right !imp
 
 .scw-l1-stack__final .scw-l1-stack__k,
 .scw-l1-stack__final .scw-l1-stack__v { color: #ffffff; font-weight: 900; }
-
 .scw-l1-stack__final .scw-l1-stack__v { font-size: 18px; }
 
 /* ============================================================
@@ -602,7 +596,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Record-ID extraction
+  // FEATURE: Record-ID extraction + L2 helpers
   // ============================================================
 
   function extractRecordIdFromElement(el) {
@@ -652,11 +646,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
   function matchesLevel2Rule(level2Info, rule) {
     if (!level2Info || !rule) return false;
-    const id = level2Info.recordId ? level2Info.recordId.trim() : '';
+
+    const id = (level2Info.recordId || '').trim();
     if (id && Array.isArray(rule.recordIds) && rule.recordIds.includes(id)) return true;
 
     const label = norm(level2Info.label);
     if (!label || !Array.isArray(rule.labels)) return false;
+
     return rule.labels.some((entry) => norm(entry) === label);
   }
 
@@ -671,10 +667,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     if (!rule || !$groupRow?.length) return;
     $groupRow.addClass(`scw-l2--${rule.key}`);
 
-    // explicit hook for assumptions record-id bucket
-    if (rule.key === 'assumptions') {
-      $groupRow.addClass('scw-l2--assumptions-id');
-    }
+    if (rule.key === 'assumptions') $groupRow.addClass('scw-l2--assumptions-id');
 
     if (rule.headerBackground) $groupRow.css('background-color', rule.headerBackground);
     if (rule.headerTextColor) $groupRow.css('color', rule.headerTextColor);
@@ -689,6 +682,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const labelKey = normKey(level2Info?.label || '');
     if (!labelKey) return false;
+
     return (opt.labels || []).some((l) => normKey(l) === labelKey);
   }
 
@@ -718,7 +712,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Level-2 Label Rewriting
+  // FEATURE: L2 Label rewriting
   // ============================================================
 
   function getSelectorFieldValue(ctx, $row) {
@@ -850,7 +844,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: L2 group reorder (Option 2) — within each L1 section
+  // FEATURE: L2 group reorder — within each L1 section
   // ============================================================
 
   function getSortValueForL2Block(ctx, l2HeaderEl, stopEl) {
@@ -962,7 +956,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Camera list builder (used for both L4 + L3 mounting)
+  // FEATURE: Camera list builder
   // ============================================================
 
   function buildCameraListHtml(ctx, caches, $rows) {
@@ -1055,9 +1049,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const injected = labelCell.querySelector('.scw-l4-2019');
     let baseHtml = '';
 
-    if (injected) {
-      baseHtml = injected.innerHTML || '';
-    } else {
+    if (injected) baseHtml = injected.innerHTML || '';
+    else {
       baseHtml = getLabelCellHtmlWithoutInjected(labelCell);
       baseHtml = sanitizeAllowOnlyBrAndB(decodeEntities(baseHtml));
     }
@@ -1147,7 +1140,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const costKey = ctx.keys.cost;
     const laborKey = ctx.keys.labor;
     const hardwareKey = ctx.keys.hardware;
-
     const discountKey = ctx.keys.discount;
 
     const qty = totals?.[qtyKey] ?? sumField(caches, $rowsToSum, qtyKey);
@@ -1164,9 +1156,12 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     // Final = Pre-Discount + discountSigned (supports either sign convention)
     const finalTotal = cost + (hasDiscount ? discount : 0);
 
+    // ✅ PATCH: never apply hideQtyCost to L1 rows (even if caller passes true)
+    const safeHideQtyCost = level === 1 ? false : Boolean(hideQtyCost);
+
     const $row = $(`
       <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${hideQtyCost ? ' scw-hide-qty-cost' : ''}"
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
         data-scw-subtotal-level="${level}"
         data-scw-context="${escapeHtml(contextKey || 'default')}"
         data-scw-group-label="${escapeHtml(groupLabel || '')}"
@@ -1177,17 +1172,16 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     $row.append($cellsTemplate.clone());
 
-    // Default behavior (L2 + anything else)
+    // default cell output
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-    // ✅ L1: override cost cell with stacked values (single row)
+    // ✅ L1 stacked single-row footer
     if (level === 1) {
       const $qtyCell = $row.find(`td.${qtyKey}`);
       const $costCell = $row.find(`td.${costKey}`);
 
-      // Keep columns aligned but make the stacked values the focus
       $qtyCell.empty();
       $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
@@ -1270,7 +1264,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // MAIN PROCESSOR (pipeline over the view)
+  // MAIN PROCESSOR
   // ============================================================
 
   function runTotalsPipeline(ctx) {
@@ -1281,7 +1275,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     normKeyCache.clear();
     const caches = makeRunCaches();
 
-    // Clear per-run tags and previous totals
     $tbody
       .find('tr')
       .removeData([
@@ -1298,7 +1291,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
-    // ✅ L2 reorder BEFORE computing blocks/totals and BEFORE label rewrites
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
@@ -1350,10 +1342,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       const $rowsToSum = $groupBlock.filter('tr[id]');
       if (!$rowsToSum.length) return;
 
-      // ✅ include discount field so L1 can use it (harmless for other levels)
-      const totals = sumFields(caches, $rowsToSum, [qtyKey, laborKey, hardwareKey, costKey, discountKey].filter(Boolean));
+      const totals = sumFields(
+        caches,
+        $rowsToSum,
+        [qtyKey, laborKey, hardwareKey, costKey, discountKey].filter(Boolean)
+      );
 
-      // --- Level 1 header gets "Qty/Cost" headings
+      // Level 1 header column headings
       if (level === 1) {
         if (!$groupRow.data('scwHeaderCellsAdded')) {
           $groupRow.find('td').removeAttr('colspan');
@@ -1365,7 +1360,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
       }
 
-      // --- Level 3 product headers
+      // Level 3 product headers
       if (level === 3) {
         $groupRow.removeClass('scw-hide-level3-header').show();
 
@@ -1380,7 +1375,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           return;
         }
 
-        // Hide L3 header when blank-ish label
         if (ctx.features.hideL3WhenBlank?.enabled) {
           const labelText = getGroupLabelText($groupRow);
           if (isBlankish(labelText)) {
@@ -1389,7 +1383,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           }
         }
 
-        // Mounting detection by nearest L2 label/id
         const nearestL2 = getNearestLevel2Info(caches, $groupRow);
         const isMounting =
           (ctx.l2Specials.mountingHardwareId && nearestL2.recordId === ctx.l2Specials.mountingHardwareId) ||
@@ -1408,14 +1401,12 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         $groupRow.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(hardware))}</strong>`);
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-        if (sectionContext.hideQtyCostColumns) {
-          $groupRow.addClass('scw-hide-qty-cost');
-        }
+        if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
         injectEachIntoLevel3Header(ctx, caches, { level, $groupRow, $rowsToSum, runId });
       }
 
-      // --- Level 4 install description headers
+      // Level 4 install description headers
       if (level === 4) {
         const blankL4Opt = ctx.features.hideBlankL4Headers;
         $groupRow.removeClass(blankL4Opt?.cssClass || 'scw-hide-level4-header').show();
@@ -1426,7 +1417,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        // Hide stray blank L4 header rows (optional)
         if (blankL4Opt?.enabled) {
           const headerText = getGroupLabelText($groupRow);
 
@@ -1451,9 +1441,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         $groupRow.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-        if (sectionContext.hideQtyCostColumns) {
-          $groupRow.addClass('scw-hide-qty-cost');
-        }
+        if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
         injectConcatIntoHeader(ctx, caches, {
           level,
@@ -1468,16 +1456,16 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       if (level === 1 || level === 2) {
         const levelInfo = level === 2 ? sectionContext.level2 : getLevel2InfoFromGroupRow($groupRow);
 
-        // ✅ Hide L2 footer subtotal row when assumptions label OR record id matches
-        if (level === 2 && shouldHideLevel2Footer(ctx, levelInfo)) {
-          return;
-        }
+        if (level === 2 && shouldHideLevel2Footer(ctx, levelInfo)) return;
 
         footerQueue.push({
           level,
           label: levelInfo.label,
           contextKey: sectionContext.key,
-          hideQtyCostColumns: sectionContext.hideQtyCostColumns,
+
+          // ✅ PATCH: L1 footer must NEVER inherit hideQtyCostColumns from L2 context
+          hideQtyCostColumns: level === 2 ? sectionContext.hideQtyCostColumns : false,
+
           $groupBlock,
           $cellsTemplate,
           $rowsToSum,
@@ -1499,11 +1487,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       .sort((a, b) => {
         if (a === b) return 0;
         const pos = a.compareDocumentPosition(b);
-        return pos & Node.DOCUMENT_POSITION_FOLLOWING
-          ? -1
-          : pos & Node.DOCUMENT_POSITION_PRECEDING
-          ? 1
-          : 0;
+        return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : pos & Node.DOCUMENT_POSITION_PRECEDING ? 1 : 0;
       })
       .reverse();
 
@@ -1537,10 +1521,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     // Label rewrites after totals insertion
     applyLevel2LabelRewrites(ctx, $tbody, runId);
 
-    // Hide subtotal filter if requested by any L2 rule
-    if (shouldHideSubtotalFilterFlag) {
-      hideSubtotalFilter(ctx);
-    }
+    if (shouldHideSubtotalFilterFlag) hideSubtotalFilter(ctx);
 
     log(ctx, 'runTotalsPipeline complete', { runId });
   }
