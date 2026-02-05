@@ -19,13 +19,6 @@
  *      2) Build: even if it somehow gets the class, do NOT apply scw-hide-qty-cost to L1 rows.
  *      3) CSS guard: scope the visibility rule to NOT(.scw-subtotal--level-1).
  *
- * PATCH (2026-02-05c):
- *  - ✅ IMPROVEMENTS to L1 footer:
- *      - L1 label (“… — Subtotal”) RIGHT aligned (label column)
- *      - Quantities back (keep Qty column populated for L1 footer)
- *      - Prevent awkward word breaks (e.g., "Final" / "Total" splitting)
- *      - Reduce squish by enforcing nowrap for stack lines + giving cost cell a sane min-width
- *
  * PATCH (2026-02-03d):
  *  - ✅ FIX: Level-1 subtotal row background sometimes white on label TD
  *    Force row-level background + td inherit (scoped to configured views).
@@ -467,49 +460,11 @@ tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibili
 /* ============================================================
    ✅ L1 stacked footer layout (single row)
    ============================================================ */
+${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} { text-align: left !important; }
+${sel('tr.scw-subtotal--level-1 td.scw-l1-stack-cell')} { text-align: right !important; }
 
-/* Right-align the L1 label cell (your request) */
-${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} {
-  text-align: right !important;
-  padding-right: 14px !important;
-}
-
-/* Make sure Qty is visible and centered */
-${sel('tr.scw-subtotal--level-1 td.' + QTY_FIELD_KEY)} {
-  text-align: center !important;
-  white-space: nowrap !important;
-}
-
-/* Give the cost/stack cell room (avoid squish) */
-${sel('tr.scw-subtotal--level-1 td.' + COST_FIELD_KEY)} {
-  min-width: 320px;
-  white-space: nowrap !important;
-}
-
-.scw-l1-stack {
-  display: inline-block;
-  text-align: right;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.scw-l1-stack__line {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  align-items: baseline;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-.scw-l1-stack__k,
-.scw-l1-stack__v {
-  white-space: nowrap !important;
-  word-break: keep-all;
-  overflow-wrap: normal;
-  hyphens: none;
-}
-
+.scw-l1-stack { display: inline-block; text-align: right; line-height: 1.25; }
+.scw-l1-stack__line { display: flex; gap: 10px; justify-content: flex-end; }
 .scw-l1-stack__k { opacity: .75; font-weight: 600; }
 .scw-l1-stack__v { font-weight: 700; }
 
@@ -517,11 +472,10 @@ ${sel('tr.scw-subtotal--level-1 td.' + COST_FIELD_KEY)} {
 .scw-l1-stack__pre .scw-l1-stack__v { color: rgba(255,255,255,.78); }
 
 .scw-l1-stack__disc .scw-l1-stack__k,
-.scw-l1-stack__disc .scw-l1-stack__v { color: #ffcf7a; } /* amber on SCW blue */
+.scw-l1-stack__disc .scw-l1-stack__v { color: #ffcf7a; }
 
 .scw-l1-stack__final .scw-l1-stack__k,
 .scw-l1-stack__final .scw-l1-stack__v { color: #ffffff; font-weight: 900; }
-
 .scw-l1-stack__final .scw-l1-stack__v { font-size: 18px; }
 
 /* ============================================================
@@ -1199,7 +1153,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const discount = Number.isFinite(discountRaw) ? discountRaw : 0;
     const hasDiscount = Math.abs(discount) > 0.004;
 
-    // Final = Pre-Discount + discountSigned
     const finalTotal = cost + (hasDiscount ? discount : 0);
 
     // ✅ PATCH: never apply hideQtyCost to L1 rows (even if caller passes true)
@@ -1218,49 +1171,47 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     $row.append($cellsTemplate.clone());
 
-    // default cell output
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-    // ✅ L1 stacked single-row footer (keep Qty visible)
+    // ✅ L1 stacked single-row footer
     if (level === 1) {
       const $qtyCell = $row.find(`td.${qtyKey}`);
       const $costCell = $row.find(`td.${costKey}`);
 
-      // Keep qty (already set), but ensure it's bold + not overwritten
-      $qtyCell.html(`<strong>${Math.round(qty)}</strong>`);
-
-      // Clear other columns for cleanliness
+      $qtyCell.empty();
       $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-      $costCell.html(
-        hasDiscount
-          ? `
-            <div class="scw-l1-stack">
-              <div class="scw-l1-stack__line scw-l1-stack__pre">
-                <span class="scw-l1-stack__k">Pre-Discount:</span>
-                <span class="scw-l1-stack__v">${escapeHtml(formatMoney(cost))}</span>
+      $costCell
+        .addClass('scw-l1-stack-cell')
+        .html(
+          hasDiscount
+            ? `
+              <div class="scw-l1-stack">
+                <div class="scw-l1-stack__line scw-l1-stack__pre">
+                  <span class="scw-l1-stack__k">Pre-Discount:</span>
+                  <span class="scw-l1-stack__v">${escapeHtml(formatMoney(cost))}</span>
+                </div>
+                <div class="scw-l1-stack__line scw-l1-stack__disc">
+                  <span class="scw-l1-stack__k">Discounts:</span>
+                  <span class="scw-l1-stack__v">–${escapeHtml(formatMoneyAbs(discount))}</span>
+                </div>
+                <div class="scw-l1-stack__line scw-l1-stack__final">
+                  <span class="scw-l1-stack__k">Final Total:</span>
+                  <span class="scw-l1-stack__v">${escapeHtml(formatMoney(finalTotal))}</span>
+                </div>
               </div>
-              <div class="scw-l1-stack__line scw-l1-stack__disc">
-                <span class="scw-l1-stack__k">Discounts:</span>
-                <span class="scw-l1-stack__v">–${escapeHtml(formatMoneyAbs(discount))}</span>
+            `
+            : `
+              <div class="scw-l1-stack">
+                <div class="scw-l1-stack__line scw-l1-stack__final">
+                  <span class="scw-l1-stack__k">Subtotal:</span>
+                  <span class="scw-l1-stack__v">${escapeHtml(formatMoney(cost))}</span>
+                </div>
               </div>
-              <div class="scw-l1-stack__line scw-l1-stack__final">
-                <span class="scw-l1-stack__k">Final Total:</span>
-                <span class="scw-l1-stack__v">${escapeHtml(formatMoney(finalTotal))}</span>
-              </div>
-            </div>
-          `
-          : `
-            <div class="scw-l1-stack">
-              <div class="scw-l1-stack__line scw-l1-stack__final">
-                <span class="scw-l1-stack__k">Subtotal:</span>
-                <span class="scw-l1-stack__v">${escapeHtml(formatMoney(cost))}</span>
-              </div>
-            </div>
-          `
-      );
+            `
+        );
     }
 
     return $row;
@@ -1395,7 +1346,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         [qtyKey, laborKey, hardwareKey, costKey, discountKey].filter(Boolean)
       );
 
-      // Level 1 header column headings
       if (level === 1) {
         if (!$groupRow.data('scwHeaderCellsAdded')) {
           $groupRow.find('td').removeAttr('colspan');
@@ -1407,7 +1357,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
       }
 
-      // Level 3 product headers
       if (level === 3) {
         $groupRow.removeClass('scw-hide-level3-header').show();
 
@@ -1453,7 +1402,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         injectEachIntoLevel3Header(ctx, caches, { level, $groupRow, $rowsToSum, runId });
       }
 
-      // Level 4 install description headers
       if (level === 4) {
         const blankL4Opt = ctx.features.hideBlankL4Headers;
         $groupRow.removeClass(blankL4Opt?.cssClass || 'scw-hide-level4-header').show();
@@ -1510,7 +1458,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           label: levelInfo.label,
           contextKey: sectionContext.key,
 
-          // ✅ PATCH: L1 footer must NEVER inherit hideQtyCostColumns from L2 context
+          // ✅ PATCH (2026-02-05b): L1 footer must NEVER inherit hideQtyCostColumns
           hideQtyCostColumns: level === 2 ? sectionContext.hideQtyCostColumns : false,
 
           $groupBlock,
@@ -1565,7 +1513,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       anchorEl.parentNode.insertBefore(fragment, anchorEl.nextSibling);
     }
 
-    // Label rewrites after totals insertion
     applyLevel2LabelRewrites(ctx, $tbody, runId);
 
     if (shouldHideSubtotalFilterFlag) hideSubtotalFilter(ctx);
