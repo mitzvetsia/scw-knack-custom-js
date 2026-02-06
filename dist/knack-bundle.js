@@ -166,9 +166,10 @@ window.SCW = window.SCW || {};
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
  * PATCH (2026-02-05d):
- *  - ✅ FIX: Restore original colors for L1 footer totals
- *  - ✅ FIX: Remove Qty from L1 footer (hide completely)
+ *  - ✅ FIX: Colors already match original (rgba(255,255,255,.78), #ffcf7a, #ffffff)
+ *  - ✅ FIX: Remove Qty from L1 footer (hidden completely)
  *  - ✅ FIX: Hide entire L1 footer row when subtotal is $0
+ *  - ✅ FIX: Hide L1 header "Qty" and "Cost" labels when ALL L1 subtotals are $0
  *
  * PATCH (2026-02-05c):
  *  - ✅ FIX: L1 footer visual layout improvements:
@@ -1526,6 +1527,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const footerQueue = [];
     let shouldHideSubtotalFilterFlag = false;
+    let hasAnyNonZeroL1Subtotal = false; // ✅ Track if any L1 has non-zero cost
 
     const qtyKey = ctx.keys.qty;
     const laborKey = ctx.keys.labor;
@@ -1571,8 +1573,16 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           $groupRow.append($cellsTemplate.clone());
           $groupRow.data('scwHeaderCellsAdded', true);
         }
-        $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>');
-        $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>');
+        
+        // ✅ Check if this L1 section has non-zero cost
+        const l1Cost = totals[costKey] || 0;
+        if (Math.abs(l1Cost) >= 0.01) {
+          hasAnyNonZeroL1Subtotal = true;
+        }
+        
+        // Labels with classes so we can hide them if needed
+        $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+        $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
       }
 
@@ -1735,6 +1745,11 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     applyLevel2LabelRewrites(ctx, $tbody, runId);
 
     if (shouldHideSubtotalFilterFlag) hideSubtotalFilter(ctx);
+
+    // ✅ Hide L1 header Qty/Cost labels if ALL L1 subtotals are $0
+    if (!hasAnyNonZeroL1Subtotal) {
+      $tbody.find('.scw-l1-header-qty, .scw-l1-header-cost').empty();
+    }
 
     log(ctx, 'runTotalsPipeline complete', { runId });
   }
