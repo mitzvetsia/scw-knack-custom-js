@@ -1629,7 +1629,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
       if (level === 3) {
         $groupRow.removeClass('scw-hide-level3-header').show();
-A
+
         if (!$groupRow.data('scwHeaderCellsAdded')) {
           $groupRow.find('td').removeAttr('colspan');
           $groupRow.append($cellsTemplate.clone());
