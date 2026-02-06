@@ -561,7 +561,7 @@ ${sel('.kn-table tbody td')} { vertical-align: middle; }
 /********************* OVERAL -- GRID ***********************/
 
 
-/********************* LEVEL 1 (MDF/IDF) ***********************/
+/********************* LEVEL 1 (MDF/IDF) *********************/
 ${sceneSelectors} .kn-table-group.kn-group-level-1 {
   font-size: 16px;
   font-weight: 600;
