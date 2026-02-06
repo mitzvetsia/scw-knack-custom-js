@@ -4,6 +4,11 @@
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
+ * PATCH (2026-02-05g):
+ *  - ✅ FIX: Correct CSS selector syntax - target elements with BOTH classes
+ *    (e.g., .scw-l1-totals-grid__label.scw-l1-totals-grid__disc instead of 
+ *    .scw-l1-totals-grid__disc.scw-l1-totals-grid__label)
+ *
  * PATCH (2026-02-05f):
  *  - ✅ FIX: Use view-specific selectors (e.g., #view_3301 tr.scw-subtotal--level-1) for colors
  *    to increase specificity and override Knack's base table styles
@@ -515,23 +520,24 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
 }
 
 /* ✅ More specific selectors to override Knack base styles */
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__pre.scw-l1-totals-grid__label,
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__pre.scw-l1-totals-grid__value { 
+/* Target divs that have BOTH classes (no space between class names) */
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__label.scw-l1-totals-grid__pre,
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__pre { 
   color: rgba(255,255,255,.78) !important; 
 }
 
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__disc.scw-l1-totals-grid__label,
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__disc.scw-l1-totals-grid__value { 
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__label.scw-l1-totals-grid__disc,
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__disc { 
   color: #ffcf7a !important; 
 }
 
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__final.scw-l1-totals-grid__label,
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__final.scw-l1-totals-grid__value { 
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__label.scw-l1-totals-grid__final,
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
   color: #ffffff !important; 
   font-weight: 900 !important;
 }
 
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__final.scw-l1-totals-grid__value { 
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
   font-size: 18px !important; 
 }
 
