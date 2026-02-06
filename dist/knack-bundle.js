@@ -165,6 +165,13 @@ window.SCW = window.SCW || {};
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
+ * PATCH (2026-02-05f):
+ *  - ✅ FIX: Use view-specific selectors (e.g., #view_3301 tr.scw-subtotal--level-1) for colors
+ *    to increase specificity and override Knack's base table styles
+ *
+ * PATCH (2026-02-05e):
+ *  - ✅ FIX: Add !important to color declarations to ensure they override any base styles
+ *
  * PATCH (2026-02-05d):
  *  - ✅ FIX: Colors already match original (rgba(255,255,255,.78), #ffcf7a, #ffffff)
  *  - ✅ FIX: Remove Qty from L1 footer (hidden completely)
@@ -668,23 +675,24 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
   text-align: right;
 }
 
-.scw-l1-totals-grid__pre .scw-l1-totals-grid__label,
-.scw-l1-totals-grid__pre .scw-l1-totals-grid__value { 
+/* ✅ More specific selectors to override Knack base styles */
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__pre.scw-l1-totals-grid__label,
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__pre.scw-l1-totals-grid__value { 
   color: rgba(255,255,255,.78) !important; 
 }
 
-.scw-l1-totals-grid__disc .scw-l1-totals-grid__label,
-.scw-l1-totals-grid__disc .scw-l1-totals-grid__value { 
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__disc.scw-l1-totals-grid__label,
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__disc.scw-l1-totals-grid__value { 
   color: #ffcf7a !important; 
 }
 
-.scw-l1-totals-grid__final .scw-l1-totals-grid__label,
-.scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__final.scw-l1-totals-grid__label,
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__final.scw-l1-totals-grid__value { 
   color: #ffffff !important; 
-  font-weight: 900;
+  font-weight: 900 !important;
 }
 
-.scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
+${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__final.scw-l1-totals-grid__value { 
   font-size: 18px !important; 
 }
 
