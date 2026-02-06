@@ -39,4 +39,4 @@ cat \
   src/features/legacy/get-tl-photos.js \
   > dist/knack-bundle.js
 
-echo "✔ Built dist/knack-bundle.js"
+echo "✔ Built dist/knack-bundle.js "
