@@ -691,7 +691,7 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-first-row td{
 
 /* 80px whitespace BELOW the last L1 footer row */
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
-  border-bottom: 40px solid #fff !important;
+  border-bottom: 60px solid #fff !important;
 }
 
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
