@@ -533,6 +533,12 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
   border-bottom: 80px solid #fff !important;
 }
 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
+  display: inline-block;
+  min-width: 120px;
+  text-align: right;
+}
+
 
 /* ============================================================
    YOUR PROVIDED CSS — APPLIED TO ALL CONFIG.views
