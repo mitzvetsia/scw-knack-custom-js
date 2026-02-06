@@ -643,7 +643,8 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row td { background: in
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-title{
   text-align: right;
   font-weight: 700;
-  margin: 6px 0 8px;
+  margin: 6px 0 0px;
+  Vertical-align: bottom;
   white-space: normal;
   overflow-wrap: anywhere;
 }
