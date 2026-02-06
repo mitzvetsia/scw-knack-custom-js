@@ -703,6 +703,11 @@ tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
 /* ============================================================
    Project Grand Totals
    ============================================================ */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals-first-row .scw-l1-title {
+  font-size: 2.2em !important;
+  font-weight: 600 !important;
+}
+
 tr.scw-level-total-row.scw-project-totals.scw-project-totals-first-row td {
   border-top: 20px solid transparent !important;
   border-bottom: 5px solid #07467c !important;
@@ -1493,11 +1498,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const hardwareKey = ctx.keys.hardware;   // field_2201
     const discountKey = ctx.keys.discount;   // field_2267
     const laborKey = ctx.keys.labor;         // field_2028
-    const equipTotalKey = 'field_2269';
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
     const lineItemDiscounts = sumField(caches, $allDataRows, discountKey);
-    const equipmentTotal = sumField(caches, $allDataRows, equipTotalKey);
+    const equipmentTotal = equipmentSubtotal + lineItemDiscounts;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
     const grandTotal = equipmentTotal + installationTotal;
 
