@@ -686,7 +686,7 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
 /* 80px whitespace ABOVE the first L1 footer row */
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-first-row td{
   border-top: 40px solid transparent !important;
-  Border-bottom: 5px solid #07467c !important;
+  border-bottom: 5px solid #07467c !important;
 }
 
 /* 80px whitespace BELOW the last L1 footer row */
