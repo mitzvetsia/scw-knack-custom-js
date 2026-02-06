@@ -165,45 +165,12 @@ window.SCW = window.SCW || {};
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
- * PATCH (2026-02-05g):
- *  - ✅ FIX: Correct CSS selector syntax - target elements with BOTH classes
- *    (e.g., .scw-l1-totals-grid__label.scw-l1-totals-grid__disc instead of 
- *    .scw-l1-totals-grid__disc.scw-l1-totals-grid__label)
- *
- * PATCH (2026-02-05f):
- *  - ✅ FIX: Use view-specific selectors (e.g., #view_3301 tr.scw-subtotal--level-1) for colors
- *    to increase specificity and override Knack's base table styles
- *
- * PATCH (2026-02-05e):
- *  - ✅ FIX: Add !important to color declarations to ensure they override any base styles
- *
- * PATCH (2026-02-05d):
- *  - ✅ FIX: Colors already match original (rgba(255,255,255,.78), #ffcf7a, #ffffff)
- *  - ✅ FIX: Remove Qty from L1 footer (hidden completely)
- *  - ✅ FIX: Hide entire L1 footer row when subtotal is $0
- *  - ✅ FIX: Hide L1 header "Qty" and "Cost" labels when ALL L1 subtotals are $0
- *
- * PATCH (2026-02-05c):
- *  - ✅ FIX: L1 footer visual layout improvements:
- *      • Label cell now right-aligned
- *      • Quantity column restored on L1 footer
- *      • Stacked totals now span across labor/hardware/cost columns for more space
- *      • Better spacing and less cramped appearance
- *
- * PATCH (2026-02-05b):
- *  - ✅ FIX: scw-hide-qty-cost was leaking onto LEVEL-1 subtotal rows
- *    Root cause:
- *      L1 footerQueue items were inheriting sectionContext.hideQtyCostColumns (from last-seen L2 bucket),
- *      so the L1 subtotal row sometimes got class scw-hide-qty-cost and triggered:
- *        tr.scw-hide-qty-cost td.field_1964, td.field_2203 { visibility:hidden }
- *    Fix (belt + suspenders):
- *      1) Logic: never set hideQtyCostColumns on L1 footerQueue items.
- *      2) Build: even if it somehow gets the class, do NOT apply scw-hide-qty-cost to L1 rows.
- *      3) CSS guard: scope the visibility rule to NOT(.scw-subtotal--level-1).
- *
- * PATCH (2026-02-03d):
- *  - ✅ FIX: Level-1 subtotal row background sometimes white on label TD
- *    Force row-level background + td inherit (scoped to configured views).
+ * PATCH (2026-02-05h):
+ *  - ✅ FIX: L1 footer line colors not applying
+ *    Root cause: selectors like `${sel('tr.scw-subtotal--level-1')} .child`
+ *    expand to `#viewA tr..., #viewB tr... .child` (the `.child` only applies to the LAST selector).
+ *    Fix: use robust, non-view-scoped selectors on the subtotal row itself:
+ *      `tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__...`
  */
 (function () {
   'use strict';
@@ -220,10 +187,7 @@ window.SCW = window.SCW || {};
           labor: 'field_2028',
           hardware: 'field_2201',
           cost: 'field_2203',
-
-          // ✅ discount amount field
           discount: 'field_2267',
-
           field2019: 'field_2019',
           prefix: 'field_2240',
           number: 'field_1951',
@@ -680,25 +644,25 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
   text-align: right;
 }
 
-/* ✅ More specific selectors to override Knack base styles */
-/* Target divs that have BOTH classes (no space between class names) */
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__label.scw-l1-totals-grid__pre,
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__pre { 
+/* ✅ FIXED: robust selectors (apply to all views, all L1 subtotal rows)
+   These override the td's base color and any inherited table styles. */
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__label.scw-l1-totals-grid__pre,
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__pre { 
   color: rgba(255,255,255,.78) !important; 
 }
 
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__label.scw-l1-totals-grid__disc,
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__disc { 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__label.scw-l1-totals-grid__disc,
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__disc { 
   color: #ffcf7a !important; 
 }
 
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__label.scw-l1-totals-grid__final,
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__label.scw-l1-totals-grid__final,
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
   color: #ffffff !important; 
   font-weight: 900 !important;
 }
 
-${sel('tr.scw-subtotal--level-1')} .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
   font-size: 18px !important; 
 }
 
@@ -1379,7 +1343,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const finalTotal = cost + (hasDiscount ? discount : 0);
 
-    // ✅ PATCH: never apply hideQtyCost to L1 rows (even if caller passes true)
     const safeHideQtyCost = level === 1 ? false : Boolean(hideQtyCost);
 
     const $row = $(`
@@ -1399,9 +1362,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-    // ✅ L1 improved layout: hide qty, totals span labor+hardware+cost
     if (level === 1) {
-      // ✅ Hide entire L1 footer if cost is $0
       if (Math.abs(cost) < 0.01) {
         $row.css('display', 'none');
         return $row;
@@ -1412,29 +1373,25 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       const $hardwareCell = $row.find(`td.${hardwareKey}`);
       const $costCell = $row.find(`td.${costKey}`);
 
-      // Hide qty cell completely
       $qtyCell.addClass('scw-l1-qty-cell');
 
-      // Clear labor and hardware
       $laborCell.empty();
       $hardwareCell.empty();
 
-      // Span cost across labor+hardware+cost by setting colspan and hiding others
       $costCell.attr('colspan', '3').addClass('scw-l1-totals-span');
       $laborCell.css('display', 'none');
       $hardwareCell.css('display', 'none');
 
-      // Build grid layout in cost cell
       $costCell.html(
         hasDiscount
           ? `
             <div class="scw-l1-totals-grid">
               <div class="scw-l1-totals-grid__label scw-l1-totals-grid__pre">Pre-Discount:</div>
               <div class="scw-l1-totals-grid__value scw-l1-totals-grid__pre">${escapeHtml(formatMoney(cost))}</div>
-              
+
               <div class="scw-l1-totals-grid__label scw-l1-totals-grid__disc">Discounts:</div>
               <div class="scw-l1-totals-grid__value scw-l1-totals-grid__disc">–${escapeHtml(formatMoneyAbs(discount))}</div>
-              
+
               <div class="scw-l1-totals-grid__label scw-l1-totals-grid__final">Final Total:</div>
               <div class="scw-l1-totals-grid__value scw-l1-totals-grid__final">${escapeHtml(formatMoney(finalTotal))}</div>
             </div>
@@ -1541,7 +1498,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const footerQueue = [];
     let shouldHideSubtotalFilterFlag = false;
-    let hasAnyNonZeroL1Subtotal = false; // ✅ Track if any L1 has non-zero cost
+    let hasAnyNonZeroL1Subtotal = false;
 
     const qtyKey = ctx.keys.qty;
     const laborKey = ctx.keys.labor;
@@ -1587,14 +1544,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           $groupRow.append($cellsTemplate.clone());
           $groupRow.data('scwHeaderCellsAdded', true);
         }
-        
-        // ✅ Check if this L1 section has non-zero cost
+
         const l1Cost = totals[costKey] || 0;
-        if (Math.abs(l1Cost) >= 0.01) {
-          hasAnyNonZeroL1Subtotal = true;
-        }
-        
-        // Labels with classes so we can hide them if needed
+        if (Math.abs(l1Cost) >= 0.01) hasAnyNonZeroL1Subtotal = true;
+
         $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
         $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
@@ -1690,7 +1643,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         });
       }
 
-      // Queue footers for L1 & L2
       if (level === 1 || level === 2) {
         const levelInfo = level === 2 ? sectionContext.level2 : getLevel2InfoFromGroupRow($groupRow);
 
@@ -1700,10 +1652,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           level,
           label: levelInfo.label,
           contextKey: sectionContext.key,
-
-          // ✅ PATCH (2026-02-05b): L1 footer must NEVER inherit hideQtyCostColumns
           hideQtyCostColumns: level === 2 ? sectionContext.hideQtyCostColumns : false,
-
           $groupBlock,
           $cellsTemplate,
           $rowsToSum,
@@ -1712,7 +1661,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       }
     });
 
-    // Insert footers bottom-up, with L2 before L1 at same anchor
     const footersByAnchor = new Map();
     for (const item of footerQueue) {
       const anchorEl = item.$groupBlock.last()[0];
@@ -1760,7 +1708,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     if (shouldHideSubtotalFilterFlag) hideSubtotalFilter(ctx);
 
-    // ✅ Hide L1 header Qty/Cost labels if ALL L1 subtotals are $0
     if (!hasAnyNonZeroL1Subtotal) {
       $tbody.find('.scw-l1-header-qty, .scw-l1-header-cost').empty();
     }
@@ -1796,7 +1743,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
-})();/*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
+})();
+/*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
 (function () {
   'use strict';
 
