@@ -675,7 +675,7 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
 
 .scw-l1-totals-grid__disc .scw-l1-totals-grid__label,
 .scw-l1-totals-grid__disc .scw-l1-totals-grid__value { 
-  color: #ffcf7a; 
+  color: #ffcf7a !important; 
 }
 
 .scw-l1-totals-grid__final .scw-l1-totals-grid__label,
