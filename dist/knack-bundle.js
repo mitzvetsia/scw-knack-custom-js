@@ -631,7 +631,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   document.head.appendChild(style);
 }
 
-module.exports = { injectCssOnce };/////************* PROPOSAL VIEW OF SOW (effective Q1 2026) ***************//////
+module.exports = { injectCssOnce };/////************* PROPOSAL VIEW OF SOW (effective Q1 2026) *****************//////
 /**
  * SCW Totals Script - Refactored (multi-view + multi-field + modular features)
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
