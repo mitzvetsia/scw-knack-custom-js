@@ -16,7 +16,7 @@ cat \
   src/features/proposal-grid/config.js \
   src/features/proposal-grid/utils.js \
   src/features/proposal-grid/css.js \
-  src/features/proposal-grid.js \
+  src/features/proposal-grid/index.js \
   src/features/group-collapse.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/highlight-duplicate-cells.js \
