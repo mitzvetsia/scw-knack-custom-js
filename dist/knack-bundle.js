@@ -733,7 +733,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-1 td {border-bottom-width: 20px
 
 ${sel('tr.scw-subtotal--level-1 td')} {
   background: RGB(7, 70, 124, 1);
-  border-top:1px solid #dadada;
+  border-top:0px solid #dadada;
   font-weight:600;
   color: #07467c;
   text-align: right;
