@@ -503,17 +503,17 @@ tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value{
 
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--sub .scw-l1-label,
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--sub .scw-l1-value{
-  color: rgba(255,255,255,.78) !important;
+  color: #07467c !important;
 }
 
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-label,
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-value{
-  color: #ffcf7a !important;
+  color: orange !important;
 }
 
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-label,
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
-  color: #fff !important;
+  color: #07467c !important;
   font-weight: 900 !important;
 }
 
