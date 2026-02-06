@@ -1333,140 +1333,227 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     `);
   }
 
-  // ============================================================
-  // ✅ FEATURE: Build L1 footer row (full width + aligned)
-  // ============================================================
-function buildLevel1FooterRow(ctx, {
-  labelText,
-  preDiscountText,
-  discountText,
-  finalTotalText,
+ // ============================================================
+// ✅ FEATURE: Build L1 footer as MULTIPLE ROWS (perfect column alignment)
+// ============================================================
+
+function buildLevel1FooterRows(ctx, {
+  titleText,         // e.g. "MDF 01: Micah's Office"
+  preDiscountText,   // "$12,345.67"
+  discountText,      // "–$123.45"
+  finalTotalText,    // "$12,222.22"
   hasDiscount,
   contextKey,
   groupLabel,
 }) {
   const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
 
-  // Fallbacks if header indices can’t be found (rare)
   const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
   const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
 
-  // ✅ CONTROL: how many columns (starting at Qty) the LABELS cell should span.
-  // Qty is often narrow; this gives the labels breathing room.
-  // Examples:
-  //  - 2 = Qty + 1 extra column
-  //  - 3 = Qty + 2 extra columns
-  const LABEL_SPAN_COLS = 2;
+  const leftSpan = Math.max(safeQtyIdx, 0);                 // columns before qty
+  const midSpan = Math.max(safeCostIdx - safeQtyIdx, 1);    // qty..(before cost)
+  const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0); // after cost
 
-  // We want:
-  // [TITLE spans columns before Qty]
-  // [LABELS start at Qty and span LABEL_SPAN_COLS cols (but never reaching Cost)]
-  // [FILLER remaining cols between labels-span and Cost]
-  // [VALUES in Cost col]
-  // [TAIL after Cost]
+  function makeRow({ title, label, value, rowType, isFinal }) {
+    const $tr = $(`
+      <tr
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-l1-line-row ${rowType ? `scw-l1-line--${rowType}` : ''}${isFinal ? ' scw-l1-line--final' : ''}"
+        data-scw-subtotal-level="1"
+        data-scw-context="${escapeHtml(contextKey || 'default')}"
+        data-scw-group-label="${escapeHtml(groupLabel || '')}"
+      ></tr>
+    `);
 
-  // Columns BEFORE qty (must be >=1 so the title is always a real TD)
-  const titleSpan = Math.max(safeQtyIdx, 1);
+    if (leftSpan > 0) $tr.append(`<td class="scw-l1-leftpad" colspan="${leftSpan}"></td>`);
 
-  // Max columns available from qty up to (but not incl) cost
-  const maxLabelSpan = Math.max(safeCostIdx - safeQtyIdx, 1);
+    $tr.append(`
+      <td class="scw-l1-labelcell ${escapeHtml(ctx.keys.qty)}" colspan="${midSpan}">
+        ${title ? `<div class="scw-l1-title">${escapeHtml(title)}</div>` : ''}
+        <div class="scw-l1-label">${escapeHtml(label)}</div>
+      </td>
+    `);
 
-  // Actual labels span (clamped so we never consume the cost column)
-  const labelSpan = Math.min(LABEL_SPAN_COLS, maxLabelSpan);
+    $tr.append(`
+      <td class="scw-l1-valuecell ${escapeHtml(ctx.keys.cost)}">
+        <div class="scw-l1-value">${escapeHtml(value)}</div>
+      </td>
+    `);
 
-  // Gap between end of labels span and the cost column
-  const fillerSpan = Math.max(safeCostIdx - (safeQtyIdx + labelSpan), 0);
+    if (rightSpan > 0) $tr.append(`<td class="scw-l1-tail" colspan="${rightSpan}"></td>`);
 
-  // Columns AFTER cost (actions etc)
-  const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
-
-  const $tr = $(`
-    <tr
-      class="scw-level-total-row scw-subtotal scw-subtotal--level-1"
-      data-scw-subtotal-level="1"
-      data-scw-context="${escapeHtml(contextKey || 'default')}"
-      data-scw-group-label="${escapeHtml(groupLabel || '')}"
-    ></tr>
-  `);
-
-  // TITLE (everything up to the Qty column)
-  $tr.append(`
-    <td class="scw-level-total-label scw-l1-footer-left" colspan="${titleSpan}">
-      <strong>${escapeHtml(labelText || '')}</strong>
-    </td>
-  `);
-
-  const labelsHtml = hasDiscount
-    ? `
-      <div class="scw-l1-footer-lines">
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__label scw-l1-pre">Pre-Discount:</span>
-        </div>
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__label scw-l1-disc">Discounts:</span>
-        </div>
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__label scw-l1-final">Final Total:</span>
-        </div>
-      </div>
-    `
-    : `
-      <div class="scw-l1-footer-lines">
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__label scw-l1-final">Subtotal:</span>
-        </div>
-      </div>
-    `;
-
-  // ✅ LABELS: anchored at Qty, but spans labelSpan columns so it isn't squished
-  $tr.append(`
-    <td class="${escapeHtml(ctx.keys.qty)} scw-l1-footer-labels" colspan="${labelSpan}">
-      ${labelsHtml}
-    </td>
-  `);
-
-  // ✅ FILLER: any remaining columns between labels span and cost (labor/hardware/etc) — keep blue, but empty
-  if (fillerSpan > 0) {
-    $tr.append(`<td class="scw-l1-footer-gap" colspan="${fillerSpan}"></td>`);
+    return $tr;
   }
 
-  const valuesHtml = hasDiscount
-    ? `
-      <div class="scw-l1-footer-lines">
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__value scw-l1-pre">${escapeHtml(preDiscountText)}</span>
-        </div>
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__value scw-l1-disc">${escapeHtml(discountText)}</span>
-        </div>
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
-        </div>
-      </div>
-    `
-    : `
-      <div class="scw-l1-footer-lines">
-        <div class="scw-l1-footer-line">
-          <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
-        </div>
-      </div>
-    `;
+  const title = norm(titleText || '');
 
-  // VALUES: EXACTLY the Cost column
-  $tr.append(`
-    <td class="${escapeHtml(ctx.keys.cost)} scw-l1-footer-values">
-      ${valuesHtml}
-    </td>
-  `);
-
-  // TAIL: columns after cost (actions etc)
-  if (rightSpan > 0) {
-    $tr.append(`<td class="scw-l1-footer-tail" colspan="${rightSpan}"></td>`);
+  if (!hasDiscount) {
+    return [
+      makeRow({
+        title,
+        label: 'Subtotal',
+        value: finalTotalText,
+        rowType: 'final',
+        isFinal: true,
+      }),
+    ];
   }
 
-  return $tr;
+  return [
+    makeRow({ title, label: 'Pre-Discount', value: preDiscountText, rowType: 'pre', isFinal: false }),
+    makeRow({ title: '', label: 'Discounts', value: discountText, rowType: 'disc', isFinal: false }),
+    makeRow({ title: '', label: 'Final Total', value: finalTotalText, rowType: 'final', isFinal: true }),
+  ];
 }
 
+// ============================================================
+// ✅ PATCH: Build subtotal row (L1 returns multi-row collection)
+// ============================================================
+
+function buildSubtotalRow(ctx, caches, {
+  $cellsTemplate,
+  $rowsToSum,
+  labelOverride,
+  level,
+  contextKey,
+  groupLabel,
+  totals,
+  hideQtyCost,
+}) {
+  const leftText = labelOverride || groupLabel || '';
+
+  const qtyKey = ctx.keys.qty;
+  const costKey = ctx.keys.cost;
+  const laborKey = ctx.keys.labor;
+  const hardwareKey = ctx.keys.hardware;
+  const discountKey = ctx.keys.discount;
+
+  const qty = totals?.[qtyKey] ?? sumField(caches, $rowsToSum, qtyKey);
+  const cost = totals?.[costKey] ?? sumField(caches, $rowsToSum, costKey);
+
+  const discountRaw =
+    (discountKey && Number.isFinite(totals?.[discountKey]))
+      ? totals[discountKey]
+      : (discountKey ? sumField(caches, $rowsToSum, discountKey) : 0);
+
+  const discount = Number.isFinite(discountRaw) ? discountRaw : 0;
+  const hasDiscount = Math.abs(discount) > 0.004;
+
+  const finalTotal = cost + (hasDiscount ? discount : 0);
+
+  // ✅ L1: build 1 or 3 footer rows (always aligned to real Cost column)
+  if (level === 1) {
+    if (Math.abs(cost) < 0.01) return $();
+
+    const titleText = norm(leftText || '').replace(/\s+—\s*Subtotal\s*$/i, '');
+
+    const rows = buildLevel1FooterRows(ctx, {
+      titleText,
+      preDiscountText: formatMoney(cost),
+      discountText: '–' + formatMoneyAbs(discount),
+      finalTotalText: formatMoney(hasDiscount ? finalTotal : cost),
+      hasDiscount,
+      contextKey,
+      groupLabel,
+    });
+
+    // Return as a single jQuery collection of TRs
+    return $(rows.map(($r) => $r[0]));
+  }
+
+  const safeHideQtyCost = Boolean(hideQtyCost);
+
+  const $row = $(`
+    <tr
+      class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
+      data-scw-subtotal-level="${level}"
+      data-scw-context="${escapeHtml(contextKey || 'default')}"
+      data-scw-group-label="${escapeHtml(groupLabel || '')}"
+    >
+      <td class="scw-level-total-label"><strong>${escapeHtml(leftText)}</strong></td>
+    </tr>
+  `);
+
+  $row.append($cellsTemplate.clone());
+
+  $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+  $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
+  $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
+
+  return $row;
+}
+
+// ============================================================
+// ✅ PATCH: Fragment insertion (supports 1-row or multi-row)
+// Replace your old: fragment.appendChild($row[0]);
+// with this:
+// ============================================================
+
+// ...inside your "for (const item of items) { ... }" loop:
+const $row = buildSubtotalRow(ctx, caches, {
+  $cellsTemplate: item.$cellsTemplate,
+  $rowsToSum: item.$rowsToSum,
+  labelOverride: item.level === 1 ? `${item.label} — Subtotal` : null,
+  level: item.level,
+  contextKey: item.contextKey,
+  groupLabel: item.label,
+  totals: item.totals,
+  hideQtyCost: item.hideQtyCostColumns,
+});
+
+$row.each(function () {
+  fragment.appendChild(this);
+});
+
+// ============================================================
+// ✅ CSS: Add to your injected CSS (L1 section) so rows look right
+// ============================================================
+
+/*
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row td{
+  background: inherit !important;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-title{
+  text-align: left;
+  font-weight: 700;
+  margin: 6px 0 6px;
+  white-space: nowrap;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-label{
+  text-align: right;
+  opacity: .85;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value{
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--pre .scw-l1-label,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--pre .scw-l1-value{
+  color: rgba(255,255,255,.78) !important;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-label,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-value{
+  color: #ffcf7a !important;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-label,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
+  color: #fff !important;
+  font-weight: 900 !important;
+}
+
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
+  font-size: 18px;
+}
+*/
 
   // ============================================================
   // FEATURE: Build subtotal row
