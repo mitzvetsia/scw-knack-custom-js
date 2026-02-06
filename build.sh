@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-mkdir -p dist.  
+mkdir -p dist
 
 cat \
   src/config.js \
