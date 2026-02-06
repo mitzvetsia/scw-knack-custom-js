@@ -1211,15 +1211,35 @@ function buildLevel1FooterRows(ctx, {
     `);
   }
 
-  function makeTitleRow(title, isFirst) {
-    const $tr = makeTrBase(`scw-l1-title-row${isFirst ? ' scw-l1-first-row' : ''}`);
-    $tr.append(`
-      <td class="scw-l1-titlecell" colspan="${Math.max(colCount, 1)}">
-        <div class="scw-l1-title">${escapeHtml(title)}</div>
-      </td>
-    `);
-    return $tr;
+function makeTitleRow(title, isFirst) {
+  const meta = computeColumnMeta(ctx);
+  const colCount = Math.max(meta.colCount || 0, 1);
+
+  // costIdx is 0-based. If missing, fall back to last column.
+  const costIdx = Number.isFinite(meta.costIdx) && meta.costIdx >= 1 ? meta.costIdx : (colCount - 1);
+
+  const $tr = makeTrBase(`scw-l1-title-row${isFirst ? ' scw-l1-first-row' : ''}`);
+
+  // Title cell spans up to the column BEFORE cost, so its right edge lines up to cost column edge.
+  const titleSpan = Math.max(costIdx, 1);
+  $tr.append(`
+    <td class="scw-l1-titlecell" colspan="${titleSpan}">
+      <div class="scw-l1-title">${escapeHtml(title)}</div>
+    </td>
+  `);
+
+  // Blank cost column cell (keeps grid structure consistent)
+  $tr.append(`<td class="${ctx.keys.cost}"></td>`);
+
+  // Tail cells AFTER cost (only if cost isn’t the last column)
+  const tailSpan = colCount - (titleSpan + 1);
+  if (tailSpan > 0) {
+    $tr.append(`<td colspan="${tailSpan}"></td>`);
   }
+
+  return $tr;
+}
+
 
 function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   const meta = computeColumnMeta(ctx);
@@ -1278,7 +1298,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ✅ mark first + last emitted rows
   if (rows.length) {
     rows[0].addClass('scw-l1-first-row');
-    rows[rows.length - 2].addClass('scw-l1-last-row');
+    rows[rows.length - 1].addClass('scw-l1-last-row');
   }
 
   return rows;
