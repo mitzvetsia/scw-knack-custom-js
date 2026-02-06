@@ -1278,7 +1278,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ✅ mark first + last emitted rows
   if (rows.length) {
     rows[0].addClass('scw-l1-first-row');
-    rows[rows.length - 1].addClass('scw-l1-last-row');
+    rows[rows.length - 2].addClass('scw-l1-last-row');
   }
 
   return rows;
