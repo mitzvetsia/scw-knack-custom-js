@@ -165,6 +165,11 @@ window.SCW = window.SCW || {};
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
+ * PATCH (2026-02-05d):
+ *  - ✅ FIX: Restore original colors for L1 footer totals
+ *  - ✅ FIX: Remove Qty from L1 footer (hide completely)
+ *  - ✅ FIX: Hide entire L1 footer row when subtotal is $0
+ *
  * PATCH (2026-02-05c):
  *  - ✅ FIX: L1 footer visual layout improvements:
  *      • Label cell now right-aligned
@@ -630,9 +635,9 @@ ${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} {
   font-weight: 700 !important;
 }
 
+/* Hide qty cell completely on L1 footer */
 ${sel('tr.scw-subtotal--level-1 td.scw-l1-qty-cell')} { 
-  text-align: center !important;
-  font-weight: 700 !important;
+  display: none !important;
 }
 
 /* Span labor+hardware+cost for breathing room */
@@ -664,7 +669,7 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
 
 .scw-l1-totals-grid__pre .scw-l1-totals-grid__label,
 .scw-l1-totals-grid__pre .scw-l1-totals-grid__value { 
-  color: rgba(255,255,255,.82); 
+  color: rgba(255,255,255,.78); 
 }
 
 .scw-l1-totals-grid__disc .scw-l1-totals-grid__label,
@@ -679,7 +684,7 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
 }
 
 .scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
-  font-size: 19px; 
+  font-size: 18px; 
 }
 
 /* ============================================================
@@ -1379,15 +1384,21 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-    // ✅ L1 improved layout: qty in its own cell, totals span labor+hardware+cost
+    // ✅ L1 improved layout: hide qty, totals span labor+hardware+cost
     if (level === 1) {
+      // ✅ Hide entire L1 footer if cost is $0
+      if (Math.abs(cost) < 0.01) {
+        $row.css('display', 'none');
+        return $row;
+      }
+
       const $qtyCell = $row.find(`td.${qtyKey}`);
       const $laborCell = $row.find(`td.${laborKey}`);
       const $hardwareCell = $row.find(`td.${hardwareKey}`);
       const $costCell = $row.find(`td.${costKey}`);
 
-      // Qty gets its own cell
-      $qtyCell.addClass('scw-l1-qty-cell').html(`<strong>${Math.round(qty)}</strong>`);
+      // Hide qty cell completely
+      $qtyCell.addClass('scw-l1-qty-cell');
 
       // Clear labor and hardware
       $laborCell.empty();
