@@ -1497,7 +1497,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   function readDomFieldValue(fieldKey, viewId) {
     const scope = viewId ? `#${viewId} ` : '';
-    const $el = $(scope + `.kn-detail-body .field_${fieldKey} .kn-detail-body-cell span`);
+    const $el = $(scope + `.kn-detail.field_${fieldKey} .kn-detail-body span`);
     if (!$el.length) return 0;
     const raw = $el.text().replace(/[^0-9.\-]/g, '');
     const num = parseFloat(raw);
