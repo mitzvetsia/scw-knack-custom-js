@@ -187,6 +187,7 @@ window.SCW = window.SCW || {};
   const CONFIG = {
     views: {
       view_3301: {
+        showProjectTotals: true,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -202,6 +203,7 @@ window.SCW = window.SCW || {};
         },
       },
       view_3341: {
+        showProjectTotals: true,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -217,6 +219,7 @@ window.SCW = window.SCW || {};
         },
       },
       view_3371: {
+        showProjectTotals: false,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -526,6 +529,7 @@ window.SCW = window.SCW || {};
       $root,
       $tbody,
       keys: vcfg.keys,
+      showProjectTotals: vcfg.showProjectTotals !== false,
       features: CONFIG.features,
       l2Context: CONFIG.l2Context,
       l2SectionRules: CONFIG.l2SectionRules,
@@ -1491,7 +1495,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // FEATURE: Build Project Grand Total Rows
   // ============================================================
 
+  function readDomFieldValue(fieldKey) {
+    const $el = $(`.kn-detail-body .field_${fieldKey} .kn-detail-body-cell span`);
+    if (!$el.length) return 0;
+    const raw = $el.text().replace(/[^0-9.\-]/g, '');
+    const num = parseFloat(raw);
+    return Number.isFinite(num) ? num : 0;
+  }
+
   function buildProjectTotalRows(ctx, caches, $tbody) {
+    if (!ctx.showProjectTotals) return [];
+
     const $allDataRows = $tbody.find('tr[id]');
     if (!$allDataRows.length) return [];
 
@@ -1500,10 +1514,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const laborKey = ctx.keys.labor;         // field_2028
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
-    const lineItemDiscounts = sumField(caches, $allDataRows, discountKey);
-    const equipmentTotal = equipmentSubtotal + lineItemDiscounts;
+    const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, discountKey));
+    const proposalDiscount = Math.abs(readDomFieldValue('2302'));
+    const equipmentTotal = equipmentSubtotal - lineItemDiscounts - proposalDiscount;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
     const grandTotal = equipmentTotal + installationTotal;
+
+    const hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
     const meta = computeColumnMeta(ctx);
     const cols = Math.max(meta.colCount || 0, 1);
@@ -1563,19 +1580,32 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     rows.push(makeTitleRow('Project Totals'));
 
-    rows.push(makeLineRow({
-      label: 'Equipment Subtotal',
-      value: formatMoney(equipmentSubtotal),
-      rowType: 'sub',
-      isLast: false,
-    }));
+    if (hasAnyDiscount) {
+      rows.push(makeLineRow({
+        label: 'Equipment Subtotal',
+        value: formatMoney(equipmentSubtotal),
+        rowType: 'sub',
+        isLast: false,
+      }));
 
-    rows.push(makeLineRow({
-      label: 'Line Item Discounts',
-      value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
-      rowType: 'disc',
-      isLast: false,
-    }));
+      if (lineItemDiscounts !== 0) {
+        rows.push(makeLineRow({
+          label: 'Line Item Discounts',
+          value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
+          rowType: 'disc',
+          isLast: false,
+        }));
+      }
+
+      if (proposalDiscount !== 0) {
+        rows.push(makeLineRow({
+          label: 'Proposal Discount',
+          value: '\u2013' + formatMoneyAbs(proposalDiscount),
+          rowType: 'disc',
+          isLast: false,
+        }));
+      }
+    }
 
     rows.push(makeLineRow({
       label: 'Equipment Total',
