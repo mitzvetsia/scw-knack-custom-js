@@ -1382,26 +1382,43 @@ function buildLevel1FooterRows(ctx, {
     return $tr;
   }
 
-  function makeLineRow({ label, value, rowType, isFirst, isLast }) {
-    const $tr = makeTrBase(
-      `scw-l1-line-row scw-l1-line--${rowType}${isFirst ? ' scw-l1-first-row' : ''}${isLast ? ' scw-l1-last-row' : ''}`
-    );
+function makeLineRow({ label, value, rowType, isFirst, isLast }) {
+  const meta = computeColumnMeta(ctx);
+  const colCount = Math.max(meta.colCount || 0, 1);
 
-    const leftSpan = Math.max(colCount - 1, 1);
-    $tr.append(`
-      <td class="scw-l1-labelcell" colspan="${leftSpan}">
-        <div class="scw-l1-label">${escapeHtml(label)}</div>
-      </td>
-    `);
+  // costIdx is 0-based within the row. If we can’t find it, fall back to last column.
+  const costIdx = Number.isFinite(meta.costIdx) && meta.costIdx >= 1 ? meta.costIdx : (colCount - 1);
 
-    $tr.append(`
-      <td class="scw-l1-valuecell">
-        <div class="scw-l1-value">${escapeHtml(value)}</div>
-      </td>
-    `);
+  const $tr = makeTrBase(
+    `scw-l1-line-row scw-l1-line--${rowType}` +
+      `${isFirst ? ' scw-l1-first-row' : ''}` +
+      `${isLast ? ' scw-l1-last-row' : ''}`
+  );
 
-    return $tr;
+  // Label cell spans from col 0 up through the column BEFORE cost.
+  const labelSpan = Math.max(costIdx, 1);
+  $tr.append(`
+    <td class="scw-l1-labelcell" colspan="${labelSpan}">
+      <div class="scw-l1-label">${escapeHtml(label)}</div>
+    </td>
+  `);
+
+  // Cost cell: put the value in the actual cost column
+  $tr.append(`
+    <td class="${ctx.keys.cost} scw-l1-valuecell">
+      <div class="scw-l1-value">${escapeHtml(value)}</div>
+    </td>
+  `);
+
+  // Tail cells AFTER cost (only if cost isn’t the last column)
+  const tailSpan = colCount - (labelSpan + 1);
+  if (tailSpan > 0) {
+    $tr.append(`<td colspan="${tailSpan}"></td>`);
   }
+
+  return $tr;
+}
+
 
   const title = norm(titleText || '');
   const rows = [];
