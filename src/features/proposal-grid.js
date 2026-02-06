@@ -509,7 +509,7 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
 
 .scw-l1-totals-grid__pre .scw-l1-totals-grid__label,
 .scw-l1-totals-grid__pre .scw-l1-totals-grid__value { 
-  color: rgba(255,255,255,.78); 
+  color: rgba(255,255,255,.78) !important; 
 }
 
 .scw-l1-totals-grid__disc .scw-l1-totals-grid__label,
@@ -519,12 +519,12 @@ ${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} {
 
 .scw-l1-totals-grid__final .scw-l1-totals-grid__label,
 .scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
-  color: #ffffff; 
+  color: #ffffff !important; 
   font-weight: 900;
 }
 
 .scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
-  font-size: 18px; 
+  font-size: 18px !important; 
 }
 
 /* ============================================================
