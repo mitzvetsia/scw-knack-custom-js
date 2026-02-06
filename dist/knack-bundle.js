@@ -1336,8 +1336,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   // ============================================================
   // ✅ FEATURE: Build L1 footer row (full width + aligned)
   // ============================================================
-
-  function buildLevel1FooterRow(ctx, {
+function buildLevel1FooterRow(ctx, {
   labelText,
   preDiscountText,
   discountText,
@@ -1352,10 +1351,33 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
   const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
 
+  // ✅ CONTROL: how many columns (starting at Qty) the LABELS cell should span.
+  // Qty is often narrow; this gives the labels breathing room.
+  // Examples:
+  //  - 2 = Qty + 1 extra column
+  //  - 3 = Qty + 2 extra columns
+  const LABEL_SPAN_COLS = 2;
+
   // We want:
-  // [TITLE spans columns before Qty] [LABELS in Qty column] [FILLER cols between Qty and Cost] [VALUES in Cost col] [TAIL after Cost]
-  const titleSpan = Math.max(safeQtyIdx, 1); // columns BEFORE qty (must be >=1)
-  const fillerSpan = Math.max((safeCostIdx - safeQtyIdx - 1), 0);
+  // [TITLE spans columns before Qty]
+  // [LABELS start at Qty and span LABEL_SPAN_COLS cols (but never reaching Cost)]
+  // [FILLER remaining cols between labels-span and Cost]
+  // [VALUES in Cost col]
+  // [TAIL after Cost]
+
+  // Columns BEFORE qty (must be >=1 so the title is always a real TD)
+  const titleSpan = Math.max(safeQtyIdx, 1);
+
+  // Max columns available from qty up to (but not incl) cost
+  const maxLabelSpan = Math.max(safeCostIdx - safeQtyIdx, 1);
+
+  // Actual labels span (clamped so we never consume the cost column)
+  const labelSpan = Math.min(LABEL_SPAN_COLS, maxLabelSpan);
+
+  // Gap between end of labels span and the cost column
+  const fillerSpan = Math.max(safeCostIdx - (safeQtyIdx + labelSpan), 0);
+
+  // Columns AFTER cost (actions etc)
   const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
 
   const $tr = $(`
@@ -1374,7 +1396,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     </td>
   `);
 
-  // LABELS: EXACTLY the Qty column
   const labelsHtml = hasDiscount
     ? `
       <div class="scw-l1-footer-lines">
@@ -1397,18 +1418,18 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       </div>
     `;
 
+  // ✅ LABELS: anchored at Qty, but spans labelSpan columns so it isn't squished
   $tr.append(`
-    <td class="${escapeHtml(ctx.keys.qty)} scw-l1-footer-labels" colspan="1">
+    <td class="${escapeHtml(ctx.keys.qty)} scw-l1-footer-labels" colspan="${labelSpan}">
       ${labelsHtml}
     </td>
   `);
 
-  // FILLER: any columns between Qty and Cost (labor/hardware/etc) — keep blue, but empty
+  // ✅ FILLER: any remaining columns between labels span and cost (labor/hardware/etc) — keep blue, but empty
   if (fillerSpan > 0) {
     $tr.append(`<td class="scw-l1-footer-gap" colspan="${fillerSpan}"></td>`);
   }
 
-  // VALUES: EXACTLY the Cost column
   const valuesHtml = hasDiscount
     ? `
       <div class="scw-l1-footer-lines">
@@ -1431,6 +1452,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       </div>
     `;
 
+  // VALUES: EXACTLY the Cost column
   $tr.append(`
     <td class="${escapeHtml(ctx.keys.cost)} scw-l1-footer-values">
       ${valuesHtml}
@@ -1444,6 +1466,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
   return $tr;
 }
+
 
   // ============================================================
   // FEATURE: Build subtotal row
