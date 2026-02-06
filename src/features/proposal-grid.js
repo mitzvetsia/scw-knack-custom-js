@@ -12,11 +12,9 @@
  *      `tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__...`
  *
  * PATCH (2026-02-05i):
- *  - ✅ FIX: L1 blue footer “stopping one TD short” (misalignment / gap)
- *  - ✅ CHANGE: Put ALL $ values (pre/discount/final) in the SAME column as L3/L4 cost
- *  - ✅ CHANGE: Start the labels at the Qty column (aligned to L3/L4 qty)
- *    Implementation: build a true full-width L1 footer row using computed column indices + colspans:
- *      [left title colspan up to qty] [labels colspan qty..before cost] [values in cost column] [tail colspan after cost]
+ *  - ✅ NEW: L1 footer rendered as 1 or 3 TRUE TABLE ROWS (Pre-Discount / Discounts / Final Total)
+ *    so labels can wrap without de-sync and $$ stays in REAL cost column.
+ *  - ✅ NEW: L1 group label appears ON TOP (only on first row of the group’s totals).
  */
 (function () {
   'use strict';
@@ -371,7 +369,6 @@
       l2Context: CONFIG.l2Context,
       l2SectionRules: CONFIG.l2SectionRules,
       l2Specials: CONFIG.l2Specials,
-      _colMeta: null, // lazy
     };
   }
 
@@ -393,26 +390,29 @@
   }
 
   // ============================================================
-  // ✅ COLUMN META (used to build full-width L1 footer)
+  // ✅ COLUMN META: real colCount + indices of qty/cost columns
   // ============================================================
 
   function computeColumnMeta(ctx) {
-    if (ctx._colMeta) return ctx._colMeta;
+    const firstRow = ctx.$root.find('.kn-table tbody tr[id]').first()[0];
+    const colCount = firstRow ? firstRow.querySelectorAll('td').length : 0;
 
-    const $table = ctx.$root.find('.kn-table').first();
-    const $ths = $table.find('thead tr').first().children('th');
-    const colCount = $ths.length || $table.find('tbody tr').first().children('td').length || 0;
+    let qtyIdx = -1;
+    let costIdx = -1;
 
-    function idxFor(fieldKey) {
-      const $th = $ths.filter(`.${fieldKey}`).first();
-      return $th.length ? $th.index() : -1;
+    const ths = ctx.$root.find('.kn-table thead th').get();
+    if (ths && ths.length) {
+      qtyIdx = ths.findIndex((th) => th.classList && th.classList.contains(ctx.keys.qty));
+      costIdx = ths.findIndex((th) => th.classList && th.classList.contains(ctx.keys.cost));
     }
 
-    const qtyIdx = idxFor(ctx.keys.qty);
-    const costIdx = idxFor(ctx.keys.cost);
+    if (firstRow) {
+      const tds = Array.from(firstRow.querySelectorAll('td'));
+      if (qtyIdx < 0) qtyIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.qty));
+      if (costIdx < 0) costIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.cost));
+    }
 
-    ctx._colMeta = { colCount, qtyIdx, costIdx };
-    return ctx._colMeta;
+    return { colCount: Math.max(colCount, 0), qtyIdx, costIdx };
   }
 
   // ============================================================
@@ -474,60 +474,49 @@ tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY},
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
 /* ============================================================
-   ✅ L1 footer: FULL-WIDTH (colspans) + labels@qty + values@cost
+   ✅ L1 footer layout (multi-row “line items”)
+   - true rows keeps $$ aligned to real Cost column
    ============================================================ */
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row td { background: inherit !important; }
 
-tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-footer-left {
-  text-align: center !important;
-  font-weight: 700 !important;
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-title{
+  text-align: left;
+  font-weight: 700;
+  margin: 6px 0 6px;
   white-space: nowrap;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-footer-labels {
-  text-align: right !important;
-  padding-right: 12px !important;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-footer-values {
-  text-align: right !important;
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-label{
+  text-align: right;
+  opacity: .85;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.scw-l1-footer-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  justify-content: center;
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value{
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.scw-l1-footer-line {
-  line-height: 1.1;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.scw-l1-footer-line__label { opacity: .85; font-weight: 600; }
-.scw-l1-footer-line__value { font-weight: 700; }
-
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__label.scw-l1-pre,
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-pre {
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--pre .scw-l1-label,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--pre .scw-l1-value{
   color: rgba(255,255,255,.78) !important;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__label.scw-l1-disc,
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-disc {
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-label,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-value{
   color: #ffcf7a !important;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__label.scw-l1-final,
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-final {
-  color: #ffffff !important;
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-label,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
+  color: #fff !important;
   font-weight: 900 !important;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-final {
-  font-size: 18px !important;
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
+  font-size: 18px;
 }
 
 /* ============================================================
@@ -1172,227 +1161,78 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     `);
   }
 
- // ============================================================
-// ✅ FEATURE: Build L1 footer as MULTIPLE ROWS (perfect column alignment)
-// ============================================================
+  // ============================================================
+  // ✅ FEATURE: Build L1 footer as MULTIPLE ROWS (true table alignment)
+  // ============================================================
 
-function buildLevel1FooterRows(ctx, {
-  titleText,         // e.g. "MDF 01: Micah's Office"
-  preDiscountText,   // "$12,345.67"
-  discountText,      // "–$123.45"
-  finalTotalText,    // "$12,222.22"
-  hasDiscount,
-  contextKey,
-  groupLabel,
-}) {
-  const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
+  function buildLevel1FooterRows(ctx, {
+    titleText,
+    preDiscountText,
+    discountText,
+    finalTotalText,
+    hasDiscount,
+    contextKey,
+    groupLabel,
+  }) {
+    const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
 
-  const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
-  const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
+    const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
+    const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
 
-  const leftSpan = Math.max(safeQtyIdx, 0);                 // columns before qty
-  const midSpan = Math.max(safeCostIdx - safeQtyIdx, 1);    // qty..(before cost)
-  const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0); // after cost
+    const leftSpan = Math.max(safeQtyIdx, 0);
+    const midSpan = Math.max(safeCostIdx - safeQtyIdx, 1); // qty..(before cost)
+    const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
 
-  function makeRow({ title, label, value, rowType, isFinal }) {
-    const $tr = $(`
-      <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-l1-line-row ${rowType ? `scw-l1-line--${rowType}` : ''}${isFinal ? ' scw-l1-line--final' : ''}"
-        data-scw-subtotal-level="1"
-        data-scw-context="${escapeHtml(contextKey || 'default')}"
-        data-scw-group-label="${escapeHtml(groupLabel || '')}"
-      ></tr>
-    `);
+    function makeRow({ title, label, value, rowType, isFinal }) {
+      const $tr = $(`
+        <tr
+          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-l1-line-row ${rowType ? `scw-l1-line--${rowType}` : ''}${isFinal ? ' scw-l1-line--final' : ''}"
+          data-scw-subtotal-level="1"
+          data-scw-context="${escapeHtml(contextKey || 'default')}"
+          data-scw-group-label="${escapeHtml(groupLabel || '')}"
+        ></tr>
+      `);
 
-    if (leftSpan > 0) $tr.append(`<td class="scw-l1-leftpad" colspan="${leftSpan}"></td>`);
+      if (leftSpan > 0) $tr.append(`<td class="scw-l1-leftpad" colspan="${leftSpan}"></td>`);
 
-    $tr.append(`
-      <td class="scw-l1-labelcell ${escapeHtml(ctx.keys.qty)}" colspan="${midSpan}">
-        ${title ? `<div class="scw-l1-title">${escapeHtml(title)}</div>` : ''}
-        <div class="scw-l1-label">${escapeHtml(label)}</div>
-      </td>
-    `);
+      $tr.append(`
+        <td class="scw-l1-labelcell ${escapeHtml(ctx.keys.qty)}" colspan="${midSpan}">
+          ${title ? `<div class="scw-l1-title">${escapeHtml(title)}</div>` : ''}
+          <div class="scw-l1-label">${escapeHtml(label)}</div>
+        </td>
+      `);
 
-    $tr.append(`
-      <td class="scw-l1-valuecell ${escapeHtml(ctx.keys.cost)}">
-        <div class="scw-l1-value">${escapeHtml(value)}</div>
-      </td>
-    `);
+      $tr.append(`
+        <td class="scw-l1-valuecell ${escapeHtml(ctx.keys.cost)}">
+          <div class="scw-l1-value">${escapeHtml(value)}</div>
+        </td>
+      `);
 
-    if (rightSpan > 0) $tr.append(`<td class="scw-l1-tail" colspan="${rightSpan}"></td>`);
+      if (rightSpan > 0) $tr.append(`<td class="scw-l1-tail" colspan="${rightSpan}"></td>`);
 
-    return $tr;
-  }
+      return $tr;
+    }
 
-  const title = norm(titleText || '');
+    const title = norm(titleText || '');
 
-  if (!hasDiscount) {
+    if (!hasDiscount) {
+      return [
+        makeRow({
+          title,
+          label: 'Subtotal',
+          value: finalTotalText,
+          rowType: 'final',
+          isFinal: true,
+        }),
+      ];
+    }
+
     return [
-      makeRow({
-        title,
-        label: 'Subtotal',
-        value: finalTotalText,
-        rowType: 'final',
-        isFinal: true,
-      }),
+      makeRow({ title, label: 'Pre-Discount', value: preDiscountText, rowType: 'pre', isFinal: false }),
+      makeRow({ title: '', label: 'Discounts', value: discountText, rowType: 'disc', isFinal: false }),
+      makeRow({ title: '', label: 'Final Total', value: finalTotalText, rowType: 'final', isFinal: true }),
     ];
   }
-
-  return [
-    makeRow({ title, label: 'Pre-Discount', value: preDiscountText, rowType: 'pre', isFinal: false }),
-    makeRow({ title: '', label: 'Discounts', value: discountText, rowType: 'disc', isFinal: false }),
-    makeRow({ title: '', label: 'Final Total', value: finalTotalText, rowType: 'final', isFinal: true }),
-  ];
-}
-
-// ============================================================
-// ✅ PATCH: Build subtotal row (L1 returns multi-row collection)
-// ============================================================
-
-function buildSubtotalRow(ctx, caches, {
-  $cellsTemplate,
-  $rowsToSum,
-  labelOverride,
-  level,
-  contextKey,
-  groupLabel,
-  totals,
-  hideQtyCost,
-}) {
-  const leftText = labelOverride || groupLabel || '';
-
-  const qtyKey = ctx.keys.qty;
-  const costKey = ctx.keys.cost;
-  const laborKey = ctx.keys.labor;
-  const hardwareKey = ctx.keys.hardware;
-  const discountKey = ctx.keys.discount;
-
-  const qty = totals?.[qtyKey] ?? sumField(caches, $rowsToSum, qtyKey);
-  const cost = totals?.[costKey] ?? sumField(caches, $rowsToSum, costKey);
-
-  const discountRaw =
-    (discountKey && Number.isFinite(totals?.[discountKey]))
-      ? totals[discountKey]
-      : (discountKey ? sumField(caches, $rowsToSum, discountKey) : 0);
-
-  const discount = Number.isFinite(discountRaw) ? discountRaw : 0;
-  const hasDiscount = Math.abs(discount) > 0.004;
-
-  const finalTotal = cost + (hasDiscount ? discount : 0);
-
-  // ✅ L1: build 1 or 3 footer rows (always aligned to real Cost column)
-  if (level === 1) {
-    if (Math.abs(cost) < 0.01) return $();
-
-    const titleText = norm(leftText || '').replace(/\s+—\s*Subtotal\s*$/i, '');
-
-    const rows = buildLevel1FooterRows(ctx, {
-      titleText,
-      preDiscountText: formatMoney(cost),
-      discountText: '–' + formatMoneyAbs(discount),
-      finalTotalText: formatMoney(hasDiscount ? finalTotal : cost),
-      hasDiscount,
-      contextKey,
-      groupLabel,
-    });
-
-    // Return as a single jQuery collection of TRs
-    return $(rows.map(($r) => $r[0]));
-  }
-
-  const safeHideQtyCost = Boolean(hideQtyCost);
-
-  const $row = $(`
-    <tr
-      class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
-      data-scw-subtotal-level="${level}"
-      data-scw-context="${escapeHtml(contextKey || 'default')}"
-      data-scw-group-label="${escapeHtml(groupLabel || '')}"
-    >
-      <td class="scw-level-total-label"><strong>${escapeHtml(leftText)}</strong></td>
-    </tr>
-  `);
-
-  $row.append($cellsTemplate.clone());
-
-  $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
-  $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
-  $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
-
-  return $row;
-}
-
-// ============================================================
-// ✅ PATCH: Fragment insertion (supports 1-row or multi-row)
-// Replace your old: fragment.appendChild($row[0]);
-// with this:
-// ============================================================
-
-// ...inside your "for (const item of items) { ... }" loop:
-const $row = buildSubtotalRow(ctx, caches, {
-  $cellsTemplate: item.$cellsTemplate,
-  $rowsToSum: item.$rowsToSum,
-  labelOverride: item.level === 1 ? `${item.label} — Subtotal` : null,
-  level: item.level,
-  contextKey: item.contextKey,
-  groupLabel: item.label,
-  totals: item.totals,
-  hideQtyCost: item.hideQtyCostColumns,
-});
-
-$row.each(function () {
-  fragment.appendChild(this);
-});
-
-// ============================================================
-// ✅ CSS: Add to your injected CSS (L1 section) so rows look right
-// ============================================================
-
-/*
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row td{
-  background: inherit !important;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-title{
-  text-align: left;
-  font-weight: 700;
-  margin: 6px 0 6px;
-  white-space: nowrap;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-label{
-  text-align: right;
-  opacity: .85;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value{
-  text-align: right;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--pre .scw-l1-label,
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--pre .scw-l1-value{
-  color: rgba(255,255,255,.78) !important;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-label,
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc .scw-l1-value{
-  color: #ffcf7a !important;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-label,
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
-  color: #fff !important;
-  font-weight: 900 !important;
-}
-
-tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
-  font-size: 18px;
-}
-*/
 
   // ============================================================
   // FEATURE: Build subtotal row
@@ -1429,24 +1269,14 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
 
     const finalTotal = cost + (hasDiscount ? discount : 0);
 
-    // ✅ L1 uses custom full-width row; never apply hide-qty-cost at L1
+    // ✅ L1: build 1 or 3 footer rows (true alignment; title on top)
     if (level === 1) {
-      if (Math.abs(cost) < 0.01) {
-        const $hidden = buildLevel1FooterRow(ctx, {
-          labelText: leftText,
-          preDiscountText: formatMoney(cost),
-          discountText: '–' + formatMoneyAbs(discount),
-          finalTotalText: formatMoney(finalTotal),
-          hasDiscount,
-          contextKey,
-          groupLabel,
-        });
-        $hidden.css('display', 'none');
-        return $hidden;
-      }
+      if (Math.abs(cost) < 0.01) return $();
 
-      return buildLevel1FooterRow(ctx, {
-        labelText: leftText,
+      const titleText = norm(leftText || '').replace(/\s+—\s*Subtotal\s*$/i, '');
+
+      const rows = buildLevel1FooterRows(ctx, {
+        titleText,
         preDiscountText: formatMoney(cost),
         discountText: '–' + formatMoneyAbs(discount),
         finalTotalText: formatMoney(hasDiscount ? finalTotal : cost),
@@ -1454,8 +1284,11 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
         contextKey,
         groupLabel,
       });
+
+      return $(rows.map(($r) => $r[0]));
     }
 
+    // non-L1 subtotal rows (existing behavior)
     const safeHideQtyCost = Boolean(hideQtyCost);
 
     const $row = $(`
@@ -1533,9 +1366,6 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
 
     normKeyCache.clear();
     const caches = makeRunCaches();
-
-    // reset cached column meta each run (safe if table header structure changes)
-    ctx._colMeta = null;
 
     $tbody
       .find('tr')
@@ -1771,7 +1601,10 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
           hideQtyCost: item.hideQtyCostColumns,
         });
 
-        fragment.appendChild($row[0]);
+        // ✅ MULTI-ROW SAFE (L1 can return 1 or 3 rows)
+        $row.each(function () {
+          fragment.appendChild(this);
+        });
       }
 
       anchorEl.parentNode.insertBefore(fragment, anchorEl.nextSibling);
