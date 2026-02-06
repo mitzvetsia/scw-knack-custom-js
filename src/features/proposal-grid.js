@@ -1334,8 +1334,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // FEATURE: Build Project Grand Total Rows
   // ============================================================
 
-  function readDomFieldValue(fieldKey) {
-    const $el = $(`.kn-detail-body .field_${fieldKey} .kn-detail-body-cell span`);
+  function readDomFieldValue(fieldKey, viewId) {
+    const scope = viewId ? `#${viewId} ` : '';
+    const $el = $(scope + `.kn-detail-body .field_${fieldKey} .kn-detail-body-cell span`);
     if (!$el.length) return 0;
     const raw = $el.text().replace(/[^0-9.\-]/g, '');
     const num = parseFloat(raw);
@@ -1354,7 +1355,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
     const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, discountKey));
-    const proposalDiscount = Math.abs(readDomFieldValue('2302'));
+    const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
     const equipmentTotal = equipmentSubtotal - lineItemDiscounts - proposalDiscount;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
     const grandTotal = equipmentTotal + installationTotal;
