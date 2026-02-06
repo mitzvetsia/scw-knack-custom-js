@@ -641,7 +641,7 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row td { background: in
 
 /* title sits ABOVE the first totals row and can wrap */
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-title{
-  text-align: left;
+  text-align: right;
   font-weight: 700;
   margin: 6px 0 8px;
   white-space: normal;
@@ -681,6 +681,17 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
   font-size: 18px;
 }
+
+/* 80px whitespace ABOVE the first L1 footer row */
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-first-row td{
+  border-top: 80px solid transparent !important;
+}
+
+/* 80px whitespace BELOW the last L1 footer row */
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
+  border-bottom: 80px solid #fff !important;
+}
+
 
 /* ============================================================
    YOUR PROVIDED CSS — APPLIED TO ALL CONFIG.views
@@ -1353,8 +1364,8 @@ function buildLevel1FooterRows(ctx, {
     `);
   }
 
-  function makeTitleRow(title) {
-    const $tr = makeTrBase('scw-l1-title-row');
+  function makeTitleRow(title, isFirst) {
+    const $tr = makeTrBase(`scw-l1-title-row${isFirst ? ' scw-l1-first-row' : ''}`);
     $tr.append(`
       <td class="scw-l1-titlecell" colspan="${Math.max(colCount, 1)}">
         <div class="scw-l1-title">${escapeHtml(title)}</div>
@@ -1363,10 +1374,11 @@ function buildLevel1FooterRows(ctx, {
     return $tr;
   }
 
-  function makeLineRow({ label, value, rowType, isLast }) {
-    const $tr = makeTrBase(`scw-l1-line-row scw-l1-line--${rowType}${isLast ? ' scw-l1-last-row' : ''}`);
+  function makeLineRow({ label, value, rowType, isFirst, isLast }) {
+    const $tr = makeTrBase(
+      `scw-l1-line-row scw-l1-line--${rowType}${isFirst ? ' scw-l1-first-row' : ''}${isLast ? ' scw-l1-last-row' : ''}`
+    );
 
-    // label spans all but last column
     const leftSpan = Math.max(colCount - 1, 1);
     $tr.append(`
       <td class="scw-l1-labelcell" colspan="${leftSpan}">
@@ -1374,7 +1386,6 @@ function buildLevel1FooterRows(ctx, {
       </td>
     `);
 
-    // value sits in the final column (right aligned)
     $tr.append(`
       <td class="scw-l1-valuecell">
         <div class="scw-l1-value">${escapeHtml(value)}</div>
@@ -1387,27 +1398,24 @@ function buildLevel1FooterRows(ctx, {
   const title = norm(titleText || '');
   const rows = [];
 
-  if (title) rows.push(makeTitleRow(title));
+  // Build the list (unmarked), then mark first/last
+  if (title) rows.push(makeTitleRow(title, false));
 
-  // ✅ NO discount → title row + Total (and Total is last)
   if (!hasDiscount) {
+    rows.push(makeLineRow({ label: 'Total', value: totalText, rowType: 'final', isFirst: false, isLast: false }));
+  } else {
     rows.push(
-      makeLineRow({
-        label: 'Total',
-        value: totalText,
-        rowType: 'final',
-        isLast: true,
-      })
+      makeLineRow({ label: 'Subtotal', value: subtotalText, rowType: 'sub', isFirst: false, isLast: false }),
+      makeLineRow({ label: 'Discount', value: discountText, rowType: 'disc', isFirst: false, isLast: false }),
+      makeLineRow({ label: 'Total', value: totalText, rowType: 'final', isFirst: false, isLast: false })
     );
-    return rows;
   }
 
-  // ✅ With discount → title row + Subtotal / Discount / Total (Total is last)
-  rows.push(
-    makeLineRow({ label: 'Subtotal', value: subtotalText, rowType: 'sub', isLast: false }),
-    makeLineRow({ label: 'Discount', value: discountText, rowType: 'disc', isLast: false }),
-    makeLineRow({ label: 'Total', value: totalText, rowType: 'final', isLast: true })
-  );
+  // ✅ mark first + last emitted rows
+  if (rows.length) {
+    rows[0].addClass('scw-l1-first-row');
+    rows[rows.length - 1].addClass('scw-l1-last-row');
+  }
 
   return rows;
 }
