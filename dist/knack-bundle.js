@@ -170,12 +170,12 @@ window.SCW = window.SCW || {};
  *    Root cause: selectors like `${sel('tr.scw-subtotal--level-1')} .child`
  *    expand to `#viewA tr..., #viewB tr... .child` (the `.child` only applies to the LAST selector).
  *    Fix: use robust, non-view-scoped selectors on the subtotal row itself:
- *      `tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__...`
+ *      `tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-...`
  *
- * PATCH (2026-02-05i) + (2026-02-05j):
- *  - ✅ L1 footer rendered as 1 or 3 TRUE TABLE ROWS (Subtotal / Discount / Total)
- *  - ✅ If L1 has NO discount: show ONLY "Total" (hide Subtotal + Discount rows)
- *  - ✅ L1 group label appears ON TOP, spanning FULL width up to Cost column (not squished into a narrow TD)
+ * PATCH (2026-02-05j):
+ *  - ✅ L1 footer as TRUE TABLE ROWS (Subtotal / Discount / Total)
+ *  - ✅ If L1 has NO discount: show ONLY "Total" (hide subtotal + discount rows)
+ *  - ✅ L1 group label appears ABOVE totals lines and spans across the row (not squished into a narrow TD)
  */
 (function () {
   'use strict';
@@ -639,21 +639,16 @@ tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibili
    ============================================================ */
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row td { background: inherit !important; }
 
+/* title sits ABOVE the first totals row and can wrap */
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-title{
   text-align: left;
   font-weight: 700;
-  margin: 6px 0 6px;
-  white-space: normal;          /* ✅ allow wrap */
-  overflow-wrap: anywhere;      /* ✅ don't get "squished" */
+  margin: 6px 0 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-labelwrap{
-  display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
+/* label/value align to the right */
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-label{
   text-align: right;
   opacity: .85;
@@ -899,26 +894,29 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   // FEATURE: Nearest L2 cache
   // ============================================================
 
-  function getNearestLevel2Info(caches, $row) {
-    const el = $row[0];
-    if (caches.nearestL2Cache.has(el)) return caches.nearestL2Cache.get(el);
+  function makeNearestLevel2InfoFinder() {
+    return function getNearestLevel2Info(caches, $row) {
+      const el = $row[0];
+      if (caches.nearestL2Cache.has(el)) return caches.nearestL2Cache.get(el);
 
-    let current = el.previousElementSibling;
-    while (current) {
-      const classList = current.classList;
-      if (classList.contains('kn-group-level-2')) {
-        const result = getLevel2InfoFromGroupRow($(current));
-        caches.nearestL2Cache.set(el, result);
-        return result;
+      let current = el.previousElementSibling;
+      while (current) {
+        const classList = current.classList;
+        if (classList.contains('kn-group-level-2')) {
+          const result = getLevel2InfoFromGroupRow($(current));
+          caches.nearestL2Cache.set(el, result);
+          return result;
+        }
+        if (classList.contains('kn-group-level-1')) break;
+        current = current.previousElementSibling;
       }
-      if (classList.contains('kn-group-level-1')) break;
-      current = current.previousElementSibling;
-    }
 
-    const result = { label: null, recordId: null };
-    caches.nearestL2Cache.set(el, result);
-    return result;
+      const result = { label: null, recordId: null };
+      caches.nearestL2Cache.set(el, result);
+      return result;
+    };
   }
+  const getNearestLevel2Info = makeNearestLevel2InfoFinder();
 
   // ============================================================
   // FEATURE: L2 Label rewriting
@@ -1330,7 +1328,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // ✅ FEATURE: Build L1 footer as MULTIPLE ROWS (true table alignment)
+  // ✅ FEATURE: Build L1 footer as TRUE ROWS
   // ============================================================
 
   function buildLevel1FooterRows(ctx, {
@@ -1342,10 +1340,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     contextKey,
     groupLabel,
   }) {
-    const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
+    const { colCount, costIdx } = computeColumnMeta(ctx);
 
     const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
-    const beforeCostSpan = Math.max(safeCostIdx, 1); // colspan for ALL cells before the cost column
+    const beforeCostSpan = Math.max(safeCostIdx, 1);  // columns before cost (includes label col)
     const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
 
     function makeRow({ title, label, value, rowType, isFinal }) {
@@ -1358,24 +1356,21 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         ></tr>
       `);
 
-      // ✅ ONE big cell spanning everything BEFORE cost so the title is never “squished”
+      // big label cell spanning everything up to (but not including) cost column
       $tr.append(`
         <td class="scw-l1-labelcell" colspan="${beforeCostSpan}">
           ${title ? `<div class="scw-l1-title">${escapeHtml(title)}</div>` : ''}
-          <div class="scw-l1-labelwrap">
-            <div class="scw-l1-label">${escapeHtml(label)}</div>
-          </div>
+          <div class="scw-l1-label">${escapeHtml(label)}</div>
         </td>
       `);
 
-      // ✅ cost column cell (real column)
+      // real cost column
       $tr.append(`
         <td class="scw-l1-valuecell ${escapeHtml(ctx.keys.cost)}">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
         </td>
       `);
 
-      // any columns AFTER cost (rare) stay aligned via colspan
       if (rightSpan > 0) $tr.append(`<td class="scw-l1-tail" colspan="${rightSpan}"></td>`);
 
       return $tr;
@@ -1383,7 +1378,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const title = norm(titleText || '');
 
-    // ✅ If NO discount: show ONLY "Total"
+    // ✅ NO discount → ONLY Total row
     if (!hasDiscount) {
       return [
         makeRow({
@@ -1396,7 +1391,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       ];
     }
 
-    // ✅ If discount exists: Subtotal / Discount / Total
+    // ✅ With discount → Subtotal / Discount / Total
     return [
       makeRow({ title, label: 'Subtotal', value: subtotalText, rowType: 'sub', isFinal: false }),
       makeRow({ title: '', label: 'Discount', value: discountText, rowType: 'disc', isFinal: false }),
@@ -1439,7 +1434,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const finalTotal = cost + (hasDiscount ? discount : 0);
 
-    // ✅ L1: build 1 or 3 footer rows (true alignment; title spans full width up to cost)
+    // ✅ L1: return 1 or 3 rows
     if (level === 1) {
       if (Math.abs(cost) < 0.01) return $();
 
@@ -1474,9 +1469,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     $row.append($cellsTemplate.clone());
 
-    $row.find(\`td.\${qtyKey}\`).html(\`<strong>\${Math.round(qty)}</strong>\`);
-    $row.find(\`td.\${costKey}\`).html(\`<strong>\${escapeHtml(formatMoney(cost))}</strong>\`);
-    $row.find(\`td.\${hardwareKey},td.\${laborKey}\`).empty();
+    $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+    $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
+    $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
     return $row;
   }
@@ -1508,16 +1503,16 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
   function normalizeField2019ForGrouping(ctx) {
     const key = ctx.keys.field2019;
-    const cells = ctx.$root.find(\`.kn-table td.\${key}\`).get();
+    const cells = ctx.$root.find(`.kn-table td.${key}`).get();
 
     for (const cell of cells) {
       if (cell.dataset.scwNormalized === '1') continue;
 
       let html = sanitizeAllowOnlyBrAndB(decodeEntities(cell.innerHTML || ''));
       html = normalizeBrVariants(html)
-        .replace(/\\s*<br\\s*\\/?>(\\s*)/gi, '<br />')
-        .replace(/\\s*<b>\\s*/gi, '<b>')
-        .replace(/\\s*<\\/b>\\s*/gi, '</b>')
+        .replace(/\s*<br\s*\/?>\s*/gi, '<br />')
+        .replace(/\s*<b>\s*/gi, '<b>')
+        .replace(/\s*<\/b>\s*/gi, '</b>')
         .trim();
 
       cell.innerHTML = html;
@@ -1550,7 +1545,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     $tbody.find('tr.scw-level-total-row').remove();
     $tbody
-      .find(\`tr.kn-table-group.kn-group-level-3.\${ctx.l2Specials.classOnLevel3}\`)
+      .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
@@ -1581,7 +1576,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     $allGroupRows.each(function () {
       const $groupRow = $(this);
-      const match = this.className.match(/kn-group-level-(\\d+)/);
+      const match = this.className.match(/kn-group-level-(\d+)/);
       if (!match) return;
 
       const level = parseInt(match[1], 10);
@@ -1621,9 +1616,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         const l1Cost = totals[costKey] || 0;
         if (Math.abs(l1Cost) >= 0.01) hasAnyNonZeroL1Subtotal = true;
 
-        $groupRow.find(\`td.\${qtyKey}\`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
-        $groupRow.find(\`td.\${costKey}\`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
-        $groupRow.find(\`td.\${hardwareKey},td.\${laborKey}\`).empty();
+        $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+        $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
+        $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
       }
 
       if (level === 3) {
@@ -1662,9 +1657,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         const qty = totals[qtyKey];
         const hardware = totals[hardwareKey];
 
-        $groupRow.find(\`td.\${qtyKey}\`).html(\`<strong>\${Math.round(qty)}</strong>\`);
-        $groupRow.find(\`td.\${costKey}\`).html(\`<strong>\${escapeHtml(formatMoney(hardware))}</strong>\`);
-        $groupRow.find(\`td.\${hardwareKey},td.\${laborKey}\`).empty();
+        $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+        $groupRow.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(hardware))}</strong>`);
+        $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
@@ -1687,7 +1682,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           let field2019Text = '';
           if (blankL4Opt.requireField2019AlsoBlank) {
             const firstRow = $rowsToSum[0];
-            const cell2019 = firstRow ? firstRow.querySelector(\`td.\${ctx.keys.field2019}\`) : null;
+            const cell2019 = firstRow ? firstRow.querySelector(`td.${ctx.keys.field2019}`) : null;
             field2019Text = cell2019 ? norm(cell2019.textContent || '') : '';
           }
 
@@ -1701,9 +1696,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         const qty = totals[qtyKey];
         const labor = totals[laborKey];
 
-        $groupRow.find(\`td.\${qtyKey}\`).html(\`<strong>\${Math.round(qty)}</strong>\`);
-        $groupRow.find(\`td.\${costKey}\`).html(\`<strong>\${escapeHtml(formatMoney(labor))}</strong>\`);
-        $groupRow.find(\`td.\${hardwareKey},td.\${laborKey}\`).empty();
+        $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+        $groupRow.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
+        $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
