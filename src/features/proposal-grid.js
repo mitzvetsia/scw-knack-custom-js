@@ -1170,73 +1170,87 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   // ✅ FEATURE: Build L1 footer as TRUE ROWS
   // ============================================================
 
-  function buildLevel1FooterRows(ctx, {
-    titleText,
-    subtotalText,
-    discountText,
-    totalText,
-    hasDiscount,
-    contextKey,
-    groupLabel,
-  }) {
-    const { colCount, costIdx } = computeColumnMeta(ctx);
+function buildLevel1FooterRows(ctx, {
+  titleText,
+  subtotalText,
+  discountText,
+  totalText,
+  hasDiscount,
+  contextKey,
+  groupLabel,
+}) {
+  const { colCount } = computeColumnMeta(ctx);
 
-    const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
-    const beforeCostSpan = Math.max(safeCostIdx, 1);  // columns before cost (includes label col)
-    const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
-
-    function makeRow({ title, label, value, rowType, isFinal }) {
-      const $tr = $(`
-        <tr
-          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-l1-line-row ${rowType ? `scw-l1-line--${rowType}` : ''}${isFinal ? ' scw-l1-line--final' : ''}"
-          data-scw-subtotal-level="1"
-          data-scw-context="${escapeHtml(contextKey || 'default')}"
-          data-scw-group-label="${escapeHtml(groupLabel || '')}"
-        ></tr>
-      `);
-
-      // big label cell spanning everything up to (but not including) cost column
-      $tr.append(`
-        <td class="scw-l1-labelcell" colspan="${beforeCostSpan}">
-          ${title ? `<div class="scw-l1-title">${escapeHtml(title)}</div>` : ''}
-          <div class="scw-l1-label">${escapeHtml(label)}</div>
-        </td>
-      `);
-
-      // real cost column
-      $tr.append(`
-        <td class="scw-l1-valuecell ${escapeHtml(ctx.keys.cost)}">
-          <div class="scw-l1-value">${escapeHtml(value)}</div>
-        </td>
-      `);
-
-      if (rightSpan > 0) $tr.append(`<td class="scw-l1-tail" colspan="${rightSpan}"></td>`);
-
-      return $tr;
-    }
-
-    const title = norm(titleText || '');
-
-    // ✅ NO discount → ONLY Total row
-    if (!hasDiscount) {
-      return [
-        makeRow({
-          title,
-          label: 'Total',
-          value: totalText,
-          rowType: 'final',
-          isFinal: true,
-        }),
-      ];
-    }
-
-    // ✅ With discount → Subtotal / Discount / Total
-    return [
-      makeRow({ title, label: 'Subtotal', value: subtotalText, rowType: 'sub', isFinal: false }),
-      makeRow({ title: '', label: 'Discount', value: discountText, rowType: 'disc', isFinal: false }),
-      makeRow({ title: '', label: 'Total', value: totalText, rowType: 'final', isFinal: true }),
-    ];
+  function makeTrBase(extraClasses) {
+    return $(`
+      <tr
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 ${extraClasses || ''}"
+        data-scw-subtotal-level="1"
+        data-scw-context="${escapeHtml(contextKey || 'default')}"
+        data-scw-group-label="${escapeHtml(groupLabel || '')}"
+      ></tr>
+    `);
   }
+
+  function makeTitleRow(title) {
+    const $tr = makeTrBase('scw-l1-title-row');
+    $tr.append(`
+      <td class="scw-l1-titlecell" colspan="${Math.max(colCount, 1)}">
+        <div class="scw-l1-title">${escapeHtml(title)}</div>
+      </td>
+    `);
+    return $tr;
+  }
+
+  function makeLineRow({ label, value, rowType, isLast }) {
+    const $tr = makeTrBase(`scw-l1-line-row scw-l1-line--${rowType}${isLast ? ' scw-l1-last-row' : ''}`);
+
+    // label spans all but last column
+    const leftSpan = Math.max(colCount - 1, 1);
+    $tr.append(`
+      <td class="scw-l1-labelcell" colspan="${leftSpan}">
+        <div class="scw-l1-label">${escapeHtml(label)}</div>
+      </td>
+    `);
+
+    // value sits in the final column (right aligned)
+    $tr.append(`
+      <td class="scw-l1-valuecell">
+        <div class="scw-l1-value">${escapeHtml(value)}</div>
+      </td>
+    `);
+
+    return $tr;
+  }
+
+  const title = norm(titleText || '');
+  const rows = [];
+
+  if (title) rows.push(makeTitleRow(title));
+
+  // ✅ NO discount → title row + Total (and Total is last)
+  if (!hasDiscount) {
+    rows.push(
+      makeLineRow({
+        label: 'Total',
+        value: totalText,
+        rowType: 'final',
+        isLast: true,
+      })
+    );
+    return rows;
+  }
+
+  // ✅ With discount → title row + Subtotal / Discount / Total (Total is last)
+  rows.push(
+    makeLineRow({ label: 'Subtotal', value: subtotalText, rowType: 'sub', isLast: false }),
+    makeLineRow({ label: 'Discount', value: discountText, rowType: 'disc', isLast: false }),
+    makeLineRow({ label: 'Total', value: totalText, rowType: 'final', isLast: true })
+  );
+
+  return rows;
+}
+
 
   // ============================================================
   // FEATURE: Build subtotal row
