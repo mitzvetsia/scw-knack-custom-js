@@ -700,6 +700,26 @@ tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
   text-align: right;
 }
 
+/* ============================================================
+   Project Grand Totals
+   ============================================================ */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals-first-row td {
+  border-top: 20px solid transparent !important;
+  border-bottom: 5px solid #07467c !important;
+}
+
+tr.scw-level-total-row.scw-project-totals.scw-project-totals-last-row td {
+  border-bottom: 60px solid #fff !important;
+}
+
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand .scw-l1-label {
+  font-size: 21px !important;
+}
+
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand .scw-l1-value {
+  font-size: 23px !important;
+}
+
 
 /* ============================================================
    YOUR PROVIDED CSS — APPLIED TO ALL CONFIG.views
@@ -1463,6 +1483,122 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
 
   // ============================================================
+  // FEATURE: Build Project Grand Total Rows
+  // ============================================================
+
+  function buildProjectTotalRows(ctx, caches, $tbody) {
+    const $allDataRows = $tbody.find('tr[id]');
+    if (!$allDataRows.length) return [];
+
+    const hardwareKey = ctx.keys.hardware;   // field_2201
+    const discountKey = ctx.keys.discount;   // field_2267
+    const laborKey = ctx.keys.labor;         // field_2028
+    const equipTotalKey = 'field_2269';
+
+    const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
+    const lineItemDiscounts = sumField(caches, $allDataRows, discountKey);
+    const equipmentTotal = sumField(caches, $allDataRows, equipTotalKey);
+    const installationTotal = sumField(caches, $allDataRows, laborKey);
+    const grandTotal = equipmentTotal + installationTotal;
+
+    const meta = computeColumnMeta(ctx);
+    const cols = Math.max(meta.colCount || 0, 1);
+    const safeCostIdx = Number.isFinite(meta.costIdx) && meta.costIdx >= 1
+      ? meta.costIdx
+      : (cols - 1);
+
+    function makeTr(extraClasses) {
+      return $(`
+        <tr
+          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-project-totals ${extraClasses || ''}"
+          data-scw-subtotal-level="project"
+        ></tr>
+      `);
+    }
+
+    function makeTitleRow(title) {
+      const leftSpan = Math.max(cols - 1, 1);
+      const $tr = makeTr('scw-l1-title-row scw-project-totals-first-row');
+      $tr.append(`
+        <td class="scw-l1-titlecell" colspan="${leftSpan}">
+          <div class="scw-l1-title">${escapeHtml(title)}</div>
+        </td>
+      `);
+      $tr.append('<td class="scw-l1-valuecell"></td>');
+      return $tr;
+    }
+
+    function makeLineRow({ label, value, rowType, isLast, extraClass }) {
+      const labelSpan = Math.max(safeCostIdx, 1);
+      const cls = `scw-l1-line-row scw-l1-line--${rowType}`
+        + (isLast ? ' scw-project-totals-last-row' : '')
+        + (extraClass ? ` ${extraClass}` : '');
+      const $tr = makeTr(cls);
+
+      $tr.append(`
+        <td class="scw-l1-labelcell" colspan="${labelSpan}">
+          <div class="scw-l1-label">${escapeHtml(label)}</div>
+        </td>
+      `);
+
+      $tr.append(`
+        <td class="${ctx.keys.cost} scw-l1-valuecell">
+          <div class="scw-l1-value">${escapeHtml(value)}</div>
+        </td>
+      `);
+
+      const tailSpan = cols - (labelSpan + 1);
+      if (tailSpan > 0) {
+        $tr.append(`<td colspan="${tailSpan}"></td>`);
+      }
+
+      return $tr;
+    }
+
+    const rows = [];
+
+    rows.push(makeTitleRow('Project Totals'));
+
+    rows.push(makeLineRow({
+      label: 'Equipment Subtotal',
+      value: formatMoney(equipmentSubtotal),
+      rowType: 'sub',
+      isLast: false,
+    }));
+
+    rows.push(makeLineRow({
+      label: 'Line Item Discounts',
+      value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
+      rowType: 'disc',
+      isLast: false,
+    }));
+
+    rows.push(makeLineRow({
+      label: 'Equipment Total',
+      value: formatMoney(equipmentTotal),
+      rowType: 'final',
+      isLast: false,
+    }));
+
+    rows.push(makeLineRow({
+      label: 'Installation Total',
+      value: formatMoney(installationTotal),
+      rowType: 'final',
+      isLast: false,
+    }));
+
+    rows.push(makeLineRow({
+      label: 'Grand Total',
+      value: formatMoney(grandTotal),
+      rowType: 'final',
+      isLast: true,
+      extraClass: 'scw-project-totals--grand',
+    }));
+
+    return rows;
+  }
+
+  // ============================================================
   // FEATURE: Build subtotal row
   // ============================================================
 
@@ -1844,6 +1980,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     if (!hasAnyNonZeroL1Subtotal) {
       $tbody.find('.scw-l1-header-qty, .scw-l1-header-cost').empty();
+    }
+
+    // ✅ Project Grand Total rows — appended to end of tbody
+    const grandTotalRows = buildProjectTotalRows(ctx, caches, $tbody);
+    if (grandTotalRows.length) {
+      const gtFragment = document.createDocumentFragment();
+      for (const $r of grandTotalRows) {
+        $r.each(function () { gtFragment.appendChild(this); });
+      }
+      $tbody[0].appendChild(gtFragment);
     }
 
     log(ctx, 'runTotalsPipeline complete', { runId });
