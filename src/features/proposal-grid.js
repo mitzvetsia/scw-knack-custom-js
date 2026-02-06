@@ -1674,7 +1674,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
   // ============================================================
   // EVENT BINDING (multi-view)
-  // ==========================================================
+  // ============================================================
 
   function bindForView(viewId) {
     const ev = `knack-records-render.${viewId}${CONFIG.eventNs}`;
