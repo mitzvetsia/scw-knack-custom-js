@@ -564,7 +564,7 @@ ${sel('tr.scw-subtotal--level-1 td')} {
   color: white;
   text-align: right;
   border-bottom-width: 0px;
-  border-color: transparent;
+  border-color: #07467c;
   font-size: 16px;
 }
 
