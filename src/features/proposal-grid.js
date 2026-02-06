@@ -4,9 +4,12 @@
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
  * Refactor: 2026-02-03 (config-driven + feature pipeline)
  *
- * PATCH (2026-02-05):
- *  - ✅ NEW: Level-1 footer “Single Row, Stacked Values” layout:
- *      Pre-Discount, Discounts (field_2267), Final Total
+ * PATCH (2026-02-05c):
+ *  - ✅ FIX: L1 footer visual layout improvements:
+ *      • Label cell now right-aligned
+ *      • Quantity column restored on L1 footer
+ *      • Stacked totals now span across labor/hardware/cost columns for more space
+ *      • Better spacing and less cramped appearance
  *
  * PATCH (2026-02-05b):
  *  - ✅ FIX: scw-hide-qty-cost was leaking onto LEVEL-1 subtotal rows
@@ -458,25 +461,65 @@ tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY},
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
 /* ============================================================
-   ✅ L1 stacked footer layout (single row)
+   ✅ L1 footer layout (multi-column spanning)
    ============================================================ */
-${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} { text-align: left !important; }
-${sel('tr.scw-subtotal--level-1 td.scw-l1-stack-cell')} { text-align: right !important; }
+${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} { 
+  text-align: right !important; 
+  padding-right: 20px !important;
+  font-weight: 700 !important;
+}
 
-.scw-l1-stack { display: inline-block; text-align: right; line-height: 1.25; }
-.scw-l1-stack__line { display: flex; gap: 10px; justify-content: flex-end; }
-.scw-l1-stack__k { opacity: .75; font-weight: 600; }
-.scw-l1-stack__v { font-weight: 700; }
+${sel('tr.scw-subtotal--level-1 td.scw-l1-qty-cell')} { 
+  text-align: center !important;
+  font-weight: 700 !important;
+}
 
-.scw-l1-stack__pre .scw-l1-stack__k,
-.scw-l1-stack__pre .scw-l1-stack__v { color: rgba(255,255,255,.78); }
+/* Span labor+hardware+cost for breathing room */
+${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} { 
+  text-align: right !important;
+  padding-right: 30px !important;
+}
 
-.scw-l1-stack__disc .scw-l1-stack__k,
-.scw-l1-stack__disc .scw-l1-stack__v { color: #ffcf7a; }
+.scw-l1-totals-grid { 
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 8px 20px;
+  justify-content: end;
+  line-height: 1.4;
+  max-width: 500px;
+  margin-left: auto;
+}
 
-.scw-l1-stack__final .scw-l1-stack__k,
-.scw-l1-stack__final .scw-l1-stack__v { color: #ffffff; font-weight: 900; }
-.scw-l1-stack__final .scw-l1-stack__v { font-size: 18px; }
+.scw-l1-totals-grid__label { 
+  opacity: .85; 
+  font-weight: 600;
+  text-align: right;
+}
+
+.scw-l1-totals-grid__value { 
+  font-weight: 700;
+  text-align: right;
+}
+
+.scw-l1-totals-grid__pre .scw-l1-totals-grid__label,
+.scw-l1-totals-grid__pre .scw-l1-totals-grid__value { 
+  color: rgba(255,255,255,.82); 
+}
+
+.scw-l1-totals-grid__disc .scw-l1-totals-grid__label,
+.scw-l1-totals-grid__disc .scw-l1-totals-grid__value { 
+  color: #ffcf7a; 
+}
+
+.scw-l1-totals-grid__final .scw-l1-totals-grid__label,
+.scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
+  color: #ffffff; 
+  font-weight: 900;
+}
+
+.scw-l1-totals-grid__final .scw-l1-totals-grid__value { 
+  font-size: 19px; 
+}
 
 /* ============================================================
    YOUR PROVIDED CSS — APPLIED TO ALL CONFIG.views
@@ -1175,43 +1218,47 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
-    // ✅ L1 stacked single-row footer
+    // ✅ L1 improved layout: qty in its own cell, totals span labor+hardware+cost
     if (level === 1) {
       const $qtyCell = $row.find(`td.${qtyKey}`);
+      const $laborCell = $row.find(`td.${laborKey}`);
+      const $hardwareCell = $row.find(`td.${hardwareKey}`);
       const $costCell = $row.find(`td.${costKey}`);
 
-      $qtyCell.empty();
-      $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
+      // Qty gets its own cell
+      $qtyCell.addClass('scw-l1-qty-cell').html(`<strong>${Math.round(qty)}</strong>`);
 
-      $costCell
-        .addClass('scw-l1-stack-cell')
-        .html(
-          hasDiscount
-            ? `
-              <div class="scw-l1-stack">
-                <div class="scw-l1-stack__line scw-l1-stack__pre">
-                  <span class="scw-l1-stack__k">Pre-Discount:</span>
-                  <span class="scw-l1-stack__v">${escapeHtml(formatMoney(cost))}</span>
-                </div>
-                <div class="scw-l1-stack__line scw-l1-stack__disc">
-                  <span class="scw-l1-stack__k">Discounts:</span>
-                  <span class="scw-l1-stack__v">–${escapeHtml(formatMoneyAbs(discount))}</span>
-                </div>
-                <div class="scw-l1-stack__line scw-l1-stack__final">
-                  <span class="scw-l1-stack__k">Final Total:</span>
-                  <span class="scw-l1-stack__v">${escapeHtml(formatMoney(finalTotal))}</span>
-                </div>
-              </div>
-            `
-            : `
-              <div class="scw-l1-stack">
-                <div class="scw-l1-stack__line scw-l1-stack__final">
-                  <span class="scw-l1-stack__k">Subtotal:</span>
-                  <span class="scw-l1-stack__v">${escapeHtml(formatMoney(cost))}</span>
-                </div>
-              </div>
-            `
-        );
+      // Clear labor and hardware
+      $laborCell.empty();
+      $hardwareCell.empty();
+
+      // Span cost across labor+hardware+cost by setting colspan and hiding others
+      $costCell.attr('colspan', '3').addClass('scw-l1-totals-span');
+      $laborCell.css('display', 'none');
+      $hardwareCell.css('display', 'none');
+
+      // Build grid layout in cost cell
+      $costCell.html(
+        hasDiscount
+          ? `
+            <div class="scw-l1-totals-grid">
+              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__pre">Pre-Discount:</div>
+              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__pre">${escapeHtml(formatMoney(cost))}</div>
+              
+              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__disc">Discounts:</div>
+              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__disc">–${escapeHtml(formatMoneyAbs(discount))}</div>
+              
+              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__final">Final Total:</div>
+              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__final">${escapeHtml(formatMoney(finalTotal))}</div>
+            </div>
+          `
+          : `
+            <div class="scw-l1-totals-grid">
+              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__final">Subtotal:</div>
+              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__final">${escapeHtml(formatMoney(cost))}</div>
+            </div>
+          `
+      );
     }
 
     return $row;
