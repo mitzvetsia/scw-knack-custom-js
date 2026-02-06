@@ -524,13 +524,13 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
 
 /* 80px whitespace ABOVE the first L1 footer row */
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-first-row td{
-  border-top: 40px solid transparent !important;
+  border-top: 20px solid transparent !important;
   border-bottom: 5px solid #07467c !important;
 }
 
 /* 80px whitespace BELOW the last L1 footer row */
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
-  border-bottom: 80px solid #fff !important;
+  border-bottom: 40px solid #fff !important;
 }
 
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
