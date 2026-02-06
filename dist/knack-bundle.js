@@ -685,6 +685,7 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--final .scw-l1-value{
 /* 80px whitespace ABOVE the first L1 footer row */
 tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-first-row td{
   border-top: 80px solid transparent !important;
+  Border-bottom: 5px solid #07467c !important;
 }
 
 /* 80px whitespace BELOW the last L1 footer row */
@@ -742,7 +743,7 @@ ${sel('tr.scw-subtotal--level-1 td')} {
 
 /* ✅ PATCH: force L1 subtotal row background to apply to al TDs */
 ${sel('tr.scw-level-total-row.scw-subtotal--level-1')} {
-  background: RGB(7, 70, 124, 1) !important;
+  background: transparent !important;
 }
 ${sel('tr.scw-level-total-row.scw-subtotal--level-1 td')} {
   background: inherit !important;
