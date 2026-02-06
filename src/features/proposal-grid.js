@@ -1177,106 +1177,112 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   // ============================================================
 
   function buildLevel1FooterRow(ctx, {
-    labelText,
-    preDiscountText,
-    discountText,
-    finalTotalText,
-    hasDiscount,
-    contextKey,
-    groupLabel,
-  }) {
-    const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
+  labelText,
+  preDiscountText,
+  discountText,
+  finalTotalText,
+  hasDiscount,
+  contextKey,
+  groupLabel,
+}) {
+  const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
 
-    // Fallbacks if header indices can’t be found (rare)
-    const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
-    const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
+  // Fallbacks if header indices can’t be found (rare)
+  const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
+  const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
 
-    const leftSpan = Math.max(safeQtyIdx, 1); // MUST be at least 1 cell wide
-    const labelsSpan = Math.max(safeCostIdx - safeQtyIdx, 1);
-    const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
+  // We want:
+  // [TITLE spans columns before Qty] [LABELS in Qty column] [FILLER cols between Qty and Cost] [VALUES in Cost col] [TAIL after Cost]
+  const titleSpan = Math.max(safeQtyIdx, 1); // columns BEFORE qty (must be >=1)
+  const fillerSpan = Math.max((safeCostIdx - safeQtyIdx - 1), 0);
+  const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
 
-    const $tr = $(`
-      <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-1"
-        data-scw-subtotal-level="1"
-        data-scw-context="${escapeHtml(contextKey || 'default')}"
-        data-scw-group-label="${escapeHtml(groupLabel || '')}"
-      ></tr>
-    `);
+  const $tr = $(`
+    <tr
+      class="scw-level-total-row scw-subtotal scw-subtotal--level-1"
+      data-scw-subtotal-level="1"
+      data-scw-context="${escapeHtml(contextKey || 'default')}"
+      data-scw-group-label="${escapeHtml(groupLabel || '')}"
+    ></tr>
+  `);
 
-    // Left: wide title block up to Qty column
-    $tr.append(`
-      <td class="scw-level-total-label scw-l1-footer-left" colspan="${leftSpan}">
-        <strong>${escapeHtml(labelText || '')}</strong>
-      </td>
-    `);
+  // TITLE (everything up to the Qty column)
+  $tr.append(`
+    <td class="scw-level-total-label scw-l1-footer-left" colspan="${titleSpan}">
+      <strong>${escapeHtml(labelText || '')}</strong>
+    </td>
+  `);
 
-    // Labels: starts at Qty column; spans through any mid columns up to Cost
-    const labelsHtml = hasDiscount
-      ? `
-        <div class="scw-l1-footer-lines">
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__label scw-l1-pre">Pre-Discount:</span>
-          </div>
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__label scw-l1-disc">Discounts:</span>
-          </div>
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__label scw-l1-final">Final Total:</span>
-          </div>
+  // LABELS: EXACTLY the Qty column
+  const labelsHtml = hasDiscount
+    ? `
+      <div class="scw-l1-footer-lines">
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__label scw-l1-pre">Pre-Discount:</span>
         </div>
-      `
-      : `
-        <div class="scw-l1-footer-lines">
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__label scw-l1-final">Subtotal:</span>
-          </div>
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__label scw-l1-disc">Discounts:</span>
         </div>
-      `;
-
-    // Give the labels TD the qty field class so it naturally aligns/width-matches that column
-    $tr.append(`
-      <td class="${escapeHtml(ctx.keys.qty)} scw-l1-footer-labels" colspan="${labelsSpan}">
-        ${labelsHtml}
-      </td>
-    `);
-
-    // Values: in the SAME column as L3/L4 cost
-    const valuesHtml = hasDiscount
-      ? `
-        <div class="scw-l1-footer-lines">
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__value scw-l1-pre">${escapeHtml(preDiscountText)}</span>
-          </div>
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__value scw-l1-disc">${escapeHtml(discountText)}</span>
-          </div>
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
-          </div>
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__label scw-l1-final">Final Total:</span>
         </div>
-      `
-      : `
-        <div class="scw-l1-footer-lines">
-          <div class="scw-l1-footer-line">
-            <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
-          </div>
+      </div>
+    `
+    : `
+      <div class="scw-l1-footer-lines">
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__label scw-l1-final">Subtotal:</span>
         </div>
-      `;
+      </div>
+    `;
 
-    $tr.append(`
-      <td class="${escapeHtml(ctx.keys.cost)} scw-l1-footer-values">
-        ${valuesHtml}
-      </td>
-    `);
+  $tr.append(`
+    <td class="${escapeHtml(ctx.keys.qty)} scw-l1-footer-labels" colspan="1">
+      ${labelsHtml}
+    </td>
+  `);
 
-    // Tail: if there are columns after cost (actions / empty, etc), span them so the blue bar is truly full width
-    if (rightSpan > 0) {
-      $tr.append(`<td class="scw-l1-footer-tail" colspan="${rightSpan}"></td>`);
-    }
-
-    return $tr;
+  // FILLER: any columns between Qty and Cost (labor/hardware/etc) — keep blue, but empty
+  if (fillerSpan > 0) {
+    $tr.append(`<td class="scw-l1-footer-gap" colspan="${fillerSpan}"></td>`);
   }
+
+  // VALUES: EXACTLY the Cost column
+  const valuesHtml = hasDiscount
+    ? `
+      <div class="scw-l1-footer-lines">
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__value scw-l1-pre">${escapeHtml(preDiscountText)}</span>
+        </div>
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__value scw-l1-disc">${escapeHtml(discountText)}</span>
+        </div>
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
+        </div>
+      </div>
+    `
+    : `
+      <div class="scw-l1-footer-lines">
+        <div class="scw-l1-footer-line">
+          <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
+        </div>
+      </div>
+    `;
+
+  $tr.append(`
+    <td class="${escapeHtml(ctx.keys.cost)} scw-l1-footer-values">
+      ${valuesHtml}
+    </td>
+  `);
+
+  // TAIL: columns after cost (actions etc)
+  if (rightSpan > 0) {
+    $tr.append(`<td class="scw-l1-footer-tail" colspan="${rightSpan}"></td>`);
+  }
+
+  return $tr;
+}
 
   // ============================================================
   // FEATURE: Build subtotal row
