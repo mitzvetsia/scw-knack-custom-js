@@ -171,6 +171,13 @@ window.SCW = window.SCW || {};
  *    expand to `#viewA tr..., #viewB tr... .child` (the `.child` only applies to the LAST selector).
  *    Fix: use robust, non-view-scoped selectors on the subtotal row itself:
  *      `tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__...`
+ *
+ * PATCH (2026-02-05i):
+ *  - ✅ FIX: L1 blue footer “stopping one TD short” (misalignment / gap)
+ *  - ✅ CHANGE: Put ALL $ values (pre/discount/final) in the SAME column as L3/L4 cost
+ *  - ✅ CHANGE: Start the labels at the Qty column (aligned to L3/L4 qty)
+ *    Implementation: build a true full-width L1 footer row using computed column indices + colspans:
+ *      [left title colspan up to qty] [labels colspan qty..before cost] [values in cost column] [tail colspan after cost]
  */
 (function () {
   'use strict';
@@ -525,6 +532,7 @@ window.SCW = window.SCW || {};
       l2Context: CONFIG.l2Context,
       l2SectionRules: CONFIG.l2SectionRules,
       l2Specials: CONFIG.l2Specials,
+      _colMeta: null, // lazy
     };
   }
 
@@ -543,6 +551,29 @@ window.SCW = window.SCW || {};
     const clone = labelCell.cloneNode(true);
     clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
     return clone.innerHTML || '';
+  }
+
+  // ============================================================
+  // ✅ COLUMN META (used to build full-width L1 footer)
+  // ============================================================
+
+  function computeColumnMeta(ctx) {
+    if (ctx._colMeta) return ctx._colMeta;
+
+    const $table = ctx.$root.find('.kn-table').first();
+    const $ths = $table.find('thead tr').first().children('th');
+    const colCount = $ths.length || $table.find('tbody tr').first().children('td').length || 0;
+
+    function idxFor(fieldKey) {
+      const $th = $ths.filter(`.${fieldKey}`).first();
+      return $th.length ? $th.index() : -1;
+    }
+
+    const qtyIdx = idxFor(ctx.keys.qty);
+    const costIdx = idxFor(ctx.keys.cost);
+
+    ctx._colMeta = { colCount, qtyIdx, costIdx };
+    return ctx._colMeta;
   }
 
   // ============================================================
@@ -604,66 +635,60 @@ tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY},
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
 /* ============================================================
-   ✅ L1 footer layout (multi-column spanning)
+   ✅ L1 footer: FULL-WIDTH (colspans) + labels@qty + values@cost
    ============================================================ */
-${sel('tr.scw-subtotal--level-1 td.scw-level-total-label')} { 
-  text-align: right !important; 
-  padding-right: 20px !important;
+
+tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-footer-left {
+  text-align: center !important;
   font-weight: 700 !important;
+  white-space: nowrap;
 }
 
-/* Hide qty cell completely on L1 footer */
-${sel('tr.scw-subtotal--level-1 td.scw-l1-qty-cell')} { 
-  display: none !important;
-}
-
-/* Span labor+hardware+cost for breathing room */
-${sel('tr.scw-subtotal--level-1 td.scw-l1-totals-span')} { 
+tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-footer-labels {
   text-align: right !important;
-  padding-right: 30px !important;
+  padding-right: 12px !important;
 }
 
-.scw-l1-totals-grid { 
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 8px 20px;
-  justify-content: end;
-  line-height: 1.4;
-  max-width: 500px;
-  margin-left: auto;
+tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-footer-values {
+  text-align: right !important;
+  white-space: nowrap;
 }
 
-.scw-l1-totals-grid__label { 
-  opacity: .85; 
-  font-weight: 600;
-  text-align: right;
+.scw-l1-footer-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
 }
 
-.scw-l1-totals-grid__value { 
-  font-weight: 700;
-  text-align: right;
+.scw-l1-footer-line {
+  line-height: 1.1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
-/* ✅ FIXED: robust selectors (apply to all views, all L1 subtotal rows)
-   These override the td's base color and any inherited table styles. */
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__label.scw-l1-totals-grid__pre,
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__pre { 
-  color: rgba(255,255,255,.78) !important; 
+.scw-l1-footer-line__label { opacity: .85; font-weight: 600; }
+.scw-l1-footer-line__value { font-weight: 700; }
+
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__label.scw-l1-pre,
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-pre {
+  color: rgba(255,255,255,.78) !important;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__label.scw-l1-totals-grid__disc,
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__disc { 
-  color: #ffcf7a !important; 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__label.scw-l1-disc,
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-disc {
+  color: #ffcf7a !important;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__label.scw-l1-totals-grid__final,
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
-  color: #ffffff !important; 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__label.scw-l1-final,
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-final {
+  color: #ffffff !important;
   font-weight: 900 !important;
 }
 
-tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-totals-grid__value.scw-l1-totals-grid__final { 
-  font-size: 18px !important; 
+tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-footer-line__value.scw-l1-final {
+  font-size: 18px !important;
 }
 
 /* ============================================================
@@ -1309,6 +1334,112 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
+  // ✅ FEATURE: Build L1 footer row (full width + aligned)
+  // ============================================================
+
+  function buildLevel1FooterRow(ctx, {
+    labelText,
+    preDiscountText,
+    discountText,
+    finalTotalText,
+    hasDiscount,
+    contextKey,
+    groupLabel,
+  }) {
+    const { colCount, qtyIdx, costIdx } = computeColumnMeta(ctx);
+
+    // Fallbacks if header indices can’t be found (rare)
+    const safeQtyIdx = qtyIdx >= 0 ? qtyIdx : Math.max(colCount - 2, 0);
+    const safeCostIdx = costIdx >= 0 ? costIdx : Math.max(colCount - 1, 0);
+
+    const leftSpan = Math.max(safeQtyIdx, 1); // MUST be at least 1 cell wide
+    const labelsSpan = Math.max(safeCostIdx - safeQtyIdx, 1);
+    const rightSpan = Math.max(colCount - (safeCostIdx + 1), 0);
+
+    const $tr = $(`
+      <tr
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-1"
+        data-scw-subtotal-level="1"
+        data-scw-context="${escapeHtml(contextKey || 'default')}"
+        data-scw-group-label="${escapeHtml(groupLabel || '')}"
+      ></tr>
+    `);
+
+    // Left: wide title block up to Qty column
+    $tr.append(`
+      <td class="scw-level-total-label scw-l1-footer-left" colspan="${leftSpan}">
+        <strong>${escapeHtml(labelText || '')}</strong>
+      </td>
+    `);
+
+    // Labels: starts at Qty column; spans through any mid columns up to Cost
+    const labelsHtml = hasDiscount
+      ? `
+        <div class="scw-l1-footer-lines">
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__label scw-l1-pre">Pre-Discount:</span>
+          </div>
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__label scw-l1-disc">Discounts:</span>
+          </div>
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__label scw-l1-final">Final Total:</span>
+          </div>
+        </div>
+      `
+      : `
+        <div class="scw-l1-footer-lines">
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__label scw-l1-final">Subtotal:</span>
+          </div>
+        </div>
+      `;
+
+    // Give the labels TD the qty field class so it naturally aligns/width-matches that column
+    $tr.append(`
+      <td class="${escapeHtml(ctx.keys.qty)} scw-l1-footer-labels" colspan="${labelsSpan}">
+        ${labelsHtml}
+      </td>
+    `);
+
+    // Values: in the SAME column as L3/L4 cost
+    const valuesHtml = hasDiscount
+      ? `
+        <div class="scw-l1-footer-lines">
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__value scw-l1-pre">${escapeHtml(preDiscountText)}</span>
+          </div>
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__value scw-l1-disc">${escapeHtml(discountText)}</span>
+          </div>
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
+          </div>
+        </div>
+      `
+      : `
+        <div class="scw-l1-footer-lines">
+          <div class="scw-l1-footer-line">
+            <span class="scw-l1-footer-line__value scw-l1-final">${escapeHtml(finalTotalText)}</span>
+          </div>
+        </div>
+      `;
+
+    $tr.append(`
+      <td class="${escapeHtml(ctx.keys.cost)} scw-l1-footer-values">
+        ${valuesHtml}
+      </td>
+    `);
+
+    // Tail: if there are columns after cost (actions / empty, etc), span them so the blue bar is truly full width
+    if (rightSpan > 0) {
+      $tr.append(`<td class="scw-l1-footer-tail" colspan="${rightSpan}"></td>`);
+    }
+
+    return $tr;
+  }
+
+  // ============================================================
   // FEATURE: Build subtotal row
   // ============================================================
 
@@ -1343,7 +1474,34 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const finalTotal = cost + (hasDiscount ? discount : 0);
 
-    const safeHideQtyCost = level === 1 ? false : Boolean(hideQtyCost);
+    // ✅ L1 uses custom full-width row; never apply hide-qty-cost at L1
+    if (level === 1) {
+      if (Math.abs(cost) < 0.01) {
+        const $hidden = buildLevel1FooterRow(ctx, {
+          labelText: leftText,
+          preDiscountText: formatMoney(cost),
+          discountText: '–' + formatMoneyAbs(discount),
+          finalTotalText: formatMoney(finalTotal),
+          hasDiscount,
+          contextKey,
+          groupLabel,
+        });
+        $hidden.css('display', 'none');
+        return $hidden;
+      }
+
+      return buildLevel1FooterRow(ctx, {
+        labelText: leftText,
+        preDiscountText: formatMoney(cost),
+        discountText: '–' + formatMoneyAbs(discount),
+        finalTotalText: formatMoney(hasDiscount ? finalTotal : cost),
+        hasDiscount,
+        contextKey,
+        groupLabel,
+      });
+    }
+
+    const safeHideQtyCost = Boolean(hideQtyCost);
 
     const $row = $(`
       <tr
@@ -1361,49 +1519,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
-
-    if (level === 1) {
-      if (Math.abs(cost) < 0.01) {
-        $row.css('display', 'none');
-        return $row;
-      }
-
-      const $qtyCell = $row.find(`td.${qtyKey}`);
-      const $laborCell = $row.find(`td.${laborKey}`);
-      const $hardwareCell = $row.find(`td.${hardwareKey}`);
-      const $costCell = $row.find(`td.${costKey}`);
-
-      $qtyCell.addClass('scw-l1-qty-cell');
-
-      $laborCell.empty();
-      $hardwareCell.empty();
-
-      $costCell.attr('colspan', '3').addClass('scw-l1-totals-span');
-      $laborCell.css('display', 'none');
-      $hardwareCell.css('display', 'none');
-
-      $costCell.html(
-        hasDiscount
-          ? `
-            <div class="scw-l1-totals-grid">
-              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__pre">Pre-Discount:</div>
-              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__pre">${escapeHtml(formatMoney(cost))}</div>
-
-              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__disc">Discounts:</div>
-              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__disc">–${escapeHtml(formatMoneyAbs(discount))}</div>
-
-              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__final">Final Total:</div>
-              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__final">${escapeHtml(formatMoney(finalTotal))}</div>
-            </div>
-          `
-          : `
-            <div class="scw-l1-totals-grid">
-              <div class="scw-l1-totals-grid__label scw-l1-totals-grid__final">Subtotal:</div>
-              <div class="scw-l1-totals-grid__value scw-l1-totals-grid__final">${escapeHtml(formatMoney(cost))}</div>
-            </div>
-          `
-      );
-    }
 
     return $row;
   }
@@ -1463,6 +1578,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     normKeyCache.clear();
     const caches = makeRunCaches();
+
+    // reset cached column meta each run (safe if table header structure changes)
+    ctx._colMeta = null;
 
     $tbody
       .find('tr')
@@ -1743,7 +1861,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
-})();/*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
+})();
+/*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
 (function () {
   'use strict';
 
