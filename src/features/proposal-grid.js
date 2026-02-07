@@ -1336,9 +1336,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   function readDomFieldValue(fieldKey, viewId) {
     const scope = viewId ? `#${viewId} ` : '';
-    const $el = $(scope + `.kn-detail.field_${fieldKey} .kn-detail-body span`);
+    const $el = $(scope + `.kn-detail.field_${fieldKey} .kn-detail-body`);
     if (!$el.length) return 0;
-    const raw = $el.text().replace(/[^0-9.\-]/g, '');
+    const raw = $el.first().text().replace(/[^0-9.\-]/g, '');
     const num = parseFloat(raw);
     return Number.isFinite(num) ? num : 0;
   }
@@ -1857,6 +1857,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
 
     // ✅ Project Grand Total rows — appended to end of tbody
+    refreshProjectTotals(ctx, caches, $tbody);
+
+    log(ctx, 'runTotalsPipeline complete', { runId });
+  }
+
+  // Standalone refresh so view_3342 render can re-trigger it
+  const _lastPipelineState = {};
+
+  function refreshProjectTotals(ctx, caches, $tbody) {
+    // Store state so view_3342 handler can re-invoke
+    _lastPipelineState[ctx.viewId] = { ctx, caches, $tbody };
+
+    $tbody.find('tr.scw-project-totals').remove();
+
     const grandTotalRows = buildProjectTotalRows(ctx, caches, $tbody);
     if (grandTotalRows.length) {
       const gtFragment = document.createDocumentFragment();
@@ -1865,8 +1879,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
       $tbody[0].appendChild(gtFragment);
     }
-
-    log(ctx, 'runTotalsPipeline complete', { runId });
   }
 
   // ============================================================
@@ -1897,4 +1909,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
+
+  // When view_3342 (detail view with field_2302) renders, refresh project totals
+  $(document).on('knack-view-render.view_3342' + CONFIG.eventNs, function () {
+    Object.keys(_lastPipelineState).forEach(function (viewId) {
+      const s = _lastPipelineState[viewId];
+      if (s && s.ctx.showProjectTotals) {
+        refreshProjectTotals(s.ctx, s.caches, s.$tbody);
+      }
+    });
+  });
 })();
