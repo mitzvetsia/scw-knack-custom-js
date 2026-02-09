@@ -1896,6 +1896,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         if (blankL1Active) {
           // Promote L2 to L1: mark for styling (applied after totals computed)
           $groupRow.addClass('scw-promoted-l2-as-l1');
+
+          // Rename "Assumptions" → "General Project Assumptions" when promoted
+          if (sectionContext.rule?.key === 'assumptions') {
+            const $td = $groupRow.children('td').first();
+            if ($td.length) {
+              const $a = $td.find('a');
+              if ($a.length) $a.text('General Project Assumptions');
+              else $td.text('General Project Assumptions');
+            }
+            sectionContext.level2 = Object.assign({}, sectionContext.level2, { label: 'General Project Assumptions' });
+          }
         } else {
           applyLevel2Styling($groupRow, sectionContext.rule);
         }
