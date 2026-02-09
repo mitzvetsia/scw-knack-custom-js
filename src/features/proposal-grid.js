@@ -979,6 +979,43 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     return null;
   }
 
+  // ============================================================
+  // FEATURE: L1 group reorder — alphabetical, blank labels last
+  // ============================================================
+
+  function reorderLevel1Groups($tbody) {
+    const tbody = $tbody?.[0];
+    if (!tbody) return;
+
+    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
+    if (l1Headers.length < 2) return;
+
+    const blocks = l1Headers.map((l1El, idx) => {
+      const nextL1El = idx + 1 < l1Headers.length ? l1Headers[idx + 1] : null;
+      const nodes = [];
+      let n = l1El;
+      while (n && n !== nextL1El) {
+        nodes.push(n);
+        n = n.nextElementSibling;
+      }
+      const label = norm(l1El.querySelector('td')?.textContent || '');
+      return { idx, label, nodes };
+    });
+
+    blocks.sort((a, b) => {
+      const aBlank = a.label === '';
+      const bBlank = b.label === '';
+      if (aBlank !== bBlank) return aBlank ? 1 : -1;
+      return a.label.localeCompare(b.label);
+    });
+
+    const frag = document.createDocumentFragment();
+    for (const block of blocks) {
+      for (const n of block.nodes) frag.appendChild(n);
+    }
+    tbody.appendChild(frag);
+  }
+
   function reorderLevel2GroupsBySortField(ctx, $tbody, runId) {
     const opt = ctx.features.l2Sort;
     if (!opt?.enabled) return;
@@ -1635,6 +1672,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
+    reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
