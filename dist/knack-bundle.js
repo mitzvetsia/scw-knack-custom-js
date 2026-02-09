@@ -4933,7 +4933,7 @@ $(".kn-navigation-bar").hide();
 /* ── Style Detail Labels ─────────────────────────────────────────────
  *  Adds custom styling to .kn-detail-label elements within specified scenes.
  *  To apply the style to additional scenes, add the scene ID to the array below.
- * ──────────────────────────────────────────────────────────────────── ***/
+ * ──────────────────────────────────────────────────────────────────── */
 (function styleDetailLabels() {
   var SCENE_IDS = [
     'scene_1096',
