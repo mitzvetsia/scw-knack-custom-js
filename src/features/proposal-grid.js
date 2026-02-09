@@ -26,6 +26,7 @@
   const CONFIG = {
     views: {
       view_3301: {
+        showProjectTotals: true,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -41,6 +42,7 @@
         },
       },
       view_3341: {
+        showProjectTotals: true,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -56,6 +58,7 @@
         },
       },
       view_3371: {
+        showProjectTotals: false,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -365,6 +368,7 @@
       $root,
       $tbody,
       keys: vcfg.keys,
+      showProjectTotals: vcfg.showProjectTotals !== false,
       features: CONFIG.features,
       l2Context: CONFIG.l2Context,
       l2SectionRules: CONFIG.l2SectionRules,
@@ -539,9 +543,27 @@ tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
   text-align: right;
 }
 
+/* Hide view_3342 (data source for field_2302) visually but keep in DOM */
+#view_3342 {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: -1px !important;
+}
+
 /* ============================================================
    Project Grand Totals
    ============================================================ */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals-first-row .scw-l1-title {
+  font-size: 2.2em !important;
+  font-weight: 600 !important;
+}
+
 tr.scw-level-total-row.scw-project-totals.scw-project-totals-first-row td {
   border-top: 20px solid transparent !important;
   border-bottom: 5px solid #07467c !important;
@@ -1325,20 +1347,33 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // FEATURE: Build Project Grand Total Rows
   // ============================================================
 
+  function readDomFieldValue(fieldKey, viewId) {
+    const scope = viewId ? `#${viewId} ` : '';
+    const $el = $(scope + `.kn-detail.field_${fieldKey} .kn-detail-body`);
+    if (!$el.length) return 0;
+    const raw = $el.first().text().replace(/[^0-9.\-]/g, '');
+    const num = parseFloat(raw);
+    return Number.isFinite(num) ? num : 0;
+  }
+
   function buildProjectTotalRows(ctx, caches, $tbody) {
+    if (!ctx.showProjectTotals) return [];
+
     const $allDataRows = $tbody.find('tr[id]');
     if (!$allDataRows.length) return [];
 
     const hardwareKey = ctx.keys.hardware;   // field_2201
     const discountKey = ctx.keys.discount;   // field_2267
     const laborKey = ctx.keys.labor;         // field_2028
-    const equipTotalKey = 'field_2269';
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
-    const lineItemDiscounts = sumField(caches, $allDataRows, discountKey);
-    const equipmentTotal = sumField(caches, $allDataRows, equipTotalKey);
+    const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
+    const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
+    const equipmentTotal = equipmentSubtotal - lineItemDiscounts - proposalDiscount;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
     const grandTotal = equipmentTotal + installationTotal;
+
+    const hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
     const meta = computeColumnMeta(ctx);
     const cols = Math.max(meta.colCount || 0, 1);
@@ -1398,19 +1433,32 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     rows.push(makeTitleRow('Project Totals'));
 
-    rows.push(makeLineRow({
-      label: 'Equipment Subtotal',
-      value: formatMoney(equipmentSubtotal),
-      rowType: 'sub',
-      isLast: false,
-    }));
+    if (hasAnyDiscount) {
+      rows.push(makeLineRow({
+        label: 'Equipment Subtotal',
+        value: formatMoney(equipmentSubtotal),
+        rowType: 'sub',
+        isLast: false,
+      }));
 
-    rows.push(makeLineRow({
-      label: 'Line Item Discounts',
-      value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
-      rowType: 'disc',
-      isLast: false,
-    }));
+      if (lineItemDiscounts !== 0) {
+        rows.push(makeLineRow({
+          label: 'Line Item Discounts',
+          value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
+          rowType: 'disc',
+          isLast: false,
+        }));
+      }
+
+      if (proposalDiscount !== 0) {
+        rows.push(makeLineRow({
+          label: 'Proposal Discount',
+          value: '\u2013' + formatMoneyAbs(proposalDiscount),
+          rowType: 'disc',
+          isLast: false,
+        }));
+      }
+    }
 
     rows.push(makeLineRow({
       label: 'Equipment Total',
@@ -1457,32 +1505,29 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const costKey = ctx.keys.cost;
     const laborKey = ctx.keys.labor;
     const hardwareKey = ctx.keys.hardware;
-    const discountKey = ctx.keys.discount;
 
     const qty = totals?.[qtyKey] ?? sumField(caches, $rowsToSum, qtyKey);
     const cost = totals?.[costKey] ?? sumField(caches, $rowsToSum, costKey);
 
-    const discountRaw =
-      (discountKey && Number.isFinite(totals?.[discountKey]))
-        ? totals[discountKey]
-        : (discountKey ? sumField(caches, $rowsToSum, discountKey) : 0);
-
-    const discount = Number.isFinite(discountRaw) ? discountRaw : 0;
-    const hasDiscount = Math.abs(discount) > 0.004;
-
-    const finalTotal = cost + (hasDiscount ? discount : 0);
-
     // ✅ L1: return 1 or 3 rows
     if (level === 1) {
-      if (Math.abs(cost) < 0.01) return $();
+      const hardware = sumField(caches, $rowsToSum, hardwareKey);       // field_2201
+      const labor = sumField(caches, $rowsToSum, laborKey);           // field_2028
+      const subtotal = hardware + labor;
+
+      if (Math.abs(subtotal) < 0.01) return $();
+
+      const discountL1 = Math.abs(sumField(caches, $rowsToSum, 'field_2303'));
+      const hasDiscount = discountL1 > 0.004;
+      const finalTotal = subtotal - discountL1;
 
       const titleText = norm(leftText || '').replace(/\s+—\s*Subtotal\s*$/i, '');
 
       const rows = buildLevel1FooterRows(ctx, {
         titleText,
-        subtotalText: formatMoney(cost),
-        discountText: '–' + formatMoneyAbs(discount),
-        totalText: formatMoney(hasDiscount ? finalTotal : cost),
+        subtotalText: formatMoney(subtotal),
+        discountText: '–' + formatMoneyAbs(discountL1),
+        totalText: formatMoney(hasDiscount ? finalTotal : subtotal),
         hasDiscount,
         contextKey,
         groupLabel,
@@ -1507,8 +1552,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     $row.append($cellsTemplate.clone());
 
+    const hardware = sumField(caches, $rowsToSum, hardwareKey);
+    const labor = sumField(caches, $rowsToSum, laborKey);
+    const subtotalL2 = hardware + labor;
+
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
-    $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
+    $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(subtotalL2))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
     return $row;
@@ -1641,7 +1690,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       const totals = sumFields(
         caches,
         $rowsToSum,
-        [qtyKey, laborKey, hardwareKey, costKey, discountKey].filter(Boolean)
+        [qtyKey, laborKey, hardwareKey, costKey, discountKey, 'field_2303'].filter(Boolean)
       );
 
       if (level === 1) {
@@ -1651,8 +1700,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        const l1Cost = totals[costKey] || 0;
-        if (Math.abs(l1Cost) >= 0.01) hasAnyNonZeroL1Subtotal = true;
+        const l1Subtotal = (totals[hardwareKey] || 0) + (totals[laborKey] || 0);
+        if (Math.abs(l1Subtotal) >= 0.01) hasAnyNonZeroL1Subtotal = true;
 
         $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
         $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
@@ -1822,6 +1871,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
 
     // ✅ Project Grand Total rows — appended to end of tbody
+    refreshProjectTotals(ctx, caches, $tbody);
+
+    log(ctx, 'runTotalsPipeline complete', { runId });
+  }
+
+  // Standalone refresh so view_3342 render can re-trigger it
+  const _lastPipelineState = {};
+
+  function refreshProjectTotals(ctx, caches, $tbody) {
+    // Store state so view_3342 handler can re-invoke
+    _lastPipelineState[ctx.viewId] = { ctx, caches, $tbody };
+
+    $tbody.find('tr.scw-project-totals').remove();
+
     const grandTotalRows = buildProjectTotalRows(ctx, caches, $tbody);
     if (grandTotalRows.length) {
       const gtFragment = document.createDocumentFragment();
@@ -1830,8 +1893,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
       $tbody[0].appendChild(gtFragment);
     }
-
-    log(ctx, 'runTotalsPipeline complete', { runId });
   }
 
   // ============================================================
@@ -1862,4 +1923,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
+
+  // When view_3342 (detail view with field_2302) renders, refresh project totals
+  $(document).on('knack-view-render.view_3342' + CONFIG.eventNs, function () {
+    Object.keys(_lastPipelineState).forEach(function (viewId) {
+      const s = _lastPipelineState[viewId];
+      if (s && s.ctx.showProjectTotals) {
+        refreshProjectTotals(s.ctx, s.caches, s.$tbody);
+      }
+    });
+  });
 })();
