@@ -1354,7 +1354,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const laborKey = ctx.keys.labor;         // field_2028
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
-    const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, discountKey));
+    const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
     const equipmentTotal = equipmentSubtotal - lineItemDiscounts - proposalDiscount;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
