@@ -1838,7 +1838,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       const totals = sumFields(
         caches,
         $rowsToSum,
-        [qtyKey, laborKey, hardwareKey, costKey, discountKey].filter(Boolean)
+        [qtyKey, laborKey, hardwareKey, costKey, discountKey, 'field_2208', 'field_2303'].filter(Boolean)
       );
 
       if (level === 1) {
