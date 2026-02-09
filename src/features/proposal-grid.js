@@ -648,6 +648,20 @@ ${sel('tr.scw-grand-total-row td')} {
 }
 /********************* LEVEL 1 (MDF/IDF) ***********************/
 
+/*** Promoted L2 (blank L1 → L2 acts as L1) ***/
+${sceneSelectors} .kn-table-group.kn-group-level-2.scw-promoted-l2-as-l1 {
+  font-size: 16px;
+  font-weight: 600;
+  background-color: white !important;
+  color: #07467c !important;
+  padding-right: 20% !important;
+  padding-left: 20px !important;
+  padding-top: 30px !important;
+  padding-bottom: 0px !important;
+  text-align: center !important;
+}
+${sceneSelectors} .kn-table-group.kn-group-level-2.scw-promoted-l2-as-l1 td:first-child {font-size: 24px; font-weight: 200 !important;}
+${sceneSelectors} .kn-table-group.kn-group-level-2.scw-promoted-l2-as-l1 td {border-bottom-width: 20px !important; border-color: #07467c !important; border-top: 0 !important;}
 
 /********************* LEVEL 2 (BUCKET) ***********************/
 ${sceneSelectors} .kn-table-group.kn-group-level-2 {
@@ -977,6 +991,43 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     }
 
     return null;
+  }
+
+  // ============================================================
+  // FEATURE: L1 group reorder — alphabetical, blank labels last
+  // ============================================================
+
+  function reorderLevel1Groups($tbody) {
+    const tbody = $tbody?.[0];
+    if (!tbody) return;
+
+    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
+    if (l1Headers.length < 2) return;
+
+    const blocks = l1Headers.map((l1El, idx) => {
+      const nextL1El = idx + 1 < l1Headers.length ? l1Headers[idx + 1] : null;
+      const nodes = [];
+      let n = l1El;
+      while (n && n !== nextL1El) {
+        nodes.push(n);
+        n = n.nextElementSibling;
+      }
+      const label = norm(l1El.querySelector('td')?.textContent || '');
+      return { idx, label, nodes };
+    });
+
+    blocks.sort((a, b) => {
+      const aBlank = a.label === '';
+      const bBlank = b.label === '';
+      if (aBlank !== bBlank) return aBlank ? 1 : -1;
+      return a.label.localeCompare(b.label);
+    });
+
+    const frag = document.createDocumentFragment();
+    for (const block of blocks) {
+      for (const n of block.nodes) frag.appendChild(n);
+    }
+    tbody.appendChild(frag);
   }
 
   function reorderLevel2GroupsBySortField(ctx, $tbody, runId) {
@@ -1635,6 +1686,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
+    reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
@@ -1661,6 +1713,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const costKey = ctx.keys.cost;
     const discountKey = ctx.keys.discount;
 
+    let blankL1Active = false;
+
     $allGroupRows.each(function () {
       const $groupRow = $(this);
       const match = this.className.match(/kn-group-level-(\d+)/);
@@ -1678,7 +1732,23 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         shouldHideSubtotalFilterFlag =
           shouldHideSubtotalFilterFlag || Boolean(sectionContext.rule?.hideSubtotalFilter);
 
-        applyLevel2Styling($groupRow, sectionContext.rule);
+        if (blankL1Active) {
+          // Promote L2 to L1: mark for styling (applied after totals computed)
+          $groupRow.addClass('scw-promoted-l2-as-l1');
+
+          // Rename "Assumptions" → "General Project Assumptions" when promoted
+          if (sectionContext.rule?.key === 'assumptions') {
+            const $td = $groupRow.children('td').first();
+            if ($td.length) {
+              const $a = $td.find('a');
+              if ($a.length) $a.text('General Project Assumptions');
+              else $td.text('General Project Assumptions');
+            }
+            sectionContext.level2 = Object.assign({}, sectionContext.level2, { label: 'General Project Assumptions' });
+          }
+        } else {
+          applyLevel2Styling($groupRow, sectionContext.rule);
+        }
       }
 
       const $groupBlock = getGroupBlock($groupRow, level);
@@ -1694,6 +1764,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       );
 
       if (level === 1) {
+        const l1Label = getGroupLabelText($groupRow);
+
+        if (isBlankish(l1Label)) {
+          // Blank L1: hide its header and promote child L2s to act as L1
+          $groupRow.hide();
+          blankL1Active = true;
+          return; // skip L1 header styling and footer push
+        }
+
+        // Non-blank L1: reset promotion flag
+        blankL1Active = false;
+
         if (!$groupRow.data('scwHeaderCellsAdded')) {
           $groupRow.find('td').removeAttr('colspan');
           $groupRow.append($cellsTemplate.clone());
@@ -1702,6 +1784,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
         const l1Subtotal = (totals[hardwareKey] || 0) + (totals[laborKey] || 0);
         if (Math.abs(l1Subtotal) >= 0.01) hasAnyNonZeroL1Subtotal = true;
+
+        $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+        $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
+        $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
+      }
+
+      // Promoted L2 → L1 header styling (needs totals, so placed after sumFields)
+      if (level === 2 && blankL1Active) {
+        if (!$groupRow.data('scwHeaderCellsAdded')) {
+          $groupRow.find('td').removeAttr('colspan');
+          $groupRow.append($cellsTemplate.clone());
+          $groupRow.data('scwHeaderCellsAdded', true);
+        }
+
+        const l2Subtotal = (totals[hardwareKey] || 0) + (totals[laborKey] || 0);
+        if (Math.abs(l2Subtotal) >= 0.01) hasAnyNonZeroL1Subtotal = true;
 
         $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
         $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
@@ -1801,13 +1899,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (level === 1 || level === 2) {
         const levelInfo = level === 2 ? sectionContext.level2 : getLevel2InfoFromGroupRow($groupRow);
 
-        if (level === 2 && shouldHideLevel2Footer(ctx, levelInfo)) return;
+        if (level === 2 && !blankL1Active && shouldHideLevel2Footer(ctx, levelInfo)) return;
+
+        // When L2 is promoted (blankL1Active), use level 1 for footer rules
+        const effectiveLevel = (level === 2 && blankL1Active) ? 1 : level;
 
         footerQueue.push({
-          level,
+          level: effectiveLevel,
           label: levelInfo.label,
           contextKey: sectionContext.key,
-          hideQtyCostColumns: level === 2 ? sectionContext.hideQtyCostColumns : false,
+          hideQtyCostColumns: effectiveLevel === 2 ? sectionContext.hideQtyCostColumns : false,
           $groupBlock,
           $cellsTemplate,
           $rowsToSum,
