@@ -1499,8 +1499,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     // ✅ L1: return 1 or 3 rows
     if (level === 1) {
       const hardware = sumField(caches, $rowsToSum, hardwareKey);       // field_2201
-      const field2208 = sumField(caches, $rowsToSum, 'field_2208');
-      const subtotal = hardware + field2208;
+      const labor = sumField(caches, $rowsToSum, laborKey);           // field_2028
+      const subtotal = hardware + labor;
 
       if (Math.abs(subtotal) < 0.01) return $();
 
@@ -1540,8 +1540,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $row.append($cellsTemplate.clone());
 
     const hardware = sumField(caches, $rowsToSum, hardwareKey);
-    const field2208 = sumField(caches, $rowsToSum, 'field_2208');
-    const subtotalL2 = hardware + field2208;
+    const labor = sumField(caches, $rowsToSum, laborKey);
+    const subtotalL2 = hardware + labor;
 
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(subtotalL2))}</strong>`);
@@ -1677,7 +1677,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       const totals = sumFields(
         caches,
         $rowsToSum,
-        [qtyKey, laborKey, hardwareKey, costKey, discountKey, 'field_2208', 'field_2303'].filter(Boolean)
+        [qtyKey, laborKey, hardwareKey, costKey, discountKey, 'field_2303'].filter(Boolean)
       );
 
       if (level === 1) {
@@ -1687,7 +1687,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        const l1Subtotal = (totals[hardwareKey] || 0) + (totals['field_2208'] || 0);
+        const l1Subtotal = (totals[hardwareKey] || 0) + (totals[laborKey] || 0);
         if (Math.abs(l1Subtotal) >= 0.01) hasAnyNonZeroL1Subtotal = true;
 
         $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
