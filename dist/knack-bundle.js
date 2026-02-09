@@ -1960,10 +1960,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
 
         const l2Subtotal = (totals[hardwareKey] || 0) + (totals[laborKey] || 0);
-        if (Math.abs(l2Subtotal) >= 0.01) hasAnyNonZeroL1Subtotal = true;
-
-        $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
-        $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
+        if (Math.abs(l2Subtotal) >= 0.01) {
+          hasAnyNonZeroL1Subtotal = true;
+          $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+          $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
+        }
         $groupRow.find(`td.${hardwareKey},td.${laborKey}`).empty();
       }
 
