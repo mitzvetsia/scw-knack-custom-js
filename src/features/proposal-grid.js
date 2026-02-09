@@ -1492,32 +1492,29 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const costKey = ctx.keys.cost;
     const laborKey = ctx.keys.labor;
     const hardwareKey = ctx.keys.hardware;
-    const discountKey = ctx.keys.discount;
 
     const qty = totals?.[qtyKey] ?? sumField(caches, $rowsToSum, qtyKey);
     const cost = totals?.[costKey] ?? sumField(caches, $rowsToSum, costKey);
 
-    const discountRaw =
-      (discountKey && Number.isFinite(totals?.[discountKey]))
-        ? totals[discountKey]
-        : (discountKey ? sumField(caches, $rowsToSum, discountKey) : 0);
-
-    const discount = Number.isFinite(discountRaw) ? discountRaw : 0;
-    const hasDiscount = Math.abs(discount) > 0.004;
-
-    const finalTotal = cost + (hasDiscount ? discount : 0);
-
     // ✅ L1: return 1 or 3 rows
     if (level === 1) {
-      if (Math.abs(cost) < 0.01) return $();
+      const hardware = sumField(caches, $rowsToSum, hardwareKey);       // field_2201
+      const field2208 = sumField(caches, $rowsToSum, 'field_2208');
+      const subtotal = hardware + field2208;
+
+      if (Math.abs(subtotal) < 0.01) return $();
+
+      const discountL1 = Math.abs(sumField(caches, $rowsToSum, 'field_2303'));
+      const hasDiscount = discountL1 > 0.004;
+      const finalTotal = subtotal - discountL1;
 
       const titleText = norm(leftText || '').replace(/\s+—\s*Subtotal\s*$/i, '');
 
       const rows = buildLevel1FooterRows(ctx, {
         titleText,
-        subtotalText: formatMoney(cost),
-        discountText: '–' + formatMoneyAbs(discount),
-        totalText: formatMoney(hasDiscount ? finalTotal : cost),
+        subtotalText: formatMoney(subtotal),
+        discountText: '–' + formatMoneyAbs(discountL1),
+        totalText: formatMoney(hasDiscount ? finalTotal : subtotal),
         hasDiscount,
         contextKey,
         groupLabel,
@@ -1686,8 +1683,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        const l1Cost = totals[costKey] || 0;
-        if (Math.abs(l1Cost) >= 0.01) hasAnyNonZeroL1Subtotal = true;
+        const l1Subtotal = (totals[hardwareKey] || 0) + (totals['field_2208'] || 0);
+        if (Math.abs(l1Subtotal) >= 0.01) hasAnyNonZeroL1Subtotal = true;
 
         $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
         $groupRow.find(`td.${costKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
