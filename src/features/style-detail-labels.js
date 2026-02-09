@@ -22,8 +22,9 @@
       selectors + ' {\n' +
       '  background-color: aliceblue;\n' +
       '  width: 15%;\n' +
-      '  text-align: center;\n' +
-      '  vertical-align: middle;\n' +
+      '  display: flex;\n' +
+      '  align-items: center;\n' +
+      '  justify-content: center;\n' +
       '}\n';
     document.head.appendChild(style);
   }
