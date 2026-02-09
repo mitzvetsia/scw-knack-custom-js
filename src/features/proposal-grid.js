@@ -1539,8 +1539,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     $row.append($cellsTemplate.clone());
 
+    const hardware = sumField(caches, $rowsToSum, hardwareKey);
+    const field2208 = sumField(caches, $rowsToSum, 'field_2208');
+    const subtotalL2 = hardware + field2208;
+
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
-    $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(cost))}</strong>`);
+    $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(subtotalL2))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
     return $row;
