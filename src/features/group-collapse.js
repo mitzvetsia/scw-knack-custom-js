@@ -13,7 +13,9 @@
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
-    // view_3332: { L1bg: '#1a5a8e', L2bg: '#f3f8ff' },
+    view_3374: { L1bg: '#124E85' },
+    view_3325: { L1bg: '#124E85' },
+    view_3331: { L1bg: '#124E85' },
   };
 
   // ======================
