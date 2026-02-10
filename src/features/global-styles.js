@@ -1,4 +1,4 @@
-/*************  Global Style Overrides  *********************/
+/*************  Global Style Overrides  *******************/
 (function () {
   'use strict';
 
