@@ -36,6 +36,7 @@ window.SCW = window.SCW || {};
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 24px !important;
+      margin-bottom: 20px !important
     }
 
     /* KTL hide/show (shrink) button */
@@ -62,6 +63,7 @@ window.SCW = window.SCW || {};
       color: white;
       font-weight: 600;
       padding: 10px;
+      width: 20% !important;
     }
     .control:not(.has-addons) {
       display: flex;
