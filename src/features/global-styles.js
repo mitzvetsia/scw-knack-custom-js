@@ -6,6 +6,18 @@
   if (document.getElementById(id)) return;
 
   const css = `
+
+    /* H1 headings */
+    h1:not(.kn-title) {
+      color: #07467c;
+      font-weight: 800;
+      line-height: 1.125;
+      margin-bottom: 0.5em;
+      margin-top: 55px;
+      font-size: 40px !important;
+      opacity: .8;
+    }
+
     /* H2 headings */
     h2:not(.kn-title) {
       font-weight: 800 !important;
