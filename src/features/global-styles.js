@@ -13,7 +13,7 @@
       font-weight: 800;
       margin-bottom: 0.5em;
       margin-top: 55px;
-      font-size: 40px !important;
+      font-size: 28px !important;
       opacity: .8;
     }
 
@@ -21,7 +21,7 @@
     h2:not(.kn-title) {
       font-weight: 800 !important;
       color: #07467c !important;
-      font-size: 24px !important;
+      font-size: 20px !important;
       margin-bottom: -15px !important;
       margin-top: 30px !important;
     }
