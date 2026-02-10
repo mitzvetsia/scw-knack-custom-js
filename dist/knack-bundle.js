@@ -2896,7 +2896,12 @@ $(document).on('knack-view-render.view_3313', function () {
 (function () {
   const VIEW_IDS = [
     "view_3313",
-    "view_3332"   // ← add the second view id here
+    "view_3332",
+    "view_3384",
+    "view_3356"
+
+
+   // ← add the second view id here
   ];
 
   const FIELD_KEY = "field_1946";
