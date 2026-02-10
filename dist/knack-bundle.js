@@ -2438,7 +2438,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-record-count {
         display: inline-block;
         margin-left: .6em;
-        padding: 1px 8px;
+        padding: 0px 7px;
         font-size: 11px;
         font-weight: 600;
         line-height: 1.5;
