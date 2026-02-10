@@ -5,7 +5,12 @@
   // ======================
   // CONFIG
   // ======================
-  const SCENE_IDS = ['scene_1085']; // add more scenes as needed
+  // Per-scene config. openIfFewerThan = record threshold below which groups
+  // default to OPEN instead of collapsed. Set to 0 to always collapse.
+  const SCENE_CONFIG = {
+    scene_1085: { openIfFewerThan: 30 },
+  };
+  const SCENE_IDS = Object.keys(SCENE_CONFIG);
   const EVENT_NS = '.scwGroupCollapse';
 
   const COLLAPSED_BY_DEFAULT = true;
@@ -408,12 +413,26 @@
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
+    const cfg = SCENE_CONFIG[sceneId] || {};
+    const threshold = cfg.openIfFewerThan || 0;
+    const viewRecordCounts = {};
+
     $sceneRoot.find(GROUP_ROW_SEL).each(function () {
       const $tr = $(this);
       const $view = $tr.closest('.kn-view[id^="view_"]');
       const viewId = $view.attr('id') || 'unknown_view';
 
       $view.addClass('scw-group-collapse-enabled');
+
+      // Cache record count per view (count once)
+      if (!(viewId in viewRecordCounts)) {
+        viewRecordCounts[viewId] = $view.find('.kn-table tbody tr[id]').length;
+      }
+
+      // If fewer records than threshold, default to open
+      const defaultCollapsed = (threshold > 0 && viewRecordCounts[viewId] < threshold)
+        ? false
+        : COLLAPSED_BY_DEFAULT;
 
       const state = loadState(sceneId, viewId);
 
@@ -424,7 +443,7 @@
       ensureRecordCount($tr, viewId);
 
       const key = buildKey($tr, level);
-      const shouldCollapse = key in state ? !!state[key] : COLLAPSED_BY_DEFAULT;
+      const shouldCollapse = key in state ? !!state[key] : defaultCollapsed;
 
       setCollapsed($tr, shouldCollapse);
     });
