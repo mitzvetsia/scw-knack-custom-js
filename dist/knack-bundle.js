@@ -73,18 +73,21 @@ window.SCW = window.SCW || {};
     }
 
     /* Menu buttons */
-    div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
+    .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
       background-color: rgba(237,131,38,.9);
       color: white;
       font-weight: 600;
       padding: 10px;
       width: 20% !important;
+    }
+    .kn-menu .control:not(.has-addons) {
       display: flex;
       justify-content: flex-end;
+      gap: 8px;
+      padding-top: 50px;
+      width: 100% !important;
     }
-
-
-  const style = document.createElement('style');
+  `;
   style.id = id;
   style.textContent = css;
   document.head.appendChild(style);
