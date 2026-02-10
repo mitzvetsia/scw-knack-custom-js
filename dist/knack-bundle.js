@@ -36,7 +36,6 @@ window.SCW = window.SCW || {};
     h1:not(.kn-title) {
       color: #07467c;
       font-weight: 800;
-      line-height: 1.125;
       margin-bottom: 0.5em;
       margin-top: 55px;
       font-size: 40px !important;
@@ -86,7 +85,7 @@ window.SCW = window.SCW || {};
 
     /* Menu buttons */
     .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
-      background-color: rgba(237,131,38,.9);
+      background-color: rgba(237,131,38, 1);
       color: white;
       font-weight: 600;
       padding: 10px;
