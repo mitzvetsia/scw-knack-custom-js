@@ -53,7 +53,7 @@
       color: white;
       font-weight: 600;
       padding: 10px;
-      width: 20% !important;
+      width: 33% !important;
     }
     .kn-menu .control:not(.has-addons) {
       display: flex;
