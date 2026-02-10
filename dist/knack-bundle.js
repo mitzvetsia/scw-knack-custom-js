@@ -2208,6 +2208,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
+  const SHOW_RECORD_COUNT = true; // show a count tag on each group header
 
   // ======================
   // STATE (localStorage)
@@ -2364,6 +2365,26 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         filter: brightness(0.985);
       }
 
+      /* Record count badge */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-record-count {
+        display: inline-block;
+        margin-left: .6em;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.5;
+        border-radius: 10px;
+        vertical-align: middle;
+      }
+      ${S} .scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-record-count {
+        background: rgba(255,255,255,.22);
+        color: #ffffff;
+      }
+      ${S} .scw-group-collapse-enabled tr.kn-group-level-2.scw-group-header .scw-record-count {
+        background: rgba(7,70,124,.12);
+        color: #07467c;
+      }
+
       /* KTL arrows: collapsed (.ktlUp) => DOWN; open (.ktlDown) => RIGHT */
       ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
         display: inline-block;
@@ -2403,10 +2424,24 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
   }
 
+  function ensureRecordCount($tr) {
+    if (!SHOW_RECORD_COUNT) return;
+    const $cell = $tr.children('td,th').first();
+
+    // Remove old badge so count stays fresh on re-render
+    $cell.find('.scw-record-count').remove();
+
+    const $block = rowsUntilNextRelevantGroup($tr);
+    const count = $block.filter('tr[id]').length;
+    if (count > 0) {
+      $cell.append('<span class="scw-record-count">' + count + '</span>');
+    }
+  }
+
   function getRowLabelText($tr) {
     return $tr
       .clone()
-      .find('.scw-collapse-icon')
+      .find('.scw-collapse-icon, .scw-record-count')
       .remove()
       .end()
       .text()
@@ -2537,6 +2572,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
+      ensureRecordCount($tr);
+
       const key = buildKey($tr, level);
       const shouldCollapse = key in state ? !!state[key] : COLLAPSED_BY_DEFAULT;
 
