@@ -15,6 +15,7 @@
       margin-top: 55px;
       font-size: 28px !important;
       opacity: .8;
+      overflow: visible !important;
     }
 
     /* H2 headings */
