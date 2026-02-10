@@ -52,7 +52,7 @@
     const S = sceneScopes || '';
 
     const L1 = {
-      fontSize: '11px',
+      fontSize: '12px',
       fontWeight: '400',
       bg: '#1a5a8e',
       color: '#ffffff',
@@ -62,8 +62,8 @@
     };
 
     const L2 = {
-      fontSize: '12px',
-      fontWeight: '600',
+      fontSize: '14px',
+      fontWeight: '400',
       bg: '#f3f8ff',
       color: '#07467c',
       tdPadding: '4px 14px 4px 26px',
