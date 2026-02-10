@@ -26,10 +26,22 @@
       margin-bottom: 1px !important;
     }
 
-    /* KTL hide/show button — no own radius (section handles it) */
-    .ktlHideShowButton {
+    /* KTL hide/show button — full-width bar with branding */
+    .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] {
+      width: 800px;
+      font-weight: 600;
       font-size: 14px !important;
+      color: #fff;
+      background-color: #295f91;
       border-radius: 0 !important;
+    }
+
+    /* Views containing KTL hide/show — branded wrapper */
+    .kn-view:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
+      margin-bottom: 1px !important;
+      background-color: #295f91;
+      max-width: 100%;
+      border-radius: 20px !important;
     }
 
     /* Menu buttons */
