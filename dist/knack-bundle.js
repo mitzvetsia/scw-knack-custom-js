@@ -36,7 +36,7 @@ window.SCW = window.SCW || {};
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 24px !important;
-      margin-bottom: 5px !important;
+      margin-bottom: 0px !important;
     }
 
     /* KTL hide/show (shrink) button */
@@ -48,7 +48,7 @@ window.SCW = window.SCW || {};
     section.ktlBoxWithBorder {
       border-radius: 20px !important;
       overflow: hidden !important;
-      margin-bottom: 2px !important;
+      margin: 10px !important;
     }
 
     /* KTL hide/show button — full-width bar with branding */
@@ -64,9 +64,10 @@ window.SCW = window.SCW || {};
 
     /* Views containing KTL hide/show — branded wrapper */
     .kn-view:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
-      margin-bottom: 20px !important;
+      margin-bottom: 2px !important;
       background-color: #295f91;
       max-width: 100%;
+      padding: 5px 5px 10px 5px !important;
       border-radius: 20px !important;
     }
 
