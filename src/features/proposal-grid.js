@@ -710,8 +710,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
 /* Connected Devices on L3 headers */
 .scw-l3-connected-br { line-height: 0; }
-.scw-l3-connected-devices { display: inline-block; margin-top: 2px; line-height: 1.2; font-size: 14px; font-weight: 300; }
-.scw-l3-connected-devices b { font-weight: 800 !important; }
+.scw-l3-connected-devices { display: inline-block; margin-top: 2px; line-height: 1.2; font-size: 14px; font-weight: 400; color: orange; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
 
@@ -1318,7 +1317,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const span = document.createElement('span');
     span.className = 'scw-l3-connected-devices';
-    span.innerHTML = 'Connected Devices: <b style="color:orange;">' + escapeHtml(devices.join(', ')) + '</b>';
+    span.innerHTML = 'Connected Devices: ' + escapeHtml(devices.join(', '));
     labelCell.appendChild(span);
   }
 
