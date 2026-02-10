@@ -2208,7 +2208,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
-  const SHOW_RECORD_COUNT = true; // show a count tag on each group header
+
+  // Record count badge: off by default, list view IDs to enable
+  const RECORD_COUNT_VIEWS = ['view_3359'];
 
   // ======================
   // STATE (localStorage)
@@ -2424,8 +2426,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
   }
 
-  function ensureRecordCount($tr) {
-    if (!SHOW_RECORD_COUNT) return;
+  function ensureRecordCount($tr, viewId) {
+    if (!RECORD_COUNT_VIEWS.length) return;
+    if (!RECORD_COUNT_VIEWS.includes(viewId)) return;
     const $cell = $tr.children('td,th').first();
 
     // Remove old badge so count stays fresh on re-render
@@ -2572,7 +2575,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
-      ensureRecordCount($tr);
+      ensureRecordCount($tr, viewId);
 
       const key = buildKey($tr, level);
       const shouldCollapse = key in state ? !!state[key] : COLLAPSED_BY_DEFAULT;
