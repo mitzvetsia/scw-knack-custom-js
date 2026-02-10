@@ -55,6 +55,20 @@ window.SCW = window.SCW || {};
       font-size: 14px !important;
       border-radius: 0 !important;
     }
+
+    /* Menu buttons — view_3303 */
+    #view_3303 > div > a {
+      background-color: rgba(237,131,38,.9);
+      color: white;
+      font-weight: 800;
+      padding: 10px;
+    }
+    #view_3303 > .control {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 50px;
+    }
   `;
 
   const style = document.createElement('style');
@@ -3011,7 +3025,10 @@ $(document).on('knack-view-render.view_3313', function () {
   const FIELD_KEY = "field_1946";
 
   const ICON_HTML =
-    '<i class="fa fa-solid fa-sort" aria-hidden="true" title="Changing Location" style="font-size:30px; vertical-align:middle;"></i>';
+    '<span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;">' +
+      '<i class="fa fa-solid fa-location-dot" aria-hidden="true" title="Changing Location" style="font-size:26px;"></i>' +
+      '<i class="fa fa-solid fa-arrows-rotate" aria-hidden="true" style="font-size:18px;"></i>' +
+    '</span>';
 
   // Inject CSS once (covers all target views)
   function injectCssOnce() {

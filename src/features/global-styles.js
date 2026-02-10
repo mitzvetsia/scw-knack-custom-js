@@ -30,6 +30,20 @@
       font-size: 14px !important;
       border-radius: 0 !important;
     }
+
+    /* Menu buttons — view_3303 */
+    #view_3303 > div > a {
+      background-color: rgba(237,131,38,.9);
+      color: white;
+      font-weight: 800;
+      padding: 10px;
+    }
+    #view_3303 > .control {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 50px;
+    }
   `;
 
   const style = document.createElement('style');

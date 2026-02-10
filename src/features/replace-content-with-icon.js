@@ -17,7 +17,10 @@
   const FIELD_KEY = "field_1946";
 
   const ICON_HTML =
-    '<i class="fa fa-solid fa-sort" aria-hidden="true" title="Changing Location" style="font-size:30px; vertical-align:middle;"></i>';
+    '<span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;">' +
+      '<i class="fa fa-solid fa-location-dot" aria-hidden="true" title="Changing Location" style="font-size:26px;"></i>' +
+      '<i class="fa fa-solid fa-arrows-rotate" aria-hidden="true" style="font-size:18px;"></i>' +
+    '</span>';
 
   // Inject CSS once (covers all target views)
   function injectCssOnce() {
