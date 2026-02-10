@@ -47,6 +47,12 @@ window.SCW = window.SCW || {};
     section.ktlBoxWithBorder {
       border-radius: 6px !important;
     }
+
+    /* KTL hide/show button */
+    .ktlHideShowButton {
+      font-size: 14px !important;
+      border-radius: 20px !important;
+    }
   `;
 
   const style = document.createElement('style');
