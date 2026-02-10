@@ -922,6 +922,11 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td {padding-top: 5px !importa
 ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:80px !important;}
 
 .scw-l4-2019 b {font-weight: 600 !important;}
+
+/* Connected Devices on L3 headers */
+.scw-l3-connected-br { line-height: 0; }
+.scw-l3-connected-devices { display: inline-block; margin-top: 2px; line-height: 1.2; }
+.scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
 
@@ -1494,6 +1499,45 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
+  // FEATURE: Connected Devices injection (L3)
+  // ============================================================
+
+  function injectConnectedDevicesIntoLevel3Header(ctx, caches, { $groupRow, $rowsToSum, runId }) {
+    if ($groupRow.data('scwL3ConnDevRunId') === runId) return;
+    $groupRow.data('scwL3ConnDevRunId', runId);
+
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return;
+
+    // Clean up previous injection
+    labelCell.querySelectorAll('.scw-l3-connected-devices, br.scw-l3-connected-br').forEach(function (n) { n.remove(); });
+
+    const rows = $rowsToSum.get();
+    const devices = [];
+    const seen = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+      const text = getRowCellText(caches, rows[i], 'field_1957');
+      if (!text || isBlankish(text)) continue;
+      const key = normKey(text);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      devices.push(norm(text));
+    }
+
+    if (!devices.length) return;
+
+    const br = document.createElement('br');
+    br.className = 'scw-l3-connected-br';
+    labelCell.appendChild(br);
+
+    const span = document.createElement('span');
+    span.className = 'scw-l3-connected-devices';
+    span.innerHTML = 'Connected Devices: <b style="color:orange;">' + escapeHtml(devices.join(', ')) + '</b>';
+    labelCell.appendChild(span);
+  }
+
+  // ============================================================
   // ✅ FEATURE: Build L1 footer as TRUE ROWS
   // ============================================================
 
@@ -1892,6 +1936,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         'scwConcatL3MountRunId',
         'scwL4_2019_RunId',
         'scwL3EachRunId',
+        'scwL3ConnDevRunId',
         'scwHeaderCellsAdded',
         'scwL2Rewrite_' + runId,
       ]);
@@ -2065,6 +2110,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
         injectEachIntoLevel3Header(ctx, caches, { level, $groupRow, $rowsToSum, runId });
+        injectConnectedDevicesIntoLevel3Header(ctx, caches, { $groupRow, $rowsToSum, runId });
       }
 
       if (level === 4) {
