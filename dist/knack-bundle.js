@@ -37,7 +37,7 @@ window.SCW = window.SCW || {};
       color: #07467c !important;
       font-size: 24px !important;
       margin-bottom: -15px !important;
-      margin-top: 10px !important;
+      margin-top: 15px !important;
     }
 
     /* KTL hide/show (shrink) button */
