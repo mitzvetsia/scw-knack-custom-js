@@ -2,26 +2,21 @@
 // Refresh other views when an inline edit is made
 // ============================================================
 //
-// CONFIG FORMAT:
-//   triggers  – views whose inline edits trigger a refresh
-//   refresh   – (optional) specific views to refresh
-//   refreshAllExcept – (optional) refresh ALL views on the page EXCEPT these
+// CONFIG: one entry per scene.
+//   scene           – the scene to apply the rule to
+//   triggerExcept   – (optional) views that should NOT trigger a refresh
+//   refreshExcept   – (optional) views that should NOT be refreshed
 //
-//   Use ONE of "refresh" or "refreshAllExcept" per rule.
+// Any inline edit on a view in the scene (except triggerExcept)
+// refreshes all other views in the scene (except refreshExcept).
 //
 (function () {
   var RULES = [
-    // Example: inline edit in view_100 refreshes view_200 and view_300
-    // {
-    //   triggers: ['view_100'],
-    //   refresh: ['view_200', 'view_300'],
-    // },
-
-    // Example: inline edit in view_400 refreshes every other view on the page
-    // {
-    //   triggers: ['view_400'],
-    //   refreshAllExcept: ['view_400'],
-    // },
+    {
+      scene: 'scene_1085',
+      triggerExcept: [],
+      refreshExcept: [],
+    },
   ];
 
   // ---- nothing below needs editing ----
@@ -45,34 +40,28 @@
     }
   }
 
-  // Build a lookup: triggerViewId → array of rules
-  var triggerMap = {};
+  function toSet(arr) {
+    var s = {};
+    (arr || []).forEach(function (id) { s[id] = true; });
+    return s;
+  }
+
   RULES.forEach(function (rule) {
-    (rule.triggers || []).forEach(function (viewId) {
-      if (!triggerMap[viewId]) triggerMap[viewId] = [];
-      triggerMap[viewId].push(rule);
-    });
-  });
+    var triggerExcluded = toSet(rule.triggerExcept);
+    var refreshExcluded = toSet(rule.refreshExcept);
 
-  // Bind one handler per trigger view
-  Object.keys(triggerMap).forEach(function (viewId) {
-    $(document).on('knack-cell-update.' + viewId, function () {
-      var rules = triggerMap[viewId];
-      rules.forEach(function (rule) {
-        var targets;
+    $(document).on('knack-scene-render.' + rule.scene, function () {
+      var views = getVisibleViewIds();
 
-        if (rule.refresh) {
-          targets = rule.refresh;
-        } else if (rule.refreshAllExcept) {
-          var excluded = {};
-          rule.refreshAllExcept.forEach(function (id) { excluded[id] = true; });
-          targets = getVisibleViewIds().filter(function (id) { return !excluded[id]; });
-        } else {
-          return;
-        }
+      views.forEach(function (viewId) {
+        if (triggerExcluded[viewId]) return;
 
-        targets.forEach(function (targetId) {
-          refreshView(targetId);
+        $(document).off('knack-cell-update.' + viewId + '.scwRefresh');
+        $(document).on('knack-cell-update.' + viewId + '.scwRefresh', function () {
+          var targets = getVisibleViewIds().filter(function (id) {
+            return id !== viewId && !refreshExcluded[id];
+          });
+          targets.forEach(refreshView);
         });
       });
     });
