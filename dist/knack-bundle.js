@@ -4777,7 +4777,7 @@ $(".kn-navigation-bar").hide();
 // Targets: field_2301, field_2290
 // ============================================================
 (function () {
-  var FIELDS = ['field_2301', 'field_2290'];
+  var FIELDS = ['field_2301', 'field_2290','field_2267','field_2303'];
 
   function processCell($el) {
     if ($el.data('scwNeg')) return;
