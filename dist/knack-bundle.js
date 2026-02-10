@@ -4774,10 +4774,10 @@ $(".kn-navigation-bar").hide();
 })();
 // ============================================================
 // Force specific fields to always display as negative numbers
-// Targets: field_2601, field_2290
+// Targets: field_2301, field_2290
 // ============================================================
 (function () {
-  var FIELDS = ['field_2601', 'field_2290'];
+  var FIELDS = ['field_2301', 'field_2290'];
 
   function processCell($el) {
     if ($el.data('scwNeg')) return;
