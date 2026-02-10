@@ -36,6 +36,7 @@
       color: #fff;
       background-color: #295f91;
       border-radius: 0 !important;
+      Margin-bottom: -20px !important
     }
 
     /* Views containing KTL hide/show — branded wrapper */
@@ -52,7 +53,7 @@
       color: white;
       font-weight: 600;
       padding: 10px;
-      width: 20% !important;
+      //width: 20% !important;
     }
     .control:not(.has-addons) {
       display: flex;
