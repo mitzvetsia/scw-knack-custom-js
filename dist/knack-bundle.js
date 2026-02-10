@@ -63,7 +63,7 @@ window.SCW = window.SCW || {};
       font-weight: 600;
       padding: 10px;
     }
-    .control {
+    .control:not(.has-addons) {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
