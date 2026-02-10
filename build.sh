@@ -31,6 +31,7 @@ cat \
   src/features/exception-grid-handler.js \
   src/features/set_unified_product_field.js \
   src/features/force-negative-display.js \
+  src/features/refresh-on-inline-edit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/style-detail-labels.js \
   src/features/legacy/checkbox-grid.field_739.js \
