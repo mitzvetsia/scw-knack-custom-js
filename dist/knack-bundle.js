@@ -48,9 +48,8 @@ window.SCW = window.SCW || {};
     section.ktlBoxWithBorder {
       border-radius: 20px !important;
       overflow: hidden !important;
-      margin-bottom: 1px !important;
-      border: none !important;
-      padding: 0 !important;
+      margin-bottom: 20px !important;
+      Margin-top: -20px !important;
     }
 
     /* KTL hide/show button — full-width bar with branding */
