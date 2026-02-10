@@ -45,21 +45,21 @@
     const S = sceneScopes || '';
 
     const L1 = {
-      fontSize: '12px',
+      fontSize: '11px',
       fontWeight: '400',
-      bg: '#07467c',
+      bg: '#1a5a8e',
       color: '#ffffff',
-      tdPadding: '5px 5px',
+      tdPadding: '3px 5px',
       collapsedOpacity: '0.92',
       textalign: 'left',
     };
 
     const L2 = {
-      fontSize: '14px',
+      fontSize: '12px',
       fontWeight: '600',
       bg: '#f3f8ff',
       color: '#07467c',
-      tdPadding: '10px 14px 10px 26px',
+      tdPadding: '4px 14px 4px 26px',
       collapsedOpacity: '0.90',
     };
 
@@ -133,6 +133,15 @@
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover {
         filter: brightness(1.06);
       }
+      /* L1 collapsed — thin divider, accordion-like */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td {
+        border-bottom: 1px solid rgba(255,255,255,.08);
+      }
+      /* L1 expanded — more padding, soft inner shadow */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td {
+        padding: 14px 5px !important;
+        box-shadow: inset 0 1px 4px rgba(0,0,0,.08);
+      }
 
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header {
         font-size: ${L2.fontSize};
@@ -164,6 +173,17 @@
       }
       ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:hover {
         filter: brightness(0.985);
+      }
+      /* L2 collapsed — thin divider, accordion-like */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed > td {
+        border-bottom: 1px solid rgba(7,70,124,.06);
+      }
+      /* L2 expanded — more padding, subtle tint, soft inner shadow */
+      ${S} .scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:not(.scw-collapsed) > td {
+        padding: 14px 14px 14px 26px !important;
+        background: #f7f9fb !important;
+        box-shadow: inset 0 1px 3px rgba(7,70,124,.06);
+        border-bottom: 1px solid rgba(7,70,124,.10);
       }
 
       /* KTL arrows: collapsed (.ktlUp) => DOWN; open (.ktlDown) => RIGHT */
