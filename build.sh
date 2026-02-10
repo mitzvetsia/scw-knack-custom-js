@@ -6,6 +6,7 @@ mkdir -p dist
 cat \
   src/config.js \
   src/util.js \
+  src/features/global-styles.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
   src/features/ratking/post-inline-edit-behavior.js \

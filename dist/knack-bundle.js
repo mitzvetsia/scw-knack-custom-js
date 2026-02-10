@@ -23,6 +23,38 @@ window.SCW = window.SCW || {};
     $(document).off(eventName).on(eventName, handler);
   };
 })(window.SCW);
+/*************  Global Style Overrides  **************************/
+(function () {
+  'use strict';
+
+  const id = 'scw-global-styles-css';
+  if (document.getElementById(id)) return;
+
+  const css = `
+    /* H2 headings */
+    h2 {
+      font-weight: 800 !important;
+      color: #07467c !important;
+      font-size: 24px !important;
+    }
+
+    /* KTL hide/show (shrink) button */
+    a.ktlShrinkLink {
+      font-size: 14px !important;
+    }
+
+    /* KTL view wrapper — uniform rounded corners */
+    section.ktlBoxWithBorder {
+      border-radius: 6px !important;
+    }
+  `;
+
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+/*************  Global Style Overrides  **************************/
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
@@ -2209,6 +2241,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
 
+  // Per-view background color overrides (keys = view IDs)
+  const VIEW_OVERRIDES = {
+    view_3374: { L1bg: '#124E85' },
+    view_3325: { L1bg: '#124E85' },
+    view_3331: { L1bg: '#124E85' },
+  };
+
   // ======================
   // STATE (localStorage)
   // ======================
@@ -2398,6 +2437,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         transform: rotate(180deg);
         opacity: 1;
       }
+
+      ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
+        /* Per-view overrides: ${viewId} */
+        ${o.L1bg ? `#${viewId} .kn-table-group.kn-group-level-1.scw-group-header { background-color: ${o.L1bg} !important; }` : ''}
+        ${o.L1color ? `
+          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td,
+          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td * { color: ${o.L1color} !important; }
+        ` : ''}
+        ${o.L2bg ? `#${viewId} .kn-table-group.kn-group-level-2.scw-group-header { background-color: ${o.L2bg} !important; }` : ''}
+        ${o.L2color ? `
+          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td,
+          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ${o.L2color} !important; }
+        ` : ''}
+      `).join('')}
     `;
 
     const style = document.createElement('style');

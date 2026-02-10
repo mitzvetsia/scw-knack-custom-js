@@ -11,6 +11,13 @@
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
 
+  // Per-view background color overrides (keys = view IDs)
+  const VIEW_OVERRIDES = {
+    view_3374: { L1bg: '#124E85' },
+    view_3325: { L1bg: '#124E85' },
+    view_3331: { L1bg: '#124E85' },
+  };
+
   // ======================
   // STATE (localStorage)
   // ======================
@@ -200,6 +207,20 @@
         transform: rotate(180deg);
         opacity: 1;
       }
+
+      ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
+        /* Per-view overrides: ${viewId} */
+        ${o.L1bg ? `#${viewId} .kn-table-group.kn-group-level-1.scw-group-header { background-color: ${o.L1bg} !important; }` : ''}
+        ${o.L1color ? `
+          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td,
+          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td * { color: ${o.L1color} !important; }
+        ` : ''}
+        ${o.L2bg ? `#${viewId} .kn-table-group.kn-group-level-2.scw-group-header { background-color: ${o.L2bg} !important; }` : ''}
+        ${o.L2color ? `
+          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td,
+          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ${o.L2color} !important; }
+        ` : ''}
+      `).join('')}
     `;
 
     const style = document.createElement('style');
