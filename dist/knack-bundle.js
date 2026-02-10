@@ -960,7 +960,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
 /* Connected Devices on L3 headers */
 .scw-l3-connected-br { line-height: 0; }
-.scw-l3-connected-devices { display: inline-block; margin-top: -4px; padding-left: 20px; line-height: 1.2; font-size: 12px; }
+.scw-l3-connected-devices { display: block; margin-top: -4px; padding-left: 20px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
@@ -1595,7 +1595,7 @@ function buildLevel1FooterRows(ctx, {
   function makeTrBase(extraClasses) {
     return $(`
       <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 ${extraClasses || ''}"
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 kn-table-totals ${extraClasses || ''}"
         data-scw-subtotal-level="1"
         data-scw-context="${escapeHtml(contextKey || 'default')}"
         data-scw-group-label="${escapeHtml(groupLabel || '')}"
@@ -1734,7 +1734,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     function makeTr(extraClasses) {
       return $(`
         <tr
-          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-project-totals ${extraClasses || ''}"
+          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-project-totals kn-table-totals ${extraClasses || ''}"
           data-scw-subtotal-level="project"
         ></tr>
       `);
@@ -1891,7 +1891,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const $row = $(`
       <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level} kn-table-totals${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
         data-scw-subtotal-level="${level}"
         data-scw-context="${escapeHtml(contextKey || 'default')}"
         data-scw-group-label="${escapeHtml(groupLabel || '')}"
