@@ -1533,12 +1533,21 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const seen = new Set();
 
     for (let i = 0; i < rows.length; i++) {
-      const text = getRowCellText(caches, rows[i], 'field_1957');
-      if (!text || isBlankish(text)) continue;
-      const key = normKey(text);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      devices.push(norm(text));
+      const cell = getRowCell(caches, rows[i], 'field_1957');
+      if (!cell) continue;
+      // Replace <br> with a delimiter before reading text, so multi-value cells split properly
+      const html = cell.innerHTML || '';
+      const parts = html.replace(/<br\s*\/?>/gi, '|||').split('|||');
+      for (let j = 0; j < parts.length; j++) {
+        const tmp = document.createElement('span');
+        tmp.innerHTML = parts[j];
+        const text = norm(tmp.textContent || '');
+        if (!text || isBlankish(text)) continue;
+        const key = normKey(text);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        devices.push(text);
+      }
     }
 
     if (!devices.length) return;
