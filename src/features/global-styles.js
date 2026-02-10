@@ -23,8 +23,7 @@
     section.ktlBoxWithBorder {
       border-radius: 20px !important;
       overflow: hidden !important;
-      margin-bottom: 20px !important;
-      Margin-top: -20px !important;
+      margin-bottom: 2px !important;
     }
 
     /* KTL hide/show button — full-width bar with branding */
@@ -40,10 +39,11 @@
 
     /* Views containing KTL hide/show — branded wrapper */
     .kn-view:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
-      margin-bottom: 1px !important;
+      margin-bottom: 20px !important;
       background-color: #295f91;
       max-width: 100%;
       border-radius: 20px !important;
+      Margin-top: -20px !important
     }
 
     /* Menu buttons */
