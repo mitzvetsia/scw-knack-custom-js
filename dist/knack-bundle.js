@@ -2249,12 +2249,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
 
+<<<<<<< HEAD
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
     view_3374: { L1bg: '#124E85' },
     view_3325: { L1bg: '#124E85' },
     view_3331: { L1bg: '#124E85' },
   };
+=======
+  // Record count badge: off by default, list view IDs to enable
+  const RECORD_COUNT_VIEWS = ['view_3359'];
+>>>>>>> origin/claude/add-proposal-grand-totals-VddLi
 
   // ======================
   // STATE (localStorage)
@@ -2431,6 +2436,26 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         border-bottom: 1px solid rgba(7,70,124,.10);
       }
 
+      /* Record count badge */
+      ${S} .scw-group-collapse-enabled tr.scw-group-header .scw-record-count {
+        display: inline-block;
+        margin-left: .6em;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.5;
+        border-radius: 10px;
+        vertical-align: middle;
+      }
+      ${S} .scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-record-count {
+        background: rgba(255,255,255,.22);
+        color: #ffffff;
+      }
+      ${S} .scw-group-collapse-enabled tr.kn-group-level-2.scw-group-header .scw-record-count {
+        background: rgba(7,70,124,.12);
+        color: #07467c;
+      }
+
       /* KTL arrows: collapsed (.ktlUp) => DOWN; open (.ktlDown) => RIGHT */
       ${S} span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
         display: inline-block;
@@ -2484,10 +2509,25 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
   }
 
+  function ensureRecordCount($tr, viewId) {
+    if (!RECORD_COUNT_VIEWS.length) return;
+    if (!RECORD_COUNT_VIEWS.includes(viewId)) return;
+    const $cell = $tr.children('td,th').first();
+
+    // Remove old badge so count stays fresh on re-render
+    $cell.find('.scw-record-count').remove();
+
+    const $block = rowsUntilNextRelevantGroup($tr);
+    const count = $block.filter('tr[id]').length;
+    if (count > 0) {
+      $cell.append('<span class="scw-record-count">' + count + '</span>');
+    }
+  }
+
   function getRowLabelText($tr) {
     return $tr
       .clone()
-      .find('.scw-collapse-icon')
+      .find('.scw-collapse-icon, .scw-record-count')
       .remove()
       .end()
       .text()
@@ -2618,6 +2658,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
+      ensureRecordCount($tr, viewId);
+
       const key = buildKey($tr, level);
       const shouldCollapse = key in state ? !!state[key] : COLLAPSED_BY_DEFAULT;
 
