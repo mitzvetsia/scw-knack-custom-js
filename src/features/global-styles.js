@@ -18,17 +18,21 @@
       opacity: .8;
     }
 
-    /* H2 headings */
+    /* H2 headings — base */
     h2:not(.kn-title) {
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 24px !important;
-      margin-bottom: -15px !important;
       margin-top: 30px !important;
     }
 
-    /* Prevent scrollbar from h2 negative margin */
-    .kn-detail-body:has(h2) {
+    /* H2 followed by a KTL collapse section — tighten gap */
+    .kn-view:has(+ .kn-view section.ktlBoxWithBorder) h2:not(.kn-title) {
+      margin-bottom: -15px !important;
+    }
+
+    /* Prevent scrollbar from negative margin only when needed */
+    .kn-view:has(+ .kn-view section.ktlBoxWithBorder) .kn-detail-body:has(h2) {
       overflow: hidden !important;
     }
 
