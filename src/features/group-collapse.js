@@ -45,11 +45,11 @@
     const S = sceneScopes || '';
 
     const L1 = {
-      fontSize: '16px',
-      fontWeight: '600',
+      fontSize: '12px',
+      fontWeight: '400',
       bg: '#07467c',
       color: '#ffffff',
-      tdPadding: '10px 14px',
+      tdPadding: '5px 5px',
       collapsedOpacity: '0.92',
       textalign: 'left',
     };
