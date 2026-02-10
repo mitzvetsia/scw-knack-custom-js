@@ -80,13 +80,7 @@ window.SCW = window.SCW || {};
       padding: 10px;
       //width: 20% !important;
     }
-    .control:not(.has-addons) {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding-top: 50px;
-      width: 100% !important;
-    }
+
   `;
 
   const style = document.createElement('style');
