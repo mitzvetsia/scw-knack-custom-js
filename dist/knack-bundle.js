@@ -60,6 +60,7 @@ window.SCW = window.SCW || {};
       color: #fff;
       background-color: #295f91;
       border-radius: 0 !important;
+      padding: 5px 0px 0px 8px !important;
     }
 
     /* Views containing KTL hide/show — branded wrapper */
