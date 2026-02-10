@@ -3262,7 +3262,7 @@ $(document).on('knack-view-render.view_3313', function () {
 (function () {
   const VIEW_ID = 'view_3332';
   const FIELD_CLASS = 'field_1949';
-  const MAX = 25;
+  const MAX = 100;
 
   function escapeHtml(str) {
     return String(str)
