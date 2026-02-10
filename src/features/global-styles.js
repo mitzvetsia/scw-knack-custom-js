@@ -27,6 +27,11 @@
       margin-top: 30px !important;
     }
 
+    /* Prevent scrollbar from h2 negative margin */
+    .kn-detail-body:has(h2) {
+      overflow: hidden !important;
+    }
+
     /* KTL hide/show (shrink) button */
     a.ktlShrinkLink {
       font-size: 14px !important;

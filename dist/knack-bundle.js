@@ -52,6 +52,11 @@ window.SCW = window.SCW || {};
       margin-top: 30px !important;
     }
 
+    /* Prevent scrollbar from h2 negative margin */
+    .kn-detail-body:has(h2) {
+      overflow: hidden !important;
+    }
+
     /* KTL hide/show (shrink) button */
     a.ktlShrinkLink {
       font-size: 14px !important;
@@ -955,7 +960,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
 /* Connected Devices on L3 headers */
 .scw-l3-connected-br { line-height: 0; }
-.scw-l3-connected-devices { display: inline-block; margin-top: -5px; line-height: 1; font-size: 14px; }
+.scw-l3-connected-devices { display: block; margin-top: 5px; padding-left: 60px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
@@ -1590,7 +1595,7 @@ function buildLevel1FooterRows(ctx, {
   function makeTrBase(extraClasses) {
     return $(`
       <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 ${extraClasses || ''}"
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-1 kn-table-totals ${extraClasses || ''}"
         data-scw-subtotal-level="1"
         data-scw-context="${escapeHtml(contextKey || 'default')}"
         data-scw-group-label="${escapeHtml(groupLabel || '')}"
@@ -1729,7 +1734,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     function makeTr(extraClasses) {
       return $(`
         <tr
-          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-project-totals ${extraClasses || ''}"
+          class="scw-level-total-row scw-subtotal scw-subtotal--level-1 scw-project-totals kn-table-totals ${extraClasses || ''}"
           data-scw-subtotal-level="project"
         ></tr>
       `);
@@ -1886,7 +1891,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const $row = $(`
       <tr
-        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level}${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
+        class="scw-level-total-row scw-subtotal scw-subtotal--level-${level} kn-table-totals${safeHideQtyCost ? ' scw-hide-qty-cost' : ''}"
         data-scw-subtotal-level="${level}"
         data-scw-context="${escapeHtml(contextKey || 'default')}"
         data-scw-group-label="${escapeHtml(groupLabel || '')}"
@@ -2740,6 +2745,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ======================
   // ENHANCE GRIDS
   // ======================
+
+  // Track views whose stale localStorage has been cleared this session.
+  // Cleared once per page load so below-threshold views always start open,
+  // but manual collapses during the session are still persisted and respected.
+  const thresholdCleared = new Set();
+
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
@@ -2765,8 +2776,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         viewRecordCounts[viewId] = allTr - groupTr - totalsTr;
       }
 
-      // If fewer records than threshold, force open (ignore persisted state)
       const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
+
+      // On first encounter this session, clear stale localStorage for
+      // below-threshold views so the "default open" behaviour takes effect.
+      if (belowThreshold && !thresholdCleared.has(viewId)) {
+        thresholdCleared.add(viewId);
+        try { localStorage.removeItem(storageKey(sceneId, viewId)); } catch (e) {}
+      }
 
       const state = loadState(sceneId, viewId);
 
