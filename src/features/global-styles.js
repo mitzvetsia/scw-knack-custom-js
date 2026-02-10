@@ -11,7 +11,7 @@
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 24px !important;
-      margin-bottom: 20px !important
+      margin-bottom: 5px !important
     }
 
     /* KTL hide/show (shrink) button */
@@ -43,7 +43,6 @@
       background-color: #295f91;
       max-width: 100%;
       border-radius: 20px !important;
-      Margin-top: -20px !important
     }
 
     /* Menu buttons */
