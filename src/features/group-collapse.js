@@ -426,7 +426,12 @@
 
       // Cache record count per view (count once, exclude group headers and totals)
       if (!(viewId in viewRecordCounts)) {
-        viewRecordCounts[viewId] = $view.find('.kn-table tbody tr').not('.kn-table-group, .kn-table-totals').length;
+        var allTr = $view.find('table tbody tr').length;
+        var groupTr = $view.find('table tbody tr.kn-table-group').length;
+        var totalsTr = $view.find('table tbody tr.kn-table-totals').length;
+        var dataRows = allTr - groupTr - totalsTr;
+        viewRecordCounts[viewId] = dataRows;
+        console.log('[scw-collapse] ' + viewId + ': allTr=' + allTr + ' groupTr=' + groupTr + ' totalsTr=' + totalsTr + ' dataRows=' + dataRows + ' threshold=' + threshold);
       }
 
       // If fewer records than threshold, force open (ignore persisted state)
@@ -442,6 +447,7 @@
 
       const key = buildKey($tr, level);
       const shouldCollapse = belowThreshold ? false : (key in state ? !!state[key] : COLLAPSED_BY_DEFAULT);
+      if (viewRecordCounts[viewId] < 50) console.log('[scw-collapse] ' + viewId + ' key=' + key + ' belowThreshold=' + belowThreshold + ' shouldCollapse=' + shouldCollapse);
 
       setCollapsed($tr, shouldCollapse);
     });
