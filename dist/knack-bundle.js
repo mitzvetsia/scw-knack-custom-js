@@ -5329,7 +5329,7 @@ $(".kn-navigation-bar").hide();
           if (!(node instanceof Element)) continue;
 
           // quick checks (fast)
-          if (node.id && node.id.startsWith('view_')) {
+          if (node.id && typeof node.id === 'string' && node.id.startsWith('view_')) {
             FORMS.forEach(initEverywhere);
             return;
           }
