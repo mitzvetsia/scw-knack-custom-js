@@ -70,6 +70,7 @@ window.SCW = window.SCW || {};
       justify-content: flex-end;
       gap: 8px;
       padding-top: 50px;
+      width: 100% !important;
     }
   `;
 
