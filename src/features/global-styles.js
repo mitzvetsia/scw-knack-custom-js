@@ -11,7 +11,8 @@
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 24px !important;
-      margin-bottom: 0px !important;
+      margin-bottom: -15px !important;
+      margin-top: 10px !important;
     }
 
     /* KTL hide/show (shrink) button */
@@ -34,7 +35,7 @@
       color: #fff;
       background-color: #295f91;
       border-radius: 0 !important;
-      Margin-bottom: -2px !important;
+      margin-bottom: -2px !important;
     }
 
     /* Views containing KTL hide/show — branded wrapper */
