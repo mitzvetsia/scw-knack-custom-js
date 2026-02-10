@@ -34,7 +34,7 @@
       color: #fff;
       background-color: #295f91;
       border-radius: 0 !important;
-      Margin-bottom: -20px !important;
+      Margin-bottom: -2px !important;
     }
 
     /* Views containing KTL hide/show — branded wrapper */
