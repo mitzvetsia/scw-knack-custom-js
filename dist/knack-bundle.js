@@ -49,6 +49,8 @@ window.SCW = window.SCW || {};
       border-radius: 20px !important;
       overflow: hidden !important;
       margin-bottom: 1px !important;
+      border: none !important;
+      padding: 0 !important;
     }
 
     /* KTL hide/show button — full-width bar with branding */
