@@ -88,6 +88,8 @@ window.SCW = window.SCW || {};
       width: 100% !important;
     }
   `;
+
+  const style = document.createElement('style');
   style.id = id;
   style.textContent = css;
   document.head.appendChild(style);
