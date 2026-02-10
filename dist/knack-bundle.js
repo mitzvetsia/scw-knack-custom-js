@@ -43,15 +43,17 @@ window.SCW = window.SCW || {};
       font-size: 14px !important;
     }
 
-    /* KTL view wrapper — uniform rounded corners */
+    /* KTL view wrapper — rounded corners, clip button to shape */
     section.ktlBoxWithBorder {
-      border-radius: 6px !important;
+      border-radius: 20px !important;
+      overflow: hidden !important;
+      margin-bottom: 1px !important;
     }
 
-    /* KTL hide/show button */
+    /* KTL hide/show button — no own radius (section handles it) */
     .ktlHideShowButton {
       font-size: 14px !important;
-      border-radius: 20px !important;
+      border-radius: 0 !important;
     }
   `;
 
