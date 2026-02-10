@@ -32,7 +32,7 @@ window.SCW = window.SCW || {};
 
   const css = `
     /* H2 headings */
-    h2 {
+    h2:not(.kn-title) {
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 24px !important;
