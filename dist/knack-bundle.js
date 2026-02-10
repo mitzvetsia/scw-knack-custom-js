@@ -37,6 +37,16 @@ window.SCW = window.SCW || {};
       color: #07467c !important;
       font-size: 24px !important;
     }
+
+    /* KTL hide/show (shrink) button */
+    a.ktlShrinkLink {
+      font-size: 14px !important;
+    }
+
+    /* KTL view wrapper — uniform rounded corners */
+    section.ktlBoxWithBorder {
+      border-radius: 6px !important;
+    }
   `;
 
   const style = document.createElement('style');
