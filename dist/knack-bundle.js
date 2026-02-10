@@ -1530,7 +1530,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const rows = $rowsToSum.get();
     const devices = [];
-    const seen = new Set();
 
     for (let i = 0; i < rows.length; i++) {
       const cell = getRowCell(caches, rows[i], 'field_1957');
@@ -1543,9 +1542,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         tmp.innerHTML = parts[j];
         const text = norm(tmp.textContent || '');
         if (!text || isBlankish(text)) continue;
-        const key = normKey(text);
-        if (seen.has(key)) continue;
-        seen.add(key);
         devices.push(text);
       }
     }
