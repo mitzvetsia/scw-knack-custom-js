@@ -424,15 +424,13 @@
 
       $view.addClass('scw-group-collapse-enabled');
 
-      // Cache record count per view (count once)
+      // Cache record count per view (count once, exclude group headers and totals)
       if (!(viewId in viewRecordCounts)) {
-        viewRecordCounts[viewId] = $view.find('.kn-table tbody tr[id]').length;
+        viewRecordCounts[viewId] = $view.find('.kn-table tbody tr').not('.kn-table-group, .kn-table-totals').length;
       }
 
-      // If fewer records than threshold, default to open
-      const defaultCollapsed = (threshold > 0 && viewRecordCounts[viewId] < threshold)
-        ? false
-        : COLLAPSED_BY_DEFAULT;
+      // If fewer records than threshold, force open (ignore persisted state)
+      const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
 
       const state = loadState(sceneId, viewId);
 
@@ -443,7 +441,7 @@
       ensureRecordCount($tr, viewId);
 
       const key = buildKey($tr, level);
-      const shouldCollapse = key in state ? !!state[key] : defaultCollapsed;
+      const shouldCollapse = belowThreshold ? false : (key in state ? !!state[key] : COLLAPSED_BY_DEFAULT);
 
       setCollapsed($tr, shouldCollapse);
     });
