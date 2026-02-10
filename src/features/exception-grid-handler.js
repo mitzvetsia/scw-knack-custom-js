@@ -33,7 +33,8 @@
         display: flex !important;
         align-items: center !important;
         justify-content: flex-start !important;
-	size: 12px !important;
+	font-size: 12px !important;
+	font-weight: 400 !important;
 
         width: 100% !important;
         background-color: ${WARNING_BG} !important;
