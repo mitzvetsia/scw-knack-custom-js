@@ -23,7 +23,7 @@ window.SCW = window.SCW || {};
     $(document).off(eventName).on(eventName, handler);
   };
 })(window.SCW);
-/*************  Global Style Overrides  **************************/
+/*************  Global Style Overrides  ************************/
 (function () {
   'use strict';
 
@@ -43,9 +43,17 @@ window.SCW = window.SCW || {};
       font-size: 14px !important;
     }
 
-    /* KTL view wrapper — uniform rounded corners */
+    /* KTL view wrapper — rounded corners, clip button to shape */
     section.ktlBoxWithBorder {
-      border-radius: 6px !important;
+      border-radius: 20px !important;
+      overflow: hidden !important;
+      margin-bottom: 1px !important;
+    }
+
+    /* KTL hide/show button — no own radius (section handles it) */
+    .ktlHideShowButton {
+      font-size: 14px !important;
+      border-radius: 0 !important;
     }
   `;
 
@@ -4323,6 +4331,7 @@ $(".kn-navigation-bar").hide();
         display: flex !important;
         align-items: center !important;
         justify-content: flex-start !important;
+	size: 12px !important;
 
         width: 100% !important;
         background-color: ${WARNING_BG} !important;
