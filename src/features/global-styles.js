@@ -32,7 +32,7 @@
     }
 
     /* Menu buttons */
-    a {
+    a.kn-link.kn-link-1.kn-link-page.kn-button {
       background-color: rgba(237,131,38,.9);
       color: white;
       font-weight: 600;
