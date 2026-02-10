@@ -23,7 +23,7 @@ window.SCW = window.SCW || {};
     $(document).off(eventName).on(eventName, handler);
   };
 })(window.SCW);
-/*************  Global Style Overrides  *********************/
+/*************  Global Style Overrides  *******************/
 (function () {
   'use strict';
 
