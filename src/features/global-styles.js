@@ -8,9 +8,9 @@
   const css = `
     /* H2 headings */
     h2 {
-      font-weight: 800;
-      color: #07467c;
-      font-size: 24px;
+      font-weight: 800 !important;
+      color: #07467c !important;
+      font-size: 24px !important;
     }
   `;
 
