@@ -960,7 +960,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
 /* Connected Devices on L3 headers */
 .scw-l3-connected-br { line-height: 0; }
-.scw-l3-connected-devices { display: block; margin-top: 0; padding-left: 80px; line-height: 1.2; font-size: 12px; }
+.scw-l3-connected-devices { display: block; margin-top: 5px; padding-left: 60px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 `;
