@@ -56,14 +56,14 @@ window.SCW = window.SCW || {};
       border-radius: 0 !important;
     }
 
-    /* Menu buttons — view_3303 */
-    #view_3303 > div > a {
+    /* Menu buttons */
+    a {
       background-color: rgba(237,131,38,.9);
       color: white;
-      font-weight: 800;
+      font-weight: 600;
       padding: 10px;
     }
-    #view_3303 > .control {
+    .control {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
