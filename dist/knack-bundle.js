@@ -2740,6 +2740,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ======================
   // ENHANCE GRIDS
   // ======================
+
+  // Track views whose stale localStorage has been cleared this session.
+  // Cleared once per page load so below-threshold views always start open,
+  // but manual collapses during the session are still persisted and respected.
+  const thresholdCleared = new Set();
+
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
@@ -2765,8 +2771,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         viewRecordCounts[viewId] = allTr - groupTr - totalsTr;
       }
 
-      // If fewer records than threshold, force open (ignore persisted state)
       const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
+
+      // On first encounter this session, clear stale localStorage for
+      // below-threshold views so the "default open" behaviour takes effect.
+      if (belowThreshold && !thresholdCleared.has(viewId)) {
+        thresholdCleared.add(viewId);
+        try { localStorage.removeItem(storageKey(sceneId, viewId)); } catch (e) {}
+      }
 
       const state = loadState(sceneId, viewId);
 
