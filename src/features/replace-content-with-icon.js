@@ -19,7 +19,7 @@
   const ICON_HTML =
     '<span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;">' +
       '<i class="fa fa-server" aria-hidden="true" title="Moving Server" style="font-size:20px;"></i>' +
-      '<span style="display:inline-flex; flex-direction:column; align-items:center; line-height:1; gap:0;">' +
+      '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; line-height:1; gap:0; vertical-align:middle;">' +
         '<i class="fa fa-level-up" aria-hidden="true" style="font-size:12px;"></i>' +
         '<i class="fa fa-level-down" aria-hidden="true" style="font-size:12px;"></i>' +
       '</span>' +
