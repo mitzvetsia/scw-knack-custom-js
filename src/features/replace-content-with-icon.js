@@ -34,7 +34,14 @@
       .map(v => `#${v} td.${FIELD_KEY}`)
       .join(", ");
 
+    const allTd = VIEW_IDS
+      .map(v => `#${v} td`)
+      .join(", ");
+
     const css = `
+      ${allTd} {
+        vertical-align: middle !important;
+      }
       ${selectors} {
         display: table-cell !important;
         text-align: center;
