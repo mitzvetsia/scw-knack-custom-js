@@ -3148,8 +3148,8 @@ $(document).on('knack-view-render.view_3313', function () {
 
   const ICON_HTML =
     '<span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;">' +
-      '<i class="fa fa-solid fa-location-dot" aria-hidden="true" title="Changing Location" style="font-size:26px;"></i>' +
-      '<i class="fa fa-solid fa-arrows-rotate" aria-hidden="true" style="font-size:18px;"></i>' +
+      '<i class="fa fa-server" aria-hidden="true" title="Moving Server" style="font-size:20px;"></i>' +
+      '<i class="fa fa-exchange" aria-hidden="true" style="font-size:16px;"></i>' +
     '</span>';
 
   // Inject CSS once (covers all target views)
