@@ -2065,12 +2065,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         normalizeField2019ForGrouping(ctx);
 
         requestAnimationFrame(() => {
-          try {
-            runTotalsPipeline(ctx);
-          } catch (error) {
-            // eslint-disable-next-line no-console
-            console.error(`[SCW totals][${viewId}] error:`, error);
-          }
+          // Add a small timeout to ensure Knack's async rendering is complete
+          // This fixes intermittent footer loading issues caused by race conditions
+          setTimeout(() => {
+            try {
+              runTotalsPipeline(ctx);
+            } catch (error) {
+              // eslint-disable-next-line no-console
+              console.error(`[SCW totals][${viewId}] error:`, error);
+            }
+          }, 50);
         });
       });
   }
@@ -2079,11 +2083,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // When view_3342 (detail view with field_2302) renders, refresh project totals
   $(document).on('knack-view-render.view_3342' + CONFIG.eventNs, function () {
-    Object.keys(_lastPipelineState).forEach(function (viewId) {
-      const s = _lastPipelineState[viewId];
-      if (s && s.ctx.showProjectTotals) {
-        refreshProjectTotals(s.ctx, s.caches, s.$tbody);
-      }
+    // Add a small delay to ensure view_3342 is fully rendered before updating totals
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        Object.keys(_lastPipelineState).forEach(function (viewId) {
+          const s = _lastPipelineState[viewId];
+          if (s && s.ctx.showProjectTotals) {
+            refreshProjectTotals(s.ctx, s.caches, s.$tbody);
+          }
+        });
+      }, 50);
     });
   });
 })();
