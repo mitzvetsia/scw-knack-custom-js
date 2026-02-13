@@ -48,8 +48,13 @@ window.SCW = window.SCW || {};
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 20px !important;
-      margin-bottom: -15px !important;
       margin-top: 30px !important;
+    }
+
+    /* H2 headings followed by KTL collapse section */
+    h2:not(.kn-title):has(+ .ktlBoxWithBorder),
+    h2:not(.kn-title):has(+ .kn-view:has(.ktlHideShowButton)) {
+      margin-bottom: -15px !important;
     }
 
     /* Prevent scrollbar from h2 negative margin */
