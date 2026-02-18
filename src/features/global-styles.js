@@ -32,6 +32,11 @@
       overflow: hidden !important;
     }
 
+    /* Pull rich-text heading closer to following hide/show section */
+    .kn-rich_text:has(+ .kn-view .ktlHideShowSection) {
+      margin-bottom: -15px !important;
+    }
+
     /* KTL hide/show (shrink) button */
     a.ktlShrinkLink {
       font-size: 14px !important;
