@@ -23,7 +23,6 @@
       font-weight: 800 !important;
       color: #07467c !important;
       font-size: 20px !important;
-      margin-bottom: -15px !important;
       margin-top: 30px !important;
     }
 
