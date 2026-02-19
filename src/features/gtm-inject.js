@@ -1,4 +1,4 @@
-/***************************** GOOGLE TAG MANAGER — SCENE-SPECIFIC INJECTION *******************************/
+/***************************** GOOGLE TAG MANAGER — SCENE-SPECIFIC INJECTION ****************************/
 (function () {
   var GTM_ID = "GTM-5XL9S9J";
   var SCENES = ["scene_1096"];
