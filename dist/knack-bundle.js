@@ -3289,31 +3289,62 @@ $(document).on('knack-view-render.view_3313', function () {
     $scene.find(`table.kn-table tbody td.${FIELD_KEY}`).each(function () {
       const $cell = $(this);
 
-      // idempotent
-      if ($cell.data("scwReplacedWithIcon")) return;
+      // Content-based idempotency: only skip if the icon is actually present.
+      // jQuery .data() flags persist on reused DOM elements even after Knack
+      // replaces cell innerHTML during inline edits, so we check the real DOM.
+      if ($cell.find(".fa-server").length) return;
 
       $cell.empty().append(ICON_HTML);
-      $cell.data("scwReplacedWithIcon", true);
     });
   }
 
-  // MutationObserver catches views that render after the scene event fires
+  // Runs replacement for whichever target scene is active
+  function replaceIfActiveScene() {
+    const current = getCurrentSceneId();
+    if (current && SCENE_IDS.indexOf(current) !== -1) {
+      replaceIconsInScene(current);
+    }
+  }
+
+  // MutationObserver catches DOM changes that aren't covered by Knack events.
+  // Runs synchronously (no requestAnimationFrame) so replacement happens
+  // before the browser paints — the idempotency check prevents infinite loops.
   const observerByScene = {};
 
   function startObserverForScene(sceneId) {
     if (observerByScene[sceneId]) return;
 
-    let raf = 0;
     const obs = new MutationObserver(() => {
       const current = getCurrentSceneId();
       if (current !== sceneId) return;
 
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => replaceIconsInScene(sceneId));
+      replaceIconsInScene(sceneId);
     });
 
     obs.observe(document.body, { childList: true, subtree: true });
     observerByScene[sceneId] = obs;
+  }
+
+  // ---- Event listeners for inline-edit recovery ----
+  //
+  // Knack triggers namespaced events like "knack-cell-update.view_123"
+  // and "knack-view-render.view_456".  In jQuery, .trigger("evt.ns")
+  // only fires handlers bound with matching namespace OR no namespace.
+  // Our old binding (.on("knack-cell-update.scwReplaceIcon")) used a
+  // non-matching namespace so it NEVER fired — all recovery was done
+  // by the MutationObserver with a 1-frame RAF delay (= visible flash).
+  //
+  // Fix: bind with NO namespace so we catch every view's events.
+  // Use the named function reference for .off() cleanup instead.
+
+  function bindKnackEventListeners() {
+    $(document)
+      .off("knack-cell-update", replaceIfActiveScene)
+      .on("knack-cell-update", replaceIfActiveScene);
+
+    $(document)
+      .off("knack-view-render", replaceIfActiveScene)
+      .on("knack-view-render", replaceIfActiveScene);
   }
 
   SCENE_IDS.forEach((sceneId) => {
@@ -3321,6 +3352,7 @@ $(document).on('knack-view-render.view_3313', function () {
       injectCssOnce();
       replaceIconsInScene(sceneId);
       startObserverForScene(sceneId);
+      bindKnackEventListeners();
     }, 'replace-content-with-icon');
   });
 
@@ -3330,11 +3362,11 @@ $(document).on('knack-view-render.view_3313', function () {
     injectCssOnce();
     replaceIconsInScene(initialScene);
     startObserverForScene(initialScene);
+    bindKnackEventListeners();
   }
 })();
 
 /********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
-
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
