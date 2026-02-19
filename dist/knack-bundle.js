@@ -3231,7 +3231,7 @@ $(document).on('knack-view-render.view_3313', function () {
 
 });
 ////************* HIGHLIGHT DUPLICATE CELLS view_3313 - BUILD SOW PAGE  ***************//////
-/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
+/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE ************************/
 
 // Replace *whatever* is rendered in field_1946 cells with an icon
 // Runs on all grid views within the target scenes
