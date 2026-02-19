@@ -34,6 +34,7 @@ cat \
   src/features/refresh-on-inline-edit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/style-detail-labels.js \
+  src/features/gtm-inject.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \
   src/features/legacy/add-checkboxes.js \
