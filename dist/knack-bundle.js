@@ -49,20 +49,11 @@ window.SCW = window.SCW || {};
       color: #07467c !important;
       font-size: 20px !important;
       margin-top: 30px !important;
+    }
+
+    /* Pull section-header H2s tight against the ktlHideShowButton that follows */
+    .kn-rich_text:has(+ .kn-view .ktlHideShowButton) h2 {
       margin-bottom: -15px !important;
-    }
-
-    /* Reset H2 overrides inside detail-view values (Client, Project, Site etc.) */
-    .kn-detail-body h2 {
-      font-weight: normal !important;
-      color: inherit !important;
-      font-size: inherit !important;
-      margin-top: 0 !important;
-    }
-
-    /* Prevent scrollbar from h2 negative margin */
-    .kn-detail-body:has(h2) {
-      overflow: hidden !important;
     }
 
     /* KTL hide/show (shrink) button */
