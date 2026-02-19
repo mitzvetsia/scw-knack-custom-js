@@ -81,7 +81,8 @@
 
     const css = `
       /* Vertical-align all table cells in group-collapse scenes */
-      ${s('table td')} {
+      ${s('.scw-group-collapse-enabled table td')},
+      ${s('.scw-group-collapse-enabled table th')} {
         vertical-align: middle !important;
       }
 
