@@ -639,6 +639,17 @@ window.SCW = window.SCW || {};
   function getLabelCellHtmlWithoutInjected(labelCell) {
     const clone = labelCell.cloneNode(true);
     clone.querySelectorAll('.scw-l4-2019, br.scw-l4-2019-br').forEach((n) => n.remove());
+    // If a previous run wrapped the cell in .scw-concat-cameras, unwrap to
+    // the original label text so we don't nest camera lists on re-runs.
+    const prevConcat = clone.querySelector('.scw-concat-cameras');
+    if (prevConcat) {
+      // The camera list is inside the <b> tag — remove it to get the base label
+      const camB = prevConcat.querySelector('b');
+      if (camB) { const prevBr = camB.previousElementSibling; if (prevBr && prevBr.tagName === 'BR') prevBr.remove(); camB.remove(); }
+      // Unwrap: replace the .scw-concat-cameras div with its remaining children
+      while (prevConcat.firstChild) prevConcat.parentNode.insertBefore(prevConcat.firstChild, prevConcat);
+      prevConcat.remove();
+    }
     return clone.innerHTML || '';
   }
 
@@ -1458,6 +1469,15 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
 
+    // Strip previously injected camera wrapper to avoid nesting on re-runs
+    const prevConcat = labelCell.querySelector('.scw-concat-cameras');
+    if (prevConcat) {
+      const camB = prevConcat.querySelector('b');
+      if (camB) { const prevBr = camB.previousElementSibling; if (prevBr && prevBr.tagName === 'BR') prevBr.remove(); camB.remove(); }
+      while (prevConcat.firstChild) prevConcat.parentNode.insertBefore(prevConcat.firstChild, prevConcat);
+      prevConcat.remove();
+    }
+
     const injected = labelCell.querySelector('.scw-l4-2019');
     let baseHtml = '';
 
@@ -1494,6 +1514,16 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     const $labelCell = $groupRow.children('td').first();
     if (!$labelCell.length) return;
+
+    // Strip previously injected camera wrapper to avoid nesting on re-runs
+    const labelEl = $labelCell[0];
+    const prevConcat = labelEl.querySelector('.scw-concat-cameras');
+    if (prevConcat) {
+      const camB = prevConcat.querySelector('b');
+      if (camB) { const prevBr = camB.previousElementSibling; if (prevBr && prevBr.tagName === 'BR') prevBr.remove(); camB.remove(); }
+      while (prevConcat.firstChild) prevConcat.parentNode.insertBefore(prevConcat.firstChild, prevConcat);
+      prevConcat.remove();
+    }
 
     const currentHtml = $labelCell.html() || '';
     const sanitizedBase = sanitizeAllowOnlyBrAndB(decodeEntities(currentHtml));
@@ -2308,8 +2338,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // EVENT BINDING (multi-view)
   // ============================================================
 
-  // Pending safety-net timeouts per view (debounced).
-  const _safetyTimer = {};
+  // Pending safety-net state per view.
+  const _safetyState = {};
 
   function bindForView(viewId) {
     const ev = `knack-records-render.${viewId}${CONFIG.eventNs}`;
@@ -2317,11 +2347,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $(document)
       .off(ev)
       .on(ev, function (event, view) {
-        // Clear any pending safety-net re-run from a prior render.
-        if (_safetyTimer[viewId]) {
-          clearTimeout(_safetyTimer[viewId]);
-          _safetyTimer[viewId] = null;
+        // Tear down any prior safety-net timers / observer for this view.
+        const prev = _safetyState[viewId];
+        if (prev) {
+          prev.timers.forEach(clearTimeout);
+          if (prev.obs) prev.obs.disconnect();
         }
+        _safetyState[viewId] = { timers: [], obs: null };
+
+        let pipelineRunning = false;
 
         function executePipeline() {
           // Always re-acquire DOM context so we never touch a detached tbody.
@@ -2331,30 +2365,58 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           injectCssOnce();
           normalizeField2019ForGrouping(ctx);
 
+          pipelineRunning = true;
           try {
             runTotalsPipeline(ctx);
           } catch (error) {
             // eslint-disable-next-line no-console
             console.error(`[SCW totals][${viewId}] error:`, error);
+          } finally {
+            pipelineRunning = false;
           }
+        }
+
+        function totalsAreMissing() {
+          var root = document.getElementById(viewId);
+          if (!root) return false;
+          var $tbody = $(root).find('.kn-table tbody');
+          return $tbody.length && !$tbody.find('tr.scw-level-total-row').length;
         }
 
         // Run the pipeline synchronously — the DOM is ready when
         // knack-records-render fires, so there is no reason to defer.
         executePipeline();
 
-        // Safety net: if Knack (or another handler) re-renders the view
-        // shortly after our synchronous run and wipes our injected rows,
-        // this debounced check will re-inject them.
-        _safetyTimer[viewId] = setTimeout(() => {
-          _safetyTimer[viewId] = null;
-          var root = document.getElementById(viewId);
-          if (!root) return;
-          var $tbody = $(root).find('.kn-table tbody');
-          if ($tbody.length && !$tbody.find('tr.scw-level-total-row').length) {
-            executePipeline();
-          }
-        }, 300);
+        // Safety net 1: staggered timer checks at 300ms and 1200ms.
+        // Covers Knack async re-renders that wipe our injected rows.
+        [300, 1200].forEach(function (ms) {
+          var t = setTimeout(function () {
+            if (totalsAreMissing()) executePipeline();
+          }, ms);
+          _safetyState[viewId].timers.push(t);
+        });
+
+        // Safety net 2: short-lived MutationObserver on the view root.
+        // Catches Knack wiping tbody content between our timer checks.
+        var viewRoot = document.getElementById(viewId);
+        if (viewRoot) {
+          var obsDebounce = 0;
+          var obs = new MutationObserver(function () {
+            if (pipelineRunning) return;          // we caused this mutation
+            if (obsDebounce) clearTimeout(obsDebounce);
+            obsDebounce = setTimeout(function () {
+              obsDebounce = 0;
+              if (totalsAreMissing()) executePipeline();
+            }, 80);
+          });
+          obs.observe(viewRoot, { childList: true, subtree: true });
+          _safetyState[viewId].obs = obs;
+
+          // Disconnect observer after 3s — we only need it for the initial
+          // settle period.  Keeps long-lived overhead at zero.
+          var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 3000);
+          _safetyState[viewId].timers.push(disconnectTimer);
+        }
       });
   }
 
