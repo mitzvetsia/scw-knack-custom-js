@@ -16,8 +16,8 @@
 
   const ICON_HTML =
     '<span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;">' +
-      '<i class="fa fa-solid fa-location-dot" aria-hidden="true" title="Changing Location" style="font-size:26px;"></i>' +
-      '<i class="fa fa-solid fa-arrows-rotate" aria-hidden="true" style="font-size:18px;"></i>' +
+      '<i class="fa fa-map-marker" aria-hidden="true" title="Changing Location" style="font-size:26px;"></i>' +
+      '<i class="fa fa-refresh" aria-hidden="true" style="font-size:18px;"></i>' +
     '</span>';
 
   // Inject CSS once (covers all target views)
