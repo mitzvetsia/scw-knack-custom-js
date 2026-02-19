@@ -49,6 +49,7 @@ window.SCW = window.SCW || {};
       color: #07467c !important;
       font-size: 20px !important;
       margin-top: 30px !important;
+      margin-bottom: -15px !important;
     }
 
     /* Reset H2 overrides inside detail-view values (Client, Project, Site etc.) */
@@ -62,11 +63,6 @@ window.SCW = window.SCW || {};
     /* Prevent scrollbar from h2 negative margin */
     .kn-detail-body:has(h2) {
       overflow: hidden !important;
-    }
-
-    /* Pull rich-text heading closer to following hide/show section */
-    .kn-rich_text:has(+ .kn-view .ktlHideShowSection) {
-      margin-bottom: -15px !important;
     }
 
     /* KTL hide/show (shrink) button */
