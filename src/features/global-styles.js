@@ -8,7 +8,7 @@
     'passive-info': '#5F6B7A',
   };
   const KTL_VIEW_COLORS = {
-    view_3475: 'passive-info',
+    view_3477: 'passive-info',
   };
 
   const id = 'scw-global-styles-css';
