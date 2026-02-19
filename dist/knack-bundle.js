@@ -2431,7 +2431,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
     });
   });
-})();/*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
+})();/*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) ************************/
 (function () {
   'use strict';
 
@@ -2458,6 +2458,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     view_3374: { L1bg: '#124E85' },
     view_3325: { L1bg: '#124E85' },
     view_3331: { L1bg: '#124E85' },
+    view_3475: { L1bg: '#5F6B7A' },
+
   };
 
   // ======================
