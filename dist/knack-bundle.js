@@ -2417,6 +2417,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     };
 
     const css = `
+      /* Vertical-align all table cells in group-collapse scenes */
+      ${s('.scw-group-collapse-enabled table td')} {
+        vertical-align: middle !important;
+      }
+
       ${s('.scw-group-collapse-enabled tr.scw-group-header')} {
         cursor: pointer;
         user-select: none;
