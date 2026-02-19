@@ -1,4 +1,4 @@
-/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
+/********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE ************************/
 
 // Replace *whatever* is rendered in field_1946 cells with an icon
 // Runs on all grid views within the target scenes
