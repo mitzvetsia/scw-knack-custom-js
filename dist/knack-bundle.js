@@ -3306,19 +3306,19 @@ $(document).on('knack-view-render.view_3313', function () {
     }
   }
 
-  // MutationObserver catches views that render after the scene event fires
+  // MutationObserver catches DOM changes that aren't covered by Knack events.
+  // Runs synchronously (no requestAnimationFrame) so replacement happens
+  // before the browser paints — the idempotency check prevents infinite loops.
   const observerByScene = {};
 
   function startObserverForScene(sceneId) {
     if (observerByScene[sceneId]) return;
 
-    let raf = 0;
     const obs = new MutationObserver(() => {
       const current = getCurrentSceneId();
       if (current !== sceneId) return;
 
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => replaceIconsInScene(sceneId));
+      replaceIconsInScene(sceneId);
     });
 
     obs.observe(document.body, { childList: true, subtree: true });
@@ -3326,20 +3326,25 @@ $(document).on('knack-view-render.view_3313', function () {
   }
 
   // ---- Event listeners for inline-edit recovery ----
-  // knack-cell-update fires after a single cell inline edit completes.
-  // knack-view-render fires when model.fetch() refreshes a whole view.
-  // Both run replacement synchronously (no RAF) so the text-to-icon swap
-  // happens in the same frame Knack fires the event — no visible flash.
-  const NS = ".scwReplaceIcon";
+  //
+  // Knack triggers namespaced events like "knack-cell-update.view_123"
+  // and "knack-view-render.view_456".  In jQuery, .trigger("evt.ns")
+  // only fires handlers bound with matching namespace OR no namespace.
+  // Our old binding (.on("knack-cell-update.scwReplaceIcon")) used a
+  // non-matching namespace so it NEVER fired — all recovery was done
+  // by the MutationObserver with a 1-frame RAF delay (= visible flash).
+  //
+  // Fix: bind with NO namespace so we catch every view's events.
+  // Use the named function reference for .off() cleanup instead.
 
-  function bindInlineEditListeners() {
+  function bindKnackEventListeners() {
     $(document)
-      .off("knack-cell-update" + NS)
-      .on("knack-cell-update" + NS, replaceIfActiveScene);
+      .off("knack-cell-update", replaceIfActiveScene)
+      .on("knack-cell-update", replaceIfActiveScene);
 
     $(document)
-      .off("knack-view-render" + NS)
-      .on("knack-view-render" + NS, replaceIfActiveScene);
+      .off("knack-view-render", replaceIfActiveScene)
+      .on("knack-view-render", replaceIfActiveScene);
   }
 
   SCENE_IDS.forEach((sceneId) => {
@@ -3347,7 +3352,7 @@ $(document).on('knack-view-render.view_3313', function () {
       injectCssOnce();
       replaceIconsInScene(sceneId);
       startObserverForScene(sceneId);
-      bindInlineEditListeners();
+      bindKnackEventListeners();
     }, 'replace-content-with-icon');
   });
 
@@ -3357,7 +3362,7 @@ $(document).on('knack-view-render.view_3313', function () {
     injectCssOnce();
     replaceIconsInScene(initialScene);
     startObserverForScene(initialScene);
-    bindInlineEditListeners();
+    bindKnackEventListeners();
   }
 })();
 
