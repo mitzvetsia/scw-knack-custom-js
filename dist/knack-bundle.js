@@ -247,7 +247,7 @@ window.SCW = window.SCW || {};
   });
 })();
 /*** END FEATURE: Odd scene_776 stub ************************************************************************/
-/////************* PROPOSAL VIEW OF SOW (effective Q1 2026) ***************//////
+/////*********** PROPOSAL VIEW OF SOW (effective Q1 2026) ***************//////
 /**
  * SCW Totals Script - Refactored (multi-view + multi-field + modular features)
  * Base: Your working Version 2.0 (Last Updated: 2026-02-02/03c)
@@ -307,7 +307,7 @@ window.SCW = window.SCW || {};
         },
       },
       view_3371: {
-        showProjectTotals: false,
+        showProjectTotals: true,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
