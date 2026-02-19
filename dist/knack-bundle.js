@@ -3273,15 +3273,6 @@ $(document).on('knack-view-render.view_3313', function () {
     document.head.appendChild(style);
   }
 
-  function getCurrentSceneId() {
-    const bodyId = $('body').attr('id');
-    if (bodyId && bodyId.includes('scene_')) {
-      const m = bodyId.match(/scene_\d+/);
-      if (m) return m[0];
-    }
-    return null;
-  }
-
   function replaceIconsInScene(sceneId) {
     const $scene = $(`#kn-${sceneId}`);
     if (!$scene.length) return;
@@ -3305,8 +3296,12 @@ $(document).on('knack-view-render.view_3313', function () {
 
     let raf = 0;
     const obs = new MutationObserver(() => {
-      const current = getCurrentSceneId();
-      if (current !== sceneId) return;
+      // If the scene container is gone, the user navigated away — clean up
+      if (!document.getElementById(`kn-${sceneId}`)) {
+        obs.disconnect();
+        delete observerByScene[sceneId];
+        return;
+      }
 
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => replaceIconsInScene(sceneId));
@@ -3323,14 +3318,6 @@ $(document).on('knack-view-render.view_3313', function () {
       startObserverForScene(sceneId);
     }, 'replace-content-with-icon');
   });
-
-  // Handle case where scene is already rendered on load
-  const initialScene = getCurrentSceneId();
-  if (SCENE_IDS.indexOf(initialScene) !== -1) {
-    injectCssOnce();
-    replaceIconsInScene(initialScene);
-    startObserverForScene(initialScene);
-  }
 })();
 
 /********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
