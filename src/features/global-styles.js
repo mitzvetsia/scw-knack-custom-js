@@ -63,6 +63,14 @@
       border-radius: 20px !important;
     }
 
+    /* ── view_3475 color exception ── */
+    #hideShow_view_3475_button.ktlHideShowButton {
+      background-color: #5F6B7A;
+    }
+    #view_3475:has(.ktlHideShowButton) {
+      background-color: #5F6B7A;
+    }
+
     /* Menu buttons */
     .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
       background-color: rgba(237,131,38, 1);
