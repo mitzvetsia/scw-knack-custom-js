@@ -56,11 +56,12 @@
     $scene.find(`table.kn-table tbody td.${FIELD_KEY}`).each(function () {
       const $cell = $(this);
 
-      // idempotent
-      if ($cell.data("scwReplacedWithIcon")) return;
+      // Content-based idempotency: only skip if the icon is actually present.
+      // jQuery .data() flags persist on reused DOM elements even after Knack
+      // replaces cell innerHTML during inline edits, so we check the real DOM.
+      if ($cell.find(".fa-server").length) return;
 
       $cell.empty().append(ICON_HTML);
-      $cell.data("scwReplacedWithIcon", true);
     });
   }
 
@@ -83,11 +84,29 @@
     observerByScene[sceneId] = obs;
   }
 
+  // Listen for inline-edit cell updates on any view and re-apply icons.
+  // Knack fires knack-cell-update after saving an inline edit; the edited
+  // view's row is re-rendered which strips the icon. A small delay ensures
+  // Knack has finished its DOM update before we re-apply.
+  function bindCellUpdateListeners(sceneId) {
+    const ns = ".scwReplaceIcon";
+    $(document).off("knack-cell-update" + ns);
+    $(document).on("knack-cell-update" + ns, function () {
+      const current = getCurrentSceneId();
+      if (SCENE_IDS.indexOf(current) === -1) return;
+      // Re-apply after Knack finishes its DOM update
+      requestAnimationFrame(function () {
+        replaceIconsInScene(current);
+      });
+    });
+  }
+
   SCENE_IDS.forEach((sceneId) => {
     SCW.onSceneRender(sceneId, function () {
       injectCssOnce();
       replaceIconsInScene(sceneId);
       startObserverForScene(sceneId);
+      bindCellUpdateListeners(sceneId);
     }, 'replace-content-with-icon');
   });
 
@@ -97,6 +116,7 @@
     injectCssOnce();
     replaceIconsInScene(initialScene);
     startObserverForScene(initialScene);
+    bindCellUpdateListeners(initialScene);
   }
 })();
 
