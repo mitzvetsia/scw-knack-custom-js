@@ -9,7 +9,7 @@
   const FIELD_KEY = "field_1946";
 
   const ICON_HTML =
-    '<span class="scw-field1946-icon" style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle; color:#333;">' +
+    '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
       '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
       '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
         '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
@@ -31,12 +31,6 @@
         display: table-cell !important;
         text-align: center;
         vertical-align: middle;
-        /* Hide everything by default so Knack re-renders don't flash text */
-        visibility: hidden !important;
-      }
-      /* Only our injected icon is visible */
-      ${selectors} .scw-field1946-icon {
-        visibility: visible !important;
       }
     `;
 
@@ -71,6 +65,14 @@
     });
   }
 
+  // Runs replacement for whichever target scene is active
+  function replaceIfActiveScene() {
+    const current = getCurrentSceneId();
+    if (current && SCENE_IDS.indexOf(current) !== -1) {
+      replaceIconsInScene(current);
+    }
+  }
+
   // MutationObserver catches views that render after the scene event fires
   const observerByScene = {};
 
@@ -90,21 +92,21 @@
     observerByScene[sceneId] = obs;
   }
 
-  // Listen for inline-edit cell updates on any view and re-apply icons.
-  // Knack fires knack-cell-update after saving an inline edit; the edited
-  // view's row is re-rendered which strips the icon. A small delay ensures
-  // Knack has finished its DOM update before we re-apply.
-  function bindCellUpdateListeners(sceneId) {
-    const ns = ".scwReplaceIcon";
-    $(document).off("knack-cell-update" + ns);
-    $(document).on("knack-cell-update" + ns, function () {
-      const current = getCurrentSceneId();
-      if (SCENE_IDS.indexOf(current) === -1) return;
-      // Re-apply after Knack finishes its DOM update
-      requestAnimationFrame(function () {
-        replaceIconsInScene(current);
-      });
-    });
+  // ---- Event listeners for inline-edit recovery ----
+  // knack-cell-update fires after a single cell inline edit completes.
+  // knack-view-render fires when model.fetch() refreshes a whole view.
+  // Both run replacement synchronously (no RAF) so the text-to-icon swap
+  // happens in the same frame Knack fires the event — no visible flash.
+  const NS = ".scwReplaceIcon";
+
+  function bindInlineEditListeners() {
+    $(document)
+      .off("knack-cell-update" + NS)
+      .on("knack-cell-update" + NS, replaceIfActiveScene);
+
+    $(document)
+      .off("knack-view-render" + NS)
+      .on("knack-view-render" + NS, replaceIfActiveScene);
   }
 
   SCENE_IDS.forEach((sceneId) => {
@@ -112,7 +114,7 @@
       injectCssOnce();
       replaceIconsInScene(sceneId);
       startObserverForScene(sceneId);
-      bindCellUpdateListeners(sceneId);
+      bindInlineEditListeners();
     }, 'replace-content-with-icon');
   });
 
@@ -122,9 +124,8 @@
     injectCssOnce();
     replaceIconsInScene(initialScene);
     startObserverForScene(initialScene);
-    bindCellUpdateListeners(initialScene);
+    bindInlineEditListeners();
   }
 })();
 
 /********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
-
