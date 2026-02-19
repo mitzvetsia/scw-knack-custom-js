@@ -2,20 +2,31 @@
 (function () {
   'use strict';
 
-  const PRIMARY_VIEW_ID = 'view_3364';
-  const FOLLOW_VIEW_ID  = 'view_3359';
+  const VIEW_PAIRS = [
+    { primary: 'view_3364', follow: 'view_3359' },
+    { primary: 'view_3466', follow: 'view_3467' },
+  ];
 
   const EVENT_NS = '.scwExceptionGrid';
   const WARNING_BG = '#7a0f16';
   const WARNING_FG = '#ffffff';
   const RADIUS = 20;
 
+  /* ── look-ups keyed by view id ── */
+  const pairByPrimary = {};
+  const pairByFollow  = {};
+  VIEW_PAIRS.forEach(function (p) {
+    pairByPrimary[p.primary] = p;
+    pairByFollow[p.follow]   = p;
+  });
+
   function injectCssOnce() {
     const id = 'scw-exception-grid-css';
     if (document.getElementById(id)) return;
 
-    const css = `
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active:has(.ktlHideShowButton){
+    const css = VIEW_PAIRS.map(function (p) {
+      return `
+      #${p.primary}.scw-exception-grid-active:has(.ktlHideShowButton){
         margin-bottom: 0px !important;
         background-color: ${WARNING_BG} !important;
         max-width: 100% !important;
@@ -28,7 +39,7 @@
         overflow: hidden !important;
       }
 
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton{
+      #${p.primary}.scw-exception-grid-active .ktlHideShowButton{
         position: relative !important;
         display: flex !important;
         align-items: center !important;
@@ -51,13 +62,13 @@
         border-bottom-right-radius: 0 !important;
       }
 
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton *{
+      #${p.primary}.scw-exception-grid-active .ktlHideShowButton *{
         color: ${WARNING_FG} !important;
       }
 
       /* LEFT icon – centered */
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton::before{
-        content: "⚠️";
+      #${p.primary}.scw-exception-grid-active .ktlHideShowButton::before{
+        content: "\u26A0\uFE0F";
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -68,8 +79,8 @@
       }
 
       /* RIGHT icon – positioned */
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton::after{
-        content: "⚠️";
+      #${p.primary}.scw-exception-grid-active .ktlHideShowButton::after{
+        content: "\u26A0\uFE0F";
         position: absolute;
         right: 32px;
         top: 50%;
@@ -82,8 +93,7 @@
         pointer-events: none;
       }
 
-      /* ✅ Arrow pinned right + vertically centered WITHOUT transform (prevents KTL transform collisions) */
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton .ktlArrow{
+      #${p.primary}.scw-exception-grid-active .ktlHideShowButton .ktlArrow{
         position: absolute;
         right: 12px;
         top: 0;
@@ -92,15 +102,15 @@
         height: 1em;
       }
 
-      #${PRIMARY_VIEW_ID}.scw-exception-grid-active .ktlHideShowButton:hover{
+      #${p.primary}.scw-exception-grid-active .ktlHideShowButton:hover{
         filter: brightness(1.06);
       }
 
-      #${FOLLOW_VIEW_ID}.scw-exception-follow-connected{
+      #${p.follow}.scw-exception-follow-connected{
         border-top-left-radius: 0 !important;
         border-top-right-radius: 0 !important;
-      }
-    `;
+      }`;
+    }).join('\n');
 
     const style = document.createElement('style');
     style.id = id;
@@ -108,13 +118,13 @@
     document.head.appendChild(style);
   }
 
-  function removeOnlyPrimaryView() {
-    $('#' + PRIMARY_VIEW_ID).remove();
-    syncFollowView(false);
+  function removeOnlyPrimaryView(pair) {
+    $('#' + pair.primary).remove();
+    syncFollowView(pair, false);
   }
 
-  function syncFollowView(active) {
-    const $follow = $('#' + FOLLOW_VIEW_ID);
+  function syncFollowView(pair, active) {
+    const $follow = $('#' + pair.follow);
     if (!$follow.length) return;
     $follow.toggleClass('scw-exception-follow-connected', !!active);
   }
@@ -125,33 +135,37 @@
     return !$rows.filter('.kn-tr-nodata').length;
   }
 
-  function markPrimaryActive() {
-    const $primary = $('#' + PRIMARY_VIEW_ID);
+  function markPrimaryActive(pair) {
+    const $primary = $('#' + pair.primary);
     if (!$primary.length) return;
     $primary.addClass('scw-exception-grid-active');
-    syncFollowView(true);
+    syncFollowView(pair, true);
   }
 
   function handlePrimary(view, data) {
-    if (!view || view.key !== PRIMARY_VIEW_ID) return;
+    if (!view) return;
+    const pair = pairByPrimary[view.key];
+    if (!pair) return;
 
-    const $primary = $('#' + PRIMARY_VIEW_ID);
+    const $primary = $('#' + pair.primary);
     if (!$primary.length) return;
 
     if (data && typeof data.total_records === 'number') {
-      if (data.total_records === 0) removeOnlyPrimaryView();
-      else markPrimaryActive();
+      if (data.total_records === 0) removeOnlyPrimaryView(pair);
+      else markPrimaryActive(pair);
       return;
     }
 
-    if (gridHasRealRows($primary)) markPrimaryActive();
-    else removeOnlyPrimaryView();
+    if (gridHasRealRows($primary)) markPrimaryActive(pair);
+    else removeOnlyPrimaryView(pair);
   }
 
   function syncIfFollowRendersLater(view) {
-    if (!view || view.key !== FOLLOW_VIEW_ID) return;
-    const active = $('#' + PRIMARY_VIEW_ID).hasClass('scw-exception-grid-active');
-    syncFollowView(active);
+    if (!view) return;
+    const pair = pairByFollow[view.key];
+    if (!pair) return;
+    const active = $('#' + pair.primary).hasClass('scw-exception-grid-active');
+    syncFollowView(pair, active);
   }
 
   injectCssOnce();
