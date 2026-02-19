@@ -1976,7 +1976,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         'scwL4_2019_RunId',
         'scwL3EachRunId',
         'scwL3ConnDevRunId',
-        'scwHeaderCellsAdded',
+        // NOTE: scwHeaderCellsAdded is intentionally NOT cleared here.
+        // The appended <td> cells persist on group-header rows across
+        // re-runs, so the guard must persist too — otherwise the safety-
+        // net re-run appends a second set of cells (double Qty/Cost).
         'scwL2Rewrite_' + runId,
       ]);
 
