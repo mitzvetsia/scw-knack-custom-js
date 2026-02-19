@@ -80,6 +80,11 @@
     };
 
     const css = `
+      /* Vertical-align all table cells in group-collapse scenes */
+      ${s('table td')} {
+        vertical-align: middle !important;
+      }
+
       ${s('.scw-group-collapse-enabled tr.scw-group-header')} {
         cursor: pointer;
         user-select: none;
