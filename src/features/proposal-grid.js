@@ -2056,10 +2056,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // EVENT BINDING (multi-view)
   // ============================================================
 
-  // Track pending requestAnimationFrame ids per view so we can cancel
-  // stale frames when a view re-renders before the previous frame fires
-  // (the root cause of the "totals sometimes missing" bug on rapid refresh).
-  const _pendingRAF = {};
+  // Pending safety-net timeouts per view (debounced).
+  const _safetyTimer = {};
 
   function bindForView(viewId) {
     const ev = `knack-records-render.${viewId}${CONFIG.eventNs}`;
@@ -2067,18 +2065,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $(document)
       .off(ev)
       .on(ev, function (event, view) {
-        // Cancel any previously scheduled frame for this view so it doesn't
-        // run against a now-detached (stale) tbody reference.
-        if (_pendingRAF[viewId]) {
-          cancelAnimationFrame(_pendingRAF[viewId]);
-          _pendingRAF[viewId] = null;
+        // Clear any pending safety-net re-run from a prior render.
+        if (_safetyTimer[viewId]) {
+          clearTimeout(_safetyTimer[viewId]);
+          _safetyTimer[viewId] = null;
         }
 
-        _pendingRAF[viewId] = requestAnimationFrame(() => {
-          _pendingRAF[viewId] = null;
-
-          // Re-acquire DOM context INSIDE the rAF callback so $tbody always
-          // points to the live DOM, not a detached element from a prior render.
+        function executePipeline() {
+          // Always re-acquire DOM context so we never touch a detached tbody.
           const ctx = buildCtx(viewId, view);
           if (!ctx) return;
 
@@ -2091,7 +2085,24 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             // eslint-disable-next-line no-console
             console.error(`[SCW totals][${viewId}] error:`, error);
           }
-        });
+        }
+
+        // Run the pipeline synchronously — the DOM is ready when
+        // knack-records-render fires, so there is no reason to defer.
+        executePipeline();
+
+        // Safety net: if Knack (or another handler) re-renders the view
+        // shortly after our synchronous run and wipes our injected rows,
+        // this debounced check will re-inject them.
+        _safetyTimer[viewId] = setTimeout(() => {
+          _safetyTimer[viewId] = null;
+          var root = document.getElementById(viewId);
+          if (!root) return;
+          var $tbody = $(root).find('.kn-table tbody');
+          if ($tbody.length && !$tbody.find('tr.scw-level-total-row').length) {
+            executePipeline();
+          }
+        }, 300);
       });
   }
 
