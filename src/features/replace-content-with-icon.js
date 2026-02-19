@@ -1,16 +1,10 @@
 /********************* REPLACE MDF COLUMN WITH ICON ON BUILD QUOTE PAGE **************************/
 
 // Replace *whatever* is rendered in field_1946 cells with an icon
-// Runs on multiple grid views
+// Runs on all grid views within the target scenes
 
 (function () {
-  const VIEW_IDS = [
-    "view_3313",
-    "view_3332",
-    "view_3384",
-    "view_3356",
-    "view_3456"
-  ];
+  const SCENE_IDS = ["scene_1085", "scene_1116"];
 
   const FIELD_KEY = "field_1946";
 
@@ -23,19 +17,20 @@
       '</span>' +
     '</span>';
 
-  // Inject CSS once (covers all target views)
+  // Inject CSS once
   function injectCssOnce() {
     const id = "scw-field1946-icon-css";
     if (document.getElementById(id)) return;
 
-    const selectors = VIEW_IDS
-      .map(v => `#${v} td.${FIELD_KEY}`)
+    const selectors = SCENE_IDS
+      .map(s => `#kn-${s} td.${FIELD_KEY}`)
       .join(", ");
 
     const css = `
       ${selectors} {
         display: table-cell !important;
         text-align: center;
+        vertical-align: middle;
       }
     `;
 
@@ -45,22 +40,25 @@
     document.head.appendChild(style);
   }
 
-  VIEW_IDS.forEach((VIEW_ID) => {
-    SCW.onViewRender(VIEW_ID, function () {
+  function replaceIconsInScene(sceneId) {
+    const $scene = $(`#kn-${sceneId}`);
+    if (!$scene.length) return;
+
+    $scene.find(`table.kn-table tbody td.${FIELD_KEY}`).each(function () {
+      const $cell = $(this);
+
+      // idempotent
+      if ($cell.data("scwReplacedWithIcon")) return;
+
+      $cell.empty().append(ICON_HTML);
+      $cell.data("scwReplacedWithIcon", true);
+    });
+  }
+
+  SCENE_IDS.forEach((sceneId) => {
+    SCW.onSceneRender(sceneId, function () {
       injectCssOnce();
-
-      const $view = $("#" + VIEW_ID);
-      if (!$view.length) return;
-
-      $view.find(`table.kn-table tbody td.${FIELD_KEY}`).each(function () {
-        const $cell = $(this);
-
-        // idempotent
-        if ($cell.data("scwReplacedWithIcon")) return;
-
-        $cell.empty().append(ICON_HTML);
-        $cell.data("scwReplacedWithIcon", true);
-      });
+      replaceIconsInScene(sceneId);
     }, 'replace-content-with-icon');
   });
 })();
