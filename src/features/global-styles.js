@@ -9,6 +9,9 @@
   };
   const KTL_VIEW_COLORS = {
     view_3477: 'passive-info',
+    view_3476: 'passive-info',
+    view_3480: 'passive-info',
+
   };
 
   const id = 'scw-global-styles-css';
