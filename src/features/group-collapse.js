@@ -25,7 +25,7 @@
     view_3374: { L1bg: '#124E85' },
     view_3325: { L1bg: '#124E85' },
     view_3331: { L1bg: '#124E85' },
-    view_3475: { L1bg: '#5F6B7A' },
+    view_3475: { headBg: '#5F6B7A' },
 
   };
 
@@ -262,6 +262,8 @@
           #${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td,
           #${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ${o.L2color} !important; }
         ` : ''}
+        ${o.headBg ? `#${viewId} thead th { background-color: ${o.headBg} !important; }` : ''}
+        ${o.headColor ? `#${viewId} thead th, #${viewId} thead th * { color: ${o.headColor} !important; }` : ''}
       `).join('')}
     `;
 
