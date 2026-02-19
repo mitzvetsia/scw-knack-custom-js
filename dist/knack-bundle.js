@@ -2492,10 +2492,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         filter: brightness(1.06);
       }
       /* L1 collapsed — thin divider, accordion-like */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed')} {
+        font-size: 12px;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td')} {
         border-bottom: 1px solid rgba(255,255,255,.08);
       }
       /* L1 expanded — more padding, soft inner shadow */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
+        font-size: 14px;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
         padding: 14px 5px !important;
         box-shadow: inset 0 1px 4px rgba(0,0,0,.08);
