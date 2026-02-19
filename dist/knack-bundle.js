@@ -2400,7 +2400,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const L1 = {
       fontSize: '12px',
       fontWeight: '400',
-      bg: '#1a5a8e',
+      bg: 'rgba(237,131,38,1)',
       color: '#ffffff',
       tdPadding: '3px 5px',
       collapsedOpacity: '0.92',
