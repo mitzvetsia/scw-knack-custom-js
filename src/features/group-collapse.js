@@ -9,6 +9,7 @@
   // default to OPEN instead of collapsed. Set to 0 to always collapse.
   const SCENE_CONFIG = {
     scene_1085: { openIfFewerThan: 30 },
+    scene_1116: { openIfFewerThan: 30 },
   };
   const SCENE_IDS = Object.keys(SCENE_CONFIG);
   const EVENT_NS = '.scwGroupCollapse';
