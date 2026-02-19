@@ -252,15 +252,15 @@
 
       ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
         /* Per-view overrides: ${viewId} */
-        ${o.L1bg ? `#${viewId} .kn-table-group.kn-group-level-1.scw-group-header { background-color: ${o.L1bg} !important; }` : ''}
+        ${o.L1bg ? `#${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header { background-color: ${o.L1bg} !important; }` : ''}
         ${o.L1color ? `
-          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td,
-          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td * { color: ${o.L1color} !important; }
+          #${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td,
+          #${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td * { color: ${o.L1color} !important; }
         ` : ''}
-        ${o.L2bg ? `#${viewId} .kn-table-group.kn-group-level-2.scw-group-header { background-color: ${o.L2bg} !important; }` : ''}
+        ${o.L2bg ? `#${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header { background-color: ${o.L2bg} !important; }` : ''}
         ${o.L2color ? `
-          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td,
-          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ${o.L2color} !important; }
+          #${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td,
+          #${viewId}.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ${o.L2color} !important; }
         ` : ''}
       `).join('')}
     `;
