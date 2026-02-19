@@ -31,14 +31,12 @@
         display: table-cell !important;
         text-align: center;
         vertical-align: middle;
-        /* Hide raw text so inline-edit re-renders don't flash */
-        font-size: 0;
-        color: transparent;
+        /* Hide everything by default so Knack re-renders don't flash text */
+        visibility: hidden !important;
       }
-      /* Restore visibility for our injected icon */
+      /* Only our injected icon is visible */
       ${selectors} .scw-field1946-icon {
-        font-size: initial;
-        color: #333;
+        visibility: visible !important;
       }
     `;
 
