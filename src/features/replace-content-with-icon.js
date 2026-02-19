@@ -12,8 +12,8 @@
     '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
       '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
       '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
-        '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block;"></i>' +
-        '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block;"></i>' +
+        '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+        '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
       '</span>' +
     '</span>';
 

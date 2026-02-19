@@ -63,7 +63,7 @@
     const L1 = {
       fontSize: '12px',
       fontWeight: '400',
-      bg: '#1a5a8e',
+      bg: 'rgba(237,131,38,1)',
       color: '#ffffff',
       tdPadding: '3px 5px',
       collapsedOpacity: '0.92',
@@ -80,6 +80,11 @@
     };
 
     const css = `
+      /* Vertical-align all table cells in group-collapse scenes */
+      ${s('.scw-group-collapse-enabled table td')} {
+        vertical-align: middle !important;
+      }
+
       ${s('.scw-group-collapse-enabled tr.scw-group-header')} {
         cursor: pointer;
         user-select: none;
@@ -150,10 +155,16 @@
         filter: brightness(1.06);
       }
       /* L1 collapsed — thin divider, accordion-like */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed')} {
+        font-size: 12px;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td')} {
         border-bottom: 1px solid rgba(255,255,255,.08);
       }
       /* L1 expanded — more padding, soft inner shadow */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
+        font-size: 14px;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
         padding: 14px 5px !important;
         box-shadow: inset 0 1px 4px rgba(0,0,0,.08);

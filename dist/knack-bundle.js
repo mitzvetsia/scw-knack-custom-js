@@ -2307,8 +2307,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $(document)
       .off(ev)
       .on(ev, function (event, view) {
+        console.log(`[SCW debug] knack-records-render fired for ${viewId}, DOM element:`, !!document.getElementById(viewId));
         const ctx = buildCtx(viewId, view);
-        if (!ctx) return;
+        if (!ctx) { console.warn(`[SCW debug] buildCtx returned null for ${viewId}`); return; }
+        console.log(`[SCW debug] Running pipeline for ${viewId}, showProjectTotals:`, ctx.showProjectTotals);
 
         injectCssOnce();
         normalizeField2019ForGrouping(ctx);
@@ -2400,7 +2402,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const L1 = {
       fontSize: '12px',
       fontWeight: '400',
-      bg: '#1a5a8e',
+      bg: 'rgba(237,131,38,1)',
       color: '#ffffff',
       tdPadding: '3px 5px',
       collapsedOpacity: '0.92',
@@ -2417,6 +2419,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     };
 
     const css = `
+      /* Vertical-align all table cells in group-collapse scenes */
+      ${s('.scw-group-collapse-enabled table td')} {
+        vertical-align: middle !important;
+      }
+
       ${s('.scw-group-collapse-enabled tr.scw-group-header')} {
         cursor: pointer;
         user-select: none;
@@ -2487,10 +2494,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         filter: brightness(1.06);
       }
       /* L1 collapsed — thin divider, accordion-like */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed')} {
+        font-size: 12px;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td')} {
         border-bottom: 1px solid rgba(255,255,255,.08);
       }
       /* L1 expanded — more padding, soft inner shadow */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
+        font-size: 14px;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
         padding: 14px 5px !important;
         box-shadow: inset 0 1px 4px rgba(0,0,0,.08);
@@ -3138,8 +3151,8 @@ $(document).on('knack-view-render.view_3313', function () {
     '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
       '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
       '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
-        '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block;"></i>' +
-        '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block;"></i>' +
+        '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+        '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
       '</span>' +
     '</span>';
 
@@ -5014,7 +5027,7 @@ $(".kn-navigation-bar").hide();
 // Targets: field_2301, field_2290
 // ============================================================
 (function () {
-  var FIELDS = ['field_2301', 'field_2290','field_2267','field_2303'];
+  var FIELDS = ['field_2301', 'field_2290','field_2267','field_2303','field_2262'];
 
   function processCell($el) {
     if ($el.data('scwNeg')) return;

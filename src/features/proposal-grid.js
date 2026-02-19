@@ -58,7 +58,7 @@
         },
       },
       view_3371: {
-        showProjectTotals: false,
+        showProjectTotals: true,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
@@ -2058,8 +2058,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $(document)
       .off(ev)
       .on(ev, function (event, view) {
+        console.log(`[SCW debug] knack-records-render fired for ${viewId}, DOM element:`, !!document.getElementById(viewId));
         const ctx = buildCtx(viewId, view);
-        if (!ctx) return;
+        if (!ctx) { console.warn(`[SCW debug] buildCtx returned null for ${viewId}`); return; }
+        console.log(`[SCW debug] Running pipeline for ${viewId}, showProjectTotals:`, ctx.showProjectTotals);
 
         injectCssOnce();
         normalizeField2019ForGrouping(ctx);
