@@ -3142,8 +3142,11 @@ $(document).on('knack-view-render.view_3313', function () {
 
   const ICON_HTML =
     '<span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;">' +
-      '<i class="fa fa-map-marker" aria-hidden="true" title="Changing Location" style="font-size:26px;"></i>' +
-      '<i class="fa fa-refresh" aria-hidden="true" style="font-size:18px;"></i>' +
+      '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px;"></i>' +
+      '<span style="display:inline-flex; flex-direction:column; align-items:center; gap:0; line-height:1;">' +
+        '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px;"></i>' +
+        '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px;"></i>' +
+      '</span>' +
     '</span>';
 
   // Inject CSS once (covers all target views)
