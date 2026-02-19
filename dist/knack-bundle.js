@@ -2282,6 +2282,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   const _lastPipelineState = {};
 
   function refreshProjectTotals(ctx, caches, $tbody) {
+    // Guard: skip if $tbody has been detached from the live DOM
+    // (can happen when view_3342 fires while a view is mid-re-render).
+    if (!$tbody.length || !document.contains($tbody[0])) return;
+
     // Store state so view_3342 handler can re-invoke
     _lastPipelineState[ctx.viewId] = { ctx, caches, $tbody };
 
@@ -2301,21 +2305,35 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // EVENT BINDING (multi-view)
   // ============================================================
 
+  // Track pending requestAnimationFrame ids per view so we can cancel
+  // stale frames when a view re-renders before the previous frame fires
+  // (the root cause of the "totals sometimes missing" bug on rapid refresh).
+  const _pendingRAF = {};
+
   function bindForView(viewId) {
     const ev = `knack-records-render.${viewId}${CONFIG.eventNs}`;
 
     $(document)
       .off(ev)
       .on(ev, function (event, view) {
-        console.log(`[SCW debug] knack-records-render fired for ${viewId}, DOM element:`, !!document.getElementById(viewId));
-        const ctx = buildCtx(viewId, view);
-        if (!ctx) { console.warn(`[SCW debug] buildCtx returned null for ${viewId}`); return; }
-        console.log(`[SCW debug] Running pipeline for ${viewId}, showProjectTotals:`, ctx.showProjectTotals);
+        // Cancel any previously scheduled frame for this view so it doesn't
+        // run against a now-detached (stale) tbody reference.
+        if (_pendingRAF[viewId]) {
+          cancelAnimationFrame(_pendingRAF[viewId]);
+          _pendingRAF[viewId] = null;
+        }
 
-        injectCssOnce();
-        normalizeField2019ForGrouping(ctx);
+        _pendingRAF[viewId] = requestAnimationFrame(() => {
+          _pendingRAF[viewId] = null;
 
-        requestAnimationFrame(() => {
+          // Re-acquire DOM context INSIDE the rAF callback so $tbody always
+          // points to the live DOM, not a detached element from a prior render.
+          const ctx = buildCtx(viewId, view);
+          if (!ctx) return;
+
+          injectCssOnce();
+          normalizeField2019ForGrouping(ctx);
+
           try {
             runTotalsPipeline(ctx);
           } catch (error) {
