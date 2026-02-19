@@ -58,7 +58,7 @@
         },
       },
       view_3371: {
-        showProjectTotals: true,
+        showProjectTotals: false,
         keys: {
           qty: 'field_1964',
           labor: 'field_2028',
