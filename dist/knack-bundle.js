@@ -5661,7 +5661,7 @@ $(".kn-navigation-bar").hide();
 /***************************** GOOGLE TAG MANAGER — SCENE-SPECIFIC INJECTION ****************************/
 (function () {
   var GTM_ID = "GTM-5XL9S9J";
-  var SCENES = ["scene_1096"];
+  var SCENES = ["scene_1096","scene_828","scene_833"];
 
   var headInjected = false;
 
