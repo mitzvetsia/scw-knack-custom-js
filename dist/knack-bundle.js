@@ -122,6 +122,7 @@ window.SCW = window.SCW || {};
       display: block !important;
       margin-left: auto !important;
       margin-right: auto !important;
+      background-color: rgba(237,131,38,.9) !important;
     }
 
     /* Menu buttons */
