@@ -29,7 +29,7 @@
   // Inline-edit event (bound per-view so we know which view triggered)
   var INLINE_EVENT = 'knack-cell-update';
 
-  // Form events (bound scene-wide — form views may not be in the DOM at render)
+  // Form events (bound per-view so namespace matches Knack's trigger)
   var FORM_EVENTS = [
     'knack-record-update',
     'knack-record-create',
@@ -96,14 +96,16 @@
         });
       });
 
-      // --- Form submits: bind scene-wide (form views may not exist yet) ---
+      // --- Form submits: bind per visible view (namespace must match Knack's trigger) ---
       FORM_EVENTS.forEach(function (eventName) {
-        var fullEvent = eventName + NS;
-        $(document).off(fullEvent);
-        $(document).on(fullEvent, function () {
-          if (hasRefreshFilter) {
-            rule.refreshViews.forEach(refreshView);
-          }
+        views.forEach(function (viewId) {
+          var fullEvent = eventName + '.' + viewId + NS;
+          $(document).off(fullEvent);
+          $(document).on(fullEvent, function () {
+            if (hasRefreshFilter) {
+              rule.refreshViews.forEach(refreshView);
+            }
+          });
         });
       });
     });
