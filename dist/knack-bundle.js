@@ -114,10 +114,9 @@ window.SCW = window.SCW || {};
     /* Per-view color overrides (generated from KTL_VIEW_COLORS) */
     ${ktlOverrides}
 
-    /* Submit buttons */
-/*
-    .kn-view input[type=submit],
-    .kn-submit button.kn-button.is-primary {
+    /* Submit buttons — only inside KTL hide/show views */
+    .kn-view:has(.ktlHideShowButton) input[type=submit],
+    .kn-view:has(.ktlHideShowButton) .kn-submit button.kn-button.is-primary {
       font-size: 14px !important;
       width: 80% !important;
       display: block !important;
@@ -125,7 +124,6 @@ window.SCW = window.SCW || {};
       margin-right: auto !important;
       background-color: rgba(237,131,38,.9) !important;
     }
-*/
 
 
     /* Menu buttons */
