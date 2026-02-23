@@ -90,6 +90,7 @@
     ${ktlOverrides}
 
     /* Submit buttons */
+/*
     .kn-view input[type=submit],
     .kn-submit button.kn-button.is-primary {
       font-size: 14px !important;
@@ -99,6 +100,8 @@
       margin-right: auto !important;
       background-color: rgba(237,131,38,.9) !important;
     }
+*/
+
 
     /* Menu buttons */
     .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
