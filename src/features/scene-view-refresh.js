@@ -26,11 +26,13 @@
     // },
   ];
 
-  // Events that should trigger a refresh
-  var TRIGGER_EVENTS = [
-    'knack-cell-update',     // inline edits
-    'knack-record-update',   // form update submits
-    'knack-record-create',   // form create submits
+  // Inline-edit event (bound per-view so we know which view triggered)
+  var INLINE_EVENT = 'knack-cell-update';
+
+  // Form events (bound scene-wide — form views may not be in the DOM at render)
+  var FORM_EVENTS = [
+    'knack-record-update',
+    'knack-record-create',
   ];
 
   var NS = '.scwSceneViewRefresh';
@@ -64,40 +66,44 @@
     return s;
   }
 
+  function getTargets(rule, hasRefreshFilter, triggerViewId) {
+    if (hasRefreshFilter) {
+      return rule.refreshViews;
+    }
+    return getVisibleViewIds().filter(function (id) {
+      return id !== triggerViewId;
+    });
+  }
+
   RULES.forEach(function (rule) {
     var triggerSet = toSet(rule.triggerViews);
-    var refreshSet = toSet(rule.refreshViews);
     var hasTriggerFilter = rule.triggerViews && rule.triggerViews.length > 0;
     var hasRefreshFilter = rule.refreshViews && rule.refreshViews.length > 0;
 
     $(document).on('knack-scene-render.' + rule.scene, function () {
       var views = getVisibleViewIds();
 
-      // Determine which views act as triggers
+      // --- Inline edits: bind per visible trigger view ---
       var triggers = hasTriggerFilter
         ? views.filter(function (id) { return triggerSet[id]; })
         : views;
 
       triggers.forEach(function (triggerViewId) {
-        TRIGGER_EVENTS.forEach(function (eventName) {
-          // Namespace: eventName.view_XXXX.scwSceneViewRefresh
-          var fullEvent = eventName + '.' + triggerViewId + NS;
+        var fullEvent = INLINE_EVENT + '.' + triggerViewId + NS;
+        $(document).off(fullEvent);
+        $(document).on(fullEvent, function () {
+          getTargets(rule, hasRefreshFilter, triggerViewId).forEach(refreshView);
+        });
+      });
 
-          $(document).off(fullEvent);
-          $(document).on(fullEvent, function () {
-            var targets;
-
-            if (hasRefreshFilter) {
-              targets = rule.refreshViews;
-            } else {
-              // Refresh every visible view except the one that triggered
-              targets = getVisibleViewIds().filter(function (id) {
-                return id !== triggerViewId;
-              });
-            }
-
-            targets.forEach(refreshView);
-          });
+      // --- Form submits: bind scene-wide (form views may not exist yet) ---
+      FORM_EVENTS.forEach(function (eventName) {
+        var fullEvent = eventName + NS;
+        $(document).off(fullEvent);
+        $(document).on(fullEvent, function () {
+          if (hasRefreshFilter) {
+            rule.refreshViews.forEach(refreshView);
+          }
         });
       });
     });
