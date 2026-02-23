@@ -68,7 +68,7 @@
 
     /* KTL hide/show button — full-width bar with branding */
     .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] {
-      width: 800px;
+      width: 100%;
       font-weight: 600;
       font-size: 14px !important;
       color: #fff;
@@ -88,6 +88,17 @@
 
     /* Per-view color overrides (generated from KTL_VIEW_COLORS) */
     ${ktlOverrides}
+
+    /* Submit buttons */
+    .kn-view input[type=submit],
+    .kn-submit button.kn-button.is-primary {
+      font-size: 14px !important;
+      width: 80% !important;
+      display: block !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      background-color: rgba(237,131,38,.9) !important;
+    }
 
     /* Menu buttons */
     .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
