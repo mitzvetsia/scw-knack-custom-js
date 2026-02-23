@@ -16,7 +16,7 @@
     {
       scene: 'scene_1116',
       triggerViews: [],
-      refreshViews: [],
+      refreshViews: ['view_3418'],
     },
     // ---- add more rules here ----
     // {
