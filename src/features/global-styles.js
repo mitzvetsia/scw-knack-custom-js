@@ -6,12 +6,21 @@
   const KTL_DEFAULT_COLOR = '#295f91';
   const KTL_COLOR_TYPES = {
     'passive-info': '#5F6B7A',
+    'documentation': '#4f7c8a',
+    'project-scope-details': '#5877a8',
   };
   const KTL_VIEW_COLORS = {
     view_3477: 'passive-info',
     view_3476: 'passive-info',
     view_3480: 'passive-info',
 
+  };
+
+  /* ── _hsvcategory= keyword → color (parsed from view descriptions) ── */
+  const HSV_CATEGORY_COLORS = {
+    'sowlineitem':           KTL_DEFAULT_COLOR,        // #295f91
+    'documentation':         KTL_COLOR_TYPES['documentation'],        // #4f7c8a
+    'project-scope-details': KTL_COLOR_TYPES['project-scope-details'], // #5877a8
   };
 
   const id = 'scw-global-styles-css';
@@ -122,5 +131,44 @@
   style.id = id;
   style.textContent = css;
   document.head.appendChild(style);
+
+  /* ── Runtime: colour KTL views whose description contains _hsvcategory= ── */
+  const hsvStyleId = 'scw-hsv-category-css';
+
+  function applyHsvCategoryColors() {
+    if (typeof Knack === 'undefined' || !Knack.views) return;
+
+    const rules = [];
+    Object.keys(Knack.views).forEach(function (viewKey) {
+      try {
+        var desc =
+          (Knack.views[viewKey].model &&
+            Knack.views[viewKey].model.view &&
+            Knack.views[viewKey].model.view.description) || '';
+        var match = desc.match(/_hsvcategory=(\S+)/);
+        if (!match) return;
+
+        var category = match[1].toLowerCase();
+        var color = HSV_CATEGORY_COLORS[category];
+        if (!color) return;
+
+        rules.push(
+          '/* ── ' + viewKey + ' → _hsvcategory=' + category + ' ── */\n' +
+          '#hideShow_' + viewKey + '_button.ktlHideShowButton { background-color: ' + color + '; }\n' +
+          '#' + viewKey + ':has(.ktlHideShowButton) { background-color: ' + color + '; }'
+        );
+      } catch (e) { /* view may not have a model yet — skip */ }
+    });
+
+    var el = document.getElementById(hsvStyleId);
+    if (!el) {
+      el = document.createElement('style');
+      el.id = hsvStyleId;
+      document.head.appendChild(el);
+    }
+    el.textContent = rules.join('\n');
+  }
+
+  $(document).on('knack-scene-render.any', applyHsvCategoryColors);
 })();
 /*************  Global Style Overrides  **************************/
