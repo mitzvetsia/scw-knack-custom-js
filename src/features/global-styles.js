@@ -68,7 +68,7 @@
 
     /* KTL hide/show button — full-width bar with branding */
     .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] {
-      width: 800px;
+      width: 100%;
       font-weight: 600;
       font-size: 14px !important;
       color: #fff;
