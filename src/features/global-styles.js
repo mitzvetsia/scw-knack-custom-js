@@ -89,6 +89,16 @@
     /* Per-view color overrides (generated from KTL_VIEW_COLORS) */
     ${ktlOverrides}
 
+    /* Submit buttons */
+    .kn-view input[type=submit],
+    .kn-button.is-primary {
+      font-size: 14px !important;
+      width: 80% !important;
+      display: block !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+
     /* Menu buttons */
     .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
       background-color: rgba(237,131,38, 1);
