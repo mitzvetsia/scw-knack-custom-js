@@ -149,6 +149,55 @@ window.SCW = window.SCW || {};
   document.head.appendChild(style);
 })();
 /*************  Global Style Overrides  **************************/
+
+/*************  _hsvcategory → KTL View Color  ***********************/
+(function () {
+  'use strict';
+
+  /* Colour palette keyed by _hsvcategory value.
+     Add _hsvcategory=<key> to a Knack view's description and the
+     matching colour will be applied to its KTL hide/show wrapper. */
+  const CATEGORY_COLORS = {
+    'sowlineitem':           '#295f91',   // default KTL blue
+    'documentation':         '#4f7c8a',
+    'project-scope-details': '#5877a8',
+  };
+
+  function applyHsvCategoryColors() {
+    if (typeof Knack === 'undefined' || !Knack.models) return;
+
+    let rules = '';
+    for (const viewKey of Object.keys(Knack.models)) {
+      try {
+        const desc = (Knack.models[viewKey].view || {}).description || '';
+        const match = desc.match(/_hsvcategory=(\S+)/);
+        if (!match) continue;
+        const category = match[1].toLowerCase();
+        const color = CATEGORY_COLORS[category];
+        if (!color) continue;
+
+        rules += `
+    /* ── ${viewKey} → _hsvcategory=${category} ── */
+    #hideShow_${viewKey}_button.ktlHideShowButton { background-color: ${color}; }
+    #${viewKey}:has(.ktlHideShowButton) { background-color: ${color}; }`;
+      } catch (e) { /* skip views without expected model structure */ }
+    }
+
+    const styleId = 'scw-hsvcategory-css';
+    let el = document.getElementById(styleId);
+    if (!el) {
+      el = document.createElement('style');
+      el.id = styleId;
+      document.head.appendChild(el);
+    }
+    el.textContent = rules;
+  }
+
+  /* Knack.models is populated by the time a scene renders, so
+     re-scan on every scene change to pick up newly-visible views. */
+  $(document).on('knack-scene-render', applyHsvCategoryColors);
+})();
+/*************  _hsvcategory → KTL View Color  ***********************/
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
