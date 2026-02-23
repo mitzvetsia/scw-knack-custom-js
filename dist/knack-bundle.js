@@ -116,7 +116,7 @@ window.SCW = window.SCW || {};
 
     /* Submit buttons */
     .kn-view input[type=submit],
-    .kn-button.is-primary {
+    .kn-submit button.kn-button.is-primary {
       font-size: 14px !important;
       width: 80% !important;
       display: block !important;
