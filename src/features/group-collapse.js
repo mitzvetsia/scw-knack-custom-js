@@ -251,6 +251,11 @@
         opacity: 1;
       }
 
+      /* Remove Knack's inline padding-left on record-row cells in view_3512 */
+      #view_3512 table.kn-table-table tbody tr:not(.kn-table-group) td {
+        padding-left: revert !important;
+      }
+
       ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
         /* Per-view overrides: ${viewId} */
         ${o.L1bg ? `#${viewId} .kn-table-group.kn-group-level-1.scw-group-header { background-color: ${o.L1bg} !important; }` : ''}
