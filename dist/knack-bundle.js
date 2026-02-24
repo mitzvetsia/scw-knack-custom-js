@@ -3945,6 +3945,12 @@ $(document).on('knack-view-render.view_3313', function () {
   const BUCKET_OTHER_SERVICES = '6977caa7f246edf67b52cbcd';
   const BUCKET_ASSUMPTIONS    = '697b7a023a31502ec68b3303';
 
+  // Display labels for the detect-field cell
+  const BUCKET_LABELS = {
+    [BUCKET_OTHER_SERVICES]: 'Other Services',
+    [BUCKET_ASSUMPTIONS]:    'Assumptions',
+  };
+
   // All editable/visible column field keys in this view (excluding the hidden detect field)
   const ALL_COLUMN_KEYS = [
     'field_2415', // REL_bid
@@ -4018,10 +4024,15 @@ $(document).on('knack-view-render.view_3313', function () {
         border-left: 4px solid #4285f4 !important;
       }
 
-      /* ── Other Services: lighter gray + keep grayed cells readable ── */
-      tr.scw-row--services td.${GRAY_CLASS} {
-        background-color: #b0bec5 !important;   /* lighter blue-gray */
-        border-color: #b0bec5 !important;
+      /* ── Bucket label in the detect-field cell ── */
+      td.${DETECT_FIELD}.scw-bucket-label {
+        background-color: #708090 !important;
+        border-color: #708090 !important;
+        text-align: center;
+        font-weight: 600;
+        font-size: 11px;
+        color: #fff !important;
+        letter-spacing: 0.3px;
       }
     `;
 
@@ -4106,10 +4117,11 @@ $(document).on('knack-view-render.view_3313', function () {
       if ($td.length) grayTd($td);
     });
 
-    // Also gray the detect field itself (it's hidden but let's be safe)
-    const $detectSelf = $tr.find('td.' + DETECT_FIELD);
-    if ($detectSelf.length && !activeSet.has(DETECT_FIELD)) {
-      grayTd($detectSelf);
+    // Show bucket label in the detect-field cell
+    var label = BUCKET_LABELS[bucketId];
+    if (label && $detectTd.length) {
+      $detectTd.addClass('scw-bucket-label');
+      $detectTd.text(label);
     }
 
     // Apply row-level class
