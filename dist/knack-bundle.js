@@ -136,8 +136,8 @@ window.SCW = window.SCW || {};
   'use strict';
 
   const COLOR_KEYWORDS = {
-    'documentation':          '#4f7c8a',
-    'project-scope-details':  '#5877a8',
+    'documentation':          '#5C6E91',
+    'project-scope-details':  '#3F6E70',
     'passive-info':           '#5F6B7A',
   };
 
@@ -2670,6 +2670,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   const SCENE_CONFIG = {
     scene_1085: { openIfFewerThan: 30 },
     scene_1116: { openIfFewerThan: 30 },
+    scene_1140: { openIfFewerThan: 30 },
   };
   const SCENE_IDS = Object.keys(SCENE_CONFIG);
   const EVENT_NS = '.scwGroupCollapse';
