@@ -25,6 +25,9 @@
   // Detect field (hidden column with the bucket connection value)
   const DETECT_FIELD = 'field_2366';
 
+  // Sort field (in DOM but not visible)
+  const SORT_FIELD = 'field_2218';
+
   // Connection record IDs (more reliable than text matching)
   const BUCKET_OTHER_SERVICES = '6977caa7f246edf67b52cbcd';
   const BUCKET_ASSUMPTIONS    = '697b7a023a31502ec68b3303';
@@ -108,22 +111,8 @@
         border-left: 4px solid #4285f4 !important;
       }
 
-      /* ── Bucket label in the detect-field cell ── */
-      td.${DETECT_FIELD}.scw-bucket-label {
-        display: table-cell !important;
-        visibility: visible !important;
-        width: auto !important;
-        min-width: 80px !important;
-        overflow: visible !important;
-        background-color: #708090 !important;
-        border-color: #708090 !important;
-        cursor: not-allowed !important;
-      }
-      /* Hide original spans, show label via ::after */
-      td.${DETECT_FIELD}.scw-bucket-label > * {
-        display: none !important;
-      }
-      td.${DETECT_FIELD}.scw-bucket-label::after {
+      /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
+      td.field_2379[data-scw-bucket-label]::after {
         content: attr(data-scw-bucket-label);
         display: block;
         text-align: center;
@@ -215,11 +204,13 @@
       if ($td.length) grayTd($td);
     });
 
-    // Show bucket label in the detect-field cell (preserves inner spans for re-detection)
+    // Show bucket label in the PRODUCT cell (field_2379)
     var label = BUCKET_LABELS[bucketId];
-    if (label && $detectTd.length) {
-      $detectTd.addClass('scw-bucket-label');
-      $detectTd.attr('data-scw-bucket-label', label);
+    if (label) {
+      var $productTd = $tr.find('td.field_2379');
+      if ($productTd.length) {
+        $productTd.attr('data-scw-bucket-label', label);
+      }
     }
 
     // Apply row-level class
@@ -239,6 +230,32 @@
 
     $tbody.find('tr').each(function () {
       processRow($(this));
+    });
+  }
+
+  // ============================================================
+  // SORT ROWS BY SORT_FIELD
+  // ============================================================
+  function sortRows(viewId) {
+    var $view = $('#' + viewId);
+    if (!$view.length) return;
+    var $tbody = $view.find('table.kn-table-table tbody');
+    if (!$tbody.length) return;
+
+    var $rows = $tbody.find('tr').not('.kn-table-group, .kn-table-group-container');
+    if ($rows.length < 2) return;
+
+    var sorted = $rows.toArray().sort(function (a, b) {
+      var aVal = $(a).find('td.' + SORT_FIELD).text().trim();
+      var bVal = $(b).find('td.' + SORT_FIELD).text().trim();
+      var aNum = parseFloat(aVal);
+      var bNum = parseFloat(bVal);
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+      return aVal.localeCompare(bVal);
+    });
+
+    sorted.forEach(function (row) {
+      $tbody.append(row);
     });
   }
 
@@ -303,6 +320,7 @@
     $(document)
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
+        sortRows(viewId);
         applyWithRetries(viewId);
         installObserver(viewId);
       });
