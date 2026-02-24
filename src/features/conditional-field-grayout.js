@@ -110,12 +110,26 @@
 
       /* ── Bucket label in the detect-field cell ── */
       td.${DETECT_FIELD}.scw-bucket-label {
+        display: table-cell !important;
+        visibility: visible !important;
+        width: auto !important;
+        min-width: 80px !important;
+        overflow: visible !important;
         background-color: #708090 !important;
         border-color: #708090 !important;
+        cursor: not-allowed !important;
+      }
+      /* Hide original spans, show label via ::after */
+      td.${DETECT_FIELD}.scw-bucket-label > * {
+        display: none !important;
+      }
+      td.${DETECT_FIELD}.scw-bucket-label::after {
+        content: attr(data-scw-bucket-label);
+        display: block;
         text-align: center;
         font-weight: 600;
         font-size: 11px;
-        color: #fff !important;
+        color: #fff;
         letter-spacing: 0.3px;
       }
     `;
@@ -201,11 +215,11 @@
       if ($td.length) grayTd($td);
     });
 
-    // Show bucket label in the detect-field cell
+    // Show bucket label in the detect-field cell (preserves inner spans for re-detection)
     var label = BUCKET_LABELS[bucketId];
     if (label && $detectTd.length) {
       $detectTd.addClass('scw-bucket-label');
-      $detectTd.text(label);
+      $detectTd.attr('data-scw-bucket-label', label);
     }
 
     // Apply row-level class
