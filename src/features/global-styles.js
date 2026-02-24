@@ -4,29 +4,12 @@
 
   /* ── KTL hide/show button color palette ── */
   const KTL_DEFAULT_COLOR = '#295f91';
-  const KTL_COLOR_TYPES = {
-    'passive-info': '#5F6B7A',
-  };
-  const KTL_VIEW_COLORS = {
-    view_3477: 'passive-info',
-    view_3476: 'passive-info',
-    view_3480: 'passive-info',
 
-  };
+  /* Per-view colour overrides are now driven by the _hsvcolor= keyword
+     in each view's description.  See extract-hsv-color.js.              */
 
   const id = 'scw-global-styles-css';
   if (document.getElementById(id)) return;
-
-  /* Build per-view color overrides from the config above */
-  const ktlOverrides = Object.entries(KTL_VIEW_COLORS)
-    .map(([view, type]) => {
-      const color = KTL_COLOR_TYPES[type];
-      return `
-    /* ── ${view} → ${type} ── */
-    #hideShow_${view}_button.ktlHideShowButton { background-color: ${color}; }
-    #${view}:has(.ktlHideShowButton) { background-color: ${color}; }`;
-    })
-    .join('\n');
 
   const css = `
 
@@ -86,8 +69,7 @@
       border-radius: 20px !important;
     }
 
-    /* Per-view color overrides (generated from KTL_VIEW_COLORS) */
-    ${ktlOverrides}
+    /* Per-view color overrides now applied dynamically by extract-hsv-color.js */
 
     /* Submit buttons — only inside KTL hide/show views */
     .kn-view:has(.ktlHideShowButton) input[type=submit],
