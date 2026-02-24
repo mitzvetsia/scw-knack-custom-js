@@ -11,13 +11,29 @@
   const STYLE_ID = 'scw-hsv-color-overrides-css';
   const EVENT_NS = '.scwHsvColor';
 
-  /* Cache of view descriptions gathered from knack-view-render events.
-     Keyed by view key, e.g. { "view_3477": "<p>_hsvcolor=passive-info</p>" } */
-  var viewDescCache = {};
+  /**
+   * Return the description HTML for a Knack view by searching the
+   * Backbone models collection on the current scene.  Backbone's
+   * Collection#get() looks up by model `id`, which doesn't always
+   * equal the view key, so we iterate through the models array and
+   * match on `attributes.key` instead.
+   */
+  function getViewDescription(viewKey) {
+    try {
+      var views = Knack.router.scene_view.model.views;
+      if (!views || !views.models) return null;
+      for (var i = 0; i < views.models.length; i++) {
+        var m = views.models[i];
+        if (m.attributes && m.attributes.key === viewKey) {
+          return m.attributes.description || null;
+        }
+      }
+    } catch (e) { /* scene not ready yet – ignore */ }
+    return null;
+  }
 
   /**
-   * Resolve the _hsvcolor= value for a given view key using the cached
-   * description text collected from knack-view-render events.
+   * Extract the _hsvcolor= value from a Knack view's description.
    *
    * Accepted formats in the description field:
    *   _hsvcolor=documentation
@@ -28,7 +44,7 @@
    */
   function extractHsvColor(viewKey) {
     try {
-      var desc = viewDescCache[viewKey];
+      var desc = getViewDescription(viewKey);
       if (!desc) return null;
 
       // Normalise <br /> variants to spaces so the regex stays simple.
@@ -93,13 +109,10 @@
     document.head.appendChild(style);
   }
 
-  // Cache each view's description as it renders, then re-apply colours.
+  // Re-evaluate colours every time a view renders.
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
-    .on('knack-view-render.any' + EVENT_NS, function (event, view) {
-      if (view && view.key && view.description) {
-        viewDescCache[view.key] = view.description;
-      }
+    .on('knack-view-render.any' + EVENT_NS, function () {
       applyHsvColors();
     });
 
