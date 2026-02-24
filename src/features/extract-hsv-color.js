@@ -3,8 +3,8 @@
   'use strict';
 
   const COLOR_KEYWORDS = {
-    'documentation':          '#4f7c8a',
-    'project-scope-details':  '#5877a8',
+    'documentation':          '#5C6E91',
+    'project-scope-details':  '#3F6E70',
     'passive-info':           '#5F6B7A',
   };
 
