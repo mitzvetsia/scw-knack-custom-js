@@ -280,7 +280,6 @@ window.SCW = window.SCW || {};
    * keywords from their descriptions (looked up via the app schema),
    * and inject a <style> block with per-view colour overrides.
    */
-  var _diagDone = false;
   function applyHsvColors() {
     var models;
     try {
@@ -288,36 +287,6 @@ window.SCW = window.SCW || {};
       if (!views || !views.models) return;
       models = views.models;
     } catch (e) { return; }
-
-    // One-time diagnostic dump so we can see exactly what KTL stored.
-    if (!_diagDone) {
-      _diagDone = true;
-      try {
-        var kw = window.ktlKeywords;
-        console.log('[SCW _hsvcolor diag] ktlKeywords exists:', !!kw);
-        if (kw) {
-          var viewKeys = Object.keys(kw);
-          console.log('[SCW _hsvcolor diag] ktlKeywords has',
-                      viewKeys.length, 'entries:', viewKeys.slice(0, 20));
-          viewKeys.forEach(function (k) {
-            if (kw[k]._hsvcolor) {
-              console.log('[SCW _hsvcolor diag] ' + k + '._hsvcolor =',
-                          JSON.stringify(kw[k]._hsvcolor));
-            }
-          });
-        }
-        for (var d = 0; d < models.length; d++) {
-          var da = models[d].attributes || models[d];
-          if (da.key) {
-            var rawDesc = getViewDescription(da.key);
-            console.log('[SCW _hsvcolor diag] ' + da.key +
-              ' desc (first 120 chars):', rawDesc ? rawDesc.substring(0, 120) : '(null)');
-          }
-        }
-      } catch (diagErr) {
-        console.log('[SCW _hsvcolor diag] error:', diagErr.message);
-      }
-    }
 
     var rules = [];
 
@@ -329,8 +298,6 @@ window.SCW = window.SCW || {};
       var viewKey = attrs.key;
       var color = extractHsvColor(viewKey);
       if (!color) continue;
-
-      console.log('[SCW _hsvcolor] ' + viewKey + ' → ' + color);
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
