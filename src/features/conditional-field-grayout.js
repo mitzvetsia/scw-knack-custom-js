@@ -134,8 +134,8 @@
         content: attr(data-scw-bucket-label);
         position: absolute;
         top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        left: 8px;
+        transform: translateY(-50%);
         font-weight: 600;
         font-size: 14px;
         color: #fff;
@@ -232,19 +232,24 @@
     // Skip group/header rows
     if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
 
-    // ── Per-row conditional locks (all rows) ──
-    applyRowLocks($tr);
-
     // ── Bucket-based grayout ──
     const $detectTd = $tr.find('td.' + DETECT_FIELD);
-    if (!$detectTd.length) return;
+    if (!$detectTd.length) {
+      applyRowLocks($tr);
+      return;
+    }
 
     const bucketId = readBucketId($detectTd);
-    if (!bucketId) return;
+    if (!bucketId) {
+      applyRowLocks($tr);
+      return;
+    }
 
     const rule = RULES[bucketId];
     if (!rule) {
       clearRow($tr);
+      // Per-row locks run AFTER clearRow so they aren't wiped
+      applyRowLocks($tr);
       return;
     }
 
@@ -269,6 +274,9 @@
     // Apply row-level class
     $tr.addClass(rule.rowClass);
     $tr.attr(ROW_PROCESSED, '1');
+
+    // Per-row locks run last so they can override activeFields
+    applyRowLocks($tr);
   }
 
   // ============================================================
