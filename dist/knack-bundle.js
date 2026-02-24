@@ -219,21 +219,44 @@ window.SCW = window.SCW || {};
       models = views.models;
     } catch (e) { console.log('[SCW _hsvcolor] error accessing views:', e); return; }
 
-    console.log('[SCW _hsvcolor] model count:', models.length);
-    if (models.length > 0) {
-      var a = models[0].attributes || models[0];
-      console.log('[SCW _hsvcolor] first model keys:', Object.keys(a));
-      // Safe dump: only scalar attributes to avoid cross-origin toJSON errors.
-      var safe = {};
-      Object.keys(a).forEach(function (k) {
-        var v = a[k];
-        if (v === null || v === undefined || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-          safe[k] = v;
-        } else {
-          safe[k] = '(' + typeof v + ')';
+    // Probe Knack.application for view descriptions (not in Backbone models).
+    var appScenes = null;
+    try {
+      var app = Knack.application;
+      if (app && app.attributes && app.attributes.scenes) {
+        appScenes = app.attributes.scenes;
+        console.log('[SCW _hsvcolor] Knack.application.attributes.scenes type:', typeof appScenes, Array.isArray(appScenes) ? 'len=' + appScenes.length : '');
+      } else if (app && app.scenes) {
+        appScenes = app.scenes;
+        console.log('[SCW _hsvcolor] Knack.application.scenes type:', typeof appScenes, Array.isArray(appScenes) ? 'len=' + appScenes.length : '');
+      } else {
+        console.log('[SCW _hsvcolor] Knack.application keys:', app ? Object.keys(app.attributes || app) : 'N/A');
+      }
+    } catch (e) { console.log('[SCW _hsvcolor] error probing Knack.application:', e); }
+
+    // Try to find description from application schema for first view
+    if (appScenes && models.length > 0) {
+      var firstKey = (models[0].attributes || models[0]).key;
+      var sceneKey = null;
+      try { sceneKey = Knack.router.scene_view.model.attributes.key || Knack.router.scene_view.model.id; } catch(e) {}
+      console.log('[SCW _hsvcolor] current scene key:', sceneKey);
+
+      // Search for view description in appScenes
+      var found = false;
+      var scenesArr = Array.isArray(appScenes) ? appScenes : [];
+      for (var s = 0; s < scenesArr.length && !found; s++) {
+        var sc = scenesArr[s];
+        if (sc && sc.views) {
+          for (var v = 0; v < sc.views.length; v++) {
+            if (sc.views[v].key === firstKey) {
+              console.log('[SCW _hsvcolor] FOUND ' + firstKey + ' in app schema, desc:', sc.views[v].description);
+              found = true;
+              break;
+            }
+          }
         }
-      });
-      console.log('[SCW _hsvcolor] first model (safe):', safe);
+      }
+      if (!found) console.log('[SCW _hsvcolor] ' + firstKey + ' NOT found in app schema scenes');
     }
 
     var rules = [];
@@ -244,7 +267,6 @@ window.SCW = window.SCW || {};
       if (!attrs.key) continue;
 
       var viewKey = attrs.key;
-      console.log('[SCW _hsvcolor] ' + viewKey + ' desc:', attrs.description, '| title:', attrs.title, '| name:', attrs.name);
 
       var color = extractHsvColor(viewKey);
       if (!color) continue;
