@@ -3921,8 +3921,8 @@ $(document).on('knack-view-render.view_3313', function () {
  * Reads the hidden field_2366 (REL_proposal bucket) on each row
  * and applies per-bucket grayout rules:
  *
- *  "Other Services"  → gray out all cells EXCEPT field_2409, field_2400, field_2399
- *  "Assumptions"     → gray out all cells EXCEPT field_2409;
+ *  "Other Services"  → gray out all cells EXCEPT field_2415, field_2409, field_2400, field_2399
+ *  "Assumptions"     → gray out all cells EXCEPT field_2415, field_2409;
  *                      field_2409 gets a distinctive background;
  *                      grayed cells have their content hidden so the
  *                      description column visually dominates the row.
@@ -3961,11 +3961,11 @@ $(document).on('knack-view-render.view_3313', function () {
   // Rules: which fields stay ACTIVE (not grayed) per bucket
   const RULES = {
     [BUCKET_OTHER_SERVICES]: {
-      activeFields: ['field_2409', 'field_2400', 'field_2399'],
+      activeFields: ['field_2415', 'field_2409', 'field_2400', 'field_2399'],
       rowClass: 'scw-row--services',
     },
     [BUCKET_ASSUMPTIONS]: {
-      activeFields: ['field_2409'],
+      activeFields: ['field_2415', 'field_2409'],
       rowClass: 'scw-row--assumptions',
     },
   };
@@ -3990,6 +3990,7 @@ $(document).on('knack-view-render.view_3313', function () {
       td.${GRAY_CLASS} {
         position: relative;
         background-color: #708090 !important;   /* slategray */
+        border-color: #708090 !important;
         cursor: not-allowed !important;
       }
       td.${GRAY_CLASS} * {
@@ -4020,6 +4021,7 @@ $(document).on('knack-view-render.view_3313', function () {
       /* ── Other Services: lighter gray + keep grayed cells readable ── */
       tr.scw-row--services td.${GRAY_CLASS} {
         background-color: #b0bec5 !important;   /* lighter blue-gray */
+        border-color: #b0bec5 !important;
       }
     `;
 
