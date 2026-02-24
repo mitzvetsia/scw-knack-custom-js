@@ -144,41 +144,30 @@ window.SCW = window.SCW || {};
   const STYLE_ID = 'scw-hsv-color-overrides-css';
   const EVENT_NS = '.scwHsvColor';
 
+  // Optional debug toggle
+  const DEBUG = false;
+  function log() { if (DEBUG) console.log.apply(console, arguments); }
+
   /**
-   * Extract the _hsvcolor= value from a Knack view's description.
-   *
-   * Knack stores the description as an HTML string in
-   * view.attributes.description.  KTL-style keywords start with an
-   * underscore and are separated by whitespace or <br /> tags.
-   *
-   * Accepted formats in the description field:
-   *   _hsvcolor=documentation
-   *   _hsvcolor=#cc3300
-   *
-   * @param  {string} viewKey  e.g. "view_3477"
-   * @return {string|null}     Resolved hex colour, or null if not found.
+   * Find a view model reliably by view key (e.g., "view_3477")
    */
-  function extractHsvColor(viewKey) {
+  function getViewModelByKey(viewKey) {
     try {
-      var viewModel = Knack.router.scene_view.model.views.get(viewKey);
-      if (!viewModel) return null;
+      // 1) If the view is rendered, Knack.views is usually the best source
+      if (window.Knack && Knack.views && Knack.views[viewKey] && Knack.views[viewKey].model) {
+        return Knack.views[viewKey].model;
+      }
 
-      var desc = viewModel.attributes.description;
-      if (!desc) return null;
+      // 2) Fall back to current scene view collection
+      const scene = Knack && Knack.router && Knack.router.scene_view;
+      const collection = scene && scene.model && scene.model.views;
+      if (!collection || !collection.models) return null;
 
-      // Normalise <br /> variants to spaces so the regex stays simple.
-      var text = desc.replace(/<br\s*\/?>/gi, ' ');
-
-      var match = text.match(/_hsvcolor=([^\s<]+)/i);
-      if (!match) return null;
-
-      var value = match[1];
-
-      // If the value is a recognised keyword, resolve it.
-      if (COLOR_KEYWORDS[value]) return COLOR_KEYWORDS[value];
-
-      // If it already looks like a hex colour, use it directly.
-      if (/^#[0-9a-fA-F]{3,8}$/.test(value)) return value;
+      // Search by "key" (NOT by .get(viewKey))
+      for (let i = 0; i < collection.models.length; i++) {
+        const m = collection.models[i];
+        if (m && m.attributes && m.attributes.key === viewKey) return m;
+      }
 
       return null;
     } catch (e) {
@@ -187,61 +176,97 @@ window.SCW = window.SCW || {};
   }
 
   /**
-   * Scan every rendered KTL hide/show button and inject a <style> block
-   * with per-view colour overrides for any view whose description
-   * contains _hsvcolor=<keyword|#hex>.
+   * Extract the _hsvcolor= value from a Knack view's description.
+   * Accepted formats:
+   *   _hsvcolor=documentation
+   *   _hsvcolor=#cc3300
    */
+  function extractHsvColor(viewKey) {
+    try {
+      const viewModel = getViewModelByKey(viewKey);
+      if (!viewModel) { log('[hsv] no viewModel for', viewKey); return null; }
+
+      const desc = viewModel.attributes && viewModel.attributes.description;
+      if (!desc) { log('[hsv] no description for', viewKey); return null; }
+
+      // Normalize <br> to whitespace
+      const text = String(desc).replace(/<br\s*\/?>/gi, ' ');
+
+      const match = text.match(/_hsvcolor=([^\s<]+)/i);
+      if (!match) { log('[hsv] no _hsvcolor token for', viewKey); return null; }
+
+      const value = match[1].trim();
+
+      if (COLOR_KEYWORDS[value]) return COLOR_KEYWORDS[value];
+      if (/^#[0-9a-fA-F]{3,8}$/.test(value)) return value;
+
+      log('[hsv] invalid value for', viewKey, value);
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function applyHsvColors() {
-    var buttons = document.querySelectorAll(
+    const buttons = document.querySelectorAll(
       '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]'
     );
 
-    var rules = [];
+    const rules = [];
 
-    buttons.forEach(function (btn) {
-      // id format: hideShow_view_1234_button
-      var parts = btn.id.match(/^hideShow_(view_\d+)_button$/);
-      if (!parts) return;
+    Array.prototype.forEach.call(buttons, function (btn) {
+      const m = btn.id.match(/^hideShow_(view_\d+)_button$/);
+      if (!m) return;
 
-      var viewKey = parts[1];
-      var color = extractHsvColor(viewKey);
+      const viewKey = m[1];
+      const color = extractHsvColor(viewKey);
       if (!color) return;
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
-        '#hideShow_' + viewKey + '_button.ktlHideShowButton ' +
-          '{ background-color: ' + color + '; }\n' +
-        '#' + viewKey + ':has(.ktlHideShowButton) ' +
-          '{ background-color: ' + color + '; }'
+        '#hideShow_' + viewKey + '_button.ktlHideShowButton { background-color: ' + color + ' !important; }\n' +
+        // wrapper: best-effort (Knack view wrapper)
+        '#' + viewKey + ' { background-color: ' + color + ' !important; }\n' +
+        // original intent: only when it contains KTL button (works in modern Chrome)
+        '#' + viewKey + ':has(.ktlHideShowButton) { background-color: ' + color + ' !important; }'
       );
     });
 
-    // Remove previous overrides if any.
-    var existing = document.getElementById(STYLE_ID);
+    const existing = document.getElementById(STYLE_ID);
     if (existing) existing.remove();
 
-    if (!rules.length) return;
+    if (!rules.length) { log('[hsv] no rules generated'); return; }
 
-    var style = document.createElement('style');
+    const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = rules.join('\n');
     document.head.appendChild(style);
+
+    log('[hsv] applied rules:', rules.length);
   }
 
-  // Re-evaluate colours every time a view renders (KTL buttons may
-  // appear or disappear at any time).
+  // KTL often injects after the render event; do a short delayed pass.
+  function applySoon() {
+    applyHsvColors();
+    setTimeout(applyHsvColors, 50);
+    setTimeout(applyHsvColors, 250);
+  }
+
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
-      applyHsvColors();
+      applySoon();
     });
 
-  // Also expose the helper on the SCW namespace for other features.
+  // Also run once on load (covers direct page hits + cached renders)
+  $(function () {
+    applySoon();
+  });
+
   window.SCW = window.SCW || {};
   window.SCW.extractHsvColor = extractHsvColor;
 })();
-/*************  Extract _hsvcolor keyword from view descriptions  **************/
-/**************************************************************************************************
+/*************  Extract _hsvcolor keyword from view descriptions  ************//**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
  * Note: This file mixes global handlers, per-view hacks, and legacy utilities.
