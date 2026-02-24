@@ -219,19 +219,25 @@ window.SCW = window.SCW || {};
       models = views.models;
     } catch (e) { console.log('[SCW _hsvcolor] error accessing views:', e); return; }
 
+    console.log('[SCW _hsvcolor] model count:', models.length);
+    if (models.length > 0) {
+      console.log('[SCW _hsvcolor] first model keys:', Object.keys(models[0].attributes || models[0]));
+      console.log('[SCW _hsvcolor] first model:', JSON.parse(JSON.stringify(models[0].attributes || models[0])));
+    }
+
     var rules = [];
 
     for (var i = 0; i < models.length; i++) {
       var m = models[i];
-      if (!m.attributes || !m.attributes.key) continue;
+      var attrs = m.attributes || m;
+      if (!attrs.key) continue;
 
-      var viewKey = m.attributes.key;
-      var desc = m.attributes.description;
-      if (desc) console.log('[SCW _hsvcolor] ' + viewKey + ' desc:', desc);
+      var viewKey = attrs.key;
+      console.log('[SCW _hsvcolor] ' + viewKey + ' desc:', attrs.description, '| title:', attrs.title, '| name:', attrs.name);
 
       var color = extractHsvColor(viewKey);
       if (!color) continue;
-      console.log('[SCW _hsvcolor] ' + viewKey + ' → ' + color);
+      console.log('[SCW _hsvcolor] ' + viewKey + ' COLOR → ' + color);
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
