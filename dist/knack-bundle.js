@@ -4052,8 +4052,8 @@ $(document).on('knack-view-render.view_3313', function () {
         top: 50%;
         left: 8px;
         transform: translateY(-50%);
-        font-weight: 600;
-        font-size: 14px;
+        font-weight: normal;
+        font-size: 12px;
         color: #fff;
         white-space: nowrap;
       }
