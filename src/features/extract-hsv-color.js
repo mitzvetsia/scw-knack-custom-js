@@ -88,8 +88,19 @@
 
     console.log('[SCW _hsvcolor] model count:', models.length);
     if (models.length > 0) {
-      console.log('[SCW _hsvcolor] first model keys:', Object.keys(models[0].attributes || models[0]));
-      console.log('[SCW _hsvcolor] first model:', JSON.parse(JSON.stringify(models[0].attributes || models[0])));
+      var a = models[0].attributes || models[0];
+      console.log('[SCW _hsvcolor] first model keys:', Object.keys(a));
+      // Safe dump: only scalar attributes to avoid cross-origin toJSON errors.
+      var safe = {};
+      Object.keys(a).forEach(function (k) {
+        var v = a[k];
+        if (v === null || v === undefined || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          safe[k] = v;
+        } else {
+          safe[k] = '(' + typeof v + ')';
+        }
+      });
+      console.log('[SCW _hsvcolor] first model (safe):', safe);
     }
 
     var rules = [];
