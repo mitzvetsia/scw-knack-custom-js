@@ -214,9 +214,10 @@ window.SCW = window.SCW || {};
     var models;
     try {
       var views = Knack.router.scene_view.model.views;
-      if (!views || !views.models) return;
+      console.log('[SCW _hsvcolor] scene_view.model.views:', views);
+      if (!views || !views.models) { console.log('[SCW _hsvcolor] no models found'); return; }
       models = views.models;
-    } catch (e) { return; }
+    } catch (e) { console.log('[SCW _hsvcolor] error accessing views:', e); return; }
 
     var rules = [];
 
@@ -225,8 +226,12 @@ window.SCW = window.SCW || {};
       if (!m.attributes || !m.attributes.key) continue;
 
       var viewKey = m.attributes.key;
+      var desc = m.attributes.description;
+      if (desc) console.log('[SCW _hsvcolor] ' + viewKey + ' desc:', desc);
+
       var color = extractHsvColor(viewKey);
       if (!color) continue;
+      console.log('[SCW _hsvcolor] ' + viewKey + ' → ' + color);
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
