@@ -6,7 +6,7 @@
  * and applies per-bucket grayout rules:
  *
  *  "Other Services"  → gray out all cells EXCEPT field_2415, field_2409, field_2400, field_2399
- *  "Assumptions"     → gray out all cells EXCEPT field_2415, field_2409;
+ *  "Assumptions"     → gray out all cells EXCEPT field_2415, field_2409, field_2401;
  *                      field_2409 gets a distinctive background;
  *                      grayed cells have their content hidden so the
  *                      description column visually dominates the row.
@@ -49,7 +49,7 @@
       rowClass: 'scw-row--services',
     },
     [BUCKET_ASSUMPTIONS]: {
-      activeFields: ['field_2415', 'field_2409'],
+      activeFields: ['field_2415', 'field_2409', 'field_2401'],
       rowClass: 'scw-row--assumptions',
     },
   };
@@ -87,8 +87,8 @@
         pointer-events: none !important;
       }
 
-      /* ── Assumptions: hide content in grayed cells so description dominates ── */
-      tr.scw-row--assumptions td.${GRAY_CLASS} span[class^="col-"] {
+      /* ── Hide content in all grayed cells ── */
+      td.${GRAY_CLASS} span[class^="col-"] {
         visibility: hidden;
       }
 
