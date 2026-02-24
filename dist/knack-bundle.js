@@ -2913,7 +2913,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
       /* Remove Knack's inline padding-left on record-row cells in view_3512 */
       #view_3512 table.kn-table-table tbody tr:not(.kn-table-group) td {
-        padding-left: revert !important;
+        padding-left: 10px !important;
       }
 
       ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
