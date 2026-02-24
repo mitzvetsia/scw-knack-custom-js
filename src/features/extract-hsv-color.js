@@ -16,6 +16,67 @@
   function log() { if (DEBUG) console.log.apply(console, arguments); }
 
   /**
+   * Resolve a raw _hsvcolor value (keyword name or hex literal) to a
+   * CSS colour string, or return null if unrecognised.
+   */
+  function resolveColorValue(raw) {
+    if (!raw) return null;
+    var v = raw.trim().toLowerCase();
+    if (COLOR_KEYWORDS[v]) return COLOR_KEYWORDS[v];
+    if (/^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
+    return null;
+  }
+
+  /**
+   * Try to pull the _hsvcolor value from KTL's pre-parsed keyword cache.
+   *
+   * KTL strips all underscore-prefixed keywords from view descriptions
+   * at init time (via cleanUpKeywords) and stores the parsed results in
+   * window.ktlKeywords[viewKey].  By the time our render handler fires
+   * the raw description no longer contains _hsvcolor=…, so we must read
+   * from the cache instead.
+   *
+   * The cache structure is:
+   *   ktlKeywords[viewKey]._hsvcolor = [ entry, … ]
+   * where each entry is an object:
+   *   { params: [["project-scope-details"]], paramStr: "[project-scope-details]" }
+   * i.e. entry.params is an array of arrays (parameter groups).
+   */
+  function readFromKtlKeywords(viewKey) {
+    try {
+      var kw = window.ktlKeywords;
+      if (!kw) return null;
+      var vkw = kw[viewKey];
+      if (!vkw || !vkw._hsvcolor) return null;
+
+      var entries = vkw._hsvcolor;
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i];
+        var val;
+
+        if (typeof entry === 'string') {
+          val = entry;
+        } else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+          // Object with .params array — params[0] is itself an array.
+          var p = entry.params;
+          if (Array.isArray(p) && p.length > 0) {
+            val = Array.isArray(p[0]) ? p[0][0] : p[0];
+          }
+          // Also try paramStr as a direct fallback.
+          if (!val && entry.paramStr) {
+            val = entry.paramStr.replace(/^\[|\]$/g, '');
+          }
+        } else if (Array.isArray(entry)) {
+          val = Array.isArray(entry[0]) ? entry[0][0] : entry[0];
+        }
+        var resolved = resolveColorValue(val);
+        if (resolved) return resolved;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  /**
    * Find a view model reliably by view key (e.g., "view_3477")
    */
   function getViewModelByKey(viewKey) {
@@ -47,9 +108,20 @@
    * Accepted formats:
    *   _hsvcolor=documentation
    *   _hsvcolor=#cc3300
+   *
+   * Strategy:
+   *   1. Read from KTL's pre-parsed keyword cache (primary — works after
+   *      KTL has stripped the description).
+   *   2. Fall back to raw description parsing (covers the case where KTL
+   *      is not loaded or has not yet initialised).
    */
   function extractHsvColor(viewKey) {
     try {
+      // ── Strategy 1: KTL keyword cache ──
+      var fromKtl = readFromKtlKeywords(viewKey);
+      if (fromKtl) return fromKtl;
+
+      // ── Strategy 2: raw description (fallback) ──
       const viewModel = getViewModelByKey(viewKey);
       if (!viewModel) { log('[hsv] no viewModel for', viewKey); return null; }
 
@@ -62,13 +134,7 @@
       const match = text.match(/_hsvcolor=([^\s<]+)/i);
       if (!match) { log('[hsv] no _hsvcolor token for', viewKey); return null; }
 
-      const value = match[1].trim();
-
-      if (COLOR_KEYWORDS[value]) return COLOR_KEYWORDS[value];
-      if (/^#[0-9a-fA-F]{3,8}$/.test(value)) return value;
-
-      log('[hsv] invalid value for', viewKey, value);
-      return null;
+      return resolveColorValue(match[1]);
     } catch (e) {
       return null;
     }
@@ -123,6 +189,11 @@
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
       applySoon();
+    });
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      applyHsvColors();
     });
 
   // Also run once on load (covers direct page hits + cached renders)
