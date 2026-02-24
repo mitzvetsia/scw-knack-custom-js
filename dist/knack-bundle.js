@@ -131,7 +131,7 @@ window.SCW = window.SCW || {};
   document.head.appendChild(style);
 })();
 /*************  Global Style Overrides  **************************/
-/*************  Extract _hsvcolor keyword from view descriptions  **************/
+/*************  Extract _hsvcolor keyword from view descriptions  ************/
 (function () {
   'use strict';
 
@@ -144,35 +144,9 @@ window.SCW = window.SCW || {};
   const STYLE_ID = 'scw-hsv-color-overrides-css';
   const EVENT_NS = '.scwHsvColor';
 
-  /**
-   * Return the description HTML for a Knack view by searching
-   * Knack.scenes.models — the application schema collection that is
-   * loaded once at boot and contains the full metadata (including
-   * descriptions).  The runtime collection at
-   * Knack.router.scene_view.model.views strips descriptions in
-   * production, so we must use the schema collection instead.
-   */
-  function getViewDescription(viewKey) {
-    try {
-      var sceneModels = Knack.scenes.models;
-      if (!sceneModels) return null;
-      for (var s = 0; s < sceneModels.length; s++) {
-        var scene = sceneModels[s];
-        var views = scene.views;
-        if (!views) continue;
-        // views may be a Backbone Collection (.models) or a plain array.
-        var viewList = views.models || views;
-        for (var v = 0; v < viewList.length; v++) {
-          var view = viewList[v];
-          var attrs = view.attributes || view;
-          if (attrs.key === viewKey) {
-            return attrs.description || null;
-          }
-        }
-      }
-    } catch (e) { /* Knack not ready yet – ignore */ }
-    return null;
-  }
+  // Optional debug toggle
+  const DEBUG = false;
+  function log() { if (DEBUG) console.log.apply(console, arguments); }
 
   /**
    * Resolve a raw _hsvcolor value (keyword name or hex literal) to a
@@ -197,8 +171,9 @@ window.SCW = window.SCW || {};
    *
    * The cache structure is:
    *   ktlKeywords[viewKey]._hsvcolor = [ entry, … ]
-   * where each entry may be a string, an array of param strings, or an
-   * object with a .params array — we handle all three defensively.
+   * where each entry is an object:
+   *   { params: [["project-scope-details"]], paramStr: "[project-scope-details]" }
+   * i.e. entry.params is an array of arrays (parameter groups).
    */
   function readFromKtlKeywords(viewKey) {
     try {
@@ -207,9 +182,6 @@ window.SCW = window.SCW || {};
       var vkw = kw[viewKey];
       if (!vkw || !vkw._hsvcolor) return null;
 
-      // Actual KTL structure (from diagnostic):
-      //   _hsvcolor: [{ params: [["project-scope-details"]], paramStr: "…" }]
-      // i.e. entry.params is an array of arrays (parameter groups).
       var entries = vkw._hsvcolor;
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
@@ -238,9 +210,35 @@ window.SCW = window.SCW || {};
   }
 
   /**
+   * Find a view model reliably by view key (e.g., "view_3477")
+   */
+  function getViewModelByKey(viewKey) {
+    try {
+      // 1) If the view is rendered, Knack.views is usually the best source
+      if (window.Knack && Knack.views && Knack.views[viewKey] && Knack.views[viewKey].model) {
+        return Knack.views[viewKey].model;
+      }
+
+      // 2) Fall back to current scene view collection
+      const scene = Knack && Knack.router && Knack.router.scene_view;
+      const collection = scene && scene.model && scene.model.views;
+      if (!collection || !collection.models) return null;
+
+      // Search by "key" (NOT by .get(viewKey))
+      for (let i = 0; i < collection.models.length; i++) {
+        const m = collection.models[i];
+        if (m && m.attributes && m.attributes.key === viewKey) return m;
+      }
+
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Extract the _hsvcolor= value from a Knack view's description.
-   *
-   * Accepted formats in the description field:
+   * Accepted formats:
    *   _hsvcolor=documentation
    *   _hsvcolor=#cc3300
    *
@@ -249,9 +247,6 @@ window.SCW = window.SCW || {};
    *      KTL has stripped the description).
    *   2. Fall back to raw description parsing (covers the case where KTL
    *      is not loaded or has not yet initialised).
-   *
-   * @param  {string} viewKey  e.g. "view_3477"
-   * @return {string|null}     Resolved hex colour, or null if not found.
    */
   function extractHsvColor(viewKey) {
     try {
@@ -260,14 +255,17 @@ window.SCW = window.SCW || {};
       if (fromKtl) return fromKtl;
 
       // ── Strategy 2: raw description (fallback) ──
-      var desc = getViewDescription(viewKey);
-      if (!desc) return null;
+      const viewModel = getViewModelByKey(viewKey);
+      if (!viewModel) { log('[hsv] no viewModel for', viewKey); return null; }
 
-      // Normalise <br /> variants to spaces so the regex stays simple.
-      var text = desc.replace(/<br\s*\/?>/gi, ' ');
+      const desc = viewModel.attributes && viewModel.attributes.description;
+      if (!desc) { log('[hsv] no description for', viewKey); return null; }
 
-      var match = text.match(/_hsvcolor=([^\s<]+)/i);
-      if (!match) return null;
+      // Normalize <br> to whitespace
+      const text = String(desc).replace(/<br\s*\/?>/gi, ' ');
+
+      const match = text.match(/_hsvcolor=([^\s<]+)/i);
+      if (!match) { log('[hsv] no _hsvcolor token for', viewKey); return null; }
 
       return resolveColorValue(match[1]);
     } catch (e) {
@@ -275,56 +273,55 @@ window.SCW = window.SCW || {};
     }
   }
 
-  /**
-   * Walk the current scene's view models, extract any _hsvcolor=
-   * keywords from their descriptions (looked up via the app schema),
-   * and inject a <style> block with per-view colour overrides.
-   */
   function applyHsvColors() {
-    var models;
-    try {
-      var views = Knack.router.scene_view.model.views;
-      if (!views || !views.models) return;
-      models = views.models;
-    } catch (e) { return; }
+    const buttons = document.querySelectorAll(
+      '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]'
+    );
 
-    var rules = [];
+    const rules = [];
 
-    for (var i = 0; i < models.length; i++) {
-      var m = models[i];
-      var attrs = m.attributes || m;
-      if (!attrs.key) continue;
+    Array.prototype.forEach.call(buttons, function (btn) {
+      const m = btn.id.match(/^hideShow_(view_\d+)_button$/);
+      if (!m) return;
 
-      var viewKey = attrs.key;
-      var color = extractHsvColor(viewKey);
-      if (!color) continue;
+      const viewKey = m[1];
+      const color = extractHsvColor(viewKey);
+      if (!color) return;
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
-        '#hideShow_' + viewKey + '_button.ktlHideShowButton ' +
-          '{ background-color: ' + color + '; }\n' +
-        '#' + viewKey + ':has(.ktlHideShowButton) ' +
-          '{ background-color: ' + color + '; }'
+        '#hideShow_' + viewKey + '_button.ktlHideShowButton { background-color: ' + color + ' !important; }\n' +
+        // wrapper: best-effort (Knack view wrapper)
+        '#' + viewKey + ' { background-color: ' + color + ' !important; }\n' +
+        // original intent: only when it contains KTL button (works in modern Chrome)
+        '#' + viewKey + ':has(.ktlHideShowButton) { background-color: ' + color + ' !important; }'
       );
-    }
+    });
 
-    // Remove previous overrides if any.
-    var existing = document.getElementById(STYLE_ID);
+    const existing = document.getElementById(STYLE_ID);
     if (existing) existing.remove();
 
-    if (!rules.length) return;
+    if (!rules.length) { log('[hsv] no rules generated'); return; }
 
-    var style = document.createElement('style');
+    const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = rules.join('\n');
     document.head.appendChild(style);
+
+    log('[hsv] applied rules:', rules.length);
   }
 
-  // Re-evaluate colours on every view render and scene render.
+  // KTL often injects after the render event; do a short delayed pass.
+  function applySoon() {
+    applyHsvColors();
+    setTimeout(applyHsvColors, 50);
+    setTimeout(applyHsvColors, 250);
+  }
+
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
-      applyHsvColors();
+      applySoon();
     });
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
@@ -332,11 +329,15 @@ window.SCW = window.SCW || {};
       applyHsvColors();
     });
 
-  // Also expose the helper on the SCW namespace for other features.
+  // Also run once on load (covers direct page hits + cached renders)
+  $(function () {
+    applySoon();
+  });
+
   window.SCW = window.SCW || {};
   window.SCW.extractHsvColor = extractHsvColor;
 })();
-/*************  Extract _hsvcolor keyword from view descriptions  **************/
+/*************  Extract _hsvcolor keyword from view descriptions  ************/
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
