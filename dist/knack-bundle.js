@@ -145,23 +145,32 @@ window.SCW = window.SCW || {};
   const EVENT_NS = '.scwHsvColor';
 
   /**
-   * Return the description HTML for a Knack view by searching the
-   * Backbone models collection on the current scene.  Backbone's
-   * Collection#get() looks up by model `id`, which doesn't always
-   * equal the view key, so we iterate through the models array and
-   * match on `attributes.key` instead.
+   * Return the description HTML for a Knack view by searching
+   * Knack.scenes.models — the application schema collection that is
+   * loaded once at boot and contains the full metadata (including
+   * descriptions).  The runtime collection at
+   * Knack.router.scene_view.model.views strips descriptions in
+   * production, so we must use the schema collection instead.
    */
   function getViewDescription(viewKey) {
     try {
-      var views = Knack.router.scene_view.model.views;
-      if (!views || !views.models) return null;
-      for (var i = 0; i < views.models.length; i++) {
-        var m = views.models[i];
-        if (m.attributes && m.attributes.key === viewKey) {
-          return m.attributes.description || null;
+      var sceneModels = Knack.scenes.models;
+      if (!sceneModels) return null;
+      for (var s = 0; s < sceneModels.length; s++) {
+        var scene = sceneModels[s];
+        var views = scene.views;
+        if (!views) continue;
+        // views may be a Backbone Collection (.models) or a plain array.
+        var viewList = views.models || views;
+        for (var v = 0; v < viewList.length; v++) {
+          var view = viewList[v];
+          var attrs = view.attributes || view;
+          if (attrs.key === viewKey) {
+            return attrs.description || null;
+          }
         }
       }
-    } catch (e) { /* scene not ready yet – ignore */ }
+    } catch (e) { /* Knack not ready yet – ignore */ }
     return null;
   }
 
@@ -201,63 +210,17 @@ window.SCW = window.SCW || {};
   }
 
   /**
-   * Walk the Backbone view models on the current scene, extract any
-   * _hsvcolor= keywords from their descriptions, and inject a <style>
-   * block with per-view colour overrides.
-   *
-   * We iterate models rather than querying the DOM for KTL buttons
-   * because KTL may not have injected its buttons yet at the time
-   * this handler runs.  The generated CSS selectors will match as
-   * soon as the buttons appear.
+   * Walk the current scene's view models, extract any _hsvcolor=
+   * keywords from their descriptions (looked up via the app schema),
+   * and inject a <style> block with per-view colour overrides.
    */
   function applyHsvColors() {
     var models;
     try {
       var views = Knack.router.scene_view.model.views;
-      console.log('[SCW _hsvcolor] scene_view.model.views:', views);
-      if (!views || !views.models) { console.log('[SCW _hsvcolor] no models found'); return; }
+      if (!views || !views.models) return;
       models = views.models;
-    } catch (e) { console.log('[SCW _hsvcolor] error accessing views:', e); return; }
-
-    // Probe Knack.application for view descriptions (not in Backbone models).
-    var appScenes = null;
-    try {
-      var app = Knack.application;
-      if (app && app.attributes && app.attributes.scenes) {
-        appScenes = app.attributes.scenes;
-        console.log('[SCW _hsvcolor] Knack.application.attributes.scenes type:', typeof appScenes, Array.isArray(appScenes) ? 'len=' + appScenes.length : '');
-      } else if (app && app.scenes) {
-        appScenes = app.scenes;
-        console.log('[SCW _hsvcolor] Knack.application.scenes type:', typeof appScenes, Array.isArray(appScenes) ? 'len=' + appScenes.length : '');
-      } else {
-        console.log('[SCW _hsvcolor] Knack.application keys:', app ? Object.keys(app.attributes || app) : 'N/A');
-      }
-    } catch (e) { console.log('[SCW _hsvcolor] error probing Knack.application:', e); }
-
-    // Try to find description from application schema for first view
-    if (appScenes && models.length > 0) {
-      var firstKey = (models[0].attributes || models[0]).key;
-      var sceneKey = null;
-      try { sceneKey = Knack.router.scene_view.model.attributes.key || Knack.router.scene_view.model.id; } catch(e) {}
-      console.log('[SCW _hsvcolor] current scene key:', sceneKey);
-
-      // Search for view description in appScenes
-      var found = false;
-      var scenesArr = Array.isArray(appScenes) ? appScenes : [];
-      for (var s = 0; s < scenesArr.length && !found; s++) {
-        var sc = scenesArr[s];
-        if (sc && sc.views) {
-          for (var v = 0; v < sc.views.length; v++) {
-            if (sc.views[v].key === firstKey) {
-              console.log('[SCW _hsvcolor] FOUND ' + firstKey + ' in app schema, desc:', sc.views[v].description);
-              found = true;
-              break;
-            }
-          }
-        }
-      }
-      if (!found) console.log('[SCW _hsvcolor] ' + firstKey + ' NOT found in app schema scenes');
-    }
+    } catch (e) { return; }
 
     var rules = [];
 
@@ -267,10 +230,10 @@ window.SCW = window.SCW || {};
       if (!attrs.key) continue;
 
       var viewKey = attrs.key;
-
       var color = extractHsvColor(viewKey);
       if (!color) continue;
-      console.log('[SCW _hsvcolor] ' + viewKey + ' COLOR → ' + color);
+
+      console.log('[SCW _hsvcolor] ' + viewKey + ' → ' + color);
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
