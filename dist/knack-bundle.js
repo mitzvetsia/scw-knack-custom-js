@@ -3676,23 +3676,6 @@ $(document).on('knack-view-render.view_3313', function () {
           message: "This field is locked until map connections = Yes"
         }
       ]
-    },
-    {
-      viewId: "view_3505",
-      rules: [
-        {
-          detectFieldKey: "field_2230",
-          when: "yes",
-          lockFieldKeys: ["field_1964"],
-          message: "Qty locked (must be 1)"
-        },
-        {
-          detectFieldKey: "field_2231",
-          when: "no",
-          lockFieldKeys: ["field_1957"],
-          message: "This field is locked until map connections = Yes"
-        }
-      ]
     }
   ];
 
