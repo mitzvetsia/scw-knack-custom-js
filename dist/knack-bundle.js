@@ -4044,15 +4044,18 @@ $(document).on('knack-view-render.view_3313', function () {
 
       /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
       td.field_2379[data-scw-bucket-label] {
-        vertical-align: middle !important;
+        position: relative;
       }
       td.field_2379[data-scw-bucket-label]::after {
         content: attr(data-scw-bucket-label);
-        display: block;
-        text-align: center;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
         font-weight: 600;
         font-size: 14px;
         color: #fff;
+        white-space: nowrap;
       }
     `;
 
@@ -4115,11 +4118,23 @@ $(document).on('knack-view-render.view_3313', function () {
     return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
   }
 
+  // Read a yes/no value from a cell, handling text, checkboxes, and Knack booleans
+  function readBool($cell) {
+    // Checkbox input
+    var $chk = $cell.find('input[type="checkbox"]');
+    if ($chk.length) return $chk.is(':checked') ? 'yes' : 'no';
+    // Knack boolean icon (thumbs-up / thumbs-down, check / x)
+    if ($cell.find('.kn-icon-yes, .fa-check, .fa-thumbs-up').length) return 'yes';
+    if ($cell.find('.kn-icon-no, .fa-times, .fa-thumbs-down').length) return 'no';
+    // Fall back to text
+    return normText($cell.text());
+  }
+
   function applyRowLocks($tr) {
     ROW_LOCKS.forEach(function (lock) {
       var $detect = $tr.find('td.' + lock.detectField);
       if (!$detect.length) return;
-      var val = normText($detect.text());
+      var val = readBool($detect);
       var shouldLock = false;
       if (lock.when !== undefined)    shouldLock = (val === normText(lock.when));
       if (lock.whenNot !== undefined) shouldLock = (val !== normText(lock.whenNot));
