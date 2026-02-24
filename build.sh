@@ -22,6 +22,7 @@ cat \
   src/features/replace-content-with-icon.js \
   src/features/change-record-limit.js \
   src/features/lock-fields.js \
+  src/features/conditional-field-grayout.js \
   src/features/truncate-expand-function.js \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
