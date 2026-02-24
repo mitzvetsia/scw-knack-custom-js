@@ -121,11 +121,6 @@
         background-color: #e8f0fe !important;   /* light blue tint */
       }
 
-      /* Subtle left-border accent for assumption rows */
-      tr.scw-row--assumptions td:first-child {
-        border-left: 4px solid #4285f4 !important;
-      }
-
       /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
       td.field_2379[data-scw-bucket-label] {
         position: relative;
