@@ -68,25 +68,32 @@
   }
 
   /**
-   * Scan every rendered KTL hide/show button and inject a <style> block
-   * with per-view colour overrides for any view whose description
-   * contains _hsvcolor=<keyword|#hex>.
+   * Walk the Backbone view models on the current scene, extract any
+   * _hsvcolor= keywords from their descriptions, and inject a <style>
+   * block with per-view colour overrides.
+   *
+   * We iterate models rather than querying the DOM for KTL buttons
+   * because KTL may not have injected its buttons yet at the time
+   * this handler runs.  The generated CSS selectors will match as
+   * soon as the buttons appear.
    */
   function applyHsvColors() {
-    var buttons = document.querySelectorAll(
-      '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]'
-    );
+    var models;
+    try {
+      var views = Knack.router.scene_view.model.views;
+      if (!views || !views.models) return;
+      models = views.models;
+    } catch (e) { return; }
 
     var rules = [];
 
-    buttons.forEach(function (btn) {
-      // id format: hideShow_view_1234_button
-      var parts = btn.id.match(/^hideShow_(view_\d+)_button$/);
-      if (!parts) return;
+    for (var i = 0; i < models.length; i++) {
+      var m = models[i];
+      if (!m.attributes || !m.attributes.key) continue;
 
-      var viewKey = parts[1];
+      var viewKey = m.attributes.key;
       var color = extractHsvColor(viewKey);
-      if (!color) return;
+      if (!color) continue;
 
       rules.push(
         '/* ── ' + viewKey + ' via _hsvcolor ── */\n' +
@@ -95,7 +102,7 @@
         '#' + viewKey + ':has(.ktlHideShowButton) ' +
           '{ background-color: ' + color + '; }'
       );
-    });
+    }
 
     // Remove previous overrides if any.
     var existing = document.getElementById(STYLE_ID);
@@ -109,10 +116,15 @@
     document.head.appendChild(style);
   }
 
-  // Re-evaluate colours every time a view renders.
+  // Re-evaluate colours on every view render and scene render.
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
+      applyHsvColors();
+    });
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
       applyHsvColors();
     });
 
