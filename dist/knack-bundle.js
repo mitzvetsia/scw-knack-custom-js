@@ -4053,7 +4053,7 @@ $(document).on('knack-view-render.view_3313', function () {
         left: 8px;
         transform: translateY(-50%);
         font-weight: normal;
-        font-size: 12px;
+        font-size: 14px;
         color: #fff;
         white-space: nowrap;
       }
