@@ -11,12 +11,13 @@
   const STYLE_ID = 'scw-hsv-color-overrides-css';
   const EVENT_NS = '.scwHsvColor';
 
+  /* Cache of view descriptions gathered from knack-view-render events.
+     Keyed by view key, e.g. { "view_3477": "<p>_hsvcolor=passive-info</p>" } */
+  var viewDescCache = {};
+
   /**
-   * Extract the _hsvcolor= value from a Knack view's description.
-   *
-   * Knack stores the description as an HTML string in
-   * view.attributes.description.  KTL-style keywords start with an
-   * underscore and are separated by whitespace or <br /> tags.
+   * Resolve the _hsvcolor= value for a given view key using the cached
+   * description text collected from knack-view-render events.
    *
    * Accepted formats in the description field:
    *   _hsvcolor=documentation
@@ -27,10 +28,7 @@
    */
   function extractHsvColor(viewKey) {
     try {
-      var viewModel = Knack.router.scene_view.model.views.get(viewKey);
-      if (!viewModel) return null;
-
-      var desc = viewModel.attributes.description;
+      var desc = viewDescCache[viewKey];
       if (!desc) return null;
 
       // Normalise <br /> variants to spaces so the regex stays simple.
@@ -95,11 +93,13 @@
     document.head.appendChild(style);
   }
 
-  // Re-evaluate colours every time a view renders (KTL buttons may
-  // appear or disappear at any time).
+  // Cache each view's description as it renders, then re-apply colours.
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
-    .on('knack-view-render.any' + EVENT_NS, function () {
+    .on('knack-view-render.any' + EVENT_NS, function (event, view) {
+      if (view && view.key && view.description) {
+        viewDescCache[view.key] = view.description;
+      }
       applyHsvColors();
     });
 
