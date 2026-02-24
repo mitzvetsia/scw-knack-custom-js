@@ -74,18 +74,28 @@
       var vkw = kw[viewKey];
       if (!vkw || !vkw._hsvcolor) return null;
 
-      var entries = vkw._hsvcolor;            // array of param groups
+      // Actual KTL structure (from diagnostic):
+      //   _hsvcolor: [{ params: [["project-scope-details"]], paramStr: "…" }]
+      // i.e. entry.params is an array of arrays (parameter groups).
+      var entries = vkw._hsvcolor;
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
         var val;
 
         if (typeof entry === 'string') {
           val = entry;
+        } else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+          // Object with .params array — params[0] is itself an array.
+          var p = entry.params;
+          if (Array.isArray(p) && p.length > 0) {
+            val = Array.isArray(p[0]) ? p[0][0] : p[0];
+          }
+          // Also try paramStr as a direct fallback.
+          if (!val && entry.paramStr) {
+            val = entry.paramStr.replace(/^\[|\]$/g, '');
+          }
         } else if (Array.isArray(entry)) {
-          val = entry[0];
-        } else if (entry && typeof entry === 'object') {
-          // Object with .params array (KTL parseParameters format).
-          val = entry.params ? entry.params[0] : null;
+          val = Array.isArray(entry[0]) ? entry[0][0] : entry[0];
         }
         var resolved = resolveColorValue(val);
         if (resolved) return resolved;
