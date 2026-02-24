@@ -131,7 +131,7 @@ window.SCW = window.SCW || {};
   document.head.appendChild(style);
 })();
 /*************  Global Style Overrides  **************************/
-/*************  Extract _hsvcolor keyword from view descriptions  **************/
+/*************  Extract _hsvcolor keyword from view descriptions  ************/
 (function () {
   'use strict';
 
