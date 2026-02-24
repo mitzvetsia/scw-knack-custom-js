@@ -51,6 +51,21 @@
     'field_2401', // Labor Total
   ];
 
+  // Per-row conditional locks (applied to ALL rows regardless of bucket)
+  // Each rule: if detectField matches `when`, gray+lock the target field
+  const ROW_LOCKS = [
+    {
+      detectField: 'field_2373',
+      when: 'yes',
+      lockField: 'field_2399',   // Qty
+    },
+    {
+      detectField: 'field_2374',
+      whenNot: 'yes',
+      lockField: 'field_2380',   // Connected Devices
+    },
+  ];
+
   // Rules: which fields stay ACTIVE (not grayed) per bucket
   const RULES = {
     [BUCKET_OTHER_SERVICES]: {
@@ -112,14 +127,16 @@
       }
 
       /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
+      td.field_2379[data-scw-bucket-label] {
+        vertical-align: middle !important;
+      }
       td.field_2379[data-scw-bucket-label]::after {
         content: attr(data-scw-bucket-label);
         display: block;
         text-align: center;
         font-weight: 600;
-        font-size: 11px;
+        font-size: 14px;
         color: #fff;
-        letter-spacing: 0.3px;
       }
     `;
 
@@ -178,10 +195,32 @@
     $tr.removeAttr(ROW_PROCESSED);
   }
 
+  function normText(s) {
+    return (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  function applyRowLocks($tr) {
+    ROW_LOCKS.forEach(function (lock) {
+      var $detect = $tr.find('td.' + lock.detectField);
+      if (!$detect.length) return;
+      var val = normText($detect.text());
+      var shouldLock = false;
+      if (lock.when !== undefined)    shouldLock = (val === normText(lock.when));
+      if (lock.whenNot !== undefined) shouldLock = (val !== normText(lock.whenNot));
+      if (!shouldLock) return;
+      var $td = $tr.find('td.' + lock.lockField);
+      if ($td.length) grayTd($td);
+    });
+  }
+
   function processRow($tr) {
     // Skip group/header rows
     if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
 
+    // ── Per-row conditional locks (all rows) ──
+    applyRowLocks($tr);
+
+    // ── Bucket-based grayout ──
     const $detectTd = $tr.find('td.' + DETECT_FIELD);
     if (!$detectTd.length) return;
 
@@ -190,7 +229,6 @@
 
     const rule = RULES[bucketId];
     if (!rule) {
-      // No rule for this bucket — make sure row is clear
       clearRow($tr);
       return;
     }
@@ -242,20 +280,47 @@
     var $tbody = $view.find('table.kn-table-table tbody');
     if (!$tbody.length) return;
 
-    var $rows = $tbody.find('tr').not('.kn-table-group, .kn-table-group-container');
-    if ($rows.length < 2) return;
+    // Collect groups: each group starts with a group-header row,
+    // followed by its data rows until the next group-header.
+    var allRows = $tbody.children('tr').toArray();
+    var groups = [];
+    var current = null;
 
-    var sorted = $rows.toArray().sort(function (a, b) {
+    allRows.forEach(function (row) {
+      var $r = $(row);
+      if ($r.hasClass('kn-table-group') || $r.hasClass('kn-table-group-container')) {
+        current = { header: row, rows: [] };
+        groups.push(current);
+      } else if (current) {
+        current.rows.push(row);
+      } else {
+        // Rows before any group header — treat as their own group
+        if (!groups.length || groups[groups.length - 1].header) {
+          current = { header: null, rows: [] };
+          groups.push(current);
+        }
+        current.rows.push(row);
+      }
+    });
+
+    // Sort data rows within each group
+    var comparator = function (a, b) {
       var aVal = $(a).find('td.' + SORT_FIELD).text().trim();
       var bVal = $(b).find('td.' + SORT_FIELD).text().trim();
       var aNum = parseFloat(aVal);
       var bNum = parseFloat(bVal);
       if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
       return aVal.localeCompare(bVal);
+    };
+
+    groups.forEach(function (g) {
+      if (g.rows.length > 1) g.rows.sort(comparator);
     });
 
-    sorted.forEach(function (row) {
-      $tbody.append(row);
+    // Re-append in order: header then sorted rows
+    groups.forEach(function (g) {
+      if (g.header) $tbody.append(g.header);
+      g.rows.forEach(function (row) { $tbody.append(row); });
     });
   }
 
