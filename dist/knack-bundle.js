@@ -5832,7 +5832,7 @@ $(".kn-navigation-bar").hide();
 })();
 // ============================================================
 // Refresh other views when an inline edit is made
-// ============================================================
+// ==========================================================
 //
 // CONFIG: one entry per scene.
 //   scene           – the scene to apply the rule to
