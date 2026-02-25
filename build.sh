@@ -7,6 +7,7 @@ cat \
   src/config.js \
   src/util.js \
   src/features/preserve-scroll-on-refresh.js \
+  src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
   src/features/extract-hsv-color.js \
   src/features/ratking/modal-backdrop-click-disable.js \
