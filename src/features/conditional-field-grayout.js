@@ -69,11 +69,11 @@
   // Rules: which fields stay ACTIVE (not grayed) per bucket
   const RULES = {
     [BUCKET_OTHER_SERVICES]: {
-      activeFields: ['field_2415', 'field_2409', 'field_2400', 'field_2399', 'field_2401'],
+      activeFields: ['field_2415', 'field_2409', 'field_2412', 'field_2400', 'field_2399', 'field_2401'],
       rowClass: 'scw-row--services',
     },
     [BUCKET_ASSUMPTIONS]: {
-      activeFields: ['field_2415', 'field_2409'],
+      activeFields: ['field_2415', 'field_2409', 'field_2412'],
       rowClass: 'scw-row--assumptions',
     },
   };
