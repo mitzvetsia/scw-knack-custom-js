@@ -5308,7 +5308,7 @@ $(".kn-navigation-bar").hide();
 })();
 
 /*** END FEATURE: Quote/publish gating refresh bundle ******************************************************/
-/*************  Exception Grid: hide if empty, warn if any records  **************************/
+/*************  Exception Grid: hide if empty, warn if any records  ************************/
 (function () {
   'use strict';
 
