@@ -1,4 +1,4 @@
-/*************  Exception Grid: hide if empty, warn if any records  **************************/
+/*************  Exception Grid: hide if empty, warn if any records  ************************/
 (function () {
   'use strict';
 
