@@ -121,11 +121,11 @@
         background-color: #e8f0fe !important;   /* light blue tint */
       }
 
-      /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
-      td.field_2379[data-scw-bucket-label] {
+      /* ── Bucket label overlay in PRODUCT (field_2379, col 3) cell ── */
+      td.field_2379[data-column-index="3"][data-scw-bucket-label] {
         position: relative;
       }
-      td.field_2379[data-scw-bucket-label]::after {
+      td.field_2379[data-column-index="3"][data-scw-bucket-label]::after {
         content: attr(data-scw-bucket-label);
         position: absolute;
         top: 50%;
@@ -257,10 +257,11 @@
       if ($td.length) grayTd($td);
     });
 
-    // Show bucket label in the PRODUCT cell (field_2379)
+    // Show bucket label in the PRODUCT cell only (field_2379, column-index 3).
+    // Column-index 4 is the *connected* field_2379 (Mounting Accs.) — skip it.
     var label = BUCKET_LABELS[bucketId];
     if (label) {
-      var $productTd = $tr.find('td.field_2379');
+      var $productTd = $tr.find('td.field_2379[data-column-index="3"]');
       if ($productTd.length) {
         $productTd.attr('data-scw-bucket-label', label);
       }
