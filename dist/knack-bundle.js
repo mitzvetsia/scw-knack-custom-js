@@ -4181,12 +4181,13 @@ $(document).on('knack-view-render.view_3313', function () {
       if ($td.length) grayTd($td);
     });
 
-    // Show bucket label in the PRODUCT cell (field_2379)
+    // Show bucket label in the PRODUCT cell only (first td.field_2379).
+    // The second td.field_2379 is the *connected* Mounting Accs. — skip it.
     var label = BUCKET_LABELS[bucketId];
     if (label) {
-      var $productTd = $tr.find('td.field_2379');
-      if ($productTd.length) {
-        $productTd.attr('data-scw-bucket-label', label);
+      var $allProduct = $tr.find('td.field_2379');
+      if ($allProduct.length) {
+        $allProduct.first().attr('data-scw-bucket-label', label);
       }
     }
 
