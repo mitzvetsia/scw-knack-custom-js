@@ -88,6 +88,12 @@
         vertical-align: middle !important;
       }
 
+      /* Override Knack's per-level indent on data-row cells (hierarchy is
+         already communicated by the styled group headers). */
+      ${s('.scw-group-collapse-enabled table tbody tr:not(.kn-table-group) td[style*="padding-left"]')} {
+        padding-left: 8px !important;
+      }
+
       ${s('.scw-group-collapse-enabled tr.scw-group-header')} {
         cursor: pointer;
         user-select: none;
