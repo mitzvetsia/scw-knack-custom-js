@@ -6,6 +6,7 @@ mkdir -p dist
 cat \
   src/config.js \
   src/util.js \
+  src/features/preserve-scroll-on-refresh.js \
   src/features/global-styles.js \
   src/features/extract-hsv-color.js \
   src/features/ratking/modal-backdrop-click-disable.js \
