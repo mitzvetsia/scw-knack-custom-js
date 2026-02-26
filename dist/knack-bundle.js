@@ -5410,7 +5410,7 @@ $(".kn-navigation-bar").hide();
 /**************************************************************************************************
  * FEATURE: Quote / publish gating refresh & scroll preservation (legacy bundle)
  * - Contains multiple “rerender scene_view + restore scroll” handlers
- **************************************************************************************************/
+ ***********************************************************************************************/
 
 /** Submit quote details form when equipment table changes (view_2830 -> submit view_2833) */
 (function submitFormOnCellUpdate_view2830() {
