@@ -84,7 +84,7 @@
 
 
     /* Menu buttons */
-    .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
+    .kn-menu div.control:not(.has-addons) a.kn-link.kn-button {
       background-color: rgba(237,131,38, 1);
       color: white;
       font-weight: 600;
