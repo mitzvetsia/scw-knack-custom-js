@@ -6350,8 +6350,8 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Configuration ────────────────────────────────────────────────────────
-  var JOTFORM_FORM_ID   = '92274209022147';
-  var JOTFORM_FIELD_NAME = 'sowRecordId';        // TODO: update once the hidden field is created in JotForm
+  var JOTFORM_FORM_ID   = '260564849468170';
+  var JOTFORM_FIELD_NAME = 'sowID';
   var MENU_VIEW_ID       = 'view_3482';
   var LINK_SELECTOR      = '.kn-link-3';         // "Bulk Add Photos" link
   var MODAL_ID           = 'scw-jotform-modal';
