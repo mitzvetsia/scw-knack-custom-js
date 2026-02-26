@@ -6379,39 +6379,60 @@ $(".kn-navigation-bar").hide();
   // ── CSS (injected once) ──────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
+    var M = '#' + MODAL_ID;
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = [
-      '#' + MODAL_ID + ' {',
+      M + ' {',
       '  position: fixed; top: 0; left: 0; width: 100%; height: 100%;',
       '  z-index: 10000; display: flex; align-items: center; justify-content: center;',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-backdrop {',
+      M + ' .scw-jf-backdrop {',
       '  position: absolute; top: 0; left: 0; width: 100%; height: 100%;',
       '  background: rgba(0,0,0,0.55);',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-dialog {',
+      M + ' .scw-jf-dialog {',
       '  position: relative; width: 90%; max-width: 800px; height: 85vh;',
-      '  background: #fff; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);',
+      '  background: #fff; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,0.25);',
       '  display: flex; flex-direction: column; overflow: hidden;',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-header {',
+      M + ' .scw-jf-header {',
       '  display: flex; align-items: center; justify-content: space-between;',
-      '  padding: 12px 16px; border-bottom: 1px solid #e0e0e0; background: #fafafa;',
+      '  padding: 10px 16px; background: #07467c;',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-header h3 {',
-      '  margin: 0; font-size: 16px; font-weight: 600; color: #333;',
+      M + ' .scw-jf-header h3 {',
+      '  margin: 0; font-size: 15px; font-weight: 600; color: #fff;',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-close {',
-      '  background: none; border: none; font-size: 22px; cursor: pointer;',
-      '  color: #666; padding: 0 4px; line-height: 1;',
+      M + ' .scw-jf-close {',
+      '  background: none; border: none; font-size: 20px; cursor: pointer;',
+      '  color: rgba(255,255,255,0.8); padding: 0 4px; line-height: 1;',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-close:hover { color: #000; }',
-      '#' + MODAL_ID + ' .scw-jf-body {',
-      '  flex: 1; overflow: hidden;',
+      M + ' .scw-jf-close:hover { color: #fff; }',
+      M + ' .scw-jf-body {',
+      '  flex: 1; overflow: hidden; position: relative;',
       '}',
-      '#' + MODAL_ID + ' .scw-jf-body iframe {',
+      // Loading spinner — sits behind the iframe, visible until form loads
+      M + ' .scw-jf-loader {',
+      '  position: absolute; top: 0; left: 0; width: 100%; height: 100%;',
+      '  display: flex; flex-direction: column; align-items: center; justify-content: center;',
+      '  background: #fff; color: #07467c;',
+      '}',
+      M + ' .scw-jf-spinner {',
+      '  width: 36px; height: 36px; border: 3px solid #e0e0e0;',
+      '  border-top-color: #07467c; border-radius: 50%;',
+      '  animation: scwJfSpin .8s linear infinite;',
+      '}',
+      M + ' .scw-jf-loader span {',
+      '  margin-top: 12px; font-size: 13px; color: #666;',
+      '}',
+      '@keyframes scwJfSpin { to { transform: rotate(360deg); } }',
+      M + ' .scw-jf-body iframe {',
+      '  position: relative; z-index: 1;',
       '  width: 100%; height: 100%; border: none;',
+      '  opacity: 0; transition: opacity .25s ease;',
+      '}',
+      M + ' .scw-jf-body iframe.scw-jf-loaded {',
+      '  opacity: 1;',
       '}',
     ].join('\n');
     document.head.appendChild(style);
@@ -6433,12 +6454,19 @@ $(".kn-navigation-bar").hide();
       '    <button class="scw-jf-close" title="Close">&times;</button>',
       '  </div>',
       '  <div class="scw-jf-body">',
+      '    <div class="scw-jf-loader"><div class="scw-jf-spinner"></div><span>Loading form&hellip;</span></div>',
       '    <iframe src="' + jotformUrl + '" allowfullscreen></iframe>',
       '  </div>',
       '</div>',
     ].join('');
 
     document.body.appendChild(modal);
+
+    // Hide loader once the iframe content is ready
+    var iframe = modal.querySelector('iframe');
+    iframe.addEventListener('load', function () {
+      iframe.classList.add('scw-jf-loaded');
+    });
 
     // Close handlers
     modal.querySelector('.scw-jf-backdrop').addEventListener('click', closeModal);
