@@ -85,10 +85,10 @@
 
     /* Menu buttons */
     .kn-menu div.control:not(.has-addons) a.kn-link.kn-button {
-      background-color: rgba(237,131,38, 1);
-      color: white;
-      font-weight: 600;
-      padding: 10px;
+      background-color: rgba(237,131,38, 1) !important;
+      color: white !important;
+      font-weight: 600 !important;
+      padding: 10px !important;
       width: 33% !important;
     }
     .kn-menu .control:not(.has-addons) {
