@@ -6,9 +6,9 @@
  * and applies per-bucket grayout rules:
  *
  *  "Other Services"  → gray out all cells; inject bucket label +
- *                      field_2020 (Labor Description) into field_2379.
+ *                      field_2020 (Labor Description) into field_1949.
  *  "Assumptions"     → gray out all cells; inject bucket label +
- *                      field_2020 (Labor Description) into field_2379.
+ *                      field_2020 (Labor Description) into field_1949.
  *
  * Approach mirrors lock-fields.js: capture-phase event blocker,
  * MutationObserver, retried application on render.
@@ -39,11 +39,8 @@
 
   // All editable/visible column field keys in this view (excluding the hidden detect field)
   const ALL_COLUMN_KEYS = [
-    'field_2154', // REL_scope of work
-    'field_1949', // PRODUCT
-    'field_2379', // PRODUCT (bucket label + labor description target)
+    'field_1949', // PRODUCT (bucket label + labor description target)
     'field_1957', // Connected Devices
-    'field_2020', // INPUT_Labor Description
     'field_1953', // SCW Notes
     //'field_2376', // Power Available
     'field_2261', // Cust Disc %
@@ -123,11 +120,11 @@
         background-color: #e8f0fe !important;   /* light blue tint */
       }
 
-      /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
-      td.field_2379[data-scw-bucket-label] {
+      /* ── Bucket label overlay in PRODUCT (field_1949) cell ── */
+      td.field_1949[data-scw-bucket-label] {
         position: relative;
       }
-      td.field_2379[data-scw-bucket-label]::after {
+      td.field_1949[data-scw-bucket-label]::after {
         content: attr(data-scw-bucket-label);
         position: absolute;
         top: 50%;
@@ -259,13 +256,14 @@
       if ($td.length) grayTd($td);
     });
 
-    // Show bucket label + labor description in the field_2379 cell.
+    // Show bucket label + labor description in the PRODUCT (field_1949) cell.
+    // field_2020 (INPUT_Labor Description) is read if present in the DOM.
     var label = BUCKET_LABELS[bucketId];
     if (label) {
       var $laborDesc = $tr.find('td.field_2020');
       var laborText = $laborDesc.length ? $laborDesc.text().trim() : '';
       var combined = laborText ? label + ' \u2014 ' + laborText : label;
-      var $target = $tr.find('td.field_2379');
+      var $target = $tr.find('td.field_1949');
       if ($target.length) {
         $target.first().attr('data-scw-bucket-label', combined);
       }
