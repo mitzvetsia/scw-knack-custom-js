@@ -1,7 +1,7 @@
 // src/features/jotform-embed-sow-photos.js
 // ---------------------------------------------------------------------------
 // Embeds a JotForm "Bulk Add Photos" form in a modal overlay, pre-populating
-// a hidden JotForm field with the current Scope-of-Work record ID.
+/// a hidden JotForm field with the current Scope-of-Work record ID.
 //
 // Hooks into view_3482 (SOW details menu) and intercepts the existing
 // "Bulk Add Photos" link (matched by visible text) so it opens an in-page
