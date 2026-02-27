@@ -4203,8 +4203,8 @@ $(document).on('knack-view-render.view_3313', function () {
 
   // Display labels for the detect-field cell
   const BUCKET_LABELS = {
-    [BUCKET_OTHER_SERVICES]: 'Other Services',
-    [BUCKET_ASSUMPTIONS]:    'Assumptions',
+    [BUCKET_OTHER_SERVICES]: 'SERVICE',
+    [BUCKET_ASSUMPTIONS]:    'ASSUMPTION',
   };
 
   // All editable/visible column field keys in this view (excluding the hidden detect field)
@@ -4615,8 +4615,8 @@ $(document).on('knack-view-render.view_3313', function () {
 
   // Display labels for the detect-field cell
   const BUCKET_LABELS = {
-    [BUCKET_OTHER_SERVICES]: 'Other Services',
-    [BUCKET_ASSUMPTIONS]:    'Assumptions',
+    [BUCKET_OTHER_SERVICES]: 'SERVICE',
+    [BUCKET_ASSUMPTIONS]:    'ASSUMPTION',
   };
 
   // All editable/visible column field keys in this view (excluding the hidden detect field)
