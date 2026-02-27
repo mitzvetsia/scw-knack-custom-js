@@ -4167,7 +4167,7 @@ $(document).on('knack-view-render.view_3313', function () {
 })();
 
 /***************************** DISABLE QUANTITY CELL ON DESIGNATED QUANTITY 1 ONLY LINE ITEM TYPES *******************************/
-/***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
+/***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *****************************/
 /**
  * SCW / Knack: Row-based conditional cell grayout (view_3505)
  *
