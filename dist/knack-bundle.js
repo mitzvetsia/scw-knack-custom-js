@@ -354,11 +354,11 @@ window.SCW = window.SCW || {};
 
 
     /* Menu buttons */
-    .kn-menu div.control:not(.has-addons) a.kn-link.kn-link-page.kn-button {
-      background-color: rgba(237,131,38, 1);
-      color: white;
-      font-weight: 600;
-      padding: 10px;
+    .kn-menu div.control:not(.has-addons) a.kn-link.kn-button {
+      background-color: rgba(237,131,38, 1) !important;
+      color: white !important;
+      font-weight: 600 !important;
+      padding: 10px !important;
       width: 33% !important;
     }
     .kn-menu .control:not(.has-addons) {
@@ -6588,8 +6588,8 @@ $(".kn-navigation-bar").hide();
 // a hidden JotForm field with the current Scope-of-Work record ID.
 //
 // Hooks into view_3482 (SOW details menu) and intercepts the existing
-// "Bulk Add Photos" link (kn-link-3) so it opens an in-page modal instead
-// of a plain popup window.
+// "Bulk Add Photos" link (matched by visible text) so it opens an in-page
+// modal instead of a plain popup window.
 // ---------------------------------------------------------------------------
 (function jotformEmbedSowPhotos() {
   'use strict';
@@ -6598,7 +6598,7 @@ $(".kn-navigation-bar").hide();
   var JOTFORM_FORM_ID   = '260564849468170';
   var JOTFORM_FIELD_NAME = 'sowID';
   var MENU_VIEW_ID       = 'view_3482';
-  var LINK_SELECTOR      = '.kn-link-3';         // "Bulk Add Photos" link
+  var LINK_TEXT           = 'Bulk Add Photos';    // match by visible label
   var MODAL_ID           = 'scw-jotform-modal';
   var STYLE_ID           = 'scw-jotform-modal-css';
 
@@ -6731,7 +6731,10 @@ $(".kn-navigation-bar").hide();
 
   // ── Event binding ────────────────────────────────────────────────────────
   SCW.onViewRender(MENU_VIEW_ID, function (event, view) {
-    var $link = $('#' + MENU_VIEW_ID).find(LINK_SELECTOR);
+    // Find the menu link by its visible text instead of positional class
+    var $link = $('#' + MENU_VIEW_ID).find('a.kn-link').filter(function () {
+      return $(this).text().trim() === LINK_TEXT;
+    });
     if (!$link.length) return;
 
     // Replace the inline javascript: href with a safe no-op
