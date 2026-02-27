@@ -4995,7 +4995,7 @@ $(document).on('knack-view-render.view_3313', function () {
   });
 })();
 /***************************** /CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
-/*************  // view_3332 - truncate field_1949 with click-to-expand ************************/
+/*************  // view_3332 - truncate field_1949 with click-to-expand **********************/
 
 // view_3332 - truncate field_1949 with click-to-expand
 (function () {
