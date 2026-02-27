@@ -41,6 +41,7 @@
   const ALL_COLUMN_KEYS = [
     'field_1949', // PRODUCT (bucket label + labor description target)
     'field_1957', // Connected Devices
+    'field_2020', // INPUT_Labor Description (hidden)
     'field_1953', // SCW Notes
     //'field_2376', // Power Available
     'field_2261', // Cust Disc %
@@ -89,7 +90,7 @@
   // CSS
   // ============================================================
   function injectCssOnce() {
-    const id = 'scw-cond-grayout-css';
+    const id = 'scw-sow-cond-grayout-css';
     if (document.getElementById(id)) return;
 
     const css = `
