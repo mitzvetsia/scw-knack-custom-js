@@ -1,4 +1,4 @@
-/*************  // view_3332 - truncate field_1949 with click-to-expand **************************/
+/*************  // view_3332 - truncate field_1949 with click-to-expand ************************/
 
 // view_3332 - truncate field_1949 with click-to-expand
 (function () {
