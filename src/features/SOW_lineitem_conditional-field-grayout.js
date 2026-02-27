@@ -1,15 +1,14 @@
 /***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /**
- * SCW / Knack: Row-based conditional cell grayout (view_3505)
+ * SCW / Knack: Row-based conditional cell grayout (view_3456 — SOW)
  *
- * Reads the hidden field_2366 (REL_proposal bucket) on each row
+ * Reads the hidden field_2219 (REL_proposal bucket) on each row
  * and applies per-bucket grayout rules:
  *
- *  "Other Services"  → gray out all cells EXCEPT field_2415, field_2409, field_2400, field_2399
- *  "Assumptions"     → gray out all cells EXCEPT field_2415, field_2409, field_2401;
- *                      field_2409 gets a distinctive background;
- *                      grayed cells have their content hidden so the
- *                      description column visually dominates the row.
+ *  "Other Services"  → gray out all cells; inject bucket label +
+ *                      field_2020 (Labor Description) into field_1949.
+ *  "Assumptions"     → gray out all cells; inject bucket label +
+ *                      field_2020 (Labor Description) into field_1949.
  *
  * Approach mirrors lock-fields.js: capture-phase event blocker,
  * MutationObserver, retried application on render.
@@ -34,16 +33,15 @@
 
   // Display labels for the detect-field cell
   const BUCKET_LABELS = {
-    [BUCKET_OTHER_SERVICES]: 'Other Services',
-    [BUCKET_ASSUMPTIONS]:    'Assumptions',
+    [BUCKET_OTHER_SERVICES]: 'SERVICE',
+    [BUCKET_ASSUMPTIONS]:    'ASSUMPTION',
   };
 
   // All editable/visible column field keys in this view (excluding the hidden detect field)
   const ALL_COLUMN_KEYS = [
-    'field_2154', // REL_scope of work
-    'field_1949', // PRODUCT
+    'field_1949', // PRODUCT (bucket label + labor description target)
     'field_1957', // Connected Devices
-    'field_2020', // Install Labor Description
+    'field_2020', // INPUT_Labor Description (hidden)
     'field_1953', // SCW Notes
     //'field_2376', // Power Available
     'field_2261', // Cust Disc %
@@ -92,7 +90,7 @@
   // CSS
   // ============================================================
   function injectCssOnce() {
-    const id = 'scw-cond-grayout-css';
+    const id = 'scw-sow-cond-grayout-css';
     if (document.getElementById(id)) return;
 
     const css = `
@@ -123,11 +121,11 @@
         background-color: #e8f0fe !important;   /* light blue tint */
       }
 
-      /* ── Bucket label overlay in PRODUCT (field_2379) cell ── */
-      td.field_2379[data-scw-bucket-label] {
+      /* ── Bucket label overlay in PRODUCT (field_1949) cell ── */
+      td.field_1949[data-scw-bucket-label] {
         position: relative;
       }
-      td.field_2379[data-scw-bucket-label]::after {
+      td.field_1949[data-scw-bucket-label]::after {
         content: attr(data-scw-bucket-label);
         position: absolute;
         top: 50%;
@@ -259,13 +257,16 @@
       if ($td.length) grayTd($td);
     });
 
-    // Show bucket label in the PRODUCT cell only (first td.field_2379).
-    // The second td.field_2379 is the *connected* Mounting Accs. — skip it.
+    // Show bucket label + labor description in the PRODUCT (field_1949) cell.
+    // field_2020 (INPUT_Labor Description) is read if present in the DOM.
     var label = BUCKET_LABELS[bucketId];
     if (label) {
-      var $allProduct = $tr.find('td.field_2379');
-      if ($allProduct.length) {
-        $allProduct.first().attr('data-scw-bucket-label', label);
+      var $laborDesc = $tr.find('td.field_2020');
+      var laborText = $laborDesc.length ? $laborDesc.text().trim() : '';
+      var combined = laborText ? label + ' \u2014 ' + laborText : label;
+      var $target = $tr.find('td.field_1949');
+      if ($target.length) {
+        $target.first().attr('data-scw-bucket-label', combined);
       }
     }
 
