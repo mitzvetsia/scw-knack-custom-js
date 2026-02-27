@@ -7317,6 +7317,15 @@ $(".kn-navigation-bar").hide();
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
       ]
+    },
+    {
+      viewId: 'view_3512',
+      rules: [
+        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'zero',  color: 'warning' },
+        { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
+        { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
+      ]
     }
   ];
 
