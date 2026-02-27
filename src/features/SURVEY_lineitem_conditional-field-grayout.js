@@ -1,4 +1,4 @@
-/***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
+/***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *****************************/
 /**
  * SCW / Knack: Row-based conditional cell grayout (view_3505)
  *
