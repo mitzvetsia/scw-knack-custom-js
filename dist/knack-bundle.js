@@ -268,7 +268,7 @@ window.SCW = window.SCW || {};
     clearAll: clearAll
   };
 })();
-/****************  Global Style Overrides  ***************/
+/******************  Global Style Overrides  ***************/
 (function () {
   'use strict';
 
