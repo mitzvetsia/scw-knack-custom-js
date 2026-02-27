@@ -25,7 +25,7 @@
     {
       menuViewId:    'view_3532',
       linkText:      'Bulk Add Photos',
-      jotformId:     '92274209022147',
+      jotformId:     '260564849468170',
       fieldName:     'surveyID',
       hashPattern:   /site-survey-request-details\/([a-f0-9]{24})/
     }
