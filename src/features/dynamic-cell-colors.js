@@ -16,7 +16,7 @@
   // ============================================================
   // VIEW / FIELD CONFIG
   // Each view entry contains an array of rules.
-  //   fieldKey  – the Knack field class on <td>
+  //   fieldKey  – the Knack field id (matched via data-field-key attribute)
   //   when      – "empty" | "zero" (what triggers the color)
   //   color     – key from COLORS (or a raw CSS color string)
   // ============================================================
@@ -50,22 +50,34 @@
     return COLORS[colorKey] || colorKey;
   }
 
-  /** Return true when the cell text should be considered "empty". */
-  function isEmpty(text) {
-    const t = text.trim();
+  /**
+   * Normalize cell text by replacing non-breaking spaces and other
+   * invisible / zero-width characters with regular spaces, then trim.
+   */
+  function normalizeText(raw) {
+    return raw.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+  }
+
+  /** Return true when the cell should be considered "empty". */
+  function isCellEmpty($td) {
+    // Connection / image fields: if real <img> elements exist the cell
+    // has content regardless of surrounding text.
+    if ($td.find('img').length) return false;
+
+    var t = normalizeText($td.text());
     return t === '' || t === '-' || t === '—';
   }
 
   /** Return true when the cell text represents zero. */
   function isZero(text) {
-    const t = text.trim();
+    const t = normalizeText(text);
     // Handle plain "0", "$0", "$0.00", "0.00", "0.0", etc.
     return /^[\$]?0+(\.0+)?$/.test(t);
   }
 
-  function matchesCondition(cellText, when) {
-    if (when === 'empty') return isEmpty(cellText);
-    if (when === 'zero')  return isZero(cellText);
+  function matchesCondition($td, when) {
+    if (when === 'empty') return isCellEmpty($td);
+    if (when === 'zero')  return isZero($td.text());
     return false;
   }
 
@@ -89,12 +101,10 @@
       if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
 
       rules.forEach(function (rule) {
-        var $td = $tr.find('td.' + rule.fieldKey);
+        var $td = $tr.find('td[data-field-key="' + rule.fieldKey + '"]');
         if (!$td.length) return;
 
-        var cellText = $td.text();
-
-        if (matchesCondition(cellText, rule.when)) {
+        if (matchesCondition($td, rule.when)) {
           $td.css('background-color', resolveColor(rule.color));
         }
       });
