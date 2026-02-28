@@ -7315,13 +7315,13 @@ $(".kn-navigation-bar").hide();
     warning: '#fff3cd'  // pale yellow
   };
 
-  // ============================================================
+  // ===========================================================
   // VIEW / FIELD CONFIG
   // Each view entry contains an array of rules.
   //   fieldKey  – the Knack field id (matched via data-field-key attribute)
   //   when      – "empty" | "zero" (what triggers the color)
   //   color     – key from COLORS (or a raw CSS color string)
-  // ============================================================
+  // ===========================================================
   const VIEWS = [
     {
       viewId: 'view_3505',
