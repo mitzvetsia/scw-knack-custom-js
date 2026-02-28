@@ -7119,39 +7119,51 @@ $(".kn-navigation-bar").hide();
 /***************************** GOOGLE TAG MANAGER — SCENE-SPECIFIC INJECTION *******************************/
 // src/features/jotform-embed-sow-photos.js
 // ---------------------------------------------------------------------------
-// Embeds a JotForm "Bulk Add Photos" form in a modal overlay, pre-populating
-/// a hidden JotForm field with the current Scope-of-Work record ID.
+// Embeds JotForm "Bulk Add Photos" forms in a modal overlay, pre-populating
+// a hidden JotForm field with the current record ID.
 //
-// Hooks into view_3482 (SOW details menu) and intercepts the existing
-// "Bulk Add Photos" link (matched by visible text) so it opens an in-page
-// modal instead of a plain popup window.
+// Configurable for multiple views — each entry in FORM_CONFIGS defines
+// the target view, JotForm form, hidden field name, and URL-hash pattern
+// used to extract the record ID.
 // ---------------------------------------------------------------------------
 (function jotformEmbedSowPhotos() {
   'use strict';
 
   // ── Configuration ────────────────────────────────────────────────────────
-  var JOTFORM_FORM_ID   = '260564849468170';
-  var JOTFORM_FIELD_NAME = 'sowID';
-  var MENU_VIEW_ID       = 'view_3482';
-  var LINK_TEXT           = 'Bulk Add Photos';    // match by visible label
-  var MODAL_ID           = 'scw-jotform-modal';
-  var STYLE_ID           = 'scw-jotform-modal-css';
+  var MODAL_ID  = 'scw-jotform-modal';
+  var STYLE_ID  = 'scw-jotform-modal-css';
+
+  var FORM_CONFIGS = [
+    {
+      menuViewId:    'view_3482',
+      linkText:      'Bulk Add Photos',
+      jotformId:     '260564849468170',
+      fieldName:     'sowID',
+      hashPattern:   /scope-of-work-details\/([a-f0-9]{24})/
+    },
+    {
+      menuViewId:    'view_3532',
+      linkText:      'Bulk Add Photos',
+      jotformId:     '260564849468170',
+      fieldName:     'surveyID',
+      hashPattern:   /site-survey-request-details\/([a-f0-9]{24})/
+    }
+  ];
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  /** Extract the SOW record ID from the current URL hash.
-   *  Pattern: …/scope-of-work-details/{recordId}/…               */
-  function getSowRecordId() {
+  /** Extract a record ID from the current URL hash using the given pattern. */
+  function getRecordId(hashPattern) {
     var hash = window.location.hash || '';
-    var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/);
+    var match = hash.match(hashPattern);
     return match ? match[1] : '';
   }
 
   /** Build the JotForm iframe URL with optional pre-population. */
-  function buildJotformUrl(recordId) {
-    var base = 'https://form.jotform.com/' + JOTFORM_FORM_ID;
+  function buildJotformUrl(jotformId, fieldName, recordId) {
+    var base = 'https://form.jotform.com/' + jotformId;
     if (recordId) {
-      base += '?' + encodeURIComponent(JOTFORM_FIELD_NAME) + '=' + encodeURIComponent(recordId);
+      base += '?' + encodeURIComponent(fieldName) + '=' + encodeURIComponent(recordId);
     }
     return base;
   }
@@ -7265,26 +7277,28 @@ $(".kn-navigation-bar").hide();
   }
 
   // ── Event binding ────────────────────────────────────────────────────────
-  SCW.onViewRender(MENU_VIEW_ID, function (event, view) {
-    // Find the menu link by its visible text instead of positional class
-    var $link = $('#' + MENU_VIEW_ID).find('a.kn-link').filter(function () {
-      return $(this).text().trim() === LINK_TEXT;
-    });
-    if (!$link.length) return;
+  FORM_CONFIGS.forEach(function (cfg) {
+    SCW.onViewRender(cfg.menuViewId, function (event, view) {
+      // Find the menu link by its visible text instead of positional class
+      var $link = $('#' + cfg.menuViewId).find('a.kn-link').filter(function () {
+        return $(this).text().trim() === cfg.linkText;
+      });
+      if (!$link.length) return;
 
-    // Replace the inline javascript: href with a safe no-op
-    $link.attr('href', '#');
+      // Replace the inline javascript: href with a safe no-op
+      $link.attr('href', '#');
 
-    $link.off('click.scwJotform').on('click.scwJotform', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
+      $link.off('click.scwJotform').on('click.scwJotform', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-      var recordId  = getSowRecordId();
-      var jotformUrl = buildJotformUrl(recordId);
+        var recordId   = getRecordId(cfg.hashPattern);
+        var jotformUrl = buildJotformUrl(cfg.jotformId, cfg.fieldName, recordId);
 
-      openModal(jotformUrl);
-    });
-  }, 'jotformEmbed');
+        openModal(jotformUrl);
+      });
+    }, 'jotformEmbed.' + cfg.menuViewId);
+  });
 })();
 /***************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
 (function () {
