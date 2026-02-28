@@ -16,7 +16,7 @@
   // ============================================================
   // VIEW / FIELD CONFIG
   // Each view entry contains an array of rules.
-  //   fieldKey  – the Knack field class on <td>
+  //   fieldKey  – the Knack field id (matched via data-field-key attribute)
   //   when      – "empty" | "zero" (what triggers the color)
   //   color     – key from COLORS (or a raw CSS color string)
   // ============================================================
@@ -101,7 +101,7 @@
       if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
 
       rules.forEach(function (rule) {
-        var $td = $tr.find('td.' + rule.fieldKey);
+        var $td = $tr.find('td[data-field-key="' + rule.fieldKey + '"]');
         if (!$td.length) return;
 
         if (matchesCondition($td, rule.when)) {
