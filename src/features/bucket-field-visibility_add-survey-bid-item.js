@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  // ======================
+  // ===================
   // CONFIG
   // ======================
   const VIEW_IDS = ['view_3544']; // add more views
