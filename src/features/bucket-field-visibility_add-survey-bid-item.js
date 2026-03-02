@@ -1,4 +1,4 @@
-////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+////***************** DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
 (function () {
   'use strict';
