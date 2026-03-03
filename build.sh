@@ -19,6 +19,7 @@ cat \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
+  src/features/bid-items-grid.js \
   src/features/group-collapse.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
