@@ -4398,8 +4398,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (level === 1) {
       const labor = sumField(caches, $rowsToSum, laborKey);
 
-      if (Math.abs(labor) < 0.01) return $();
-
       const titleText = norm(leftText || '').replace(/\s+—\s*Subtotal\s*$/i, '');
 
       const rows = buildLevel1FooterRows(ctx, {
@@ -4650,7 +4648,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (level === 1 || level === 2) {
         const levelInfo = level === 2 ? sectionContext.level2 : getLevel2InfoFromGroupRow($groupRow);
 
-        if (level === 2 && !blankL1Active && shouldHideLevel2Footer(ctx, levelInfo)) return;
+        // Skip all L2 subtotal footers (promoted L2-as-L1 still get level-1 footers)
+        if (level === 2 && !blankL1Active) return;
 
         const effectiveLevel = (level === 2 && blankL1Active) ? 1 : level;
 
