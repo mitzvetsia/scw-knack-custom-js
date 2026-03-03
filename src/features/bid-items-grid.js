@@ -387,6 +387,7 @@
     const anyView = CONFIG.views[viewIds[0]];
     const QTY_FIELD_KEY = anyView?.keys?.qty || 'field_2399';
     const RATE_FIELD_KEY = anyView?.keys?.rate || 'field_2400';
+    const LABOR_FIELD_KEY = anyView?.keys?.labor || 'field_2401';
 
     const style = document.createElement('style');
     style.id = CONFIG.cssId;
@@ -423,6 +424,7 @@ tr.scw-level-total-row td.ktlDisplayNone_hc { display: table-cell !important; }
    GUARD: never hide on L1 subtotal rows */
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY} { visibility: hidden !important; }
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${RATE_FIELD_KEY} { visibility: hidden !important; }
+tr.scw-hide-cost td.${LABOR_FIELD_KEY} { visibility: hidden !important; }
 
 /* ============================================================
    L1 footer layout (true rows)
@@ -472,10 +474,11 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
   border-bottom: 60px solid #fff !important;
 }
 
+tr.scw-level-total-row.scw-subtotal--level-1 td.scw-l1-valuecell {
+  text-align: center !important;
+}
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
-  display: inline-block;
-  min-width: 120px;
-  text-align: right;
+  text-align: center;
 }
 
 /* ============================================================
@@ -1586,6 +1589,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
         if (sectionContext.hideLevel3Summary) {
           if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
+          if (sectionContext.rule?.key === 'assumptions') {
+            $groupRow.addClass('scw-hide-cost');
+            $rowsToSum.addClass('scw-hide-cost');
+          }
           return;
         }
 
@@ -1622,8 +1629,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (level === 1 || level === 2) {
         const levelInfo = level === 2 ? sectionContext.level2 : getLevel2InfoFromGroupRow($groupRow);
 
-        // Skip all L2 subtotal footers (promoted L2-as-L1 still get level-1 footers)
+        // Skip all non-promoted L2 subtotal footers
         if (level === 2 && !blankL1Active) return;
+        // Skip promoted Assumptions L2 footer (no subtotal wanted)
+        if (level === 2 && blankL1Active && sectionContext.rule?.key === 'assumptions') return;
 
         const effectiveLevel = (level === 2 && blankL1Active) ? 1 : level;
 
