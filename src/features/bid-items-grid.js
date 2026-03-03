@@ -1559,18 +1559,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       if (level === 2 && blankL1Active) {
+        const isPromotedAssumptions = sectionContext.rule?.key === 'assumptions';
+
         if (!$groupRow.data('scwHeaderCellsAdded')) {
           $groupRow.find('td').removeAttr('colspan');
           $groupRow.append($cellsTemplate.clone());
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
-        const l2Labor = totals[laborKey] || 0;
-        if (Math.abs(l2Labor) >= 0.01) {
-          hasAnyNonZeroL1Subtotal = true;
-          $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
-          $groupRow.find(`td.${rateKey}`).html('<strong>Rate</strong>').addClass('scw-l1-header-rate');
-          $groupRow.find(`td.${laborKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
+        if (!isPromotedAssumptions) {
+          const l2Labor = totals[laborKey] || 0;
+          if (Math.abs(l2Labor) >= 0.01) {
+            hasAnyNonZeroL1Subtotal = true;
+            $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+            $groupRow.find(`td.${rateKey}`).html('<strong>Rate</strong>').addClass('scw-l1-header-rate');
+            $groupRow.find(`td.${laborKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
+          }
         }
       }
 
