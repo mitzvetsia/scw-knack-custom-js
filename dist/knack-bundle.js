@@ -3043,6 +3043,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         showProjectTotals: true,
         keys: {
           qty: 'field_2399',
+          rate: 'field_2400',
           labor: 'field_2401',
           prefix: 'field_2361',
           number: 'field_2362',
@@ -3305,6 +3306,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return totals;
   }
 
+  function avgField(caches, $rows, fieldKey) {
+    let total = 0;
+    let count = 0;
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const num = getRowNumericValue(caches, rows[i], fieldKey);
+      if (Number.isFinite(num) && num !== 0) {
+        total += num;
+        count++;
+      }
+    }
+    return count > 0 ? total / count : 0;
+  }
+
   // ============================================================
   // DOM HELPERS (view-scoped only)
   // ============================================================
@@ -3385,6 +3400,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const anyView = CONFIG.views[viewIds[0]];
     const QTY_FIELD_KEY = anyView?.keys?.qty || 'field_2399';
+    const RATE_FIELD_KEY = anyView?.keys?.rate || 'field_2400';
 
     const style = document.createElement('style');
     style.id = CONFIG.cssId;
@@ -3404,9 +3420,10 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 
 tr.scw-hide-level3-header { display: none !important; }
 
-/* Hide Qty content while preserving column layout
-   GUARD: never hide qty on L1 subtotal rows */
+/* Hide Qty/Rate content while preserving column layout
+   GUARD: never hide on L1 subtotal rows */
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY} { visibility: hidden !important; }
+tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${RATE_FIELD_KEY} { visibility: hidden !important; }
 
 /* ============================================================
    L1 footer layout (true rows)
@@ -4120,11 +4137,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Build L1 footer as TRUE ROWS (labor-only)
+  // FEATURE: Build L1 footer as TRUE ROWS (qty + rate avg + labor)
   // ============================================================
 
   function buildLevel1FooterRows(ctx, {
     titleText,
+    qtyText,
+    rateText,
     totalText,
     contextKey,
     groupLabel,
@@ -4145,19 +4164,17 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     function makeTitleRow(title, isFirst) {
       const cols = Math.max(colCount, 1);
       const $tr = makeTrBase(`scw-l1-title-row${isFirst ? ' scw-l1-first-row' : ''}`);
-      const leftSpan = Math.max(cols - 1, 1);
 
       $tr.append(`
-        <td class="scw-l1-titlecell" colspan="${leftSpan}">
+        <td class="scw-l1-titlecell" colspan="${cols}">
           <div class="scw-l1-title">${escapeHtml(title)}</div>
         </td>
       `);
-      $tr.append(`<td class="scw-l1-valuecell"></td>`);
 
       return $tr;
     }
 
-    function makeLineRow({ label, value, rowType, isFirst, isLast }) {
+    function makeLineRow({ label, qtyValue, rateValue, value, rowType, isFirst, isLast }) {
       const meta = computeColumnMeta(ctx);
       const cols = Math.max(meta.colCount || 0, 1);
 
@@ -4167,11 +4184,22 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
           `${isLast ? ' scw-l1-last-row' : ''}`
       );
 
-      // Label cell spans all columns except the last one for value
-      const labelSpan = Math.max(cols - 1, 1);
+      const labelSpan = Math.max(cols - 3, 1);
       $tr.append(`
         <td class="scw-l1-labelcell" colspan="${labelSpan}">
           <div class="scw-l1-label">${escapeHtml(label)}</div>
+        </td>
+      `);
+
+      $tr.append(`
+        <td class="${ctx.keys.qty} scw-l1-valuecell">
+          <div class="scw-l1-value">${escapeHtml(qtyValue || '')}</div>
+        </td>
+      `);
+
+      $tr.append(`
+        <td class="${ctx.keys.rate} scw-l1-valuecell">
+          <div class="scw-l1-value">${escapeHtml(rateValue || '')}</div>
         </td>
       `);
 
@@ -4189,8 +4217,15 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     if (title) rows.push(makeTitleRow(title, false));
 
-    // Labor-only: always show just one "Total" line (no subtotal/discount)
-    rows.push(makeLineRow({ label: 'Total', value: totalText, rowType: 'final', isFirst: false, isLast: false }));
+    rows.push(makeLineRow({
+      label: 'Total',
+      qtyValue: qtyText,
+      rateValue: rateText,
+      value: totalText,
+      rowType: 'final',
+      isFirst: false,
+      isLast: false,
+    }));
 
     if (rows.length) {
       rows[0].addClass('scw-l1-first-row');
@@ -4201,7 +4236,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Build Project Grand Total Rows (labor-only)
+  // FEATURE: Build Project Grand Total Rows (qty + rate avg + labor)
   // ============================================================
 
   function buildProjectTotalRows(ctx, caches, $tbody) {
@@ -4210,7 +4245,12 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const $allDataRows = $tbody.find('tr[id]');
     if (!$allDataRows.length) return [];
 
+    const qtyKey = ctx.keys.qty;
+    const rateKey = ctx.keys.rate;
     const laborKey = ctx.keys.labor;
+
+    const grandQty = sumField(caches, $allDataRows, qtyKey);
+    const grandRate = avgField(caches, $allDataRows, rateKey);
     const grandTotal = sumField(caches, $allDataRows, laborKey);
 
     const meta = computeColumnMeta(ctx);
@@ -4226,19 +4266,17 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     }
 
     function makeTitleRow(title) {
-      const leftSpan = Math.max(cols - 1, 1);
       const $tr = makeTr('scw-l1-title-row scw-project-totals-first-row');
       $tr.append(`
-        <td class="scw-l1-titlecell" colspan="${leftSpan}">
+        <td class="scw-l1-titlecell" colspan="${cols}">
           <div class="scw-l1-title">${escapeHtml(title)}</div>
         </td>
       `);
-      $tr.append('<td class="scw-l1-valuecell"></td>');
       return $tr;
     }
 
-    function makeLineRow({ label, value, rowType, isLast, extraClass }) {
-      const labelSpan = Math.max(cols - 1, 1);
+    function makeLineRow({ label, qtyValue, rateValue, value, rowType, isLast, extraClass }) {
+      const labelSpan = Math.max(cols - 3, 1);
       const cls = `scw-l1-line-row scw-l1-line--${rowType}`
         + (isLast ? ' scw-project-totals-last-row' : '')
         + (extraClass ? ` ${extraClass}` : '');
@@ -4251,7 +4289,19 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       `);
 
       $tr.append(`
-        <td class="${ctx.keys.labor} scw-l1-valuecell">
+        <td class="${qtyKey} scw-l1-valuecell">
+          <div class="scw-l1-value">${escapeHtml(qtyValue || '')}</div>
+        </td>
+      `);
+
+      $tr.append(`
+        <td class="${rateKey} scw-l1-valuecell">
+          <div class="scw-l1-value">${escapeHtml(rateValue || '')}</div>
+        </td>
+      `);
+
+      $tr.append(`
+        <td class="${laborKey} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
         </td>
       `);
@@ -4265,6 +4315,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
     rows.push(makeLineRow({
       label: 'Grand Total',
+      qtyValue: String(Math.round(grandQty)),
+      rateValue: formatMoney(grandRate),
       value: formatMoney(grandTotal),
       rowType: 'final',
       isLast: true,
@@ -4275,7 +4327,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Build subtotal row (labor-only)
+  // FEATURE: Build subtotal row (qty + rate avg + labor)
   // ============================================================
 
   function buildSubtotalRow(ctx, caches, {
@@ -4291,11 +4343,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const leftText = labelOverride || groupLabel || '';
 
     const qtyKey = ctx.keys.qty;
+    const rateKey = ctx.keys.rate;
     const laborKey = ctx.keys.labor;
 
     const qty = totals?.[qtyKey] ?? sumField(caches, $rowsToSum, qtyKey);
+    const rateAvg = avgField(caches, $rowsToSum, rateKey);
 
-    // L1: return footer rows (labor-only total, no discount)
+    // L1: return footer rows with qty, rate avg, and labor total
     if (level === 1) {
       const labor = sumField(caches, $rowsToSum, laborKey);
 
@@ -4305,6 +4359,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
       const rows = buildLevel1FooterRows(ctx, {
         titleText,
+        qtyText: String(Math.round(qty)),
+        rateText: formatMoney(rateAvg),
         totalText: formatMoney(labor),
         contextKey,
         groupLabel,
@@ -4332,6 +4388,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     const labor = sumField(caches, $rowsToSum, laborKey);
 
     $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+    $row.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
     $row.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
 
     return $row;
@@ -4405,6 +4462,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     let hasAnyNonZeroL1Subtotal = false;
 
     const qtyKey = ctx.keys.qty;
+    const rateKey = ctx.keys.rate;
     const laborKey = ctx.keys.labor;
 
     let blankL1Active = false;
@@ -4476,6 +4534,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         if (Math.abs(l1Labor) >= 0.01) hasAnyNonZeroL1Subtotal = true;
 
         $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+        $groupRow.find(`td.${rateKey}`).html('<strong>Rate</strong>').addClass('scw-l1-header-rate');
         $groupRow.find(`td.${laborKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
       }
 
@@ -4490,6 +4549,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
         if (Math.abs(l2Labor) >= 0.01) {
           hasAnyNonZeroL1Subtotal = true;
           $groupRow.find(`td.${qtyKey}`).html('<strong>Qty</strong>').addClass('scw-l1-header-qty');
+          $groupRow.find(`td.${rateKey}`).html('<strong>Rate</strong>').addClass('scw-l1-header-rate');
           $groupRow.find(`td.${laborKey}`).html('<strong>Cost</strong>').addClass('scw-l1-header-cost');
         }
       }
@@ -4521,8 +4581,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
         const qty = totals[qtyKey];
         const labor = totals[laborKey];
+        const rateAvg = avgField(caches, $rowsToSum, rateKey);
 
         $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+        $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
         $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
@@ -4537,8 +4599,10 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 
         const qty = totals[qtyKey];
         const labor = totals[laborKey];
+        const rateAvg4 = avgField(caches, $rowsToSum, rateKey);
 
         $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+        $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg4))}</strong>`);
         $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
@@ -4622,7 +4686,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     if (shouldHideSubtotalFilterFlag) hideSubtotalFilter(ctx);
 
     if (!hasAnyNonZeroL1Subtotal) {
-      $tbody.find('.scw-l1-header-qty, .scw-l1-header-cost').empty();
+      $tbody.find('.scw-l1-header-qty, .scw-l1-header-rate, .scw-l1-header-cost').empty();
     }
 
     refreshProjectTotals(ctx, caches, $tbody);
