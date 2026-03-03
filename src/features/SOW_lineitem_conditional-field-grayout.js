@@ -41,6 +41,7 @@
   const ALL_COLUMN_KEYS = [
     'field_1949', // PRODUCT (bucket label + labor description target)
     'field_1957', // Connected Devices
+    'field_1960', // Unit Price
     'field_2020', // INPUT_Labor Description (hidden)
     'field_1953', // SCW Notes
     //'field_2376', // Power Available
