@@ -9064,11 +9064,10 @@ $(".kn-navigation-bar").hide();
     '647953bb54b4e1002931ed97': [
       ['field_2427', 'REL_bid'],
       ['field_2180', 'REL_mdf-idf_mandatory multi select'],
-      ['field_2194', 'REL_products_for networking'],
-      ['field_2210', 'INPUT_service description'],
       ['field_2183', 'INPUT_product quantity'],
-      ['field_2246', 'REL_unified product field'],
+      ['field_2194', 'REL_products_for networking'],
       ['field_2206', 'REL_product accessories'],
+      ['field_2432', 'INPUT_service notes'],
     ],
     //other equipment
     '5df12ce036f91b0015404d78': [
@@ -9102,7 +9101,7 @@ $(".kn-navigation-bar").hide();
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
+    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432',
     'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2211','field_2233','field_2246',
   ];
 
