@@ -597,12 +597,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 /********************* LEVEL 3 (PRODUCT) ***********************/
 
 
-/********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
-${sceneSelectors} .kn-table-group.kn-group-level-4 {background-color: white !important; color: #07467c;}
-${sceneSelectors} .kn-table-group.kn-group-level-4 td:nth-last-child(-n+3) {font-weight:600 !important; color: #07467c !important;}
-${sceneSelectors} .kn-table-group.kn-group-level-4 td {padding-top: 5px !important; font-weight: 300;}
-${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:80px !important;}
-/********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
+/********************* LEVEL 3 (PRODUCT) ***********************/
+${sceneSelectors} .kn-table-group.kn-group-level-3 {background-color: white !important; color: #07467c;}
+${sceneSelectors} .kn-table-group.kn-group-level-3 td:nth-last-child(-n+3) {font-weight:600 !important; color: #07467c !important;}
+${sceneSelectors} .kn-table-group.kn-group-level-3 td {padding-top: 5px !important; font-weight: 300;}
+${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:80px !important;}
+/********************* LEVEL 3 (PRODUCT) ***********************/
 `;
 
     document.head.appendChild(style);
@@ -1119,7 +1119,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   function buildLevel1FooterRows(ctx, {
     titleText,
     qtyText,
-    rateText,
     totalText,
     contextKey,
     groupLabel,
@@ -1150,7 +1149,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       return $tr;
     }
 
-    function makeLineRow({ label, qtyValue, rateValue, value, rowType, isFirst, isLast }) {
+    function makeLineRow({ label, qtyValue, value, rowType, isFirst, isLast }) {
       const meta = computeColumnMeta(ctx);
       const cols = Math.max(meta.colCount || 0, 1);
 
@@ -1174,16 +1173,12 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       `);
 
       $tr.append(`
-        <td class="${ctx.keys.rate} scw-l1-valuecell">
-          <div class="scw-l1-value">${escapeHtml(rateValue || '')}</div>
-        </td>
-      `);
-
-      $tr.append(`
         <td class="${ctx.keys.labor} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
         </td>
       `);
+
+      $tr.append(`<td class="scw-l1-valuecell"></td>`);
 
       return $tr;
     }
@@ -1196,7 +1191,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     rows.push(makeLineRow({
       label: 'Total',
       qtyValue: qtyText,
-      rateValue: rateText,
       value: totalText,
       rowType: 'final',
       isFirst: false,
@@ -1212,7 +1206,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Build Project Grand Total Rows (qty + rate avg + labor)
+  // FEATURE: Build Project Grand Total Rows (qty + labor)
   // ============================================================
 
   function buildProjectTotalRows(ctx, caches, $tbody) {
@@ -1222,11 +1216,9 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     if (!$allDataRows.length) return [];
 
     const qtyKey = ctx.keys.qty;
-    const rateKey = ctx.keys.rate;
     const laborKey = ctx.keys.labor;
 
     const grandQty = sumField(caches, $allDataRows, qtyKey);
-    const grandRate = avgField(caches, $allDataRows, rateKey);
     const grandTotal = sumField(caches, $allDataRows, laborKey);
 
     const meta = computeColumnMeta(ctx);
@@ -1251,7 +1243,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       return $tr;
     }
 
-    function makeLineRow({ label, qtyValue, rateValue, value, rowType, isLast, extraClass }) {
+    function makeLineRow({ label, qtyValue, value, rowType, isLast, extraClass }) {
       const labelSpan = Math.max(cols - 3, 1);
       const cls = `scw-l1-line-row scw-l1-line--${rowType}`
         + (isLast ? ' scw-project-totals-last-row' : '')
@@ -1271,16 +1263,12 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       `);
 
       $tr.append(`
-        <td class="${rateKey} scw-l1-valuecell">
-          <div class="scw-l1-value">${escapeHtml(rateValue || '')}</div>
-        </td>
-      `);
-
-      $tr.append(`
         <td class="${laborKey} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
         </td>
       `);
+
+      $tr.append(`<td class="scw-l1-valuecell"></td>`);
 
       return $tr;
     }
@@ -1292,7 +1280,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     rows.push(makeLineRow({
       label: 'Grand Total',
       qtyValue: String(Math.round(grandQty)),
-      rateValue: formatMoney(grandRate),
       value: formatMoney(grandTotal),
       rowType: 'final',
       isLast: true,
@@ -1303,7 +1290,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Build subtotal row (qty + rate avg + labor)
+  // FEATURE: Build subtotal row (qty + rate avg + labor; rate excluded from L1 footer)
   // ============================================================
 
   function buildSubtotalRow(ctx, caches, {
@@ -1336,7 +1323,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       const rows = buildLevel1FooterRows(ctx, {
         titleText,
         qtyText: String(Math.round(qty)),
-        rateText: formatMoney(rateAvg),
         totalText: formatMoney(labor),
         contextKey,
         groupLabel,
