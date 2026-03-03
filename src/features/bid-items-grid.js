@@ -399,6 +399,12 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 
 tr.scw-hide-level3-header { display: none !important; }
 
+/* Prevent KTL ktlDisplayNone_hc from collapsing hidden-column cells in our
+   custom rows.  Group headers don't get the class so their cells stay visible;
+   subtotals DO get it, causing column-count mismatch.  Force table-cell so
+   every row keeps the same column structure. */
+tr.scw-level-total-row td.ktlDisplayNone_hc { display: table-cell !important; }
+
 /* Hide Qty/Rate content while preserving column layout
    GUARD: never hide on L1 subtotal rows */
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY} { visibility: hidden !important; }

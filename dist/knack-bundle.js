@@ -3354,7 +3354,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
-  // COLUMN META: real colCount + index of qty column
+  // COLUMN META: real colCount + indices of qty/labor columns
   // ============================================================
 
   function computeColumnMeta(ctx) {
@@ -3362,18 +3362,21 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const colCount = firstRow ? firstRow.querySelectorAll('td').length : 0;
 
     let qtyIdx = -1;
+    let laborIdx = -1;
 
     const ths = ctx.$root.find('.kn-table thead th').get();
     if (ths && ths.length) {
       qtyIdx = ths.findIndex((th) => th.classList && th.classList.contains(ctx.keys.qty));
+      laborIdx = ths.findIndex((th) => th.classList && th.classList.contains(ctx.keys.labor));
     }
 
-    if (firstRow && qtyIdx < 0) {
+    if (firstRow) {
       const tds = Array.from(firstRow.querySelectorAll('td'));
-      qtyIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.qty));
+      if (qtyIdx < 0) qtyIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.qty));
+      if (laborIdx < 0) laborIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.labor));
     }
 
-    return { colCount: Math.max(colCount, 0), qtyIdx };
+    return { colCount: Math.max(colCount, 0), qtyIdx, laborIdx };
   }
 
   // ============================================================
@@ -3419,6 +3422,12 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 .scw-concat-cameras strong { font-weight: 800 !important; }
 
 tr.scw-hide-level3-header { display: none !important; }
+
+/* Prevent KTL ktlDisplayNone_hc from collapsing hidden-column cells in our
+   custom rows.  Group headers don't get the class so their cells stay visible;
+   subtotals DO get it, causing column-count mismatch.  Force table-cell so
+   every row keeps the same column structure. */
+tr.scw-level-total-row td.ktlDisplayNone_hc { display: table-cell !important; }
 
 /* Hide Qty/Rate content while preserving column layout
    GUARD: never hide on L1 subtotal rows */
@@ -4147,7 +4156,13 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
     contextKey,
     groupLabel,
   }) {
-    const { colCount } = computeColumnMeta(ctx);
+    const meta = computeColumnMeta(ctx);
+    const cols = Math.max(meta.colCount || 0, 1);
+
+    // Use actual column indices so values land under the correct headers.
+    // Fallback: assume qty is 3rd-to-last, labor is 2nd-to-last (old behaviour).
+    const safeQtyIdx = Number.isFinite(meta.qtyIdx) && meta.qtyIdx >= 1 ? meta.qtyIdx : Math.max(cols - 3, 1);
+    const safeLaborIdx = Number.isFinite(meta.laborIdx) && meta.laborIdx >= 1 ? meta.laborIdx : Math.max(cols - 2, safeQtyIdx + 1);
 
     function makeTrBase(extraClasses) {
       return $(`
@@ -4161,7 +4176,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
     }
 
     function makeTitleRow(title, isFirst) {
-      const cols = Math.max(colCount, 1);
       const $tr = makeTrBase(`scw-l1-title-row${isFirst ? ' scw-l1-first-row' : ''}`);
 
       $tr.append(`
@@ -4174,35 +4188,45 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
     }
 
     function makeLineRow({ label, qtyValue, value, rowType, isFirst, isLast }) {
-      const meta = computeColumnMeta(ctx);
-      const cols = Math.max(meta.colCount || 0, 1);
-
       const $tr = makeTrBase(
         `scw-l1-line-row scw-l1-line--${rowType}` +
           `${isFirst ? ' scw-l1-first-row' : ''}` +
           `${isLast ? ' scw-l1-last-row' : ''}`
       );
 
-      const labelSpan = Math.max(cols - 3, 1);
+      // Label spans from col 0 up to (but not including) the qty column
+      const labelSpan = Math.max(safeQtyIdx, 1);
       $tr.append(`
         <td class="scw-l1-labelcell" colspan="${labelSpan}">
           <div class="scw-l1-label">${escapeHtml(label)}</div>
         </td>
       `);
 
+      // Qty cell at the actual qty column position
       $tr.append(`
         <td class="${ctx.keys.qty} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(qtyValue || '')}</div>
         </td>
       `);
 
+      // Gap cells between qty and labor (e.g. rate column)
+      const gapSpan = safeLaborIdx - safeQtyIdx - 1;
+      if (gapSpan > 0) {
+        $tr.append(`<td colspan="${gapSpan}"></td>`);
+      }
+
+      // Labor cell at the actual labor column position
       $tr.append(`
         <td class="${ctx.keys.labor} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
         </td>
       `);
 
-      $tr.append(`<td class="scw-l1-valuecell"></td>`);
+      // Tail cells after labor (if labor isn't the last column)
+      const tailSpan = cols - safeLaborIdx - 1;
+      if (tailSpan > 0) {
+        $tr.append(`<td colspan="${tailSpan}"></td>`);
+      }
 
       return $tr;
     }
@@ -4247,6 +4271,8 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
 
     const meta = computeColumnMeta(ctx);
     const cols = Math.max(meta.colCount || 0, 1);
+    const safeQtyIdx = Number.isFinite(meta.qtyIdx) && meta.qtyIdx >= 1 ? meta.qtyIdx : Math.max(cols - 3, 1);
+    const safeLaborIdx = Number.isFinite(meta.laborIdx) && meta.laborIdx >= 1 ? meta.laborIdx : Math.max(cols - 2, safeQtyIdx + 1);
 
     function makeTr(extraClasses) {
       return $(`
@@ -4268,7 +4294,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
     }
 
     function makeLineRow({ label, qtyValue, value, rowType, isLast, extraClass }) {
-      const labelSpan = Math.max(cols - 3, 1);
+      const labelSpan = Math.max(safeQtyIdx, 1);
       const cls = `scw-l1-line-row scw-l1-line--${rowType}`
         + (isLast ? ' scw-project-totals-last-row' : '')
         + (extraClass ? ` ${extraClass}` : '');
@@ -4286,13 +4312,21 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
         </td>
       `);
 
+      const gapSpan = safeLaborIdx - safeQtyIdx - 1;
+      if (gapSpan > 0) {
+        $tr.append(`<td colspan="${gapSpan}"></td>`);
+      }
+
       $tr.append(`
         <td class="${laborKey} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
         </td>
       `);
 
-      $tr.append(`<td class="scw-l1-valuecell"></td>`);
+      const tailSpan = cols - safeLaborIdx - 1;
+      if (tailSpan > 0) {
+        $tr.append(`<td colspan="${tailSpan}"></td>`);
+      }
 
       return $tr;
     }
