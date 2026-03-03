@@ -8604,7 +8604,7 @@ $(".kn-navigation-bar").hide();
 // ============================================================
 // Force specific fields to always display as negative numbers
 // Targets: field_2301, field_2290
-// ============================================================
+// ==========================================================
 (function () {
   var FIELDS = ['field_2301', 'field_2290','field_2267','field_2303','field_2262'];
 
