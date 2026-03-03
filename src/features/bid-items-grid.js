@@ -1499,6 +1499,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         sectionContext.level2 = info;
         sectionContext.key = contextKeyFromLevel2Info(ctx, info);
         sectionContext.rule = getLevel2Rule(ctx, info);
+
+        // On re-runs the label may have been rewritten (e.g. "Assumptions" →
+        // "General Project Assumptions"), so getLevel2Rule misses.  Recover
+        // from the rule key persisted on the first run.
+        if (!sectionContext.rule) {
+          const savedKey = $groupRow.data('scwL2RuleKey');
+          if (savedKey) {
+            sectionContext.rule = ctx.l2SectionRules.find((r) => r.key === savedKey) || null;
+          }
+        }
+        if (sectionContext.rule) $groupRow.data('scwL2RuleKey', sectionContext.rule.key);
+
         sectionContext.hideLevel3Summary = Boolean(sectionContext.rule?.hideLevel3Summary);
         sectionContext.hideQtyCostColumns = Boolean(sectionContext.rule?.hideQtyCostColumns);
         shouldHideSubtotalFilterFlag =
