@@ -6053,23 +6053,6 @@ $(document).on('knack-view-render.view_3313', function () {
           message: "This field is locked until map connections = Yes"
         }
       ]
-    },
-    {
-      viewId: "view_3456",
-      rules: [
-        {
-          detectFieldKey: "field_2230",
-          when: "yes",
-          lockFieldKeys: ["field_1964"],
-          message: "Qty locked (must be 1)"
-        },
-        {
-          detectFieldKey: "field_2231",
-          when: "no",
-          lockFieldKeys: ["field_1957"],
-          message: "This field is locked until map connections = Yes"
-        }
-      ]
     }
   ];
 
@@ -6764,6 +6747,7 @@ $(document).on('knack-view-render.view_3313', function () {
   const ALL_COLUMN_KEYS = [
     'field_1949', // PRODUCT (bucket label + labor description target)
     'field_1957', // Connected Devices
+    'field_1960', // Unit Price
     'field_2020', // INPUT_Labor Description (hidden)
     'field_1953', // SCW Notes
     //'field_2376', // Power Available
