@@ -9062,7 +9062,7 @@ $(".kn-navigation-bar").hide();
     ],
     //networking or headend
     '647953bb54b4e1002931ed97': [
-      ['field_2818', 'REL_project'],
+      ['field_2181', 'REL_project'],
       ['field_2427', 'REL_bid'],
       ['field_2180', 'REL_mdf-idf_mandatory multi select'],
       ['field_2183', 'INPUT_product quantity'],
