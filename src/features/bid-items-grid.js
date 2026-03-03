@@ -63,7 +63,7 @@
         ],
       },
 
-      concat: { enabled: true, onlyContextKey: 'drop', onlyLevel: 4 },
+      concat: { enabled: true, onlyContextKey: 'drop', onlyLevel: 3 },
 
       concatL3Mounting: {
         enabled: true,
@@ -592,26 +592,17 @@ ${sel('tr.scw-subtotal--level-2 td:first-child')} {text-align: right !important;
 /********************* LEVEL 2 (BUCKET) ***********************/
 
 
-/********************* LEVEL 3 (PRODUCT) ***********************/
-${sceneSelectors} .kn-table-group.kn-group-level-3 {background-color: white !important; color: #07467c;}
-${sceneSelectors} .kn-table-group.kn-group-level-3 td {padding-top: 10px !important; font-weight: 300 !important;}
-${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {font-size: 20px;}
-${sceneSelectors} .kn-table-group.kn-group-level-3 td:nth-last-child(-n+3) {font-weight:600 !important;}
-
-${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first-child')} {
-  padding-left: 80px !important;
-  font-size: 14px !important;
-  font-weight: 400 !important;
-}
-/********************* LEVEL 3 (PRODUCT) ***********************/
-
-
-/********************* LEVEL 3 (PRODUCT) ***********************/
+/********************* LEVEL 3 (INSTALL DESCRIPTION) ***********************/
 ${sceneSelectors} .kn-table-group.kn-group-level-3 {background-color: white !important; color: #07467c;}
 ${sceneSelectors} .kn-table-group.kn-group-level-3 td:nth-last-child(-n+3) {font-weight:600 !important; color: #07467c !important;}
 ${sceneSelectors} .kn-table-group.kn-group-level-3 td {padding-top: 5px !important; font-weight: 300;}
 ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:80px !important;}
-/********************* LEVEL 3 (PRODUCT) ***********************/
+
+${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first-child')} {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+/********************* LEVEL 3 (INSTALL DESCRIPTION) ***********************/
 `;
 
     document.head.appendChild(style);
@@ -1046,7 +1037,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
   }
 
   // ============================================================
-  // FEATURE: Concat injection (L4 drop)
+  // FEATURE: Concat injection (L3 drop)
   // ============================================================
 
   function injectConcatIntoHeader(ctx, caches, { level, contextKey, $groupRow, $rowsToSum, runId }) {
@@ -1567,24 +1558,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
 
         $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
         $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
-        $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
-
-        if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
-      }
-
-      if (level === 4) {
-        if (!$groupRow.data('scwHeaderCellsAdded')) {
-          $groupRow.find('td').removeAttr('colspan');
-          $groupRow.append($cellsTemplate.clone());
-          $groupRow.data('scwHeaderCellsAdded', true);
-        }
-
-        const qty = totals[qtyKey];
-        const labor = totals[laborKey];
-        const rateAvg4 = avgField(caches, $rowsToSum, rateKey);
-
-        $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
-        $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg4))}</strong>`);
         $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
