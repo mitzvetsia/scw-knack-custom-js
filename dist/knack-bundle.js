@@ -3428,10 +3428,12 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 .scw-concat-cameras b,
 .scw-concat-cameras strong { font-weight: 800 !important; }
 
-.scw-l3-2409 { display: inline-block; margin-top: 2px; line-height: 1.2; }
-.scw-l3-2409-br { line-height: 0; }
+.scw-l3-2409 { display: inline; line-height: 1.2; }
 .scw-l3-2409 b,
 .scw-l3-2409 strong { font-weight: 800 !important; }
+
+/* Hide the raw field_2409 column (data lives in data rows for injection) */
+th.field_2409, td.field_2409 { display: none !important; }
 
 tr.scw-hide-level3-header { display: none !important; }
 
@@ -4083,10 +4085,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
 
-    // Strip previously injected content to avoid nesting on re-runs
-    labelCell.querySelectorAll('.scw-l3-2409').forEach((n) => n.remove());
-    labelCell.querySelectorAll('br.scw-l3-2409-br').forEach((n) => n.remove());
-
     const firstRow = $rowsToSum[0];
     const fieldCell = firstRow ? firstRow.querySelector(`td.${ctx.keys.field2409}`) : null;
     if (!fieldCell) return;
@@ -4095,32 +4093,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const fieldPlain = plainTextFromLimitedHtml(html);
     if (!fieldPlain) return;
 
-    // Get current header text without any previously injected content
-    const clone = labelCell.cloneNode(true);
-    clone.querySelectorAll('.scw-l3-2409, br.scw-l3-2409-br').forEach((n) => n.remove());
-    const currentLabelPlain = norm(clone.textContent || '');
-
-    const looksLikeSameText =
-      currentLabelPlain &&
-      (currentLabelPlain === fieldPlain ||
-        currentLabelPlain.includes(fieldPlain) ||
-        fieldPlain.includes(currentLabelPlain));
-
-    if (looksLikeSameText) {
-      labelCell.innerHTML = `<span class="scw-l3-2409">${html}</span>`;
-      $groupRow.data('scwL3_2409_RunId', runId);
-      return;
-    }
-
-    const br = document.createElement('br');
-    br.className = 'scw-l3-2409-br';
-    labelCell.appendChild(br);
-
-    const span = document.createElement('span');
-    span.className = 'scw-l3-2409';
-    span.innerHTML = html;
-    labelCell.appendChild(span);
-
+    // field_2409 IS the L3 grouping field — always replace the label cell
+    // with the HTML-preserved version (Knack strips <b>/<br> from headers).
+    labelCell.innerHTML = `<span class="scw-l3-2409">${html}</span>`;
     $groupRow.data('scwL3_2409_RunId', runId);
   }
 
