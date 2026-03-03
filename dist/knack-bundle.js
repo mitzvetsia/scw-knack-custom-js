@@ -4259,10 +4259,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const title = norm(titleText || '');
     const rows = [];
 
-    if (title) rows.push(makeTitleRow(title, false));
-
     rows.push(makeLineRow({
-      label: 'Subtotal',
+      label: title ? `${titleText} — Subtotal` : 'Subtotal',
       value: totalText,
       rowType: 'final',
       isFirst: false,
@@ -4361,7 +4359,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     rows.push(makeLineRow({
       label: 'Grand Total',
-      qtyValue: String(Math.round(grandQty)),
+      qtyValue: '',
       value: formatMoney(grandTotal),
       rowType: 'final',
       isLast: true,
