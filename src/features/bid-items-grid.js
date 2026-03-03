@@ -1125,7 +1125,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       prevConcat.remove();
     }
 
-    const baseHtml = sanitizeAllowOnlyBrAndB(decodeEntities(labelCell.innerHTML || ''));
+    // If field2409 was already injected, use its content as the base HTML
+    const injected = labelCell.querySelector('.scw-l3-2409');
+    let baseHtml = '';
+
+    if (injected) {
+      baseHtml = injected.innerHTML || '';
+    } else {
+      baseHtml = sanitizeAllowOnlyBrAndB(decodeEntities(labelCell.innerHTML || ''));
+    }
 
     const composed =
       `<div class="scw-concat-cameras">` +
@@ -1601,8 +1609,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           $groupRow.data('scwHeaderCellsAdded', true);
         }
 
+        // Inject field_2409 HTML into every L3 header (preserves <b> and <br>
+        // that Knack would otherwise strip from the group label).
+        injectField2409IntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
+
         if (sectionContext.hideLevel3Summary) {
-          injectField2409IntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
           if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
           return;
         }
