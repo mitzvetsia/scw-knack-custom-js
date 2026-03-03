@@ -15,7 +15,7 @@
 
   const CONFIG = {
     views: {
-      view_3350: {
+      view_3550: {
         showProjectTotals: true,
         keys: {
           qty: 'field_2399',
