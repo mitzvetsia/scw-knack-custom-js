@@ -1,7 +1,7 @@
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341'];
+  const VIEW_IDS = ['view_3301', 'view_3341','view_3550'];
   const LIMIT_VALUE = '1000';
   const EVENT_NS = '.scwLimit1000';
 
