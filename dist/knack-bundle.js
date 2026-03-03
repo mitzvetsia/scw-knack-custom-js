@@ -3047,6 +3047,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           labor: 'field_2401',
           prefix: 'field_2361',
           number: 'field_2362',
+          field2409: 'field_2409',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
         },
@@ -3236,6 +3237,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     );
   }
 
+  function plainTextFromLimitedHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = String(html || '');
+    return norm(tmp.textContent || '');
+  }
+
   // ============================================================
   // ROW CACHE (per run)
   // ============================================================
@@ -3420,6 +3427,11 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 
 .scw-concat-cameras b,
 .scw-concat-cameras strong { font-weight: 800 !important; }
+
+.scw-l3-2409 { display: inline-block; margin-top: 2px; line-height: 1.2; }
+.scw-l3-2409-br { line-height: 0; }
+.scw-l3-2409 b,
+.scw-l3-2409 strong { font-weight: 800 !important; }
 
 tr.scw-hide-level3-header { display: none !important; }
 
@@ -4061,6 +4073,58 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Field2409 injection (L3)
+  // ============================================================
+
+  function injectField2409IntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId }) {
+    if (!$groupRow.length || !$rowsToSum.length) return;
+    if (!ctx.keys.field2409) return;
+
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return;
+
+    // Strip previously injected content to avoid nesting on re-runs
+    labelCell.querySelectorAll('.scw-l3-2409').forEach((n) => n.remove());
+    labelCell.querySelectorAll('br.scw-l3-2409-br').forEach((n) => n.remove());
+
+    const firstRow = $rowsToSum[0];
+    const fieldCell = firstRow ? firstRow.querySelector(`td.${ctx.keys.field2409}`) : null;
+    if (!fieldCell) return;
+
+    const html = sanitizeAllowOnlyBrAndB(decodeEntities(fieldCell.innerHTML || ''));
+    const fieldPlain = plainTextFromLimitedHtml(html);
+    if (!fieldPlain) return;
+
+    // Get current header text without any previously injected content
+    const clone = labelCell.cloneNode(true);
+    clone.querySelectorAll('.scw-l3-2409, br.scw-l3-2409-br').forEach((n) => n.remove());
+    const currentLabelPlain = norm(clone.textContent || '');
+
+    const looksLikeSameText =
+      currentLabelPlain &&
+      (currentLabelPlain === fieldPlain ||
+        currentLabelPlain.includes(fieldPlain) ||
+        fieldPlain.includes(currentLabelPlain));
+
+    if (looksLikeSameText) {
+      labelCell.innerHTML = `<span class="scw-l3-2409">${html}</span>`;
+      $groupRow.data('scwL3_2409_RunId', runId);
+      return;
+    }
+
+    const br = document.createElement('br');
+    br.className = 'scw-l3-2409-br';
+    labelCell.appendChild(br);
+
+    const span = document.createElement('span');
+    span.className = 'scw-l3-2409';
+    span.innerHTML = html;
+    labelCell.appendChild(span);
+
+    $groupRow.data('scwL3_2409_RunId', runId);
+  }
+
+  // ============================================================
   // FEATURE: Concat injection (L3 drop)
   // ============================================================
 
@@ -4429,6 +4493,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .removeData([
         'scwConcatRunId',
         'scwConcatL3MountRunId',
+        'scwL3_2409_RunId',
         'scwL2Rewrite_' + runId,
       ]);
 
@@ -4561,7 +4626,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
 
         if (sectionContext.hideLevel3Summary) {
-          $groupRow.addClass('scw-hide-level3-header');
+          injectField2409IntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
+          if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
           return;
         }
 
