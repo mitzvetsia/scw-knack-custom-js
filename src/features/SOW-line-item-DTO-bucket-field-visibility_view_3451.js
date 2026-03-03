@@ -1,4 +1,4 @@
-////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3451)***************//////
 
 (function () {
   'use strict';
@@ -6,69 +6,68 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3544']; // add more views
+  const VIEW_IDS = ['view_3451']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
-  const EVENT_NS = '.scwBucketRules';
-  const CSS_ID = 'scw-bucket-visibility-css-survey-bid';
+  const EVENT_NS = '.scwBucketRules3451';
+  const CSS_ID = 'scw-bucket-visibility-css-3451';
 
   // Readable mapping
   const BUCKET_RULES_HUMAN = {
     //cameras or readers
     '6481e5ba38f283002898113c': [
-      ['field_2427', 'REL_bid'],
+      ['field_2182', 'REL_scope of work'],
       ['field_2211', 'REL_mdf-idf_mandatory single select'],
       ['field_2183', 'INPUT_product quantity'],
+      ['field_2193', 'REL_products_cameras+cabling'],
+      ['field_2206', 'REL_product accessories'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2186', 'INPUT_DROP: mount_cable_both'],
       ['field_2246', 'REL_unified product field'],
-      ['field_2210', 'INPUT_service description'],
       ['field_2187', 'INPUT_DROP: variables'],
     ],
     //networking or headend
     '647953bb54b4e1002931ed97': [
-      ['field_2427', 'REL_bid'],
+      ['field_2182', 'REL_scope of work'],
       ['field_2180', 'REL_mdf-idf_mandatory multi select'],
       ['field_2194', 'REL_products_for networking'],
-      ['field_2210', 'INPUT_service description'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2246', 'REL_unified product field'],
       ['field_2206', 'REL_product accessories'],
     ],
     //other equipment
     '5df12ce036f91b0015404d78': [
-      ['field_2427', 'REL_bid'],
+      ['field_2182', 'REL_scope of work'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2195', 'REL_products_for other equipment'],
-      ['field_2210', 'INPUT_service description'],
       ['field_2246', 'REL_unified product field'],
       ['field_2183', 'INPUT_product quantity'],
     ],
     //service
     '6977caa7f246edf67b52cbcd': [
-      ['field_2427', 'REL_bid'],
+      ['field_2182', 'REL_scope of work'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
-      ['field_2233', 'INPUT_exepected sub bid #'],
+      ['field_2233', 'INPUT_exepcted sub bid #'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2210', 'INPUT_service description'],
     ],
     //assumptions
     '697b7a023a31502ec68b3303': [
-      ['field_2427', 'REL_bid'],
+      ['field_2182', 'REL_scope of work'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2248', 'REL_products for assumptions'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
-      ['field_2427', 'REL_bid'],
+      ['field_2182', 'REL_scope of work'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2224', 'REL_products for licenses'],
     ],
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
-    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2211','field_2233','field_2246',
+    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
+    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233','field_2246',
   ];
 
   function compileRules(human) {
@@ -83,7 +82,7 @@
   const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
 
   // ============================================================
-  // ✅ EARLY CSS: inject immediately so there’s no initial “flash”
+  // EARLY CSS: inject immediately so there's no initial "flash"
   // ============================================================
   function injectGlobalCssOnce() {
     let el = document.getElementById(CSS_ID);
@@ -197,6 +196,6 @@
   });
 })();
 
-////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3451)***************//////
 
 
