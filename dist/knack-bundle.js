@@ -4187,35 +4187,22 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
       return $tr;
     }
 
-    function makeLineRow({ label, qtyValue, value, rowType, isFirst, isLast }) {
+    function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       const $tr = makeTrBase(
         `scw-l1-line-row scw-l1-line--${rowType}` +
           `${isFirst ? ' scw-l1-first-row' : ''}` +
           `${isLast ? ' scw-l1-last-row' : ''}`
       );
 
-      // Label spans from col 0 up to (but not including) the qty column
-      const labelSpan = Math.max(safeQtyIdx, 1);
+      // Label spans from col 0 up to (but not including) the labor column
+      const labelSpan = Math.max(safeLaborIdx, 1);
       $tr.append(`
         <td class="scw-l1-labelcell" colspan="${labelSpan}">
           <div class="scw-l1-label">${escapeHtml(label)}</div>
         </td>
       `);
 
-      // Qty cell at the actual qty column position
-      $tr.append(`
-        <td class="${ctx.keys.qty} scw-l1-valuecell">
-          <div class="scw-l1-value">${escapeHtml(qtyValue || '')}</div>
-        </td>
-      `);
-
-      // Gap cells between qty and labor (e.g. rate column)
-      const gapSpan = safeLaborIdx - safeQtyIdx - 1;
-      if (gapSpan > 0) {
-        $tr.append(`<td colspan="${gapSpan}"></td>`);
-      }
-
-      // Labor cell at the actual labor column position
+      // Labor/cost cell at the actual labor column position
       $tr.append(`
         <td class="${ctx.keys.labor} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
@@ -4225,7 +4212,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
       // Tail cells after labor (if labor isn't the last column)
       const tailSpan = cols - safeLaborIdx - 1;
       if (tailSpan > 0) {
-        $tr.append(`<td colspan="${tailSpan}"></td>`);
+        $tr.append(`<td class="scw-l1-valuecell" colspan="${tailSpan}"></td>`);
       }
 
       return $tr;
@@ -4237,8 +4224,7 @@ ${sceneSelectors} .kn-table-group.kn-group-level-3 td:first-child {padding-left:
     if (title) rows.push(makeTitleRow(title, false));
 
     rows.push(makeLineRow({
-      label: 'Total',
-      qtyValue: qtyText,
+      label: 'Subtotal',
       value: totalText,
       rowType: 'final',
       isFirst: false,
