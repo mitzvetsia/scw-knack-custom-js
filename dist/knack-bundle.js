@@ -9092,13 +9092,15 @@ $(".kn-navigation-bar").hide();
       ['field_2233', 'INPUT_expected sub bid #'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2210', 'INPUT_service description'],
+      ['field_2432', 'INPUT_survey notes'],
     ],
     //assumptions
     '697b7a023a31502ec68b3303': [
       ['field_2181', 'REL_project'],
       ['field_2427', 'REL_bid'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
-      ['field_2248', 'REL_products for assumptions'],
+      ['field_2210', 'INPUT_service description'],
+      ['field_2432', 'INPUT_survey notes'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
