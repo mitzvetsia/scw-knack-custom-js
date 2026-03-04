@@ -9053,6 +9053,7 @@ $(".kn-navigation-bar").hide();
       ['field_2181', 'REL_project'],
       ['field_2427', 'REL_bid'],
       ['field_2211', 'REL_mdf-idf_mandatory single select'],
+      ['field_2193', 'REL_products_cameras+cabling'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
