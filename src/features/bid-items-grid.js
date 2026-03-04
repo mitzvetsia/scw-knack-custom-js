@@ -1334,7 +1334,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     const rows = [];
 
-    rows.push(makeTitleRow('Project Totals'));
+    rows.push(makeTitleRow('Bid Total'));
 
     rows.push(makeLineRow({
       label: 'Grand Total',
