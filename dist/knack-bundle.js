@@ -1016,8 +1016,18 @@ window.SCW = window.SCW || {};
     return document.getElementById('hideShow_' + viewKey + '_arrow');
   }
 
-  /** Is the KTL section currently expanded? */
+  /** Is the KTL section currently expanded?
+   *  Primary: check computed display of the KTL hide/show section.
+   *  Fallback: check arrow class.
+   */
   function isExpanded(viewKey) {
+    // Check the actual KTL section visibility (source of truth)
+    var section = document.querySelector('.hideShow_' + viewKey + '.ktlHideShowSection');
+    if (section) {
+      var disp = getComputedStyle(section).display;
+      return disp !== 'none';
+    }
+    // Fallback to arrow class
     var arrow = arrowForViewKey(viewKey);
     if (!arrow) return true;
     return arrow.classList.contains('ktlDown');
@@ -1212,24 +1222,40 @@ window.SCW = window.SCW || {};
       body.appendChild(wrapTarget);
 
       // Forward clicks from our header to the KTL button.
-      // The body may be display:none when collapsed, so we must
-      // briefly reveal it so the KTL button click fires properly.
+      // Uses a busy lock to prevent rapid double-activation and
+      // double-RAF to let KTL finish before we read state.
       (function (wrap, hdr, btnEl, vKey) {
         function triggerToggle() {
-          var bodyEl = wrap.querySelector('.scw-ktl-accordion__body');
+          // Busy lock — prevent double-toggle
+          if (hdr.dataset.scwBusy === '1') return;
+          hdr.dataset.scwBusy = '1';
+          setTimeout(function () { hdr.dataset.scwBusy = '0'; }, 150);
+
           // Ensure body is visible so KTL can process the click
+          var bodyEl = wrap.querySelector('.scw-ktl-accordion__body');
           if (bodyEl) bodyEl.style.display = '';
+
+          // Fire KTL toggle exactly once
           btnEl.click();
-          setTimeout(function () { syncState(wrap, hdr, vKey); }, 60);
+
+          // Double-RAF: wait for KTL to finish applying display changes
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              syncState(wrap, hdr, vKey);
+            });
+          });
         }
         hdr.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation();
           triggerToggle();
         });
         hdr.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
             triggerToggle();
           }
         });
