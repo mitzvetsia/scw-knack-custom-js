@@ -8607,7 +8607,7 @@ $(".kn-navigation-bar").hide();
     });
   });
 })();
-/*** END FEATURE: Instructions placement ******************************************************************/
+/*** END FEATURE: Instructions placement ***************************************************************/
 
 /**************************************************************************************************
  * FEATURE: Quote / publish gating refresh & scroll preservation (legacy bundle)
