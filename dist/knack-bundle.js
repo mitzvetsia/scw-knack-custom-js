@@ -820,7 +820,30 @@ window.SCW = window.SCW || {};
             so unenhanced KTL sections are untouched.
          ══════════════════════════════════════════════════ */
 
-      /* Kill the branded .kn-view wrapper background */
+      /* Cancel the global :has(.ktlHideShowButton) legacy rule on the
+         .kn-view host element itself — this is the source of the
+         accent-colored background slab. */
+      '.kn-view.scw-ktl-accordion-host,',
+      '.kn-view.scw-ktl-accordion-host:has(.ktlHideShowButton) {',
+      '  background: transparent !important;',
+      '  background-color: transparent !important;',
+      '  padding: 0 !important;',
+      '  margin: 0 !important;',
+      '  border-radius: 0 !important;',
+      '  box-shadow: none !important;',
+      '  max-width: 100% !important;',
+      '  overflow: visible !important;',
+      '}',
+
+      /* Cancel legacy slab on ktlBoxWithBorder containers */
+      'section.ktlBoxWithBorder.scw-ktl-accordion-host,',
+      '.scw-ktl-accordion .ktlBoxWithBorder,',
+      '.scw-ktl-accordion section.ktlBoxWithBorder {',
+      '  background: transparent !important;',
+      '  background-color: transparent !important;',
+      '}',
+
+      /* Also kill inner .kn-view and ktlHideShowSection chrome */
       '.scw-ktl-accordion .kn-view,',
       '.scw-ktl-accordion .kn-view[id^="view_"] {',
       '  background: transparent !important;',
@@ -833,9 +856,6 @@ window.SCW = window.SCW || {};
       '  overflow: visible !important;',
       '}',
 
-      /* Kill the ktlBoxWithBorder and ktlHideShowSection chrome */
-      '.scw-ktl-accordion section.ktlBoxWithBorder,',
-      '.scw-ktl-accordion .ktlBoxWithBorder,',
       '.scw-ktl-accordion .ktlHideShowSection {',
       '  background: transparent !important;',
       '  background-color: transparent !important;',
@@ -1206,6 +1226,10 @@ window.SCW = window.SCW || {};
       // ── Build the wrapper structure ──
       // Determine the node to wrap — the .kn-view that contains the button.
       var wrapTarget = knView || btn.parentNode;
+
+      // Tag the .kn-view host so our CSS can cancel the global
+      // :has(.ktlHideShowButton) legacy background rule.
+      if (knView) knView.classList.add('scw-ktl-accordion-host');
 
       // Create our wrapper card
       var wrapper = document.createElement('div');
