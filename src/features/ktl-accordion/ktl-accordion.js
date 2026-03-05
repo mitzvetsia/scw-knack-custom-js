@@ -240,35 +240,11 @@
       '  background: #fff !important;',
       '}',
 
-      /* Nuclear: strip ALL background from every element inside the
-         body so no accent color slab can leak through, regardless of
-         how KTL or Knack injects it (class, inline, specificity). */
-      '.scw-ktl-accordion__body .ktlHideShowSection,',
-      '.scw-ktl-accordion__body .ktlBoxWithBorder,',
-      '.scw-ktl-accordion__body .kn-view,',
-      '.scw-ktl-accordion__body .kn-view[id^="view_"],',
-      '.scw-ktl-accordion__body .kn-table-wrapper,',
-      '.scw-ktl-accordion__body .kn-records-nav,',
-      '.scw-ktl-accordion__body .kn-table,',
-      '.scw-ktl-accordion__body .view-header {',
+      /* Nuclear: strip ALL background from EVERY element inside the
+         body so no accent color can leak through, period. */
+      '.scw-ktl-accordion__body * {',
       '  background: transparent !important;',
       '  background-color: transparent !important;',
-      '}',
-
-      /* Ensure the actual <table> and all its children render
-         against a clean background regardless of hsvcolor overrides */
-      '.scw-ktl-accordion__body table,',
-      '.scw-ktl-accordion__body .kn-table-table,',
-      '.scw-ktl-accordion__body table thead,',
-      '.scw-ktl-accordion__body table tbody,',
-      '.scw-ktl-accordion__body table tr,',
-      '.scw-ktl-accordion__body table th,',
-      '.scw-ktl-accordion__body table td {',
-      '  background: transparent !important;',
-      '  background-color: transparent !important;',
-      '}',
-      '.scw-ktl-accordion__body table {',
-      '  background: #fff !important;',
       '}',
 
       /* ══════════════════════════════════════════════════
