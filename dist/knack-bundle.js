@@ -1217,6 +1217,22 @@ window.SCW = window.SCW || {};
       var viewKey = viewKeyFromButtonId(btn.id);
       if (!viewKey) continue;
 
+      // ── Re-rendered inside existing accordion? ──
+      // When Knack re-renders a view after an inline edit, the DOM inside
+      // #view_XXXX is replaced.  The new KTL button loses its ENHANCED
+      // attribute, but the surrounding .scw-ktl-accordion wrapper still
+      // exists.  Detect this and skip re-wrapping — just mark + sync.
+      var existingAncestor = btn.closest('.scw-ktl-accordion');
+      if (existingAncestor) {
+        btn.setAttribute(ENHANCED, '1');
+        var existingHdr = existingAncestor.querySelector('.scw-ktl-accordion__header');
+        if (existingHdr) {
+          syncState(existingAncestor, existingHdr, viewKey);
+        }
+        log('re-adopted (post-refresh)', viewKey);
+        continue;
+      }
+
       log('enhancing', viewKey);
 
       // Mark button as enhanced
