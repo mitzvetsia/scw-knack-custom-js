@@ -833,9 +833,10 @@ window.SCW = window.SCW || {};
       '  overflow: visible !important;',
       '}',
 
-      /* Kill the ktlBoxWithBorder chrome */
+      /* Kill the ktlBoxWithBorder and ktlHideShowSection chrome */
       '.scw-ktl-accordion section.ktlBoxWithBorder,',
-      '.scw-ktl-accordion .ktlBoxWithBorder {',
+      '.scw-ktl-accordion .ktlBoxWithBorder,',
+      '.scw-ktl-accordion .ktlHideShowSection {',
       '  background: transparent !important;',
       '  padding: 0 !important;',
       '  margin: 0 !important;',
@@ -972,11 +973,30 @@ window.SCW = window.SCW || {};
       '}',
 
       /* ══════════════════════════════════════════════════
-         4) Body
+         4) Body — neutral white; collapses when closed
          ══════════════════════════════════════════════════ */
       '.scw-ktl-accordion__body {',
       '  padding: 10px 12px 14px 12px;',
       '  background: #fff;',
+      '}',
+
+      /* Collapse body when accordion is closed — no blank space */
+      '.scw-ktl-accordion:not(.is-expanded) .scw-ktl-accordion__body {',
+      '  display: none;',
+      '}',
+
+      /* ══════════════════════════════════════════════════
+         5) Hide duplicate KTL header and shrink link
+         ══════════════════════════════════════════════════ */
+
+      /* Hide the view-header that contains the KTL button (duplicate title) */
+      '.scw-ktl-accordion .view-header:has(.ktlHideShowButton) {',
+      '  display: none !important;',
+      '}',
+
+      /* Hide shrink link — our chevron replaces it */
+      '.scw-ktl-accordion a.ktlShrinkLink {',
+      '  display: none !important;',
       '}',
     ].join('\n');
 
