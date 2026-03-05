@@ -485,16 +485,24 @@
       // Determine the node to wrap — the .kn-view that contains the button.
       var wrapTarget = knView || btn.parentNode;
 
-      // Tag the .kn-view host AND any ancestor .kn-view elements so
-      // our CSS can cancel the global :has(.ktlHideShowButton) legacy
-      // background rule.  The :has() selector matches ANY ancestor that
-      // contains the button, not just the closest one.
+      // Cancel the legacy accent background on the .kn-view host.
+      // KTL injects ID-based rules like #view_3507 { background-color: … !important }
+      // which beat any class selector.  Inline !important is the only way to win.
       if (knView) {
         knView.classList.add('scw-ktl-accordion-host');
+        knView.style.setProperty('background', 'transparent', 'important');
+        knView.style.setProperty('background-color', 'transparent', 'important');
+        knView.style.setProperty('padding', '0', 'important');
+        knView.style.setProperty('border-radius', '0', 'important');
+        knView.style.setProperty('box-shadow', 'none', 'important');
+        knView.style.setProperty('margin', '0', 'important');
+        // Also neutralize any ancestor .kn-view that matches :has()
         var ancestor = knView.parentElement;
         while (ancestor) {
           if (ancestor.classList && ancestor.classList.contains('kn-view')) {
             ancestor.classList.add('scw-ktl-accordion-host');
+            ancestor.style.setProperty('background', 'transparent', 'important');
+            ancestor.style.setProperty('background-color', 'transparent', 'important');
           }
           ancestor = ancestor.parentElement;
         }
