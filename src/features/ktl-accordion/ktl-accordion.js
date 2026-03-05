@@ -260,9 +260,13 @@
       '  background: #fff !important;',
       '}',
 
-      /* Nuclear: strip ALL background from EVERY element inside the
-         body so no accent color can leak through, period. */
-      '.scw-ktl-accordion__body * {',
+      /* Legacy accent containers inside the body — targeted instead of
+         wildcard * so table striping and other content backgrounds
+         are preserved. */
+      '.scw-ktl-accordion__body > .kn-view,',
+      '.scw-ktl-accordion__body .ktlBoxWithBorder,',
+      '.scw-ktl-accordion__body .ktlHideShowSection,',
+      '.scw-ktl-accordion__body .view-header {',
       '  background: transparent !important;',
       '  background-color: transparent !important;',
       '}',
