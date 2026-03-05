@@ -96,6 +96,7 @@
       '.scw-ktl-accordion .ktlBoxWithBorder,',
       '.scw-ktl-accordion .ktlHideShowSection {',
       '  background: transparent !important;',
+      '  background-color: transparent !important;',
       '  padding: 0 !important;',
       '  margin: 0 !important;',
       '  border-radius: 0 !important;',
@@ -231,15 +232,29 @@
       '}',
 
       /* ══════════════════════════════════════════════════
-         4) Body — neutral white; collapses when closed
+         4) Body — ALWAYS neutral white; accent stays in header only.
+            Collapses when closed (via JS in syncState).
          ══════════════════════════════════════════════════ */
       '.scw-ktl-accordion__body {',
       '  padding: 10px 12px 14px 12px;',
-      '  background: #fff;',
+      '  background: #fff !important;',
       '}',
 
-      /* Body visibility is toggled via JS in syncState() so the KTL
-         button (inside the body) remains clickable during toggle. */
+      /* Neutralize any KTL / Knack containers that might carry
+         accent color into the grid / table area */
+      '.scw-ktl-accordion .kn-table-wrapper,',
+      '.scw-ktl-accordion .kn-table,',
+      '.scw-ktl-accordion .kn-records-nav {',
+      '  background: transparent !important;',
+      '  background-color: transparent !important;',
+      '}',
+
+      /* Ensure the actual <table> element is white so rows render
+         against a clean background regardless of hsvcolor overrides */
+      '.scw-ktl-accordion table.kn-table,',
+      '.scw-ktl-accordion table.kn-table-table {',
+      '  background: #fff !important;',
+      '}',
 
       /* ══════════════════════════════════════════════════
          5) Hide duplicate KTL header and shrink link
