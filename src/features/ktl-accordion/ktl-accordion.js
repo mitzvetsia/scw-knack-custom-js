@@ -255,10 +255,19 @@
       '  background-color: transparent !important;',
       '}',
 
-      /* Ensure the actual <table> element is white so rows render
+      /* Ensure the actual <table> and all its children render
          against a clean background regardless of hsvcolor overrides */
       '.scw-ktl-accordion__body table,',
-      '.scw-ktl-accordion__body .kn-table-table {',
+      '.scw-ktl-accordion__body .kn-table-table,',
+      '.scw-ktl-accordion__body table thead,',
+      '.scw-ktl-accordion__body table tbody,',
+      '.scw-ktl-accordion__body table tr,',
+      '.scw-ktl-accordion__body table th,',
+      '.scw-ktl-accordion__body table td {',
+      '  background: transparent !important;',
+      '  background-color: transparent !important;',
+      '}',
+      '.scw-ktl-accordion__body table {',
       '  background: #fff !important;',
       '}',
 
