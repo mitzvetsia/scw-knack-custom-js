@@ -980,10 +980,8 @@ window.SCW = window.SCW || {};
       '  background: #fff;',
       '}',
 
-      /* Collapse body when accordion is closed — no blank space */
-      '.scw-ktl-accordion:not(.is-expanded) .scw-ktl-accordion__body {',
-      '  display: none;',
-      '}',
+      /* Body visibility is toggled via JS in syncState() so the KTL
+         button (inside the body) remains clickable during toggle. */
 
       /* ══════════════════════════════════════════════════
          5) Hide duplicate KTL header and shrink link
@@ -1119,6 +1117,11 @@ window.SCW = window.SCW || {};
     wrapper.classList.toggle('is-expanded', expanded);
     header.setAttribute('aria-expanded', String(expanded));
 
+    // Toggle body visibility via JS (not CSS) so the KTL button
+    // inside the body stays clickable when we need to expand.
+    var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
+    if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+
     // Count pill
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
@@ -1208,19 +1211,26 @@ window.SCW = window.SCW || {};
       wrapper.appendChild(body);
       body.appendChild(wrapTarget);
 
-      // Forward clicks from our header to the KTL button
+      // Forward clicks from our header to the KTL button.
+      // The body may be display:none when collapsed, so we must
+      // briefly reveal it so the KTL button click fires properly.
       (function (wrap, hdr, btnEl, vKey) {
+        function triggerToggle() {
+          var bodyEl = wrap.querySelector('.scw-ktl-accordion__body');
+          // Ensure body is visible so KTL can process the click
+          if (bodyEl) bodyEl.style.display = '';
+          btnEl.click();
+          setTimeout(function () { syncState(wrap, hdr, vKey); }, 60);
+        }
         hdr.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
-          btnEl.click();
-          setTimeout(function () { syncState(wrap, hdr, vKey); }, 60);
+          triggerToggle();
         });
         hdr.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            btnEl.click();
-            setTimeout(function () { syncState(wrap, hdr, vKey); }, 60);
+            triggerToggle();
           }
         });
       })(wrapper, header, btn, viewKey);
