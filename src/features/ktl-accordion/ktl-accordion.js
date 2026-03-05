@@ -1,34 +1,27 @@
 /**
  * ─── Primary Accordion Style ───────────────────────────────────────────
  *
- * Layers a polished accordion header on top of every KTL hide/show
- * (expand/collapse) button across the entire Knack app.
+ * Wraps every KTL hide/show section in a unified accordion card so the
+ * header and body share one container — eliminating the "small dropdown
+ * on top of a big purple bar" problem.
  *
- * WHAT IT DOES
- *   • Wraps each .ktlHideShowButton in a .scw-ktl-accordion-header div
- *     with: left accent bar, optional icon, title, optional count pill,
- *     and a rotating chevron.
- *   • Expanded state gets a tinted background + stronger shadow;
- *     collapsed state is neutral.
- *   • All colours auto-inherit from each button's computed background
- *     (including per-view _hsvcolor overrides from extract-hsv-color.js).
+ * DOM STRUCTURE PRODUCED
+ *   <div class="scw-ktl-accordion [is-expanded]"
+ *        style="--scw-accent:…; --scw-accent-rgb:…">
+ *     <div class="scw-ktl-accordion__header" role="button" tabindex="0">
+ *       <span class="scw-acc-icon">…</span>
+ *       <span class="scw-acc-title">…</span>
+ *       <span class="scw-acc-count">…</span>
+ *       <span class="scw-acc-chevron">…</span>
+ *     </div>
+ *     <div class="scw-ktl-accordion__body">
+ *       <!-- original .kn-view is moved here -->
+ *     </div>
+ *   </div>
  *
- * HOW IT DETECTS KTL BLOCKS
- *   Selector: .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]
- *   Skips elements marked with [data-scw-no-accordion] or already
- *   enhanced with [data-scw-ktl-accordion="1"].
- *
- * HOW IT DETERMINES THE CONTENT CONTAINER
- *   1. Extracts the view key from the button id (hideShow_view_NNN_button).
- *   2. Looks for a sibling/descendant element whose visibility KTL
- *      toggles — the first element inside the same .kn-view whose
- *      display changes on toggle.  Heuristic: the wrapper .kn-view
- *      itself (KTL hides its children), or the nearest
- *      section.ktlBoxWithBorder's content after the button.
- *
- * HOW TO DISABLE ON A SPECIFIC BUTTON
- *   Add  data-scw-no-accordion  attribute to the .ktlHideShowButton
- *   element (or its parent .kn-view).
+ * The original .ktlHideShowButton stays in the DOM (KTL is source of
+ * truth for toggle state) but is visually hidden.  Clicking our header
+ * forwards to buttonEl.click().
  *
  * ────────────────────────────────────────────────────────────────────────
  */
@@ -40,11 +33,11 @@
 
   var EVENT_NS   = '.scwKtlAccordion';
   var STYLE_ID   = 'scw-ktl-accordion-css';
-  var ENHANCED    = 'data-scw-ktl-accordion';
+  var ENHANCED   = 'data-scw-ktl-accordion';
   var OPT_OUT    = 'data-scw-no-accordion';
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
 
-  // ── Default icon (small folder) — SVG data-URI so it works everywhere ──
+  // ── SVG icons ──
   var DEFAULT_ICON_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -65,40 +58,53 @@
 
     var css = [
       /* ══════════════════════════════════════════════════
-         1) Neutralize legacy KTL wrapper styles ONLY
-            when enhanced — keeps unenhanced views intact.
+         1) The accordion card container — our wrapper owns
+            the visual card (background, border, radius, shadow).
+         ══════════════════════════════════════════════════ */
+      '.scw-ktl-accordion {',
+      '  --scw-accent: #295f91;',
+      '  --scw-accent-rgb: 41, 95, 145;',
+      '  background: #fff;',
+      '  border: 1px solid rgba(0,0,0,.08);',
+      '  border-radius: 14px;',
+      '  box-shadow: 0 2px 12px rgba(0,0,0,.06);',
+      '  overflow: hidden;',
+      '  margin: 10px 0;',
+      '  max-width: 100%;',
+      '}',
+
+      /* ══════════════════════════════════════════════════
+         2) Neutralize legacy styles ONLY inside our wrapper
+            so unenhanced KTL sections are untouched.
          ══════════════════════════════════════════════════ */
 
-      /* .kn-view wrapper — override global-styles.js rule:
-           .kn-view:has(.ktlHideShowButton...) { background; padding; border-radius }
-         and extract-hsv-color.js per-view #viewKey rules. */
-      '.scw-ktl-accordion-enhanced.kn-view,',
-      '.scw-ktl-accordion-enhanced.kn-view[id^="view_"] {',
+      /* Kill the branded .kn-view wrapper background */
+      '.scw-ktl-accordion .kn-view,',
+      '.scw-ktl-accordion .kn-view[id^="view_"] {',
       '  background: transparent !important;',
       '  background-color: transparent !important;',
       '  padding: 0 !important;',
-      '  margin: 0 0 10px 0 !important;',
+      '  margin: 0 !important;',
       '  border-radius: 0 !important;',
-      '  overflow: visible !important;',
       '  box-shadow: none !important;',
       '  max-width: 100% !important;',
+      '  overflow: visible !important;',
       '}',
 
-      /* section.ktlBoxWithBorder wrapper — inside or IS the enhanced element */
-      '.scw-ktl-accordion-enhanced section.ktlBoxWithBorder,',
-      '.scw-ktl-accordion-enhanced .ktlBoxWithBorder,',
-      'section.ktlBoxWithBorder.scw-ktl-accordion-enhanced {',
+      /* Kill the ktlBoxWithBorder chrome */
+      '.scw-ktl-accordion section.ktlBoxWithBorder,',
+      '.scw-ktl-accordion .ktlBoxWithBorder {',
       '  background: transparent !important;',
       '  padding: 0 !important;',
       '  margin: 0 !important;',
       '  border-radius: 0 !important;',
-      '  overflow: visible !important;',
       '  box-shadow: none !important;',
       '  border: none !important;',
+      '  overflow: visible !important;',
       '}',
 
-      /* Remove the old "bar" styling from the KTL button when enhanced */
-      '.scw-ktl-accordion-enhanced ' + BTN_SEL + ' {',
+      /* Visually hide the original KTL button (accessible) */
+      '.scw-ktl-accordion ' + BTN_SEL + ' {',
       '  position: absolute !important;',
       '  width: 1px !important;',
       '  height: 1px !important;',
@@ -113,31 +119,26 @@
       '}',
 
       /* ══════════════════════════════════════════════════
-         2) Our header row — the only visible "card"
+         3) Header row
          ══════════════════════════════════════════════════ */
-      '.scw-ktl-accordion-header {',
-      '  --scw-accent: #295f91;',
+      '.scw-ktl-accordion__header {',
       '  position: relative;',
       '  display: flex;',
       '  align-items: center;',
       '  justify-content: space-between;',
       '  width: 100%;',
       '  min-height: 44px;',
-      '  padding: 14px 16px 14px 22px;', /* extra left for accent bar */
+      '  padding: 14px 16px 14px 22px;',
       '  margin: 0;',
-      '  background: #fff;',
-      '  border: 1px solid rgba(0,0,0,.08);',
-      '  border-radius: 12px;',
+      '  background: transparent;',
       '  cursor: pointer;',
       '  user-select: none;',
       '  box-sizing: border-box;',
-      '  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;',
-      '  overflow: hidden;',
-      '  box-shadow: 0 2px 10px rgba(0,0,0,.06);',
+      '  transition: background 180ms ease;',
       '}',
 
-      /* Left accent bar via ::before */
-      '.scw-ktl-accordion-header::before {',
+      /* Left accent bar */
+      '.scw-ktl-accordion__header::before {',
       '  content: "";',
       '  position: absolute;',
       '  left: 0;',
@@ -145,34 +146,35 @@
       '  bottom: 0;',
       '  width: 6px;',
       '  background: var(--scw-accent);',
-      '  border-radius: 12px 0 0 12px;',
+      '  border-radius: 14px 0 0 0;',
       '}',
 
       /* hover */
-      '.scw-ktl-accordion-header:hover {',
-      '  background: #f8f9fb;',
-      '  border-color: rgba(0,0,0,.12);',
-      '  box-shadow: 0 3px 12px rgba(0,0,0,.09);',
+      '.scw-ktl-accordion__header:hover {',
+      '  background: rgba(var(--scw-accent-rgb), 0.06);',
       '}',
 
-      /* expanded state */
-      '.scw-ktl-accordion-header.scw-expanded {',
-      '  background: color-mix(in srgb, var(--scw-accent) 8%, white);',
-      '  border-color: color-mix(in srgb, var(--scw-accent) 25%, rgba(0,0,0,.08));',
-      '  box-shadow: 0 2px 10px rgba(0,0,0,.08);',
+      /* expanded state on the wrapper */
+      '.scw-ktl-accordion.is-expanded .scw-ktl-accordion__header {',
+      '  background: rgba(var(--scw-accent-rgb), 0.10);',
       '}',
-      '.scw-ktl-accordion-header.scw-expanded:hover {',
-      '  background: color-mix(in srgb, var(--scw-accent) 12%, white);',
+      '.scw-ktl-accordion.is-expanded .scw-ktl-accordion__header:hover {',
+      '  background: rgba(var(--scw-accent-rgb), 0.14);',
       '}',
 
-      /* focus-visible for keyboard nav */
-      '.scw-ktl-accordion-header:focus-visible {',
+      /* Expanded accent bar — round bottom-left too */
+      '.scw-ktl-accordion:not(.is-expanded) .scw-ktl-accordion__header::before {',
+      '  border-radius: 14px 0 0 14px;',
+      '}',
+
+      /* focus-visible */
+      '.scw-ktl-accordion__header:focus-visible {',
       '  outline: 2px solid var(--scw-accent);',
-      '  outline-offset: 2px;',
+      '  outline-offset: -2px;',
       '}',
 
-      /* ── icon area ── */
-      '.scw-ktl-accordion-header .scw-acc-icon {',
+      /* ── icon ── */
+      '.scw-ktl-accordion__header .scw-acc-icon {',
       '  flex: 0 0 auto;',
       '  display: inline-flex;',
       '  align-items: center;',
@@ -184,7 +186,7 @@
       '}',
 
       /* ── title ── */
-      '.scw-ktl-accordion-header .scw-acc-title {',
+      '.scw-ktl-accordion__header .scw-acc-title {',
       '  flex: 1 1 auto;',
       '  padding: 0 8px 0 0;',
       '  font-size: 14px;',
@@ -197,22 +199,23 @@
       '  text-align: left;',
       '}',
 
-      /* ── count pill — rounded badge ── */
-      '.scw-ktl-accordion-header .scw-acc-count {',
+      /* ── count pill ── */
+      '.scw-ktl-accordion__header .scw-acc-count {',
       '  flex: 0 0 auto;',
       '  display: inline-block;',
-      '  padding: 2px 10px;',
+      '  padding: 4px 10px;',
       '  margin-right: 8px;',
-      '  font-size: 11px;',
-      '  font-weight: 700;',
-      '  line-height: 1.55;',
-      '  border-radius: 12px;',
-      '  background: color-mix(in srgb, var(--scw-accent) 14%, transparent);',
-      '  color: var(--scw-accent);',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  border-radius: 999px;',
+      '  background: rgba(var(--scw-accent-rgb), 0.12);',
+      '  border: 1px solid rgba(var(--scw-accent-rgb), 0.22);',
+      '  color: rgb(var(--scw-accent-rgb));',
       '}',
 
-      /* ── chevron — far right, rotates ── */
-      '.scw-ktl-accordion-header .scw-acc-chevron {',
+      /* ── chevron ── */
+      '.scw-ktl-accordion__header .scw-acc-chevron {',
       '  flex: 0 0 auto;',
       '  display: inline-flex;',
       '  align-items: center;',
@@ -222,18 +225,16 @@
       '  transition: transform 220ms ease;',
       '  transform: rotate(0deg);',
       '}',
-      '.scw-ktl-accordion-header:not(.scw-expanded) .scw-acc-chevron {',
+      '.scw-ktl-accordion:not(.is-expanded) .scw-acc-chevron {',
       '  transform: rotate(-90deg);',
       '}',
 
       /* ══════════════════════════════════════════════════
-         3) Spacing between accordions — compact 10px gap
+         4) Body
          ══════════════════════════════════════════════════ */
-      '.scw-ktl-accordion-enhanced + .scw-ktl-accordion-enhanced {',
-      '  margin-top: 0 !important;',
-      '}',
-      '.scw-ktl-accordion-enhanced.kn-view {',
-      '  margin-bottom: 10px !important;',
+      '.scw-ktl-accordion__body {',
+      '  padding: 10px 12px 14px 12px;',
+      '  background: #fff;',
       '}',
     ].join('\n');
 
@@ -258,22 +259,31 @@
   /** Is the KTL section currently expanded? */
   function isExpanded(viewKey) {
     var arrow = arrowForViewKey(viewKey);
-    if (!arrow) return true; // default to expanded if indeterminate
+    if (!arrow) return true;
     return arrow.classList.contains('ktlDown');
   }
 
   /** Read the effective background-color from the KTL button. */
   function readAccentColor(btn) {
     var raw = getComputedStyle(btn).backgroundColor;
-    // Transparent / white / near-white → fall back
     if (!raw || raw === 'rgba(0, 0, 0, 0)' || raw === 'transparent') return null;
     return raw;
+  }
+
+  /**
+   * Parse an rgb(r,g,b) or rgba(r,g,b,a) string into "r, g, b" for use
+   * in rgba(var(--scw-accent-rgb), alpha).
+   */
+  function parseRgb(cssColor) {
+    if (!cssColor) return null;
+    var m = cssColor.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (!m) return null;
+    return m[1] + ', ' + m[2] + ', ' + m[3];
   }
 
   /** Extract title text from KTL button, stripping arrow text. */
   function readTitle(btn) {
     var clone = btn.cloneNode(true);
-    // Remove arrow spans
     var arrows = clone.querySelectorAll('.ktlArrow');
     for (var i = 0; i < arrows.length; i++) arrows[i].remove();
     var text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
@@ -285,7 +295,6 @@
     var viewEl = document.getElementById(viewKey);
     if (!viewEl) return null;
 
-    // Strategy 1: count tbody rows (Knack grid)
     var tbody = viewEl.querySelector('table.kn-table tbody');
     if (tbody) {
       var rows = tbody.querySelectorAll('tr');
@@ -300,7 +309,6 @@
       return real > 0 ? real : null;
     }
 
-    // Strategy 2: parse "Showing X-Y of Z" text
     var paging = viewEl.querySelector('.kn-entries-summary');
     if (paging) {
       var m = (paging.textContent || '').match(/of\s+(\d+)/);
@@ -311,35 +319,31 @@
   }
 
   // ───────────────────────────────────────────────────
-  //  Build / update accordion header
+  //  Build accordion header
   // ───────────────────────────────────────────────────
   function buildHeader(btn, viewKey) {
     var header = document.createElement('div');
-    header.className = 'scw-ktl-accordion-header';
+    header.className = 'scw-ktl-accordion__header';
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
     header.setAttribute('aria-expanded', 'true');
     header.setAttribute('data-view-key', viewKey);
 
-    // Icon
     var iconWrap = document.createElement('span');
     iconWrap.className = 'scw-acc-icon';
     iconWrap.innerHTML = DEFAULT_ICON_SVG;
     header.appendChild(iconWrap);
 
-    // Title
     var titleWrap = document.createElement('span');
     titleWrap.className = 'scw-acc-title';
     titleWrap.textContent = readTitle(btn);
     header.appendChild(titleWrap);
 
-    // Count pill (placeholder — updated by syncState)
     var countWrap = document.createElement('span');
     countWrap.className = 'scw-acc-count';
     countWrap.style.display = 'none';
     header.appendChild(countWrap);
 
-    // Chevron
     var chevronWrap = document.createElement('span');
     chevronWrap.className = 'scw-acc-chevron';
     chevronWrap.innerHTML = CHEVRON_SVG;
@@ -348,9 +352,9 @@
     return header;
   }
 
-  function syncState(header, viewKey) {
+  function syncState(wrapper, header, viewKey) {
     var expanded = isExpanded(viewKey);
-    header.classList.toggle('scw-expanded', expanded);
+    wrapper.classList.toggle('is-expanded', expanded);
     header.setAttribute('aria-expanded', String(expanded));
 
     // Count pill
@@ -369,7 +373,11 @@
     var btn = document.getElementById('hideShow_' + viewKey + '_button');
     if (btn) {
       var accent = readAccentColor(btn);
-      if (accent) header.style.setProperty('--scw-accent', accent);
+      if (accent) {
+        wrapper.style.setProperty('--scw-accent', accent);
+        var rgb = parseRgb(accent);
+        if (rgb) wrapper.style.setProperty('--scw-accent-rgb', rgb);
+      }
     }
   }
 
@@ -389,12 +397,14 @@
 
       // Already enhanced?
       if (btn.getAttribute(ENHANCED) === '1') {
-        // Just sync state for existing header
-        var existingHeader = btn.parentElement &&
-          btn.parentElement.querySelector('.scw-ktl-accordion-header[data-view-key]');
-        if (existingHeader) {
-          var vk = existingHeader.getAttribute('data-view-key');
-          syncState(existingHeader, vk);
+        // Sync state for existing wrapper
+        var existingWrapper = btn.closest('.scw-ktl-accordion');
+        if (existingWrapper) {
+          var existingHeader = existingWrapper.querySelector('.scw-ktl-accordion__header');
+          if (existingHeader) {
+            var vk = existingHeader.getAttribute('data-view-key');
+            syncState(existingWrapper, existingHeader, vk);
+          }
         }
         continue;
       }
@@ -404,45 +414,60 @@
 
       log('enhancing', viewKey);
 
-      // Mark enhanced — apply class to all relevant wrappers
+      // Mark button as enhanced
       btn.setAttribute(ENHANCED, '1');
-      if (knView) knView.classList.add('scw-ktl-accordion-enhanced');
-      var boxWrapper = btn.closest('section.ktlBoxWithBorder');
-      if (boxWrapper) boxWrapper.classList.add('scw-ktl-accordion-enhanced');
 
-      // Read accent before we visually hide the button
+      // Read accent color BEFORE any DOM changes (computed style is still
+      // accurate while the button is visible).
       var accent = readAccentColor(btn);
+      var accentRgb = parseRgb(accent);
+
+      // ── Build the wrapper structure ──
+      // Determine the node to wrap — the .kn-view that contains the button.
+      var wrapTarget = knView || btn.parentNode;
+
+      // Create our wrapper card
+      var wrapper = document.createElement('div');
+      wrapper.className = 'scw-ktl-accordion';
+      if (accent) wrapper.style.setProperty('--scw-accent', accent);
+      if (accentRgb) wrapper.style.setProperty('--scw-accent-rgb', accentRgb);
 
       // Build header
       var header = buildHeader(btn, viewKey);
-      if (accent) header.style.setProperty('--scw-accent', accent);
 
-      // Insert header before the button
-      btn.parentNode.insertBefore(header, btn);
+      // Create body container
+      var body = document.createElement('div');
+      body.className = 'scw-ktl-accordion__body';
+
+      // Insert wrapper where the wrapTarget currently sits,
+      // then move wrapTarget into the body.
+      wrapTarget.parentNode.insertBefore(wrapper, wrapTarget);
+      wrapper.appendChild(header);
+      wrapper.appendChild(body);
+      body.appendChild(wrapTarget);
 
       // Forward clicks from our header to the KTL button
-      (function (hdr, btnEl, vKey) {
+      (function (wrap, hdr, btnEl, vKey) {
         hdr.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
           btnEl.click();
-          // Sync after KTL processes the click
-          setTimeout(function () { syncState(hdr, vKey); }, 60);
+          setTimeout(function () { syncState(wrap, hdr, vKey); }, 60);
         });
         hdr.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             btnEl.click();
-            setTimeout(function () { syncState(hdr, vKey); }, 60);
+            setTimeout(function () { syncState(wrap, hdr, vKey); }, 60);
           }
         });
-      })(header, btn, viewKey);
+      })(wrapper, header, btn, viewKey);
 
       // Initial state sync
-      syncState(header, viewKey);
+      syncState(wrapper, header, viewKey);
 
       // MutationObserver on content for count updates
-      (function (hdr, vKey) {
+      (function (wrap, hdr, vKey) {
         var viewEl = document.getElementById(vKey);
         if (!viewEl) return;
         var countRaf = 0;
@@ -450,11 +475,11 @@
           if (countRaf) cancelAnimationFrame(countRaf);
           countRaf = requestAnimationFrame(function () {
             countRaf = 0;
-            syncState(hdr, vKey);
+            syncState(wrap, hdr, vKey);
           });
         });
         contentObs.observe(viewEl, { childList: true, subtree: true });
-      })(header, viewKey);
+      })(wrapper, header, viewKey);
     }
   }
 
@@ -463,11 +488,9 @@
   // ───────────────────────────────────────────────────
   injectCss();
 
-  // Run enhancement after Knack events
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
-      // Slight delay to let KTL inject its buttons first
       setTimeout(enhance, 80);
     });
 
@@ -489,7 +512,6 @@
   });
   globalObs.observe(document.body, { childList: true, subtree: true });
 
-  // Initial pass
   $(document).ready(function () {
     setTimeout(enhance, 300);
   });
