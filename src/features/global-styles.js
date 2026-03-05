@@ -42,31 +42,69 @@
       font-size: 14px !important;
     }
 
-    /* KTL view wrapper — rounded corners, clip button to shape */
+    /* ─── Modern Accordion: view wrapper ─── */
     section.ktlBoxWithBorder {
-      border-radius: 20px !important;
+      border-radius: 14px !important;
       overflow: hidden !important;
-      margin: 10px !important;
+      margin: 8px 10px !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      transition: box-shadow 200ms ease;
+    }
+    section.ktlBoxWithBorder:hover {
+      box-shadow: 0 2px 6px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.08);
     }
 
-    /* KTL hide/show button — full-width bar with branding */
+    /* ─── Modern Accordion: header button ─── */
     .ktlHideShowButton[id^="hideShow_view_"][id$="_button"] {
+      position: relative;
+      display: flex !important;
+      align-items: center;
       width: 100%;
       font-weight: 600;
       font-size: 14px !important;
       color: #fff;
       background-color: ${KTL_DEFAULT_COLOR};
       border-radius: 0 !important;
-      padding: 5px 0px 0px 8px !important;
+      padding: 10px 40px 10px 14px !important;
+      border: 0 !important;
+      box-sizing: border-box;
+      transition: background-color 180ms ease, filter 180ms ease;
+      cursor: pointer;
+    }
+    .ktlHideShowButton[id^="hideShow_view_"][id$="_button"]:hover {
+      filter: brightness(1.08);
     }
 
-    /* Views containing KTL hide/show — branded wrapper */
+    /* ─── Modern Accordion: chevron arrow ─── */
+    span.ktlArrow[id^="hideShow_view_"][id$="_arrow"] {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.1em;
+      height: 1.1em;
+      transform-origin: 50% 50%;
+      transition: transform 220ms ease;
+    }
+    /* Collapsed state (.ktlUp = content hidden) — chevron points right */
+    span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlUp {
+      transform: translateY(-50%) rotate(-90deg);
+    }
+    /* Expanded state (.ktlDown = content visible) — chevron points down */
+    span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown {
+      transform: translateY(-50%) rotate(0deg);
+    }
+
+    /* ─── Modern Accordion: branded view wrapper ─── */
     .kn-view:has(.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]) {
       margin-bottom: 2px !important;
       background-color: ${KTL_DEFAULT_COLOR};
       max-width: 100%;
       padding: 5px 5px 10px 5px !important;
-      border-radius: 20px !important;
+      border-radius: 14px !important;
+      transition: background-color 180ms ease;
     }
 
     /* Per-view color overrides now applied dynamically by extract-hsv-color.js */

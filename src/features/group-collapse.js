@@ -242,20 +242,7 @@
         color: #07467c;
       }
 
-      /* KTL arrows: collapsed (.ktlUp) => DOWN; open (.ktlDown) => RIGHT */
-      ${s('span.ktlArrow[id^="hideShow_view_"][id$="_arrow"]')} {
-        display: inline-block;
-        transition: transform 160ms ease, opacity 160ms ease;
-        transform-origin: 50% 50%;
-      }
-      ${s('span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlUp')} {
-        transform: rotate(-90deg);
-        opacity: .95;
-      }
-      ${s('span.ktlArrow[id^="hideShow_view_"][id$="_arrow"].ktlDown')} {
-        transform: rotate(180deg);
-        opacity: 1;
-      }
+      /* KTL arrow styles now live in global-styles.js */
 
       ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
         /* Per-view overrides: ${viewId} */

@@ -11,6 +11,7 @@ cat \
   src/features/global-styles.js \
   src/features/inline-edit-checkbox-layout.js \
   src/features/extract-hsv-color.js \
+  src/features/ktl-accordion/ktl-accordion.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
   src/features/ratking/post-inline-edit-behavior.js \
