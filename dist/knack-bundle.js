@@ -982,19 +982,25 @@ window.SCW = window.SCW || {};
       '  background: #fff !important;',
       '}',
 
-      /* Neutralize any KTL / Knack containers that might carry
-         accent color into the grid / table area */
-      '.scw-ktl-accordion .kn-table-wrapper,',
-      '.scw-ktl-accordion .kn-table,',
-      '.scw-ktl-accordion .kn-records-nav {',
+      /* Nuclear: strip ALL background from every element inside the
+         body so no accent color slab can leak through, regardless of
+         how KTL or Knack injects it (class, inline, specificity). */
+      '.scw-ktl-accordion__body .ktlHideShowSection,',
+      '.scw-ktl-accordion__body .ktlBoxWithBorder,',
+      '.scw-ktl-accordion__body .kn-view,',
+      '.scw-ktl-accordion__body .kn-view[id^="view_"],',
+      '.scw-ktl-accordion__body .kn-table-wrapper,',
+      '.scw-ktl-accordion__body .kn-records-nav,',
+      '.scw-ktl-accordion__body .kn-table,',
+      '.scw-ktl-accordion__body .view-header {',
       '  background: transparent !important;',
       '  background-color: transparent !important;',
       '}',
 
       /* Ensure the actual <table> element is white so rows render
          against a clean background regardless of hsvcolor overrides */
-      '.scw-ktl-accordion table.kn-table,',
-      '.scw-ktl-accordion table.kn-table-table {',
+      '.scw-ktl-accordion__body table,',
+      '.scw-ktl-accordion__body .kn-table-table {',
       '  background: #fff !important;',
       '}',
 
