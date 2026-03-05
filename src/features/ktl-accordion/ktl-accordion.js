@@ -485,9 +485,20 @@
       // Determine the node to wrap — the .kn-view that contains the button.
       var wrapTarget = knView || btn.parentNode;
 
-      // Tag the .kn-view host so our CSS can cancel the global
-      // :has(.ktlHideShowButton) legacy background rule.
-      if (knView) knView.classList.add('scw-ktl-accordion-host');
+      // Tag the .kn-view host AND any ancestor .kn-view elements so
+      // our CSS can cancel the global :has(.ktlHideShowButton) legacy
+      // background rule.  The :has() selector matches ANY ancestor that
+      // contains the button, not just the closest one.
+      if (knView) {
+        knView.classList.add('scw-ktl-accordion-host');
+        var ancestor = knView.parentElement;
+        while (ancestor) {
+          if (ancestor.classList && ancestor.classList.contains('kn-view')) {
+            ancestor.classList.add('scw-ktl-accordion-host');
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
 
       // Create our wrapper card
       var wrapper = document.createElement('div');
