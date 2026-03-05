@@ -806,100 +806,40 @@ window.SCW = window.SCW || {};
     if (document.getElementById(STYLE_ID)) return;
 
     var css = [
-      /* ── header wrapper ── */
-      '.scw-ktl-accordion-header {',
-      '  --scw-accent: #295f91;',
-      '  position: relative;',
-      '  display: flex;',
-      '  align-items: center;',
-      '  width: 100%;',
-      '  min-height: 38px;',
-      '  padding: 0;',
-      '  margin: 0;',
-      '  background: #f8f9fa;',
-      '  border: 1px solid rgba(0,0,0,.08);',
-      '  border-left: 5px solid var(--scw-accent);',
-      '  border-radius: 6px;',
-      '  cursor: pointer;',
-      '  user-select: none;',
-      '  box-sizing: border-box;',
-      '  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;',
-      '  overflow: hidden;',
+      /* ══════════════════════════════════════════════════
+         1) Neutralize legacy KTL wrapper styles ONLY
+            when enhanced — keeps unenhanced views intact.
+         ══════════════════════════════════════════════════ */
+
+      /* .kn-view wrapper — override global-styles.js rule:
+           .kn-view:has(.ktlHideShowButton...) { background; padding; border-radius }
+         and extract-hsv-color.js per-view #viewKey rules. */
+      '.scw-ktl-accordion-enhanced.kn-view,',
+      '.scw-ktl-accordion-enhanced.kn-view[id^="view_"] {',
+      '  background: transparent !important;',
+      '  background-color: transparent !important;',
+      '  padding: 0 !important;',
+      '  margin: 0 0 10px 0 !important;',
+      '  border-radius: 0 !important;',
+      '  overflow: visible !important;',
+      '  box-shadow: none !important;',
+      '  max-width: 100% !important;',
       '}',
 
-      /* hover */
-      '.scw-ktl-accordion-header:hover {',
-      '  background: #f0f2f5;',
-      '  border-color: rgba(0,0,0,.13);',
+      /* section.ktlBoxWithBorder wrapper — inside or IS the enhanced element */
+      '.scw-ktl-accordion-enhanced section.ktlBoxWithBorder,',
+      '.scw-ktl-accordion-enhanced .ktlBoxWithBorder,',
+      'section.ktlBoxWithBorder.scw-ktl-accordion-enhanced {',
+      '  background: transparent !important;',
+      '  padding: 0 !important;',
+      '  margin: 0 !important;',
+      '  border-radius: 0 !important;',
+      '  overflow: visible !important;',
+      '  box-shadow: none !important;',
+      '  border: none !important;',
       '}',
 
-      /* expanded state */
-      '.scw-ktl-accordion-header.scw-expanded {',
-      '  background: color-mix(in srgb, var(--scw-accent) 6%, #ffffff);',
-      '  border-color: color-mix(in srgb, var(--scw-accent) 20%, transparent);',
-      '  box-shadow: 0 1px 4px color-mix(in srgb, var(--scw-accent) 12%, transparent);',
-      '}',
-      '.scw-ktl-accordion-header.scw-expanded:hover {',
-      '  background: color-mix(in srgb, var(--scw-accent) 10%, #ffffff);',
-      '}',
-
-      /* ── icon area ── */
-      '.scw-ktl-accordion-header .scw-acc-icon {',
-      '  flex: 0 0 auto;',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  justify-content: center;',
-      '  width: 32px;',
-      '  height: 100%;',
-      '  margin-left: 8px;',
-      '  color: var(--scw-accent);',
-      '  opacity: .7;',
-      '}',
-
-      /* ── title ── */
-      '.scw-ktl-accordion-header .scw-acc-title {',
-      '  flex: 1 1 auto;',
-      '  padding: 8px 6px;',
-      '  font-size: 13px;',
-      '  font-weight: 600;',
-      '  color: #1a1a1a;',
-      '  line-height: 1.35;',
-      '  white-space: nowrap;',
-      '  overflow: hidden;',
-      '  text-overflow: ellipsis;',
-      '}',
-
-      /* ── count pill ── */
-      '.scw-ktl-accordion-header .scw-acc-count {',
-      '  flex: 0 0 auto;',
-      '  display: inline-block;',
-      '  padding: 1px 8px;',
-      '  margin-right: 4px;',
-      '  font-size: 11px;',
-      '  font-weight: 600;',
-      '  line-height: 1.55;',
-      '  border-radius: 10px;',
-      '  background: color-mix(in srgb, var(--scw-accent) 14%, transparent);',
-      '  color: var(--scw-accent);',
-      '}',
-
-      /* ── chevron ── */
-      '.scw-ktl-accordion-header .scw-acc-chevron {',
-      '  flex: 0 0 auto;',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  justify-content: center;',
-      '  width: 30px;',
-      '  margin-right: 4px;',
-      '  color: var(--scw-accent);',
-      '  transition: transform 220ms ease;',
-      '  transform: rotate(0deg);',
-      '}',
-      '.scw-ktl-accordion-header:not(.scw-expanded) .scw-acc-chevron {',
-      '  transform: rotate(-90deg);',
-      '}',
-
-      /* ── hide the original KTL button when enhanced ── */
+      /* Remove the old "bar" styling from the KTL button when enhanced */
       '.scw-ktl-accordion-enhanced ' + BTN_SEL + ' {',
       '  position: absolute !important;',
       '  width: 1px !important;',
@@ -910,14 +850,132 @@ window.SCW = window.SCW || {};
       '  clip: rect(0,0,0,0) !important;',
       '  white-space: nowrap !important;',
       '  border: 0 !important;',
+      '  background: transparent !important;',
+      '  color: inherit !important;',
       '}',
 
-      /* keep the kn-view wrapper neutral when enhanced —
-         override the global-styles branded background */
+      /* ══════════════════════════════════════════════════
+         2) Our header row — the only visible "card"
+         ══════════════════════════════════════════════════ */
+      '.scw-ktl-accordion-header {',
+      '  --scw-accent: #295f91;',
+      '  position: relative;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: space-between;',
+      '  width: 100%;',
+      '  min-height: 44px;',
+      '  padding: 14px 16px 14px 22px;', /* extra left for accent bar */
+      '  margin: 0;',
+      '  background: #fff;',
+      '  border: 1px solid rgba(0,0,0,.08);',
+      '  border-radius: 12px;',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  box-sizing: border-box;',
+      '  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;',
+      '  overflow: hidden;',
+      '  box-shadow: 0 2px 10px rgba(0,0,0,.06);',
+      '}',
+
+      /* Left accent bar via ::before */
+      '.scw-ktl-accordion-header::before {',
+      '  content: "";',
+      '  position: absolute;',
+      '  left: 0;',
+      '  top: 0;',
+      '  bottom: 0;',
+      '  width: 6px;',
+      '  background: var(--scw-accent);',
+      '  border-radius: 12px 0 0 12px;',
+      '}',
+
+      /* hover */
+      '.scw-ktl-accordion-header:hover {',
+      '  background: #f8f9fb;',
+      '  border-color: rgba(0,0,0,.12);',
+      '  box-shadow: 0 3px 12px rgba(0,0,0,.09);',
+      '}',
+
+      /* expanded state */
+      '.scw-ktl-accordion-header.scw-expanded {',
+      '  background: color-mix(in srgb, var(--scw-accent) 8%, white);',
+      '  border-color: color-mix(in srgb, var(--scw-accent) 25%, rgba(0,0,0,.08));',
+      '  box-shadow: 0 2px 10px rgba(0,0,0,.08);',
+      '}',
+      '.scw-ktl-accordion-header.scw-expanded:hover {',
+      '  background: color-mix(in srgb, var(--scw-accent) 12%, white);',
+      '}',
+
+      /* focus-visible for keyboard nav */
+      '.scw-ktl-accordion-header:focus-visible {',
+      '  outline: 2px solid var(--scw-accent);',
+      '  outline-offset: 2px;',
+      '}',
+
+      /* ── icon area ── */
+      '.scw-ktl-accordion-header .scw-acc-icon {',
+      '  flex: 0 0 auto;',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  width: 28px;',
+      '  margin-right: 6px;',
+      '  color: var(--scw-accent);',
+      '  opacity: .75;',
+      '}',
+
+      /* ── title ── */
+      '.scw-ktl-accordion-header .scw-acc-title {',
+      '  flex: 1 1 auto;',
+      '  padding: 0 8px 0 0;',
+      '  font-size: 14px;',
+      '  font-weight: 600;',
+      '  color: #1a1a1a;',
+      '  line-height: 1.4;',
+      '  white-space: nowrap;',
+      '  overflow: hidden;',
+      '  text-overflow: ellipsis;',
+      '  text-align: left;',
+      '}',
+
+      /* ── count pill — rounded badge ── */
+      '.scw-ktl-accordion-header .scw-acc-count {',
+      '  flex: 0 0 auto;',
+      '  display: inline-block;',
+      '  padding: 2px 10px;',
+      '  margin-right: 8px;',
+      '  font-size: 11px;',
+      '  font-weight: 700;',
+      '  line-height: 1.55;',
+      '  border-radius: 12px;',
+      '  background: color-mix(in srgb, var(--scw-accent) 14%, transparent);',
+      '  color: var(--scw-accent);',
+      '}',
+
+      /* ── chevron — far right, rotates ── */
+      '.scw-ktl-accordion-header .scw-acc-chevron {',
+      '  flex: 0 0 auto;',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  width: 24px;',
+      '  color: var(--scw-accent);',
+      '  transition: transform 220ms ease;',
+      '  transform: rotate(0deg);',
+      '}',
+      '.scw-ktl-accordion-header:not(.scw-expanded) .scw-acc-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+
+      /* ══════════════════════════════════════════════════
+         3) Spacing between accordions — compact 10px gap
+         ══════════════════════════════════════════════════ */
+      '.scw-ktl-accordion-enhanced + .scw-ktl-accordion-enhanced {',
+      '  margin-top: 0 !important;',
+      '}',
       '.scw-ktl-accordion-enhanced.kn-view {',
-      '  background-color: transparent !important;',
-      '  border-radius: 0 !important;',
-      '  padding: 0 !important;',
+      '  margin-bottom: 10px !important;',
       '}',
     ].join('\n');
 
@@ -1088,9 +1146,11 @@ window.SCW = window.SCW || {};
 
       log('enhancing', viewKey);
 
-      // Mark enhanced
+      // Mark enhanced — apply class to all relevant wrappers
       btn.setAttribute(ENHANCED, '1');
       if (knView) knView.classList.add('scw-ktl-accordion-enhanced');
+      var boxWrapper = btn.closest('section.ktlBoxWithBorder');
+      if (boxWrapper) boxWrapper.classList.add('scw-ktl-accordion-enhanced');
 
       // Read accent before we visually hide the button
       var accent = readAccentColor(btn);
