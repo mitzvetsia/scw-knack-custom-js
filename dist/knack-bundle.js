@@ -11262,19 +11262,19 @@ $(".kn-navigation-bar").hide();
 })();
 /*************  Inline Photo Rows – view_3512  **********************/
 // ============================================================
-// Boolean Chips – one-click toggle chips
+// Boolean Chips – one-click toggle chips (stacked in one column)
 // ============================================================
 //
-// Replaces Yes/No text in boolean field cells with compact chip
-// elements that show the field label and indicate state via color.
-// Clicking a chip instantly toggles the value (Yes↔No) and saves.
+// Replaces Yes/No boolean columns with compact chip elements
+// stacked vertically inside a single "host" column. The other
+// source columns are hidden. Clicking a chip instantly toggles
+// the value (Yes↔No) and saves via Knack's internal APIs.
 // Knack's native inline-edit popup is suppressed for these cells.
 //
 // CONFIGURATION
 //   Edit BOOL_CHIP_CONFIG below to add views and fields.
-//   Each view entry lists the boolean fields to chip-ify.
-//   `label` is the text shown on the chip.
-//   `fieldKey` is the Knack field_### identifier.
+//   `hostFieldKey` is the column where all chips are rendered.
+//   `hideFieldKeys` lists columns to hide (their data is read first).
 //
 (function () {
   'use strict';
@@ -11286,6 +11286,10 @@ $(".kn-navigation-bar").hide();
     views: [
       {
         viewId: 'view_3512',
+        // All chips render stacked inside the Exterior column
+        hostFieldKey: 'field_2372',
+        // These columns get hidden (header + cells)
+        hideFieldKeys: ['field_2370', 'field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
           { label: 'Existing Cabling', fieldKey: 'field_2370' },
@@ -11300,14 +11304,9 @@ $(".kn-navigation-bar").hide();
   // ============================================================
   var STYLE_ID       = 'scw-bool-chips-css';
   var CHIP_CLASS     = 'scw-bool-chip';
+  var CHIP_STACK     = 'scw-chip-stack';
   var PROCESSED_ATTR = 'data-scw-chip-processed';
   var EVENT_NS       = '.scwBoolChips';
-
-  // Build a set of managed field keys for quick lookup
-  var MANAGED_FIELDS = {};
-  BOOL_CHIP_CONFIG.views.forEach(function (v) {
-    v.fields.forEach(function (f) { MANAGED_FIELDS[f.fieldKey] = true; });
-  });
 
   // ============================================================
   // CSS – injected once
@@ -11315,7 +11314,25 @@ $(".kn-navigation-bar").hide();
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
 
+    var hiddenSelectors = [];
+    BOOL_CHIP_CONFIG.views.forEach(function (viewCfg) {
+      (viewCfg.hideFieldKeys || []).forEach(function (fk) {
+        var sel = '#' + viewCfg.viewId;
+        hiddenSelectors.push(sel + ' th.' + fk);
+        hiddenSelectors.push(sel + ' td.' + fk);
+        hiddenSelectors.push(sel + ' th[data-field-key="' + fk + '"]');
+        hiddenSelectors.push(sel + ' td[data-field-key="' + fk + '"]');
+      });
+    });
+
     var css = [
+      /* ---- chip stack container ---- */
+      '.' + CHIP_STACK + ' {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
       /* ---- base chip ---- */
       '.' + CHIP_CLASS + ' {',
       '  display: inline-block;',
@@ -11329,6 +11346,7 @@ $(".kn-navigation-bar").hide();
       '  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;',
       '  white-space: nowrap;',
       '  border: 1px solid transparent;',
+      '  text-align: center;',
       '}',
 
       /* ---- yes state ---- */
@@ -11365,11 +11383,18 @@ $(".kn-navigation-bar").hide();
       'td[' + PROCESSED_ATTR + '] .kn-td-edit {',
       '  display: none !important;',
       '}'
-    ].join('\n');
+    ];
+
+    /* ---- hide source columns ---- */
+    if (hiddenSelectors.length) {
+      css.push(hiddenSelectors.join(',\n') + ' {');
+      css.push('  display: none !important;');
+      css.push('}');
+    }
 
     var style = document.createElement('style');
     style.id = STYLE_ID;
-    style.textContent = css;
+    style.textContent = css.join('\n');
     document.head.appendChild(style);
   }
 
@@ -11397,7 +11422,6 @@ $(".kn-navigation-bar").hide();
 
   /**
    * Get the record id for a table row.
-   * Knack stores it in the <tr> id attribute as "kn-table-row-ID".
    */
   function getRecordId(tr) {
     var trId = tr.id || '';
@@ -11412,14 +11436,12 @@ $(".kn-navigation-bar").hide();
     var data = {};
     data[fieldKey] = boolValue === 'yes';
 
-    // Use Knack's internal model update
     var view = Knack.views[viewId];
     if (view && view.model && typeof view.model.updateRecord === 'function') {
       view.model.updateRecord(recordId, data);
       return;
     }
 
-    // Fallback: use Knack's global ajax helper if available
     if (typeof Knack !== 'undefined' && Knack.models) {
       var modelKey = Object.keys(Knack.models).find(function (key) {
         var m = Knack.models[key];
@@ -11438,7 +11460,6 @@ $(".kn-navigation-bar").hide();
       }
     }
 
-    // Last resort: PUT via Knack's built-in ajax
     $.ajax({
       url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
            '/views/' + viewId + '/records/' + recordId,
@@ -11474,39 +11495,68 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
-  // CHIP TRANSFORMATION
+  // CHIP TRANSFORMATION — stacked in host column
   // ============================================================
 
-  /** Transform cells in a single view according to its field config. */
+  /**
+   * Read a boolean value from a (possibly hidden) cell in the row.
+   */
+  function readBoolFromRow($tr, fieldKey) {
+    var $td = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+    if (!$td.length) return null;
+    // If this cell already has a chip, read from the chip's data-value
+    var $chip = $td.find('.' + CHIP_CLASS);
+    if ($chip.length) return $chip.attr('data-value') || null;
+    // Otherwise read raw text
+    return normalizeBool($td.text());
+  }
+
+  /** Transform rows: stack all field chips into the host column. */
   function transformView(viewCfg) {
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
 
+    var hostFK = viewCfg.hostFieldKey;
     var $rows = $view.find('table.kn-table-table tbody tr, table.kn-table tbody tr');
     if (!$rows.length) return;
 
-    viewCfg.fields.forEach(function (fieldCfg) {
-      $rows.each(function () {
-        var $tr = $(this);
-        if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
+    // Rename the host column header to something generic
+    var $hostTh = $view.find('th.' + hostFK + ', th[data-field-key="' + hostFK + '"]');
+    if ($hostTh.length && !$hostTh.attr('data-scw-relabeled')) {
+      $hostTh.find('.kn-sort-link, a').first().text('Survey');
+      $hostTh.attr('data-scw-relabeled', '1');
+    }
 
-        var $td = $tr.find('td.' + fieldCfg.fieldKey + ', td[data-field-key="' + fieldCfg.fieldKey + '"]');
-        if (!$td.length) return;
+    $rows.each(function () {
+      var $tr = $(this);
+      if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
 
-        // Idempotency: skip already-processed cells
-        if ($td.attr(PROCESSED_ATTR) === '1') {
-          if ($td.find('.' + CHIP_CLASS).length) return;
+      var $hostTd = $tr.find('td.' + hostFK + ', td[data-field-key="' + hostFK + '"]');
+      if (!$hostTd.length) return;
+
+      // Skip if already processed and chips still present
+      if ($hostTd.attr(PROCESSED_ATTR) === '1' && $hostTd.find('.' + CHIP_CLASS).length) return;
+
+      // Read boolean values for ALL fields from their respective cells
+      var chipData = [];
+      viewCfg.fields.forEach(function (fieldCfg) {
+        var val = readBoolFromRow($tr, fieldCfg.fieldKey);
+        if (val) {
+          chipData.push({ label: fieldCfg.label, value: val, fieldKey: fieldCfg.fieldKey });
         }
-
-        var rawText = $td.text();
-        var boolVal = normalizeBool(rawText);
-        if (!boolVal) return;
-
-        // Replace cell contents with chip
-        $td.empty();
-        $td.append(createChip(fieldCfg.label, boolVal, fieldCfg.fieldKey));
-        $td.attr(PROCESSED_ATTR, '1');
       });
+
+      if (!chipData.length) return;
+
+      // Build the stacked chip container
+      var stack = document.createElement('div');
+      stack.className = CHIP_STACK;
+      chipData.forEach(function (d) {
+        stack.appendChild(createChip(d.label, d.value, d.fieldKey));
+      });
+
+      $hostTd.empty().append(stack);
+      $hostTd.attr(PROCESSED_ATTR, '1');
     });
   }
 
@@ -11514,33 +11564,26 @@ $(".kn-navigation-bar").hide();
   // ONE-CLICK TOGGLE (event delegation)
   // ============================================================
 
-  // Block Knack's inline-edit from triggering on managed cells.
-  // We use a capturing listener so we fire BEFORE Knack's delegated handlers.
+  // Block Knack's inline-edit from triggering on managed cells (capturing phase)
   document.addEventListener('click', function (e) {
     var chip = e.target.closest('.' + CHIP_CLASS);
     if (!chip) return;
-
     var td = chip.closest('td');
     if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
-
-    // Stop the event from reaching Knack's inline-edit handlers
-    e.stopPropagation();
-    e.preventDefault();
-  }, true); // <-- capturing phase
-
-  // Also suppress mousedown (Knack sometimes binds inline-edit on mousedown)
-  document.addEventListener('mousedown', function (e) {
-    var chip = e.target.closest('.' + CHIP_CLASS);
-    if (!chip) return;
-
-    var td = chip.closest('td');
-    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
-
     e.stopPropagation();
     e.preventDefault();
   }, true);
 
-  // Our own click handler via jQuery delegation (bubbling phase, fires after capture block)
+  document.addEventListener('mousedown', function (e) {
+    var chip = e.target.closest('.' + CHIP_CLASS);
+    if (!chip) return;
+    var td = chip.closest('td');
+    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
+  // Our click handler — toggle on single click
   $(document).on('click' + EVENT_NS, '.' + CHIP_CLASS, function (e) {
     e.stopPropagation();
     e.preventDefault();
@@ -11553,7 +11596,6 @@ $(".kn-navigation-bar").hide();
     var currentValue = chip.getAttribute('data-value') || 'no';
     var newValue     = currentValue === 'yes' ? 'no' : 'yes';
 
-    // Find config
     var viewCfg = findViewForCell(td);
     if (!viewCfg) return;
 
@@ -11566,17 +11608,21 @@ $(".kn-navigation-bar").hide();
     }
     if (!fieldCfg) return;
 
-    // Instantly update the chip UI
+    // Instantly update just this chip in-place
     var newChip = createChip(fieldCfg.label, newValue, fieldCfg.fieldKey);
     newChip.classList.add('is-saving');
-    td.innerHTML = '';
-    td.appendChild(newChip);
-    td.setAttribute(PROCESSED_ATTR, '1');
+    chip.parentNode.replaceChild(newChip, chip);
 
-    // Remove saving indicator after a short delay
     setTimeout(function () { newChip.classList.remove('is-saving'); }, 400);
 
-    // Save the new value
+    // Also update the hidden source cell so re-renders stay in sync
+    var $tr = $(td).closest('tr');
+    var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
+    if ($srcTd.length) {
+      $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
+    }
+
+    // Save
     var tr = td.closest('tr');
     var recordId = tr ? getRecordId(tr) : null;
     if (recordId) {
