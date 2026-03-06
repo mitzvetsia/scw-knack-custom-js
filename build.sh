@@ -47,7 +47,6 @@ cat \
   src/features/gtm-inject.js \
   src/features/jotform-embed-sow-photos.js \
   src/features/edit-button-group-header.js \
-  src/features/photo-group-by-survey-item.js \
   src/features/inline-photo-row.js \
   src/features/dynamic-cell-colors.js \
   src/features/legacy/checkbox-grid.field_739.js \
