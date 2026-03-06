@@ -10466,7 +10466,27 @@ $(".kn-navigation-bar").hide();
       '  background: transparent;',
       '}',
       '.' + ROW_CLS + ' > td {',
-      '  padding: 10px 16px 14px 16px !important;',
+      '  padding: 10px 20px 14px 16px !important;',
+      '}',
+
+      /* Wrapper — mimics .scw-ws-field layout so photos align with field values */
+      '.scw-inline-photo-field {',
+      '  display: flex;',
+      '  gap: 8px;',
+      '  align-items: flex-start;',
+      '}',
+
+      /* "Photos" label — matches .scw-ws-field-label styling */
+      '.scw-inline-photo-label {',
+      '  flex: 0 0 auto;',
+      '  min-width: 100px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #94a3b8;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '  padding-top: 5px;',
+      '  white-space: nowrap;',
       '}',
 
       /* Flex strip for photo cards */
@@ -10475,6 +10495,8 @@ $(".kn-navigation-bar").hide();
       '  flex-wrap: wrap;',
       '  gap: 12px;',
       '  align-items: flex-start;',
+      '  flex: 1;',
+      '  min-width: 0;',
       '}',
 
       /* Card wrapper */
@@ -11252,7 +11274,18 @@ $(".kn-navigation-bar").hide();
       // ── Append "+" button at the end ──
       strip.appendChild(addBtn);
 
-      td.appendChild(strip);
+      // Wrap strip in a field-like layout with a "Photos" label
+      var fieldWrapper = document.createElement('div');
+      fieldWrapper.className = 'scw-inline-photo-field';
+
+      var photoLabel = document.createElement('div');
+      photoLabel.className = 'scw-inline-photo-label';
+      photoLabel.textContent = 'Photos';
+
+      fieldWrapper.appendChild(photoLabel);
+      fieldWrapper.appendChild(strip);
+
+      td.appendChild(fieldWrapper);
       photoTr.appendChild(td);
       tr.parentNode.insertBefore(photoTr, tr.nextSibling);
     }
