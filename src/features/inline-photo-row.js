@@ -180,14 +180,17 @@
       /* Required chip */
       '.' + REQ_CHIP_CLS + ' {',
       '  margin-top: 2px;',
-      '  padding: 1px 6px;',
+      '  width: 100%;',
+      '  padding: 2px 6px;',
       '  font-size: 9px;',
       '  font-weight: 700;',
       '  text-transform: uppercase;',
       '  letter-spacing: 0.5px;',
+      '  text-align: center;',
       '  color: #fff;',
       '  background: #dc2626;',
       '  border-radius: 3px;',
+      '  box-sizing: border-box;',
       '}',
 
       /* Missing required photo — card-level highlight */
@@ -471,8 +474,8 @@
             card.appendChild(typeEl);
           }
 
-          // "Required" chip if field_2446 = Yes
-          if (photo.required) {
+          // "Required" chip — only when required AND not yet completed
+          if (photo.required && !photo.completed) {
             var chip = document.createElement('div');
             chip.className = REQ_CHIP_CLS;
             chip.textContent = 'Required';
