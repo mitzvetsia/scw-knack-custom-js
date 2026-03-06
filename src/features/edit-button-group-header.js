@@ -82,16 +82,33 @@
   var ADD_PHOTO_VIEW = 'view_3563';
 
   function waitForFieldAndSelect(srId, attempts) {
-    if (attempts <= 0) return;
+    if (attempts <= 0) {
+      console.log('[SCW] gave up after all attempts. srId=' + srId);
+      return;
+    }
     var $form = $('#' + ADD_PHOTO_VIEW);
     var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
+
+    console.log('[SCW] attempt ' + (21 - attempts) + '/20: form=' + $form.length +
+      ', select=' + $select.length + ', options=' + $select.find('option').length +
+      ', srId=' + srId);
+
+    // Log all option values so we can see what's available
+    if ($select.length && attempts === 20) {
+      $select.find('option').each(function () {
+        console.log('[SCW]   option val="' + this.value + '" text="' + this.textContent + '"');
+      });
+    }
+
     var $option = $select.find('option[value="' + srId + '"]');
     if ($option.length) {
-      // Select the option in the chosen widget
+      console.log('[SCW] FOUND option, selecting it');
       $option.prop('selected', true);
       $select.trigger('chosen:updated').trigger('change');
       // Also set the hidden connection input that Knack actually submits
-      $form.find('input.connection[name="field_2423"]').val(srId);
+      var $hidden = $form.find('input[name="field_2423"]');
+      console.log('[SCW] hidden input found: ' + $hidden.length + ', selector tried: input[name="field_2423"]');
+      $hidden.val(srId);
     } else {
       setTimeout(function () { waitForFieldAndSelect(srId, attempts - 1); }, 250);
     }
@@ -107,8 +124,10 @@
       if (!href) return;
 
       // Grab the SR record ID from the current page URL before navigating
-      var srMatch = (window.location.hash || '').match(/site-survey-request-details\/([a-f0-9]{24})/);
+      var currentHash = window.location.hash || '';
+      var srMatch = currentHash.match(/site-survey-request-details\/([a-f0-9]{24})/);
       var srId = srMatch ? srMatch[1] : '';
+      console.log('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
 
       window.location.hash = href.replace(/^#/, '');
 
