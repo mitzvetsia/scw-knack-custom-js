@@ -3,13 +3,14 @@
 // ============================================================
 //
 // Transforms flat table rows into grouped "device worksheet" cards
-// with sections: WHAT IS IT, SURVEY DETAILS, BID, and PHOTOS.
+// with sections: (identity), SURVEY DETAILS, BID, and PHOTOS.
 //
-// The original <td> cells are NOT destroyed — their *contents* are
-// moved into the worksheet layout. The <td> shells remain in the
-// (now-hidden) original row so Knack's inline-edit continues to
-// work.  After an inline edit completes Knack re-renders the view,
-// and this script re-runs to rebuild the worksheet.
+// INLINE-EDIT PRESERVATION STRATEGY
+//   The actual <td> elements are *moved* (reparented) into the
+//   worksheet layout — NOT cloned.  This keeps all of Knack's
+//   jQuery event bindings alive.  When Knack fires cell-edit or
+//   re-renders the view, the whole table is replaced and this
+//   script re-runs from scratch.
 //
 // CONFIGURATION
 //   Edit WORKSHEET_CONFIG below. Each entry maps semantic field
@@ -26,11 +27,13 @@
       {
         viewId: 'view_3512',
         fields: {
-          // ── WHAT IS IT ──
+          // ── Title bar ──
           bid:          'field_2415',   // Bid (column 1)
           move:         'field_2375',   // Move icon (column 2)
           label:        'field_2364',   // Label
           product:      'field_2379',   // Product (column 4)
+
+          // ── Identity section (no header) ──
           mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
           connections:  'field_2381',   // connected to
           scwNotes:     'field_2418',   // SCW Notes
@@ -73,7 +76,7 @@
     if (document.getElementById(STYLE_ID)) return;
 
     var css = `
-/* ── Hide the original data row (but keep it in DOM for inline-edit) ── */
+/* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
@@ -190,6 +193,7 @@ tr[${PROCESSED_ATTR}="1"] {
   white-space: nowrap;
 }
 
+/* ── The moved <td> becomes the field value container ── */
 .${PREFIX}-field-value {
   flex: 1;
   font-size: 13px;
@@ -199,15 +203,25 @@ tr[${PROCESSED_ATTR}="1"] {
   word-break: break-word;
 }
 
-/* Inline-editable cell contents moved into the worksheet —
-   highlight on hover to show they're editable */
-.${PREFIX}-field-value .cell-edit,
-.${PREFIX}-field-value [class*="ktlInlineEditable"] {
+/* Reset <td> styling when it's been reparented into the worksheet.
+   Knack/browser default td styles would otherwise look wrong. */
+td.${PREFIX}-field-value {
+  display: block;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+/* ── Editable hover affordance ── */
+td.${PREFIX}-field-value.cell-edit,
+td.${PREFIX}-field-value.ktlInlineEditableCellsStyle {
   cursor: pointer;
 }
-.${PREFIX}-field-value:hover {
-  background: #f8fafc;
-  border-radius: 3px;
+td.${PREFIX}-field-value.cell-edit:hover,
+td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
 }
 
 /* ── Chip stack (booleans) sits inline ── */
@@ -215,11 +229,11 @@ tr[${PROCESSED_ATTR}="1"] {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 2px;
+  padding: 2px 0;
 }
 
 /* ── Notes fields — allow more vertical space ── */
-.${PREFIX}-field-value--notes {
+td.${PREFIX}-field-value--notes {
   font-size: 12px;
   line-height: 1.5;
   max-height: 120px;
@@ -231,6 +245,12 @@ tr[${PROCESSED_ATTR}="1"] {
   color: #cbd5e1;
   font-style: italic;
   font-size: 12px;
+}
+
+/* ── Read-only field value (non-editable, e.g. label, product) ── */
+.${PREFIX}-field-value--readonly {
+  display: block;
+  padding: 2px 4px;
 }
 `;
 
@@ -264,26 +284,6 @@ tr[${PROCESSED_ATTR}="1"] {
     return cells[0];
   }
 
-  /**
-   * Move the *innerHTML* of a cell into a target element.
-   * The original <td> keeps its element node in the DOM (for
-   * Knack's inline-edit bindings) but its visual content
-   * is transplanted into the worksheet layout.
-   *
-   * We clone the content so the original cell retains a copy
-   * that Knack can work with during inline-edit. After Knack
-   * re-renders, this script rebuilds the worksheet anyway.
-   */
-  function cloneCellContent(td) {
-    if (!td) return null;
-    var frag = document.createDocumentFragment();
-    var children = td.childNodes;
-    for (var i = 0; i < children.length; i++) {
-      frag.appendChild(children[i].cloneNode(true));
-    }
-    return frag;
-  }
-
   /** Check if a cell contains only whitespace / &nbsp; */
   function isCellEmpty(td) {
     if (!td) return true;
@@ -298,14 +298,30 @@ tr[${PROCESSED_ATTR}="1"] {
     return match ? match[0] : null;
   }
 
+  /**
+   * Clone cell content into a plain <div> (for read-only display
+   * in the title bar where we don't need inline editing).
+   */
+  function cloneAsDiv(td, className) {
+    if (!td) return null;
+    var div = document.createElement('span');
+    div.className = className || '';
+    div.innerHTML = td.innerHTML;
+    return div;
+  }
+
   // ============================================================
   // BUILD WORKSHEET SECTIONS
   // ============================================================
 
   /**
-   * Create a single field row: [label] [value]
+   * Create a field row that embeds the ACTUAL <td> as the value.
+   * The <td> is moved (not cloned) so Knack's event bindings survive.
+   *
+   * We add our CSS class to the <td> and switch it to display:block
+   * so it renders as a normal block element within the flex row.
    */
-  function buildFieldRow(label, contentFragment, opts) {
+  function buildFieldRow(label, td, opts) {
     opts = opts || {};
     var row = document.createElement('div');
     row.className = PREFIX + '-field';
@@ -315,38 +331,52 @@ tr[${PROCESSED_ATTR}="1"] {
     lbl.textContent = label;
     row.appendChild(lbl);
 
-    var val = document.createElement('div');
-    val.className = PREFIX + '-field-value';
-    if (opts.notes) val.classList.add(PREFIX + '-field-value--notes');
-
-    if (contentFragment) {
-      val.appendChild(contentFragment);
+    if (td && !isCellEmpty(td)) {
+      // Add our class to the actual <td>. This turns it into a
+      // flex child with display:block and our styling.
+      td.classList.add(PREFIX + '-field-value');
+      if (opts.notes) td.classList.add(PREFIX + '-field-value--notes');
+      // Move the actual <td> into the worksheet layout
+      row.appendChild(td);
+    } else if (td) {
+      // Cell exists but is empty — still move it so edits work,
+      // but style it as empty
+      td.classList.add(PREFIX + '-field-value');
+      td.classList.add(PREFIX + '-field-value--empty');
+      if (opts.notes) td.classList.add(PREFIX + '-field-value--notes');
+      row.appendChild(td);
     } else {
-      val.classList.add(PREFIX + '-field-value--empty');
-      val.textContent = '\u2014';
+      // No cell at all — create placeholder
+      var placeholder = document.createElement('div');
+      placeholder.className = PREFIX + '-field-value ' + PREFIX + '-field-value--empty';
+      placeholder.textContent = '\u2014';
+      row.appendChild(placeholder);
     }
 
-    row.appendChild(val);
     return row;
   }
 
   /**
    * Create a section wrapper with a title.
+   * Pass null/empty title for no header (identity section).
    */
   function buildSection(title) {
     var section = document.createElement('div');
     section.className = PREFIX + '-section';
 
-    var titleEl = document.createElement('div');
-    titleEl.className = PREFIX + '-section-title';
-    titleEl.textContent = title;
-    section.appendChild(titleEl);
+    if (title) {
+      var titleEl = document.createElement('div');
+      titleEl.className = PREFIX + '-section-title';
+      titleEl.textContent = title;
+      section.appendChild(titleEl);
+    }
 
     return section;
   }
 
   /**
    * Build the full worksheet card for a data row.
+   * Cells are MOVED out of the <tr> into the card layout.
    */
   function buildWorksheetCard(tr, viewCfg) {
     var f = viewCfg.fields;
@@ -356,6 +386,8 @@ tr[${PROCESSED_ATTR}="1"] {
     card.className = PREFIX + '-card';
 
     // ── Title bar ──
+    // These are read-only display values (cloned, not moved),
+    // because label/product aren't inline-editable in the HTML.
     var titlebar = document.createElement('div');
     titlebar.className = PREFIX + '-titlebar';
 
@@ -382,12 +414,12 @@ tr[${PROCESSED_ATTR}="1"] {
     productSpan.textContent = productTd ? productTd.textContent.trim() : '';
     titlebar.appendChild(productSpan);
 
-    // Move icon (right side)
+    // Move icon (right side) — clone since it's read-only display
     var moveTd = findCell(tr, f.move);
     if (moveTd && !isCellEmpty(moveTd)) {
       var moveSpan = document.createElement('span');
       moveSpan.className = PREFIX + '-titlebar-move';
-      moveSpan.appendChild(cloneCellContent(moveTd));
+      moveSpan.innerHTML = moveTd.innerHTML;
       titlebar.appendChild(moveSpan);
     }
 
@@ -397,74 +429,67 @@ tr[${PROCESSED_ATTR}="1"] {
     var sections = document.createElement('div');
     sections.className = PREFIX + '-sections';
 
-    // ── WHAT IS IT ──
-    var whatSection = buildSection('What Is It');
+    // ── Identity section (no header) ──
+    var identitySection = buildSection(null);
 
-    var mountingTd = findCell(tr, f.mounting, ci.mounting);
-    whatSection.appendChild(buildFieldRow('Mounting',
-      !isCellEmpty(mountingTd) ? cloneCellContent(mountingTd) : null));
+    // Move the actual <td> elements into field rows
+    identitySection.appendChild(buildFieldRow('Mounting',
+      findCell(tr, f.mounting, ci.mounting)));
 
-    var connTd = findCell(tr, f.connections);
-    whatSection.appendChild(buildFieldRow('Connected to',
-      !isCellEmpty(connTd) ? cloneCellContent(connTd) : null));
+    identitySection.appendChild(buildFieldRow('Connected to',
+      findCell(tr, f.connections)));
 
-    var scwNotesTd = findCell(tr, f.scwNotes);
-    whatSection.appendChild(buildFieldRow('SCW Notes',
-      !isCellEmpty(scwNotesTd) ? cloneCellContent(scwNotesTd) : null,
-      { notes: true }));
+    identitySection.appendChild(buildFieldRow('SCW Notes',
+      findCell(tr, f.scwNotes), { notes: true }));
 
-    sections.appendChild(whatSection);
+    sections.appendChild(identitySection);
 
     // ── SURVEY DETAILS ──
     var surveySection = buildSection('Survey Details');
 
-    var surveyNotesTd = findCell(tr, f.surveyNotes);
     surveySection.appendChild(buildFieldRow('Notes',
-      !isCellEmpty(surveyNotesTd) ? cloneCellContent(surveyNotesTd) : null,
-      { notes: true }));
+      findCell(tr, f.surveyNotes), { notes: true }));
 
     // Chip stack — the boolean-chips feature has already transformed
-    // the exterior cell into a chip stack. Clone it into this section.
+    // the exterior cell into a chip stack. Move the chip elements
+    // into a wrapper so they stay interactive.
     var chipHostTd = findCell(tr, f.exterior);
     if (chipHostTd) {
       var chipStack = chipHostTd.querySelector('.scw-chip-stack');
       if (chipStack) {
         var chipsRow = document.createElement('div');
         chipsRow.className = PREFIX + '-chips';
-        // We need the *actual* chip elements for interactivity,
-        // so move them rather than clone.
+        // Move the actual chip elements (preserves click handlers)
         while (chipStack.firstChild) {
           chipsRow.appendChild(chipStack.firstChild);
         }
-        surveySection.appendChild(chipsRow);
+        // Also move the chip-processed td so Knack doesn't lose it
+        chipHostTd.classList.add(PREFIX + '-field-value');
+        chipHostTd.innerHTML = '';
+        chipHostTd.appendChild(chipsRow);
+        surveySection.appendChild(chipHostTd);
       } else {
-        // Fall back: show the raw cell content if chips haven't been applied
         surveySection.appendChild(buildFieldRow('Exterior',
-          !isCellEmpty(chipHostTd) ? cloneCellContent(chipHostTd) : null));
+          chipHostTd));
       }
     }
 
-    var dropTd = findCell(tr, f.dropLength);
     surveySection.appendChild(buildFieldRow('Drop Length',
-      !isCellEmpty(dropTd) ? cloneCellContent(dropTd) : null));
+      findCell(tr, f.dropLength)));
 
-    var conduitTd = findCell(tr, f.conduitFeet);
     surveySection.appendChild(buildFieldRow('Conduit Ft',
-      !isCellEmpty(conduitTd) ? cloneCellContent(conduitTd) : null));
+      findCell(tr, f.conduitFeet)));
 
     sections.appendChild(surveySection);
 
     // ── BID ──
     var bidSection = buildSection('Bid');
 
-    var laborDescTd = findCell(tr, f.laborDescription);
     bidSection.appendChild(buildFieldRow('Labor Desc.',
-      !isCellEmpty(laborDescTd) ? cloneCellContent(laborDescTd) : null,
-      { notes: true }));
+      findCell(tr, f.laborDescription), { notes: true }));
 
-    var laborTd = findCell(tr, f.labor);
     bidSection.appendChild(buildFieldRow('Labor',
-      !isCellEmpty(laborTd) ? cloneCellContent(laborTd) : null));
+      findCell(tr, f.labor)));
 
     sections.appendChild(bidSection);
 
@@ -488,7 +513,6 @@ tr[${PROCESSED_ATTR}="1"] {
     var thead = table.querySelector('thead');
     if (thead) thead.style.display = 'none';
 
-    // Also hide the checkbox column header if present
     var $rows = $(table).find('tbody > tr');
 
     $rows.each(function () {
@@ -506,12 +530,17 @@ tr[${PROCESSED_ATTR}="1"] {
       // Skip if already processed
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
-      // Build the worksheet card
+      // Build the worksheet card — this MOVES cells out of the <tr>
       var card = buildWorksheetCard(tr, viewCfg);
 
       // Create the worksheet row
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
+      // Copy the record id so Knack can still find the row
+      wsTr.id = tr.id;
+      // Remove id from original to avoid duplicate IDs
+      tr.removeAttribute('id');
+
       var wsTd = document.createElement('td');
 
       // Count columns for colspan
@@ -557,14 +586,9 @@ tr[${PROCESSED_ATTR}="1"] {
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
         .on('knack-cell-update.' + viewId + EVENT_NS, function () {
-          // On cell update, Knack re-renders. Clean up our rows and re-process.
-          setTimeout(function () {
-            $('#' + viewId + ' .' + WORKSHEET_ROW).remove();
-            $('#' + viewId + ' tr[' + PROCESSED_ATTR + ']').removeAttr(PROCESSED_ATTR);
-            var thead = document.querySelector('#' + viewId + ' thead');
-            if (thead) thead.style.display = '';
-            transformView(viewCfg);
-          }, 200);
+          // On cell update, Knack re-renders the entire view.
+          // Our worksheet rows will be gone — transformView will
+          // re-run via knack-view-render.
         });
 
       // If the view already exists in the DOM, transform immediately
