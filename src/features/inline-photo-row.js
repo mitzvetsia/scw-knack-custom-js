@@ -32,6 +32,7 @@
   var ADD_BTN_CLS  = 'scw-inline-photo-add';
   var REQ_CLS      = 'scw-inline-photo-required';
   var REQ_CHIP_CLS = 'scw-inline-photo-req-chip';
+  var REQ_CHIP_GREEN_CLS = 'scw-inline-photo-req-chip-green';
   var MISSING_CLS  = 'scw-inline-photo-missing';
   var DRAG_SRC_CLS = 'scw-photo-drag-source';
   var DROP_OK_CLS  = 'scw-photo-drop-target';
@@ -173,10 +174,15 @@
       '  letter-spacing: 0.5px;',
       '  text-align: center;',
       '  color: #fff;',
-      '  background: #dc2626;',
       '  border-radius: 3px;',
       '  box-sizing: border-box;',
       '}',
+
+      /* Green chip for required=yes photos */
+      '.' + REQ_CHIP_GREEN_CLS + ' { background: #16a34a; }',
+
+      /* Red chip for required=no photos */
+      '.' + REQ_CHIP_CLS + ':not(.' + REQ_CHIP_GREEN_CLS + ') { background: #dc2626; }',
 
       /* Missing required photo — card-level highlight */
       '.' + MISSING_CLS + ' {',
@@ -448,11 +454,11 @@
       if (map.hasOwnProperty(k)) arr.push(map[k]);
     }
 
-    // Sort: missing-required first, then by type, then by id
+    // Sort: required first, then by type, then by id
     arr.sort(function (a, b) {
-      var aMissing = (a.required && !a.completed) ? 0 : 1;
-      var bMissing = (b.required && !b.completed) ? 0 : 1;
-      if (aMissing !== bMissing) return aMissing - bMissing;
+      var aReq = a.required ? 0 : 1;
+      var bReq = b.required ? 0 : 1;
+      if (aReq !== bReq) return aReq - bReq;
       if (a.type !== b.type) return a.type.localeCompare(b.type);
       return a.id.localeCompare(b.id);
     });
@@ -809,13 +815,16 @@
             card.appendChild(typeEl);
           }
 
-          // "Required" chip — only when required AND not yet completed
-          if (photo.required && !photo.completed) {
-            var chip = document.createElement('div');
-            chip.className = REQ_CHIP_CLS;
+          // Required status chip — green for required, red for not required
+          var chip = document.createElement('div');
+          chip.className = REQ_CHIP_CLS;
+          if (photo.required) {
+            chip.classList.add(REQ_CHIP_GREEN_CLS);
             chip.textContent = 'Required';
-            card.appendChild(chip);
+          } else {
+            chip.textContent = 'Not Required';
           }
+          card.appendChild(chip);
 
           strip.appendChild(card);
         }
