@@ -11349,15 +11349,15 @@ $(".kn-navigation-bar").hide();
       '  text-align: center;',
       '}',
 
-      /* ---- yes state (pale orange) ---- */
+      /* ---- yes state (warm amber — action, not warning) ---- */
       '.' + CHIP_CLASS + '.is-yes {',
-      '  background-color: #fff7ed;',
-      '  color: #c2410c;',
-      '  border-color: #fdba74;',
+      '  background-color: #fffbeb;',
+      '  color: #92400e;',
+      '  border-color: #fcd34d;',
       '}',
       '.' + CHIP_CLASS + '.is-yes:hover {',
-      '  background-color: #ffedd5;',
-      '  box-shadow: 0 1px 3px rgba(194,65,12,0.15);',
+      '  background-color: #fef3c7;',
+      '  box-shadow: 0 1px 3px rgba(146,64,14,0.15);',
       '}',
 
       /* ---- no state ---- */
@@ -11755,22 +11755,36 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
-/* ── Kill table row-hover on worksheet rows ── */
-.${WORKSHEET_ROW}:hover,
-.${WORKSHEET_ROW}:hover > td {
-  background: transparent !important;
+/* ── Kill Knack-native row-hover on worksheet rows.
+   Use tr.${WORKSHEET_ROW} for extra specificity. ── */
+tr.${WORKSHEET_ROW},
+tr.${WORKSHEET_ROW}:hover {
+  background: #fff !important;
+  background-color: #fff !important;
 }
-
-/* ── Worksheet row container ── */
-.${WORKSHEET_ROW} {
-  background: #fff;
+tr.${WORKSHEET_ROW}:hover > td,
+tr.${WORKSHEET_ROW} > td {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+/* Kill Knack-native hover on ALL nested tds */
+tr.${WORKSHEET_ROW} .${PREFIX}-card td,
+tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
+  background-color: transparent !important;
 }
 .${WORKSHEET_ROW} > td {
   padding: 0 !important;
-  border-bottom: 3px solid #e2e8f0 !important;
+  border-bottom: none !important;
+  margin-bottom: 10px;
 }
 
-/* ── Card wrapper ── */
+/* ── Row separation — shadow underneath each card ── */
+.${PREFIX}-card {
+  margin-bottom: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* ── Card wrapper (base layout — shadow/margin set above) ── */
 .${PREFIX}-card {
   display: flex;
   flex-direction: column;
@@ -11778,6 +11792,7 @@ tr[${PROCESSED_ATTR}="1"] {
   background: #fff;
   border-radius: 6px;
   overflow: hidden;
+  border: 1px solid #e2e8f0;
 }
 
 /* ── Title bar ── */
@@ -11804,11 +11819,16 @@ tr[${PROCESSED_ATTR}="1"] {
   white-space: nowrap;
 }
 
-/* Label & Product get a larger size with SCW blue tint */
+/* Label & Product — larger, bolder, SCW blue, NOT editable look */
 .${PREFIX}-titlebar-item--primary {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: #295f91;
+  cursor: default !important;
+}
+.${PREFIX}-titlebar-item--primary:hover {
+  background: transparent !important;
+  border-color: transparent !important;
 }
 
 /* The move td sits at the right end */
@@ -11818,8 +11838,7 @@ tr[${PROCESSED_ATTR}="1"] {
   align-items: center;
 }
 
-/* Titlebar <td> elements — reset table cell appearance,
-   keep inline-edit bindings alive */
+/* Titlebar <td> elements — reset table cell appearance */
 td.${PREFIX}-titlebar-item {
   display: inline-flex;
   align-items: center;
@@ -11827,11 +11846,17 @@ td.${PREFIX}-titlebar-item {
   border: 1px solid transparent;
   border-radius: 3px;
   transition: border-color 0.15s, background-color 0.15s;
+}
+
+/* Only editable titlebar cells get pointer + hover box */
+td.${PREFIX}-titlebar-item.cell-edit,
+td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle {
   cursor: pointer;
 }
-td.${PREFIX}-titlebar-item:hover {
-  background: #dbeafe;
-  border-color: #93c5fd;
+td.${PREFIX}-titlebar-item.cell-edit:hover,
+td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
 }
 
 /* Separator dot between titlebar items */
@@ -11928,8 +11953,8 @@ td.${PREFIX}-field-value.ktlInlineEditableCellsStyle {
 }
 td.${PREFIX}-field-value.cell-edit:hover,
 td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
-  background: #eff6ff;
-  border-color: #93c5fd;
+  background-color: #eff6ff !important;
+  border-color: #93c5fd !important;
 }
 
 /* ── Chip host td — invisible cell, chips aligned with fields ── */
