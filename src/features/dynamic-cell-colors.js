@@ -106,10 +106,10 @@
     var style = document.createElement('style');
     style.id = 'scw-dyn-cell-color-css';
     style.textContent =
-      'td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
-      'td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
-      'td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
-      'td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
+      'tr td.scw-cell-good,    .scw-ws-card td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
+      'tr td.scw-cell-bad,     .scw-ws-card td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
+      'tr td.scw-cell-danger,  .scw-ws-card td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
+      'tr td.scw-cell-warning, .scw-ws-card td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
     document.head.appendChild(style);
   })();
 
