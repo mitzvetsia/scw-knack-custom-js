@@ -49,13 +49,13 @@
     var s = document.createElement('style');
     s.id = CSS_ID;
     s.textContent = [
-      /* The injected <tr> */
+      /* The injected <tr> — background/border controlled by
+         device-worksheet.js so the pair reads as one unit */
       '.' + ROW_CLS + ' {',
-      '  background: #f9fafb;',
+      '  background: transparent;',
       '}',
       '.' + ROW_CLS + ' > td {',
-      '  padding: 8px 12px !important;',
-      '  border-bottom: 2px solid #e2e8f0 !important;',
+      '  padding: 10px 16px 14px 16px !important;',
       '}',
 
       /* Flex strip for photo cards */

@@ -81,76 +81,48 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
-/* Kill striping/hover on the source data rows too */
-.is-striped tr[data-scw-worksheet],
-.is-striped tr[data-scw-worksheet]:hover,
-.ktlTable--rowHover tr[data-scw-worksheet]:hover,
-table.is-striped tr[data-scw-worksheet]:nth-child(odd),
-table.is-striped tr[data-scw-worksheet]:nth-child(even) {
-  background: none !important;
-  background-color: transparent !important;
-}
-.is-striped tr[data-scw-worksheet] > td,
-.is-striped tr[data-scw-worksheet]:hover > td,
-.ktlTable--rowHover tr[data-scw-worksheet]:hover > td {
-  background: none !important;
-  background-color: transparent !important;
-}
-
-/* ── Nuke ALL Knack-native hover / striping on worksheet + photo rows.
-   The parent table has .is-striped and .ktlTable--rowHover so we
-   must use those in selectors to beat specificity. ── */
-.is-striped tr.${WORKSHEET_ROW},
-.is-striped tr.${WORKSHEET_ROW}:hover,
-.ktlTable--rowHover tr.${WORKSHEET_ROW}:hover,
-table.is-striped tr.${WORKSHEET_ROW}:nth-child(odd),
-table.is-striped tr.${WORKSHEET_ROW}:nth-child(even),
-.is-striped tr.scw-inline-photo-row,
-.is-striped tr.scw-inline-photo-row:hover,
-.ktlTable--rowHover tr.scw-inline-photo-row:hover,
+/* ── Kill ALL residual Knack hover / striping.
+   We remove is-striped / ktlTable--rowHover from the <table> in JS,
+   but these belt-and-suspenders rules catch anything else. ── */
 tr.${WORKSHEET_ROW},
 tr.${WORKSHEET_ROW}:hover,
 tr.scw-inline-photo-row,
-tr.scw-inline-photo-row:hover {
+tr.scw-inline-photo-row:hover,
+tr[data-scw-worksheet],
+tr[data-scw-worksheet]:hover {
   background: none !important;
   background-color: transparent !important;
 }
-.is-striped tr.${WORKSHEET_ROW} > td,
-.is-striped tr.${WORKSHEET_ROW}:hover > td,
-.ktlTable--rowHover tr.${WORKSHEET_ROW}:hover > td,
-table.is-striped tr.${WORKSHEET_ROW}:nth-child(odd) > td,
-table.is-striped tr.${WORKSHEET_ROW}:nth-child(even) > td,
-.is-striped tr.scw-inline-photo-row > td,
-.is-striped tr.scw-inline-photo-row:hover > td,
-.ktlTable--rowHover tr.scw-inline-photo-row:hover > td,
 tr.${WORKSHEET_ROW} > td,
 tr.${WORKSHEET_ROW}:hover > td,
 tr.scw-inline-photo-row > td,
-tr.scw-inline-photo-row:hover > td {
+tr.scw-inline-photo-row:hover > td,
+tr[data-scw-worksheet] > td,
+tr[data-scw-worksheet]:hover > td {
   background: none !important;
   background-color: transparent !important;
 }
-/* Also kill bg on all nested tds inside the card */
 tr.${WORKSHEET_ROW} .${PREFIX}-card td,
-tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td,
-.ktlTable--rowHover tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
+tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
   background-color: transparent !important;
 }
+
+/* ── Worksheet row <td> — zero padding so the card fills it ── */
 .${WORKSHEET_ROW} > td {
   padding: 0 !important;
   border: none !important;
 }
 
-/* ── Row-pair separation: a visible border between each
-   photo-row and the next data-row, keeping ws-row + photo-row
-   as one seamless visual unit ── */
+/* ── Photo row — part of the same visual unit as the card above.
+   A subtle separator underneath divides one record-pair from the next. ── */
 tr.scw-inline-photo-row > td {
-  padding: 8px 12px !important;
-  border-bottom: 3px solid #e2e8f0 !important;
+  padding: 10px 16px 14px 16px !important;
+  border: none !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+  background: #f8fafc !important;
 }
 
-/* ── Card wrapper — clean, no border/shadow so data row
-   flows into the photo row as one concept ── */
+/* ── Card wrapper ── */
 .${PREFIX}-card {
   display: flex;
   flex-direction: column;
@@ -158,16 +130,17 @@ tr.scw-inline-photo-row > td {
   background: #fff;
   border-radius: 0;
   overflow: hidden;
+  border-top: 2px solid #e2e8f0;
 }
 
 /* ── Title bar ── */
 .${PREFIX}-titlebar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 10px 16px;
   background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e9eef4;
   flex-wrap: wrap;
 }
 
@@ -180,20 +153,17 @@ tr.scw-inline-photo-row > td {
   white-space: nowrap;
 }
 
-/* Label & Product — larger, bolder, SCW blue, NO border/box */
-td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary {
-  font-size: 16px;
+/* Label & Product — plain text, no box, no hover effect */
+td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary,
+td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
+  font-size: 15px;
   font-weight: 700;
   color: #295f91;
   cursor: default !important;
   border: none !important;
-  padding: 2px 6px;
-  border-radius: 0;
-}
-td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
   background: transparent !important;
-  background-color: transparent !important;
-  border: none !important;
+  padding: 0 4px;
+  border-radius: 0;
 }
 
 /* The move td sits at the right end */
@@ -207,7 +177,7 @@ td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
 td.${PREFIX}-titlebar-item {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border: 1px solid transparent;
   border-radius: 3px;
 }
@@ -227,7 +197,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 /* Separator dot between titlebar items */
 .${PREFIX}-titlebar-sep {
   color: #cbd5e1;
-  font-size: 13px;
+  font-size: 14px;
   user-select: none;
 }
 
@@ -245,8 +215,8 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 
 /* ── Individual section ── */
 .${PREFIX}-section {
-  padding: 12px 16px;
-  border-right: 1px solid #f1f5f9;
+  padding: 14px 20px 14px 16px;
+  border-right: 1px solid #edf0f4;
   min-width: 0;
 }
 .${PREFIX}-section:last-child {
@@ -263,17 +233,17 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
   letter-spacing: 0.8px;
   color: #94a3b8;
   padding-bottom: 6px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #edf0f4;
 }
 
 /* ── Field row inside a section ── */
 .${PREFIX}-field {
   display: flex;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   align-items: flex-start;
-  min-height: 22px;
+  min-height: 24px;
 }
 .${PREFIX}-field:last-child {
   margin-bottom: 0;
@@ -281,13 +251,13 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 
 .${PREFIX}-field-label {
   flex: 0 0 auto;
-  min-width: 90px;
+  min-width: 100px;
   font-size: 11px;
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  padding-top: 2px;
+  padding-top: 5px;
   white-space: nowrap;
 }
 
@@ -296,30 +266,33 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
   flex: 1;
   font-size: 13px;
   color: #334155;
-  line-height: 1.4;
+  line-height: 1.5;
   min-width: 0;
   word-break: break-word;
 }
 
 /* Reset <td> styling when it's been reparented into the worksheet.
-   Knack/browser default td styles would otherwise look wrong. */
+   Give it a visible input-like appearance so it reads as a form field. */
 td.${PREFIX}-field-value {
   display: block;
-  padding: 2px 4px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  transition: border-color 0.15s, background-color 0.15s;
+  padding: 4px 8px;
+  border: 1px solid #dde3ea;
+  border-radius: 4px;
+  background: #fff;
+  min-height: 28px;
 }
 
 /* ── Editable hover affordance ── */
 td.${PREFIX}-field-value.cell-edit,
 td.${PREFIX}-field-value.ktlInlineEditableCellsStyle {
   cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
 td.${PREFIX}-field-value.cell-edit:hover,
 td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
-  background-color: #eff6ff !important;
+  background-color: #f0f6ff !important;
   border-color: #93c5fd !important;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
 }
 
 /* ── Chip host td — invisible cell, chips aligned with fields ── */
@@ -330,10 +303,12 @@ td.${PREFIX}-chip-host {
   border: none !important;
   background: transparent !important;
   border-radius: 0 !important;
+  min-height: 0 !important;
 }
 td.${PREFIX}-chip-host:hover {
   background: transparent !important;
   border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 /* ── Chip row sits in a field row so the left edge
@@ -341,8 +316,8 @@ td.${PREFIX}-chip-host:hover {
 .${PREFIX}-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 0;
+  gap: 5px;
+  padding: 2px 0;
 }
 
 /* ── Notes fields — allow more vertical space ── */
@@ -359,7 +334,6 @@ td.${PREFIX}-field-value--notes {
   font-style: italic;
   font-size: 12px;
 }
-
 
 `;
 
@@ -626,6 +600,10 @@ td.${PREFIX}-field-value--notes {
 
     var table = $view.find('table.kn-table-table, table.kn-table')[0];
     if (!table) return;
+
+    // Strip Knack table classes that add row hover/striping —
+    // our card layout handles its own styling
+    table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
 
     // Hide the table header row — we don't need column headers
     var thead = table.querySelector('thead');
