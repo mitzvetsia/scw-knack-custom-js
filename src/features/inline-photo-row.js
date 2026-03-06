@@ -30,6 +30,10 @@
   var TYPE_CLS     = 'scw-inline-photo-type';
   var EMPTY_CLS    = 'scw-inline-photo-empty';
   var NONE_CLS     = 'scw-inline-photo-none';
+  var ADD_BTN_CLS  = 'scw-inline-photo-add';
+  var REQ_CLS      = 'scw-inline-photo-required';
+  var REQ_CHIP_CLS = 'scw-inline-photo-req-chip';
+  var MISSING_CLS  = 'scw-inline-photo-missing';
 
   // Columns to hide in the original table (we show the data inline instead)
   var HIDE_COLS = ['field_2445', 'field_2446', 'field_2447'];
@@ -144,6 +148,65 @@
       '  color: #295f91;',
       '}',
 
+      /* Add-photo button (far left of strip) */
+      '.' + ADD_BTN_CLS + ' {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  gap: 4px;',
+      '  width: 56px;',
+      '  min-height: 150px;',
+      '  border: 2px dashed #cbd5e1;',
+      '  border-radius: 6px;',
+      '  background: #f8fafc;',
+      '  color: #94a3b8;',
+      '  font-size: 11px;',
+      '  cursor: pointer;',
+      '  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;',
+      '  flex-shrink: 0;',
+      '}',
+      '.' + ADD_BTN_CLS + ':hover {',
+      '  border-color: #295f91;',
+      '  color: #295f91;',
+      '  background: #eff6ff;',
+      '}',
+      '.' + ADD_BTN_CLS + ' .scw-add-icon {',
+      '  font-size: 28px;',
+      '  line-height: 1;',
+      '  font-weight: 300;',
+      '}',
+
+      /* Required chip */
+      '.' + REQ_CHIP_CLS + ' {',
+      '  margin-top: 2px;',
+      '  padding: 1px 6px;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  color: #fff;',
+      '  background: #dc2626;',
+      '  border-radius: 3px;',
+      '}',
+
+      /* Missing required photo — card-level highlight */
+      '.' + MISSING_CLS + ' {',
+      '  border-color: #dc2626 !important;',
+      '  background: #fef2f2 !important;',
+      '  color: #dc2626 !important;',
+      '}',
+      '.' + MISSING_CLS + ':hover {',
+      '  border-color: #b91c1c !important;',
+      '  background: #fee2e2 !important;',
+      '  color: #b91c1c !important;',
+      '}',
+
+      /* Required photo that IS completed — subtle indicator on image border */
+      '.' + CARD_CLS + '.' + REQ_CLS + ' .' + IMG_CLS + ' {',
+      '  border-color: #16a34a;',
+      '}',
+
       '/* Hide the raw connected-field columns we now display inline */',
       '#view_3512 th.field_2445,',
       '#view_3512 td.field_2445,',
@@ -194,6 +257,14 @@
       surveyId + '/edit-doc-photo/' + photoRecordId;
   }
 
+  /** Build the add-photo-to-survey-line-item hash path. */
+  function addPhotoHash(lineItemId) {
+    var surveyId = getSurveyRequestId();
+    if (!surveyId) return '';
+    return 'subcontractor-portal/site-survey-request-details/' +
+      surveyId + '/add-photo-to-survey-line-item/' + lineItemId;
+  }
+
   /**
    * Find a cell by data-field-key (works for field_771 which has
    * a colon in its CSS class making querySelector unreliable).
@@ -211,32 +282,34 @@
   /**
    * Extract all connected photo records from a single line-item row.
    *
-   * Returns an array of { id, imgUrl, type } sorted by type then id.
+   * Returns an array of { id, imgUrl, type, required, completed }
+   * sorted by: missing-required first, then type, then id.
    */
   function extractPhotoRecords(tr) {
-    var map = {}; // photoRecordId → { imgUrl, type }
+    var map = {}; // photoRecordId → { imgUrl, type, required, completed }
+
+    /** Ensure a record entry exists in the map. */
+    function ensure(rid) {
+      if (!map[rid]) {
+        map[rid] = { id: rid, imgUrl: '', type: '', required: false, completed: false };
+      }
+      return map[rid];
+    }
 
     // 1) field_771 — images
-    //    Structure: td > span.col > a > span[id][data-kn] > img
     var imgCell = findCellByFieldKey(tr, 'field_771');
     if (imgCell) {
       var imgSpans = imgCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var i = 0; i < imgSpans.length; i++) {
         var rid = (imgSpans[i].id || '').trim();
         if (!rid) continue;
+        var rec = ensure(rid);
         var img = imgSpans[i].querySelector('img[data-kn-img-gallery]');
-        map[rid] = {
-          id: rid,
-          imgUrl: img ? img.getAttribute('data-kn-img-gallery') : '',
-          type: ''
-        };
+        rec.imgUrl = img ? img.getAttribute('data-kn-img-gallery') : '';
       }
     }
 
     // 2) field_2445 — photo type (CONFIG_photo type)
-    //    Structure: td > span.col > span[id][data-kn] > span[class][data-kn]
-    //    The outer span id = photo record ID
-    //    The inner span text = type label (e.g. "Proposed Mounting Location")
     var typeCell = tr.querySelector('td.field_2445');
     if (typeCell) {
       var outerSpans = typeCell.querySelectorAll('span[id][data-kn="connection-value"]');
@@ -244,12 +317,31 @@
         var rid2 = (outerSpans[j].id || '').trim();
         if (!rid2) continue;
         var inner = outerSpans[j].querySelector('span[data-kn="connection-value"]');
-        var typeText = inner ? inner.textContent.trim() : '';
-        if (map[rid2]) {
-          map[rid2].type = typeText;
-        } else {
-          map[rid2] = { id: rid2, imgUrl: '', type: typeText };
-        }
+        ensure(rid2).type = inner ? inner.textContent.trim() : '';
+      }
+    }
+
+    // 3) field_2446 — required (Yes/No)
+    var reqCell = tr.querySelector('td.field_2446');
+    if (reqCell) {
+      var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var r = 0; r < reqSpans.length; r++) {
+        var rid3 = (reqSpans[r].id || '').trim();
+        if (!rid3) continue;
+        var val = (reqSpans[r].textContent || '').trim().toLowerCase();
+        ensure(rid3).required = (val === 'yes');
+      }
+    }
+
+    // 4) field_2447 — completed (Yes/No)
+    var compCell = tr.querySelector('td.field_2447');
+    if (compCell) {
+      var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var c = 0; c < compSpans.length; c++) {
+        var rid4 = (compSpans[c].id || '').trim();
+        if (!rid4) continue;
+        var cval = (compSpans[c].textContent || '').trim().toLowerCase();
+        ensure(rid4).completed = (cval === 'yes');
       }
     }
 
@@ -259,11 +351,11 @@
       if (map.hasOwnProperty(k)) arr.push(map[k]);
     }
 
-    // Sort: records with images first, then by type, then by id
+    // Sort: missing-required first, then by type, then by id
     arr.sort(function (a, b) {
-      var ai = a.imgUrl ? 0 : 1;
-      var bi = b.imgUrl ? 0 : 1;
-      if (ai !== bi) return ai - bi;
+      var aMissing = (a.required && !a.completed) ? 0 : 1;
+      var bMissing = (b.required && !b.completed) ? 0 : 1;
+      if (aMissing !== bMissing) return aMissing - bMissing;
       if (a.type !== b.type) return a.type.localeCompare(b.type);
       return a.id.localeCompare(b.id);
     });
@@ -310,12 +402,29 @@
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
 
+      // ── "+" Add photo button (far left) ──
+      var addBtn = document.createElement('div');
+      addBtn.className = ADD_BTN_CLS;
+      addBtn.innerHTML =
+        '<span class="scw-add-icon">+</span>' +
+        '<span>Add</span>';
+      addBtn.title = 'Add a new photo record';
+      (function (lid) {
+        addBtn.addEventListener('click', function () {
+          var h = addPhotoHash(lid);
+          if (h) window.location.hash = h;
+        });
+      })(lineItemId);
+      strip.appendChild(addBtn);
+
       if (photos.length > 0) {
         // ── Has connected photo records ──
         for (var p = 0; p < photos.length; p++) {
           var photo = photos[p];
+          var isMissing = photo.required && !photo.completed;
           var card = document.createElement('div');
           card.className = CARD_CLS;
+          if (photo.required) card.classList.add(REQ_CLS);
 
           if (photo.imgUrl) {
             // Photo with image
@@ -337,9 +446,10 @@
             // Photo record exists but no image uploaded
             var empty = document.createElement('div');
             empty.className = EMPTY_CLS;
+            if (isMissing) empty.classList.add(MISSING_CLS);
             empty.innerHTML =
               '<span class="scw-empty-icon">&#128247;</span>' +
-              '<span>Upload photo</span>';
+              '<span>' + (isMissing ? 'Required' : 'Upload photo') + '</span>';
             empty.title = photo.type
               ? 'Upload: ' + photo.type
               : 'Click to edit photo';
@@ -359,6 +469,14 @@
             typeEl.textContent = photo.type;
             typeEl.title = photo.type;
             card.appendChild(typeEl);
+          }
+
+          // "Required" chip if field_2446 = Yes
+          if (photo.required) {
+            var chip = document.createElement('div');
+            chip.className = REQ_CHIP_CLS;
+            chip.textContent = 'Required';
+            card.appendChild(chip);
           }
 
           strip.appendChild(card);
