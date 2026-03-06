@@ -21,15 +21,14 @@
   // ============================================================
   var BOOL_CHIP_CONFIG = {
     views: [
-      // Example — uncomment and adjust for your views:
-      // {
-      //   viewId: 'view_1234',
-      //   fields: [
-      //     { label: 'Exterior',         fieldKey: 'field_101' },
-      //     { label: 'Existing Cabling', fieldKey: 'field_102' },
-      //     { label: 'Plenum',           fieldKey: 'field_103' }
-      //   ]
-      // }
+      {
+        viewId: 'view_3512',
+        fields: [
+          { label: 'Exterior',         fieldKey: 'field_2372' },
+          { label: 'Existing Cabling', fieldKey: 'field_2370' },
+          { label: 'Plenum',           fieldKey: 'field_2371' }
+        ]
+      }
     ]
   };
 
