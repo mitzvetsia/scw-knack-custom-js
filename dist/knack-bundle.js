@@ -1,7 +1,8 @@
 // src/config.js
 window.SCW = window.SCW || {};
 window.SCW.CONFIG = window.SCW.CONFIG || {
-  VERSION: "dev"
+  VERSION: "dev",
+  MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81"
 };
 window.SCW = window.SCW || {};
 
@@ -10443,6 +10444,11 @@ $(".kn-navigation-bar").hide();
   var REQ_CLS      = 'scw-inline-photo-required';
   var REQ_CHIP_CLS = 'scw-inline-photo-req-chip';
   var MISSING_CLS  = 'scw-inline-photo-missing';
+  var DRAG_SRC_CLS = 'scw-photo-drag-source';
+  var DROP_OK_CLS  = 'scw-photo-drop-target';
+  var DROP_HOVER_CLS = 'scw-photo-drop-hover';
+  var PENDING_CLS  = 'scw-photo-pending';
+  var CONFIRM_CLS  = 'scw-photo-confirm-overlay';
 
   // Columns to hide in the original table (we show the data inline instead)
   var HIDE_COLS = ['field_2445', 'field_2446', 'field_2447'];
@@ -10598,6 +10604,113 @@ $(".kn-navigation-bar").hide();
       /* Required photo that IS completed — subtle indicator on image border */
       '.' + CARD_CLS + '.' + REQ_CLS + ' .' + IMG_CLS + ' {',
       '  border-color: #16a34a;',
+      '}',
+
+      /* ── Drag-and-drop states ── */
+
+      /* Source card while dragging */
+      '.' + DRAG_SRC_CLS + ' {',
+      '  opacity: 0.45;',
+      '  transform: scale(0.95);',
+      '  transition: opacity 150ms ease, transform 150ms ease;',
+      '}',
+
+      /* Valid drop target highlight (pulsing green dashed border) */
+      '.' + DROP_OK_CLS + ' .' + EMPTY_CLS + ' {',
+      '  border-color: #16a34a !important;',
+      '  border-width: 2px !important;',
+      '  border-style: dashed !important;',
+      '  background: #f0fdf4 !important;',
+      '  color: #16a34a !important;',
+      '  animation: scw-pulse-border 1.2s ease-in-out infinite;',
+      '}',
+      '@keyframes scw-pulse-border {',
+      '  0%, 100% { border-color: #16a34a; }',
+      '  50% { border-color: #86efac; }',
+      '}',
+
+      /* Drop target hover — bolder highlight */
+      '.' + DROP_HOVER_CLS + ' .' + EMPTY_CLS + ' {',
+      '  border-color: #15803d !important;',
+      '  border-width: 3px !important;',
+      '  border-style: solid !important;',
+      '  background: #dcfce7 !important;',
+      '  color: #15803d !important;',
+      '  box-shadow: 0 0 0 3px rgba(22,163,74,0.2);',
+      '  animation: none;',
+      '}',
+
+      /* Helper text shown on valid targets during drag */
+      '.' + DROP_OK_CLS + ' .scw-drop-helper {',
+      '  display: block;',
+      '}',
+      '.scw-drop-helper {',
+      '  display: none;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  margin-top: 4px;',
+      '  text-align: center;',
+      '  color: #16a34a;',
+      '}',
+
+      /* Pending state after drop */
+      '.' + PENDING_CLS + ' {',
+      '  position: relative;',
+      '  pointer-events: none;',
+      '}',
+      '.' + PENDING_CLS + ' .' + EMPTY_CLS + ' {',
+      '  border-color: #3b82f6 !important;',
+      '  background: #eff6ff !important;',
+      '  color: #3b82f6 !important;',
+      '  animation: none;',
+      '}',
+
+      /* Confirmation overlay */
+      '.' + CONFIRM_CLS + ' {',
+      '  position: absolute;',
+      '  top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  gap: 6px;',
+      '  background: rgba(255,255,255,0.95);',
+      '  border-radius: 6px;',
+      '  border: 2px solid #3b82f6;',
+      '  z-index: 10;',
+      '}',
+      '.' + CONFIRM_CLS + ' .scw-confirm-text {',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #1e40af;',
+      '  text-align: center;',
+      '  padding: 0 8px;',
+      '}',
+      '.' + CONFIRM_CLS + ' .scw-confirm-btns {',
+      '  display: flex;',
+      '  gap: 6px;',
+      '}',
+      '.' + CONFIRM_CLS + ' button {',
+      '  padding: 4px 12px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  border-radius: 4px;',
+      '  border: none;',
+      '  cursor: pointer;',
+      '}',
+      '.' + CONFIRM_CLS + ' .scw-confirm-yes {',
+      '  background: #16a34a;',
+      '  color: #fff;',
+      '}',
+      '.' + CONFIRM_CLS + ' .scw-confirm-yes:hover {',
+      '  background: #15803d;',
+      '}',
+      '.' + CONFIRM_CLS + ' .scw-confirm-no {',
+      '  background: #e2e8f0;',
+      '  color: #475569;',
+      '}',
+      '.' + CONFIRM_CLS + ' .scw-confirm-no:hover {',
+      '  background: #cbd5e1;',
       '}',
 
       '/* Hide the raw connected-field columns we now display inline */',
@@ -10756,6 +10869,222 @@ $(".kn-navigation-bar").hide();
     return arr;
   }
 
+  // ── Drag-and-drop handlers ─────────────────────────────────────
+
+  var dragSourceCard = null;
+
+  /** Find the parent strip element for a card. */
+  function getStrip(card) {
+    var el = card.parentElement;
+    while (el && !el.classList.contains(STRIP_CLS)) el = el.parentElement;
+    return el;
+  }
+
+  /** Highlight all valid empty-required targets in the same strip. */
+  function highlightTargets(strip, sourceId) {
+    var cards = strip.querySelectorAll('.' + CARD_CLS);
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      if (c.getAttribute('data-photo-id') === sourceId) continue;
+      if (c.getAttribute('data-photo-has-image') === 'true') continue;
+      if (c.getAttribute('data-photo-required') !== 'true') continue;
+      c.classList.add(DROP_OK_CLS);
+    }
+  }
+
+  /** Clear all drag highlights. */
+  function clearHighlights() {
+    var all = document.querySelectorAll('.' + DROP_OK_CLS + ', .' + DROP_HOVER_CLS);
+    for (var i = 0; i < all.length; i++) {
+      all[i].classList.remove(DROP_OK_CLS, DROP_HOVER_CLS);
+    }
+  }
+
+  function handleDragStart(e) {
+    dragSourceCard = e.currentTarget;
+    dragSourceCard.classList.add(DRAG_SRC_CLS);
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', dragSourceCard.getAttribute('data-photo-id'));
+
+    var strip = getStrip(dragSourceCard);
+    if (strip) highlightTargets(strip, dragSourceCard.getAttribute('data-photo-id'));
+  }
+
+  function handleDragEnd() {
+    if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
+    clearHighlights();
+    dragSourceCard = null;
+  }
+
+  function handleDragOver(e) {
+    var card = e.currentTarget;
+    if (!card.classList.contains(DROP_OK_CLS)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragEnter(e) {
+    var card = e.currentTarget;
+    if (!card.classList.contains(DROP_OK_CLS)) return;
+    e.preventDefault();
+    card.classList.add(DROP_HOVER_CLS);
+  }
+
+  function handleDragLeave(e) {
+    var card = e.currentTarget;
+    // Only remove hover if actually leaving the card (not entering a child)
+    if (card.contains(e.relatedTarget)) return;
+    card.classList.remove(DROP_HOVER_CLS);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    var targetCard = e.currentTarget;
+    if (!targetCard.classList.contains(DROP_OK_CLS)) return;
+    if (!dragSourceCard) return;
+
+    var sourceId = dragSourceCard.getAttribute('data-photo-id');
+    var sourceType = dragSourceCard.getAttribute('data-photo-type') || '';
+    var targetId = targetCard.getAttribute('data-photo-id');
+    var targetType = targetCard.getAttribute('data-photo-type') || 'this slot';
+
+    clearHighlights();
+    if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
+
+    // Build metadata payload — no mutation assumptions
+    var detail = {
+      sourceRecordId: sourceId,
+      sourcePhotoType: sourceType,
+      targetRecordId: targetId,
+      targetPhotoType: targetType,
+      surveyRequestId: getSurveyRequestId()
+    };
+
+    // Show confirmation overlay on the target card
+    showConfirmation(targetCard, detail);
+  }
+
+  /** Show a confirmation overlay on the target card before dispatching. */
+  function showConfirmation(card, detail) {
+    card.style.position = 'relative';
+    var overlay = document.createElement('div');
+    overlay.className = CONFIRM_CLS;
+    overlay.innerHTML =
+      '<div class="scw-confirm-text">Use this photo for<br><b>' +
+      detail.targetPhotoType + '</b>?</div>' +
+      '<div class="scw-confirm-btns">' +
+        '<button class="scw-confirm-yes">Confirm</button>' +
+        '<button class="scw-confirm-no">Cancel</button>' +
+      '</div>';
+
+    overlay.querySelector('.scw-confirm-yes').addEventListener('click', function () {
+      overlay.remove();
+      dispatchPhotoDrop(card, detail);
+    });
+
+    overlay.querySelector('.scw-confirm-no').addEventListener('click', function () {
+      overlay.remove();
+    });
+
+    card.appendChild(overlay);
+  }
+
+  /**
+   * Dispatch the photo-drop to the registered handler.
+   *
+   * Default: POST metadata to the configured Make webhook.
+   * Override: set window.SCW.onPhotoDrop = function(detail, ui) { … }
+   *
+   *   detail — { sourceRecordId, sourcePhotoType, targetRecordId,
+   *              targetPhotoType, surveyRequestId }
+   *
+   *   ui     — { setPending(), setSuccess(), setError(msg) }
+   *            Helper to control the target card's visual state.
+   */
+  function dispatchPhotoDrop(card, detail) {
+    var ui = buildDropUI(card);
+
+    // Check for custom callback first
+    if (window.SCW && typeof window.SCW.onPhotoDrop === 'function') {
+      window.SCW.onPhotoDrop(detail, ui);
+      return;
+    }
+
+    // Default: POST to Make webhook
+    var webhookUrl = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
+    if (!webhookUrl) {
+      console.error('[SCW] No MAKE_PHOTO_MOVE_WEBHOOK configured and no onPhotoDrop callback registered');
+      return;
+    }
+
+    ui.setPending();
+
+    fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detail)
+    })
+    .then(function (resp) {
+      if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
+      return resp.json().catch(function () { return {}; });
+    })
+    .then(function () {
+      ui.setSuccess();
+    })
+    .catch(function (err) {
+      console.error('[SCW] Photo drop handler error:', err);
+      ui.setError('Failed — click to retry');
+    });
+  }
+
+  /**
+   * Build a UI control object for the target card.
+   * Lets the callback (or default handler) drive visual state
+   * without touching DOM directly.
+   */
+  function buildDropUI(card) {
+    var emptyEl = card.querySelector('.' + EMPTY_CLS);
+
+    // Inject spinner keyframes if not present
+    if (!document.getElementById('scw-spin-keyframes')) {
+      var kf = document.createElement('style');
+      kf.id = 'scw-spin-keyframes';
+      kf.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+      document.head.appendChild(kf);
+    }
+
+    return {
+      /** Show spinning gear + "Processing…" */
+      setPending: function () {
+        card.classList.add(PENDING_CLS);
+        if (emptyEl) {
+          emptyEl.innerHTML =
+            '<span class="scw-empty-icon" style="animation: spin 1s linear infinite">&#9881;</span>' +
+            '<span>Processing\u2026</span>';
+        }
+      },
+
+      /** Clear pending state and refresh view_3512. */
+      setSuccess: function () {
+        card.classList.remove(PENDING_CLS);
+        if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3512) {
+          Knack.views.view_3512.model.fetch();
+        }
+      },
+
+      /** Show warning icon + message. Click retries the last dispatchPhotoDrop. */
+      setError: function (msg) {
+        card.classList.remove(PENDING_CLS);
+        if (emptyEl) {
+          emptyEl.innerHTML =
+            '<span class="scw-empty-icon">&#9888;</span>' +
+            '<span>' + (msg || 'Error') + '</span>';
+          emptyEl.style.cursor = 'pointer';
+        }
+      }
+    };
+  }
+
   // ── DOM injection ───────────────────────────────────────────────
 
   function processView(viewId) {
@@ -10819,15 +11148,25 @@ $(".kn-navigation-bar").hide();
           card.className = CARD_CLS;
           if (photo.required) card.classList.add(REQ_CLS);
 
+          // Data attributes for drag-and-drop
+          card.setAttribute('data-photo-id', photo.id);
+          card.setAttribute('data-photo-type', photo.type || '');
+          card.setAttribute('data-photo-required', photo.required ? 'true' : 'false');
+          card.setAttribute('data-photo-has-image', photo.imgUrl ? 'true' : 'false');
+
           if (photo.imgUrl) {
-            // Photo with image
+            // Photo with image — draggable source
+            card.setAttribute('draggable', 'true');
+            card.addEventListener('dragstart', handleDragStart);
+            card.addEventListener('dragend', handleDragEnd);
+
             var imgEl = document.createElement('img');
             imgEl.className = IMG_CLS;
             imgEl.src = photo.imgUrl;
             imgEl.alt = labelText
               ? (photo.type || 'Photo') + ' for ' + labelText
               : 'Site survey photo';
-            imgEl.title = 'Click to edit photo';
+            imgEl.title = 'Drag to an empty required slot, or click to edit';
             (function (rid) {
               imgEl.addEventListener('click', function () {
                 var h = editPhotoHash(rid);
@@ -10836,7 +11175,7 @@ $(".kn-navigation-bar").hide();
             })(photo.id);
             card.appendChild(imgEl);
           } else {
-            // Photo record exists but no image uploaded
+            // Photo record exists but no image uploaded — potential drop target
             var empty = document.createElement('div');
             empty.className = EMPTY_CLS;
             if (isMissing) empty.classList.add(MISSING_CLS);
@@ -10853,6 +11192,20 @@ $(".kn-navigation-bar").hide();
               });
             })(photo.id);
             card.appendChild(empty);
+
+            // Drop helper text (hidden until drag starts)
+            if (photo.required && !photo.completed) {
+              var helper = document.createElement('div');
+              helper.className = 'scw-drop-helper';
+              helper.textContent = 'Drop to use for ' + (photo.type || 'this slot');
+              card.appendChild(helper);
+            }
+
+            // Drop target events
+            card.addEventListener('dragover', handleDragOver);
+            card.addEventListener('dragenter', handleDragEnter);
+            card.addEventListener('dragleave', handleDragLeave);
+            card.addEventListener('drop', handleDrop);
           }
 
           // Photo type label beneath
