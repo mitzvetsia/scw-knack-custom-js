@@ -10344,26 +10344,24 @@ $(".kn-navigation-bar").hide();
 
     var optionIndex = $option.index();
 
-    // Find the Chosen container (works with both chzn- and chosen- prefixes)
-    var $chosenContainer = $select.next('div[class*="container"]');
-    console.log('[SCW] FOUND option at index ' + optionIndex +
-      ', container=' + $chosenContainer.length +
-      ', class=' + ($chosenContainer.attr('class') || 'none'));
+    // The Chosen container ID for this multi-select field
+    // e.g. view_3563_field_2423_chzn
+    var chznId = ADD_PHOTO_VIEW + '_field_2423_chzn';
+    var $chosenContainer = $('#' + chznId);
 
-    if (!$chosenContainer.length) return;
+    if (!$chosenContainer.length) {
+      console.log('[SCW] Chosen container #' + chznId + ' not found');
+      return;
+    }
 
-    // Detect prefix (chzn- or chosen-)
-    var cls = $chosenContainer.attr('class') || '';
-    var prefix = cls.indexOf('chzn-') !== -1 ? 'chzn-' : 'chosen-';
+    // Activate the dropdown by clicking the search input
+    $chosenContainer.find('.search-field input').trigger('focus').trigger('click');
 
-    // Open the Chosen dropdown
-    $chosenContainer.find('.' + prefix + 'single').trigger('mousedown');
-
-    // After a tick, click the matching result item
+    // Click the result item by its Chosen-generated ID (e.g. …_chzn_o_12)
     setTimeout(function () {
-      var $resultItem = $chosenContainer.find('.' + prefix + 'results li[data-option-array-index="' + optionIndex + '"]');
-      console.log('[SCW] result item: count=' + $resultItem.length +
-        ', prefix=' + prefix + ', text=' + $resultItem.text());
+      var resultId = chznId + '_o_' + optionIndex;
+      var $resultItem = $('#' + resultId);
+      console.log('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
       if ($resultItem.length) {
         $resultItem.trigger('mouseup');
       }
