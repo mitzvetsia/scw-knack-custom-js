@@ -36,6 +36,10 @@
       '}',
       '.' + BUTTON_CLASS + ':hover {',
       '  background: rgba(255,255,255,.38);',
+      '}',
+
+      '#kn-input-field_2423 {',
+      '  display: none !important;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
