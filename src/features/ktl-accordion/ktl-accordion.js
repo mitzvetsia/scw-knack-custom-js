@@ -455,13 +455,14 @@
    * we just swap the button reference, no need to replace listeners.
    */
   var _btnRefs = {};   // viewKey → current button element
-  var _bound   = {};   // viewKey → true once listeners are attached
 
   function bindHeader(wrap, hdr, btnEl, vKey) {
     _btnRefs[vKey] = btnEl;               // always update to latest button
 
-    if (_bound[vKey]) return;             // listeners already attached
-    _bound[vKey] = true;
+    // Track listeners on the DOM element itself so we correctly re-attach
+    // after SPA navigations that destroy and recreate accordion headers.
+    if (hdr.getAttribute('data-scw-bound') === '1') return;
+    hdr.setAttribute('data-scw-bound', '1');
 
     function triggerToggle() {
       if (hdr.dataset.scwBusy === '1') return;
