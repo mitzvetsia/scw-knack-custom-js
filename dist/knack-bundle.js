@@ -10665,9 +10665,11 @@ $(".kn-navigation-bar").hide();
 
     var tbody = document.createElement('tbody');
     for (var r = 0; r < rows.length; r++) {
-      var tempDiv = document.createElement('div');
-      tempDiv.innerHTML = rows[r].html;
-      var clonedRow = tempDiv.firstElementChild;
+      // <tr> elements must be parsed inside a <table><tbody> context,
+      // otherwise the browser strips the tr/td tags as invalid.
+      var tempTable = document.createElement('table');
+      tempTable.innerHTML = '<tbody>' + rows[r].html + '</tbody>';
+      var clonedRow = tempTable.querySelector('tbody > tr');
       if (clonedRow) tbody.appendChild(clonedRow);
     }
     table.appendChild(tbody);
