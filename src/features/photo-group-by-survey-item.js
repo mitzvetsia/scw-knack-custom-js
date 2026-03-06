@@ -297,13 +297,14 @@
       header.appendChild(label);
 
       // "Add Context Photo" button
-      if (editPageBasePath) {
+      if (editPageBasePath && rows.length && rows[0].connId) {
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = CLS.addBtn;
         btn.textContent = 'Add Context Photo';
         btn.setAttribute('data-survey-item', surveyItem);
         btn.setAttribute('data-page-path', editPageBasePath);
+        btn.setAttribute('data-conn-id', rows[0].connId);
         header.appendChild(btn);
       }
 
@@ -356,13 +357,13 @@
       e.preventDefault();
       e.stopPropagation();
 
-      var surveyItem = this.getAttribute('data-survey-item') || '';
       var pagePath = this.getAttribute('data-page-path') || '';
-      if (!pagePath) return;
+      var connId = this.getAttribute('data-conn-id') || '';
+      if (!pagePath || !connId) return;
 
-      // Navigate to the edit-doc-photo page (which has an add form).
-      // The page path already includes the parent record context.
-      window.location.hash = pagePath;
+      // Navigate to the edit-site-survey-line-item page for this survey item.
+      // That page has an add form for photos connected to the survey item.
+      window.location.hash = pagePath + '/edit-site-survey-line-item/' + connId;
     });
 
   // ══════════════════════════════════════════════════════════════════
@@ -381,15 +382,19 @@
     // Guard: if we already processed this view instance, skip
     if ($view.find('.' + CLS.wrapper).length) return;
 
-    // Extract the edit-page base path from the first edit link in the table.
-    // e.g. "#base/path/edit-doc-photo/RECORD_ID" → "base/path/edit-doc-photo"
+    // Extract the base path from the first edit link in the table.
+    // e.g. "#.../site-survey-request-details/REQ_ID/edit-doc-photo/PHOTO_ID"
+    //    → ".../site-survey-request-details/REQ_ID"
+    // We strip the last two segments (child page + record ID) to get the
+    // parent page path, then append edit-site-survey-line-item/{connId}.
     var editPageBasePath = '';
     if (viewCfg.addPhotoEnabled) {
       var firstEditLink = $table.find('td.kn-table-link a.kn-link-page').first();
       if (firstEditLink.length) {
         var href = firstEditLink.attr('href') || '';
-        // Strip leading # and trailing /RECORD_ID
-        editPageBasePath = href.replace(/^#/, '').replace(/\/[^/]+$/, '');
+        // Strip leading #, then remove the last two path segments
+        // (edit-doc-photo/RECORD_ID) to get the parent page path
+        editPageBasePath = href.replace(/^#/, '').replace(/\/[^/]+\/[^/]+$/, '');
       }
     }
 
