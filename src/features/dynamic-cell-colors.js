@@ -105,11 +105,14 @@
     if (document.getElementById('scw-dyn-cell-color-css')) return;
     var style = document.createElement('style');
     style.id = 'scw-dyn-cell-color-css';
+    // Selectors use tr.scw-ws-row .scw-ws-card td (0,3,2) to beat
+    // the worksheet's tr.scw-ws-row .scw-ws-card td (0,2,1) even
+    // when the worksheet stylesheet appears later in the DOM.
     style.textContent =
-      'tr td.scw-cell-good,    .scw-ws-card td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
-      'tr td.scw-cell-bad,     .scw-ws-card td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
-      'tr td.scw-cell-danger,  .scw-ws-card td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
-      'tr td.scw-cell-warning, .scw-ws-card td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-good,    tr td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-bad,     tr td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-danger,  tr td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-warning, tr td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
     document.head.appendChild(style);
   })();
 
