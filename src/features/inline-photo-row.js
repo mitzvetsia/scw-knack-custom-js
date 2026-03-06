@@ -492,7 +492,7 @@
   function handleDragStart(e) {
     dragSourceCard = e.currentTarget;
     dragSourceCard.classList.add(DRAG_SRC_CLS);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('text/plain', dragSourceCard.getAttribute('data-photo-id'));
 
     var strip = getStrip(dragSourceCard);
@@ -509,7 +509,7 @@
     var card = e.currentTarget;
     if (!card.classList.contains(DROP_OK_CLS)) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = 'copy';
   }
 
   function handleDragEnter(e) {
@@ -533,24 +533,34 @@
     if (!dragSourceCard) return;
 
     var sourceId = dragSourceCard.getAttribute('data-photo-id');
+    var sourceType = dragSourceCard.getAttribute('data-photo-type') || '';
     var targetId = targetCard.getAttribute('data-photo-id');
     var targetType = targetCard.getAttribute('data-photo-type') || 'this slot';
 
     clearHighlights();
     if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
 
+    // Build metadata payload — no mutation assumptions
+    var detail = {
+      sourceRecordId: sourceId,
+      sourcePhotoType: sourceType,
+      targetRecordId: targetId,
+      targetPhotoType: targetType,
+      surveyRequestId: getSurveyRequestId()
+    };
+
     // Show confirmation overlay on the target card
-    showConfirmation(targetCard, sourceId, targetId, targetType);
+    showConfirmation(targetCard, detail);
   }
 
-  /** Show a confirmation overlay on the target card before firing the webhook. */
-  function showConfirmation(card, sourceId, targetId, targetType) {
+  /** Show a confirmation overlay on the target card before dispatching. */
+  function showConfirmation(card, detail) {
     card.style.position = 'relative';
     var overlay = document.createElement('div');
     overlay.className = CONFIRM_CLS;
     overlay.innerHTML =
       '<div class="scw-confirm-text">Use this photo for<br><b>' +
-      targetType + '</b>?</div>' +
+      detail.targetPhotoType + '</b>?</div>' +
       '<div class="scw-confirm-btns">' +
         '<button class="scw-confirm-yes">Confirm</button>' +
         '<button class="scw-confirm-no">Cancel</button>' +
@@ -558,7 +568,7 @@
 
     overlay.querySelector('.scw-confirm-yes').addEventListener('click', function () {
       overlay.remove();
-      fireWebhook(card, sourceId, targetId, targetType);
+      dispatchPhotoDrop(card, detail);
     });
 
     overlay.querySelector('.scw-confirm-no').addEventListener('click', function () {
@@ -568,22 +578,61 @@
     card.appendChild(overlay);
   }
 
-  /** Fire the Make webhook and show pending state. */
-  function fireWebhook(card, sourceId, targetId, targetType) {
-    var webhookUrl = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
-    if (!webhookUrl) {
-      console.error('[SCW] No MAKE_PHOTO_MOVE_WEBHOOK configured');
+  /**
+   * Dispatch the photo-drop to the registered handler.
+   *
+   * Default: POST metadata to the configured Make webhook.
+   * Override: set window.SCW.onPhotoDrop = function(detail, ui) { … }
+   *
+   *   detail — { sourceRecordId, sourcePhotoType, targetRecordId,
+   *              targetPhotoType, surveyRequestId }
+   *
+   *   ui     — { setPending(), setSuccess(), setError(msg) }
+   *            Helper to control the target card's visual state.
+   */
+  function dispatchPhotoDrop(card, detail) {
+    var ui = buildDropUI(card);
+
+    // Check for custom callback first
+    if (window.SCW && typeof window.SCW.onPhotoDrop === 'function') {
+      window.SCW.onPhotoDrop(detail, ui);
       return;
     }
 
-    // Show pending state
-    card.classList.add(PENDING_CLS);
-    var emptyEl = card.querySelector('.' + EMPTY_CLS);
-    if (emptyEl) {
-      emptyEl.innerHTML =
-        '<span class="scw-empty-icon" style="animation: spin 1s linear infinite">&#9881;</span>' +
-        '<span>Processing…</span>';
+    // Default: POST to Make webhook
+    var webhookUrl = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
+    if (!webhookUrl) {
+      console.error('[SCW] No MAKE_PHOTO_MOVE_WEBHOOK configured and no onPhotoDrop callback registered');
+      return;
     }
+
+    ui.setPending();
+
+    fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detail)
+    })
+    .then(function (resp) {
+      if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
+      return resp.json().catch(function () { return {}; });
+    })
+    .then(function () {
+      ui.setSuccess();
+    })
+    .catch(function (err) {
+      console.error('[SCW] Photo drop handler error:', err);
+      ui.setError('Failed — click to retry');
+    });
+  }
+
+  /**
+   * Build a UI control object for the target card.
+   * Lets the callback (or default handler) drive visual state
+   * without touching DOM directly.
+   */
+  function buildDropUI(card) {
+    var emptyEl = card.querySelector('.' + EMPTY_CLS);
 
     // Inject spinner keyframes if not present
     if (!document.getElementById('scw-spin-keyframes')) {
@@ -593,43 +642,36 @@
       document.head.appendChild(kf);
     }
 
-    var payload = {
-      sourceRecordId: sourceId,
-      targetRecordId: targetId,
-      targetPhotoType: targetType,
-      surveyRequestId: getSurveyRequestId()
-    };
+    return {
+      /** Show spinning gear + "Processing…" */
+      setPending: function () {
+        card.classList.add(PENDING_CLS);
+        if (emptyEl) {
+          emptyEl.innerHTML =
+            '<span class="scw-empty-icon" style="animation: spin 1s linear infinite">&#9881;</span>' +
+            '<span>Processing\u2026</span>';
+        }
+      },
 
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    .then(function (resp) {
-      if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
-      return resp.json().catch(function () { return {}; });
-    })
-    .then(function () {
-      // Success — refresh view_3512
-      card.classList.remove(PENDING_CLS);
-      if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3512) {
-        Knack.views.view_3512.model.fetch();
+      /** Clear pending state and refresh view_3512. */
+      setSuccess: function () {
+        card.classList.remove(PENDING_CLS);
+        if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3512) {
+          Knack.views.view_3512.model.fetch();
+        }
+      },
+
+      /** Show warning icon + message. Click retries the last dispatchPhotoDrop. */
+      setError: function (msg) {
+        card.classList.remove(PENDING_CLS);
+        if (emptyEl) {
+          emptyEl.innerHTML =
+            '<span class="scw-empty-icon">&#9888;</span>' +
+            '<span>' + (msg || 'Error') + '</span>';
+          emptyEl.style.cursor = 'pointer';
+        }
       }
-    })
-    .catch(function (err) {
-      console.error('[SCW] Photo move webhook error:', err);
-      card.classList.remove(PENDING_CLS);
-      if (emptyEl) {
-        emptyEl.innerHTML =
-          '<span class="scw-empty-icon">&#9888;</span>' +
-          '<span>Failed — click to retry</span>';
-        emptyEl.style.cursor = 'pointer';
-        emptyEl.addEventListener('click', function retry() {
-          emptyEl.removeEventListener('click', retry);
-          fireWebhook(card, sourceId, targetId, targetType);
-        }, { once: true });
-      }
-    });
+    };
   }
 
   // ── DOM injection ───────────────────────────────────────────────
