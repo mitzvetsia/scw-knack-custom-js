@@ -11755,44 +11755,83 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
-/* ── Kill Knack-native row-hover on worksheet rows.
-   Use tr.${WORKSHEET_ROW} for extra specificity. ── */
-tr.${WORKSHEET_ROW},
-tr.${WORKSHEET_ROW}:hover {
-  background: #fff !important;
-  background-color: #fff !important;
-}
-tr.${WORKSHEET_ROW}:hover > td,
-tr.${WORKSHEET_ROW} > td {
-  background: transparent !important;
+/* Kill striping/hover on the source data rows too */
+.is-striped tr[data-scw-worksheet],
+.is-striped tr[data-scw-worksheet]:hover,
+.ktlTable--rowHover tr[data-scw-worksheet]:hover,
+table.is-striped tr[data-scw-worksheet]:nth-child(odd),
+table.is-striped tr[data-scw-worksheet]:nth-child(even) {
+  background: none !important;
   background-color: transparent !important;
 }
-/* Kill Knack-native hover on ALL nested tds */
+.is-striped tr[data-scw-worksheet] > td,
+.is-striped tr[data-scw-worksheet]:hover > td,
+.ktlTable--rowHover tr[data-scw-worksheet]:hover > td {
+  background: none !important;
+  background-color: transparent !important;
+}
+
+/* ── Nuke ALL Knack-native hover / striping on worksheet + photo rows.
+   The parent table has .is-striped and .ktlTable--rowHover so we
+   must use those in selectors to beat specificity. ── */
+.is-striped tr.${WORKSHEET_ROW},
+.is-striped tr.${WORKSHEET_ROW}:hover,
+.ktlTable--rowHover tr.${WORKSHEET_ROW}:hover,
+table.is-striped tr.${WORKSHEET_ROW}:nth-child(odd),
+table.is-striped tr.${WORKSHEET_ROW}:nth-child(even),
+.is-striped tr.scw-inline-photo-row,
+.is-striped tr.scw-inline-photo-row:hover,
+.ktlTable--rowHover tr.scw-inline-photo-row:hover,
+tr.${WORKSHEET_ROW},
+tr.${WORKSHEET_ROW}:hover,
+tr.scw-inline-photo-row,
+tr.scw-inline-photo-row:hover {
+  background: none !important;
+  background-color: transparent !important;
+}
+.is-striped tr.${WORKSHEET_ROW} > td,
+.is-striped tr.${WORKSHEET_ROW}:hover > td,
+.ktlTable--rowHover tr.${WORKSHEET_ROW}:hover > td,
+table.is-striped tr.${WORKSHEET_ROW}:nth-child(odd) > td,
+table.is-striped tr.${WORKSHEET_ROW}:nth-child(even) > td,
+.is-striped tr.scw-inline-photo-row > td,
+.is-striped tr.scw-inline-photo-row:hover > td,
+.ktlTable--rowHover tr.scw-inline-photo-row:hover > td,
+tr.${WORKSHEET_ROW} > td,
+tr.${WORKSHEET_ROW}:hover > td,
+tr.scw-inline-photo-row > td,
+tr.scw-inline-photo-row:hover > td {
+  background: none !important;
+  background-color: transparent !important;
+}
+/* Also kill bg on all nested tds inside the card */
 tr.${WORKSHEET_ROW} .${PREFIX}-card td,
-tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
+tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td,
+.ktlTable--rowHover tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
   background-color: transparent !important;
 }
 .${WORKSHEET_ROW} > td {
   padding: 0 !important;
-  border-bottom: none !important;
-  margin-bottom: 10px;
+  border: none !important;
 }
 
-/* ── Row separation — shadow underneath each card ── */
-.${PREFIX}-card {
-  margin-bottom: 6px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+/* ── Row-pair separation: a visible border between each
+   photo-row and the next data-row, keeping ws-row + photo-row
+   as one seamless visual unit ── */
+tr.scw-inline-photo-row > td {
+  padding: 8px 12px !important;
+  border-bottom: 3px solid #e2e8f0 !important;
 }
 
-/* ── Card wrapper (base layout — shadow/margin set above) ── */
+/* ── Card wrapper — clean, no border/shadow so data row
+   flows into the photo row as one concept ── */
 .${PREFIX}-card {
   display: flex;
   flex-direction: column;
   gap: 0;
   background: #fff;
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
 }
 
 /* ── Title bar ── */
@@ -11804,10 +11843,6 @@ tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
   background: #f8fafc;
   border-bottom: 1px solid #e2e8f0;
   flex-wrap: wrap;
-  transition: box-shadow 0.15s;
-}
-.${PREFIX}-titlebar:hover {
-  box-shadow: 0 2px 8px rgba(41, 95, 145, 0.12);
 }
 
 /* All titlebar items share the same base type */
@@ -11819,16 +11854,20 @@ tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
   white-space: nowrap;
 }
 
-/* Label & Product — larger, bolder, SCW blue, NOT editable look */
-.${PREFIX}-titlebar-item--primary {
+/* Label & Product — larger, bolder, SCW blue, NO border/box */
+td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary {
   font-size: 16px;
   font-weight: 700;
   color: #295f91;
   cursor: default !important;
+  border: none !important;
+  padding: 2px 6px;
+  border-radius: 0;
 }
-.${PREFIX}-titlebar-item--primary:hover {
+td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
   background: transparent !important;
-  border-color: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
 }
 
 /* The move td sits at the right end */
@@ -11845,17 +11884,17 @@ td.${PREFIX}-titlebar-item {
   padding: 2px 6px;
   border: 1px solid transparent;
   border-radius: 3px;
-  transition: border-color 0.15s, background-color 0.15s;
 }
 
 /* Only editable titlebar cells get pointer + hover box */
 td.${PREFIX}-titlebar-item.cell-edit,
 td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle {
   cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
 }
 td.${PREFIX}-titlebar-item.cell-edit:hover,
 td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
-  background: #dbeafe !important;
+  background-color: #dbeafe !important;
   border-color: #93c5fd !important;
 }
 
