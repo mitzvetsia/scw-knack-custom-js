@@ -10861,7 +10861,6 @@ $(".kn-navigation-bar").hide();
   var IMG_CLS      = 'scw-inline-photo-img';
   var TYPE_CLS     = 'scw-inline-photo-type';
   var EMPTY_CLS    = 'scw-inline-photo-empty';
-  var NONE_CLS     = 'scw-inline-photo-none';
   var ADD_BTN_CLS  = 'scw-inline-photo-add';
   var REQ_CLS      = 'scw-inline-photo-required';
   var REQ_CHIP_CLS = 'scw-inline-photo-req-chip';
@@ -10959,25 +10958,6 @@ $(".kn-navigation-bar").hide();
       '  white-space: nowrap;',
       '  overflow: hidden;',
       '  text-overflow: ellipsis;',
-      '}',
-
-      /* "No photo records" row-level placeholder */
-      '.' + NONE_CLS + ' {',
-      '  display: flex;',
-      '  align-items: center;',
-      '  gap: 8px;',
-      '  padding: 10px 16px;',
-      '  color: #94a3b8;',
-      '  font-size: 12px;',
-      '  font-style: italic;',
-      '  border: 2px dashed #e2e8f0;',
-      '  border-radius: 8px;',
-      '  cursor: pointer;',
-      '  transition: border-color 120ms ease, color 120ms ease;',
-      '}',
-      '.' + NONE_CLS + ':hover {',
-      '  border-color: #295f91;',
-      '  color: #295f91;',
       '}',
 
       /* Add-photo button (far left of strip) */
@@ -11316,14 +11296,6 @@ $(".kn-navigation-bar").hide();
 
           strip.appendChild(card);
         }
-      } else {
-        // ── No connected photo records at all ──
-        var none = document.createElement('div');
-        none.className = NONE_CLS;
-        none.innerHTML =
-          '<span class="scw-empty-icon" style="font-size:20px;">&#128247;</span>' +
-          '<span>No photo records</span>';
-        strip.appendChild(none);
       }
 
       td.appendChild(strip);
