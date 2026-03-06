@@ -86,32 +86,30 @@
       console.log('[SCW] gave up after all attempts. srId=' + srId);
       return;
     }
-    var $form = $('#' + ADD_PHOTO_VIEW);
     var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
-
-    console.log('[SCW] attempt ' + (21 - attempts) + '/20: form=' + $form.length +
-      ', select=' + $select.length + ', options=' + $select.find('option').length +
-      ', srId=' + srId);
-
-    // Log all option values so we can see what's available
-    if ($select.length && attempts === 20) {
-      $select.find('option').each(function () {
-        console.log('[SCW]   option val="' + this.value + '" text="' + this.textContent + '"');
-      });
-    }
-
     var $option = $select.find('option[value="' + srId + '"]');
-    if ($option.length) {
-      console.log('[SCW] FOUND option, selecting it');
-      $option.prop('selected', true);
-      $select.trigger('chosen:updated').trigger('change');
-      // Also set the hidden connection input that Knack actually submits
-      var $hidden = $form.find('input[name="field_2423"]');
-      console.log('[SCW] hidden input found: ' + $hidden.length + ', selector tried: input[name="field_2423"]');
-      $hidden.val(srId);
-    } else {
+
+    if (!$option.length) {
       setTimeout(function () { waitForFieldAndSelect(srId, attempts - 1); }, 250);
+      return;
     }
+
+    // Find the index of the matching option (Chosen uses data-option-array-index)
+    var optionIndex = $option.index();
+    console.log('[SCW] FOUND option at index ' + optionIndex + ', simulating Chosen click');
+
+    // Open the Chosen dropdown by clicking on it
+    var $chosenContainer = $select.next('.chzn-container');
+    $chosenContainer.find('.chzn-single').trigger('mousedown');
+
+    // After a tick, click the matching result item
+    setTimeout(function () {
+      var $resultItem = $chosenContainer.find('.chzn-results li[data-option-array-index="' + optionIndex + '"]');
+      console.log('[SCW] Chosen result item found: ' + $resultItem.length + ', text: ' + $resultItem.text());
+      if ($resultItem.length) {
+        $resultItem.trigger('mouseup');
+      }
+    }, 100);
   }
 
   // ── Click handler (delegated) ───────────────────────────────────────
