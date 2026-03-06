@@ -10329,9 +10329,8 @@ $(".kn-navigation-bar").hide();
   // ── Auto-select Survey Request in Add DOC_photo modal (view_3563) ───
   var ADD_PHOTO_VIEW = 'view_3563';
 
-  $(document).on('knack-view-render.' + ADD_PHOTO_VIEW, function () {
+  function preselectSurveyRequest() {
     var $form = $('#' + ADD_PHOTO_VIEW);
-    // Read the SR record ID from the crumb Knack already embeds in the form
     var srId = $form.find('input.crumb[name="site-survey-request-details_id"]').val();
     if (!srId) return;
 
@@ -10341,6 +10340,13 @@ $(".kn-navigation-bar").hide();
 
     $option.prop('selected', true);
     $select.trigger('chosen:updated').trigger('change');
+  }
+
+  $(document).on('knack-view-render.' + ADD_PHOTO_VIEW, function () {
+    setTimeout(preselectSurveyRequest, 200);
+  });
+  $(document).on('knack-modal-render.' + ADD_PHOTO_VIEW, function () {
+    setTimeout(preselectSurveyRequest, 200);
   });
 
   // ── Click handler (delegated) ───────────────────────────────────────
