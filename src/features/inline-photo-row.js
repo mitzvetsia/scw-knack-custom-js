@@ -71,14 +71,17 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  width: 200px;',
       '}',
 
-      /* Photo image */
+      /* Override Knack default ".kn-content img { max-width:100% }" */
+      '.kn-content .' + IMG_CLS + ' {',
+      '  max-width: none;',
+      '}',
+
+      /* Photo image — natural width, capped height */
       '.' + IMG_CLS + ' {',
-      '  width: 200px;',
-      '  height: 150px;',
-      '  object-fit: cover;',
+      '  width: auto;',
+      '  max-height: 200px;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
@@ -135,7 +138,7 @@
       '  text-overflow: ellipsis;',
       '}',
 
-      /* Add-photo button (far left of strip) */
+      /* Add-photo button (end of strip) */
       '.' + ADD_BTN_CLS + ' {',
       '  display: flex;',
       '  flex-direction: column;',
@@ -722,7 +725,7 @@
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
 
-      // ── "+" Add photo button (far left) ──
+      // ── "+" Add photo button (appended at end of strip) ──
       var addBtn = document.createElement('div');
       addBtn.className = ADD_BTN_CLS;
       addBtn.innerHTML =
@@ -735,7 +738,6 @@
           if (h) window.location.hash = h;
         });
       })(lineItemId);
-      strip.appendChild(addBtn);
 
       if (photos.length > 0) {
         // ── Has connected photo records ──
@@ -832,6 +834,9 @@
           strip.appendChild(card);
         }
       }
+
+      // ── Append "+" button at the end ──
+      strip.appendChild(addBtn);
 
       td.appendChild(strip);
       photoTr.appendChild(td);
