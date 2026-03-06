@@ -49,6 +49,7 @@ cat \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
   src/features/boolean-chips.js \
+  src/features/device-worksheet.js \
   src/features/dynamic-cell-colors.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \

@@ -11672,6 +11672,591 @@ $(".kn-navigation-bar").hide();
 // ============================================================
 // End Boolean Chips
 // ============================================================
+// ============================================================
+// Device Worksheet – stacked card layout for line-item rows
+// ============================================================
+//
+// Transforms flat table rows into grouped "device worksheet" cards
+// with sections: WHAT IS IT, SURVEY DETAILS, BID, and PHOTOS.
+//
+// The original <td> cells are NOT destroyed — their *contents* are
+// moved into the worksheet layout. The <td> shells remain in the
+// (now-hidden) original row so Knack's inline-edit continues to
+// work.  After an inline edit completes Knack re-renders the view,
+// and this script re-runs to rebuild the worksheet.
+//
+// CONFIGURATION
+//   Edit WORKSHEET_CONFIG below. Each entry maps semantic field
+//   names to Knack field keys for a given view.
+//
+(function () {
+  'use strict';
+
+  // ============================================================
+  // CONFIG – plug in field keys per view here
+  // ============================================================
+  var WORKSHEET_CONFIG = {
+    views: [
+      {
+        viewId: 'view_3512',
+        fields: {
+          // ── WHAT IS IT ──
+          bid:          'field_2415',   // Bid (column 1)
+          move:         'field_2375',   // Move icon (column 2)
+          label:        'field_2364',   // Label
+          product:      'field_2379',   // Product (column 4)
+          mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
+          connections:  'field_2381',   // connected to
+          scwNotes:     'field_2418',   // SCW Notes
+
+          // ── SURVEY DETAILS ──
+          surveyNotes:    'field_2412', // Survey Notes
+          exterior:       'field_2372', // Exterior (chip host)
+          existingCabling:'field_2370', // Existing Cabling
+          plenum:         'field_2371', // Plenum
+          dropLength:     'field_2367', // Drop Length
+          conduitFeet:    'field_2368', // Conduit Linear Feet
+
+          // ── BID ──
+          laborDescription: 'field_2409', // Labor Description
+          labor:            'field_2400'  // Labor $
+        },
+        // Column indices for fields that share the same field key
+        // (product and mounting both use field_2379)
+        columnIndices: {
+          product:  4,
+          mounting: 5
+        }
+      }
+    ]
+  };
+
+  // ============================================================
+  // CONSTANTS
+  // ============================================================
+  var STYLE_ID       = 'scw-device-worksheet-css';
+  var WORKSHEET_ROW  = 'scw-ws-row';
+  var PROCESSED_ATTR = 'data-scw-worksheet';
+  var EVENT_NS       = '.scwDeviceWorksheet';
+  var PREFIX         = 'scw-ws';
+
+  // ============================================================
+  // CSS – injected once
+  // ============================================================
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    var css = `
+/* ── Hide the original data row (but keep it in DOM for inline-edit) ── */
+tr[${PROCESSED_ATTR}="1"] {
+  display: none !important;
+}
+
+/* ── Worksheet row container ── */
+.${WORKSHEET_ROW} {
+  background: #fff;
+}
+.${WORKSHEET_ROW} > td {
+  padding: 0 !important;
+  border-bottom: 3px solid #e2e8f0 !important;
+}
+
+/* ── Card wrapper ── */
+.${PREFIX}-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #fff;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* ── Title bar (label + product) ── */
+.${PREFIX}-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+.${PREFIX}-titlebar-label {
+  font-weight: 700;
+  font-size: 15px;
+  color: #1e293b;
+}
+.${PREFIX}-titlebar-product {
+  font-size: 13px;
+  color: #64748b;
+}
+.${PREFIX}-titlebar-move {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.${PREFIX}-titlebar-bid {
+  font-size: 11px;
+  color: #94a3b8;
+  background: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* ── Sections grid ── */
+.${PREFIX}-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+}
+@media (max-width: 900px) {
+  .${PREFIX}-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Individual section ── */
+.${PREFIX}-section {
+  padding: 12px 16px;
+  border-right: 1px solid #f1f5f9;
+  min-width: 0;
+}
+.${PREFIX}-section:last-child {
+  border-right: none;
+}
+
+.${PREFIX}-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #94a3b8;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* ── Field row inside a section ── */
+.${PREFIX}-field {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  align-items: flex-start;
+  min-height: 22px;
+}
+.${PREFIX}-field:last-child {
+  margin-bottom: 0;
+}
+
+.${PREFIX}-field-label {
+  flex: 0 0 auto;
+  min-width: 90px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-top: 2px;
+  white-space: nowrap;
+}
+
+.${PREFIX}-field-value {
+  flex: 1;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.4;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* Inline-editable cell contents moved into the worksheet —
+   highlight on hover to show they're editable */
+.${PREFIX}-field-value .cell-edit,
+.${PREFIX}-field-value [class*="ktlInlineEditable"] {
+  cursor: pointer;
+}
+.${PREFIX}-field-value:hover {
+  background: #f8fafc;
+  border-radius: 3px;
+}
+
+/* ── Chip stack (booleans) sits inline ── */
+.${PREFIX}-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/* ── Notes fields — allow more vertical space ── */
+.${PREFIX}-field-value--notes {
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* ── Empty field value ── */
+.${PREFIX}-field-value--empty {
+  color: #cbd5e1;
+  font-style: italic;
+  font-size: 12px;
+}
+`;
+
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  /**
+   * Find a <td> in a row by field key and optional column index.
+   * When column-index is provided, it's used to disambiguate
+   * fields that share the same field_key (e.g. field_2379 for
+   * both Product and Mounting).
+   */
+  function findCell(tr, fieldKey, colIndex) {
+    var cells = tr.querySelectorAll(
+      'td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]'
+    );
+    if (!cells.length) return null;
+    if (colIndex != null) {
+      for (var i = 0; i < cells.length; i++) {
+        var ci = cells[i].getAttribute('data-column-index');
+        if (ci !== null && parseInt(ci, 10) === colIndex) return cells[i];
+      }
+    }
+    return cells[0];
+  }
+
+  /**
+   * Move the *innerHTML* of a cell into a target element.
+   * The original <td> keeps its element node in the DOM (for
+   * Knack's inline-edit bindings) but its visual content
+   * is transplanted into the worksheet layout.
+   *
+   * We clone the content so the original cell retains a copy
+   * that Knack can work with during inline-edit. After Knack
+   * re-renders, this script rebuilds the worksheet anyway.
+   */
+  function cloneCellContent(td) {
+    if (!td) return null;
+    var frag = document.createDocumentFragment();
+    var children = td.childNodes;
+    for (var i = 0; i < children.length; i++) {
+      frag.appendChild(children[i].cloneNode(true));
+    }
+    return frag;
+  }
+
+  /** Check if a cell contains only whitespace / &nbsp; */
+  function isCellEmpty(td) {
+    if (!td) return true;
+    var text = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim();
+    return text.length === 0 && !td.querySelector('img');
+  }
+
+  /** Get record id from a row's id attribute. */
+  function getRecordId(tr) {
+    var trId = tr.id || '';
+    var match = trId.match(/[0-9a-f]{24}/i);
+    return match ? match[0] : null;
+  }
+
+  // ============================================================
+  // BUILD WORKSHEET SECTIONS
+  // ============================================================
+
+  /**
+   * Create a single field row: [label] [value]
+   */
+  function buildFieldRow(label, contentFragment, opts) {
+    opts = opts || {};
+    var row = document.createElement('div');
+    row.className = PREFIX + '-field';
+
+    var lbl = document.createElement('div');
+    lbl.className = PREFIX + '-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    var val = document.createElement('div');
+    val.className = PREFIX + '-field-value';
+    if (opts.notes) val.classList.add(PREFIX + '-field-value--notes');
+
+    if (contentFragment) {
+      val.appendChild(contentFragment);
+    } else {
+      val.classList.add(PREFIX + '-field-value--empty');
+      val.textContent = '\u2014';
+    }
+
+    row.appendChild(val);
+    return row;
+  }
+
+  /**
+   * Create a section wrapper with a title.
+   */
+  function buildSection(title) {
+    var section = document.createElement('div');
+    section.className = PREFIX + '-section';
+
+    var titleEl = document.createElement('div');
+    titleEl.className = PREFIX + '-section-title';
+    titleEl.textContent = title;
+    section.appendChild(titleEl);
+
+    return section;
+  }
+
+  /**
+   * Build the full worksheet card for a data row.
+   */
+  function buildWorksheetCard(tr, viewCfg) {
+    var f = viewCfg.fields;
+    var ci = viewCfg.columnIndices || {};
+
+    var card = document.createElement('div');
+    card.className = PREFIX + '-card';
+
+    // ── Title bar ──
+    var titlebar = document.createElement('div');
+    titlebar.className = PREFIX + '-titlebar';
+
+    // Bid badge
+    var bidTd = findCell(tr, f.bid);
+    if (bidTd && !isCellEmpty(bidTd)) {
+      var bidBadge = document.createElement('span');
+      bidBadge.className = PREFIX + '-titlebar-bid';
+      bidBadge.textContent = bidTd.textContent.trim();
+      titlebar.appendChild(bidBadge);
+    }
+
+    // Label
+    var labelTd = findCell(tr, f.label);
+    var labelSpan = document.createElement('span');
+    labelSpan.className = PREFIX + '-titlebar-label';
+    labelSpan.textContent = labelTd ? labelTd.textContent.trim() : '—';
+    titlebar.appendChild(labelSpan);
+
+    // Product
+    var productTd = findCell(tr, f.product, ci.product);
+    var productSpan = document.createElement('span');
+    productSpan.className = PREFIX + '-titlebar-product';
+    productSpan.textContent = productTd ? productTd.textContent.trim() : '';
+    titlebar.appendChild(productSpan);
+
+    // Move icon (right side)
+    var moveTd = findCell(tr, f.move);
+    if (moveTd && !isCellEmpty(moveTd)) {
+      var moveSpan = document.createElement('span');
+      moveSpan.className = PREFIX + '-titlebar-move';
+      moveSpan.appendChild(cloneCellContent(moveTd));
+      titlebar.appendChild(moveSpan);
+    }
+
+    card.appendChild(titlebar);
+
+    // ── Sections container ──
+    var sections = document.createElement('div');
+    sections.className = PREFIX + '-sections';
+
+    // ── WHAT IS IT ──
+    var whatSection = buildSection('What Is It');
+
+    var mountingTd = findCell(tr, f.mounting, ci.mounting);
+    whatSection.appendChild(buildFieldRow('Mounting',
+      !isCellEmpty(mountingTd) ? cloneCellContent(mountingTd) : null));
+
+    var connTd = findCell(tr, f.connections);
+    whatSection.appendChild(buildFieldRow('Connected to',
+      !isCellEmpty(connTd) ? cloneCellContent(connTd) : null));
+
+    var scwNotesTd = findCell(tr, f.scwNotes);
+    whatSection.appendChild(buildFieldRow('SCW Notes',
+      !isCellEmpty(scwNotesTd) ? cloneCellContent(scwNotesTd) : null,
+      { notes: true }));
+
+    sections.appendChild(whatSection);
+
+    // ── SURVEY DETAILS ──
+    var surveySection = buildSection('Survey Details');
+
+    var surveyNotesTd = findCell(tr, f.surveyNotes);
+    surveySection.appendChild(buildFieldRow('Notes',
+      !isCellEmpty(surveyNotesTd) ? cloneCellContent(surveyNotesTd) : null,
+      { notes: true }));
+
+    // Chip stack — the boolean-chips feature has already transformed
+    // the exterior cell into a chip stack. Clone it into this section.
+    var chipHostTd = findCell(tr, f.exterior);
+    if (chipHostTd) {
+      var chipStack = chipHostTd.querySelector('.scw-chip-stack');
+      if (chipStack) {
+        var chipsRow = document.createElement('div');
+        chipsRow.className = PREFIX + '-chips';
+        // We need the *actual* chip elements for interactivity,
+        // so move them rather than clone.
+        while (chipStack.firstChild) {
+          chipsRow.appendChild(chipStack.firstChild);
+        }
+        surveySection.appendChild(chipsRow);
+      } else {
+        // Fall back: show the raw cell content if chips haven't been applied
+        surveySection.appendChild(buildFieldRow('Exterior',
+          !isCellEmpty(chipHostTd) ? cloneCellContent(chipHostTd) : null));
+      }
+    }
+
+    var dropTd = findCell(tr, f.dropLength);
+    surveySection.appendChild(buildFieldRow('Drop Length',
+      !isCellEmpty(dropTd) ? cloneCellContent(dropTd) : null));
+
+    var conduitTd = findCell(tr, f.conduitFeet);
+    surveySection.appendChild(buildFieldRow('Conduit Ft',
+      !isCellEmpty(conduitTd) ? cloneCellContent(conduitTd) : null));
+
+    sections.appendChild(surveySection);
+
+    // ── BID ──
+    var bidSection = buildSection('Bid');
+
+    var laborDescTd = findCell(tr, f.laborDescription);
+    bidSection.appendChild(buildFieldRow('Labor Desc.',
+      !isCellEmpty(laborDescTd) ? cloneCellContent(laborDescTd) : null,
+      { notes: true }));
+
+    var laborTd = findCell(tr, f.labor);
+    bidSection.appendChild(buildFieldRow('Labor',
+      !isCellEmpty(laborTd) ? cloneCellContent(laborTd) : null));
+
+    sections.appendChild(bidSection);
+
+    card.appendChild(sections);
+
+    return card;
+  }
+
+  // ============================================================
+  // TRANSFORM VIEW
+  // ============================================================
+
+  function transformView(viewCfg) {
+    var $view = $('#' + viewCfg.viewId);
+    if (!$view.length) return;
+
+    var table = $view.find('table.kn-table-table, table.kn-table')[0];
+    if (!table) return;
+
+    // Hide the table header row — we don't need column headers
+    var thead = table.querySelector('thead');
+    if (thead) thead.style.display = 'none';
+
+    // Also hide the checkbox column header if present
+    var $rows = $(table).find('tbody > tr');
+
+    $rows.each(function () {
+      var tr = this;
+
+      // Skip group headers, photo rows, and already-processed rows
+      if (tr.classList.contains('kn-table-group')) return;
+      if (tr.classList.contains('scw-inline-photo-row')) return;
+      if (tr.classList.contains(WORKSHEET_ROW)) return;
+
+      // Must have a record ID
+      var recordId = getRecordId(tr);
+      if (!recordId) return;
+
+      // Skip if already processed
+      if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
+
+      // Build the worksheet card
+      var card = buildWorksheetCard(tr, viewCfg);
+
+      // Create the worksheet row
+      var wsTr = document.createElement('tr');
+      wsTr.className = WORKSHEET_ROW;
+      var wsTd = document.createElement('td');
+
+      // Count columns for colspan
+      var headerRow = table.querySelector('thead tr');
+      var colCount = 1;
+      if (headerRow) {
+        colCount = 0;
+        var cells = headerRow.children;
+        for (var i = 0; i < cells.length; i++) {
+          colCount += parseInt(cells[i].getAttribute('colspan') || '1', 10);
+        }
+      }
+      wsTd.setAttribute('colspan', String(colCount));
+      wsTd.appendChild(card);
+      wsTr.appendChild(wsTd);
+
+      // Insert the worksheet row right after the data row
+      // (before any existing photo row)
+      tr.parentNode.insertBefore(wsTr, tr.nextSibling);
+
+      // Mark the original row as processed and hide it
+      tr.setAttribute(PROCESSED_ATTR, '1');
+    });
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  function init() {
+    injectStyles();
+
+    WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      var viewId = viewCfg.viewId;
+
+      $(document)
+        .off('knack-view-render.' + viewId + EVENT_NS)
+        .on('knack-view-render.' + viewId + EVENT_NS, function () {
+          // Small delay to let boolean-chips and inline-photo-row run first
+          setTimeout(function () { transformView(viewCfg); }, 150);
+        });
+
+      $(document)
+        .off('knack-cell-update.' + viewId + EVENT_NS)
+        .on('knack-cell-update.' + viewId + EVENT_NS, function () {
+          // On cell update, Knack re-renders. Clean up our rows and re-process.
+          setTimeout(function () {
+            $('#' + viewId + ' .' + WORKSHEET_ROW).remove();
+            $('#' + viewId + ' tr[' + PROCESSED_ATTR + ']').removeAttr(PROCESSED_ATTR);
+            var thead = document.querySelector('#' + viewId + ' thead');
+            if (thead) thead.style.display = '';
+            transformView(viewCfg);
+          }, 200);
+        });
+
+      // If the view already exists in the DOM, transform immediately
+      if ($('#' + viewId).length) {
+        setTimeout(function () { transformView(viewCfg); }, 150);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    $(document).ready(init);
+  } else {
+    init();
+  }
+})();
+// ============================================================
+// End Device Worksheet
+// ============================================================
 /*************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
 (function () {
   'use strict';
