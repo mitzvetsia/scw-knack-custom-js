@@ -536,10 +536,8 @@
 
     var sourceId = dragSourceCard.getAttribute('data-photo-id');
     var sourceType = dragSourceCard.getAttribute('data-photo-type') || '';
-    var sourceTypeId = dragSourceCard.getAttribute('data-photo-type-id') || '';
     var targetId = targetCard.getAttribute('data-photo-id');
     var targetType = targetCard.getAttribute('data-photo-type') || 'this slot';
-    var targetTypeId = targetCard.getAttribute('data-photo-type-id') || '';
 
     clearHighlights();
     if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
@@ -548,10 +546,8 @@
     var detail = {
       sourceRecordId: sourceId,
       sourcePhotoType: sourceType,
-      sourcePhotoTypeId: sourceTypeId,
       targetRecordId: targetId,
       targetPhotoType: targetType,
-      targetPhotoTypeId: targetTypeId,
       surveyRequestId: getSurveyRequestId()
     };
 
