@@ -10326,26 +10326,21 @@ $(".kn-navigation-bar").hide();
     });
   }
 
-  // ── Survey Request record ID ────────────────────────────────────────
-  var SR_HASH_PATTERN = /site-survey-request-details\/([a-f0-9]{24})/;
-  var STASH_KEY = 'scw_editGroupHeader_srId';
+  // ── Auto-select Survey Request in Add DOC_photo modal (view_3563) ───
+  var ADD_PHOTO_VIEW = 'view_3563';
 
-  function getSurveyRequestId() {
-    var match = (window.location.hash || '').match(SR_HASH_PATTERN);
-    return match ? match[1] : '';
-  }
-
-  /** After navigation, populate field_2423 with the stashed SR record ID. */
-  $(document).on('knack-scene-render' + EVENT_NS, function () {
-    var srId = sessionStorage.getItem(STASH_KEY);
+  $(document).on('knack-view-render.' + ADD_PHOTO_VIEW, function () {
+    var $form = $('#' + ADD_PHOTO_VIEW);
+    // Read the SR record ID from the crumb Knack already embeds in the form
+    var srId = $form.find('input.crumb[name="site-survey-request-details_id"]').val();
     if (!srId) return;
-    sessionStorage.removeItem(STASH_KEY);
-    setTimeout(function () {
-      var $field = $('input#field_2423');
-      if ($field.length) {
-        $field.val(srId).change();
-      }
-    }, 1);
+
+    var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
+    var $option = $select.find('option[value="' + srId + '"]');
+    if (!$option.length) return;
+
+    $option.prop('selected', true);
+    $select.trigger('chosen:updated').trigger('change');
   });
 
   // ── Click handler (delegated) ───────────────────────────────────────
@@ -10355,15 +10350,7 @@ $(".kn-navigation-bar").hide();
       e.preventDefault();
       e.stopPropagation();
       var href = $(this).attr('data-href');
-      if (!href) return;
-
-      // Stash the Survey Request record ID before navigating
-      var srId = getSurveyRequestId();
-      if (srId) {
-        sessionStorage.setItem(STASH_KEY, srId);
-      }
-
-      window.location.hash = href.replace(/^#/, '');
+      if (href) window.location.hash = href.replace(/^#/, '');
     });
 
   // ── Init on view render ─────────────────────────────────────────────
