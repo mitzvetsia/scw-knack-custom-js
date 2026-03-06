@@ -178,10 +178,10 @@
       '  box-sizing: border-box;',
       '}',
 
-      /* Green chip for required=yes photos */
+      /* Green chip — required + completed */
       '.' + REQ_CHIP_GREEN_CLS + ' { background: #16a34a; }',
 
-      /* Red chip for required=no photos */
+      /* Red chip — required + not completed */
       '.' + REQ_CHIP_CLS + ':not(.' + REQ_CHIP_GREEN_CLS + ') { background: #dc2626; }',
 
       /* Missing required photo — card-level highlight */
@@ -815,16 +815,18 @@
             card.appendChild(typeEl);
           }
 
-          // Required status chip — green for required, red for not required
-          var chip = document.createElement('div');
-          chip.className = REQ_CHIP_CLS;
+          // Required chip — red if incomplete, green with checkmark if complete
           if (photo.required) {
-            chip.classList.add(REQ_CHIP_GREEN_CLS);
-            chip.textContent = 'Required';
-          } else {
-            chip.textContent = 'Not Required';
+            var chip = document.createElement('div');
+            chip.className = REQ_CHIP_CLS;
+            if (photo.completed) {
+              chip.classList.add(REQ_CHIP_GREEN_CLS);
+              chip.textContent = '\u2713 Required';
+            } else {
+              chip.textContent = 'Required';
+            }
+            card.appendChild(chip);
           }
-          card.appendChild(chip);
 
           strip.appendChild(card);
         }
