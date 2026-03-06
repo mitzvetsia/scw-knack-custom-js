@@ -445,6 +445,63 @@
   }
 
   // ───────────────────────────────────────────────────
+  //  Header click binding
+  // ───────────────────────────────────────────────────
+
+  /**
+   * Bind (or re-bind) the accordion header so clicks toggle the given
+   * KTL button.  Uses a data attribute to store a mutable reference key
+   * and a shared map so re-binding after a view refresh is cheap —
+   * we just swap the button reference, no need to replace listeners.
+   */
+  var _btnRefs = {};   // viewKey → current button element
+  var _bound   = {};   // viewKey → true once listeners are attached
+
+  function bindHeader(wrap, hdr, btnEl, vKey) {
+    _btnRefs[vKey] = btnEl;               // always update to latest button
+
+    if (_bound[vKey]) return;             // listeners already attached
+    _bound[vKey] = true;
+
+    function triggerToggle() {
+      if (hdr.dataset.scwBusy === '1') return;
+      hdr.dataset.scwBusy = '1';
+      setTimeout(function () { hdr.dataset.scwBusy = '0'; }, 150);
+
+      var bodyEl = wrap.querySelector('.scw-ktl-accordion__body');
+      if (bodyEl) bodyEl.style.display = '';
+
+      _btnRefs[vKey].click();             // always use current reference
+
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          syncState(wrap, hdr, vKey);
+        });
+      });
+    }
+
+    hdr.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      triggerToggle();
+    });
+    hdr.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerToggle();
+      }
+    });
+  }
+
+  /** Update the button reference for an existing header (after view re-render). */
+  function rebindHeader(wrap, hdr, btnEl, vKey) {
+    bindHeader(wrap, hdr, btnEl, vKey);
+  }
+
+  // ───────────────────────────────────────────────────
   //  Enhancement pass
   // ───────────────────────────────────────────────────
   function enhance() {
@@ -474,6 +531,54 @@
 
       var viewKey = viewKeyFromButtonId(btn.id);
       if (!viewKey) continue;
+
+      // ── Re-rendered inside existing accordion? ──
+      // After an inline-edit refresh, Knack may replace the DOM inside
+      // #view_XXXX (innerHTML swap) OR replace the entire element.
+      //
+      // Case 1: button is still inside an existing wrapper (innerHTML swap).
+      // Case 2: button is outside, but an orphaned wrapper with a matching
+      //         data-view-key header exists (element replacement).
+      //
+      // In both cases, re-adopt the button into the existing wrapper
+      // instead of creating a duplicate.
+      var existingAncestor = btn.closest('.scw-ktl-accordion');
+      if (!existingAncestor) {
+        var orphanHdr = document.querySelector(
+          '.scw-ktl-accordion__header[data-view-key="' + viewKey + '"]'
+        );
+        if (orphanHdr) existingAncestor = orphanHdr.closest('.scw-ktl-accordion');
+      }
+
+      if (existingAncestor) {
+        btn.setAttribute(ENHANCED, '1');
+        var existingHdr = existingAncestor.querySelector('.scw-ktl-accordion__header');
+        if (existingHdr) {
+          // Move the new view element into the existing wrapper's body
+          var existingBody = existingAncestor.querySelector('.scw-ktl-accordion__body');
+          var wrapTarget = knView || btn.parentNode;
+          if (existingBody && wrapTarget && wrapTarget.parentNode !== existingBody) {
+            // Place wrapper right before the new view element so position is preserved
+            wrapTarget.parentNode.insertBefore(existingAncestor, wrapTarget);
+            existingBody.appendChild(wrapTarget);
+          }
+          // Neutralize legacy accent on the (possibly new) .kn-view host
+          if (knView) {
+            knView.classList.add('scw-ktl-accordion-host');
+            knView.style.setProperty('background', 'transparent', 'important');
+            knView.style.setProperty('background-color', 'transparent', 'important');
+            knView.style.setProperty('padding', '0', 'important');
+            knView.style.setProperty('border-radius', '0', 'important');
+            knView.style.setProperty('box-shadow', 'none', 'important');
+            knView.style.setProperty('margin', '0', 'important');
+          }
+          // Re-bind the header click to the NEW button element
+          rebindHeader(existingAncestor, existingHdr, btn, viewKey);
+          syncState(existingAncestor, existingHdr, viewKey);
+        }
+        log('re-adopted (post-refresh)', viewKey);
+        continue;
+      }
 
       log('enhancing', viewKey);
 
@@ -533,44 +638,7 @@
       body.appendChild(wrapTarget);
 
       // Forward clicks from our header to the KTL button.
-      // Uses a busy lock to prevent rapid double-activation and
-      // double-RAF to let KTL finish before we read state.
-      (function (wrap, hdr, btnEl, vKey) {
-        function triggerToggle() {
-          // Busy lock — prevent double-toggle
-          if (hdr.dataset.scwBusy === '1') return;
-          hdr.dataset.scwBusy = '1';
-          setTimeout(function () { hdr.dataset.scwBusy = '0'; }, 150);
-
-          // Ensure body is visible so KTL can process the click
-          var bodyEl = wrap.querySelector('.scw-ktl-accordion__body');
-          if (bodyEl) bodyEl.style.display = '';
-
-          // Fire KTL toggle exactly once
-          btnEl.click();
-
-          // Double-RAF: wait for KTL to finish applying display changes
-          requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-              syncState(wrap, hdr, vKey);
-            });
-          });
-        }
-        hdr.addEventListener('click', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          triggerToggle();
-        });
-        hdr.addEventListener('keydown', function (e) {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            triggerToggle();
-          }
-        });
-      })(wrapper, header, btn, viewKey);
+      bindHeader(wrapper, header, btn, viewKey);
 
       // Initial state sync
       syncState(wrapper, header, viewKey);
