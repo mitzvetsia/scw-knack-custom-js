@@ -66,20 +66,19 @@
       '  align-items: flex-start;',
       '}',
 
-      /* Card wrapper — auto width so portrait cards are narrower */
+      /* Card wrapper */
       '.' + CARD_CLS + ' {',
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  max-width: 260px;',
+      '  width: 200px;',
       '}',
 
-      /* Photo image — fixed height, auto width keeps aspect ratio */
+      /* Photo image */
       '.' + IMG_CLS + ' {',
-      '  width: auto;',
+      '  width: 200px;',
       '  height: 150px;',
-      '  max-width: 260px;',
-      '  object-fit: contain;',
+      '  object-fit: cover;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
@@ -136,33 +135,33 @@
       '  text-overflow: ellipsis;',
       '}',
 
-      /* Add-photo button — circle at end of strip */
+      /* Add-photo button (far left of strip) */
       '.' + ADD_BTN_CLS + ' {',
       '  display: flex;',
+      '  flex-direction: column;',
       '  align-items: center;',
       '  justify-content: center;',
+      '  gap: 4px;',
       '  width: 56px;',
-      '  height: 56px;',
-      '  border: 2.5px solid #295f91;',
-      '  border-radius: 50%;',
-      '  background: #eff6ff;',
-      '  color: #295f91;',
+      '  min-height: 150px;',
+      '  border: 2px dashed #cbd5e1;',
+      '  border-radius: 6px;',
+      '  background: #f8fafc;',
+      '  color: #94a3b8;',
+      '  font-size: 11px;',
       '  cursor: pointer;',
-      '  transition: border-color 150ms ease, color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;',
+      '  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;',
       '  flex-shrink: 0;',
-      '  align-self: center;',
       '}',
       '.' + ADD_BTN_CLS + ':hover {',
-      '  border-color: #1e4d79;',
-      '  color: #fff;',
-      '  background: #295f91;',
-      '  transform: scale(1.08);',
-      '  box-shadow: 0 3px 10px rgba(41,95,145,0.3);',
+      '  border-color: #295f91;',
+      '  color: #295f91;',
+      '  background: #eff6ff;',
       '}',
       '.' + ADD_BTN_CLS + ' .scw-add-icon {',
-      '  font-size: 30px;',
+      '  font-size: 28px;',
       '  line-height: 1;',
-      '  font-weight: 400;',
+      '  font-weight: 300;',
       '}',
 
       /* Required chip */
@@ -723,11 +722,12 @@
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
 
-      // ── "+" Add photo button (built now, appended at the end) ──
+      // ── "+" Add photo button (far left) ──
       var addBtn = document.createElement('div');
       addBtn.className = ADD_BTN_CLS;
       addBtn.innerHTML =
-        '<span class="scw-add-icon">+</span>';
+        '<span class="scw-add-icon">+</span>' +
+        '<span>Add</span>';
       addBtn.title = 'Add a new photo record';
       (function (lid) {
         addBtn.addEventListener('click', function () {
@@ -735,6 +735,7 @@
           if (h) window.location.hash = h;
         });
       })(lineItemId);
+      strip.appendChild(addBtn);
 
       if (photos.length > 0) {
         // ── Has connected photo records ──
@@ -831,9 +832,6 @@
           strip.appendChild(card);
         }
       }
-
-      // ── Append "+" button at the end ──
-      strip.appendChild(addBtn);
 
       td.appendChild(strip);
       photoTr.appendChild(td);
