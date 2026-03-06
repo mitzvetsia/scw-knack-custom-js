@@ -298,34 +298,15 @@
   }
 
   // ============================================================
-  // ONE-CLICK TOGGLE (event delegation)
+  // ONE-CLICK TOGGLE
   // ============================================================
+  // We use a single capturing-phase click listener that:
+  //   1. Stops Knack's inline-edit from opening (stopPropagation)
+  //   2. Performs the toggle + save directly
+  // A jQuery delegated handler would never fire because
+  // stopPropagation in capture phase kills bubbling.
 
-  // Block Knack's inline-edit from triggering on managed cells (capturing phase)
-  document.addEventListener('click', function (e) {
-    var chip = e.target.closest('.' + CHIP_CLASS);
-    if (!chip) return;
-    var td = chip.closest('td');
-    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
-    e.stopPropagation();
-    e.preventDefault();
-  }, true);
-
-  document.addEventListener('mousedown', function (e) {
-    var chip = e.target.closest('.' + CHIP_CLASS);
-    if (!chip) return;
-    var td = chip.closest('td');
-    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
-    e.stopPropagation();
-    e.preventDefault();
-  }, true);
-
-  // Our click handler — toggle on single click
-  $(document).on('click' + EVENT_NS, '.' + CHIP_CLASS, function (e) {
-    e.stopPropagation();
-    e.preventDefault();
-
-    var chip = this;
+  function handleChipToggle(chip) {
     var td = chip.closest('td');
     if (!td) return;
 
@@ -367,7 +348,30 @@
     } else {
       console.warn('[scw-bool-chips] Could not determine record ID for save');
     }
-  });
+  }
+
+  // Capture-phase click: block Knack + toggle
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('.' + CHIP_CLASS);
+    if (!chip) return;
+    var td = chip.closest('td');
+    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    handleChipToggle(chip);
+  }, true);
+
+  // Capture-phase mousedown: block Knack's inline-edit trigger
+  document.addEventListener('mousedown', function (e) {
+    var chip = e.target.closest('.' + CHIP_CLASS);
+    if (!chip) return;
+    var td = chip.closest('td');
+    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
 
   // ============================================================
   // INIT – bind to knack-view-render for each configured view
