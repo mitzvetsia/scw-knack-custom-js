@@ -116,7 +116,7 @@ tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
 /* ── Photo row — part of the same visual unit as the card above.
    A subtle separator underneath divides one record-pair from the next. ── */
 tr.scw-inline-photo-row > td {
-  padding: 10px 16px 14px 16px !important;
+  padding: 10px 16px 64px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
 }
