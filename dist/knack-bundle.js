@@ -11755,6 +11755,12 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
+/* ── Kill table row-hover on worksheet rows ── */
+.${WORKSHEET_ROW}:hover,
+.${WORKSHEET_ROW}:hover > td {
+  background: transparent !important;
+}
+
 /* ── Worksheet row container ── */
 .${WORKSHEET_ROW} {
   background: #fff;
@@ -11774,37 +11780,58 @@ tr[${PROCESSED_ATTR}="1"] {
   overflow: hidden;
 }
 
-/* ── Title bar (label + product) ── */
+/* ── Title bar ── */
 .${PREFIX}-titlebar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 4px;
+  padding: 8px 16px;
   background: #f1f5f9;
   border-bottom: 1px solid #e2e8f0;
   flex-wrap: wrap;
+  transition: background-color 0.15s;
 }
-.${PREFIX}-titlebar-label {
-  font-weight: 700;
-  font-size: 15px;
-  color: #1e293b;
+.${PREFIX}-titlebar:hover {
+  background: #e2e8f0;
 }
-.${PREFIX}-titlebar-product {
+
+/* All titlebar items share the same base type */
+.${PREFIX}-titlebar-item {
   font-size: 13px;
-  color: #64748b;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.4;
+  white-space: nowrap;
 }
+
+/* The move td sits at the right end */
 .${PREFIX}-titlebar-move {
   margin-left: auto;
   display: flex;
   align-items: center;
 }
-.${PREFIX}-titlebar-bid {
-  font-size: 11px;
-  color: #94a3b8;
-  background: #e2e8f0;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
+
+/* Titlebar <td> elements — reset table cell appearance,
+   keep inline-edit bindings alive */
+td.${PREFIX}-titlebar-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition: border-color 0.15s, background-color 0.15s;
+  cursor: pointer;
+}
+td.${PREFIX}-titlebar-item:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+/* Separator dot between titlebar items */
+.${PREFIX}-titlebar-sep {
+  color: #cbd5e1;
+  font-size: 13px;
+  user-select: none;
 }
 
 /* ── Sections grid ── */
@@ -11898,12 +11925,26 @@ td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
   border-color: #93c5fd;
 }
 
+/* ── Chip host td — make the cell itself invisible,
+   just show the chips aligned with other field rows ── */
+td.${PREFIX}-chip-host {
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: none !important;
+  background: transparent !important;
+}
+td.${PREFIX}-chip-host:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
 /* ── Chip stack (booleans) sits inline ── */
 .${PREFIX}-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 2px 0;
+  padding: 2px 4px;
 }
 
 /* ── Notes fields — allow more vertical space ── */
@@ -11921,11 +11962,7 @@ td.${PREFIX}-field-value--notes {
   font-size: 12px;
 }
 
-/* ── Read-only field value (non-editable, e.g. label, product) ── */
-.${PREFIX}-field-value--readonly {
-  display: block;
-  padding: 2px 4px;
-}
+
 `;
 
     var style = document.createElement('style');
@@ -11970,18 +12007,6 @@ td.${PREFIX}-field-value--notes {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
     return match ? match[0] : null;
-  }
-
-  /**
-   * Clone cell content into a plain <div> (for read-only display
-   * in the title bar where we don't need inline editing).
-   */
-  function cloneAsDiv(td, className) {
-    if (!td) return null;
-    var div = document.createElement('span');
-    div.className = className || '';
-    div.innerHTML = td.innerHTML;
-    return div;
   }
 
   // ============================================================
@@ -12060,41 +12085,49 @@ td.${PREFIX}-field-value--notes {
     card.className = PREFIX + '-card';
 
     // ── Title bar ──
-    // These are read-only display values (cloned, not moved),
-    // because label/product aren't inline-editable in the HTML.
+    // Move the actual <td> elements so inline-edit bindings survive.
     var titlebar = document.createElement('div');
     titlebar.className = PREFIX + '-titlebar';
 
-    // Bid badge
+    // Bid — move actual <td>
     var bidTd = findCell(tr, f.bid);
-    if (bidTd && !isCellEmpty(bidTd)) {
-      var bidBadge = document.createElement('span');
-      bidBadge.className = PREFIX + '-titlebar-bid';
-      bidBadge.textContent = bidTd.textContent.trim();
-      titlebar.appendChild(bidBadge);
+    if (bidTd) {
+      bidTd.classList.add(PREFIX + '-titlebar-item');
+      titlebar.appendChild(bidTd);
     }
 
-    // Label
+    // Separator
+    var sep1 = document.createElement('span');
+    sep1.className = PREFIX + '-titlebar-sep';
+    sep1.textContent = '\u00b7';
+    titlebar.appendChild(sep1);
+
+    // Label — move actual <td>
     var labelTd = findCell(tr, f.label);
-    var labelSpan = document.createElement('span');
-    labelSpan.className = PREFIX + '-titlebar-label';
-    labelSpan.textContent = labelTd ? labelTd.textContent.trim() : '—';
-    titlebar.appendChild(labelSpan);
+    if (labelTd) {
+      labelTd.classList.add(PREFIX + '-titlebar-item');
+      titlebar.appendChild(labelTd);
+    }
 
-    // Product
+    // Separator
+    var sep2 = document.createElement('span');
+    sep2.className = PREFIX + '-titlebar-sep';
+    sep2.textContent = '\u00b7';
+    titlebar.appendChild(sep2);
+
+    // Product — move actual <td>
     var productTd = findCell(tr, f.product, ci.product);
-    var productSpan = document.createElement('span');
-    productSpan.className = PREFIX + '-titlebar-product';
-    productSpan.textContent = productTd ? productTd.textContent.trim() : '';
-    titlebar.appendChild(productSpan);
+    if (productTd) {
+      productTd.classList.add(PREFIX + '-titlebar-item');
+      titlebar.appendChild(productTd);
+    }
 
-    // Move icon (right side) — clone since it's read-only display
+    // Move (IDF/MDF assignment) — move actual <td>, sits right
     var moveTd = findCell(tr, f.move);
-    if (moveTd && !isCellEmpty(moveTd)) {
-      var moveSpan = document.createElement('span');
-      moveSpan.className = PREFIX + '-titlebar-move';
-      moveSpan.innerHTML = moveTd.innerHTML;
-      titlebar.appendChild(moveSpan);
+    if (moveTd) {
+      moveTd.classList.add(PREFIX + '-titlebar-item');
+      moveTd.classList.add(PREFIX + '-titlebar-move');
+      titlebar.appendChild(moveTd);
     }
 
     card.appendChild(titlebar);
@@ -12126,22 +12159,33 @@ td.${PREFIX}-field-value--notes {
 
     // Chip stack — the boolean-chips feature has already transformed
     // the exterior cell into a chip stack. Move the chip elements
-    // into a wrapper so they stay interactive.
+    // into a field row so they align with Notes / Drop Length.
     var chipHostTd = findCell(tr, f.exterior);
     if (chipHostTd) {
       var chipStack = chipHostTd.querySelector('.scw-chip-stack');
       if (chipStack) {
+        // Build a field row with an empty label to align chips
+        // with other field values in the section
+        var chipFieldRow = document.createElement('div');
+        chipFieldRow.className = PREFIX + '-field';
+
+        var chipLabel = document.createElement('div');
+        chipLabel.className = PREFIX + '-field-label';
+        chipLabel.textContent = '';  // no label, just spacing
+        chipFieldRow.appendChild(chipLabel);
+
+        // Make the chip host td invisible — just holds chips
+        chipHostTd.classList.add(PREFIX + '-chip-host');
+        chipHostTd.classList.add(PREFIX + '-field-value');
+        chipHostTd.innerHTML = '';
         var chipsRow = document.createElement('div');
         chipsRow.className = PREFIX + '-chips';
-        // Move the actual chip elements (preserves click handlers)
         while (chipStack.firstChild) {
           chipsRow.appendChild(chipStack.firstChild);
         }
-        // Also move the chip-processed td so Knack doesn't lose it
-        chipHostTd.classList.add(PREFIX + '-field-value');
-        chipHostTd.innerHTML = '';
         chipHostTd.appendChild(chipsRow);
-        surveySection.appendChild(chipHostTd);
+        chipFieldRow.appendChild(chipHostTd);
+        surveySection.appendChild(chipFieldRow);
       } else {
         surveySection.appendChild(buildFieldRow('Exterior',
           chipHostTd));
