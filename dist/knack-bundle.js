@@ -12430,8 +12430,18 @@ td.${PREFIX}-field-value--notes {
   const COLORS = {
     good:    '#d4edda', // pale green
     bad:     '#f8d7da', // pale red
+    danger:  '#f8d7da', // alias for bad – pale red
     warning: '#fff3cd'  // pale yellow
   };
+
+  const COLOR_CLASSES = {
+    good:    'scw-cell-good',
+    bad:     'scw-cell-bad',
+    danger:  'scw-cell-danger',
+    warning: 'scw-cell-warning'
+  };
+
+  const ALL_COLOR_CLASSES = Object.values(COLOR_CLASSES).join(' ');
 
   // ===========================================================
   // VIEW / FIELD CONFIG
@@ -12444,7 +12454,7 @@ td.${PREFIX}-field-value--notes {
     {
       viewId: 'view_3505',
       rules: [
-        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
       ]
@@ -12452,7 +12462,7 @@ td.${PREFIX}-field-value--notes {
     {
       viewId: 'view_3512',
       rules: [
-        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_771', when: 'empty', color: 'warning' }
@@ -12461,7 +12471,7 @@ td.${PREFIX}-field-value--notes {
     {
       viewId: 'view_3517',
       rules: [
-        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
       ]
@@ -12509,6 +12519,21 @@ td.${PREFIX}-field-value--notes {
   }
 
   // ============================================================
+  // INJECT STYLES (so color classes win over worksheet !important)
+  // ============================================================
+  (function injectColorStyles() {
+    if (document.getElementById('scw-dyn-cell-color-css')) return;
+    var style = document.createElement('style');
+    style.id = 'scw-dyn-cell-color-css';
+    style.textContent =
+      'td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
+      'td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
+      'td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
+      'td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
+    document.head.appendChild(style);
+  })();
+
+  // ============================================================
   // CORE
   // ============================================================
 
@@ -12532,6 +12557,9 @@ td.${PREFIX}-field-value--notes {
         if (!$td.length) return;
 
         if (matchesCondition($td, rule.when)) {
+          $td.removeClass(ALL_COLOR_CLASSES);
+          var cls = COLOR_CLASSES[rule.color];
+          if (cls) $td.addClass(cls);
           $td.css('background-color', resolveColor(rule.color));
         }
       });
