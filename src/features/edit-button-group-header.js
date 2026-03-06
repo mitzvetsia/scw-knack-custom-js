@@ -78,6 +78,28 @@
     });
   }
 
+  // ── Survey Request record ID ────────────────────────────────────────
+  var SR_HASH_PATTERN = /site-survey-request-details\/([a-f0-9]{24})/;
+  var STASH_KEY = 'scw_editGroupHeader_srId';
+
+  function getSurveyRequestId() {
+    var match = (window.location.hash || '').match(SR_HASH_PATTERN);
+    return match ? match[1] : '';
+  }
+
+  /** After navigation, populate field_2423 with the stashed SR record ID. */
+  $(document).on('knack-scene-render' + EVENT_NS, function () {
+    var srId = sessionStorage.getItem(STASH_KEY);
+    if (!srId) return;
+    sessionStorage.removeItem(STASH_KEY);
+    setTimeout(function () {
+      var $field = $('input#field_2423');
+      if ($field.length) {
+        $field.val(srId).change();
+      }
+    }, 1);
+  });
+
   // ── Click handler (delegated) ───────────────────────────────────────
   $(document)
     .off('click' + EVENT_NS, '.' + BUTTON_CLASS)
@@ -85,7 +107,15 @@
       e.preventDefault();
       e.stopPropagation();
       var href = $(this).attr('data-href');
-      if (href) window.location.hash = href.replace(/^#/, '');
+      if (!href) return;
+
+      // Stash the Survey Request record ID before navigating
+      var srId = getSurveyRequestId();
+      if (srId) {
+        sessionStorage.setItem(STASH_KEY, srId);
+      }
+
+      window.location.hash = href.replace(/^#/, '');
     });
 
   // ── Init on view render ─────────────────────────────────────────────
