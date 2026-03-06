@@ -10846,8 +10846,8 @@ $(".kn-navigation-bar").hide();
  *   - The image (or an upload-placeholder if no image)
  *   - The photo-type label from field_2445 underneath
  *
- * Clicking an empty image placeholder navigates to the line item's
- * "add photo" page so the user can upload.
+ * Clicking any photo card navigates to the edit-doc-photo page
+ * for that specific photo record.
  */
 (function () {
   'use strict';
@@ -11008,10 +11008,22 @@ $(".kn-navigation-bar").hide();
     return n;
   }
 
-  /** Find the "add photo" link href from a data row. */
-  function getAddPhotoHref(tr) {
-    var a = tr.querySelector('td.kn-table-link a.kn-link-page');
-    return a ? (a.getAttribute('href') || '') : '';
+  /**
+   * Extract the survey request record ID from the current URL hash.
+   * URL pattern: #subcontractor-portal/site-survey-request-details/{surveyRequestId}/...
+   */
+  function getSurveyRequestId() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/site-survey-request-details\/([a-f0-9]{24})/);
+    return match ? match[1] : '';
+  }
+
+  /** Build the edit-doc-photo hash path for a photo record. */
+  function editPhotoHash(photoRecordId) {
+    var surveyId = getSurveyRequestId();
+    if (!surveyId) return '';
+    return 'subcontractor-portal/site-survey-request-details/' +
+      surveyId + '/edit-doc-photo/' + photoRecordId;
   }
 
   /**
@@ -11118,9 +11130,6 @@ $(".kn-navigation-bar").hide();
       var labelCell = tr.querySelector('td.field_2364');
       var labelText = labelCell ? (labelCell.textContent || '').trim() : '';
 
-      // Get the add-photo link
-      var addHref = getAddPhotoHref(tr);
-
       // Extract all connected photo records
       var photos = extractPhotoRecords(tr);
 
@@ -11148,12 +11157,13 @@ $(".kn-navigation-bar").hide();
             imgEl.alt = labelText
               ? (photo.type || 'Photo') + ' for ' + labelText
               : 'Site survey photo';
-            imgEl.title = 'Click to open full size';
-            (function (url) {
+            imgEl.title = 'Click to edit photo';
+            (function (rid) {
               imgEl.addEventListener('click', function () {
-                window.open(url, '_blank');
+                var h = editPhotoHash(rid);
+                if (h) window.location.hash = h;
               });
-            })(photo.imgUrl);
+            })(photo.id);
             card.appendChild(imgEl);
           } else {
             // Photo record exists but no image uploaded
@@ -11164,14 +11174,13 @@ $(".kn-navigation-bar").hide();
               '<span>Upload photo</span>';
             empty.title = photo.type
               ? 'Upload: ' + photo.type
-              : 'Click to upload photo';
-            if (addHref) {
-              (function (href) {
-                empty.addEventListener('click', function () {
-                  window.location.hash = href.replace(/^#/, '');
-                });
-              })(addHref);
-            }
+              : 'Click to edit photo';
+            (function (rid) {
+              empty.addEventListener('click', function () {
+                var h = editPhotoHash(rid);
+                if (h) window.location.hash = h;
+              });
+            })(photo.id);
             card.appendChild(empty);
           }
 
@@ -11192,15 +11201,7 @@ $(".kn-navigation-bar").hide();
         none.className = NONE_CLS;
         none.innerHTML =
           '<span class="scw-empty-icon" style="font-size:20px;">&#128247;</span>' +
-          '<span>No photo records &mdash; click to add</span>';
-        if (addHref) {
-          none.title = 'Navigate to add a photo';
-          (function (href) {
-            none.addEventListener('click', function () {
-              window.location.hash = href.replace(/^#/, '');
-            });
-          })(addHref);
-        }
+          '<span>No photo records</span>';
         strip.appendChild(none);
       }
 
