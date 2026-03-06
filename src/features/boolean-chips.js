@@ -86,15 +86,15 @@
       '  text-align: center;',
       '}',
 
-      /* ---- yes state ---- */
+      /* ---- yes state (pale orange) ---- */
       '.' + CHIP_CLASS + '.is-yes {',
-      '  background-color: #dbeafe;',
-      '  color: #1e40af;',
-      '  border-color: #93c5fd;',
+      '  background-color: #fff7ed;',
+      '  color: #c2410c;',
+      '  border-color: #fdba74;',
       '}',
       '.' + CHIP_CLASS + '.is-yes:hover {',
-      '  background-color: #bfdbfe;',
-      '  box-shadow: 0 1px 3px rgba(30,64,175,0.15);',
+      '  background-color: #ffedd5;',
+      '  box-shadow: 0 1px 3px rgba(194,65,12,0.15);',
       '}',
 
       /* ---- no state ---- */

@@ -112,22 +112,29 @@ tr[${PROCESSED_ATTR}="1"] {
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  background: #f1f5f9;
+  background: #f8fafc;
   border-bottom: 1px solid #e2e8f0;
   flex-wrap: wrap;
-  transition: background-color 0.15s;
+  transition: box-shadow 0.15s;
 }
 .${PREFIX}-titlebar:hover {
-  background: #e2e8f0;
+  box-shadow: 0 2px 8px rgba(41, 95, 145, 0.12);
 }
 
 /* All titlebar items share the same base type */
 .${PREFIX}-titlebar-item {
   font-size: 13px;
   font-weight: 600;
-  color: #1e293b;
+  color: #475569;
   line-height: 1.4;
   white-space: nowrap;
+}
+
+/* Label & Product get a larger size with SCW blue tint */
+.${PREFIX}-titlebar-item--primary {
+  font-size: 15px;
+  font-weight: 700;
+  color: #295f91;
 }
 
 /* The move td sits at the right end */
@@ -251,26 +258,27 @@ td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
   border-color: #93c5fd;
 }
 
-/* ── Chip host td — make the cell itself invisible,
-   just show the chips aligned with other field rows ── */
+/* ── Chip host td — invisible cell, chips aligned with fields ── */
 td.${PREFIX}-chip-host {
-  display: block;
-  padding: 0;
-  margin: 0;
+  display: block !important;
+  padding: 0 !important;
+  margin: 0 !important;
   border: none !important;
   background: transparent !important;
+  border-radius: 0 !important;
 }
 td.${PREFIX}-chip-host:hover {
   background: transparent !important;
   border-color: transparent !important;
 }
 
-/* ── Chip stack (booleans) sits inline ── */
+/* ── Chip row sits in a field row so the left edge
+   of the first chip aligns with field values above/below ── */
 .${PREFIX}-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 2px 4px;
+  padding: 0;
 }
 
 /* ── Notes fields — allow more vertical space ── */
@@ -428,10 +436,11 @@ td.${PREFIX}-field-value--notes {
     sep1.textContent = '\u00b7';
     titlebar.appendChild(sep1);
 
-    // Label — move actual <td>
+    // Label — move actual <td>, primary styling
     var labelTd = findCell(tr, f.label);
     if (labelTd) {
       labelTd.classList.add(PREFIX + '-titlebar-item');
+      labelTd.classList.add(PREFIX + '-titlebar-item--primary');
       titlebar.appendChild(labelTd);
     }
 
@@ -441,10 +450,11 @@ td.${PREFIX}-field-value--notes {
     sep2.textContent = '\u00b7';
     titlebar.appendChild(sep2);
 
-    // Product — move actual <td>
+    // Product — move actual <td>, primary styling
     var productTd = findCell(tr, f.product, ci.product);
     if (productTd) {
       productTd.classList.add(PREFIX + '-titlebar-item');
+      productTd.classList.add(PREFIX + '-titlebar-item--primary');
       titlebar.appendChild(productTd);
     }
 
