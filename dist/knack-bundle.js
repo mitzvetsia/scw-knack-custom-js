@@ -10328,9 +10328,12 @@ $(".kn-navigation-bar").hide();
 
   // ── Auto-select Survey Request in Add DOC_photo modal (view_3563) ───
   var ADD_PHOTO_VIEW = 'view_3563';
+  var PRESELECT_MARKER = 'scw-sr-preselected';
 
   function preselectSurveyRequest() {
     var $form = $('#' + ADD_PHOTO_VIEW);
+    if (!$form.length || $form.data(PRESELECT_MARKER)) return;
+
     var srId = $form.find('input.crumb[name="site-survey-request-details_id"]').val();
     if (!srId) return;
 
@@ -10340,14 +10343,24 @@ $(".kn-navigation-bar").hide();
 
     $option.prop('selected', true);
     $select.trigger('chosen:updated').trigger('change');
+    $form.data(PRESELECT_MARKER, true);
   }
 
-  $(document).on('knack-view-render.' + ADD_PHOTO_VIEW, function () {
-    setTimeout(preselectSurveyRequest, 200);
+  // Use MutationObserver to detect when the modal form appears in the DOM
+  var observer = new MutationObserver(function (mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      var added = mutations[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        var node = added[j];
+        if (node.nodeType !== 1) continue;
+        if (node.id === ADD_PHOTO_VIEW || node.querySelector && node.querySelector('#' + ADD_PHOTO_VIEW)) {
+          setTimeout(preselectSurveyRequest, 300);
+          return;
+        }
+      }
+    }
   });
-  $(document).on('knack-modal-render.' + ADD_PHOTO_VIEW, function () {
-    setTimeout(preselectSurveyRequest, 200);
-  });
+  observer.observe(document.body, { childList: true, subtree: true });
 
   // ── Click handler (delegated) ───────────────────────────────────────
   $(document)
