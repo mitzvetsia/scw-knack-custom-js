@@ -386,7 +386,7 @@
     /** Ensure a record entry exists in the map. */
     function ensure(rid) {
       if (!map[rid]) {
-        map[rid] = { id: rid, imgUrl: '', type: '', required: false, completed: false };
+        map[rid] = { id: rid, imgUrl: '', type: '', typeId: '', required: false, completed: false };
       }
       return map[rid];
     }
@@ -412,7 +412,9 @@
         var rid2 = (outerSpans[j].id || '').trim();
         if (!rid2) continue;
         var inner = outerSpans[j].querySelector('span[data-kn="connection-value"]');
-        ensure(rid2).type = inner ? inner.textContent.trim() : '';
+        var rec2 = ensure(rid2);
+        rec2.type = inner ? inner.textContent.trim() : '';
+        rec2.typeId = inner ? (inner.id || '').trim() : '';
       }
     }
 
@@ -534,8 +536,10 @@
 
     var sourceId = dragSourceCard.getAttribute('data-photo-id');
     var sourceType = dragSourceCard.getAttribute('data-photo-type') || '';
+    var sourceTypeId = dragSourceCard.getAttribute('data-photo-type-id') || '';
     var targetId = targetCard.getAttribute('data-photo-id');
     var targetType = targetCard.getAttribute('data-photo-type') || 'this slot';
+    var targetTypeId = targetCard.getAttribute('data-photo-type-id') || '';
 
     clearHighlights();
     if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
@@ -544,8 +548,10 @@
     var detail = {
       sourceRecordId: sourceId,
       sourcePhotoType: sourceType,
+      sourcePhotoTypeId: sourceTypeId,
       targetRecordId: targetId,
       targetPhotoType: targetType,
+      targetPhotoTypeId: targetTypeId,
       surveyRequestId: getSurveyRequestId()
     };
 
@@ -740,6 +746,7 @@
           // Data attributes for drag-and-drop
           card.setAttribute('data-photo-id', photo.id);
           card.setAttribute('data-photo-type', photo.type || '');
+          card.setAttribute('data-photo-type-id', photo.typeId || '');
           card.setAttribute('data-photo-required', photo.required ? 'true' : 'false');
           card.setAttribute('data-photo-has-image', photo.imgUrl ? 'true' : 'false');
 
