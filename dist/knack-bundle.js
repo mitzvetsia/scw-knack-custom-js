@@ -10287,7 +10287,10 @@ $(".kn-navigation-bar").hide();
       '}',
 
       '#kn-input-field_2423 {',
-      '  display: none !important;',
+      '  position: absolute !important;',
+      '  left: -9999px !important;',
+      '  height: 0 !important;',
+      '  overflow: hidden !important;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
