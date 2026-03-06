@@ -101,7 +101,7 @@
       '  justify-content: center;',
       '  gap: 6px;',
       '  width: 200px;',
-      '  height: 150px;',
+      '  height: 200px;',
       '  border: 2px dashed #cbd5e1;',
       '  border-radius: 6px;',
       '  background: #f8fafc;',
@@ -146,7 +146,7 @@
       '  justify-content: center;',
       '  gap: 4px;',
       '  width: 56px;',
-      '  min-height: 150px;',
+      '  min-height: 200px;',
       '  border: 2px dashed #cbd5e1;',
       '  border-radius: 6px;',
       '  background: #f8fafc;',
@@ -458,8 +458,11 @@
       if (map.hasOwnProperty(k)) arr.push(map[k]);
     }
 
-    // Sort: required first, then by type, then by id
+    // Sort: missing-required (required + incomplete) first, then required, then by type, then id
     arr.sort(function (a, b) {
+      var aMissing = (a.required && !a.completed) ? 0 : 1;
+      var bMissing = (b.required && !b.completed) ? 0 : 1;
+      if (aMissing !== bMissing) return aMissing - bMissing;
       var aReq = a.required ? 0 : 1;
       var bReq = b.required ? 0 : 1;
       if (aReq !== bReq) return aReq - bReq;
