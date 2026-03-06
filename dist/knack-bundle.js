@@ -10976,7 +10976,7 @@ $(".kn-navigation-bar").hide();
       '  color: #295f91;',
       '}',
 
-      /* Hide the raw connected-field columns we now display inline */',
+      '/* Hide the raw connected-field columns we now display inline */',
       '#view_3512 th.field_2445,',
       '#view_3512 td.field_2445,',
       '#view_3512 th.field_2446,',
