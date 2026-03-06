@@ -20,14 +20,10 @@
   // CONFIG — add views here as needed
   // ══════════════════════════════════════════════════════════════════
   var VIEW_CONFIG = {
-    // view_XXXX: {
-    //   surveyItemColIndex: 0,       // 0-based column index for the Survey Item field
-    //   surveyItemFieldClass: '',    // optional: Knack column class e.g. 'field_123'
-    //   addPhotoFormHash: '',        // hash for the add-photo form page (without #)
-    //   addPhotoSurveyItemField: '', // field key for survey_item in the add form
-    //   addPhotoTypeField: '',       // field key for photo_type in the add form
-    //   addPhotoTypeValue: 'Context' // default photo type value
-    // }
+    view_3561: {
+      surveyItemFieldClass: 'field_2419',  // REL_survey line item column
+      addPhotoFormHash: ''                 // TODO: set when add-photo form is available
+    }
   };
 
   var EVENT_NS = '.scwPhotoGroupBySurveyItem';
@@ -131,41 +127,64 @@
   // ══════════════════════════════════════════════════════════════════
 
   /**
-   * Parse the Survey Item text from a cell.
-   * Handles: "E-003, E-005", "E-003,E-005", "E-003 , E-005", single values.
-   * Returns an array of trimmed, non-empty strings.
+   * Extract Survey Item entries from a table cell.
+   *
+   * Knack renders many-to-many connection fields as:
+   *   <span class="RECORD_ID" data-kn="connection-value">E-003</span>
+   *   <br>
+   *   <span class="RECORD_ID" data-kn="connection-value">E-005</span>
+   *
+   * We prefer reading the connection-value spans (includes record IDs).
+   * Falls back to comma-splitting plain text for non-connection fields.
+   *
+   * @param {jQuery} $cell – the <td> element
+   * @returns {Array<{ label: string, connId: string }>}
    */
-  function parseSurveyItems(cellText) {
-    if (!cellText || typeof cellText !== 'string') return [];
-    return cellText
+  function parseSurveyItemsFromCell($cell) {
+    if (!$cell || !$cell.length) return [];
+
+    // Prefer structured connection-value spans
+    var $spans = $cell.find('span[data-kn="connection-value"]');
+    if ($spans.length) {
+      var items = [];
+      $spans.each(function () {
+        var label = (this.textContent || '').trim();
+        // The span's class attribute holds the connected record ID
+        var connId = (this.className || '').trim();
+        if (label) items.push({ label: label, connId: connId });
+      });
+      return items;
+    }
+
+    // Fallback: plain text, comma-separated
+    var text = ($cell.text() || '').trim();
+    if (!text || text === '\u00a0') return []; // &nbsp; or empty
+    return text
       .split(',')
       .map(function (s) { return s.trim(); })
-      .filter(function (s) { return s.length > 0; });
+      .filter(function (s) { return s.length > 0; })
+      .map(function (s) { return { label: s, connId: '' }; });
   }
 
   /**
    * Read rows from the Knack table and build a grouping structure.
    *
-   * @param {jQuery}  $table          – the kn-table element
-   * @param {number}  surveyItemColIdx – 0-based column index for Survey Item
-   * @param {string}  [fieldClass]     – optional Knack field class on the <td>
-   * @returns {{ headers: string[], groups: Object.<string, Array>, headerRow: Element }}
-   *   headers  – column header texts (for rebuilding the table)
-   *   groups   – { surveyItemLabel: [{ html, recordId }] }
-   *   headerRow – the original <thead> row element
+   * @param {jQuery}  $table     – the kn-table element
+   * @param {string}  fieldClass – Knack field class on the <td> (e.g. 'field_2419')
+   * @returns {{ groups: Object, headerRow: Element, ungrouped: Array }}
+   *   groups     – { surveyItemLabel: [{ html, recordId, connId }] }
+   *   headerRow  – the original <thead> row element
+   *   ungrouped  – rows with no Survey Item value
    */
-  function buildGroups($table, surveyItemColIdx, fieldClass) {
+  function buildGroups($table, fieldClass) {
     var groups = {};
-    var headers = [];
+    var ungrouped = [];
     var headerRow = null;
 
     // Capture header row
     var $thead = $table.find('thead tr').first();
     if ($thead.length) {
       headerRow = $thead[0];
-      $thead.find('th').each(function () {
-        headers.push(this.textContent.trim());
-      });
     }
 
     // Iterate data rows
@@ -173,39 +192,36 @@
       var tr = this;
       var $tr = $(tr);
 
-      // Skip group-header rows from Knack's native grouping
+      // Skip Knack native group-header rows
       if ($tr.hasClass('kn-table-group')) return;
 
-      // Determine Survey Item text
-      var surveyText = '';
-      if (fieldClass) {
-        var $cell = $tr.find('td.' + fieldClass);
-        if ($cell.length) surveyText = $cell.text();
-      }
-      if (!surveyText && typeof surveyItemColIdx === 'number') {
-        var $cells = $tr.find('td');
-        if ($cells.length > surveyItemColIdx) {
-          surveyText = $cells.eq(surveyItemColIdx).text();
-        }
-      }
+      // Find the Survey Item cell
+      var $cell = fieldClass ? $tr.find('td.' + fieldClass) : null;
+      var items = parseSurveyItemsFromCell($cell);
 
-      var items = parseSurveyItems(surveyText);
-      if (items.length === 0) return; // skip rows with no Survey Item
+      // Extract the Knack record ID from the row's id attribute
+      var recordId = $tr.attr('id') || '';
 
-      // Try to extract the Knack record ID from the row
-      var recordId = $tr.attr('id') || $tr.data('record-id') || '';
-
-      // Clone the entire row HTML for each group it belongs to
+      // Clone the entire row HTML — preserves edit/view/replace action links
       var rowHtml = tr.outerHTML;
 
+      if (items.length === 0) {
+        ungrouped.push({ html: rowHtml, recordId: recordId });
+        return;
+      }
+
       for (var i = 0; i < items.length; i++) {
-        var key = items[i];
+        var key = items[i].label;
         if (!groups[key]) groups[key] = [];
-        groups[key].push({ html: rowHtml, recordId: recordId });
+        groups[key].push({
+          html: rowHtml,
+          recordId: recordId,
+          connId: items[i].connId
+        });
       }
     });
 
-    return { headers: headers, groups: groups, headerRow: headerRow };
+    return { groups: groups, headerRow: headerRow, ungrouped: ungrouped };
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -226,9 +242,34 @@
    * @param {Object} result   – output of buildGroups()
    * @param {Object} viewCfg  – this view's entry from VIEW_CONFIG
    */
+  /**
+   * Build a table element populated with cloned rows.
+   */
+  function buildRowTable(headerRow, rows) {
+    var table = document.createElement('table');
+    table.className = CLS.table;
+
+    if (headerRow) {
+      var thead = document.createElement('thead');
+      thead.appendChild(headerRow.cloneNode(true));
+      table.appendChild(thead);
+    }
+
+    var tbody = document.createElement('tbody');
+    for (var r = 0; r < rows.length; r++) {
+      var tempDiv = document.createElement('div');
+      tempDiv.innerHTML = rows[r].html;
+      var clonedRow = tempDiv.firstElementChild;
+      if (clonedRow) tbody.appendChild(clonedRow);
+    }
+    table.appendChild(tbody);
+    return table;
+  }
+
   function renderGroups($view, result, viewCfg) {
     var groups = result.groups;
     var headerRow = result.headerRow;
+    var ungrouped = result.ungrouped;
     var keys = Object.keys(groups).sort(naturalSort);
 
     // Build wrapper
@@ -265,45 +306,42 @@
       }
 
       section.appendChild(header);
-
-      // Table with cloned rows
-      var table = document.createElement('table');
-      table.className = CLS.table;
-
-      // Re-use original header row
-      if (headerRow) {
-        var thead = document.createElement('thead');
-        thead.appendChild(headerRow.cloneNode(true));
-        table.appendChild(thead);
-      }
-
-      var tbody = document.createElement('tbody');
-      for (var r = 0; r < rows.length; r++) {
-        // Insert cloned row HTML — preserves edit/view/replace action links
-        var tempDiv = document.createElement('div');
-        tempDiv.innerHTML = rows[r].html;
-        var clonedRow = tempDiv.firstElementChild;
-        if (clonedRow) tbody.appendChild(clonedRow);
-      }
-      table.appendChild(tbody);
-      section.appendChild(table);
-
+      section.appendChild(buildRowTable(headerRow, rows));
       wrapper.appendChild(section);
     }
 
-    // If no groups at all, show a message
-    if (keys.length === 0) {
+    // Ungrouped rows (no Survey Item assigned)
+    if (ungrouped.length) {
+      var ugSection = document.createElement('div');
+      ugSection.className = CLS.section;
+      ugSection.setAttribute('data-survey-item', '');
+
+      var ugHeader = document.createElement('div');
+      ugHeader.className = CLS.header;
+      ugHeader.style.background = '#5F6B7A';
+
+      var ugLabel = document.createElement('span');
+      ugLabel.className = CLS.headerLabel;
+      ugLabel.textContent = 'Unassigned';
+      ugHeader.appendChild(ugLabel);
+
+      ugSection.appendChild(ugHeader);
+      ugSection.appendChild(buildRowTable(headerRow, ungrouped));
+      wrapper.appendChild(ugSection);
+    }
+
+    // If nothing at all, show a message
+    if (keys.length === 0 && ungrouped.length === 0) {
       var msg = document.createElement('div');
       msg.className = CLS.noItems;
-      msg.textContent = 'No photo records with Survey Item values found.';
+      msg.textContent = 'No photo records found.';
       wrapper.appendChild(msg);
     }
 
-    // Replace the original table with our grouped view.
-    // Keep the original view container intact for Knack event handling.
-    var $table = $view.find('table.kn-table');
-    if ($table.length) {
-      $table.replaceWith(wrapper);
+    // Replace the original table wrapper with our grouped view.
+    var $tableWrapper = $view.find('.kn-table-wrapper');
+    if ($tableWrapper.length) {
+      $tableWrapper.replaceWith(wrapper);
     }
   }
 
@@ -345,11 +383,7 @@
     // Guard: if we already processed this view instance, skip
     if ($view.find('.' + CLS.wrapper).length) return;
 
-    var result = buildGroups(
-      $table,
-      viewCfg.surveyItemColIndex,
-      viewCfg.surveyItemFieldClass
-    );
+    var result = buildGroups($table, viewCfg.surveyItemFieldClass);
 
     renderGroups($view, result, viewCfg);
   }
