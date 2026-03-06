@@ -10477,19 +10477,20 @@ $(".kn-navigation-bar").hide();
       '  align-items: flex-start;',
       '}',
 
-      /* Card wrapper */
+      /* Card wrapper — auto width so portrait cards are narrower */
       '.' + CARD_CLS + ' {',
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  width: 200px;',
+      '  max-width: 260px;',
       '}',
 
-      /* Photo image */
+      /* Photo image — fixed height, auto width keeps aspect ratio */
       '.' + IMG_CLS + ' {',
-      '  width: 200px;',
+      '  width: auto;',
       '  height: 150px;',
-      '  object-fit: cover;',
+      '  max-width: 260px;',
+      '  object-fit: contain;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
@@ -10532,6 +10533,7 @@ $(".kn-navigation-bar").hide();
       '.' + TYPE_CLS + ' {',
       '  margin-top: 4px;',
       '  width: 100%;',
+      '  min-width: 80px;',
       '  padding: 3px 6px;',
       '  font-size: 11px;',
       '  font-weight: 600;',
@@ -10545,33 +10547,33 @@ $(".kn-navigation-bar").hide();
       '  text-overflow: ellipsis;',
       '}',
 
-      /* Add-photo button (far left of strip) */
+      /* Add-photo button — circle at end of strip */
       '.' + ADD_BTN_CLS + ' {',
       '  display: flex;',
-      '  flex-direction: column;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  gap: 4px;',
       '  width: 56px;',
-      '  min-height: 150px;',
-      '  border: 2px dashed #cbd5e1;',
-      '  border-radius: 6px;',
-      '  background: #f8fafc;',
-      '  color: #94a3b8;',
-      '  font-size: 11px;',
+      '  height: 56px;',
+      '  border: 2.5px solid #295f91;',
+      '  border-radius: 50%;',
+      '  background: #eff6ff;',
+      '  color: #295f91;',
       '  cursor: pointer;',
-      '  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;',
+      '  transition: border-color 150ms ease, color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;',
       '  flex-shrink: 0;',
+      '  align-self: center;',
       '}',
       '.' + ADD_BTN_CLS + ':hover {',
-      '  border-color: #295f91;',
-      '  color: #295f91;',
-      '  background: #eff6ff;',
+      '  border-color: #1e4d79;',
+      '  color: #fff;',
+      '  background: #295f91;',
+      '  transform: scale(1.08);',
+      '  box-shadow: 0 3px 10px rgba(41,95,145,0.3);',
       '}',
       '.' + ADD_BTN_CLS + ' .scw-add-icon {',
-      '  font-size: 28px;',
+      '  font-size: 30px;',
       '  line-height: 1;',
-      '  font-weight: 300;',
+      '  font-weight: 400;',
       '}',
 
       /* Required chip */
@@ -11132,12 +11134,11 @@ $(".kn-navigation-bar").hide();
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
 
-      // ── "+" Add photo button (far left) ──
+      // ── "+" Add photo button (built now, appended at the end) ──
       var addBtn = document.createElement('div');
       addBtn.className = ADD_BTN_CLS;
       addBtn.innerHTML =
-        '<span class="scw-add-icon">+</span>' +
-        '<span>Add</span>';
+        '<span class="scw-add-icon">+</span>';
       addBtn.title = 'Add a new photo record';
       (function (lid) {
         addBtn.addEventListener('click', function () {
@@ -11145,7 +11146,6 @@ $(".kn-navigation-bar").hide();
           if (h) window.location.hash = h;
         });
       })(lineItemId);
-      strip.appendChild(addBtn);
 
       if (photos.length > 0) {
         // ── Has connected photo records ──
@@ -11242,6 +11242,9 @@ $(".kn-navigation-bar").hide();
           strip.appendChild(card);
         }
       }
+
+      // ── Append "+" button at the end ──
+      strip.appendChild(addBtn);
 
       td.appendChild(strip);
       photoTr.appendChild(td);
