@@ -119,7 +119,6 @@ tr.scw-inline-photo-row > td {
   padding: 10px 16px 14px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
-  background: #f8fafc !important;
 }
 
 /* ── Card wrapper ── */
