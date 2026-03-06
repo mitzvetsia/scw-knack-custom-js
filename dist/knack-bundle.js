@@ -10430,7 +10430,7 @@ $(".kn-navigation-bar").hide();
   var VIEW_CONFIG = {
     view_3561: {
       surveyItemFieldClass: 'field_2419',  // REL_survey line item column
-      addPhotoFormHash: ''                 // TODO: set when add-photo form is available
+      addPhotoEnabled: true                // show "Add Context Photo" buttons
     }
   };
 
@@ -10676,7 +10676,7 @@ $(".kn-navigation-bar").hide();
     return table;
   }
 
-  function renderGroups($view, result, viewCfg) {
+  function renderGroups($view, result, viewCfg, editPageBasePath) {
     var groups = result.groups;
     var headerRow = result.headerRow;
     var ungrouped = result.ungrouped;
@@ -10705,13 +10705,13 @@ $(".kn-navigation-bar").hide();
       header.appendChild(label);
 
       // "Add Context Photo" button
-      if (viewCfg.addPhotoFormHash) {
+      if (editPageBasePath) {
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = CLS.addBtn;
         btn.textContent = 'Add Context Photo';
         btn.setAttribute('data-survey-item', surveyItem);
-        btn.setAttribute('data-form-hash', viewCfg.addPhotoFormHash);
+        btn.setAttribute('data-page-path', editPageBasePath);
         header.appendChild(btn);
       }
 
@@ -10765,16 +10765,12 @@ $(".kn-navigation-bar").hide();
       e.stopPropagation();
 
       var surveyItem = this.getAttribute('data-survey-item') || '';
-      var formHash = this.getAttribute('data-form-hash') || '';
-      if (!formHash) return;
+      var pagePath = this.getAttribute('data-page-path') || '';
+      if (!pagePath) return;
 
-      // Build the target URL with query parameters
-      var params = [];
-      params.push('survey_item_id=' + encodeURIComponent(surveyItem));
-      params.push('photo_type=Context');
-
-      var url = '#' + formHash + '?' + params.join('&');
-      window.location.hash = url.replace(/^#/, '');
+      // Navigate to the edit-doc-photo page (which has an add form).
+      // The page path already includes the parent record context.
+      window.location.hash = pagePath;
     });
 
   // ══════════════════════════════════════════════════════════════════
@@ -10793,9 +10789,21 @@ $(".kn-navigation-bar").hide();
     // Guard: if we already processed this view instance, skip
     if ($view.find('.' + CLS.wrapper).length) return;
 
+    // Extract the edit-page base path from the first edit link in the table.
+    // e.g. "#base/path/edit-doc-photo/RECORD_ID" → "base/path/edit-doc-photo"
+    var editPageBasePath = '';
+    if (viewCfg.addPhotoEnabled) {
+      var firstEditLink = $table.find('td.kn-table-link a.kn-link-page').first();
+      if (firstEditLink.length) {
+        var href = firstEditLink.attr('href') || '';
+        // Strip leading # and trailing /RECORD_ID
+        editPageBasePath = href.replace(/^#/, '').replace(/\/[^/]+$/, '');
+      }
+    }
+
     var result = buildGroups($table, viewCfg.surveyItemFieldClass);
 
-    renderGroups($view, result, viewCfg);
+    renderGroups($view, result, viewCfg, editPageBasePath);
   }
 
   // ══════════════════════════════════════════════════════════════════
