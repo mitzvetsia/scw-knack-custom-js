@@ -80,39 +80,22 @@
 
   // ── Auto-select Survey Request in Add DOC_photo modal (view_3563) ───
   var ADD_PHOTO_VIEW = 'view_3563';
-  var PRESELECT_MARKER = 'scw-sr-preselected';
 
-  function preselectSurveyRequest() {
+  function waitForFieldAndSelect(srId, attempts) {
+    if (attempts <= 0) return;
     var $form = $('#' + ADD_PHOTO_VIEW);
-    if (!$form.length || $form.data(PRESELECT_MARKER)) return;
-
-    var srId = $form.find('input.crumb[name="site-survey-request-details_id"]').val();
-    if (!srId) return;
-
     var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
     var $option = $select.find('option[value="' + srId + '"]');
-    if (!$option.length) return;
-
-    $option.prop('selected', true);
-    $select.trigger('chosen:updated').trigger('change');
-    $form.data(PRESELECT_MARKER, true);
-  }
-
-  // Use MutationObserver to detect when the modal form appears in the DOM
-  var observer = new MutationObserver(function (mutations) {
-    for (var i = 0; i < mutations.length; i++) {
-      var added = mutations[i].addedNodes;
-      for (var j = 0; j < added.length; j++) {
-        var node = added[j];
-        if (node.nodeType !== 1) continue;
-        if (node.id === ADD_PHOTO_VIEW || node.querySelector && node.querySelector('#' + ADD_PHOTO_VIEW)) {
-          setTimeout(preselectSurveyRequest, 300);
-          return;
-        }
-      }
+    if ($option.length) {
+      // Select the option in the chosen widget
+      $option.prop('selected', true);
+      $select.trigger('chosen:updated').trigger('change');
+      // Also set the hidden connection input that Knack actually submits
+      $form.find('input.connection[name="field_2423"]').val(srId);
+    } else {
+      setTimeout(function () { waitForFieldAndSelect(srId, attempts - 1); }, 250);
     }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  }
 
   // ── Click handler (delegated) ───────────────────────────────────────
   $(document)
@@ -121,7 +104,18 @@
       e.preventDefault();
       e.stopPropagation();
       var href = $(this).attr('data-href');
-      if (href) window.location.hash = href.replace(/^#/, '');
+      if (!href) return;
+
+      // Grab the SR record ID from the current page URL before navigating
+      var srMatch = (window.location.hash || '').match(/site-survey-request-details\/([a-f0-9]{24})/);
+      var srId = srMatch ? srMatch[1] : '';
+
+      window.location.hash = href.replace(/^#/, '');
+
+      // Poll for the form + chosen options to be ready (up to ~5 seconds)
+      if (srId) {
+        waitForFieldAndSelect(srId, 20);
+      }
     });
 
   // ── Init on view render ─────────────────────────────────────────────
