@@ -94,22 +94,32 @@
       return;
     }
 
-    // Find the index of the matching option (Chosen uses data-option-array-index)
     var optionIndex = $option.index();
-    console.log('[SCW] FOUND option at index ' + optionIndex + ', simulating Chosen click');
 
-    // Open the Chosen dropdown by clicking on it
-    var $chosenContainer = $select.next('.chzn-container');
-    $chosenContainer.find('.chzn-single').trigger('mousedown');
+    // Find the Chosen container (works with both chzn- and chosen- prefixes)
+    var $chosenContainer = $select.next('div[class*="container"]');
+    console.log('[SCW] FOUND option at index ' + optionIndex +
+      ', container=' + $chosenContainer.length +
+      ', class=' + ($chosenContainer.attr('class') || 'none'));
+
+    if (!$chosenContainer.length) return;
+
+    // Detect prefix (chzn- or chosen-)
+    var cls = $chosenContainer.attr('class') || '';
+    var prefix = cls.indexOf('chzn-') !== -1 ? 'chzn-' : 'chosen-';
+
+    // Open the Chosen dropdown
+    $chosenContainer.find('.' + prefix + 'single').trigger('mousedown');
 
     // After a tick, click the matching result item
     setTimeout(function () {
-      var $resultItem = $chosenContainer.find('.chzn-results li[data-option-array-index="' + optionIndex + '"]');
-      console.log('[SCW] Chosen result item found: ' + $resultItem.length + ', text: ' + $resultItem.text());
+      var $resultItem = $chosenContainer.find('.' + prefix + 'results li[data-option-array-index="' + optionIndex + '"]');
+      console.log('[SCW] result item: count=' + $resultItem.length +
+        ', prefix=' + prefix + ', text=' + $resultItem.text());
       if ($resultItem.length) {
         $resultItem.trigger('mouseup');
       }
-    }, 100);
+    }, 150);
   }
 
   // ── Click handler (delegated) ───────────────────────────────────────
