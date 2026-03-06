@@ -1000,6 +1000,7 @@ window.SCW = window.SCW || {};
       '.scw-ktl-accordion__body {',
       '  padding: 10px 12px 14px 12px;',
       '  background: #fff !important;',
+      '  overflow-x: auto;',
       '}',
 
       /* Legacy accent containers inside the body — targeted instead of
