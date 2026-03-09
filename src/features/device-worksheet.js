@@ -90,7 +90,6 @@
         fields: {
           // ── Summary row ──
           label:            'field_1642',   // DISPLAY_mdf_idf_name (composite identity)
-          laborDescription: 'field_1643',   // Notes (fills middle, direct-edit textarea)
 
           // ── Detail panel ──
           mdfIdf:           'field_1641',   // MDF/IDF (radio chips: HEADEND, IDF)
@@ -360,6 +359,16 @@ td.${P}-sum-label-cell:hover {
   max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* view_3559: wider label (no product column, label IS the identity) */
+#view_3559 td.${P}-sum-label-cell,
+#view_3559 td.${P}-sum-label-cell:hover {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
@@ -1682,6 +1691,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Left column: Equipment Details ──
     var equipSection = buildSection('');
 
+    if (f.mdfIdf) {
+      addRow(equipSection, buildRadioChipRow('MDF/IDF',
+        findCell(tr, f.mdfIdf), f.mdfIdf, MDF_IDF_OPTIONS));
+    }
+
+    if (f.mdfNumber) {
+      addRow(equipSection, buildFieldRow('##',
+        findCell(tr, f.mdfNumber)));
+    }
+
     addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
       findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
 
@@ -1697,16 +1716,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
-
-    if (f.mdfIdf) {
-      addRow(surveySection, buildRadioChipRow('MDF/IDF',
-        findCell(tr, f.mdfIdf), f.mdfIdf, MDF_IDF_OPTIONS));
-    }
-
-    if (f.mdfNumber) {
-      addRow(surveySection, buildFieldRow('##',
-        findCell(tr, f.mdfNumber)));
-    }
 
     if (f.connections) {
       addRow(surveySection, buildFieldRow('Connected to',
