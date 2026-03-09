@@ -12759,8 +12759,18 @@ td.${P}-sum-move {
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
+/* Narrow the Equipment Details (left) section so Survey Details
+   starts roughly aligned with Labor Description in the summary bar. */
+#view_3512 .${P}-sections {
+  grid-template-columns: 430px 1fr;
+}
+#view_3505 .${P}-sections {
+  grid-template-columns: 530px 1fr;
+}
 @media (max-width: 900px) {
-  .${P}-sections {
+  .${P}-sections,
+  #view_3512 .${P}-sections,
+  #view_3505 .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
@@ -12802,8 +12812,8 @@ td.${P}-sum-move {
 }
 
 .${P}-field-label {
-  flex: 0 0 80px;
-  width: 80px;
+  flex: 0 0 100px;
+  width: 100px;
   font-size: 11px;
   font-weight: 600;
   color: #4b5563;
@@ -12881,6 +12891,51 @@ td.${P}-field-value--notes {
 .${P}-field-value--empty {
   color: #9ca3af;
   font-style: italic;
+}
+
+/* ── Radio chips (Mounting Height) ── */
+.${P}-radio-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px 0;
+}
+.${P}-radio-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  text-align: center;
+}
+.${P}-radio-chip.is-selected {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+.${P}-radio-chip.is-selected:hover {
+  background-color: #bfdbfe;
+  box-shadow: 0 1px 3px rgba(30,64,175,0.15);
+}
+.${P}-radio-chip.is-unselected {
+  background-color: #f9fafb;
+  color: #9ca3af;
+  border-color: #d1d5db;
+}
+.${P}-radio-chip.is-unselected:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.${P}-radio-chip.is-saving {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
@@ -13044,6 +13099,160 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     return section;
   }
+
+  // ============================================================
+  // RADIO CHIPS – single-select chip UI for multiple-choice fields
+  // ============================================================
+  var RADIO_CHIP_CLASS = P + '-radio-chip';
+  var RADIO_CHIPS_ATTR = 'data-scw-radio-chips';
+
+  var MOUNTING_HEIGHT_OPTIONS = ["Under 16'", "16' - 24'", "Over 24'"];
+
+  /** Read current value from a cell's text content. */
+  function readCellText(td) {
+    if (!td) return '';
+    return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  }
+
+  /** Build radio chip elements for a set of options. */
+  function buildRadioChips(td, fieldKey, options) {
+    var currentVal = readCellText(td);
+    var container = document.createElement('div');
+    container.className = P + '-radio-chips';
+    container.setAttribute('data-field', fieldKey);
+
+    for (var i = 0; i < options.length; i++) {
+      var chip = document.createElement('span');
+      chip.className = RADIO_CHIP_CLASS;
+      chip.setAttribute('data-option', options[i]);
+      chip.setAttribute('data-field', fieldKey);
+      chip.textContent = options[i];
+
+      if (currentVal === options[i]) {
+        chip.classList.add('is-selected');
+      } else {
+        chip.classList.add('is-unselected');
+      }
+      container.appendChild(chip);
+    }
+    return container;
+  }
+
+  /** Build a field row that uses radio chips instead of the raw cell. */
+  function buildRadioChipRow(label, td, fieldKey, options) {
+    if (td && td.classList.contains(GRAYED_CLASS)) return null;
+
+    var row = document.createElement('div');
+    row.className = P + '-field';
+
+    var lbl = document.createElement('div');
+    lbl.className = P + '-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    var valueWrapper = document.createElement('div');
+    valueWrapper.className = P + '-field-value';
+    valueWrapper.style.border = 'none';
+    valueWrapper.style.padding = '0';
+    valueWrapper.style.background = 'transparent';
+
+    var chips = buildRadioChips(td, fieldKey, options);
+    valueWrapper.appendChild(chips);
+
+    // Keep the original td hidden so Knack's data binding stays alive
+    if (td) {
+      td.style.display = 'none';
+      td.setAttribute(RADIO_CHIPS_ATTR, '1');
+      valueWrapper.appendChild(td);
+    }
+
+    row.appendChild(valueWrapper);
+    return row;
+  }
+
+  /** Save a radio chip selection via Knack's internal API. */
+  function saveRadioValue(viewId, recordId, fieldKey, value) {
+    var data = {};
+    data[fieldKey] = value;
+
+    var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
+    if (view && view.model && typeof view.model.updateRecord === 'function') {
+      view.model.updateRecord(recordId, data);
+      return;
+    }
+
+    // Fallback: AJAX PUT
+    if (typeof Knack !== 'undefined') {
+      $.ajax({
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
+        type: 'PUT',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        error: function (xhr) {
+          console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
+        }
+      });
+    }
+  }
+
+  // ── Capture-phase click handler for radio chips ──
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
+    if (!chip) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    var newValue = chip.getAttribute('data-option') || '';
+    var fieldKey = chip.getAttribute('data-field') || '';
+    var container = chip.closest('.' + P + '-radio-chips');
+    if (!container) return;
+
+    // Update chip states
+    var allChips = container.querySelectorAll('.' + RADIO_CHIP_CLASS);
+    for (var i = 0; i < allChips.length; i++) {
+      allChips[i].classList.remove('is-selected', 'is-unselected');
+      if (allChips[i].getAttribute('data-option') === newValue) {
+        allChips[i].classList.add('is-selected', 'is-saving');
+      } else {
+        allChips[i].classList.add('is-unselected');
+      }
+    }
+    setTimeout(function () {
+      var saving = container.querySelectorAll('.is-saving');
+      for (var j = 0; j < saving.length; j++) saving[j].classList.remove('is-saving');
+    }, 400);
+
+    // Update hidden td text so re-renders stay in sync
+    var hiddenTd = container.parentNode.querySelector('td[' + RADIO_CHIPS_ATTR + ']');
+    if (hiddenTd) {
+      hiddenTd.textContent = newValue;
+    }
+
+    // Find record ID and view ID, then save
+    var wsTr = chip.closest('tr.' + WORKSHEET_ROW);
+    if (!wsTr) return;
+    var recordId = getRecordId(wsTr);
+    var viewEl = chip.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (recordId && viewId) {
+      saveRadioValue(viewId, recordId, fieldKey, newValue);
+    }
+  }, true);
+
+  // ── Capture-phase mousedown: block Knack inline-edit trigger ──
+  document.addEventListener('mousedown', function (e) {
+    var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
+    if (!chip) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
 
   // ============================================================
   // BUILD SUMMARY BAR
@@ -13275,8 +13484,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     if (f.mountingHeight) {
-      addRow(surveySection, buildFieldRow('Mounting\nHeight',
-        findCell(tr, f.mountingHeight)));
+      addRow(surveySection, buildRadioChipRow('Mounting\nHeight',
+        findCell(tr, f.mountingHeight), f.mountingHeight, MOUNTING_HEIGHT_OPTIONS));
     }
 
     if (f.dropLength) {
