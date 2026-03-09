@@ -94,8 +94,6 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  width: min-content;',
-      '  min-width: 0;',
       '}',
 
       /* Override Knack default ".kn-content img { max-width:100% }" */
@@ -103,10 +101,10 @@
       '  max-width: none;',
       '}',
 
-      /* Photo image — consistent height, natural width */
+      /* Photo image — natural width, capped height */
       '.' + IMG_CLS + ' {',
       '  width: auto;',
-      '  height: 200px;',
+      '  max-height: 200px;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
@@ -340,7 +338,7 @@
       /* Notes beneath the card — truncated to two lines */
       '.' + NOTES_CLS + ' {',
       '  margin-top: 2px;',
-      '  width: 100%;',
+      '  max-width: 200px;',
       '  padding: 2px 6px;',
       '  font-size: 10px;',
       '  line-height: 1.3;',
