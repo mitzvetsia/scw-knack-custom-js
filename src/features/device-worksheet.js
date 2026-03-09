@@ -70,7 +70,7 @@
           extended:         'field_2401',   // Extended / Labor Total (summary, read-only)
 
           mounting:         'field_2379',
-          connections:      'field_2381',
+          connections:      'field_2380',
           scwNotes:         'field_2418',
           surveyNotes:      'field_2412',
           exterior:         'field_2372',
@@ -792,11 +792,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Left column: Equipment Details ──
     var equipSection = buildSection('Equipment Details');
 
-    equipSection.appendChild(buildFieldRow('Mounting',
+    equipSection.appendChild(buildFieldRow('Mounting Hardware',
       findCell(tr, f.mounting, ci.mounting)));
-
-    equipSection.appendChild(buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
 
     equipSection.appendChild(buildFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), { notes: true }));
@@ -805,6 +802,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
+
+    surveySection.appendChild(buildFieldRow('Connected to',
+      findCell(tr, f.connections)));
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
