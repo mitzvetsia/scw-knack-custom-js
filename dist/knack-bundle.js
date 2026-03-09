@@ -6569,8 +6569,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // Bind to ALL scene renders so every scene gets accordions
   $(document)
-    .off('knack-scene-render' + EVENT_NS)
-    .on('knack-scene-render' + EVENT_NS, function () {
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
       var sceneId = getCurrentSceneId();
       if (isEnabledScene(sceneId)) {
         enhanceAllGroupedGrids(sceneId);
