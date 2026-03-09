@@ -516,9 +516,6 @@ td.${PREFIX}-field-value--notes {
     identitySection.appendChild(buildFieldRow('Mounting',
       findCell(tr, f.mounting, ci.mounting)));
 
-    identitySection.appendChild(buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
-
     identitySection.appendChild(buildFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), { notes: true }));
 
@@ -529,6 +526,9 @@ td.${PREFIX}-field-value--notes {
 
     surveySection.appendChild(buildFieldRow('Notes',
       findCell(tr, f.surveyNotes), { notes: true }));
+
+    surveySection.appendChild(buildFieldRow('Connected to',
+      findCell(tr, f.connections)));
 
     // Chip stack — the boolean-chips feature has already transformed
     // the exterior cell into a chip stack. Move the chip elements
