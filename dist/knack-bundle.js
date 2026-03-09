@@ -11961,7 +11961,8 @@ $(".kn-navigation-bar").hide();
           existingCabling:  'field_2370',   // Existing Cabling
           plenum:           'field_2371',   // Plenum
           dropLength:       'field_2367',   // Drop Length
-          conduitFeet:      'field_2368'    // Conduit Linear Feet
+          conduitFeet:      'field_2368',   // Conduit Linear Feet
+          warningCount:     'field_2454'    // Warning count (shown as chit on header)
         },
         columnIndices: {
           product:  4,
@@ -12187,6 +12188,28 @@ td.${P}-sum-check input[type="checkbox"] {
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
+}
+
+/* Warning chit (field_2454 count > 0) */
+.${P}-warn-chit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px 1px 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.${P}-warn-chit svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
 }
 
 /* Label td in summary — primary styling, fixed width for alignment */
@@ -12612,6 +12635,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (labelTd) {
       labelTd.classList.add(P + '-sum-label-cell');
       identity.appendChild(labelTd);
+    }
+
+    // Warning chit (field_2454, view_3512 only)
+    if (f.warningCount) {
+      var warnTd = findCell(tr, f.warningCount);
+      var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+      if (warnVal > 0) {
+        var chit = document.createElement('span');
+        chit.className = P + '-warn-chit';
+        chit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>'
+          + Math.round(warnVal);
+        identity.appendChild(chit);
+      }
     }
 
     var productTd = findCell(tr, f.product, ci.product);
