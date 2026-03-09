@@ -10452,7 +10452,8 @@ $(".kn-navigation-bar").hide();
   var CONFIRM_CLS  = 'scw-photo-confirm-overlay';
 
   // Columns to hide in the original table (we show the data inline instead)
-  var HIDE_COLS = ['field_2445', 'field_2446', 'field_2447'];
+  var HIDE_COLS = ['field_114', 'field_2445', 'field_2446', 'field_2447'];
+  var NOTES_CLS = 'scw-inline-photo-notes';
 
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
@@ -10745,7 +10746,28 @@ $(".kn-navigation-bar").hide();
       '  background: #cbd5e1;',
       '}',
 
+      /* Notes beneath the card — truncated to two lines */
+      '.' + NOTES_CLS + ' {',
+      '  margin-top: 2px;',
+      '  width: 100%;',
+      '  min-width: 80px;',
+      '  padding: 2px 6px;',
+      '  font-size: 10px;',
+      '  line-height: 1.3;',
+      '  color: #64748b;',
+      '  text-align: center;',
+      '  box-sizing: border-box;',
+      '  display: -webkit-box;',
+      '  -webkit-line-clamp: 2;',
+      '  -webkit-box-orient: vertical;',
+      '  overflow: hidden;',
+      '  text-overflow: ellipsis;',
+      '  word-break: break-word;',
+      '}',
+
       '/* Hide the raw connected-field columns we now display inline */',
+      '#view_3512 th.field_114,',
+      '#view_3512 td.field_114,',
       '#view_3512 th.field_2445,',
       '#view_3512 td.field_2445,',
       '#view_3512 th.field_2446,',
@@ -10829,7 +10851,7 @@ $(".kn-navigation-bar").hide();
     /** Ensure a record entry exists in the map. */
     function ensure(rid) {
       if (!map[rid]) {
-        map[rid] = { id: rid, imgUrl: '', type: '', typeId: '', required: false, completed: false };
+        map[rid] = { id: rid, imgUrl: '', type: '', typeId: '', required: false, completed: false, notes: '' };
       }
       return map[rid];
     }
@@ -10882,6 +10904,17 @@ $(".kn-navigation-bar").hide();
         if (!rid4) continue;
         var cval = (compSpans[c].textContent || '').trim().toLowerCase();
         ensure(rid4).completed = (cval === 'yes');
+      }
+    }
+
+    // 5) field_114 — INPUT_notes
+    var notesCell = tr.querySelector('td.field_114');
+    if (notesCell) {
+      var notesSpans = notesCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var n = 0; n < notesSpans.length; n++) {
+        var rid5 = (notesSpans[n].id || '').trim();
+        if (!rid5) continue;
+        ensure(rid5).notes = (notesSpans[n].textContent || '').trim();
       }
     }
 
@@ -10990,14 +11023,18 @@ $(".kn-navigation-bar").hide();
 
     // Build metadata payload — no mutation assumptions
     var sourceRequired = dragSourceCard.getAttribute('data-photo-required') === 'true';
+    var sourceNotes = dragSourceCard.getAttribute('data-photo-notes') || '';
     var targetRequired = targetCard.getAttribute('data-photo-required') === 'true';
+    var targetNotes = targetCard.getAttribute('data-photo-notes') || '';
     var detail = {
       sourceRecordId: sourceId,
       sourcePhotoType: sourceType,
       sourceRequired: sourceRequired,
+      sourceNotes: sourceNotes,
       targetRecordId: targetId,
       targetPhotoType: targetType,
       targetRequired: targetRequired,
+      targetNotes: targetNotes,
       surveyRequestId: getSurveyRequestId()
     };
 
@@ -11194,6 +11231,7 @@ $(".kn-navigation-bar").hide();
           card.setAttribute('data-photo-type-id', photo.typeId || '');
           card.setAttribute('data-photo-required', photo.required ? 'true' : 'false');
           card.setAttribute('data-photo-has-image', photo.imgUrl ? 'true' : 'false');
+          card.setAttribute('data-photo-notes', photo.notes || '');
 
           if (photo.imgUrl) {
             // Photo with image — draggable source
@@ -11269,6 +11307,15 @@ $(".kn-navigation-bar").hide();
               chip.textContent = 'Required';
             }
             card.appendChild(chip);
+          }
+
+          // Notes beneath the card
+          if (photo.notes) {
+            var notesEl = document.createElement('div');
+            notesEl.className = NOTES_CLS;
+            notesEl.textContent = photo.notes;
+            notesEl.title = photo.notes;
+            card.appendChild(notesEl);
           }
 
           strip.appendChild(card);
