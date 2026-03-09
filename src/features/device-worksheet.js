@@ -49,6 +49,7 @@
           exterior:         'field_2372',   // Exterior (chip host)
           existingCabling:  'field_2370',   // Existing Cabling
           plenum:           'field_2371',   // Plenum
+          mountingHeight:   'field_2455',   // Mounting Height
           dropLength:       'field_2367',   // Drop Length
           conduitFeet:      'field_2368',   // Conduit Linear Feet
           warningCount:     'field_2454'    // Warning count (shown as chit on header)
@@ -529,8 +530,8 @@ td.${P}-sum-move {
 }
 
 .${P}-field-label {
-  flex: 0 0 100px;
-  width: 100px;
+  flex: 0 0 80px;
+  width: 80px;
   font-size: 11px;
   font-weight: 600;
   color: #4b5563;
@@ -999,6 +1000,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         addRow(surveySection, buildFieldRow('Exterior',
           chipHostTd));
       }
+    }
+
+    if (f.mountingHeight) {
+      addRow(surveySection, buildFieldRow('Mounting\nHeight',
+        findCell(tr, f.mountingHeight)));
     }
 
     if (f.dropLength) {
