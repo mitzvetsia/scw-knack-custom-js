@@ -13539,6 +13539,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // field_1642 = composite of field_1641 + field_2458 + field_1943),
   // we re-fetch just that record after saving a trigger field and
   // patch the label text in place — no full view re-render.
+  //
+  // Challenge: model.updateRecord may trigger a Knack re-render that
+  // rebuilds the DOM with stale formula data, clobbering our update.
+  // So we use a two-pronged approach:
+  //   1. Queue the recordId for a post-transformView refresh (catches
+  //      the case where Knack re-renders after save).
+  //   2. Fire a delayed fallback refresh (catches the case where
+  //      Knack does NOT re-render).
+
+  var _pendingLabelRefresh = {};  // viewId → [recordId, …]
 
   /** Look up the viewCfg that owns a given viewId. */
   function viewCfgFor(viewId) {
@@ -13556,6 +13566,50 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return cfg.headerTriggerFields.indexOf(fieldKey) !== -1;
   }
 
+  /** Queue a record for label refresh after the next transformView. */
+  function queueHeaderRefresh(viewId, recordId) {
+    if (!_pendingLabelRefresh[viewId]) _pendingLabelRefresh[viewId] = [];
+    if (_pendingLabelRefresh[viewId].indexOf(recordId) === -1) {
+      _pendingLabelRefresh[viewId].push(recordId);
+    }
+  }
+
+  /** Called at the end of transformView — flush any queued refreshes. */
+  function flushPendingHeaderRefreshes(viewId) {
+    var queue = _pendingLabelRefresh[viewId];
+    if (!queue || !queue.length) return;
+    _pendingLabelRefresh[viewId] = [];
+    for (var i = 0; i < queue.length; i++) {
+      refreshHeaderLabel(viewId, queue[i]);
+    }
+  }
+
+  /** Patch the label td text for a single record from the DOM. */
+  function applyLabelText(viewId, recordId, txt) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return;
+    var labelField = cfg.fields.label;
+
+    // Walk up from the view element to handle both the worksheet row
+    // and any re-rendered DOM.
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+
+    // Find ALL label tds in the view, then match by closest row id
+    var allLabels = viewEl.querySelectorAll(
+      'td.' + labelField + ', td[data-field-key="' + labelField + '"]'
+    );
+    for (var i = 0; i < allLabels.length; i++) {
+      var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
+      if (row && getRecordId(row) === recordId) {
+        allLabels[i].textContent = txt;
+        console.log('[scw-ws-header] Refreshed label for ' + recordId + ': ' + txt);
+        return;
+      }
+    }
+    console.warn('[scw-ws-header] Label td not found for ' + recordId);
+  }
+
   /** Fetch the record and update the label td text in the summary bar. */
   function refreshHeaderLabel(viewId, recordId) {
     var cfg = viewCfgFor(viewId);
@@ -13563,6 +13617,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var labelField = cfg.fields.label;
 
     if (typeof Knack === 'undefined') return;
+
+    console.log('[scw-ws-header] Fetching label for ' + recordId + '…');
 
     $.ajax({
       url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
@@ -13580,12 +13636,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           ? raw.replace(/<[^>]*>/g, '').trim()
           : String(raw);
 
-        // Find the label td inside this record's worksheet row
-        var wsRow = document.getElementById(recordId);
-        if (!wsRow) return;
-        var labelTd = wsRow.querySelector('td.' + labelField +
-          ', td[data-field-key="' + labelField + '"]');
-        if (labelTd) labelTd.textContent = txt;
+        console.log('[scw-ws-header] API returned label for ' + recordId + ': "' + txt + '"');
+        applyLabelText(viewId, recordId, txt);
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-header] GET failed for ' + recordId, xhr.status, xhr.responseText);
       }
     });
   }
@@ -13670,9 +13725,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         function () {
           showInputSuccess(input);
           if (isHeaderTrigger(viewId, fieldKey)) {
+            // Queue for post-re-render AND fire a delayed fallback
+            queueHeaderRefresh(viewId, recordId);
             setTimeout(function () {
               refreshHeaderLabel(viewId, recordId);
-            }, 600);
+            }, 1000);
           }
         },
         function (msg) { showInputError(input, msg, previousValue); }
@@ -13814,12 +13871,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
       saveRadioValue(viewId, recordId, fieldKey, newValue);
-      // Soft-refresh the header label after saving a trigger field.
-      // Short delay lets the server recalculate the formula first.
       if (isHeaderTrigger(viewId, fieldKey)) {
+        // Queue for post-re-render AND fire a delayed fallback
+        queueHeaderRefresh(viewId, recordId);
         setTimeout(function () {
           refreshHeaderLabel(viewId, recordId);
-        }, 600);
+        }, 1000);
       }
     }
   }, true);
@@ -14427,6 +14484,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (window.SCW && window.SCW.groupCollapse && window.SCW.groupCollapse.enhance) {
       window.SCW.groupCollapse.enhance();
     }
+
+    // ── FLUSH QUEUED HEADER LABEL REFRESHES ──
+    // If a trigger-field save caused this re-render, the rebuilt DOM
+    // may have stale formula data.  Fetch fresh values now that the
+    // DOM is stable.
+    flushPendingHeaderRefreshes(viewCfg.viewId);
   }
 
   // ============================================================
