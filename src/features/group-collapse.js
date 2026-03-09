@@ -52,6 +52,29 @@
   }
 
   // ======================
+  // COLOR HELPERS
+  // ======================
+  /** Convert a hex colour string to [r, g, b]. */
+  function hexToRgb(hex) {
+    hex = hex.replace(/^#/, '');
+    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+    // Handle rgba(r,g,b,a) format
+    var rgbaMatch = hex.match && hex.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbaMatch) return [+rgbaMatch[1], +rgbaMatch[2], +rgbaMatch[3]];
+    var n = parseInt(hex, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  // Default L1 accent colour (orange)
+  var DEFAULT_L1_ACCENT = '#ed8326';
+
+  // SVG chevron icon matching the KTL accordion language
+  var CHEVRON_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="6 9 12 15 18 9"/></svg>';
+
+  // ======================
   // CSS (ONCE, SCENE-SCOPED)
   // ======================
   function injectCssOnce() {
@@ -62,25 +85,6 @@
     // comma-separated CSS selectors scope correctly to each scene root.
     const s = (sel) =>
       SCENE_IDS.map((id) => `#kn-${id} ${sel}`).join(',\n      ');
-
-    const L1 = {
-      fontSize: '12px',
-      fontWeight: '400',
-      bg: 'rgba(237,131,38,1)',
-      color: '#ffffff',
-      tdPadding: '3px 5px',
-      collapsedOpacity: '0.92',
-      textalign: 'left',
-    };
-
-    const L2 = {
-      fontSize: '14px',
-      fontWeight: '400',
-      bg: '#f3f8ff',
-      color: '#07467c',
-      tdPadding: '4px 14px 4px 26px',
-      collapsedOpacity: '0.90',
-    };
 
     const css = `
       /* Vertical-align all table cells in group-collapse scenes */
@@ -99,134 +103,169 @@
         user-select: none;
       }
 
+      /* ── Collapse icon (SVG chevron) ── */
       ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon')} {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 1.25em;
-        height: 1.25em;
-        margin-right: .5em;
-        font-weight: 900;
+        width: 22px;
+        height: 22px;
+        margin-right: 8px;
         line-height: 1;
         vertical-align: middle;
-        transform-origin: 50% 55%;
-        transition: transform 160ms ease, opacity 160ms ease;
-        opacity: .95;
+        border-radius: 4px;
+        transition: transform 220ms ease, background 150ms ease;
+        transform: rotate(0deg);
+        flex-shrink: 0;
+      }
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-collapse-icon svg')} {
+        display: block;
       }
       ${s('.scw-group-collapse-enabled tr.scw-group-header.scw-collapsed .scw-collapse-icon')} {
-        transform: rotate(0deg);
-        opacity: .9;
+        transform: rotate(-90deg);
+      }
+
+      /* ── L1 chevron colours ── */
+      ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-collapse-icon')} {
+        color: var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
+      }
+      ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header:hover .scw-collapse-icon')} {
+        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.10);
+      }
+
+      /* ── L2 chevron colours ── */
+      ${s('.scw-group-collapse-enabled tr.kn-group-level-2.scw-group-header .scw-collapse-icon')} {
+        color: #07467c;
+      }
+      ${s('.scw-group-collapse-enabled tr.kn-group-level-2.scw-group-header:hover .scw-collapse-icon')} {
+        background: rgba(7,70,124,0.08);
       }
 
       ${s('.scw-group-collapse-enabled tr.scw-group-header > td')} {
         position: relative;
       }
-      ${s('.scw-group-collapse-enabled tr.scw-group-header > td:before')} {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: 6px;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 160ms ease;
-      }
-      ${s('.scw-group-collapse-enabled tr.scw-group-header:hover > td:before')} {
-        opacity: 1;
-      }
-      ${s('.scw-group-collapse-enabled tr.scw-group-header:focus-within > td:before')} {
-        opacity: 1;
-        outline: 2px solid rgba(7,70,124,.28);
-        outline-offset: -2px;
-      }
 
+      /* ══════════════════════════════════════════════════
+         L1 — Modern tinted accent style
+         Uses CSS custom properties set per-row in JS:
+           --scw-grp-accent      (hex colour)
+           --scw-grp-accent-rgb  (r, g, b)
+         ══════════════════════════════════════════════════ */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header')} {
-        font-size: ${L1.fontSize};
-        font-weight: ${L1.fontWeight} !important;
-        background-color: ${L1.bg} !important;
-        color: ${L1.color} !important;
-        text-align: ${L1.textalign} !important;
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
-        padding: ${L1.tdPadding} !important;
-        border-bottom: 1px solid rgba(255,255,255,.14);
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td:before')} {
-        box-shadow: 0 1px 0 rgba(255,255,255,.10) inset, 0 1px 10px rgba(0,0,0,.10);
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed')} {
-        opacity: ${L1.collapsedOpacity};
+        font-size: 13px;
+        font-weight: 600 !important;
+        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.08) !important;
+        color: #1e293b !important;
+        text-align: left !important;
+        transition: background 180ms ease;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')},
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td *')} {
-        color: ${L1.color} !important;
+        color: #1e293b !important;
       }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover')} {
-        filter: brightness(1.06);
-      }
-      /* L1 collapsed — thin divider, accordion-like */
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed')} {
-        font-size: 12px;
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td')} {
-        border-bottom: 1px solid rgba(255,255,255,.08);
-      }
-      /* L1 expanded — more padding, soft inner shadow */
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
-        font-size: 14px;
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 14px 5px !important;
-        box-shadow: inset 0 1px 4px rgba(0,0,0,.08);
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
+        padding: 10px 14px !important;
+        border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15);
+        border-left: 4px solid var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
       }
 
+      /* L1 hover */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover')} {
+        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.13) !important;
+        filter: none;
+      }
+
+      /* L1 collapsed */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed')} {
+        font-size: 13px;
+      }
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td')} {
+        border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.10);
+      }
+
+      /* L1 expanded — slightly stronger tint */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
+        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.12) !important;
+        font-size: 13px;
+      }
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
+        padding: 11px 14px !important;
+        box-shadow: inset 0 -1px 3px rgba(0,0,0,.04);
+      }
+
+      /* Vertical separation between stacked L1 rows */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header + .kn-table-group.kn-group-level-1.scw-group-header > td')} {
+        border-top: 3px solid #fff;
+      }
+
+      /* ══════════════════════════════════════════════════
+         L2 — Refined nested subgroup
+         ══════════════════════════════════════════════════ */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header')} {
-        font-size: ${L2.fontSize};
-        font-weight: ${L2.fontWeight} !important;
-        background-color: ${L2.bg} !important;
-        color: ${L2.color} !important;
+        font-size: 13px;
+        font-weight: 500 !important;
+        background-color: #f8fafc !important;
+        color: #0f4c75 !important;
+        transition: background 180ms ease;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td')} {
-        padding: ${L2.tdPadding} !important;
-        border-bottom: 1px solid rgba(7,70,124,.12);
+        padding: 8px 14px 8px 32px !important;
+        border-bottom: 1px solid rgba(7,70,124,.10);
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td:after')} {
         content: "";
         position: absolute;
-        left: 12px;
-        top: 8px;
-        bottom: 8px;
+        left: 16px;
+        top: 7px;
+        bottom: 7px;
         width: 3px;
         border-radius: 2px;
-        background: rgba(7,70,124,.28);
+        background: rgba(7,70,124,.22);
         pointer-events: none;
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed')} {
-        opacity: ${L2.collapsedOpacity};
+        transition: background 180ms ease;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td')},
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header > td *')} {
-        color: ${L2.color} !important;
+        color: #0f4c75 !important;
       }
+
+      /* L2 hover */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:hover')} {
-        filter: brightness(0.985);
+        background-color: #f1f5f9 !important;
+        filter: none;
       }
-      /* L2 collapsed — thin divider, accordion-like */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:hover > td:after')} {
+        background: rgba(7,70,124,.35);
+      }
+
+      /* L2 collapsed */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header.scw-collapsed > td')} {
         border-bottom: 1px solid rgba(7,70,124,.06);
       }
-      /* L2 expanded — more padding, subtle tint, soft inner shadow */
+
+      /* L2 expanded */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:not(.scw-collapsed)')} {
+        background-color: #f1f5f9 !important;
+      }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 14px 14px 14px 26px !important;
-        background: #f7f9fb !important;
-        box-shadow: inset 0 1px 3px rgba(7,70,124,.06);
+        padding: 9px 14px 9px 32px !important;
+        box-shadow: inset 0 -1px 2px rgba(7,70,124,.04);
         border-bottom: 1px solid rgba(7,70,124,.10);
       }
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header:not(.scw-collapsed) > td:after')} {
+        background: rgba(7,70,124,.35);
+      }
 
-      /* Record count badge */
+      /* Vertical separation between stacked L2 rows */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-2.scw-group-header + .kn-table-group.kn-group-level-2.scw-group-header > td')} {
+        border-top: 2px solid #fff;
+      }
+
+      /* ── Record count badge ── */
       ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-record-count')} {
         display: inline-block;
         margin-left: .6em;
-        padding: 0px 7px;
+        padding: 1px 8px;
         font-size: 11px;
         font-weight: 600;
         line-height: 1.5;
@@ -234,29 +273,40 @@
         vertical-align: middle;
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-record-count')} {
-        background: rgba(255,255,255,.22);
-        color: #ffffff;
+        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.14);
+        color: var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
+        border: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.22);
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-2.scw-group-header .scw-record-count')} {
-        background: rgba(7,70,124,.12);
-        color: #07467c;
+        background: rgba(7,70,124,.08);
+        color: #0f4c75;
+        border: 1px solid rgba(7,70,124,.15);
       }
 
-      /* KTL arrow styles now live in global-styles.js */
-
-      ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => `
-        /* Per-view overrides: ${viewId} */
-        ${o.L1bg ? `#${viewId} .kn-table-group.kn-group-level-1.scw-group-header { background-color: ${o.L1bg} !important; }` : ''}
-        ${o.L1color ? `
-          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td,
-          #${viewId} .kn-table-group.kn-group-level-1.scw-group-header > td * { color: ${o.L1color} !important; }
-        ` : ''}
-        ${o.L2bg ? `#${viewId} .kn-table-group.kn-group-level-2.scw-group-header { background-color: ${o.L2bg} !important; }` : ''}
-        ${o.L2color ? `
-          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td,
-          #${viewId} .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ${o.L2color} !important; }
-        ` : ''}
-      `).join('')}
+      /* ── Per-view accent overrides via CSS custom properties ──
+         (Set inline on each L1 tr in JS; static overrides kept for
+          view-scoped CSS specificity as a fallback.) */
+      ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => {
+        var parts = [];
+        if (o.L1bg) {
+          var rgb = hexToRgb(o.L1bg);
+          parts.push(
+            '#' + viewId + ' .kn-table-group.kn-group-level-1.scw-group-header {' +
+            ' --scw-grp-accent: ' + o.L1bg + ';' +
+            ' --scw-grp-accent-rgb: ' + rgb.join(',') + '; }'
+          );
+        }
+        if (o.L2bg) {
+          parts.push('#' + viewId + ' .kn-table-group.kn-group-level-2.scw-group-header { background-color: ' + o.L2bg + ' !important; }');
+        }
+        if (o.L2color) {
+          parts.push(
+            '#' + viewId + ' .kn-table-group.kn-group-level-2.scw-group-header > td,' +
+            '#' + viewId + ' .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ' + o.L2color + ' !important; }'
+          );
+        }
+        return parts.length ? '/* Per-view overrides: ' + viewId + ' */\n' + parts.join('\n') : '';
+      }).join('\n')}
     `;
 
     const style = document.createElement('style');
@@ -278,7 +328,7 @@
   function ensureIcon($tr) {
     const $cell = $tr.children('td,th').first();
     if (!$cell.find('.scw-collapse-icon').length) {
-      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">▼</span>');
+      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
     }
   }
 
@@ -362,9 +412,8 @@
       .each(function () {
         const $l2 = $(this);
 
-        // force state + class
+        // force state + class (chevron rotation handled by CSS)
         $l2.addClass('scw-collapsed');
-        $l2.find('.scw-collapse-icon').text('▶');
 
         // hide its detail rows (even though L1 is hiding everything, this keeps it consistent)
         rowsUntilNextRelevantGroup($l2).hide();
@@ -379,7 +428,7 @@
     const isLevel2 = $header.hasClass('kn-group-level-2');
 
     $header.toggleClass('scw-collapsed', collapsed);
-    $header.find('.scw-collapse-icon').text(collapsed ? '▶' : '▼');
+    // Chevron rotation is handled entirely by CSS (rotate -90deg when .scw-collapsed)
 
     if (isLevel2) {
       rowsUntilNextRelevantGroup($header).toggle(!collapsed);
@@ -461,6 +510,16 @@
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
+
+      // Set CSS custom properties for L1 accent colour
+      if (level === 1) {
+        var overrides = VIEW_OVERRIDES[viewId];
+        var accent = (overrides && overrides.L1bg) || DEFAULT_L1_ACCENT;
+        var rgb = hexToRgb(accent);
+        this.style.setProperty('--scw-grp-accent', accent);
+        this.style.setProperty('--scw-grp-accent-rgb', rgb.join(','));
+      }
+
       ensureRecordCount($tr, viewId);
 
       const key = buildKey($tr, level);
