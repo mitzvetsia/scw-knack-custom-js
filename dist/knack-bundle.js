@@ -12283,9 +12283,8 @@ td.${P}-sum-field-ro {
   font-size: 13px;
   font-weight: 600;
   color: #374151;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  background: #f3f4f6;
+  border: none;
+  background: transparent;
   white-space: nowrap;
   height: 30px;
   min-width: 40px;
