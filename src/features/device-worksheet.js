@@ -163,7 +163,7 @@ tr.scw-inline-photo-row > td {
    ================================================================ */
 .${P}-summary {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   padding: 6px 12px;
   background: #f8fafc;
@@ -177,7 +177,7 @@ tr.scw-inline-photo-row > td {
 /* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
 .${P}-sum-right {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   margin-left: auto;
   flex-shrink: 0;
@@ -368,7 +368,7 @@ td.${P}-sum-field--desc {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #9ca3af;
+  color: #374151;
   white-space: nowrap;
   flex-shrink: 0;
 }
