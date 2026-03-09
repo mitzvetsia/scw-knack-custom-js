@@ -72,7 +72,7 @@
       '  min-width: 100px;',
       '  font-size: 11px;',
       '  font-weight: 600;',
-      '  color: #94a3b8;',
+      '  color: #4b5563;',
       '  text-transform: uppercase;',
       '  letter-spacing: 0.3px;',
       '  padding-top: 5px;',
@@ -188,6 +188,13 @@
       '  font-size: 28px;',
       '  line-height: 1;',
       '  font-weight: 300;',
+      '}',
+
+      /* When the add button is the only item in the strip (no photos),
+         make it square — height matches width */
+      '.' + ADD_BTN_CLS + '.scw-photo-add-solo {',
+      '  min-height: 56px;',
+      '  height: 56px;',
       '}',
 
       /* Required chip */
@@ -803,6 +810,10 @@
           if (h) window.location.hash = h;
         });
       })(lineItemId);
+
+      if (photos.length === 0) {
+        addBtn.classList.add('scw-photo-add-solo');
+      }
 
       if (photos.length > 0) {
         // ── Has connected photo records ──

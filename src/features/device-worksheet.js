@@ -230,7 +230,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: #6b7280;
+  color: #4b5563;
   padding-bottom: 6px;
   margin-bottom: 10px;
   border-bottom: 1px solid #e5e7eb;
@@ -253,7 +253,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
   min-width: 100px;
   font-size: 11px;
   font-weight: 600;
-  color: #6b7280;
+  color: #4b5563;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   padding-top: 5px;
