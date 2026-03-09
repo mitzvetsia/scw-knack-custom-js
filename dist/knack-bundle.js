@@ -5943,14 +5943,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ======================
   // CONFIG
   // ======================
-  // Per-scene config. openIfFewerThan = record threshold below which groups
-  // default to OPEN instead of collapsed. Set to 0 to always collapse.
-  const SCENE_CONFIG = {
+  // Per-scene overrides.  openIfFewerThan = record threshold below which
+  // groups default to OPEN instead of collapsed.  Scenes not listed here
+  // use DEFAULT_THRESHOLD.
+  const SCENE_OVERRIDES = {
     scene_1085: { openIfFewerThan: 30 },
     scene_1116: { openIfFewerThan: 30 },
     scene_1140: { openIfFewerThan: 30 },
   };
-  const SCENE_IDS = Object.keys(SCENE_CONFIG);
+  const DEFAULT_THRESHOLD = 30;
   const EVENT_NS = '.scwGroupCollapse';
 
   const COLLAPSED_BY_DEFAULT = true;
@@ -6027,10 +6028,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const id = 'scw-group-collapse-css';
     if (document.getElementById(id)) return;
 
-    // Helper: expand a descendant selector for every configured scene so that
-    // comma-separated CSS selectors scope correctly to each scene root.
-    const s = (sel) =>
-      SCENE_IDS.map((id) => `#kn-${id} ${sel}`).join(',\n      ');
+    // Helper: simple descendant selector (no longer scene-scoped — works everywhere)
+    const s = (sel) => sel;
 
     const css = `
       /* Vertical-align all table cells in group-collapse scenes */
@@ -6417,7 +6416,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   function isEnabledScene(sceneId) {
-    return !!sceneId && SCENE_IDS.includes(sceneId);
+    return !!sceneId;
   }
 
   // ======================
@@ -6435,8 +6434,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
-    const cfg = SCENE_CONFIG[sceneId] || {};
-    const threshold = cfg.openIfFewerThan || 0;
+    const cfg = SCENE_OVERRIDES[sceneId] || {};
+    const threshold = cfg.openIfFewerThan || DEFAULT_THRESHOLD;
     const viewRecordCounts = {};
 
     $sceneRoot.find(GROUP_ROW_SEL).each(function () {
@@ -6568,14 +6567,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   injectCssOnce();
   bindClicksOnce();
 
-  SCENE_IDS.forEach((sceneId) => {
-    $(document)
-      .off(`knack-scene-render.${sceneId}${EVENT_NS}`)
-      .on(`knack-scene-render.${sceneId}${EVENT_NS}`, function () {
+  // Bind to ALL scene renders so every scene gets accordions
+  $(document)
+    .off('knack-scene-render' + EVENT_NS)
+    .on('knack-scene-render' + EVENT_NS, function () {
+      var sceneId = getCurrentSceneId();
+      if (isEnabledScene(sceneId)) {
         enhanceAllGroupedGrids(sceneId);
         startObserverForScene(sceneId);
-      });
-  });
+      }
+    });
 
   // Re-enhance after ANY view re-render (e.g. after inline-edit refresh).
   // The MutationObserver alone is unreliable because Knack's async
