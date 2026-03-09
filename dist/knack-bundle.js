@@ -13437,10 +13437,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var conditionMet = false;
     var conditionColor = null;
 
-    // field_2400 (labor), field_2409 (labor desc), field_2415 (bid),
-    // field_771 (photos) → danger/warning when empty
+    // field_2400 (labor) → danger when empty, warning when zero
+    // field_2409 (labor desc) → danger when empty
+    // field_2415 (bid), field_771 (photos) → warning when empty
     // field_2399 (qty) → warning when zero
-    if (fieldKey === 'field_2400' || fieldKey === 'field_2409') {
+    if (fieldKey === 'field_2400') {
+      if (isEmpty) { conditionMet = true; conditionColor = 'danger'; }
+      else if (isZero) { conditionMet = true; conditionColor = 'warning'; }
+    } else if (fieldKey === 'field_2409') {
       conditionMet = isEmpty;
       conditionColor = 'danger';
     } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
@@ -14401,6 +14405,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       viewId: 'view_3505',
       rules: [
         { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
+        { fieldKey: 'field_2400', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_771', when: 'empty', color: 'warning' },
@@ -14411,6 +14416,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       viewId: 'view_3512',
       rules: [
         { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
+        { fieldKey: 'field_2400', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_771', when: 'empty', color: 'warning' },
@@ -14421,6 +14427,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       viewId: 'view_3517',
       rules: [
         { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
+        { fieldKey: 'field_2400', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
       ]
