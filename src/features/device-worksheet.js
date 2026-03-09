@@ -209,6 +209,7 @@ td.${P}-sum-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   flex: 0 0 auto;
   padding: 0 4px !important;
   border: none !important;
@@ -224,6 +225,7 @@ td.${P}-sum-check input[type="checkbox"] {
 .${P}-toggle-zone {
   display: flex;
   align-items: center;
+  align-self: center;
   gap: 6px;
   cursor: pointer;
   user-select: none;
