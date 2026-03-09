@@ -12048,9 +12048,30 @@ tr.scw-inline-photo-row > td {
 .${P}-sum-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-left: auto;
   flex-shrink: 0;
+}
+/* Each field group in the right section gets fixed width for vertical alignment */
+.${P}-sum-right .${P}-sum-group {
+  width: 80px;
+  min-width: 80px;
+}
+/* Bid group can be a bit narrower */
+.${P}-sum-right .${P}-sum-group--bid {
+  width: 70px;
+  min-width: 70px;
+}
+/* Qty group narrower */
+.${P}-sum-right .${P}-sum-group--qty {
+  width: 50px;
+  min-width: 50px;
+}
+/* Fields inside right groups stretch to fill their group */
+.${P}-sum-right td.${P}-sum-field,
+.${P}-sum-right td.${P}-sum-field-ro {
+  width: 100%;
+  min-width: 0;
 }
 
 /* ── KTL bulk-edit checkbox cell ── */
@@ -12069,14 +12090,14 @@ td.${P}-sum-check input[type="checkbox"] {
   cursor: pointer;
 }
 
-/* Clickable toggle zone (chevron + identity) */
+/* Clickable toggle zone (chevron + identity) — fixed width so labor desc aligns */
 .${P}-toggle-zone {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   user-select: none;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 .${P}-toggle-zone:hover .${P}-chevron {
@@ -12127,7 +12148,7 @@ td.${P}-sum-label-cell:hover {
   white-space: nowrap;
 }
 
-/* Product td in summary — wraps at 400px so fields after it start consistently */
+/* Product td in summary — fixed 400px so labor desc and right fields align vertically */
 td.${P}-sum-product,
 td.${P}-sum-product:hover {
   display: inline-flex;
@@ -12139,6 +12160,8 @@ td.${P}-sum-product:hover {
   border: none !important;
   background: transparent !important;
   padding: 0 2px;
+  width: 400px;
+  min-width: 400px;
   max-width: 400px;
   white-space: normal;
   word-break: break-word;
@@ -12549,7 +12572,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var bidTd = findCell(tr, f.bid);
     if (bidTd) {
       var bidGroup = document.createElement('span');
-      bidGroup.className = P + '-sum-group';
+      bidGroup.className = P + '-sum-group ' + P + '-sum-group--bid';
       var bidLabel = document.createElement('span');
       bidLabel.className = P + '-sum-label';
       bidLabel.textContent = 'Bid';
@@ -12580,7 +12603,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var qtyTd = findCell(tr, f.quantity);
       if (qtyTd) {
         var qtyGroup = document.createElement('span');
-        qtyGroup.className = P + '-sum-group';
+        qtyGroup.className = P + '-sum-group ' + P + '-sum-group--qty';
         var qtyLabel = document.createElement('span');
         qtyLabel.className = P + '-sum-label';
         qtyLabel.textContent = 'Qty';
