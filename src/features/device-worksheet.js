@@ -1279,6 +1279,51 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       : String(raw);
   }
 
+  /**
+   * Fetch the record via the OBJECT-level API (which returns formula
+   * fields) and apply the label.  The view-level API strips formulas.
+   */
+  function fetchAndApplyLabel(viewId, recordId) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return;
+
+    if (typeof Knack === 'undefined') return;
+
+    // Derive the object key from the Knack view model
+    var view = Knack.views[viewId];
+    var objectKey = null;
+    try {
+      objectKey = view.model.view.source.object;
+    } catch (ignored) { /* */ }
+    if (!objectKey) {
+      console.warn('[scw-ws-header] Cannot determine object key for ' + viewId);
+      return;
+    }
+
+    console.log('[scw-ws-header] Fetching label via object API (' + objectKey + ') for ' + recordId);
+
+    $.ajax({
+      url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      success: function (resp) {
+        var txt = extractLabelFromResponse(viewId, resp);
+        console.log('[scw-ws-header] Object API label for ' + recordId + ': "' + txt + '"');
+        if (txt) {
+          _labelCache[recordId] = txt;
+          applyLabelText(viewId, recordId, txt);
+        }
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-header] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
+      }
+    });
+  }
+
   /** Patch the label td text for a single record in the DOM. */
   function applyLabelText(viewId, recordId, txt) {
     var cfg = viewCfgFor(viewId);
@@ -1415,15 +1460,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
-        function (resp) {
+        function () {
           showInputSuccess(input);
-          if (resp && isHeaderTrigger(viewId, fieldKey)) {
-            var txt = extractLabelFromResponse(viewId, resp);
-            console.log('[scw-ws-header] PUT response label: "' + txt + '"');
-            if (txt) {
-              _labelCache[recordId] = txt;
-              applyLabelText(viewId, recordId, txt);
-            }
+          if (isHeaderTrigger(viewId, fieldKey)) {
+            fetchAndApplyLabel(viewId, recordId);
           }
         },
         function (msg) { showInputError(input, msg, previousValue); }
@@ -1572,14 +1612,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewEl = chip.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
-      saveRadioValue(viewId, recordId, fieldKey, newValue, function (resp) {
-        if (resp && isHeaderTrigger(viewId, fieldKey)) {
-          var txt = extractLabelFromResponse(viewId, resp);
-          console.log('[scw-ws-header] Radio PUT response label: "' + txt + '"');
-          if (txt) {
-            _labelCache[recordId] = txt;
-            applyLabelText(viewId, recordId, txt);
-          }
+      saveRadioValue(viewId, recordId, fieldKey, newValue, function () {
+        if (isHeaderTrigger(viewId, fieldKey)) {
+          fetchAndApplyLabel(viewId, recordId);
         }
       });
     }
