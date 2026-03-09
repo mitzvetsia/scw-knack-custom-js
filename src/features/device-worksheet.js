@@ -804,7 +804,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // ── Left column: Equipment Details ──
-    var equipSection = buildSection('Equipment Details');
+    var equipSection = buildSection('');
 
     addRow(equipSection, buildFieldRow('Mounting\nHardware',
       findCell(tr, f.mounting, ci.mounting), { skipEmpty: true }));
@@ -860,7 +860,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         findCell(tr, f.conduitFeet)));
     }
 
-    addRow(surveySection, buildFieldRow('Notes',
+    addRow(surveySection, buildFieldRow('Survey\nNotes',
       findCell(tr, f.surveyNotes), { notes: true }));
 
     sections.appendChild(surveySection);
