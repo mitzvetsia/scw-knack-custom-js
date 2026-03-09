@@ -139,7 +139,7 @@ tr.scw-inline-photo-row > td {
   gap: 6px;
   padding: 10px 16px;
   background: #f8fafc;
-  border-bottom: 1px solid #e9eef4;
+  border-bottom: 1px solid #e5e7eb;
   flex-wrap: wrap;
 }
 
@@ -147,7 +147,7 @@ tr.scw-inline-photo-row > td {
 .${PREFIX}-titlebar-item {
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: #374151;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -157,7 +157,7 @@ td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary,
 td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
   font-size: 15px;
   font-weight: 700;
-  color: #295f91;
+  color: #1e4d78;
   cursor: default !important;
   border: none !important;
   background: transparent !important;
@@ -195,7 +195,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 
 /* Separator dot between titlebar items */
 .${PREFIX}-titlebar-sep {
-  color: #cbd5e1;
+  color: #d1d5db;
   font-size: 14px;
   user-select: none;
 }
@@ -215,7 +215,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 /* ── Individual section ── */
 .${PREFIX}-section {
   padding: 14px 20px 14px 16px;
-  border-right: 1px solid #edf0f4;
+  border-right: 1px solid #e5e7eb;
   min-width: 0;
 }
 .${PREFIX}-section:last-child {
@@ -226,14 +226,14 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: #94a3b8;
+  letter-spacing: 0.6px;
+  color: #6b7280;
   padding-bottom: 6px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 /* ── Field row inside a section ── */
@@ -253,7 +253,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
   min-width: 100px;
   font-size: 11px;
   font-weight: 600;
-  color: #94a3b8;
+  color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   padding-top: 5px;
@@ -264,7 +264,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 .${PREFIX}-field-value {
   flex: 1;
   font-size: 13px;
-  color: #334155;
+  color: #1f2937;
   line-height: 1.5;
   min-width: 0;
   word-break: break-word;
@@ -275,7 +275,7 @@ td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
 td.${PREFIX}-field-value {
   display: block;
   padding: 4px 8px;
-  border: 1px solid #dde3ea;
+  border: 1px solid #e5e7eb;
   border-radius: 4px;
   background: #fff;
   min-height: 28px;
@@ -321,7 +321,7 @@ td.${PREFIX}-chip-host:hover {
 
 /* ── Notes fields — allow more vertical space ── */
 td.${PREFIX}-field-value--notes {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   max-height: 120px;
   overflow-y: auto;
@@ -329,9 +329,8 @@ td.${PREFIX}-field-value--notes {
 
 /* ── Empty field value ── */
 .${PREFIX}-field-value--empty {
-  color: #cbd5e1;
+  color: #9ca3af;
   font-style: italic;
-  font-size: 12px;
 }
 
 `;
@@ -524,9 +523,6 @@ td.${PREFIX}-field-value--notes {
     // ── SURVEY DETAILS ──
     var surveySection = buildSection('Survey Details');
 
-    surveySection.appendChild(buildFieldRow('Notes',
-      findCell(tr, f.surveyNotes), { notes: true }));
-
     surveySection.appendChild(buildFieldRow('Connected to',
       findCell(tr, f.connections)));
 
@@ -570,6 +566,9 @@ td.${PREFIX}-field-value--notes {
 
     surveySection.appendChild(buildFieldRow('Conduit Ft',
       findCell(tr, f.conduitFeet)));
+
+    surveySection.appendChild(buildFieldRow('Notes',
+      findCell(tr, f.surveyNotes), { notes: true }));
 
     sections.appendChild(surveySection);
 
