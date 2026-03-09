@@ -11937,7 +11937,7 @@ $(".kn-navigation-bar").hide();
           product:      'field_2379',   // Product (column 4)
 
           // ── Identity section (no header) ──
-          mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
+          mounting:     'field_2379',   // Mounting Acces. (column 3 — same field, different column-index)
           connections:  'field_2381',   // connected to
           scwNotes:     'field_2418',   // SCW Notes
 
@@ -11957,7 +11957,7 @@ $(".kn-navigation-bar").hide();
         // (product and mounting both use field_2379)
         columnIndices: {
           product:  4,
-          mounting: 5
+          mounting: 3
         }
       }
     ]
