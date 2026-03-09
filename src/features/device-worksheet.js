@@ -1063,9 +1063,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     setTimeout(function () { input.classList.remove('is-saving'); }, 600);
   }
 
-  /** Save a direct-edit field value via AJAX PUT.
-   *  Always uses the REST API (not model.updateRecord) so we get
-   *  full response control for error detection and value verification.
+  // Number fields that need client-side validation
+  var NUMBER_FIELDS = ['field_2367', 'field_2368'];
+
+  /** Save a direct-edit field value via model.updateRecord.
+   *  Uses Knack's internal API to avoid triggering a full view re-render.
    *  Calls onSuccess() or onError(message) when done. */
   function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
     if (typeof Knack === 'undefined') return;
@@ -1073,6 +1075,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var data = {};
     data[fieldKey] = value;
 
+    var view = Knack.views[viewId];
+    if (view && view.model && typeof view.model.updateRecord === 'function') {
+      view.model.updateRecord(recordId, data);
+      if (onSuccess) onSuccess();
+      return;
+    }
+
+    // Fallback: direct AJAX (no model.fetch to avoid re-render)
     $.ajax({
       url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
            '/views/' + viewId + '/records/' + recordId,
@@ -1084,28 +1094,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       },
       contentType: 'application/json',
       data: JSON.stringify(data),
-      success: function (resp) {
-        // Knack may return 200 but silently drop invalid values.
-        // Check if the returned field value matches what we sent.
-        if (resp && resp[fieldKey + '_raw'] !== undefined) {
-          var raw = resp[fieldKey + '_raw'];
-          var returned = (typeof raw === 'object' && raw !== null)
-            ? String(raw.value || raw)
-            : String(raw);
-          var sent = String(value).trim();
-          // Normalize: strip $ and commas for number comparison
-          var normReturned = returned.replace(/[$,\s]/g, '');
-          var normSent = sent.replace(/[$,\s]/g, '');
-          if (normSent !== '' && normReturned !== normSent) {
-            if (onError) onError('Invalid value for this field');
-            return;
-          }
-        }
-        // Also trigger a model refresh so Knack's internal state stays in sync
-        var view = Knack.views[viewId];
-        if (view && view.model && typeof view.model.fetch === 'function') {
-          view.model.fetch();
-        }
+      success: function () {
         if (onSuccess) onSuccess();
       },
       error: function (xhr) {
@@ -1125,6 +1114,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var wrapper = input.parentNode;
     var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
     var previousValue = hiddenTd ? readFieldText(hiddenTd) : '';
+
+    // Client-side validation for number fields
+    if (NUMBER_FIELDS.indexOf(fieldKey) !== -1) {
+      var trimmed = newValue.trim();
+      if (trimmed !== '' && isNaN(Number(trimmed))) {
+        showInputError(input, 'Please enter a number', previousValue);
+        return;
+      }
+    }
 
     // Optimistically update hidden td
     if (hiddenTd) {
