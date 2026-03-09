@@ -14038,7 +14038,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── SYNTHETIC GROUP HEADERS for ungrouped Assumptions / Services ──
     // In view_3505, rows with an empty MDF/IDF connection (field_2375)
     // that are Assumptions or Services get collected under synthetic
-    // group-header rows so they appear as accordion sections.
+    // group-header rows placed FIRST in the table (before MDF/IDF groups).
     if (viewCfg.viewId === 'view_3505') {
       var tbody = table.querySelector('tbody');
       var colSpan = 1;
@@ -14051,43 +14051,89 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         }
       }
 
+      // Pale blue accent for synthetic groups (matches view accordion style)
+      var SYNTH_ACCENT = '#5b9bd5';
+      var SYNTH_ACCENT_RGB = '91,155,213';
+
+      // Remove empty native Knack group headers (blank MDF/IDF value)
+      // and any orphaned photo rows directly beneath them.
+      var nativeGroups = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1');
+      for (var gi = 0; gi < nativeGroups.length; gi++) {
+        var grp = nativeGroups[gi];
+        if (grp.classList.contains('scw-synthetic-group')) continue;
+        var labelText = (grp.textContent || '').replace(/\s+/g, ' ').trim();
+        if (labelText.length === 0) {
+          // Remove orphaned photo rows that follow this empty header
+          var sib = grp.nextElementSibling;
+          while (sib && !sib.classList.contains('kn-table-group') &&
+                 !sib.classList.contains(WORKSHEET_ROW)) {
+            var toRemove = sib;
+            sib = sib.nextElementSibling;
+            toRemove.remove();
+          }
+          grp.remove();
+        }
+      }
+
+      // Build synthetic groups in reverse so insertions at top keep order:
+      // Project Assumptions first, then Project Services.
       var buckets = [
-        { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
-        { cls: 'scw-row--services',    label: 'Project Services' }
+        { cls: 'scw-row--services',    label: 'Project Services' },
+        { cls: 'scw-row--assumptions', label: 'Project Assumptions' }
       ];
 
       buckets.forEach(function (bucket) {
-        // Find worksheet rows (and their associated original + photo rows)
-        // that belong to this bucket AND have no MDF/IDF connection.
+        // Find worksheet rows that belong to this bucket AND have no MDF/IDF.
         var candidates = tbody.querySelectorAll(
           'tr.' + WORKSHEET_ROW + '.' + bucket.cls + '[data-scw-no-move="1"]'
         );
         if (!candidates.length) return;
 
-        // Build a synthetic kn-table-group row that looks like a Knack L1 group header
+        // Build a synthetic kn-table-group row styled with pale blue accent
         var groupTr = document.createElement('tr');
         groupTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group';
+        groupTr.style.cssText = '--scw-grp-accent: ' + SYNTH_ACCENT +
+          '; --scw-grp-accent-rgb: ' + SYNTH_ACCENT_RGB + ';';
         var groupTd = document.createElement('td');
         groupTd.setAttribute('colspan', String(colSpan));
         groupTd.textContent = bucket.label;
         groupTr.appendChild(groupTd);
 
-        // Append the group header at the end of tbody
-        tbody.appendChild(groupTr);
-
-        // Move each candidate row (and its hidden original + photo row) after the header
+        // Collect rows to move (snapshot to avoid live-NodeList issues)
+        var rowsToMove = [];
         for (var k = 0; k < candidates.length; k++) {
           var wsRow = candidates[k];
-          // The original row is immediately before the worksheet row
           var origRow = wsRow.previousElementSibling;
-          if (origRow && origRow.getAttribute(PROCESSED_ATTR) === '1') {
-            tbody.appendChild(origRow);
+          var photoRows = [];
+          var nxt = wsRow.nextElementSibling;
+          while (nxt && nxt.classList.contains('scw-inline-photo-row')) {
+            photoRows.push(nxt);
+            nxt = nxt.nextElementSibling;
           }
-          tbody.appendChild(wsRow);
-          // Photo row follows the worksheet row
-          var nextRow = wsRow.nextElementSibling;
-          if (nextRow && nextRow.classList.contains('scw-inline-photo-row')) {
-            tbody.appendChild(nextRow);
+          rowsToMove.push({
+            orig: (origRow && origRow.getAttribute(PROCESSED_ATTR) === '1') ? origRow : null,
+            ws: wsRow,
+            photos: photoRows
+          });
+        }
+
+        // Insert the group header at the very top of tbody
+        var firstChild = tbody.firstChild;
+        tbody.insertBefore(groupTr, firstChild);
+
+        // Insert each row set right after the group header (in order)
+        var insertRef = groupTr;
+        for (var m = 0; m < rowsToMove.length; m++) {
+          var set = rowsToMove[m];
+          if (set.orig) {
+            insertRef.parentNode.insertBefore(set.orig, insertRef.nextSibling);
+            insertRef = set.orig;
+          }
+          insertRef.parentNode.insertBefore(set.ws, insertRef.nextSibling);
+          insertRef = set.ws;
+          for (var p = 0; p < set.photos.length; p++) {
+            insertRef.parentNode.insertBefore(set.photos[p], insertRef.nextSibling);
+            insertRef = set.photos[p];
           }
         }
       });
