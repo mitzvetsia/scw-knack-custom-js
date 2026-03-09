@@ -47,12 +47,29 @@ window.SCW = window.SCW || {};
 //    accordions to not reinitialize and scroll to restore against
 //    stale layout heights.
 //
+// SCROLL STRATEGY:
+//
+//   Pixel-based scroll restoration is unreliable after inline edits
+//   because accordion expand/collapse changes the total page height.
+//   A saved position of 2500px may point to completely different
+//   content after groups re-expand.
+//
+//   Instead, for post-edit restoration we use ANCHOR-BASED SCROLLING:
+//     • Before the edit, find the Knack view element (.kn-view)
+//       closest to the viewport top and record its offset.
+//     • After restoration, find that same element (by its stable ID)
+//       and scroll so it sits at the same viewport offset.
+//
+//   Pixel-based save/restore is kept for page reloads and SPA
+//   navigations where the layout doesn't change.
+//
 // LIFECYCLE (post-inline-edit):
 //
 //   ┌─ knack-cell-update ─────────────────────────────────────┐
-//   │  • Save scroll position (before DOM changes)            │
-//   │  • Suppress group-collapse auto-enhancement             │
-//   │  • Enter "pending edit" mode                            │
+//   │  • Save pixel scroll + anchor (view ID + viewport offset)│
+//   │  • Suppress group-collapse auto-enhancement              │
+//   │  • Enter "pending edit" mode                             │
+//   │  • Start safety timeout (3s fallback)                    │
 //   └─────────────────────────────────────────────────────────┘
 //           │
 //           ▼
@@ -68,7 +85,7 @@ window.SCW = window.SCW || {};
 //   │  3. Run group-collapse enhancement (rebuild accordions) │
 //   │  4. Run KTL accordion refresh (re-adopt wrappers)       │
 //   │  5. Wait 2 rAF frames (layout stabilizes)               │
-//   │  6. Restore scroll position                             │
+//   │  6. Restore scroll via anchor (contextual), then pixel  │
 //   │  7. Clear "pending edit" mode                           │
 //   └─────────────────────────────────────────────────────────┘
 //
@@ -92,8 +109,14 @@ window.SCW = window.SCW || {};
   var POLL_MAX_MS = 2000;
   var POLL_INTERVAL_MS = 50;
 
+  // ── Safety: if no knack-view-render fires within this window
+  //    after a cell-update, run restore anyway and clear the
+  //    pending-edit flag so future renders aren't stuck. ──
+  var SAFETY_TIMEOUT_MS = 3000;
+
   // ══════════════════════════════════════════════════════════
-  //  Scroll position helpers (sessionStorage, keyed by URL)
+  //  Pixel-based scroll helpers (sessionStorage, keyed by URL)
+  //  Used for page reloads and SPA navigations.
   // ══════════════════════════════════════════════════════════
 
   function getPageKey() {
@@ -133,6 +156,96 @@ window.SCW = window.SCW || {};
   }
 
   // ══════════════════════════════════════════════════════════
+  //  Anchor-based scroll (for post-inline-edit)
+  // ══════════════════════════════════════════════════════════
+  //
+  //  Instead of relying on an absolute pixel position (which
+  //  breaks when accordion expand/collapse changes page height),
+  //  we identify the Knack view element nearest the viewport top
+  //  and record how far it was from the top of the viewport.
+  //
+  //  After the edit + accordion rebuild, we find the same element
+  //  (by its stable view_XXXX ID) and scroll so it sits at the
+  //  same offset.  This works even if content ABOVE the anchor
+  //  changed height.
+  //
+  //  Fallback: if the anchor element can't be found (deleted view,
+  //  navigation), we fall back to pixel-based restore.
+
+  var _savedAnchor = null;   // { id, topOffset, pageKey }
+
+  /**
+   * STATE CAPTURE: Find the nearest visible view to viewport top.
+   * Called on knack-cell-update, BEFORE any DOM changes.
+   */
+  function saveAnchor() {
+    var best = null;
+    var bestDist = Infinity;
+
+    $('[id^="view_"]').filter(':visible').each(function () {
+      // Only match canonical view IDs (view_1234)
+      if (!/^view_\d+$/.test(this.id)) return;
+
+      var rect = this.getBoundingClientRect();
+      var dist = Math.abs(rect.top);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = {
+          id: this.id,
+          topOffset: rect.top   // px from viewport top (can be negative)
+        };
+      }
+    });
+
+    if (best) {
+      // Freeze the page key at capture time so a later hash change
+      // doesn't cause restore to look up a different storage entry.
+      best.pageKey = getPageKey();
+    }
+    _savedAnchor = best;
+  }
+
+  /**
+   * SCROLL RESTORE (anchor): Scroll so the saved view element is at
+   * the same viewport offset it had before the edit.
+   * Returns true if the anchor was found and scroll was applied.
+   */
+  function restoreFromAnchor() {
+    if (!_savedAnchor) return false;
+    var anchor = _savedAnchor;
+    _savedAnchor = null;
+
+    var el = document.getElementById(anchor.id);
+    if (!el || !$(el).is(':visible')) return false;
+
+    var rect = el.getBoundingClientRect();
+    var drift = rect.top - anchor.topOffset;
+
+    // Only adjust if the drift is meaningful (> 5px)
+    if (Math.abs(drift) > 5) {
+      $(window).scrollTop($(window).scrollTop() + drift);
+    }
+    return true;
+  }
+
+  /**
+   * SCROLL RESTORE (pixel, with frozen key): Restore using the page
+   * key captured at save time, not the current URL.  This handles
+   * the case where the hash changed between save and restore.
+   */
+  function restoreWithFrozenKey(frozenKey) {
+    try {
+      var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
+      var pos = data[frozenKey];
+      if (typeof pos === 'number' && pos > 0) {
+        $(window).scrollTop(pos);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
   //  Non-edit triggers (page load, SPA navigation, unload)
   //  These are simple — no coordination needed.
   // ══════════════════════════════════════════════════════════
@@ -148,10 +261,7 @@ window.SCW = window.SCW || {};
   // Restore after SPA hash-navigation scene renders
   $(document).on('knack-scene-render.any.scwScrollPreserve', function () {
     // Clear pending-edit flag on navigation (stale if user navigated away)
-    _pendingEdit = false;
-    if (window.SCW && window.SCW.groupCollapse) {
-      window.SCW.groupCollapse.suppress(false);
-    }
+    clearPendingState();
     setTimeout(restore, 300);
   });
 
@@ -161,12 +271,25 @@ window.SCW = window.SCW || {};
 
   var _pendingEdit = false;   // true between cell-update and restore completion
   var _settleTimer = null;    // debounce timer for view-render settling
+  var _safetyTimer = null;    // fallback if no view-render ever fires
 
-  // ── STATE CAPTURE: Save scroll + suppress premature auto-enhancement ──
+  /** Clean up all pending state and re-enable group-collapse. */
+  function clearPendingState() {
+    _pendingEdit = false;
+    _savedAnchor = null;
+    if (_settleTimer) { clearTimeout(_settleTimer); _settleTimer = null; }
+    if (_safetyTimer) { clearTimeout(_safetyTimer); _safetyTimer = null; }
+    if (window.SCW && window.SCW.groupCollapse) {
+      window.SCW.groupCollapse.suppress(false);
+    }
+  }
+
+  // ── STATE CAPTURE: Save scroll + anchor, suppress auto-enhancement ──
   // Fires BEFORE Knack re-renders views, so the scroll position and
   // accordion state in localStorage are both accurate at this moment.
   $(document).on('knack-cell-update.scwScrollPreserve', function () {
-    save();
+    save();            // pixel position (for reload / SPA nav fallback)
+    saveAnchor();      // contextual anchor (for post-edit restore)
     _pendingEdit = true;
 
     // Tell group-collapse to stop auto-enhancing from its own
@@ -175,6 +298,17 @@ window.SCW = window.SCW || {};
     if (window.SCW && window.SCW.groupCollapse) {
       window.SCW.groupCollapse.suppress(true);
     }
+
+    // Safety net: if no knack-view-render fires within 3s (e.g.,
+    // Knack updated the cell in-place without a full view re-render),
+    // run restore anyway so we don't stay stuck.
+    if (_safetyTimer) clearTimeout(_safetyTimer);
+    _safetyTimer = setTimeout(function () {
+      _safetyTimer = null;
+      if (_pendingEdit) {
+        runPostEditRestore();
+      }
+    }, SAFETY_TIMEOUT_MS);
   });
 
   // ── SETTLE DETECTION: Debounce view-renders to find the quiet point ──
@@ -208,7 +342,12 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════
 
   function runPostEditRestore() {
-    _settleTimer = null;
+    // Clear timers (we may have been called by either settle or safety)
+    if (_settleTimer) { clearTimeout(_settleTimer); _settleTimer = null; }
+    if (_safetyTimer) { clearTimeout(_safetyTimer); _safetyTimer = null; }
+
+    // Capture the frozen page key before any async work
+    var frozenPageKey = _savedAnchor ? _savedAnchor.pageKey : getPageKey();
 
     // Step 1: Verify DOM readiness — poll until tables have content rows.
     // Knack's async re-render may not be fully complete even after
@@ -242,7 +381,14 @@ window.SCW = window.SCW || {};
       //         stability without a blind timeout.
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
-          restore();
+          // Primary: anchor-based restore (reliable when layout changes)
+          var anchorWorked = restoreFromAnchor();
+
+          // Fallback: pixel-based restore using frozen page key
+          if (!anchorWorked) {
+            restoreWithFrozenKey(frozenPageKey);
+          }
+
           _pendingEdit = false;
         });
       });
