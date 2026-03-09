@@ -12925,6 +12925,69 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
+  // EXPANDED STATE PERSISTENCE (across inline-edit re-renders)
+  // ============================================================
+  //
+  // Device-worksheet panels start collapsed after every transformView.
+  // Without persistence, an inline edit causes all expanded panels to
+  // close — losing the user's context.
+  //
+  // On knack-cell-update (BEFORE re-render): scan worksheet rows and
+  // save which record IDs have expanded detail panels.
+  // At the end of transformView (AFTER rebuild): re-expand saved panels.
+
+  var _expandedState = {};  // viewId → [recordId, ...]
+
+  /** Scan current worksheet rows for open detail panels and save their
+   *  record IDs so they can be re-expanded after transformView. */
+  function captureExpandedState(viewId) {
+    var expanded = [];
+    var wsRows = document.querySelectorAll('#' + viewId + ' tr.' + WORKSHEET_ROW);
+    for (var i = 0; i < wsRows.length; i++) {
+      var detail = wsRows[i].querySelector('.' + P + '-detail.' + P + '-open');
+      if (detail) {
+        var rid = getRecordId(wsRows[i]);
+        if (rid) expanded.push(rid);
+      }
+    }
+    _expandedState[viewId] = expanded;
+  }
+
+  /** Capture expanded state for ALL configured worksheet views.
+   *  Called on ANY knack-cell-update because refresh-on-inline-edit.js
+   *  may refresh sibling views — not just the one that was edited. */
+  function captureAllExpandedStates() {
+    WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      captureExpandedState(viewCfg.viewId);
+    });
+  }
+
+  /** Re-expand detail panels for previously-expanded records.
+   *  Called at the end of transformView after new worksheet rows
+   *  have been built. Uses record ID (24-char hex) for stable
+   *  identity across re-renders. */
+  function restoreExpandedState(viewId) {
+    var expanded = _expandedState[viewId];
+    if (!expanded || !expanded.length) return;
+
+    // Build a lookup set for O(1) checks
+    var expandedSet = {};
+    for (var i = 0; i < expanded.length; i++) {
+      expandedSet[expanded[i]] = true;
+    }
+
+    var wsRows = document.querySelectorAll('#' + viewId + ' tr.' + WORKSHEET_ROW);
+    for (var j = 0; j < wsRows.length; j++) {
+      var rid = getRecordId(wsRows[j]);
+      if (rid && expandedSet[rid]) {
+        toggleDetail(wsRows[j]);
+      }
+    }
+
+    delete _expandedState[viewId];
+  }
+
+  // ============================================================
   // BUILD DETAIL PANEL HELPERS
   // ============================================================
 
@@ -13357,6 +13420,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         photoRow.classList.add(P + '-photo-hidden');
       }
     }
+
+    // ── RESTORE EXPANDED STATE ──
+    // Re-expand detail panels that were open before the inline-edit
+    // re-render.  Must run AFTER all worksheet rows + photo rows are
+    // built so toggleDetail can find and show the photo row too.
+    restoreExpandedState(viewCfg.viewId);
   }
 
   // ============================================================
@@ -13393,7 +13462,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
         .on('knack-cell-update.' + viewId + EVENT_NS, function () {
-          // On cell update, Knack re-renders — transformView re-runs
+          // Capture expanded panel state BEFORE Knack re-renders.
+          // transformView will restore it after rebuilding.
+          captureExpandedState(viewId);
         });
 
       if ($('#' + viewId).length) {
@@ -13402,11 +13473,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     });
   }
 
+  // Capture ALL worksheet view states on ANY cell-update, because
+  // refresh-on-inline-edit.js may trigger model.fetch() on sibling
+  // views — causing them to re-render even though the edit wasn't
+  // on their view.  The per-view handler above handles the edited
+  // view; this generic handler covers the cross-refresh case.
+  $(document)
+    .off('knack-cell-update' + EVENT_NS + 'All')
+    .on('knack-cell-update' + EVENT_NS + 'All', function () {
+      captureAllExpandedStates();
+    });
+
   if (document.readyState === 'loading') {
     $(document).ready(init);
   } else {
     init();
   }
+
+  // ── Expose API for coordination with post-edit restore ──
+  window.SCW = window.SCW || {};
+  window.SCW.deviceWorksheet = {
+    /** Capture expanded panel state for all worksheet views. */
+    captureState: captureAllExpandedStates,
+    /** Force re-transform a view (idempotent). */
+    refresh: function (viewId) {
+      WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+        if (!viewId || viewCfg.viewId === viewId) {
+          transformView(viewCfg);
+        }
+      });
+    }
+  };
 })();
 // ============================================================
 // End Device Worksheet
