@@ -10506,16 +10506,18 @@ $(".kn-navigation-bar").hide();
       '  flex-direction: column;',
       '  align-items: center;',
       '  max-width: 200px;',
+      '  min-width: 0;',
       '}',
 
       /* Override Knack default ".kn-content img { max-width:100% }" */
       '.kn-content .' + IMG_CLS + ' {',
-      '  max-width: none;',
+      '  max-width: 200px;',
       '}',
 
       /* Photo image — natural width, capped height */
       '.' + IMG_CLS + ' {',
       '  width: auto;',
+      '  max-width: 200px;',
       '  max-height: 200px;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
