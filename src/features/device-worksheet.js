@@ -96,7 +96,10 @@
           mdfNumber:        'field_2458',   // ## (read-only)
           name:             'field_1943',   // Name (textarea, direct-edit)
           surveyNotes:      'field_2457'    // Survey Notes (textarea, direct-edit)
-        }
+        },
+        // Fields whose changes feed the label formula — saving any of
+        // these triggers a lightweight GET to refresh the header text.
+        headerTriggerFields: ['field_1641', 'field_2458', 'field_1943']
       }
     ]
   };
@@ -1231,6 +1234,65 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // Number fields that need client-side validation
   var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
 
+  // ============================================================
+  // SOFT HEADER REFRESH
+  // ============================================================
+  //
+  // For views whose header label is a Knack formula (e.g. view_3559's
+  // field_1642 = composite of field_1641 + field_2458 + field_1943),
+  // we re-fetch just that record after saving a trigger field and
+  // patch the label text in place — no full view re-render.
+
+  /** Look up the viewCfg that owns a given viewId. */
+  function viewCfgFor(viewId) {
+    var views = WORKSHEET_CONFIG.views;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i].viewId === viewId) return views[i];
+    }
+    return null;
+  }
+
+  /** Returns true if fieldKey is a header-trigger field for viewId. */
+  function isHeaderTrigger(viewId, fieldKey) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.headerTriggerFields) return false;
+    return cfg.headerTriggerFields.indexOf(fieldKey) !== -1;
+  }
+
+  /** Fetch the record and update the label td text in the summary bar. */
+  function refreshHeaderLabel(viewId, recordId) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return;
+    var labelField = cfg.fields.label;
+
+    if (typeof Knack === 'undefined') return;
+
+    $.ajax({
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      success: function (resp) {
+        var raw = resp[labelField + '_raw'] || resp[labelField] || '';
+        // Knack raw values may be HTML — strip tags for plain text
+        var txt = typeof raw === 'string'
+          ? raw.replace(/<[^>]*>/g, '').trim()
+          : String(raw);
+
+        // Find the label td inside this record's worksheet row
+        var wsRow = document.getElementById(recordId);
+        if (!wsRow) return;
+        var labelTd = wsRow.querySelector('td.' + labelField +
+          ', td[data-field-key="' + labelField + '"]');
+        if (labelTd) labelTd.textContent = txt;
+      }
+    });
+  }
+
   /** Save a direct-edit field value via model.updateRecord.
    *  Uses Knack's internal API to avoid triggering a full view re-render.
    *  Calls onSuccess() or onError(message) when done. */
@@ -1308,7 +1370,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
-        function () { showInputSuccess(input); },
+        function () {
+          showInputSuccess(input);
+          if (isHeaderTrigger(viewId, fieldKey)) {
+            setTimeout(function () {
+              refreshHeaderLabel(viewId, recordId);
+            }, 600);
+          }
+        },
         function (msg) { showInputError(input, msg, previousValue); }
       );
     }
@@ -1448,6 +1517,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
       saveRadioValue(viewId, recordId, fieldKey, newValue);
+      // Soft-refresh the header label after saving a trigger field.
+      // Short delay lets the server recalculate the formula first.
+      if (isHeaderTrigger(viewId, fieldKey)) {
+        setTimeout(function () {
+          refreshHeaderLabel(viewId, recordId);
+        }, 600);
+      }
     }
   }, true);
 
