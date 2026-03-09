@@ -66,6 +66,8 @@
           product:          'field_2379',
           laborDescription: 'field_2409',
           labor:            'field_2400',
+          quantity:         'field_2399',   // Qty (summary, inline-edit)
+          extended:         'field_2401',   // Extended / Labor Total (summary, read-only)
 
           mounting:         'field_2379',
           connections:      'field_2381',
@@ -161,16 +163,28 @@ tr.scw-inline-photo-row > td {
 .${P}-summary {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 6px 12px;
   background: #f8fafc;
   border-bottom: 1px solid #e5e7eb;
-  cursor: pointer;
-  user-select: none;
   min-height: 38px;
 }
 .${P}-summary:hover {
   background: #f1f5f9;
+}
+
+/* Clickable toggle zone (chevron + identity) */
+.${P}-toggle-zone {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.${P}-toggle-zone:hover .${P}-chevron {
+  color: #6b7280;
 }
 
 /* Chevron toggle */
@@ -200,7 +214,6 @@ tr.scw-inline-photo-row > td {
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
 }
 
 /* Label & Product tds in summary — primary styling */
@@ -211,14 +224,11 @@ td.${P}-sum-primary:hover {
   font-size: 14px;
   font-weight: 700;
   color: #1e4d78;
-  cursor: default !important;
+  cursor: pointer !important;
   border: none !important;
   background: transparent !important;
   padding: 0 2px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
 }
 
 /* Separator dot */
@@ -233,6 +243,7 @@ td.${P}-sum-primary:hover {
 td.${P}-sum-field {
   display: inline-flex;
   align-items: center;
+  position: relative;
   padding: 2px 8px;
   font-size: 13px;
   font-weight: 500;
@@ -243,9 +254,6 @@ td.${P}-sum-field {
   white-space: nowrap;
   min-height: 26px;
   min-width: 40px;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: border-color 0.15s, background-color 0.15s;
 }
 td.${P}-sum-field.cell-edit:hover,
@@ -258,6 +266,23 @@ td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
 td.${P}-sum-field.${P}-empty {
   color: #9ca3af;
   font-style: italic;
+}
+
+/* Read-only summary field (non-editable, e.g. Extended total) */
+td.${P}-sum-field-ro {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #f3f4f6;
+  white-space: nowrap;
+  min-height: 26px;
+  min-width: 40px;
 }
 
 /* Summary field label (tiny, above or inline) */
@@ -278,6 +303,18 @@ td.${P}-sum-field.${P}-empty {
   align-items: flex-start;
   gap: 0;
   min-width: 0;
+  flex-shrink: 0;
+}
+
+/* Labor desc group gets more space */
+.${P}-sum-group--wide {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+.${P}-sum-group--wide td.${P}-sum-field {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 /* Move td sits at the right end */
@@ -288,6 +325,7 @@ td.${P}-sum-move {
   padding: 0 4px;
   border: none !important;
   background: transparent !important;
+  flex-shrink: 0;
 }
 
 /* ================================================================
@@ -530,13 +568,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var bar = document.createElement('div');
     bar.className = P + '-summary';
 
-    // ── Chevron (left side) ──
+    // ── Toggle zone: chevron + identity (only this area toggles accordion) ──
+    var toggleZone = document.createElement('span');
+    toggleZone.className = P + '-toggle-zone';
+
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
-    bar.appendChild(chevron);
+    toggleZone.appendChild(chevron);
 
-    // ── Identity: Label + Product ──
+    // Identity: Label + Product
     var identity = document.createElement('span');
     identity.className = P + '-identity';
 
@@ -556,7 +597,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       identity.appendChild(productTd);
     }
 
-    bar.appendChild(identity);
+    toggleZone.appendChild(identity);
+    bar.appendChild(toggleZone);
 
     // ── Separator ──
     var sep1 = document.createElement('span');
@@ -579,11 +621,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       bar.appendChild(bidGroup);
     }
 
-    // ── Labor Desc field ──
+    // ── Labor Desc field (wider flex) ──
     var laborDescTd = findCell(tr, f.laborDescription);
     if (laborDescTd) {
       var ldGroup = document.createElement('span');
-      ldGroup.className = P + '-sum-group';
+      ldGroup.className = P + '-sum-group ' + P + '-sum-group--wide';
       var ldLabel = document.createElement('span');
       ldLabel.className = P + '-sum-label';
       ldLabel.textContent = 'Labor Desc';
@@ -607,6 +649,39 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
       labGroup.appendChild(laborTd);
       bar.appendChild(labGroup);
+    }
+
+    // ── Qty field (view_3505 only) ──
+    if (f.quantity) {
+      var qtyTd = findCell(tr, f.quantity);
+      if (qtyTd) {
+        var qtyGroup = document.createElement('span');
+        qtyGroup.className = P + '-sum-group';
+        var qtyLabel = document.createElement('span');
+        qtyLabel.className = P + '-sum-label';
+        qtyLabel.textContent = 'Qty';
+        qtyGroup.appendChild(qtyLabel);
+        qtyTd.classList.add(P + '-sum-field');
+        if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
+        qtyGroup.appendChild(qtyTd);
+        bar.appendChild(qtyGroup);
+      }
+    }
+
+    // ── Extended / Labor Total field (view_3505 only, read-only) ──
+    if (f.extended) {
+      var extTd = findCell(tr, f.extended);
+      if (extTd) {
+        var extGroup = document.createElement('span');
+        extGroup.className = P + '-sum-group';
+        var extLabel = document.createElement('span');
+        extLabel.className = P + '-sum-label';
+        extLabel.textContent = 'Extended';
+        extGroup.appendChild(extLabel);
+        extTd.classList.add(P + '-sum-field-ro');
+        extGroup.appendChild(extTd);
+        bar.appendChild(extGroup);
+      }
     }
 
     // ── Move (right-aligned) ──
@@ -822,22 +897,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
-  // DELEGATED CLICK HANDLER FOR SUMMARY BAR
+  // DELEGATED CLICK HANDLER FOR ACCORDION TOGGLE
   // ============================================================
-  // Click on the summary bar (but NOT on an editable td) toggles
-  // the detail panel.  Clicks on editable cells are left alone so
-  // Knack's inline edit can take over.
+  // ONLY the toggle-zone (chevron + identity) toggles the detail
+  // panel.  All other clicks in the summary bar are left alone so
+  // Knack / KTL inline edit can work without interference.
 
-  $(document).on('click' + EVENT_NS, '.' + P + '-summary', function (e) {
-    var target = e.target;
-
-    // Don't toggle if the user clicked on an editable cell or its content
-    var td = target.closest('td');
-    if (td && (td.classList.contains(P + '-sum-field') ||
-               td.classList.contains(P + '-sum-move'))) {
-      return; // let Knack handle the click
-    }
-
+  $(document).on('click' + EVENT_NS, '.' + P + '-toggle-zone', function (e) {
+    e.preventDefault();
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {
       toggleDetail(wsTr);
