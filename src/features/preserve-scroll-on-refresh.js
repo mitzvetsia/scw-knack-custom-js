@@ -55,6 +55,23 @@
   // Save position right before the page unloads (refresh / close / navigate away)
   window.addEventListener('beforeunload', save);
 
+  // Save scroll position when an inline edit is made, BEFORE Knack
+  // re-renders the view (which can collapse page height and lose scroll).
+  $(document).on('knack-cell-update.scwScrollPreserve', function () {
+    save();
+  });
+
+  // Debounced restore — multiple view-renders can fire in quick
+  // succession after an inline edit; we only need one restore.
+  var restoreTimer = null;
+  function debouncedRestore(delay) {
+    if (restoreTimer) clearTimeout(restoreTimer);
+    restoreTimer = setTimeout(function () {
+      restoreTimer = null;
+      restore();
+    }, delay);
+  }
+
   // Restore position once the page is ready.
   // Use a short delay so Knack views have time to render content that
   // affects page height before we scroll.
@@ -66,6 +83,13 @@
   // hash-based navigation can re-render without a full page load.
   $(document).on('knack-scene-render.any.scwScrollPreserve', function () {
     setTimeout(restore, 300);
+  });
+
+  // Restore after view re-renders (inline edit refresh). 500ms delay
+  // allows device-worksheet transforms + group-collapse to finish first
+  // so the page height is stable before we scroll.
+  $(document).on('knack-view-render.scwScrollPreserve', function () {
+    debouncedRestore(500);
   });
 
   // Expose on the SCW namespace

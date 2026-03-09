@@ -621,6 +621,23 @@
       });
   });
 
+  // Re-enhance after ANY view re-render (e.g. after inline-edit refresh).
+  // The MutationObserver alone is unreliable because Knack's async
+  // re-render can cause it to fire at intermediate DOM states.
+  // Delay 200ms so device-worksheet's transformView (150ms) runs first.
+  var viewRenderTimer = 0;
+  $(document)
+    .off('knack-view-render' + EVENT_NS)
+    .on('knack-view-render' + EVENT_NS, function () {
+      var sceneId = getCurrentSceneId();
+      if (!isEnabledScene(sceneId)) return;
+      if (viewRenderTimer) clearTimeout(viewRenderTimer);
+      viewRenderTimer = setTimeout(function () {
+        viewRenderTimer = 0;
+        enhanceAllGroupedGrids(sceneId);
+      }, 200);
+    });
+
   const initialScene = getCurrentSceneId();
   if (isEnabledScene(initialScene)) {
     enhanceAllGroupedGrids(initialScene);
