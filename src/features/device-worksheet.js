@@ -470,6 +470,16 @@ td.${P}-sum-move {
   flex-shrink: 0;
 }
 
+/* ── Synthetic group divider bars ── */
+tr.scw-synth-divider > td {
+  height: 6px;
+  padding: 0 !important;
+  background: #d1d5db;
+  border: none !important;
+  line-height: 0;
+  font-size: 0;
+}
+
 /* ================================================================
    DETAIL PANEL – expandable section
    ================================================================ */
@@ -730,7 +740,7 @@ td.${P}-field-value--notes {
   line-height: 1.3;
   resize: none;
   min-height: 36px;
-  max-height: 68px;
+  max-height: 120px;
   overflow-y: auto;
 }
 .${P}-sum-input-wrap .${P}-direct-error {
@@ -1348,7 +1358,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 2;
+      input.rows = 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -1802,6 +1812,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         }
       }
 
+      // Helper: build a gray divider row
+      function makeDivider() {
+        var divTr = document.createElement('tr');
+        divTr.className = 'scw-synth-divider';
+        var divTd = document.createElement('td');
+        divTd.setAttribute('colspan', String(colSpan));
+        divTr.appendChild(divTd);
+        return divTr;
+      }
+
       // Build synthetic groups in reverse so insertions at top keep order:
       // Project Assumptions first, then Project Services.
       var buckets = [
@@ -1809,12 +1829,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         { cls: 'scw-row--assumptions', label: 'Project Assumptions' }
       ];
 
+      // Track the last inserted row to place the bottom divider after
+      var lastInsertedRow = null;
+      var anySyntheticBuilt = false;
+
       buckets.forEach(function (bucket) {
         // Find worksheet rows that belong to this bucket AND have no MDF/IDF.
         var candidates = tbody.querySelectorAll(
           'tr.' + WORKSHEET_ROW + '.' + bucket.cls + '[data-scw-no-move="1"]'
         );
         if (!candidates.length) return;
+
+        anySyntheticBuilt = true;
 
         // Build a synthetic kn-table-group row styled with pale blue accent
         var groupTr = document.createElement('tr');
@@ -1863,7 +1889,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
             insertRef = set.photos[p];
           }
         }
+        lastInsertedRow = insertRef;
       });
+
+      // Insert gray divider bars around the synthetic section
+      if (anySyntheticBuilt) {
+        // Bottom divider: after the last synthetic group's rows
+        if (lastInsertedRow && lastInsertedRow.nextSibling) {
+          tbody.insertBefore(makeDivider(), lastInsertedRow.nextSibling);
+        } else if (lastInsertedRow) {
+          tbody.appendChild(makeDivider());
+        }
+      }
     }
 
     // ── RESTORE EXPANDED STATE ──
@@ -1871,6 +1908,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
     restoreExpandedState(viewCfg.viewId);
+
+    // ── RE-APPLY GROUP COLLAPSE STATE ──
+    // transformView creates new DOM rows that are visible by default.
+    // Group-collapse may have already run and set .scw-collapsed on
+    // headers before these rows existed.  Explicitly re-enhance so
+    // collapsed groups properly hide their new content rows.
+    if (window.SCW && window.SCW.groupCollapse && window.SCW.groupCollapse.enhance) {
+      window.SCW.groupCollapse.enhance();
+    }
   }
 
   // ============================================================
