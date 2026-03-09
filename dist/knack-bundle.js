@@ -12985,6 +12985,7 @@ td.${P}-field-value--notes {
 /* ── Summary bar direct-edit input wrapper ── */
 .${P}-sum-input-wrap {
   width: 100%;
+  min-width: 0;
   position: relative;
 }
 .${P}-sum-input-wrap .${P}-direct-input {
@@ -12992,6 +12993,8 @@ td.${P}-field-value--notes {
   padding: 2px 6px;
   font-size: 13px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .${P}-sum-input-wrap .${P}-direct-error {
   position: absolute;
@@ -13606,6 +13609,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     input.value = currentVal;
     input.setAttribute('data-field', fieldKey);
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
+
+    // Propagate conditional formatting (e.g. red background) from the td
+    if (td) {
+      var bgColor = td.style.backgroundColor;
+      if (bgColor) {
+        input.style.backgroundColor = bgColor;
+      }
+      // Also check computed style in case Knack rules applied via class
+      var computed = window.getComputedStyle(td);
+      var compBg = computed.backgroundColor;
+      if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
+        input.style.backgroundColor = compBg;
+      }
+    }
 
     wrapper.appendChild(input);
 
