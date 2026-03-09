@@ -2,7 +2,7 @@
 
 /**************************************************************************************************
  * FEATURE: Instructions placement (move .kn-instructions under labels)
- **************************************************************************************************/
+ ***********************************************************************************************/
 (function instructionsPlacement_allForms() {
   $(document).on('knack-view-render.form', function (event, view, data) {
     $("#" + view.key + " .kn-instructions").each(function () {
