@@ -300,6 +300,26 @@ td.${P}-sum-check input[type="checkbox"] {
   height: 13px;
   flex-shrink: 0;
 }
+/* Wrapper so chit + product share the product's fixed width */
+.${P}-product-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+#view_3512 .${P}-product-group {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+.${P}-product-group > td.${P}-sum-product {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Label td in summary — primary styling, fixed width for alignment */
 td.${P}-sum-label-cell,
@@ -340,13 +360,7 @@ td.${P}-sum-product:hover {
   word-break: break-word;
   line-height: 1.3;
 }
-/* Narrower product column for view_3512 */
-#view_3512 td.${P}-sum-product,
-#view_3512 td.${P}-sum-product:hover {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
-}
+/* view_3512: product width managed by product-group wrapper */
 
 /* Separator dot */
 .${P}-sum-sep {
@@ -726,27 +740,32 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       identity.appendChild(labelTd);
     }
 
-    // Warning chit (field_2454, view_3512 only)
-    if (f.warningCount) {
-      var warnTd = findCell(tr, f.warningCount);
-      var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
-      if (warnVal > 0) {
-        var chit = document.createElement('span');
-        chit.className = P + '-warn-chit';
-        chit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>'
-          + Math.round(warnVal);
-        identity.appendChild(chit);
-      }
-    }
-
     var productTd = findCell(tr, f.product, ci.product);
     if (productTd) {
       var sep0 = document.createElement('span');
       sep0.className = P + '-sum-sep';
       sep0.textContent = '\u00b7';
       identity.appendChild(sep0);
+
+      var productGroup = document.createElement('span');
+      productGroup.className = P + '-product-group';
+
+      // Warning chit (field_2454, view_3512 only)
+      if (f.warningCount) {
+        var warnTd = findCell(tr, f.warningCount);
+        var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+        if (warnVal > 0) {
+          var chit = document.createElement('span');
+          chit.className = P + '-warn-chit';
+          chit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
+            + Math.round(warnVal);
+          productGroup.appendChild(chit);
+        }
+      }
+
       productTd.classList.add(P + '-sum-product');
-      identity.appendChild(productTd);
+      productGroup.appendChild(productTd);
+      identity.appendChild(productGroup);
     }
 
     toggleZone.appendChild(identity);
