@@ -710,6 +710,29 @@ td.${P}-field-value--notes {
   max-height: 120px;
 }
 
+/* ── Summary bar direct-edit input wrapper ── */
+.${P}-sum-input-wrap {
+  width: 100%;
+  position: relative;
+}
+.${P}-sum-input-wrap .${P}-direct-input {
+  height: 28px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.${P}-sum-input-wrap .${P}-direct-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  white-space: nowrap;
+  z-index: 10;
+  background: #fff;
+  padding: 2px 4px;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
@@ -1064,7 +1087,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399'];
 
   /** Save a direct-edit field value via model.updateRecord.
    *  Uses Knack's internal API to avoid triggering a full view re-render.
@@ -1117,7 +1140,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Client-side validation for number fields
     if (NUMBER_FIELDS.indexOf(fieldKey) !== -1) {
-      var trimmed = newValue.trim();
+      var trimmed = newValue.trim().replace(/[$,]/g, '');
       if (trimmed !== '' && isNaN(Number(trimmed))) {
         showInputError(input, 'Please enter a number', previousValue);
         return;
@@ -1295,6 +1318,35 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }, true);
 
   // ============================================================
+  // SUMMARY BAR DIRECT-EDIT INPUT
+  // ============================================================
+
+  /** Build a direct-edit input that replaces a summary bar td.
+   *  Returns a wrapper div containing the input + hidden td. */
+  function buildSummaryEditInput(td, fieldKey) {
+    var wrapper = document.createElement('div');
+    wrapper.className = P + '-sum-input-wrap';
+
+    var currentVal = readFieldText(td);
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = DIRECT_INPUT_CLASS;
+    input.value = currentVal;
+    input.setAttribute('data-field', fieldKey);
+    input.setAttribute(DIRECT_EDIT_ATTR, '1');
+
+    wrapper.appendChild(input);
+
+    if (td) {
+      td.style.display = 'none';
+      td.setAttribute(DIRECT_EDIT_ATTR, '1');
+      wrapper.appendChild(td);
+    }
+
+    return wrapper;
+  }
+
+  // ============================================================
   // BUILD SUMMARY BAR
   // ============================================================
 
@@ -1362,7 +1414,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
 
-    // ── Labor Desc (inline, fills middle space) ──
+    // ── Labor Desc (inline, fills middle space — direct-edit) ──
     var laborDescTd = findCell(tr, f.laborDescription);
     if (laborDescTd) {
       var ldGroup = document.createElement('span');
@@ -1371,10 +1423,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       ldLabel.className = P + '-sum-label';
       ldLabel.textContent = 'Labor Desc';
       ldGroup.appendChild(ldLabel);
-      laborDescTd.classList.add(P + '-sum-field');
-      laborDescTd.classList.add(P + '-sum-field--desc');
-      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
-      ldGroup.appendChild(laborDescTd);
+      ldGroup.appendChild(buildSummaryEditInput(laborDescTd, f.laborDescription));
       bar.appendChild(ldGroup);
     }
 
@@ -1397,7 +1446,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       rightGroup.appendChild(bidGroup);
     }
 
-    // Labor $
+    // Labor $ (direct-edit)
     var laborTd = findCell(tr, f.labor);
     if (laborTd) {
       var labGroup = document.createElement('span');
@@ -1406,13 +1455,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       labLabel.className = P + '-sum-label';
       labLabel.textContent = 'Labor';
       labGroup.appendChild(labLabel);
-      laborTd.classList.add(P + '-sum-field');
-      if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
-      labGroup.appendChild(laborTd);
+      labGroup.appendChild(buildSummaryEditInput(laborTd, f.labor));
       rightGroup.appendChild(labGroup);
     }
 
-    // Qty (view_3505 only)
+    // Qty (view_3505 only, direct-edit)
     if (f.quantity) {
       var qtyTd = findCell(tr, f.quantity);
       if (qtyTd) {
@@ -1422,9 +1469,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         qtyLabel.className = P + '-sum-label';
         qtyLabel.textContent = 'Qty';
         qtyGroup.appendChild(qtyLabel);
-        qtyTd.classList.add(P + '-sum-field');
-        if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
-        qtyGroup.appendChild(qtyTd);
+        qtyGroup.appendChild(buildSummaryEditInput(qtyTd, f.quantity));
         rightGroup.appendChild(qtyGroup);
       }
     }
