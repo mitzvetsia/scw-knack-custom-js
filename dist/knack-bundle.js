@@ -12514,7 +12514,8 @@ td.${PREFIX}-field-value--notes {
         { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' },
-        { fieldKey: 'field_771', when: 'empty', color: 'warning' }
+        { fieldKey: 'field_771', when: 'empty', color: 'warning' },
+        { fieldKey: 'field_2409', when: 'empty', color: 'danger' }
       ]
     },
     {
