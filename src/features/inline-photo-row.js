@@ -578,10 +578,12 @@
     if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
 
     // Build metadata payload — no mutation assumptions
+    var sourceRequired = dragSourceCard.getAttribute('data-photo-required') === 'true';
     var targetRequired = targetCard.getAttribute('data-photo-required') === 'true';
     var detail = {
       sourceRecordId: sourceId,
       sourcePhotoType: sourceType,
+      sourceRequired: sourceRequired,
       targetRecordId: targetId,
       targetPhotoType: targetType,
       targetRequired: targetRequired,
