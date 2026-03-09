@@ -10505,6 +10505,7 @@ $(".kn-navigation-bar").hide();
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
+      '  max-width: 200px;',
       '}',
 
       /* Override Knack default ".kn-content img { max-width:100% }" */
@@ -10750,7 +10751,6 @@ $(".kn-navigation-bar").hide();
       '.' + NOTES_CLS + ' {',
       '  margin-top: 2px;',
       '  width: 100%;',
-      '  min-width: 80px;',
       '  padding: 2px 6px;',
       '  font-size: 10px;',
       '  line-height: 1.3;',
