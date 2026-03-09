@@ -12996,6 +12996,13 @@ td.${P}-field-value--notes {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.${P}-sum-input-wrap .${P}-direct-textarea {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  resize: none;
+  min-height: 36px;
+}
 .${P}-sum-input-wrap .${P}-direct-error {
   position: absolute;
   top: 100%;
@@ -13597,16 +13604,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ============================================================
 
   /** Build a direct-edit input that replaces a summary bar td.
-   *  Returns a wrapper div containing the input + hidden td. */
-  function buildSummaryEditInput(td, fieldKey) {
+   *  Returns a wrapper div containing the input + hidden td.
+   *  opts.multiline — use a textarea instead of a single-line input. */
+  function buildSummaryEditInput(td, fieldKey, opts) {
+    opts = opts || {};
     var wrapper = document.createElement('div');
     wrapper.className = P + '-sum-input-wrap';
 
     var currentVal = readFieldText(td);
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = DIRECT_INPUT_CLASS;
-    input.value = currentVal;
+    var input;
+
+    if (opts.multiline) {
+      input = document.createElement('textarea');
+      input.className = DIRECT_TEXTAREA_CLASS;
+      input.value = currentVal;
+      input.rows = 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = DIRECT_INPUT_CLASS;
+      input.value = currentVal;
+    }
     input.setAttribute('data-field', fieldKey);
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
 
@@ -13712,7 +13730,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       ldLabel.className = P + '-sum-label';
       ldLabel.textContent = 'Labor Desc';
       ldGroup.appendChild(ldLabel);
-      ldGroup.appendChild(buildSummaryEditInput(laborDescTd, f.laborDescription));
+      ldGroup.appendChild(buildSummaryEditInput(laborDescTd, f.laborDescription, { multiline: true }));
       bar.appendChild(ldGroup);
     }
 
@@ -13824,8 +13842,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    addRow(surveySection, buildEditableFieldRow('Connected to',
-      findCell(tr, f.connections), f.connections));
+    addRow(surveySection, buildFieldRow('Connected to',
+      findCell(tr, f.connections)));
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
