@@ -12101,6 +12101,14 @@ tr.scw-inline-photo-row > td {
   width: 70px;
   min-width: 70px;
 }
+/* Bid field grows in height when multiple selections are present */
+.${P}-sum-group--bid td.${P}-sum-field {
+  height: auto;
+  min-height: 30px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
 /* Qty group narrower */
 .${P}-sum-right .${P}-sum-group--qty {
   width: 50px;
@@ -12174,7 +12182,7 @@ td.${P}-sum-check input[type="checkbox"] {
   min-width: 0;
 }
 
-/* Label td in summary — primary styling, always nowrap */
+/* Label td in summary — primary styling, fixed width for alignment */
 td.${P}-sum-label-cell,
 td.${P}-sum-label-cell:hover {
   display: inline-flex;
@@ -12187,9 +12195,14 @@ td.${P}-sum-label-cell:hover {
   background: transparent !important;
   padding: 0 2px;
   white-space: nowrap;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Product td in summary — fixed 400px so labor desc and right fields align vertically */
+/* Product td in summary — fixed width so labor desc and right fields align vertically */
 td.${P}-sum-product,
 td.${P}-sum-product:hover {
   display: inline-flex;
@@ -12207,6 +12220,13 @@ td.${P}-sum-product:hover {
   white-space: normal;
   word-break: break-word;
   line-height: 1.3;
+}
+/* Narrower product column for view_3512 */
+#view_3512 td.${P}-sum-product,
+#view_3512 td.${P}-sum-product:hover {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
 }
 
 /* Separator dot */
