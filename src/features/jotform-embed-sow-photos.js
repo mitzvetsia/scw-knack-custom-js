@@ -1,6 +1,6 @@
 // src/features/jotform-embed-sow-photos.js
 // ---------------------------------------------------------------------------
-// Embeds JotForm "Bulk Add Photos" forms in a modal overlay, pre-populating
+//// Embeds JotForm "Bulk Add Photos" forms in a modal overlay, pre-populating
 // a hidden JotForm field with the current record ID.
 //
 // Configurable for multiple views — each entry in FORM_CONFIGS defines
