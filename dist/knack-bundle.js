@@ -12762,10 +12762,10 @@ td.${P}-sum-move {
 /* Narrow the Equipment Details (left) section so Survey Details
    starts roughly aligned with Labor Description in the summary bar. */
 #view_3512 .${P}-sections {
-  grid-template-columns: 430px 1fr;
+  grid-template-columns: 455px 1fr;
 }
 #view_3505 .${P}-sections {
-  grid-template-columns: 530px 1fr;
+  grid-template-columns: 555px 1fr;
 }
 @media (max-width: 900px) {
   .${P}-sections,
@@ -12936,6 +12936,38 @@ td.${P}-field-value--notes {
 .${P}-radio-chip.is-saving {
   opacity: 0.6;
   pointer-events: none;
+}
+
+/* ── Direct-edit inputs (type-and-save text fields) ── */
+.${P}-direct-input,
+.${P}-direct-textarea {
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1f2937;
+  line-height: 1.5;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+.${P}-direct-input:focus,
+.${P}-direct-textarea:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
+}
+.${P}-direct-input.is-saving,
+.${P}-direct-textarea.is-saving {
+  background-color: #f0fdf4;
+  border-color: #86efac;
+}
+.${P}-direct-textarea {
+  resize: vertical;
+  min-height: 48px;
+  max-height: 120px;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
@@ -13169,6 +13201,180 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     row.appendChild(valueWrapper);
     return row;
   }
+
+  // ============================================================
+  // DIRECT-EDIT INPUTS – type-and-save text fields
+  // ============================================================
+  var DIRECT_EDIT_ATTR = 'data-scw-direct-edit';
+  var DIRECT_INPUT_CLASS = P + '-direct-input';
+  var DIRECT_TEXTAREA_CLASS = P + '-direct-textarea';
+
+  /** Read the display text from a td, stripping whitespace. */
+  function readFieldText(td) {
+    if (!td) return '';
+    return (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
+  }
+
+  /** Build an editable field row with a native input or textarea. */
+  function buildEditableFieldRow(label, td, fieldKey, opts) {
+    opts = opts || {};
+    if (td && td.classList.contains(GRAYED_CLASS)) return null;
+    if (opts.skipEmpty && (!td || isCellEmpty(td))) return null;
+
+    var row = document.createElement('div');
+    row.className = P + '-field';
+
+    var lbl = document.createElement('div');
+    lbl.className = P + '-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    var valueWrapper = document.createElement('div');
+    valueWrapper.className = P + '-field-value';
+    valueWrapper.style.border = 'none';
+    valueWrapper.style.padding = '0';
+    valueWrapper.style.background = 'transparent';
+
+    var currentVal = readFieldText(td);
+    var input;
+
+    if (opts.notes) {
+      input = document.createElement('textarea');
+      input.className = DIRECT_TEXTAREA_CLASS;
+      input.value = currentVal;
+      input.rows = 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = DIRECT_INPUT_CLASS;
+      input.value = currentVal;
+    }
+
+    input.setAttribute('data-field', fieldKey);
+    input.setAttribute(DIRECT_EDIT_ATTR, '1');
+
+    valueWrapper.appendChild(input);
+
+    // Keep the original td hidden so Knack data binding stays alive
+    if (td) {
+      td.style.display = 'none';
+      td.setAttribute(DIRECT_EDIT_ATTR, '1');
+      valueWrapper.appendChild(td);
+    }
+
+    row.appendChild(valueWrapper);
+    return row;
+  }
+
+  /** Save a direct-edit field value via Knack's internal API. */
+  function saveDirectEditValue(viewId, recordId, fieldKey, value) {
+    var data = {};
+    data[fieldKey] = value;
+
+    var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
+    if (view && view.model && typeof view.model.updateRecord === 'function') {
+      view.model.updateRecord(recordId, data);
+      return;
+    }
+
+    // Fallback: AJAX PUT
+    if (typeof Knack !== 'undefined') {
+      $.ajax({
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
+        type: 'PUT',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        error: function (xhr) {
+          console.warn('[scw-ws-direct] Save failed for ' + recordId, xhr.responseText);
+        }
+      });
+    }
+  }
+
+  /** Handle save for a direct-edit input. */
+  function handleDirectEditSave(input) {
+    var fieldKey = input.getAttribute('data-field') || '';
+    var newValue = input.value;
+
+    // Update hidden td
+    var wrapper = input.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    if (hiddenTd) {
+      hiddenTd.textContent = newValue;
+    }
+
+    // Visual feedback
+    input.classList.add('is-saving');
+    setTimeout(function () { input.classList.remove('is-saving'); }, 600);
+
+    // Find record ID and view ID
+    var wsTr = input.closest('tr.' + WORKSHEET_ROW);
+    if (!wsTr) return;
+    var recordId = getRecordId(wsTr);
+    var viewEl = input.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (recordId && viewId) {
+      saveDirectEditValue(viewId, recordId, fieldKey, newValue);
+    }
+  }
+
+  // ── Keydown handler for direct-edit inputs: save on Enter ──
+  document.addEventListener('keydown', function (e) {
+    var target = e.target;
+    if (!target.hasAttribute(DIRECT_EDIT_ATTR)) return;
+
+    if (e.key === 'Enter') {
+      // For textareas, Shift+Enter inserts newline; Enter alone saves
+      if (target.tagName === 'TEXTAREA' && e.shiftKey) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      target.blur();  // triggers blur save too, but we handle it
+      handleDirectEditSave(target);
+    }
+
+    if (e.key === 'Escape') {
+      // Revert to the hidden td value
+      var wrapper = target.parentNode;
+      var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+      if (hiddenTd) {
+        target.value = readFieldText(hiddenTd);
+      }
+      target.blur();
+    }
+  }, true);
+
+  // ── Blur handler: save when focus leaves ──
+  document.addEventListener('focusout', function (e) {
+    var target = e.target;
+    if (!target.hasAttribute(DIRECT_EDIT_ATTR)) return;
+
+    // Check if value actually changed
+    var wrapper = target.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var originalVal = hiddenTd ? readFieldText(hiddenTd) : '';
+    if (target.value !== originalVal) {
+      handleDirectEditSave(target);
+    }
+  }, true);
+
+  // ── Capture-phase click/mousedown: block Knack inline-edit on direct-edit inputs ──
+  document.addEventListener('click', function (e) {
+    if (e.target.hasAttribute(DIRECT_EDIT_ATTR)) {
+      e.stopPropagation();
+    }
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    if (e.target.hasAttribute(DIRECT_EDIT_ATTR)) {
+      e.stopPropagation();
+    }
+  }, true);
 
   /** Save a radio chip selection via Knack's internal API. */
   function saveRadioValue(viewId, recordId, fieldKey, value) {
@@ -13439,19 +13645,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Left column: Equipment Details ──
     var equipSection = buildSection('');
 
-    addRow(equipSection, buildFieldRow('Mounting\nHardware',
-      findCell(tr, f.mounting, ci.mounting), { skipEmpty: true }));
+    addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
+      findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
 
-    addRow(equipSection, buildFieldRow('SCW Notes',
-      findCell(tr, f.scwNotes), { notes: true }));
+    addRow(equipSection, buildEditableFieldRow('SCW Notes',
+      findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
 
     sections.appendChild(equipSection);
 
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    addRow(surveySection, buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
+    addRow(surveySection, buildEditableFieldRow('Connected to',
+      findCell(tr, f.connections), f.connections));
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
@@ -13489,17 +13695,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     if (f.dropLength) {
-      addRow(surveySection, buildFieldRow('Drop Length',
-        findCell(tr, f.dropLength)));
+      addRow(surveySection, buildEditableFieldRow('Drop Length',
+        findCell(tr, f.dropLength), f.dropLength));
     }
 
     if (f.conduitFeet) {
-      addRow(surveySection, buildFieldRow('Conduit Ft',
-        findCell(tr, f.conduitFeet)));
+      addRow(surveySection, buildEditableFieldRow('Conduit Ft',
+        findCell(tr, f.conduitFeet), f.conduitFeet));
     }
 
-    addRow(surveySection, buildFieldRow('Survey\nNotes',
-      findCell(tr, f.surveyNotes), { notes: true }));
+    addRow(surveySection, buildEditableFieldRow('Survey\nNotes',
+      findCell(tr, f.surveyNotes), f.surveyNotes, { notes: true }));
 
     sections.appendChild(surveySection);
 
