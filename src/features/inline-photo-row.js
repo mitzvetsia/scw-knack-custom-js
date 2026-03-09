@@ -16,6 +16,15 @@
  *
  * Clicking any photo card navigates to the edit-doc-photo page
  * for that specific photo record.
+ *
+ * Knack Builder Setup (per view):
+ *   - field_771 (PICs) must have "Click the thumbnail to view the full-size
+ *     image" enabled. Without this, Knack does not render the <img> element
+ *     with `data-kn-img-gallery` in the DOM, and photos will appear as empty
+ *     upload placeholders even when an image is attached to the record.
+ *   - field_2445 (CONFIG_photo type), field_2446 (Required), field_2447
+ *     (Completed), and field_114 (INPUT_notes) should be included in the
+ *     view — they are hidden via CSS but their DOM data is read for metadata.
  */
 (function () {
   'use strict';
