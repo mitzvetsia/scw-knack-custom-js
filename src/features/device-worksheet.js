@@ -158,35 +158,29 @@ tr.scw-inline-photo-row > td {
 }
 
 /* ================================================================
-   SUMMARY BAR – two-row layout
-   Row 1: checkbox + chevron + identity + compact fields + move
-   Row 2: full-width labor description
+   SUMMARY BAR – single-row layout
+   [checkbox] [chevron] [label · product] [labor desc] → push right → [bid] [labor] [qty] [ext] [move]
    ================================================================ */
 .${P}-summary {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
   background: #f8fafc;
   border-bottom: 1px solid #e5e7eb;
+  min-height: 38px;
 }
 .${P}-summary:hover {
   background: #f1f5f9;
 }
 
-/* ── Row 1: compact fields row ── */
-.${P}-sum-row1 {
+/* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
+.${P}-sum-right {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  min-height: 38px;
-}
-
-/* ── Row 2: full-width labor desc ── */
-.${P}-sum-row2 {
-  display: flex;
-  align-items: stretch;
-  padding: 0 12px 6px 42px;  /* 42px left = align with fields past chevron+checkbox */
-  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 /* ── KTL bulk-edit checkbox cell ── */
@@ -263,7 +257,7 @@ td.${P}-sum-label-cell:hover {
   white-space: nowrap;
 }
 
-/* Product td in summary — wraps at 300px so fields after it start consistently */
+/* Product td in summary — wraps at 400px so fields after it start consistently */
 td.${P}-sum-product,
 td.${P}-sum-product:hover {
   display: inline-flex;
@@ -275,7 +269,7 @@ td.${P}-sum-product:hover {
   border: none !important;
   background: transparent !important;
   padding: 0 2px;
-  max-width: 300px;
+  max-width: 400px;
   white-space: normal;
   word-break: break-word;
   line-height: 1.3;
@@ -337,9 +331,8 @@ td.${P}-sum-field-ro {
   box-sizing: border-box;
 }
 
-/* Full-width labor desc field in row 2 */
+/* Labor desc field — fills available space between identity and right-aligned fields */
 td.${P}-sum-field--desc {
-  flex: 1 1 auto;
   white-space: normal;
   word-break: break-word;
   height: auto;
@@ -367,17 +360,16 @@ td.${P}-sum-field--desc {
   flex-shrink: 0;
 }
 
-/* Full-width group (labor desc in row 2) */
-.${P}-sum-group--full {
+/* Labor desc group — fills middle space, pushes right group to far right */
+.${P}-sum-group--fill {
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 80px;
 }
 
 /* Move td sits at the right end */
 td.${P}-sum-move {
   display: inline-flex;
   align-items: center;
-  margin-left: auto;
   padding: 0 4px;
   border: none !important;
   background: transparent !important;
@@ -624,18 +616,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var bar = document.createElement('div');
     bar.className = P + '-summary';
 
-    // ══════════════════════════════════════════════════════════
-    // ROW 1: checkbox + chevron + identity + compact fields + move
-    // ══════════════════════════════════════════════════════════
-    var row1 = document.createElement('div');
-    row1.className = P + '-sum-row1';
-
     // ── KTL / legacy bulk-edit checkbox (if present) ──
     var checkTd = tr.querySelector('td > input[type="checkbox"]');
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      row1.appendChild(checkCell);
+      bar.appendChild(checkCell);
     }
 
     // ── Toggle zone: chevron + identity ──
@@ -667,15 +653,29 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     toggleZone.appendChild(identity);
-    row1.appendChild(toggleZone);
+    bar.appendChild(toggleZone);
 
-    // ── Separator ──
-    var sep1 = document.createElement('span');
-    sep1.className = P + '-sum-sep';
-    sep1.textContent = '|';
-    row1.appendChild(sep1);
+    // ── Labor Desc (inline, fills middle space) ──
+    var laborDescTd = findCell(tr, f.laborDescription);
+    if (laborDescTd) {
+      var ldGroup = document.createElement('span');
+      ldGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
+      var ldLabel = document.createElement('span');
+      ldLabel.className = P + '-sum-label';
+      ldLabel.textContent = 'Labor Desc';
+      ldGroup.appendChild(ldLabel);
+      laborDescTd.classList.add(P + '-sum-field');
+      laborDescTd.classList.add(P + '-sum-field--desc');
+      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
+      ldGroup.appendChild(laborDescTd);
+      bar.appendChild(ldGroup);
+    }
 
-    // ── Bid field ──
+    // ── Right-aligned group: bid, labor, qty, ext, move ──
+    var rightGroup = document.createElement('span');
+    rightGroup.className = P + '-sum-right';
+
+    // Bid
     var bidTd = findCell(tr, f.bid);
     if (bidTd) {
       var bidGroup = document.createElement('span');
@@ -687,10 +687,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       bidTd.classList.add(P + '-sum-field');
       if (isCellEmpty(bidTd)) bidTd.classList.add(P + '-empty');
       bidGroup.appendChild(bidTd);
-      row1.appendChild(bidGroup);
+      rightGroup.appendChild(bidGroup);
     }
 
-    // ── Labor $ field ──
+    // Labor $
     var laborTd = findCell(tr, f.labor);
     if (laborTd) {
       var labGroup = document.createElement('span');
@@ -702,10 +702,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       laborTd.classList.add(P + '-sum-field');
       if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
       labGroup.appendChild(laborTd);
-      row1.appendChild(labGroup);
+      rightGroup.appendChild(labGroup);
     }
 
-    // ── Qty field (view_3505 only) ──
+    // Qty (view_3505 only)
     if (f.quantity) {
       var qtyTd = findCell(tr, f.quantity);
       if (qtyTd) {
@@ -718,11 +718,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         qtyTd.classList.add(P + '-sum-field');
         if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
         qtyGroup.appendChild(qtyTd);
-        row1.appendChild(qtyGroup);
+        rightGroup.appendChild(qtyGroup);
       }
     }
 
-    // ── Extended / Labor Total (view_3505 only, read-only) ──
+    // Extended (view_3505 only, read-only)
     if (f.extended) {
       var extTd = findCell(tr, f.extended);
       if (extTd) {
@@ -734,41 +734,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         extGroup.appendChild(extLabel);
         extTd.classList.add(P + '-sum-field-ro');
         extGroup.appendChild(extTd);
-        row1.appendChild(extGroup);
+        rightGroup.appendChild(extGroup);
       }
     }
 
-    // ── Move (right-aligned) ──
+    // Move
     var moveTd = findCell(tr, f.move);
     if (moveTd) {
       moveTd.classList.add(P + '-sum-move');
-      row1.appendChild(moveTd);
+      rightGroup.appendChild(moveTd);
     }
 
-    bar.appendChild(row1);
-
-    // ══════════════════════════════════════════════════════════
-    // ROW 2: full-width labor description
-    // ══════════════════════════════════════════════════════════
-    var laborDescTd = findCell(tr, f.laborDescription);
-    if (laborDescTd) {
-      var row2 = document.createElement('div');
-      row2.className = P + '-sum-row2';
-
-      var ldGroup = document.createElement('span');
-      ldGroup.className = P + '-sum-group ' + P + '-sum-group--full';
-      var ldLabel = document.createElement('span');
-      ldLabel.className = P + '-sum-label';
-      ldLabel.textContent = 'Labor Desc';
-      ldGroup.appendChild(ldLabel);
-      laborDescTd.classList.add(P + '-sum-field');
-      laborDescTd.classList.add(P + '-sum-field--desc');
-      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
-      ldGroup.appendChild(laborDescTd);
-      row2.appendChild(ldGroup);
-
-      bar.appendChild(row2);
-    }
+    bar.appendChild(rightGroup);
 
     return bar;
   }
