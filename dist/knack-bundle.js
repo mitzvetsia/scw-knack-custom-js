@@ -11945,9 +11945,7 @@ $(".kn-navigation-bar").hide();
           surveyNotes:      'field_2412',
           exterior:         'field_2372',
           existingCabling:  'field_2370',
-          plenum:           'field_2371',
-          dropLength:       'field_2367',
-          conduitFeet:      'field_2368'
+          plenum:           'field_2371'
         },
         columnIndices: {
           product:  3,
@@ -12457,8 +12455,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // BUILD DETAIL PANEL HELPERS
   // ============================================================
 
+  var GRAYED_CLASS = 'scw-cond-grayed';
+
   function buildFieldRow(label, td, opts) {
     opts = opts || {};
+
+    // If the cell was grayed out by the conditional-grayout script,
+    // remove it from the detail panel entirely (keep summary graying).
+    if (td && td.classList.contains(GRAYED_CLASS)) return null;
+
     var row = document.createElement('div');
     row.className = P + '-field';
 
@@ -12659,13 +12664,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var sections = document.createElement('div');
     sections.className = P + '-sections';
 
+    // Helper: append a field row only if it wasn't grayed out (null)
+    function addRow(section, row) {
+      if (row) section.appendChild(row);
+    }
+
     // ── Left column: Equipment Details ──
     var equipSection = buildSection('Equipment Details');
 
-    equipSection.appendChild(buildFieldRow('Mounting Hardware',
+    addRow(equipSection, buildFieldRow('Mounting Hardware',
       findCell(tr, f.mounting, ci.mounting)));
 
-    equipSection.appendChild(buildFieldRow('SCW Notes',
+    addRow(equipSection, buildFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), { notes: true }));
 
     sections.appendChild(equipSection);
@@ -12673,12 +12683,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    surveySection.appendChild(buildFieldRow('Connected to',
+    addRow(surveySection, buildFieldRow('Connected to',
       findCell(tr, f.connections)));
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
-    if (chipHostTd) {
+    if (chipHostTd && !chipHostTd.classList.contains(GRAYED_CLASS)) {
       var chipStack = chipHostTd.querySelector('.scw-chip-stack');
       if (chipStack) {
         var chipFieldRow = document.createElement('div');
@@ -12701,18 +12711,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         chipFieldRow.appendChild(chipHostTd);
         surveySection.appendChild(chipFieldRow);
       } else {
-        surveySection.appendChild(buildFieldRow('Exterior',
+        addRow(surveySection, buildFieldRow('Exterior',
           chipHostTd));
       }
     }
 
-    surveySection.appendChild(buildFieldRow('Drop Length',
-      findCell(tr, f.dropLength)));
+    if (f.dropLength) {
+      addRow(surveySection, buildFieldRow('Drop Length',
+        findCell(tr, f.dropLength)));
+    }
 
-    surveySection.appendChild(buildFieldRow('Conduit Ft',
-      findCell(tr, f.conduitFeet)));
+    if (f.conduitFeet) {
+      addRow(surveySection, buildFieldRow('Conduit Ft',
+        findCell(tr, f.conduitFeet)));
+    }
 
-    surveySection.appendChild(buildFieldRow('Notes',
+    addRow(surveySection, buildFieldRow('Notes',
       findCell(tr, f.surveyNotes), { notes: true }));
 
     sections.appendChild(surveySection);
