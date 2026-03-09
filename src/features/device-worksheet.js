@@ -76,7 +76,8 @@
           surveyNotes:      'field_2412',
           exterior:         'field_2372',
           existingCabling:  'field_2370',
-          plenum:           'field_2371'
+          plenum:           'field_2371',
+          warningCount:     'field_2454'    // Warning count (shown as chit on header)
         },
         columnIndices: {
           product:  3,
@@ -311,6 +312,11 @@ td.${P}-sum-check input[type="checkbox"] {
   width: 300px;
   min-width: 300px;
   max-width: 300px;
+}
+#view_3505 .${P}-product-group {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
 }
 .${P}-product-group > td.${P}-sum-product {
   width: auto !important;
