@@ -10907,7 +10907,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -10929,6 +10929,12 @@ $(".kn-navigation-bar").hide();
   // Columns to hide in the original table (we show the data inline instead)
   var HIDE_COLS = ['field_114', 'field_2445', 'field_2446', 'field_2447'];
   var NOTES_CLS = 'scw-inline-photo-notes';
+
+  // View-specific add-photo URL path segments
+  var ADD_PHOTO_PATHS = {
+    'view_3559': 'add-photo-to-mdf-idf'
+  };
+  var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
@@ -11262,7 +11268,15 @@ $(".kn-navigation-bar").hide();
       '#view_3505 th.field_2446,',
       '#view_3505 td.field_2446,',
       '#view_3505 th.field_2447,',
-      '#view_3505 td.field_2447 {',
+      '#view_3505 td.field_2447,',
+      '#view_3559 th.field_114,',
+      '#view_3559 td.field_114,',
+      '#view_3559 th.field_2445,',
+      '#view_3559 td.field_2445,',
+      '#view_3559 th.field_2446,',
+      '#view_3559 td.field_2446,',
+      '#view_3559 th.field_2447,',
+      '#view_3559 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -11306,12 +11320,13 @@ $(".kn-navigation-bar").hide();
       surveyId + '/edit-doc-photo/' + photoRecordId;
   }
 
-  /** Build the add-photo-to-survey-line-item hash path. */
-  function addPhotoHash(lineItemId) {
+  /** Build the add-photo hash path (view-specific segment). */
+  function addPhotoHash(lineItemId, viewId) {
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
+    var pathSegment = (viewId && ADD_PHOTO_PATHS[viewId]) || DEFAULT_ADD_PATH;
     return 'subcontractor-portal/site-survey-request-details/' +
-      surveyId + '/add-photo-to-survey-line-item/' + lineItemId;
+      surveyId + '/' + pathSegment + '/' + lineItemId;
   }
 
   /**
@@ -11679,7 +11694,7 @@ $(".kn-navigation-bar").hide();
       if (!lineItemId) continue;
 
       // Get the label for alt text
-      var labelCell = tr.querySelector('td.field_2364');
+      var labelCell = tr.querySelector('td.field_2364') || tr.querySelector('td.field_1642');
       var labelText = labelCell ? (labelCell.textContent || '').trim() : '';
 
       // Extract all connected photo records
@@ -11701,12 +11716,12 @@ $(".kn-navigation-bar").hide();
         '<span class="scw-add-icon">+</span>' +
         '<span>Add</span>';
       addBtn.title = 'Add a new photo record';
-      (function (lid) {
+      (function (lid, vid) {
         addBtn.addEventListener('click', function () {
-          var h = addPhotoHash(lid);
+          var h = addPhotoHash(lid, vid);
           if (h) window.location.hash = h;
         });
-      })(lineItemId);
+      })(lineItemId, viewId);
 
       if (photos.length === 0) {
         addBtn.classList.add('scw-photo-add-solo');
@@ -12356,6 +12371,20 @@ $(".kn-navigation-bar").hide();
         columnIndices: {
           product:  3,
           mounting: 4
+        }
+      },
+      {
+        viewId: 'view_3559',
+        fields: {
+          // ── Summary row ──
+          label:            'field_1642',   // DISPLAY_mdf_idf_name (composite identity)
+          laborDescription: 'field_1643',   // Notes (fills middle, direct-edit textarea)
+
+          // ── Detail panel ──
+          mdfIdf:           'field_1641',   // MDF/IDF (radio chips: HEADEND, IDF)
+          mdfNumber:        'field_2458',   // ## (read-only)
+          name:             'field_1943',   // Name (textarea, direct-edit)
+          surveyNotes:      'field_2457'    // Survey Notes (textarea, direct-edit)
         }
       }
     ]
@@ -13197,6 +13226,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   var RADIO_CHIPS_ATTR = 'data-scw-radio-chips';
 
   var MOUNTING_HEIGHT_OPTIONS = ["Under 16'", "16' - 24'", "Over 24'"];
+  var MDF_IDF_OPTIONS = ['HEADEND', 'IDF'];
 
   /** Read current value from a cell's text content. */
   function readCellText(td) {
@@ -13478,7 +13508,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
 
   /** Save a direct-edit field value via model.updateRecord.
    *  Uses Knack's internal API to avoid triggering a full view re-render.
@@ -13943,6 +13973,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
       findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
 
+    if (f.name) {
+      addRow(equipSection, buildEditableFieldRow('Name',
+        findCell(tr, f.name), f.name, { notes: true }));
+    }
+
     addRow(equipSection, buildEditableFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
 
@@ -13951,8 +13986,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    addRow(surveySection, buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
+    if (f.mdfIdf) {
+      addRow(surveySection, buildRadioChipRow('MDF/IDF',
+        findCell(tr, f.mdfIdf), f.mdfIdf, MDF_IDF_OPTIONS));
+    }
+
+    if (f.mdfNumber) {
+      addRow(surveySection, buildFieldRow('##',
+        findCell(tr, f.mdfNumber)));
+    }
+
+    if (f.connections) {
+      addRow(surveySection, buildFieldRow('Connected to',
+        findCell(tr, f.connections)));
+    }
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);

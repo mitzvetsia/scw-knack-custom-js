@@ -21,7 +21,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -43,6 +43,12 @@
   // Columns to hide in the original table (we show the data inline instead)
   var HIDE_COLS = ['field_114', 'field_2445', 'field_2446', 'field_2447'];
   var NOTES_CLS = 'scw-inline-photo-notes';
+
+  // View-specific add-photo URL path segments
+  var ADD_PHOTO_PATHS = {
+    'view_3559': 'add-photo-to-mdf-idf'
+  };
+  var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
@@ -376,7 +382,15 @@
       '#view_3505 th.field_2446,',
       '#view_3505 td.field_2446,',
       '#view_3505 th.field_2447,',
-      '#view_3505 td.field_2447 {',
+      '#view_3505 td.field_2447,',
+      '#view_3559 th.field_114,',
+      '#view_3559 td.field_114,',
+      '#view_3559 th.field_2445,',
+      '#view_3559 td.field_2445,',
+      '#view_3559 th.field_2446,',
+      '#view_3559 td.field_2446,',
+      '#view_3559 th.field_2447,',
+      '#view_3559 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -420,12 +434,13 @@
       surveyId + '/edit-doc-photo/' + photoRecordId;
   }
 
-  /** Build the add-photo-to-survey-line-item hash path. */
-  function addPhotoHash(lineItemId) {
+  /** Build the add-photo hash path (view-specific segment). */
+  function addPhotoHash(lineItemId, viewId) {
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
+    var pathSegment = (viewId && ADD_PHOTO_PATHS[viewId]) || DEFAULT_ADD_PATH;
     return 'subcontractor-portal/site-survey-request-details/' +
-      surveyId + '/add-photo-to-survey-line-item/' + lineItemId;
+      surveyId + '/' + pathSegment + '/' + lineItemId;
   }
 
   /**
@@ -793,7 +808,7 @@
       if (!lineItemId) continue;
 
       // Get the label for alt text
-      var labelCell = tr.querySelector('td.field_2364');
+      var labelCell = tr.querySelector('td.field_2364') || tr.querySelector('td.field_1642');
       var labelText = labelCell ? (labelCell.textContent || '').trim() : '';
 
       // Extract all connected photo records
@@ -815,12 +830,12 @@
         '<span class="scw-add-icon">+</span>' +
         '<span>Add</span>';
       addBtn.title = 'Add a new photo record';
-      (function (lid) {
+      (function (lid, vid) {
         addBtn.addEventListener('click', function () {
-          var h = addPhotoHash(lid);
+          var h = addPhotoHash(lid, vid);
           if (h) window.location.hash = h;
         });
-      })(lineItemId);
+      })(lineItemId, viewId);
 
       if (photos.length === 0) {
         addBtn.classList.add('scw-photo-add-solo');

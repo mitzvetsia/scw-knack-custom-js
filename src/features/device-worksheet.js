@@ -84,6 +84,20 @@
           product:  3,
           mounting: 4
         }
+      },
+      {
+        viewId: 'view_3559',
+        fields: {
+          // ── Summary row ──
+          label:            'field_1642',   // DISPLAY_mdf_idf_name (composite identity)
+          laborDescription: 'field_1643',   // Notes (fills middle, direct-edit textarea)
+
+          // ── Detail panel ──
+          mdfIdf:           'field_1641',   // MDF/IDF (radio chips: HEADEND, IDF)
+          mdfNumber:        'field_2458',   // ## (read-only)
+          name:             'field_1943',   // Name (textarea, direct-edit)
+          surveyNotes:      'field_2457'    // Survey Notes (textarea, direct-edit)
+        }
       }
     ]
   };
@@ -924,6 +938,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   var RADIO_CHIPS_ATTR = 'data-scw-radio-chips';
 
   var MOUNTING_HEIGHT_OPTIONS = ["Under 16'", "16' - 24'", "Over 24'"];
+  var MDF_IDF_OPTIONS = ['HEADEND', 'IDF'];
 
   /** Read current value from a cell's text content. */
   function readCellText(td) {
@@ -1205,7 +1220,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
 
   /** Save a direct-edit field value via model.updateRecord.
    *  Uses Knack's internal API to avoid triggering a full view re-render.
@@ -1670,6 +1685,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
       findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
 
+    if (f.name) {
+      addRow(equipSection, buildEditableFieldRow('Name',
+        findCell(tr, f.name), f.name, { notes: true }));
+    }
+
     addRow(equipSection, buildEditableFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
 
@@ -1678,8 +1698,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    addRow(surveySection, buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
+    if (f.mdfIdf) {
+      addRow(surveySection, buildRadioChipRow('MDF/IDF',
+        findCell(tr, f.mdfIdf), f.mdfIdf, MDF_IDF_OPTIONS));
+    }
+
+    if (f.mdfNumber) {
+      addRow(surveySection, buildFieldRow('##',
+        findCell(tr, f.mdfNumber)));
+    }
+
+    if (f.connections) {
+      addRow(surveySection, buildFieldRow('Connected to',
+        findCell(tr, f.connections)));
+    }
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
