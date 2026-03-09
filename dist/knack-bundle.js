@@ -10989,11 +10989,13 @@ $(".kn-navigation-bar").hide();
     if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
 
     // Build metadata payload — no mutation assumptions
+    var targetRequired = targetCard.getAttribute('data-photo-required') === 'true';
     var detail = {
       sourceRecordId: sourceId,
       sourcePhotoType: sourceType,
       targetRecordId: targetId,
       targetPhotoType: targetType,
+      targetRequired: targetRequired,
       surveyRequestId: getSurveyRequestId()
     };
 
