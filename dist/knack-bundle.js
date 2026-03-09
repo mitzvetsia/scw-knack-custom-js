@@ -5773,14 +5773,27 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.10);
       }
 
-      /* L1 expanded — slightly stronger tint */
+      /* L1 expanded — stronger tint, larger text, no bottom border
+         (content flows directly beneath) */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.12) !important;
-        font-size: 13px;
+        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15) !important;
+        font-size: 14px;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 11px 14px !important;
-        box-shadow: inset 0 -1px 3px rgba(0,0,0,.04);
+        padding: 12px 14px !important;
+        border-bottom: none;
+        box-shadow: none;
+      }
+
+      /* ── Bridge: content rows beneath an expanded L1 ──
+         Continue the left accent border on the first content row
+         so the header and content feel like one unit.
+         Also replace the worksheet card's grey border-top with accent. */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td')} {
+        border-left: 4px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.30);
+      }
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) .scw-ws-card')} {
+        border-top-color: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.25);
       }
 
       /* Vertical separation between stacked L1 rows */
