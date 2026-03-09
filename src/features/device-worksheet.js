@@ -730,6 +730,8 @@ td.${P}-field-value--notes {
   line-height: 1.3;
   resize: none;
   min-height: 36px;
+  max-height: 68px;
+  overflow-y: auto;
 }
 .${P}-sum-input-wrap .${P}-direct-error {
   position: absolute;
