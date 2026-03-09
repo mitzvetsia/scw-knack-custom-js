@@ -132,9 +132,9 @@
         top: 50%;
         left: 8px;
         transform: translateY(-50%);
-        font-weight: normal;
+        font-weight: 700;
         font-size: 14px;
-        color: #fff;
+        color: #1e4d78;
         white-space: nowrap;
       }
     `;

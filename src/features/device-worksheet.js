@@ -210,6 +210,13 @@ tr.scw-inline-photo-row > td {
   min-width: 0;
 }
 
+/* Hide labor, qty, extended for Assumptions rows (keeps space for alignment) */
+tr.scw-row--assumptions .${P}-sum-group--labor,
+tr.scw-row--assumptions .${P}-sum-group--qty,
+tr.scw-row--assumptions .${P}-sum-group--ext {
+  visibility: hidden;
+}
+
 /* ── KTL bulk-edit checkbox cell ── */
 td.${P}-sum-check {
   display: inline-flex;
@@ -748,7 +755,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var laborTd = findCell(tr, f.labor);
     if (laborTd) {
       var labGroup = document.createElement('span');
-      labGroup.className = P + '-sum-group';
+      labGroup.className = P + '-sum-group ' + P + '-sum-group--labor';
       var labLabel = document.createElement('span');
       labLabel.className = P + '-sum-label';
       labLabel.textContent = 'Labor';
@@ -781,7 +788,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var extTd = findCell(tr, f.extended);
       if (extTd) {
         var extGroup = document.createElement('span');
-        extGroup.className = P + '-sum-group';
+        extGroup.className = P + '-sum-group ' + P + '-sum-group--ext';
         var extLabel = document.createElement('span');
         extLabel.className = P + '-sum-label';
         extLabel.textContent = 'Extended';
@@ -982,6 +989,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.className = WORKSHEET_ROW;
       wsTr.id = tr.id;
       tr.removeAttribute('id');
+
+      // Propagate bucket row classes so worksheet CSS can react
+      if (tr.classList.contains('scw-row--assumptions')) wsTr.classList.add('scw-row--assumptions');
+      if (tr.classList.contains('scw-row--services'))    wsTr.classList.add('scw-row--services');
 
       var wsTd = document.createElement('td');
 
