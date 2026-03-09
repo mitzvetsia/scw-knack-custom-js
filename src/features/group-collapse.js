@@ -18,6 +18,14 @@
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
 
+  // ── Suppression flag ──
+  // When true, automatic enhancement from MutationObserver and
+  // knack-view-render is suppressed. The post-edit coordinator in
+  // preserve-scroll-on-refresh.js sets this during the coordinated
+  // restoration window to prevent premature enhancement on
+  // intermediate DOM states and layout-shifting flicker.
+  let _suppressAutoEnhance = false;
+
   // Record count badge: off by default, list view IDs to enable
   const RECORD_COUNT_VIEWS = ['view_3359'];
 
@@ -592,14 +600,24 @@
   function startObserverForScene(sceneId) {
     if (!isEnabledScene(sceneId) || observerByScene[sceneId]) return;
 
-    let raf = 0;
+    let debounceTimer = 0;
     const obs = new MutationObserver(() => {
+      // Skip during coordinated post-edit restoration (coordinator
+      // calls enhance() explicitly at the right time).
+      if (_suppressAutoEnhance) return;
+
       const current = getCurrentSceneId();
       if (!isEnabledScene(current)) return;
       if (current !== sceneId) return;
 
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => enhanceAllGroupedGrids(sceneId));
+      // Use 100ms debounce (not RAF ~16ms) so Knack's multi-step
+      // async DOM updates settle before we try to enhance.  RAF was
+      // too eager and could fire between batched row insertions.
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = 0;
+        enhanceAllGroupedGrids(sceneId);
+      }, 100);
     });
 
     obs.observe(document.body, { childList: true, subtree: true });
@@ -629,6 +647,8 @@
   $(document)
     .off('knack-view-render' + EVENT_NS)
     .on('knack-view-render' + EVENT_NS, function () {
+      // Skip during coordinated post-edit restoration
+      if (_suppressAutoEnhance) return;
       var sceneId = getCurrentSceneId();
       if (!isEnabledScene(sceneId)) return;
       if (viewRenderTimer) clearTimeout(viewRenderTimer);
@@ -643,5 +663,22 @@
     enhanceAllGroupedGrids(initialScene);
     startObserverForScene(initialScene);
   }
+
+  // ── Expose API for coordination with post-edit restore ──
+  window.SCW = window.SCW || {};
+  window.SCW.groupCollapse = {
+    /** Run enhancement pass for current scene (idempotent — safe to call
+     *  multiple times; existing chevrons/state are preserved). */
+    enhance: function () {
+      var sceneId = getCurrentSceneId();
+      if (isEnabledScene(sceneId)) {
+        enhanceAllGroupedGrids(sceneId);
+      }
+    },
+    /** Suppress/resume automatic enhancement from MutationObserver and
+     *  knack-view-render timer.  Used by the post-edit coordinator to
+     *  prevent premature enhancement on intermediate DOM states. */
+    suppress: function (val) { _suppressAutoEnhance = !!val; }
+  };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/

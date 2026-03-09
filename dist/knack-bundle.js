@@ -25,22 +25,76 @@ window.SCW = window.SCW || {};
   };
 })(window.SCW);
 // ============================================================
-// Preserve scroll position across page refreshes
+// Preserve scroll position + coordinated post-edit restoration
 // ============================================================
 //
-// Saves the current scroll position to sessionStorage before
-// the page unloads and restores it when the page loads again.
+// This module has two jobs:
 //
-// The position is keyed by the current URL path + hash so each
-// Knack page remembers its own scroll position independently.
+// 1) SCROLL PRESERVATION — Save/restore the browser scroll
+//    position across page reloads, SPA navigations, and inline
+//    edits.  Position is keyed by URL path+hash in sessionStorage.
 //
-// Global API (optional):
+// 2) POST-INLINE-EDIT COORDINATOR — After a Knack inline edit
+//    triggers view re-renders, this module orchestrates the
+//    restoration sequence so that:
+//      a) Grouped table accordions (group-collapse) are rebuilt
+//      b) KTL accordion wrappers are re-synced
+//      c) Scroll position is restored AFTER layout is stable
+//
+//    Without coordination, these three tasks run on independent
+//    blind timers (80ms / 200ms / 500ms) that race against
+//    Knack's async re-render and against each other — causing
+//    accordions to not reinitialize and scroll to restore against
+//    stale layout heights.
+//
+// LIFECYCLE (post-inline-edit):
+//
+//   ┌─ knack-cell-update ─────────────────────────────────────┐
+//   │  • Save scroll position (before DOM changes)            │
+//   │  • Suppress group-collapse auto-enhancement             │
+//   │  • Enter "pending edit" mode                            │
+//   └─────────────────────────────────────────────────────────┘
+//           │
+//           ▼
+//   ┌─ knack-view-render (one or more) ──────────────────────┐
+//   │  • Reset settle timer (300ms after LAST view-render)    │
+//   │  • Group-collapse and scroll-restore are suppressed     │
+//   └─────────────────────────────────────────────────────────┘
+//           │
+//           ▼  (300ms quiet period — all views settled)
+//   ┌─ runPostEditRestore() ─────────────────────────────────┐
+//   │  1. Poll for DOM readiness (tables with rows exist)     │
+//   │  2. Re-enable group-collapse auto-enhancement           │
+//   │  3. Run group-collapse enhancement (rebuild accordions) │
+//   │  4. Run KTL accordion refresh (re-adopt wrappers)       │
+//   │  5. Wait 2 rAF frames (layout stabilizes)               │
+//   │  6. Restore scroll position                             │
+//   │  7. Clear "pending edit" mode                           │
+//   └─────────────────────────────────────────────────────────┘
+//
+// Global API:
 //   SCW.scrollPreserve.save()    – manually save current position
 //   SCW.scrollPreserve.restore() – manually restore saved position
 //   SCW.scrollPreserve.clear()   – clear the saved position
 //
 (function () {
+  'use strict';
+
   var STORAGE_KEY = 'scw_scroll_position';
+
+  // ── How long after the LAST knack-view-render to wait before
+  //    considering all views settled.  300ms balances speed with
+  //    reliability — Knack's model.fetch() calls go out in parallel
+  //    so their view-renders cluster within ~200ms of each other. ──
+  var SETTLE_MS = 300;
+
+  // ── Max time to poll for DOM readiness before giving up. ──
+  var POLL_MAX_MS = 2000;
+  var POLL_INTERVAL_MS = 50;
+
+  // ══════════════════════════════════════════════════════════
+  //  Scroll position helpers (sessionStorage, keyed by URL)
+  // ══════════════════════════════════════════════════════════
 
   function getPageKey() {
     return window.location.pathname + window.location.hash;
@@ -78,47 +132,171 @@ window.SCW = window.SCW || {};
     }
   }
 
-  // Save position right before the page unloads (refresh / close / navigate away)
+  // ══════════════════════════════════════════════════════════
+  //  Non-edit triggers (page load, SPA navigation, unload)
+  //  These are simple — no coordination needed.
+  // ══════════════════════════════════════════════════════════
+
+  // Save position right before the page unloads (refresh / close)
   window.addEventListener('beforeunload', save);
 
-  // Save scroll position when an inline edit is made, BEFORE Knack
-  // re-renders the view (which can collapse page height and lose scroll).
-  $(document).on('knack-cell-update.scwScrollPreserve', function () {
-    save();
-  });
-
-  // Debounced restore — multiple view-renders can fire in quick
-  // succession after an inline edit; we only need one restore.
-  var restoreTimer = null;
-  function debouncedRestore(delay) {
-    if (restoreTimer) clearTimeout(restoreTimer);
-    restoreTimer = setTimeout(function () {
-      restoreTimer = null;
-      restore();
-    }, delay);
-  }
-
-  // Restore position once the page is ready.
-  // Use a short delay so Knack views have time to render content that
-  // affects page height before we scroll.
+  // Restore on initial page load (short delay for content layout)
   $(document).ready(function () {
     setTimeout(restore, 300);
   });
 
-  // Also restore after every Knack scene render, since Knack is a SPA and
-  // hash-based navigation can re-render without a full page load.
+  // Restore after SPA hash-navigation scene renders
   $(document).on('knack-scene-render.any.scwScrollPreserve', function () {
+    // Clear pending-edit flag on navigation (stale if user navigated away)
+    _pendingEdit = false;
+    if (window.SCW && window.SCW.groupCollapse) {
+      window.SCW.groupCollapse.suppress(false);
+    }
     setTimeout(restore, 300);
   });
 
-  // Restore after view re-renders (inline edit refresh). 500ms delay
-  // allows device-worksheet transforms + group-collapse to finish first
-  // so the page height is stable before we scroll.
-  $(document).on('knack-view-render.scwScrollPreserve', function () {
-    debouncedRestore(500);
+  // ══════════════════════════════════════════════════════════
+  //  Post-inline-edit coordination
+  // ══════════════════════════════════════════════════════════
+
+  var _pendingEdit = false;   // true between cell-update and restore completion
+  var _settleTimer = null;    // debounce timer for view-render settling
+
+  // ── STATE CAPTURE: Save scroll + suppress premature auto-enhancement ──
+  // Fires BEFORE Knack re-renders views, so the scroll position and
+  // accordion state in localStorage are both accurate at this moment.
+  $(document).on('knack-cell-update.scwScrollPreserve', function () {
+    save();
+    _pendingEdit = true;
+
+    // Tell group-collapse to stop auto-enhancing from its own
+    // MutationObserver and view-render timer — we'll call it
+    // explicitly once all views have settled.
+    if (window.SCW && window.SCW.groupCollapse) {
+      window.SCW.groupCollapse.suppress(true);
+    }
   });
 
-  // Expose on the SCW namespace
+  // ── SETTLE DETECTION: Debounce view-renders to find the quiet point ──
+  $(document).on('knack-view-render.scwScrollPreserve', function () {
+    if (_pendingEdit) {
+      // Coordinated post-edit flow: reset settle timer on each render.
+      // The restore sequence runs SETTLE_MS after the LAST view-render,
+      // ensuring all async-fetched views have finished.
+      if (_settleTimer) clearTimeout(_settleTimer);
+      _settleTimer = setTimeout(runPostEditRestore, SETTLE_MS);
+    } else {
+      // Normal view-render (not post-edit): simple debounced restore.
+      // 500ms allows device-worksheet + group-collapse independent
+      // timers to finish before we scroll.
+      debouncedRestore(500);
+    }
+  });
+
+  // Simple debounced restore for non-edit view renders
+  var _restoreTimer = null;
+  function debouncedRestore(delay) {
+    if (_restoreTimer) clearTimeout(_restoreTimer);
+    _restoreTimer = setTimeout(function () {
+      _restoreTimer = null;
+      restore();
+    }, delay);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  Post-edit restoration sequence
+  // ══════════════════════════════════════════════════════════
+
+  function runPostEditRestore() {
+    _settleTimer = null;
+
+    // Step 1: Verify DOM readiness — poll until tables have content rows.
+    // Knack's async re-render may not be fully complete even after
+    // knack-view-render fires (e.g., grouped rows added in batches).
+    pollForDOM(function () {
+
+      // Step 2: Re-enable group-collapse auto-enhancement
+      //         (so MutationObserver works normally going forward)
+      if (window.SCW && window.SCW.groupCollapse) {
+        window.SCW.groupCollapse.suppress(false);
+      }
+
+      // Step 3: REBUILD GROUPED ACCORDIONS — run group-collapse
+      //         enhancement which reads saved state from localStorage
+      //         and applies collapsed/expanded classes + row visibility.
+      //         This is idempotent — safe if group-collapse already ran.
+      if (window.SCW && window.SCW.groupCollapse) {
+        window.SCW.groupCollapse.enhance();
+      }
+
+      // Step 4: SYNC KTL ACCORDIONS — ensure accordion wrappers
+      //         are re-adopted after view DOM replacement.
+      if (window.SCW && window.SCW.ktlAccordion) {
+        window.SCW.ktlAccordion.refresh();
+      }
+
+      // Step 5: RESTORE SCROLL POSITION — wait 2 requestAnimationFrame
+      //         cycles so the browser has painted the updated layout
+      //         (expanded/collapsed rows, accordion bodies) before we
+      //         scroll.  This is the minimum reliable wait for layout
+      //         stability without a blind timeout.
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          restore();
+          _pendingEdit = false;
+        });
+      });
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  DOM readiness polling
+  // ══════════════════════════════════════════════════════════
+  //
+  // After knack-view-render, the view's primary DOM is usually present,
+  // but other transforms (device-worksheet, proposal-grid) may still be
+  // in flight.  We poll for at least one visible table with data rows
+  // as a heuristic for "the page has meaningful content."
+  //
+  // If no tables exist (e.g., the page has only forms/details), the
+  // poll exits immediately so we don't block restoration on a condition
+  // that can never be met.
+
+  function pollForDOM(callback) {
+    var elapsed = 0;
+
+    function check() {
+      // If the page has no tables at all, proceed immediately
+      var $tables = $('table.kn-table:visible');
+      if ($tables.length === 0) {
+        callback();
+        return;
+      }
+
+      // Check if any visible table has data rows
+      var hasContent = false;
+      $tables.each(function () {
+        if ($(this).find('tbody tr').not('.kn-tr-nodata').length > 0) {
+          hasContent = true;
+          return false; // break
+        }
+      });
+
+      if (hasContent || elapsed >= POLL_MAX_MS) {
+        callback();
+      } else {
+        elapsed += POLL_INTERVAL_MS;
+        setTimeout(check, POLL_INTERVAL_MS);
+      }
+    }
+
+    // Small initial delay to let synchronous DOM updates flush
+    setTimeout(check, 20);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  //  Expose API on SCW namespace
+  // ══════════════════════════════════════════════════════════
   window.SCW = window.SCW || {};
   window.SCW.scrollPreserve = {
     save: save,
@@ -5632,6 +5810,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
 
+  // ── Suppression flag ──
+  // When true, automatic enhancement from MutationObserver and
+  // knack-view-render is suppressed. The post-edit coordinator in
+  // preserve-scroll-on-refresh.js sets this during the coordinated
+  // restoration window to prevent premature enhancement on
+  // intermediate DOM states and layout-shifting flicker.
+  let _suppressAutoEnhance = false;
+
   // Record count badge: off by default, list view IDs to enable
   const RECORD_COUNT_VIEWS = ['view_3359'];
 
@@ -6206,14 +6392,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function startObserverForScene(sceneId) {
     if (!isEnabledScene(sceneId) || observerByScene[sceneId]) return;
 
-    let raf = 0;
+    let debounceTimer = 0;
     const obs = new MutationObserver(() => {
+      // Skip during coordinated post-edit restoration (coordinator
+      // calls enhance() explicitly at the right time).
+      if (_suppressAutoEnhance) return;
+
       const current = getCurrentSceneId();
       if (!isEnabledScene(current)) return;
       if (current !== sceneId) return;
 
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => enhanceAllGroupedGrids(sceneId));
+      // Use 100ms debounce (not RAF ~16ms) so Knack's multi-step
+      // async DOM updates settle before we try to enhance.  RAF was
+      // too eager and could fire between batched row insertions.
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = 0;
+        enhanceAllGroupedGrids(sceneId);
+      }, 100);
     });
 
     obs.observe(document.body, { childList: true, subtree: true });
@@ -6243,6 +6439,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   $(document)
     .off('knack-view-render' + EVENT_NS)
     .on('knack-view-render' + EVENT_NS, function () {
+      // Skip during coordinated post-edit restoration
+      if (_suppressAutoEnhance) return;
       var sceneId = getCurrentSceneId();
       if (!isEnabledScene(sceneId)) return;
       if (viewRenderTimer) clearTimeout(viewRenderTimer);
@@ -6257,6 +6455,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     enhanceAllGroupedGrids(initialScene);
     startObserverForScene(initialScene);
   }
+
+  // ── Expose API for coordination with post-edit restore ──
+  window.SCW = window.SCW || {};
+  window.SCW.groupCollapse = {
+    /** Run enhancement pass for current scene (idempotent — safe to call
+     *  multiple times; existing chevrons/state are preserved). */
+    enhance: function () {
+      var sceneId = getCurrentSceneId();
+      if (isEnabledScene(sceneId)) {
+        enhanceAllGroupedGrids(sceneId);
+      }
+    },
+    /** Suppress/resume automatic enhancement from MutationObserver and
+     *  knack-view-render timer.  Used by the post-edit coordinator to
+     *  prevent premature enhancement on intermediate DOM states. */
+    suppress: function (val) { _suppressAutoEnhance = !!val; }
+  };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
