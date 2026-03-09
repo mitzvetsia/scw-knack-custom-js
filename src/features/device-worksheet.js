@@ -1240,18 +1240,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   //
   // For views whose header label is a Knack formula (e.g. view_3559's
   // field_1642 = composite of field_1641 + field_2458 + field_1943),
-  // we re-fetch just that record after saving a trigger field and
-  // patch the label text in place — no full view re-render.
+  // we read the recalculated formula from the PUT response after
+  // saving a trigger field and patch the label td in place.
   //
-  // Challenge: model.updateRecord may trigger a Knack re-render that
-  // rebuilds the DOM with stale formula data, clobbering our update.
-  // So we use a two-pronged approach:
-  //   1. Queue the recordId for a post-transformView refresh (catches
-  //      the case where Knack re-renders after save).
-  //   2. Fire a delayed fallback refresh (catches the case where
-  //      Knack does NOT re-render).
+  // The view-level GET endpoint does NOT return formula fields, so
+  // the label must come from the PUT response itself.
+  //
+  // We also cache the last-known label per record so that if Knack
+  // re-renders the view (via model change events), we can re-apply
+  // the label in transformView without another round-trip.
 
-  var _pendingLabelRefresh = {};  // viewId → [recordId, …]
+  var _labelCache = {};  // recordId → label text
 
   /** Look up the viewCfg that owns a given viewId. */
   function viewCfgFor(viewId) {
@@ -1269,32 +1268,23 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return cfg.headerTriggerFields.indexOf(fieldKey) !== -1;
   }
 
-  /** Queue a record for label refresh after the next transformView. */
-  function queueHeaderRefresh(viewId, recordId) {
-    if (!_pendingLabelRefresh[viewId]) _pendingLabelRefresh[viewId] = [];
-    if (_pendingLabelRefresh[viewId].indexOf(recordId) === -1) {
-      _pendingLabelRefresh[viewId].push(recordId);
-    }
+  /** Extract the label text from a Knack API response object. */
+  function extractLabelFromResponse(viewId, resp) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return '';
+    var labelField = cfg.fields.label;
+    var raw = resp[labelField + '_raw'] || resp[labelField] || '';
+    return typeof raw === 'string'
+      ? raw.replace(/<[^>]*>/g, '').trim()
+      : String(raw);
   }
 
-  /** Called at the end of transformView — flush any queued refreshes. */
-  function flushPendingHeaderRefreshes(viewId) {
-    var queue = _pendingLabelRefresh[viewId];
-    if (!queue || !queue.length) return;
-    _pendingLabelRefresh[viewId] = [];
-    for (var i = 0; i < queue.length; i++) {
-      refreshHeaderLabel(viewId, queue[i]);
-    }
-  }
-
-  /** Patch the label td text for a single record from the DOM. */
+  /** Patch the label td text for a single record in the DOM. */
   function applyLabelText(viewId, recordId, txt) {
     var cfg = viewCfgFor(viewId);
     if (!cfg || !cfg.fields.label) return;
     var labelField = cfg.fields.label;
 
-    // Walk up from the view element to handle both the worksheet row
-    // and any re-rendered DOM.
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
 
@@ -1306,65 +1296,65 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
       if (row && getRecordId(row) === recordId) {
         allLabels[i].textContent = txt;
-        console.log('[scw-ws-header] Refreshed label for ' + recordId + ': ' + txt);
+        console.log('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
         return;
       }
     }
     console.warn('[scw-ws-header] Label td not found for ' + recordId);
   }
 
-  /** Fetch the record and update the label td text in the summary bar. */
-  function refreshHeaderLabel(viewId, recordId) {
+  /**
+   * Called at the end of transformView — re-apply any cached labels
+   * that Knack's re-render may have wiped with stale formula data.
+   */
+  function restoreCachedLabels(viewId) {
     var cfg = viewCfgFor(viewId);
     if (!cfg || !cfg.fields.label) return;
     var labelField = cfg.fields.label;
 
-    if (typeof Knack === 'undefined') return;
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
 
-    console.log('[scw-ws-header] Fetching label for ' + recordId + '…');
-
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
-      type: 'GET',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      success: function (resp) {
-        var raw = resp[labelField + '_raw'] || resp[labelField] || '';
-        // Knack raw values may be HTML — strip tags for plain text
-        var txt = typeof raw === 'string'
-          ? raw.replace(/<[^>]*>/g, '').trim()
-          : String(raw);
-
-        console.log('[scw-ws-header] API returned label for ' + recordId + ': "' + txt + '"');
-        applyLabelText(viewId, recordId, txt);
-      },
-      error: function (xhr) {
-        console.warn('[scw-ws-header] GET failed for ' + recordId, xhr.status, xhr.responseText);
+    var allLabels = viewEl.querySelectorAll(
+      'td.' + labelField + ', td[data-field-key="' + labelField + '"]'
+    );
+    for (var i = 0; i < allLabels.length; i++) {
+      var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
+      if (!row) continue;
+      var rid = getRecordId(row);
+      if (rid && _labelCache[rid]) {
+        var current = (allLabels[i].textContent || '').trim();
+        if (!current || current === '\u00a0') {
+          allLabels[i].textContent = _labelCache[rid];
+          console.log('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
+        }
       }
-    });
+    }
   }
 
-  /** Save a direct-edit field value via model.updateRecord.
-   *  Uses Knack's internal API to avoid triggering a full view re-render.
-   *  Calls onSuccess() or onError(message) when done. */
+  /** Save a direct-edit field value.
+   *  For header-trigger fields, always uses AJAX PUT so we can read
+   *  the recalculated formula from the response.  For other fields,
+   *  prefers model.updateRecord to avoid a full re-render.
+   *  Calls onSuccess(resp) or onError(message) when done. */
   function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
     if (typeof Knack === 'undefined') return;
 
     var data = {};
     data[fieldKey] = value;
+    var trigger = isHeaderTrigger(viewId, fieldKey);
 
-    var view = Knack.views[viewId];
-    if (view && view.model && typeof view.model.updateRecord === 'function') {
-      view.model.updateRecord(recordId, data);
-      if (onSuccess) onSuccess();
-      return;
+    // Non-trigger fields: prefer model.updateRecord (no re-render)
+    if (!trigger) {
+      var view = Knack.views[viewId];
+      if (view && view.model && typeof view.model.updateRecord === 'function') {
+        view.model.updateRecord(recordId, data);
+        if (onSuccess) onSuccess(null);
+        return;
+      }
     }
 
-    // Fallback: direct AJAX (no model.fetch to avoid re-render)
+    // Trigger fields (or fallback): direct AJAX PUT
     $.ajax({
       url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
            '/views/' + viewId + '/records/' + recordId,
@@ -1376,8 +1366,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       },
       contentType: 'application/json',
       data: JSON.stringify(data),
-      success: function () {
-        if (onSuccess) onSuccess();
+      success: function (resp) {
+        if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
         var msg = parseKnackError(xhr);
@@ -1425,14 +1415,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
-        function () {
+        function (resp) {
           showInputSuccess(input);
-          if (isHeaderTrigger(viewId, fieldKey)) {
-            // Queue for post-re-render AND fire a delayed fallback
-            queueHeaderRefresh(viewId, recordId);
-            setTimeout(function () {
-              refreshHeaderLabel(viewId, recordId);
-            }, 1000);
+          if (resp && isHeaderTrigger(viewId, fieldKey)) {
+            var txt = extractLabelFromResponse(viewId, resp);
+            console.log('[scw-ws-header] PUT response label: "' + txt + '"');
+            if (txt) {
+              _labelCache[recordId] = txt;
+              applyLabelText(viewId, recordId, txt);
+            }
           }
         },
         function (msg) { showInputError(input, msg, previousValue); }
@@ -1502,17 +1493,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }, true);
 
   /** Save a radio chip selection via Knack's internal API. */
-  function saveRadioValue(viewId, recordId, fieldKey, value) {
+  function saveRadioValue(viewId, recordId, fieldKey, value, onSuccess) {
     var data = {};
     data[fieldKey] = value;
+    var trigger = isHeaderTrigger(viewId, fieldKey);
 
-    var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
-    if (view && view.model && typeof view.model.updateRecord === 'function') {
-      view.model.updateRecord(recordId, data);
-      return;
+    // Non-trigger: prefer model.updateRecord (no re-render)
+    if (!trigger) {
+      var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
+      if (view && view.model && typeof view.model.updateRecord === 'function') {
+        view.model.updateRecord(recordId, data);
+        if (onSuccess) onSuccess(null);
+        return;
+      }
     }
 
-    // Fallback: AJAX PUT
+    // Trigger fields (or fallback): AJAX PUT — response has the formula
     if (typeof Knack !== 'undefined') {
       $.ajax({
         url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
@@ -1525,6 +1521,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         },
         contentType: 'application/json',
         data: JSON.stringify(data),
+        success: function (resp) {
+          if (onSuccess) onSuccess(resp);
+        },
         error: function (xhr) {
           console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
         }
@@ -1573,14 +1572,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewEl = chip.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
-      saveRadioValue(viewId, recordId, fieldKey, newValue);
-      if (isHeaderTrigger(viewId, fieldKey)) {
-        // Queue for post-re-render AND fire a delayed fallback
-        queueHeaderRefresh(viewId, recordId);
-        setTimeout(function () {
-          refreshHeaderLabel(viewId, recordId);
-        }, 1000);
-      }
+      saveRadioValue(viewId, recordId, fieldKey, newValue, function (resp) {
+        if (resp && isHeaderTrigger(viewId, fieldKey)) {
+          var txt = extractLabelFromResponse(viewId, resp);
+          console.log('[scw-ws-header] Radio PUT response label: "' + txt + '"');
+          if (txt) {
+            _labelCache[recordId] = txt;
+            applyLabelText(viewId, recordId, txt);
+          }
+        }
+      });
     }
   }, true);
 
@@ -2188,11 +2189,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       window.SCW.groupCollapse.enhance();
     }
 
-    // ── FLUSH QUEUED HEADER LABEL REFRESHES ──
+    // ── RESTORE CACHED HEADER LABELS ──
     // If a trigger-field save caused this re-render, the rebuilt DOM
-    // may have stale formula data.  Fetch fresh values now that the
-    // DOM is stable.
-    flushPendingHeaderRefreshes(viewCfg.viewId);
+    // may have stale formula data.  Re-apply labels from our cache
+    // (populated from the PUT response) now that the DOM is stable.
+    restoreCachedLabels(viewCfg.viewId);
   }
 
   // ============================================================
