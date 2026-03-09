@@ -692,6 +692,18 @@ td.${P}-field-value--notes {
   background-color: #f0fdf4;
   border-color: #86efac;
 }
+.${P}-direct-input.is-error,
+.${P}-direct-textarea.is-error {
+  background-color: #fef2f2;
+  border-color: #fca5a5;
+  box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.25);
+}
+.${P}-direct-error {
+  font-size: 11px;
+  color: #dc2626;
+  margin-top: 3px;
+  line-height: 1.3;
+}
 .${P}-direct-textarea {
   resize: vertical;
   min-height: 48px;
@@ -994,14 +1006,98 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return row;
   }
 
-  /** Save a direct-edit field value via Knack's internal API. */
-  function saveDirectEditValue(viewId, recordId, fieldKey, value) {
+  /** Parse an error message from a Knack API response. */
+  function parseKnackError(xhr) {
+    try {
+      var body = JSON.parse(xhr.responseText || '{}');
+      // Knack returns { errors: [{ message: "..." }] } or { errors: [{ field: "...", message: "..." }] }
+      if (body.errors && body.errors.length) {
+        return body.errors.map(function (e) { return e.message || e; }).join('; ');
+      }
+      if (body.message) return body.message;
+    } catch (ignored) {}
+    return 'Save failed';
+  }
+
+  /** Show an error message below a direct-edit input, with red styling. */
+  function showInputError(input, message, previousValue) {
+    // Remove saving state, add error state
+    input.classList.remove('is-saving');
+    input.classList.add('is-error');
+
+    // Revert value
+    input.value = previousValue;
+
+    // Update hidden td back to previous value
+    var wrapper = input.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    if (hiddenTd) {
+      hiddenTd.textContent = previousValue;
+    }
+
+    // Show error message element
+    var existing = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
+    if (existing) existing.remove();
+
+    var errEl = document.createElement('div');
+    errEl.className = P + '-direct-error';
+    errEl.textContent = message;
+    if (wrapper) wrapper.appendChild(errEl);
+
+    // Auto-clear after 4 seconds
+    setTimeout(function () {
+      input.classList.remove('is-error');
+      if (errEl.parentNode) errEl.remove();
+    }, 4000);
+  }
+
+  /** Show success feedback on input. */
+  function showInputSuccess(input) {
+    input.classList.remove('is-error');
+    input.classList.add('is-saving');
+    // Remove any lingering error
+    var wrapper = input.parentNode;
+    var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
+    if (errEl) errEl.remove();
+
+    setTimeout(function () { input.classList.remove('is-saving'); }, 600);
+  }
+
+  /** Save a direct-edit field value via Knack's internal API.
+   *  Calls onSuccess() or onError(message) when done. */
+  function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
     var data = {};
     data[fieldKey] = value;
 
     var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
     if (view && view.model && typeof view.model.updateRecord === 'function') {
-      view.model.updateRecord(recordId, data);
+      var result = view.model.updateRecord(recordId, data);
+      // updateRecord may return a jQuery deferred/promise
+      if (result && typeof result.then === 'function') {
+        result.then(
+          function () { if (onSuccess) onSuccess(); },
+          function (err) {
+            var msg = 'Save failed';
+            if (err && err.responseText) msg = parseKnackError(err);
+            else if (err && err.message) msg = err.message;
+            else if (typeof err === 'string') msg = err;
+            if (onError) onError(msg);
+          }
+        );
+      } else if (result && typeof result.fail === 'function') {
+        // jQuery deferred .done/.fail pattern
+        result
+          .done(function () { if (onSuccess) onSuccess(); })
+          .fail(function (err) {
+            var msg = 'Save failed';
+            if (err && err.responseText) msg = parseKnackError(err);
+            else if (typeof err === 'string') msg = err;
+            if (onError) onError(msg);
+          });
+      } else {
+        // No promise returned — assume success (can't detect errors)
+        if (onSuccess) onSuccess();
+      }
       return;
     }
 
@@ -1018,8 +1114,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         },
         contentType: 'application/json',
         data: JSON.stringify(data),
+        success: function () { if (onSuccess) onSuccess(); },
         error: function (xhr) {
+          var msg = parseKnackError(xhr);
           console.warn('[scw-ws-direct] Save failed for ' + recordId, xhr.responseText);
+          if (onError) onError(msg);
         }
       });
     }
@@ -1030,16 +1129,21 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var fieldKey = input.getAttribute('data-field') || '';
     var newValue = input.value;
 
-    // Update hidden td
+    // Capture previous value before overwriting hidden td
     var wrapper = input.parentNode;
     var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var previousValue = hiddenTd ? readFieldText(hiddenTd) : '';
+
+    // Optimistically update hidden td
     if (hiddenTd) {
       hiddenTd.textContent = newValue;
     }
 
-    // Visual feedback
+    // Visual feedback — start saving
+    input.classList.remove('is-error');
     input.classList.add('is-saving');
-    setTimeout(function () { input.classList.remove('is-saving'); }, 600);
+    var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
+    if (errEl) errEl.remove();
 
     // Find record ID and view ID
     var wsTr = input.closest('tr.' + WORKSHEET_ROW);
@@ -1048,7 +1152,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewEl = input.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
-      saveDirectEditValue(viewId, recordId, fieldKey, newValue);
+      saveDirectEditValue(viewId, recordId, fieldKey, newValue,
+        function () { showInputSuccess(input); },
+        function (msg) { showInputError(input, msg, previousValue); }
+      );
     }
   }
 
@@ -1063,12 +1170,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
       e.preventDefault();
       e.stopPropagation();
-      target.blur();  // triggers blur save too, but we handle it
+      // Mark as just-saved so blur handler doesn't double-fire
+      target._scwJustSaved = true;
       handleDirectEditSave(target);
+      target.blur();
     }
 
     if (e.key === 'Escape') {
       // Revert to the hidden td value
+      target._scwJustSaved = true; // prevent blur save
       var wrapper = target.parentNode;
       var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
       if (hiddenTd) {
@@ -1082,6 +1192,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   document.addEventListener('focusout', function (e) {
     var target = e.target;
     if (!target.hasAttribute(DIRECT_EDIT_ATTR)) return;
+
+    // Skip if Enter/Escape already handled it
+    if (target._scwJustSaved) {
+      target._scwJustSaved = false;
+      return;
+    }
 
     // Check if value actually changed
     var wrapper = target.parentNode;
