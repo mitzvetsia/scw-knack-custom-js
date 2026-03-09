@@ -1063,65 +1063,57 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     setTimeout(function () { input.classList.remove('is-saving'); }, 600);
   }
 
-  /** Save a direct-edit field value via Knack's internal API.
+  /** Save a direct-edit field value via AJAX PUT.
+   *  Always uses the REST API (not model.updateRecord) so we get
+   *  full response control for error detection and value verification.
    *  Calls onSuccess() or onError(message) when done. */
   function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
+    if (typeof Knack === 'undefined') return;
+
     var data = {};
     data[fieldKey] = value;
 
-    var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
-    if (view && view.model && typeof view.model.updateRecord === 'function') {
-      var result = view.model.updateRecord(recordId, data);
-      // updateRecord may return a jQuery deferred/promise
-      if (result && typeof result.then === 'function') {
-        result.then(
-          function () { if (onSuccess) onSuccess(); },
-          function (err) {
-            var msg = 'Save failed';
-            if (err && err.responseText) msg = parseKnackError(err);
-            else if (err && err.message) msg = err.message;
-            else if (typeof err === 'string') msg = err;
-            if (onError) onError(msg);
+    $.ajax({
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
+      type: 'PUT',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function (resp) {
+        // Knack may return 200 but silently drop invalid values.
+        // Check if the returned field value matches what we sent.
+        if (resp && resp[fieldKey + '_raw'] !== undefined) {
+          var raw = resp[fieldKey + '_raw'];
+          var returned = (typeof raw === 'object' && raw !== null)
+            ? String(raw.value || raw)
+            : String(raw);
+          var sent = String(value).trim();
+          // Normalize: strip $ and commas for number comparison
+          var normReturned = returned.replace(/[$,\s]/g, '');
+          var normSent = sent.replace(/[$,\s]/g, '');
+          if (normSent !== '' && normReturned !== normSent) {
+            if (onError) onError('Invalid value for this field');
+            return;
           }
-        );
-      } else if (result && typeof result.fail === 'function') {
-        // jQuery deferred .done/.fail pattern
-        result
-          .done(function () { if (onSuccess) onSuccess(); })
-          .fail(function (err) {
-            var msg = 'Save failed';
-            if (err && err.responseText) msg = parseKnackError(err);
-            else if (typeof err === 'string') msg = err;
-            if (onError) onError(msg);
-          });
-      } else {
-        // No promise returned — assume success (can't detect errors)
-        if (onSuccess) onSuccess();
-      }
-      return;
-    }
-
-    // Fallback: AJAX PUT
-    if (typeof Knack !== 'undefined') {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
-        type: 'PUT',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
-        contentType: 'application/json',
-        data: JSON.stringify(data),
-        success: function () { if (onSuccess) onSuccess(); },
-        error: function (xhr) {
-          var msg = parseKnackError(xhr);
-          console.warn('[scw-ws-direct] Save failed for ' + recordId, xhr.responseText);
-          if (onError) onError(msg);
         }
-      });
-    }
+        // Also trigger a model refresh so Knack's internal state stays in sync
+        var view = Knack.views[viewId];
+        if (view && view.model && typeof view.model.fetch === 'function') {
+          view.model.fetch();
+        }
+        if (onSuccess) onSuccess();
+      },
+      error: function (xhr) {
+        var msg = parseKnackError(xhr);
+        console.warn('[scw-ws-direct] Save failed for ' + recordId, xhr.responseText);
+        if (onError) onError(msg);
+      }
+    });
   }
 
   /** Handle save for a direct-edit input. */
