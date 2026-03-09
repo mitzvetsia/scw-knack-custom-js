@@ -10460,13 +10460,33 @@ $(".kn-navigation-bar").hide();
     var s = document.createElement('style');
     s.id = CSS_ID;
     s.textContent = [
-      /* The injected <tr> */
+      /* The injected <tr> — background/border controlled by
+         device-worksheet.js so the pair reads as one unit */
       '.' + ROW_CLS + ' {',
-      '  background: #f9fafb;',
+      '  background: transparent;',
       '}',
       '.' + ROW_CLS + ' > td {',
-      '  padding: 8px 12px !important;',
-      '  border-bottom: 2px solid #e2e8f0 !important;',
+      '  padding: 10px 20px 14px 16px !important;',
+      '}',
+
+      /* Wrapper — mimics .scw-ws-field layout so photos align with field values */
+      '.scw-inline-photo-field {',
+      '  display: flex;',
+      '  gap: 8px;',
+      '  align-items: flex-start;',
+      '}',
+
+      /* "Photos" label — matches .scw-ws-field-label styling */
+      '.scw-inline-photo-label {',
+      '  flex: 0 0 auto;',
+      '  min-width: 100px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #94a3b8;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '  padding-top: 5px;',
+      '  white-space: nowrap;',
       '}',
 
       /* Flex strip for photo cards */
@@ -10475,6 +10495,8 @@ $(".kn-navigation-bar").hide();
       '  flex-wrap: wrap;',
       '  gap: 12px;',
       '  align-items: flex-start;',
+      '  flex: 1;',
+      '  min-width: 0;',
       '}',
 
       /* Card wrapper */
@@ -10482,14 +10504,17 @@ $(".kn-navigation-bar").hide();
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  width: 200px;',
       '}',
 
-      /* Photo image */
+      /* Override Knack default ".kn-content img { max-width:100% }" */
+      '.kn-content .' + IMG_CLS + ' {',
+      '  max-width: none;',
+      '}',
+
+      /* Photo image — natural width, capped height */
       '.' + IMG_CLS + ' {',
-      '  width: 200px;',
-      '  height: 150px;',
-      '  object-fit: cover;',
+      '  width: auto;',
+      '  max-height: 200px;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
@@ -10509,7 +10534,7 @@ $(".kn-navigation-bar").hide();
       '  justify-content: center;',
       '  gap: 6px;',
       '  width: 200px;',
-      '  height: 150px;',
+      '  height: 200px;',
       '  border: 2px dashed #cbd5e1;',
       '  border-radius: 6px;',
       '  background: #f8fafc;',
@@ -10532,6 +10557,7 @@ $(".kn-navigation-bar").hide();
       '.' + TYPE_CLS + ' {',
       '  margin-top: 4px;',
       '  width: 100%;',
+      '  min-width: 80px;',
       '  padding: 3px 6px;',
       '  font-size: 11px;',
       '  font-weight: 600;',
@@ -10545,7 +10571,7 @@ $(".kn-navigation-bar").hide();
       '  text-overflow: ellipsis;',
       '}',
 
-      /* Add-photo button (far left of strip) */
+      /* Add-photo button (end of strip) */
       '.' + ADD_BTN_CLS + ' {',
       '  display: flex;',
       '  flex-direction: column;',
@@ -10553,7 +10579,7 @@ $(".kn-navigation-bar").hide();
       '  justify-content: center;',
       '  gap: 4px;',
       '  width: 56px;',
-      '  min-height: 150px;',
+      '  min-height: 200px;',
       '  border: 2px dashed #cbd5e1;',
       '  border-radius: 6px;',
       '  background: #f8fafc;',
@@ -10865,8 +10891,11 @@ $(".kn-navigation-bar").hide();
       if (map.hasOwnProperty(k)) arr.push(map[k]);
     }
 
-    // Sort: required first, then by type, then by id
+    // Sort: missing-required (required + incomplete) first, then required, then by type, then id
     arr.sort(function (a, b) {
+      var aMissing = (a.required && !a.completed) ? 0 : 1;
+      var bMissing = (b.required && !b.completed) ? 0 : 1;
+      if (aMissing !== bMissing) return aMissing - bMissing;
       var aReq = a.required ? 0 : 1;
       var bReq = b.required ? 0 : 1;
       if (aReq !== bReq) return aReq - bReq;
@@ -11132,7 +11161,7 @@ $(".kn-navigation-bar").hide();
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
 
-      // ── "+" Add photo button (far left) ──
+      // ── "+" Add photo button (appended at end of strip) ──
       var addBtn = document.createElement('div');
       addBtn.className = ADD_BTN_CLS;
       addBtn.innerHTML =
@@ -11145,7 +11174,6 @@ $(".kn-navigation-bar").hide();
           if (h) window.location.hash = h;
         });
       })(lineItemId);
-      strip.appendChild(addBtn);
 
       if (photos.length > 0) {
         // ── Has connected photo records ──
@@ -11243,7 +11271,21 @@ $(".kn-navigation-bar").hide();
         }
       }
 
-      td.appendChild(strip);
+      // ── Append "+" button at the end ──
+      strip.appendChild(addBtn);
+
+      // Wrap strip in a field-like layout with a "Photos" label
+      var fieldWrapper = document.createElement('div');
+      fieldWrapper.className = 'scw-inline-photo-field';
+
+      var photoLabel = document.createElement('div');
+      photoLabel.className = 'scw-inline-photo-label';
+      photoLabel.textContent = 'Photos';
+
+      fieldWrapper.appendChild(photoLabel);
+      fieldWrapper.appendChild(strip);
+
+      td.appendChild(fieldWrapper);
       photoTr.appendChild(td);
       tr.parentNode.insertBefore(photoTr, tr.nextSibling);
     }
@@ -11261,6 +11303,1121 @@ $(".kn-navigation-bar").hide();
   }
 })();
 /*************  Inline Photo Rows – view_3512  **********************/
+// ============================================================
+// Boolean Chips – one-click toggle chips (stacked in one column)
+// ============================================================
+//
+// Replaces Yes/No boolean columns with compact chip elements
+// stacked vertically inside a single "host" column. The other
+// source columns are hidden. Clicking a chip instantly toggles
+// the value (Yes↔No) and saves via Knack's internal APIs.
+// Knack's native inline-edit popup is suppressed for these cells.
+//
+// CONFIGURATION
+//   Edit BOOL_CHIP_CONFIG below to add views and fields.
+//   `hostFieldKey` is the column where all chips are rendered.
+//   `hideFieldKeys` lists columns to hide (their data is read first).
+//
+(function () {
+  'use strict';
+
+  // ============================================================
+  // CONFIG – add views / fields here
+  // ============================================================
+  var BOOL_CHIP_CONFIG = {
+    views: [
+      {
+        viewId: 'view_3512',
+        // All chips render stacked inside the Exterior column
+        hostFieldKey: 'field_2372',
+        // These columns get hidden (header + cells)
+        hideFieldKeys: ['field_2370', 'field_2371'],
+        fields: [
+          { label: 'Exterior',         fieldKey: 'field_2372' },
+          { label: 'Existing Cabling', fieldKey: 'field_2370' },
+          { label: 'Plenum',           fieldKey: 'field_2371' }
+        ]
+      }
+    ]
+  };
+
+  // ============================================================
+  // CONSTANTS
+  // ============================================================
+  var STYLE_ID       = 'scw-bool-chips-css';
+  var CHIP_CLASS     = 'scw-bool-chip';
+  var CHIP_STACK     = 'scw-chip-stack';
+  var PROCESSED_ATTR = 'data-scw-chip-processed';
+  var EVENT_NS       = '.scwBoolChips';
+
+  // ============================================================
+  // CSS – injected once
+  // ============================================================
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    var hiddenSelectors = [];
+    BOOL_CHIP_CONFIG.views.forEach(function (viewCfg) {
+      (viewCfg.hideFieldKeys || []).forEach(function (fk) {
+        var sel = '#' + viewCfg.viewId;
+        hiddenSelectors.push(sel + ' th.' + fk);
+        hiddenSelectors.push(sel + ' td.' + fk);
+        hiddenSelectors.push(sel + ' th[data-field-key="' + fk + '"]');
+        hiddenSelectors.push(sel + ' td[data-field-key="' + fk + '"]');
+      });
+    });
+
+    var css = [
+      /* ---- chip stack container ---- */
+      '.' + CHIP_STACK + ' {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      /* ---- base chip ---- */
+      '.' + CHIP_CLASS + ' {',
+      '  display: inline-block;',
+      '  padding: 2px 10px;',
+      '  border-radius: 12px;',
+      '  font-size: 12px;',
+      '  font-weight: 500;',
+      '  line-height: 1.5;',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;',
+      '  white-space: nowrap;',
+      '  border: 1px solid transparent;',
+      '  text-align: center;',
+      '}',
+
+      /* ---- yes state (warm amber — action, not warning) ---- */
+      '.' + CHIP_CLASS + '.is-yes {',
+      '  background-color: #fffbeb;',
+      '  color: #92400e;',
+      '  border-color: #fcd34d;',
+      '}',
+      '.' + CHIP_CLASS + '.is-yes:hover {',
+      '  background-color: #fef3c7;',
+      '  box-shadow: 0 1px 3px rgba(146,64,14,0.15);',
+      '}',
+
+      /* ---- no state ---- */
+      '.' + CHIP_CLASS + '.is-no {',
+      '  background-color: #f9fafb;',
+      '  color: #9ca3af;',
+      '  border-color: #d1d5db;',
+      '}',
+      '.' + CHIP_CLASS + '.is-no:hover {',
+      '  background-color: #f3f4f6;',
+      '  color: #6b7280;',
+      '  box-shadow: 0 1px 3px rgba(0,0,0,0.08);',
+      '}',
+
+      /* ---- saving flash ---- */
+      '.' + CHIP_CLASS + '.is-saving {',
+      '  opacity: 0.6;',
+      '  pointer-events: none;',
+      '}',
+
+      /* ---- suppress Knack inline-edit on managed cells ---- */
+      'td[' + PROCESSED_ATTR + '] .kn-edit-col,',
+      'td[' + PROCESSED_ATTR + '] .kn-td-edit {',
+      '  display: none !important;',
+      '}'
+    ];
+
+    /* ---- hide source columns ---- */
+    if (hiddenSelectors.length) {
+      css.push(hiddenSelectors.join(',\n') + ' {');
+      css.push('  display: none !important;');
+      css.push('}');
+    }
+
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css.join('\n');
+    document.head.appendChild(style);
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  /** Normalize cell text for Yes/No detection. */
+  function normalizeBool(text) {
+    var t = (text || '').replace(/[\u00a0\u200b]/g, ' ').trim().toLowerCase();
+    if (t === 'yes' || t === 'true') return 'yes';
+    if (t === 'no' || t === 'false') return 'no';
+    return null;
+  }
+
+  /** Build a chip element. */
+  function createChip(label, value, fieldKey) {
+    var chip = document.createElement('span');
+    chip.className = CHIP_CLASS + (value === 'yes' ? ' is-yes' : ' is-no');
+    chip.setAttribute('data-field', fieldKey);
+    chip.setAttribute('data-value', value);
+    chip.textContent = label;
+    return chip;
+  }
+
+  /**
+   * Get the record id for a table row.
+   */
+  function getRecordId(tr) {
+    var trId = tr.id || '';
+    var match = trId.match(/[0-9a-f]{24}/i);
+    return match ? match[0] : null;
+  }
+
+  /**
+   * Update a field value via Knack's internal APIs.
+   */
+  function saveFieldValue(viewId, recordId, fieldKey, boolValue) {
+    var data = {};
+    data[fieldKey] = boolValue === 'yes';
+
+    var view = Knack.views[viewId];
+    if (view && view.model && typeof view.model.updateRecord === 'function') {
+      view.model.updateRecord(recordId, data);
+      return;
+    }
+
+    if (typeof Knack !== 'undefined' && Knack.models) {
+      var modelKey = Object.keys(Knack.models).find(function (key) {
+        var m = Knack.models[key];
+        return m && m.data && m.data.find && m.data.find(function (r) {
+          return r.id === recordId;
+        });
+      });
+
+      if (modelKey) {
+        var model = Knack.models[modelKey];
+        if (typeof model.save === 'function') {
+          data.id = recordId;
+          model.save(data);
+          return;
+        }
+      }
+    }
+
+    $.ajax({
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
+      type: 'PUT',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function () {
+        if (Knack.views[viewId] && Knack.views[viewId].model &&
+            typeof Knack.views[viewId].model.fetch === 'function') {
+          Knack.views[viewId].model.fetch();
+        }
+      },
+      error: function (xhr) {
+        console.warn('[scw-bool-chips] Save failed for ' + recordId, xhr.responseText);
+      }
+    });
+  }
+
+  /** Find which view config a <td> belongs to. */
+  function findViewForCell(td) {
+    var $view = $(td).closest('[id^="view_"]');
+    if (!$view.length) return null;
+    var viewId = $view.attr('id');
+    for (var v = 0; v < BOOL_CHIP_CONFIG.views.length; v++) {
+      if (BOOL_CHIP_CONFIG.views[v].viewId === viewId) return BOOL_CHIP_CONFIG.views[v];
+    }
+    return null;
+  }
+
+  // ============================================================
+  // CHIP TRANSFORMATION — stacked in host column
+  // ============================================================
+
+  /**
+   * Read a boolean value from a (possibly hidden) cell in the row.
+   */
+  function readBoolFromRow($tr, fieldKey) {
+    var $td = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+    if (!$td.length) return null;
+    // If this cell already has a chip, read from the chip's data-value
+    var $chip = $td.find('.' + CHIP_CLASS);
+    if ($chip.length) return $chip.attr('data-value') || null;
+    // Otherwise read raw text
+    return normalizeBool($td.text());
+  }
+
+  /** Transform rows: stack all field chips into the host column. */
+  function transformView(viewCfg) {
+    var $view = $('#' + viewCfg.viewId);
+    if (!$view.length) return;
+
+    var hostFK = viewCfg.hostFieldKey;
+    var $rows = $view.find('table.kn-table-table tbody tr, table.kn-table tbody tr');
+    if (!$rows.length) return;
+
+    // Rename the host column header to something generic
+    var $hostTh = $view.find('th.' + hostFK + ', th[data-field-key="' + hostFK + '"]');
+    if ($hostTh.length && !$hostTh.attr('data-scw-relabeled')) {
+      $hostTh.find('.kn-sort-link, a').first().text('Survey');
+      $hostTh.attr('data-scw-relabeled', '1');
+    }
+
+    $rows.each(function () {
+      var $tr = $(this);
+      if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
+
+      var $hostTd = $tr.find('td.' + hostFK + ', td[data-field-key="' + hostFK + '"]');
+      if (!$hostTd.length) return;
+
+      // Skip if already processed and chips still present
+      if ($hostTd.attr(PROCESSED_ATTR) === '1' && $hostTd.find('.' + CHIP_CLASS).length) return;
+
+      // Read boolean values for ALL fields from their respective cells
+      var chipData = [];
+      viewCfg.fields.forEach(function (fieldCfg) {
+        var val = readBoolFromRow($tr, fieldCfg.fieldKey);
+        if (val) {
+          chipData.push({ label: fieldCfg.label, value: val, fieldKey: fieldCfg.fieldKey });
+        }
+      });
+
+      if (!chipData.length) return;
+
+      // Build the stacked chip container
+      var stack = document.createElement('div');
+      stack.className = CHIP_STACK;
+      chipData.forEach(function (d) {
+        stack.appendChild(createChip(d.label, d.value, d.fieldKey));
+      });
+
+      $hostTd.empty().append(stack);
+      $hostTd.attr(PROCESSED_ATTR, '1');
+    });
+  }
+
+  // ============================================================
+  // ONE-CLICK TOGGLE
+  // ============================================================
+  // We use a single capturing-phase click listener that:
+  //   1. Stops Knack's inline-edit from opening (stopPropagation)
+  //   2. Performs the toggle + save directly
+  // A jQuery delegated handler would never fire because
+  // stopPropagation in capture phase kills bubbling.
+
+  function handleChipToggle(chip) {
+    var td = chip.closest('td');
+    if (!td) return;
+
+    var fieldKey     = chip.getAttribute('data-field') || '';
+    var currentValue = chip.getAttribute('data-value') || 'no';
+    var newValue     = currentValue === 'yes' ? 'no' : 'yes';
+
+    var viewCfg = findViewForCell(td);
+    if (!viewCfg) return;
+
+    var fieldCfg = null;
+    for (var i = 0; i < viewCfg.fields.length; i++) {
+      if (viewCfg.fields[i].fieldKey === fieldKey) {
+        fieldCfg = viewCfg.fields[i];
+        break;
+      }
+    }
+    if (!fieldCfg) return;
+
+    // Instantly update just this chip in-place
+    var newChip = createChip(fieldCfg.label, newValue, fieldCfg.fieldKey);
+    newChip.classList.add('is-saving');
+    chip.parentNode.replaceChild(newChip, chip);
+
+    setTimeout(function () { newChip.classList.remove('is-saving'); }, 400);
+
+    // Also update the hidden source cell so re-renders stay in sync
+    var $tr = $(td).closest('tr');
+    var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
+    if ($srcTd.length) {
+      $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
+    }
+
+    // Save
+    var tr = td.closest('tr');
+    var recordId = tr ? getRecordId(tr) : null;
+    if (recordId) {
+      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue);
+    } else {
+      console.warn('[scw-bool-chips] Could not determine record ID for save');
+    }
+  }
+
+  // Capture-phase click: block Knack + toggle
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('.' + CHIP_CLASS);
+    if (!chip) return;
+    var td = chip.closest('td');
+    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    handleChipToggle(chip);
+  }, true);
+
+  // Capture-phase mousedown: block Knack's inline-edit trigger
+  document.addEventListener('mousedown', function (e) {
+    var chip = e.target.closest('.' + CHIP_CLASS);
+    if (!chip) return;
+    var td = chip.closest('td');
+    if (!td || !td.hasAttribute(PROCESSED_ATTR)) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
+  // ============================================================
+  // INIT – bind to knack-view-render for each configured view
+  // ============================================================
+  function init() {
+    injectStyles();
+
+    BOOL_CHIP_CONFIG.views.forEach(function (viewCfg) {
+      var viewId = viewCfg.viewId;
+
+      $(document)
+        .off('knack-view-render.' + viewId + EVENT_NS)
+        .on('knack-view-render.' + viewId + EVENT_NS, function () {
+          transformView(viewCfg);
+        });
+
+      $(document)
+        .off('knack-cell-update.' + viewId + EVENT_NS)
+        .on('knack-cell-update.' + viewId + EVENT_NS, function () {
+          setTimeout(function () { transformView(viewCfg); }, 100);
+        });
+
+      if ($('#' + viewId).length) {
+        transformView(viewCfg);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    $(document).ready(init);
+  } else {
+    init();
+  }
+})();
+// ============================================================
+// End Boolean Chips
+// ============================================================
+// ============================================================
+// Device Worksheet – stacked card layout for line-item rows
+// ============================================================
+//
+// Transforms flat table rows into grouped "device worksheet" cards
+// with sections: (identity), SURVEY DETAILS, BID, and PHOTOS.
+//
+// INLINE-EDIT PRESERVATION STRATEGY
+//   The actual <td> elements are *moved* (reparented) into the
+//   worksheet layout — NOT cloned.  This keeps all of Knack's
+//   jQuery event bindings alive.  When Knack fires cell-edit or
+//   re-renders the view, the whole table is replaced and this
+//   script re-runs from scratch.
+//
+// CONFIGURATION
+//   Edit WORKSHEET_CONFIG below. Each entry maps semantic field
+//   names to Knack field keys for a given view.
+//
+(function () {
+  'use strict';
+
+  // ============================================================
+  // CONFIG – plug in field keys per view here
+  // ============================================================
+  var WORKSHEET_CONFIG = {
+    views: [
+      {
+        viewId: 'view_3512',
+        fields: {
+          // ── Title bar ──
+          bid:          'field_2415',   // Bid (column 1)
+          move:         'field_2375',   // Move icon (column 2)
+          label:        'field_2364',   // Label
+          product:      'field_2379',   // Product (column 4)
+
+          // ── Identity section (no header) ──
+          mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
+          connections:  'field_2381',   // connected to
+          scwNotes:     'field_2418',   // SCW Notes
+
+          // ── SURVEY DETAILS ──
+          surveyNotes:    'field_2412', // Survey Notes
+          exterior:       'field_2372', // Exterior (chip host)
+          existingCabling:'field_2370', // Existing Cabling
+          plenum:         'field_2371', // Plenum
+          dropLength:     'field_2367', // Drop Length
+          conduitFeet:    'field_2368', // Conduit Linear Feet
+
+          // ── BID ──
+          laborDescription: 'field_2409', // Labor Description
+          labor:            'field_2400'  // Labor $
+        },
+        // Column indices for fields that share the same field key
+        // (product and mounting both use field_2379)
+        columnIndices: {
+          product:  4,
+          mounting: 5
+        }
+      }
+    ]
+  };
+
+  // ============================================================
+  // CONSTANTS
+  // ============================================================
+  var STYLE_ID       = 'scw-device-worksheet-css';
+  var WORKSHEET_ROW  = 'scw-ws-row';
+  var PROCESSED_ATTR = 'data-scw-worksheet';
+  var EVENT_NS       = '.scwDeviceWorksheet';
+  var PREFIX         = 'scw-ws';
+
+  // ============================================================
+  // CSS – injected once
+  // ============================================================
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    var css = `
+/* ── Hide the original data row (cells moved out, shell stays) ── */
+tr[${PROCESSED_ATTR}="1"] {
+  display: none !important;
+}
+
+/* ── Kill ALL residual Knack hover / striping.
+   We remove is-striped / ktlTable--rowHover from the <table> in JS,
+   but these belt-and-suspenders rules catch anything else. ── */
+tr.${WORKSHEET_ROW},
+tr.${WORKSHEET_ROW}:hover,
+tr.scw-inline-photo-row,
+tr.scw-inline-photo-row:hover,
+tr[data-scw-worksheet],
+tr[data-scw-worksheet]:hover {
+  background: none !important;
+  background-color: transparent !important;
+}
+tr.${WORKSHEET_ROW} > td,
+tr.${WORKSHEET_ROW}:hover > td,
+tr.scw-inline-photo-row > td,
+tr.scw-inline-photo-row:hover > td,
+tr[data-scw-worksheet] > td,
+tr[data-scw-worksheet]:hover > td {
+  background: none !important;
+  background-color: transparent !important;
+}
+tr.${WORKSHEET_ROW} .${PREFIX}-card td,
+tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
+  background-color: transparent !important;
+}
+
+/* ── Worksheet row <td> — zero padding so the card fills it ── */
+.${WORKSHEET_ROW} > td {
+  padding: 0 !important;
+  border: none !important;
+}
+
+/* ── Photo row — part of the same visual unit as the card above.
+   A subtle separator underneath divides one record-pair from the next. ── */
+tr.scw-inline-photo-row > td {
+  padding: 10px 16px 64px 16px !important;
+  border: none !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+/* ── Card wrapper ── */
+.${PREFIX}-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #fff;
+  border-radius: 0;
+  overflow: hidden;
+  border-top: 2px solid #e2e8f0;
+}
+
+/* ── Title bar ── */
+.${PREFIX}-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e9eef4;
+  flex-wrap: wrap;
+}
+
+/* All titlebar items share the same base type */
+.${PREFIX}-titlebar-item {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Label & Product — plain text, no box, no hover effect */
+td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary,
+td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
+  font-size: 15px;
+  font-weight: 700;
+  color: #295f91;
+  cursor: default !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 4px;
+  border-radius: 0;
+}
+
+/* The move td sits at the right end */
+.${PREFIX}-titlebar-move {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+/* Titlebar <td> elements — reset table cell appearance */
+td.${PREFIX}-titlebar-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+/* Only editable titlebar cells get pointer + hover box */
+td.${PREFIX}-titlebar-item.cell-edit,
+td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle {
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+td.${PREFIX}-titlebar-item.cell-edit:hover,
+td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
+  background-color: #dbeafe !important;
+  border-color: #93c5fd !important;
+}
+
+/* Separator dot between titlebar items */
+.${PREFIX}-titlebar-sep {
+  color: #cbd5e1;
+  font-size: 14px;
+  user-select: none;
+}
+
+/* ── Sections grid ── */
+.${PREFIX}-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+}
+@media (max-width: 900px) {
+  .${PREFIX}-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Individual section ── */
+.${PREFIX}-section {
+  padding: 14px 20px 14px 16px;
+  border-right: 1px solid #edf0f4;
+  min-width: 0;
+}
+.${PREFIX}-section:last-child {
+  border-right: none;
+}
+
+.${PREFIX}-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #94a3b8;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+/* ── Field row inside a section ── */
+.${PREFIX}-field {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: flex-start;
+  min-height: 24px;
+}
+.${PREFIX}-field:last-child {
+  margin-bottom: 0;
+}
+
+.${PREFIX}-field-label {
+  flex: 0 0 auto;
+  min-width: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-top: 5px;
+  white-space: nowrap;
+}
+
+/* ── The moved <td> becomes the field value container ── */
+.${PREFIX}-field-value {
+  flex: 1;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* Reset <td> styling when it's been reparented into the worksheet.
+   Give it a visible input-like appearance so it reads as a form field. */
+td.${PREFIX}-field-value {
+  display: block;
+  padding: 4px 8px;
+  border: 1px solid #dde3ea;
+  border-radius: 4px;
+  background: #fff;
+  min-height: 28px;
+}
+
+/* ── Editable hover affordance ── */
+td.${PREFIX}-field-value.cell-edit,
+td.${PREFIX}-field-value.ktlInlineEditableCellsStyle {
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+td.${PREFIX}-field-value.cell-edit:hover,
+td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
+  background-color: #f0f6ff !important;
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
+}
+
+/* ── Chip host td — invisible cell, chips aligned with fields ── */
+td.${PREFIX}-chip-host {
+  display: block !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  min-height: 0 !important;
+}
+td.${PREFIX}-chip-host:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ── Chip row sits in a field row so the left edge
+   of the first chip aligns with field values above/below ── */
+.${PREFIX}-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px 0;
+}
+
+/* ── Notes fields — allow more vertical space ── */
+td.${PREFIX}-field-value--notes {
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* ── Empty field value ── */
+.${PREFIX}-field-value--empty {
+  color: #cbd5e1;
+  font-style: italic;
+  font-size: 12px;
+}
+
+`;
+
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  /**
+   * Find a <td> in a row by field key and optional column index.
+   * When column-index is provided, it's used to disambiguate
+   * fields that share the same field_key (e.g. field_2379 for
+   * both Product and Mounting).
+   */
+  function findCell(tr, fieldKey, colIndex) {
+    var cells = tr.querySelectorAll(
+      'td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]'
+    );
+    if (!cells.length) return null;
+    if (colIndex != null) {
+      for (var i = 0; i < cells.length; i++) {
+        var ci = cells[i].getAttribute('data-column-index');
+        if (ci !== null && parseInt(ci, 10) === colIndex) return cells[i];
+      }
+    }
+    return cells[0];
+  }
+
+  /** Check if a cell contains only whitespace / &nbsp; */
+  function isCellEmpty(td) {
+    if (!td) return true;
+    var text = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim();
+    return text.length === 0 && !td.querySelector('img');
+  }
+
+  /** Get record id from a row's id attribute. */
+  function getRecordId(tr) {
+    var trId = tr.id || '';
+    var match = trId.match(/[0-9a-f]{24}/i);
+    return match ? match[0] : null;
+  }
+
+  // ============================================================
+  // BUILD WORKSHEET SECTIONS
+  // ============================================================
+
+  /**
+   * Create a field row that embeds the ACTUAL <td> as the value.
+   * The <td> is moved (not cloned) so Knack's event bindings survive.
+   *
+   * We add our CSS class to the <td> and switch it to display:block
+   * so it renders as a normal block element within the flex row.
+   */
+  function buildFieldRow(label, td, opts) {
+    opts = opts || {};
+    var row = document.createElement('div');
+    row.className = PREFIX + '-field';
+
+    var lbl = document.createElement('div');
+    lbl.className = PREFIX + '-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    if (td && !isCellEmpty(td)) {
+      // Add our class to the actual <td>. This turns it into a
+      // flex child with display:block and our styling.
+      td.classList.add(PREFIX + '-field-value');
+      if (opts.notes) td.classList.add(PREFIX + '-field-value--notes');
+      // Move the actual <td> into the worksheet layout
+      row.appendChild(td);
+    } else if (td) {
+      // Cell exists but is empty — still move it so edits work,
+      // but style it as empty
+      td.classList.add(PREFIX + '-field-value');
+      td.classList.add(PREFIX + '-field-value--empty');
+      if (opts.notes) td.classList.add(PREFIX + '-field-value--notes');
+      row.appendChild(td);
+    } else {
+      // No cell at all — create placeholder
+      var placeholder = document.createElement('div');
+      placeholder.className = PREFIX + '-field-value ' + PREFIX + '-field-value--empty';
+      placeholder.textContent = '\u2014';
+      row.appendChild(placeholder);
+    }
+
+    return row;
+  }
+
+  /**
+   * Create a section wrapper with a title.
+   * Pass null/empty title for no header (identity section).
+   */
+  function buildSection(title) {
+    var section = document.createElement('div');
+    section.className = PREFIX + '-section';
+
+    if (title) {
+      var titleEl = document.createElement('div');
+      titleEl.className = PREFIX + '-section-title';
+      titleEl.textContent = title;
+      section.appendChild(titleEl);
+    }
+
+    return section;
+  }
+
+  /**
+   * Build the full worksheet card for a data row.
+   * Cells are MOVED out of the <tr> into the card layout.
+   */
+  function buildWorksheetCard(tr, viewCfg) {
+    var f = viewCfg.fields;
+    var ci = viewCfg.columnIndices || {};
+
+    var card = document.createElement('div');
+    card.className = PREFIX + '-card';
+
+    // ── Title bar ──
+    // Move the actual <td> elements so inline-edit bindings survive.
+    var titlebar = document.createElement('div');
+    titlebar.className = PREFIX + '-titlebar';
+
+    // Bid — move actual <td>
+    var bidTd = findCell(tr, f.bid);
+    if (bidTd) {
+      bidTd.classList.add(PREFIX + '-titlebar-item');
+      titlebar.appendChild(bidTd);
+    }
+
+    // Separator
+    var sep1 = document.createElement('span');
+    sep1.className = PREFIX + '-titlebar-sep';
+    sep1.textContent = '\u00b7';
+    titlebar.appendChild(sep1);
+
+    // Label — move actual <td>, primary styling
+    var labelTd = findCell(tr, f.label);
+    if (labelTd) {
+      labelTd.classList.add(PREFIX + '-titlebar-item');
+      labelTd.classList.add(PREFIX + '-titlebar-item--primary');
+      titlebar.appendChild(labelTd);
+    }
+
+    // Separator
+    var sep2 = document.createElement('span');
+    sep2.className = PREFIX + '-titlebar-sep';
+    sep2.textContent = '\u00b7';
+    titlebar.appendChild(sep2);
+
+    // Product — move actual <td>, primary styling
+    var productTd = findCell(tr, f.product, ci.product);
+    if (productTd) {
+      productTd.classList.add(PREFIX + '-titlebar-item');
+      productTd.classList.add(PREFIX + '-titlebar-item--primary');
+      titlebar.appendChild(productTd);
+    }
+
+    // Move (IDF/MDF assignment) — move actual <td>, sits right
+    var moveTd = findCell(tr, f.move);
+    if (moveTd) {
+      moveTd.classList.add(PREFIX + '-titlebar-item');
+      moveTd.classList.add(PREFIX + '-titlebar-move');
+      titlebar.appendChild(moveTd);
+    }
+
+    card.appendChild(titlebar);
+
+    // ── Sections container ──
+    var sections = document.createElement('div');
+    sections.className = PREFIX + '-sections';
+
+    // ── Identity section (no header) ──
+    var identitySection = buildSection(null);
+
+    // Move the actual <td> elements into field rows
+    identitySection.appendChild(buildFieldRow('Mounting',
+      findCell(tr, f.mounting, ci.mounting)));
+
+    identitySection.appendChild(buildFieldRow('Connected to',
+      findCell(tr, f.connections)));
+
+    identitySection.appendChild(buildFieldRow('SCW Notes',
+      findCell(tr, f.scwNotes), { notes: true }));
+
+    sections.appendChild(identitySection);
+
+    // ── SURVEY DETAILS ──
+    var surveySection = buildSection('Survey Details');
+
+    surveySection.appendChild(buildFieldRow('Notes',
+      findCell(tr, f.surveyNotes), { notes: true }));
+
+    // Chip stack — the boolean-chips feature has already transformed
+    // the exterior cell into a chip stack. Move the chip elements
+    // into a field row so they align with Notes / Drop Length.
+    var chipHostTd = findCell(tr, f.exterior);
+    if (chipHostTd) {
+      var chipStack = chipHostTd.querySelector('.scw-chip-stack');
+      if (chipStack) {
+        // Build a field row with an empty label to align chips
+        // with other field values in the section
+        var chipFieldRow = document.createElement('div');
+        chipFieldRow.className = PREFIX + '-field';
+
+        var chipLabel = document.createElement('div');
+        chipLabel.className = PREFIX + '-field-label';
+        chipLabel.textContent = '';  // no label, just spacing
+        chipFieldRow.appendChild(chipLabel);
+
+        // Make the chip host td invisible — just holds chips
+        chipHostTd.classList.add(PREFIX + '-chip-host');
+        chipHostTd.classList.add(PREFIX + '-field-value');
+        chipHostTd.innerHTML = '';
+        var chipsRow = document.createElement('div');
+        chipsRow.className = PREFIX + '-chips';
+        while (chipStack.firstChild) {
+          chipsRow.appendChild(chipStack.firstChild);
+        }
+        chipHostTd.appendChild(chipsRow);
+        chipFieldRow.appendChild(chipHostTd);
+        surveySection.appendChild(chipFieldRow);
+      } else {
+        surveySection.appendChild(buildFieldRow('Exterior',
+          chipHostTd));
+      }
+    }
+
+    surveySection.appendChild(buildFieldRow('Drop Length',
+      findCell(tr, f.dropLength)));
+
+    surveySection.appendChild(buildFieldRow('Conduit Ft',
+      findCell(tr, f.conduitFeet)));
+
+    sections.appendChild(surveySection);
+
+    // ── BID ──
+    var bidSection = buildSection('Bid');
+
+    bidSection.appendChild(buildFieldRow('Labor Desc.',
+      findCell(tr, f.laborDescription), { notes: true }));
+
+    bidSection.appendChild(buildFieldRow('Labor',
+      findCell(tr, f.labor)));
+
+    sections.appendChild(bidSection);
+
+    card.appendChild(sections);
+
+    return card;
+  }
+
+  // ============================================================
+  // TRANSFORM VIEW
+  // ============================================================
+
+  function transformView(viewCfg) {
+    var $view = $('#' + viewCfg.viewId);
+    if (!$view.length) return;
+
+    var table = $view.find('table.kn-table-table, table.kn-table')[0];
+    if (!table) return;
+
+    // Strip Knack table classes that add row hover/striping —
+    // our card layout handles its own styling
+    table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
+
+    // Hide the table header row — we don't need column headers
+    var thead = table.querySelector('thead');
+    if (thead) thead.style.display = 'none';
+
+    var $rows = $(table).find('tbody > tr');
+
+    $rows.each(function () {
+      var tr = this;
+
+      // Skip group headers, photo rows, and already-processed rows
+      if (tr.classList.contains('kn-table-group')) return;
+      if (tr.classList.contains('scw-inline-photo-row')) return;
+      if (tr.classList.contains(WORKSHEET_ROW)) return;
+
+      // Must have a record ID
+      var recordId = getRecordId(tr);
+      if (!recordId) return;
+
+      // Skip if already processed
+      if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
+
+      // Build the worksheet card — this MOVES cells out of the <tr>
+      var card = buildWorksheetCard(tr, viewCfg);
+
+      // Create the worksheet row
+      var wsTr = document.createElement('tr');
+      wsTr.className = WORKSHEET_ROW;
+      // Copy the record id so Knack can still find the row
+      wsTr.id = tr.id;
+      // Remove id from original to avoid duplicate IDs
+      tr.removeAttribute('id');
+
+      var wsTd = document.createElement('td');
+
+      // Count columns for colspan
+      var headerRow = table.querySelector('thead tr');
+      var colCount = 1;
+      if (headerRow) {
+        colCount = 0;
+        var cells = headerRow.children;
+        for (var i = 0; i < cells.length; i++) {
+          colCount += parseInt(cells[i].getAttribute('colspan') || '1', 10);
+        }
+      }
+      wsTd.setAttribute('colspan', String(colCount));
+      wsTd.appendChild(card);
+      wsTr.appendChild(wsTd);
+
+      // Insert the worksheet row right after the data row
+      // (before any existing photo row)
+      tr.parentNode.insertBefore(wsTr, tr.nextSibling);
+
+      // Mark the original row as processed and hide it
+      tr.setAttribute(PROCESSED_ATTR, '1');
+    });
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  function init() {
+    injectStyles();
+
+    WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      var viewId = viewCfg.viewId;
+
+      $(document)
+        .off('knack-view-render.' + viewId + EVENT_NS)
+        .on('knack-view-render.' + viewId + EVENT_NS, function () {
+          // Small delay to let boolean-chips and inline-photo-row run first
+          setTimeout(function () { transformView(viewCfg); }, 150);
+        });
+
+      $(document)
+        .off('knack-cell-update.' + viewId + EVENT_NS)
+        .on('knack-cell-update.' + viewId + EVENT_NS, function () {
+          // On cell update, Knack re-renders the entire view.
+          // Our worksheet rows will be gone — transformView will
+          // re-run via knack-view-render.
+        });
+
+      // If the view already exists in the DOM, transform immediately
+      if ($('#' + viewId).length) {
+        setTimeout(function () { transformView(viewCfg); }, 150);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    $(document).ready(init);
+  } else {
+    init();
+  }
+})();
+// ============================================================
+// End Device Worksheet
+// ============================================================
 /*************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
 (function () {
   'use strict';
@@ -11273,8 +12430,18 @@ $(".kn-navigation-bar").hide();
   const COLORS = {
     good:    '#d4edda', // pale green
     bad:     '#f8d7da', // pale red
+    danger:  '#f8d7da', // alias for bad – pale red
     warning: '#fff3cd'  // pale yellow
   };
+
+  const COLOR_CLASSES = {
+    good:    'scw-cell-good',
+    bad:     'scw-cell-bad',
+    danger:  'scw-cell-danger',
+    warning: 'scw-cell-warning'
+  };
+
+  const ALL_COLOR_CLASSES = Object.values(COLOR_CLASSES).join(' ');
 
   // ===========================================================
   // VIEW / FIELD CONFIG
@@ -11287,7 +12454,7 @@ $(".kn-navigation-bar").hide();
     {
       viewId: 'view_3505',
       rules: [
-        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
       ]
@@ -11295,7 +12462,7 @@ $(".kn-navigation-bar").hide();
     {
       viewId: 'view_3512',
       rules: [
-        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_771', when: 'empty', color: 'warning' }
@@ -11304,7 +12471,7 @@ $(".kn-navigation-bar").hide();
     {
       viewId: 'view_3517',
       rules: [
-        { fieldKey: 'field_2400', when: 'empty', color: 'bad'     },
+        { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
       ]
@@ -11352,6 +12519,24 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
+  // INJECT STYLES (so color classes win over worksheet !important)
+  // ============================================================
+  (function injectColorStyles() {
+    if (document.getElementById('scw-dyn-cell-color-css')) return;
+    var style = document.createElement('style');
+    style.id = 'scw-dyn-cell-color-css';
+    // Selectors use tr.scw-ws-row .scw-ws-card td (0,3,2) to beat
+    // the worksheet's tr.scw-ws-row .scw-ws-card td (0,2,1) even
+    // when the worksheet stylesheet appears later in the DOM.
+    style.textContent =
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-good,    tr td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-bad,     tr td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-danger,  tr td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-warning, tr td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
+    document.head.appendChild(style);
+  })();
+
+  // ============================================================
   // CORE
   // ============================================================
 
@@ -11375,6 +12560,9 @@ $(".kn-navigation-bar").hide();
         if (!$td.length) return;
 
         if (matchesCondition($td, rule.when)) {
+          $td.removeClass(ALL_COLOR_CLASSES);
+          var cls = COLOR_CLASSES[rule.color];
+          if (cls) $td.addClass(cls);
           $td.css('background-color', resolveColor(rule.color));
         }
       });

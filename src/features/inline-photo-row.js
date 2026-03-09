@@ -49,13 +49,33 @@
     var s = document.createElement('style');
     s.id = CSS_ID;
     s.textContent = [
-      /* The injected <tr> */
+      /* The injected <tr> — background/border controlled by
+         device-worksheet.js so the pair reads as one unit */
       '.' + ROW_CLS + ' {',
-      '  background: #f9fafb;',
+      '  background: transparent;',
       '}',
       '.' + ROW_CLS + ' > td {',
-      '  padding: 8px 12px !important;',
-      '  border-bottom: 2px solid #e2e8f0 !important;',
+      '  padding: 10px 20px 14px 16px !important;',
+      '}',
+
+      /* Wrapper — mimics .scw-ws-field layout so photos align with field values */
+      '.scw-inline-photo-field {',
+      '  display: flex;',
+      '  gap: 8px;',
+      '  align-items: flex-start;',
+      '}',
+
+      /* "Photos" label — matches .scw-ws-field-label styling */
+      '.scw-inline-photo-label {',
+      '  flex: 0 0 auto;',
+      '  min-width: 100px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #94a3b8;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '  padding-top: 5px;',
+      '  white-space: nowrap;',
       '}',
 
       /* Flex strip for photo cards */
@@ -64,6 +84,8 @@
       '  flex-wrap: wrap;',
       '  gap: 12px;',
       '  align-items: flex-start;',
+      '  flex: 1;',
+      '  min-width: 0;',
       '}',
 
       /* Card wrapper */
@@ -71,14 +93,17 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  width: 200px;',
       '}',
 
-      /* Photo image */
+      /* Override Knack default ".kn-content img { max-width:100% }" */
+      '.kn-content .' + IMG_CLS + ' {',
+      '  max-width: none;',
+      '}',
+
+      /* Photo image — natural width, capped height */
       '.' + IMG_CLS + ' {',
-      '  width: 200px;',
-      '  height: 150px;',
-      '  object-fit: cover;',
+      '  width: auto;',
+      '  max-height: 200px;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
@@ -98,7 +123,7 @@
       '  justify-content: center;',
       '  gap: 6px;',
       '  width: 200px;',
-      '  height: 150px;',
+      '  height: 200px;',
       '  border: 2px dashed #cbd5e1;',
       '  border-radius: 6px;',
       '  background: #f8fafc;',
@@ -121,6 +146,7 @@
       '.' + TYPE_CLS + ' {',
       '  margin-top: 4px;',
       '  width: 100%;',
+      '  min-width: 80px;',
       '  padding: 3px 6px;',
       '  font-size: 11px;',
       '  font-weight: 600;',
@@ -134,7 +160,7 @@
       '  text-overflow: ellipsis;',
       '}',
 
-      /* Add-photo button (far left of strip) */
+      /* Add-photo button (end of strip) */
       '.' + ADD_BTN_CLS + ' {',
       '  display: flex;',
       '  flex-direction: column;',
@@ -142,7 +168,7 @@
       '  justify-content: center;',
       '  gap: 4px;',
       '  width: 56px;',
-      '  min-height: 150px;',
+      '  min-height: 200px;',
       '  border: 2px dashed #cbd5e1;',
       '  border-radius: 6px;',
       '  background: #f8fafc;',
@@ -454,8 +480,11 @@
       if (map.hasOwnProperty(k)) arr.push(map[k]);
     }
 
-    // Sort: required first, then by type, then by id
+    // Sort: missing-required (required + incomplete) first, then required, then by type, then id
     arr.sort(function (a, b) {
+      var aMissing = (a.required && !a.completed) ? 0 : 1;
+      var bMissing = (b.required && !b.completed) ? 0 : 1;
+      if (aMissing !== bMissing) return aMissing - bMissing;
       var aReq = a.required ? 0 : 1;
       var bReq = b.required ? 0 : 1;
       if (aReq !== bReq) return aReq - bReq;
@@ -721,7 +750,7 @@
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
 
-      // ── "+" Add photo button (far left) ──
+      // ── "+" Add photo button (appended at end of strip) ──
       var addBtn = document.createElement('div');
       addBtn.className = ADD_BTN_CLS;
       addBtn.innerHTML =
@@ -734,7 +763,6 @@
           if (h) window.location.hash = h;
         });
       })(lineItemId);
-      strip.appendChild(addBtn);
 
       if (photos.length > 0) {
         // ── Has connected photo records ──
@@ -832,7 +860,21 @@
         }
       }
 
-      td.appendChild(strip);
+      // ── Append "+" button at the end ──
+      strip.appendChild(addBtn);
+
+      // Wrap strip in a field-like layout with a "Photos" label
+      var fieldWrapper = document.createElement('div');
+      fieldWrapper.className = 'scw-inline-photo-field';
+
+      var photoLabel = document.createElement('div');
+      photoLabel.className = 'scw-inline-photo-label';
+      photoLabel.textContent = 'Photos';
+
+      fieldWrapper.appendChild(photoLabel);
+      fieldWrapper.appendChild(strip);
+
+      td.appendChild(fieldWrapper);
       photoTr.appendChild(td);
       tr.parentNode.insertBefore(photoTr, tr.nextSibling);
     }
