@@ -13378,7 +13378,99 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
     if (errEl) errEl.remove();
 
-    setTimeout(function () { input.classList.remove('is-saving'); }, 600);
+    setTimeout(function () {
+      input.classList.remove('is-saving');
+      // Re-evaluate conditional formatting after save completes.
+      // The hidden td has already been updated with the new value;
+      // recalculate whether the field still meets a danger/warning
+      // condition and update the input background accordingly.
+      refreshInputConditionalColor(input);
+    }, 600);
+  }
+
+  /**
+   * After a successful save, recalculate the conditional background
+   * color (danger/warning) for a direct-edit input based on the
+   * updated value in its hidden td.  Clears the color when the
+   * condition no longer applies.
+   */
+  function refreshInputConditionalColor(input) {
+    var wrapper = input.parentNode;
+    if (!wrapper) return;
+    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    if (!hiddenTd) return;
+    var fieldKey = input.getAttribute('data-field');
+    if (!fieldKey) return;
+
+    // Find the view config that governs this input
+    var viewEl = input.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (!viewId) return;
+
+    // Look up the dynamic-cell-color rules via the exposed API,
+    // or fall back to a local check using the same logic.
+    var COLORS_MAP = {
+      danger:  'rgb(248, 215, 218)',
+      warning: 'rgb(255, 243, 205)'
+    };
+
+    // Determine the applicable rule for this field from our
+    // inline knowledge of the color rules applied by dynamic-cell-colors.
+    // field_2400 = danger when empty, field_2409 = danger when empty,
+    // field_2399 = warning when zero, etc.
+    var isEmpty = (function () {
+      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+      return raw === '' || raw === '-' || raw === '\u2014';
+    })();
+    var isZero = (function () {
+      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+      return /^[$]?0+(\.0+)?$/.test(raw);
+    })();
+
+    // Check if the dynamic-cell-colors module has rules for this field
+    // by inspecting the hidden td's current classes and inline styles.
+    // If the td had a danger/warning class, remove or re-apply it.
+    var dangerCls = 'scw-cell-danger';
+    var warningCls = 'scw-cell-warning';
+
+    // The rules: look up from config knowledge
+    var conditionMet = false;
+    var conditionColor = null;
+
+    // field_2400 (labor), field_2409 (labor desc), field_2415 (bid),
+    // field_771 (photos) → danger/warning when empty
+    // field_2399 (qty) → warning when zero
+    if (fieldKey === 'field_2400' || fieldKey === 'field_2409') {
+      conditionMet = isEmpty;
+      conditionColor = 'danger';
+    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
+      conditionMet = isEmpty;
+      conditionColor = 'warning';
+    } else if (fieldKey === 'field_2399') {
+      conditionMet = isZero;
+      conditionColor = 'warning';
+    }
+
+    // Update hidden td classes (so the condition is reflected in DOM)
+    hiddenTd.classList.remove(dangerCls, warningCls);
+    if (conditionMet && conditionColor === 'danger') {
+      hiddenTd.classList.add(dangerCls);
+      hiddenTd.style.backgroundColor = COLORS_MAP.danger;
+    } else if (conditionMet && conditionColor === 'warning') {
+      hiddenTd.classList.add(warningCls);
+      hiddenTd.style.backgroundColor = COLORS_MAP.warning;
+    } else {
+      hiddenTd.style.backgroundColor = '';
+    }
+
+    // Update the visible input's background
+    if (conditionMet && COLORS_MAP[conditionColor]) {
+      input.style.backgroundColor = COLORS_MAP[conditionColor];
+    } else {
+      // Restore the default direct-edit background (light blue tint
+      // from the build step or transparent)
+      input.style.backgroundColor = 'rgba(134, 182, 223, 0.1)';
+    }
   }
 
   // Number fields that need client-side validation
