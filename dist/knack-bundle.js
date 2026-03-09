@@ -11934,10 +11934,10 @@ $(".kn-navigation-bar").hide();
           bid:          'field_2415',   // Bid (column 1)
           move:         'field_2375',   // Move icon (column 2)
           label:        'field_2364',   // Label
-          product:      'field_2379',   // Product (column 4)
+          product:      'field_2379',   // Product (column 3)
 
           // ── Identity section (no header) ──
-          mounting:     'field_2379',   // Mounting Acces. (column 3 — same field, different column-index)
+          mounting:     'field_2379',   // Mounting Acces. (column 4 — same field, different column-index)
           connections:  'field_2381',   // connected to
           scwNotes:     'field_2418',   // SCW Notes
 
@@ -11954,10 +11954,11 @@ $(".kn-navigation-bar").hide();
           labor:            'field_2400'  // Labor $
         },
         // Column indices for fields that share the same field key
-        // (product and mounting both use field_2379)
+        // (product and mounting both use field_2379; view_3505 has
+        // them in reverse order compared to view_3512)
         columnIndices: {
-          product:  4,
-          mounting: 3
+          product:  3,
+          mounting: 4
         }
       }
     ]
