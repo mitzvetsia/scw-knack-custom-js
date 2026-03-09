@@ -32,6 +32,16 @@
           { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
+      },
+      {
+        viewId: 'view_3505',
+        hostFieldKey: 'field_2372',
+        hideFieldKeys: ['field_2370', 'field_2371'],
+        fields: [
+          { label: 'Exterior',         fieldKey: 'field_2372' },
+          { label: 'Existing Cabling', fieldKey: 'field_2370' },
+          { label: 'Plenum',           fieldKey: 'field_2371' }
+        ]
       }
     ]
   };

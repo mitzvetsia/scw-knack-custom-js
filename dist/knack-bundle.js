@@ -10504,7 +10504,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -10851,7 +10851,15 @@ $(".kn-navigation-bar").hide();
       '#view_3512 th.field_2446,',
       '#view_3512 td.field_2446,',
       '#view_3512 th.field_2447,',
-      '#view_3512 td.field_2447 {',
+      '#view_3512 td.field_2447,',
+      '#view_3505 th.field_114,',
+      '#view_3505 td.field_114,',
+      '#view_3505 th.field_2445,',
+      '#view_3505 td.field_2445,',
+      '#view_3505 th.field_2446,',
+      '#view_3505 td.field_2446,',
+      '#view_3505 th.field_2447,',
+      '#view_3505 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -11220,11 +11228,14 @@ $(".kn-navigation-bar").hide();
         }
       },
 
-      /** Clear pending state and refresh view_3512. */
+      /** Clear pending state and refresh the parent view. */
       setSuccess: function () {
         card.classList.remove(PENDING_CLS);
-        if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3512) {
-          Knack.views.view_3512.model.fetch();
+        if (typeof Knack !== 'undefined' && Knack.views) {
+          for (var vi = 0; vi < TARGET_VIEWS.length; vi++) {
+            var v = Knack.views[TARGET_VIEWS[vi]];
+            if (v && v.model) v.model.fetch();
+          }
         }
       },
 
@@ -11464,6 +11475,16 @@ $(".kn-navigation-bar").hide();
         // All chips render stacked inside the Exterior column
         hostFieldKey: 'field_2372',
         // These columns get hidden (header + cells)
+        hideFieldKeys: ['field_2370', 'field_2371'],
+        fields: [
+          { label: 'Exterior',         fieldKey: 'field_2372' },
+          { label: 'Existing Cabling', fieldKey: 'field_2370' },
+          { label: 'Plenum',           fieldKey: 'field_2371' }
+        ]
+      },
+      {
+        viewId: 'view_3505',
+        hostFieldKey: 'field_2372',
         hideFieldKeys: ['field_2370', 'field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
@@ -11875,6 +11896,39 @@ $(".kn-navigation-bar").hide();
     views: [
       {
         viewId: 'view_3512',
+        fields: {
+          // ── Title bar ──
+          bid:          'field_2415',   // Bid (column 1)
+          move:         'field_2375',   // Move icon (column 2)
+          label:        'field_2364',   // Label
+          product:      'field_2379',   // Product (column 4)
+
+          // ── Identity section (no header) ──
+          mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
+          connections:  'field_2381',   // connected to
+          scwNotes:     'field_2418',   // SCW Notes
+
+          // ── SURVEY DETAILS ──
+          surveyNotes:    'field_2412', // Survey Notes
+          exterior:       'field_2372', // Exterior (chip host)
+          existingCabling:'field_2370', // Existing Cabling
+          plenum:         'field_2371', // Plenum
+          dropLength:     'field_2367', // Drop Length
+          conduitFeet:    'field_2368', // Conduit Linear Feet
+
+          // ── BID ──
+          laborDescription: 'field_2409', // Labor Description
+          labor:            'field_2400'  // Labor $
+        },
+        // Column indices for fields that share the same field key
+        // (product and mounting both use field_2379)
+        columnIndices: {
+          product:  4,
+          mounting: 5
+        }
+      },
+      {
+        viewId: 'view_3505',
         fields: {
           // ── Title bar ──
           bid:          'field_2415',   // Bid (column 1)
@@ -12588,7 +12642,9 @@ td.${PREFIX}-field-value--notes {
       rules: [
         { fieldKey: 'field_2400', when: 'empty', color: 'danger'  },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
-        { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
+        { fieldKey: 'field_2399', when: 'zero',  color: 'warning' },
+        { fieldKey: 'field_771', when: 'empty', color: 'warning' },
+        { fieldKey: 'field_2409', when: 'empty', color: 'danger' }
       ]
     },
     {

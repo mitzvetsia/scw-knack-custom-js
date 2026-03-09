@@ -56,6 +56,39 @@
           product:  4,
           mounting: 5
         }
+      },
+      {
+        viewId: 'view_3505',
+        fields: {
+          // ── Title bar ──
+          bid:          'field_2415',   // Bid (column 1)
+          move:         'field_2375',   // Move icon (column 2)
+          label:        'field_2364',   // Label
+          product:      'field_2379',   // Product (column 4)
+
+          // ── Identity section (no header) ──
+          mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
+          connections:  'field_2381',   // connected to
+          scwNotes:     'field_2418',   // SCW Notes
+
+          // ── SURVEY DETAILS ──
+          surveyNotes:    'field_2412', // Survey Notes
+          exterior:       'field_2372', // Exterior (chip host)
+          existingCabling:'field_2370', // Existing Cabling
+          plenum:         'field_2371', // Plenum
+          dropLength:     'field_2367', // Drop Length
+          conduitFeet:    'field_2368', // Conduit Linear Feet
+
+          // ── BID ──
+          laborDescription: 'field_2409', // Labor Description
+          labor:            'field_2400'  // Labor $
+        },
+        // Column indices for fields that share the same field key
+        // (product and mounting both use field_2379)
+        columnIndices: {
+          product:  4,
+          mounting: 5
+        }
       }
     ]
   };

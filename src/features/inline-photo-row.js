@@ -21,7 +21,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -368,7 +368,15 @@
       '#view_3512 th.field_2446,',
       '#view_3512 td.field_2446,',
       '#view_3512 th.field_2447,',
-      '#view_3512 td.field_2447 {',
+      '#view_3512 td.field_2447,',
+      '#view_3505 th.field_114,',
+      '#view_3505 td.field_114,',
+      '#view_3505 th.field_2445,',
+      '#view_3505 td.field_2445,',
+      '#view_3505 th.field_2446,',
+      '#view_3505 td.field_2446,',
+      '#view_3505 th.field_2447,',
+      '#view_3505 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -737,11 +745,14 @@
         }
       },
 
-      /** Clear pending state and refresh view_3512. */
+      /** Clear pending state and refresh the parent view. */
       setSuccess: function () {
         card.classList.remove(PENDING_CLS);
-        if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3512) {
-          Knack.views.view_3512.model.fetch();
+        if (typeof Knack !== 'undefined' && Knack.views) {
+          for (var vi = 0; vi < TARGET_VIEWS.length; vi++) {
+            var v = Knack.views[TARGET_VIEWS[vi]];
+            if (v && v.model) v.model.fetch();
+          }
         }
       },
 
