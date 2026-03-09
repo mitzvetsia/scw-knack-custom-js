@@ -1,9 +1,15 @@
 // ============================================================
-// Device Worksheet – stacked card layout for line-item rows
+// Device Worksheet – compact summary row + expandable detail
 // ============================================================
 //
-// Transforms flat table rows into grouped "device worksheet" cards
-// with sections: (identity), SURVEY DETAILS, BID, and PHOTOS.
+// Transforms flat table rows into a two-part layout:
+//   1. SUMMARY ROW – always-visible, compact bar with key bid
+//      fields that are directly inline-editable.
+//   2. DETAIL PANEL – accordion-expandable section with the full
+//      set of remaining editable fields (survey, mounting, etc.)
+//
+// A chevron on the summary row toggles the detail panel and the
+// associated inline-photo row (injected by inline-photo-row.js).
 //
 // INLINE-EDIT PRESERVATION STRATEGY
 //   The actual <td> elements are *moved* (reparented) into the
@@ -27,34 +33,55 @@
       {
         viewId: 'view_3512',
         fields: {
-          // ── Title bar ──
-          bid:          'field_2415',   // Bid (column 1)
-          move:         'field_2375',   // Move icon (column 2)
-          label:        'field_2364',   // Label
-          product:      'field_2379',   // Product (column 4)
+          // ── Summary row (always visible, primary edit surface) ──
+          bid:              'field_2415',   // Bid (column 1)
+          move:             'field_2375',   // Move icon (column 2)
+          label:            'field_2364',   // Label
+          product:          'field_2379',   // Product (column 4)
+          laborDescription: 'field_2409',   // Labor Description
+          labor:            'field_2400',   // Labor $
 
-          // ── Identity section (no header) ──
-          mounting:     'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
-          connections:  'field_2381',   // connected to
-          scwNotes:     'field_2418',   // SCW Notes
-
-          // ── SURVEY DETAILS ──
-          surveyNotes:    'field_2412', // Survey Notes
-          exterior:       'field_2372', // Exterior (chip host)
-          existingCabling:'field_2370', // Existing Cabling
-          plenum:         'field_2371', // Plenum
-          dropLength:     'field_2367', // Drop Length
-          conduitFeet:    'field_2368', // Conduit Linear Feet
-
-          // ── BID ──
-          laborDescription: 'field_2409', // Labor Description
-          labor:            'field_2400'  // Labor $
+          // ── Detail panel (expandable) ──
+          mounting:         'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
+          connections:      'field_2381',   // connected to
+          scwNotes:         'field_2418',   // SCW Notes
+          surveyNotes:      'field_2412',   // Survey Notes
+          exterior:         'field_2372',   // Exterior (chip host)
+          existingCabling:  'field_2370',   // Existing Cabling
+          plenum:           'field_2371',   // Plenum
+          dropLength:       'field_2367',   // Drop Length
+          conduitFeet:      'field_2368',   // Conduit Linear Feet
+          warningCount:     'field_2454'    // Warning count (shown as chit on header)
         },
-        // Column indices for fields that share the same field key
-        // (product and mounting both use field_2379)
         columnIndices: {
           product:  4,
           mounting: 5
+        }
+      },
+      {
+        viewId: 'view_3505',
+        fields: {
+          bid:              'field_2415',
+          move:             'field_2375',
+          label:            'field_2364',
+          product:          'field_2379',
+          laborDescription: 'field_2409',
+          labor:            'field_2400',
+          quantity:         'field_2399',   // Qty (summary, inline-edit)
+          extended:         'field_2401',   // Extended / Labor Total (summary, read-only)
+
+          mounting:         'field_2379',
+          connections:      'field_2380',
+          scwNotes:         'field_2418',
+          surveyNotes:      'field_2412',
+          exterior:         'field_2372',
+          existingCabling:  'field_2370',
+          plenum:           'field_2371',
+          warningCount:     'field_2454'    // Warning count (shown as chit on header)
+        },
+        columnIndices: {
+          product:  3,
+          mounting: 4
         }
       }
     ]
@@ -67,7 +94,10 @@
   var WORKSHEET_ROW  = 'scw-ws-row';
   var PROCESSED_ATTR = 'data-scw-worksheet';
   var EVENT_NS       = '.scwDeviceWorksheet';
-  var PREFIX         = 'scw-ws';
+  var P              = 'scw-ws';  // class prefix
+
+  // SVG chevron (matches group-collapse.js style)
+  var CHEVRON_SVG = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 2 8 6 4 10"/></svg>';
 
   // ============================================================
   // CSS – injected once
@@ -81,9 +111,7 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
-/* ── Kill ALL residual Knack hover / striping.
-   We remove is-striped / ktlTable--rowHover from the <table> in JS,
-   but these belt-and-suspenders rules catch anything else. ── */
+/* ── Kill ALL residual Knack hover / striping ── */
 tr.${WORKSHEET_ROW},
 tr.${WORKSHEET_ROW}:hover,
 tr.scw-inline-photo-row,
@@ -102,10 +130,6 @@ tr[data-scw-worksheet]:hover > td {
   background: none !important;
   background-color: transparent !important;
 }
-tr.${WORKSHEET_ROW} .${PREFIX}-card td,
-tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
-  background-color: transparent !important;
-}
 
 /* ── Worksheet row <td> — zero padding so the card fills it ── */
 .${WORKSHEET_ROW} > td {
@@ -113,189 +137,444 @@ tr.${WORKSHEET_ROW}:hover .${PREFIX}-card td {
   border: none !important;
 }
 
-/* ── Photo row — part of the same visual unit as the card above.
-   A subtle separator underneath divides one record-pair from the next. ── */
+/* ── Photo row — part of the same visual unit ── */
 tr.scw-inline-photo-row > td {
-  padding: 10px 16px 64px 16px !important;
+  padding: 10px 16px 14px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
 }
 
 /* ── Card wrapper ── */
-.${PREFIX}-card {
+.${P}-card {
   display: flex;
   flex-direction: column;
-  gap: 0;
   background: #fff;
-  border-radius: 0;
-  overflow: hidden;
   border-top: 2px solid #e2e8f0;
 }
 
-/* ── Title bar ── */
-.${PREFIX}-titlebar {
+/* ── Bottom separator between record groups (card + photo row) ── */
+.${WORKSHEET_ROW}.${P}-last > td {
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+/* ================================================================
+   SUMMARY BAR – single-row layout
+   [checkbox] [chevron] [label · product] [labor desc] → push right → [bid] [labor] [qty] [ext] [move]
+   ================================================================ */
+.${P}-summary {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 6px 12px;
   background: #f8fafc;
-  border-bottom: 1px solid #e9eef4;
-  flex-wrap: wrap;
+  border-bottom: 1px solid #e5e7eb;
+  min-height: 38px;
+}
+.${P}-summary:hover {
+  background: #f1f5f9;
 }
 
-/* All titlebar items share the same base type */
-.${PREFIX}-titlebar-item {
-  font-size: 13px;
-  font-weight: 600;
-  color: #475569;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-/* Label & Product — plain text, no box, no hover effect */
-td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary,
-td.${PREFIX}-titlebar-item.${PREFIX}-titlebar-item--primary:hover {
-  font-size: 15px;
-  font-weight: 700;
-  color: #295f91;
-  cursor: default !important;
-  border: none !important;
-  background: transparent !important;
-  padding: 0 4px;
-  border-radius: 0;
-}
-
-/* The move td sits at the right end */
-.${PREFIX}-titlebar-move {
-  margin-left: auto;
+/* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
+.${P}-sum-right {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Each field group in the right section gets fixed width for vertical alignment */
+.${P}-sum-right .${P}-sum-group {
+  width: 80px;
+  min-width: 80px;
+}
+/* Bid group can be a bit narrower */
+.${P}-sum-right .${P}-sum-group--bid {
+  width: 70px;
+  min-width: 70px;
+}
+/* Bid field grows in height when multiple selections are present */
+.${P}-sum-group--bid td.${P}-sum-field {
+  height: auto;
+  min-height: 30px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
+/* Qty group narrower */
+.${P}-sum-right .${P}-sum-group--qty {
+  width: 50px;
+  min-width: 50px;
+}
+/* Fields inside right groups stretch to fill their group */
+.${P}-sum-right td.${P}-sum-field,
+.${P}-sum-right td.${P}-sum-field-ro {
+  width: 100%;
+  min-width: 0;
 }
 
-/* Titlebar <td> elements — reset table cell appearance */
-td.${PREFIX}-titlebar-item {
+/* Hide labor, qty, extended for Assumptions rows (keeps space for alignment) */
+tr.scw-row--assumptions .${P}-sum-group--labor,
+tr.scw-row--assumptions .${P}-sum-group--qty,
+tr.scw-row--assumptions .${P}-sum-group--ext {
+  visibility: hidden;
+}
+
+/* ── KTL bulk-edit checkbox cell ── */
+td.${P}-sum-check {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 3px;
+  justify-content: center;
+  align-self: center;
+  flex: 0 0 auto;
+  padding: 0 4px !important;
+  border: none !important;
+  background: transparent !important;
+  min-width: 20px;
+}
+td.${P}-sum-check input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
 }
 
-/* Only editable titlebar cells get pointer + hover box */
-td.${PREFIX}-titlebar-item.cell-edit,
-td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle {
+/* Clickable toggle zone (chevron + identity) — fixed width so labor desc aligns */
+.${P}-toggle-zone {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
   cursor: pointer;
+  user-select: none;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.${P}-toggle-zone:hover .${P}-chevron {
+  color: #6b7280;
+}
+
+/* Chevron toggle */
+.${P}-chevron {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: #9ca3af;
+  transition: transform 200ms ease, color 150ms ease;
+  transform: rotate(0deg);
+}
+.${P}-chevron.${P}-collapsed {
+  transform: rotate(0deg);
+}
+.${P}-chevron.${P}-expanded {
+  transform: rotate(90deg);
+  color: #6b7280;
+}
+
+/* Label + Product identity block */
+.${P}-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Warning chit (field_2454 count > 0) */
+.${P}-warn-chit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px 1px 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.${P}-warn-chit svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+/* Wrapper so chit + product share the product's fixed width */
+.${P}-product-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+#view_3512 .${P}-product-group {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+#view_3505 .${P}-product-group {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+}
+.${P}-product-group > td.${P}-sum-product {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Label td in summary — primary styling, fixed width for alignment */
+td.${P}-sum-label-cell,
+td.${P}-sum-label-cell:hover {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e4d78;
+  cursor: pointer !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 2px;
+  white-space: nowrap;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Product td in summary — fixed width so labor desc and right fields align vertically */
+td.${P}-sum-product,
+td.${P}-sum-product:hover {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e4d78;
+  cursor: pointer !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 2px;
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
+/* view_3512: product width managed by product-group wrapper */
+
+/* Separator dot */
+.${P}-sum-sep {
+  color: #d1d5db;
+  font-size: 12px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* ── Standardized editable field cell height ── */
+td.${P}-sum-field {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  white-space: nowrap;
+  height: 30px;
+  min-width: 40px;
+  box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
-td.${PREFIX}-titlebar-item.cell-edit:hover,
-td.${PREFIX}-titlebar-item.ktlInlineEditableCellsStyle:hover {
+td.${P}-sum-field.cell-edit:hover,
+td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
   background-color: #dbeafe !important;
   border-color: #93c5fd !important;
+  cursor: pointer;
+}
+/* Empty summary fields */
+td.${P}-sum-field.${P}-empty {
+  color: #9ca3af;
+  font-style: italic;
 }
 
-/* Separator dot between titlebar items */
-.${PREFIX}-titlebar-sep {
-  color: #cbd5e1;
-  font-size: 14px;
-  user-select: none;
+/* Read-only summary field (non-editable, e.g. Extended total) */
+td.${P}-sum-field-ro {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  white-space: nowrap;
+  height: 30px;
+  min-width: 40px;
+  box-sizing: border-box;
+}
+
+/* Labor desc field — fills available space between identity and right-aligned fields */
+td.${P}-sum-field--desc {
+  white-space: normal;
+  word-break: break-word;
+  height: auto;
+  min-height: 30px;
+}
+
+/* Summary field label (tiny, above or inline) */
+.${P}-sum-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #374151;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Summary field group: label + value stacked */
+.${P}-sum-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* Labor desc group — fills middle space, pushes right group to far right */
+.${P}-sum-group--fill {
+  flex: 1 1 auto;
+  min-width: 80px;
+}
+
+/* Move td sits at the right end */
+td.${P}-sum-move {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  border: none !important;
+  background: transparent !important;
+  flex-shrink: 0;
+}
+
+/* ================================================================
+   DETAIL PANEL – expandable section
+   ================================================================ */
+.${P}-detail {
+  display: none;
+  border-top: 1px solid #e5e7eb;
+}
+.${P}-detail.${P}-open {
+  display: block;
 }
 
 /* ── Sections grid ── */
-.${PREFIX}-sections {
+.${P}-sections {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 0;
 }
 @media (max-width: 900px) {
-  .${PREFIX}-sections {
+  .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
 
 /* ── Individual section ── */
-.${PREFIX}-section {
+.${P}-section {
   padding: 14px 20px 14px 16px;
-  border-right: 1px solid #edf0f4;
+  border-right: 1px solid #e5e7eb;
   min-width: 0;
 }
-.${PREFIX}-section:last-child {
+.${P}-section:last-child {
   border-right: none;
 }
 
-.${PREFIX}-section-title {
+.${P}-section-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: #94a3b8;
+  letter-spacing: 0.6px;
+  color: #4b5563;
   padding-bottom: 6px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 /* ── Field row inside a section ── */
-.${PREFIX}-field {
+.${P}-field {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
   align-items: flex-start;
   min-height: 24px;
 }
-.${PREFIX}-field:last-child {
+.${P}-field:last-child {
   margin-bottom: 0;
 }
 
-.${PREFIX}-field-label {
-  flex: 0 0 auto;
-  min-width: 100px;
+.${P}-field-label {
+  flex: 0 0 100px;
+  width: 100px;
   font-size: 11px;
   font-weight: 600;
-  color: #94a3b8;
+  color: #4b5563;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   padding-top: 5px;
-  white-space: nowrap;
+  white-space: pre-line;
+  line-height: 1.3;
 }
 
 /* ── The moved <td> becomes the field value container ── */
-.${PREFIX}-field-value {
+.${P}-field-value {
   flex: 1;
   font-size: 13px;
-  color: #334155;
+  color: #1f2937;
   line-height: 1.5;
   min-width: 0;
   word-break: break-word;
 }
 
-/* Reset <td> styling when it's been reparented into the worksheet.
-   Give it a visible input-like appearance so it reads as a form field. */
-td.${PREFIX}-field-value {
+td.${P}-field-value {
   display: block;
   padding: 4px 8px;
-  border: 1px solid #dde3ea;
+  border: 1px solid #e5e7eb;
   border-radius: 4px;
   background: #fff;
   min-height: 28px;
 }
 
 /* ── Editable hover affordance ── */
-td.${PREFIX}-field-value.cell-edit,
-td.${PREFIX}-field-value.ktlInlineEditableCellsStyle {
+td.${P}-field-value.cell-edit,
+td.${P}-field-value.ktlInlineEditableCellsStyle {
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
-td.${PREFIX}-field-value.cell-edit:hover,
-td.${PREFIX}-field-value.ktlInlineEditableCellsStyle:hover {
+td.${P}-field-value.cell-edit:hover,
+td.${P}-field-value.ktlInlineEditableCellsStyle:hover {
   background-color: #f0f6ff !important;
   border-color: #93c5fd !important;
   box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
 }
 
 /* ── Chip host td — invisible cell, chips aligned with fields ── */
-td.${PREFIX}-chip-host {
+td.${P}-chip-host {
   display: block !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -304,15 +583,13 @@ td.${PREFIX}-chip-host {
   border-radius: 0 !important;
   min-height: 0 !important;
 }
-td.${PREFIX}-chip-host:hover {
+td.${P}-chip-host:hover {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
 }
 
-/* ── Chip row sits in a field row so the left edge
-   of the first chip aligns with field values above/below ── */
-.${PREFIX}-chips {
+.${P}-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
@@ -320,20 +597,23 @@ td.${PREFIX}-chip-host:hover {
 }
 
 /* ── Notes fields — allow more vertical space ── */
-td.${PREFIX}-field-value--notes {
-  font-size: 12px;
+td.${P}-field-value--notes {
+  font-size: 13px;
   line-height: 1.5;
   max-height: 120px;
   overflow-y: auto;
 }
 
 /* ── Empty field value ── */
-.${PREFIX}-field-value--empty {
-  color: #cbd5e1;
+.${P}-field-value--empty {
+  color: #9ca3af;
   font-style: italic;
-  font-size: 12px;
 }
 
+/* ── Photo row hidden when detail collapsed ── */
+tr.scw-inline-photo-row.${P}-photo-hidden {
+  display: none !important;
+}
 `;
 
     var style = document.createElement('style');
@@ -346,12 +626,6 @@ td.${PREFIX}-field-value--notes {
   // HELPERS
   // ============================================================
 
-  /**
-   * Find a <td> in a row by field key and optional column index.
-   * When column-index is provided, it's used to disambiguate
-   * fields that share the same field_key (e.g. field_2379 for
-   * both Product and Mounting).
-   */
   function findCell(tr, fieldKey, colIndex) {
     var cells = tr.querySelectorAll(
       'td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]'
@@ -366,14 +640,12 @@ td.${PREFIX}-field-value--notes {
     return cells[0];
   }
 
-  /** Check if a cell contains only whitespace / &nbsp; */
   function isCellEmpty(td) {
     if (!td) return true;
     var text = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim();
     return text.length === 0 && !td.querySelector('img');
   }
 
-  /** Get record id from a row's id attribute. */
   function getRecordId(tr) {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
@@ -381,44 +653,41 @@ td.${PREFIX}-field-value--notes {
   }
 
   // ============================================================
-  // BUILD WORKSHEET SECTIONS
+  // BUILD DETAIL PANEL HELPERS
   // ============================================================
 
-  /**
-   * Create a field row that embeds the ACTUAL <td> as the value.
-   * The <td> is moved (not cloned) so Knack's event bindings survive.
-   *
-   * We add our CSS class to the <td> and switch it to display:block
-   * so it renders as a normal block element within the flex row.
-   */
+  var GRAYED_CLASS = 'scw-cond-grayed';
+
   function buildFieldRow(label, td, opts) {
     opts = opts || {};
+
+    // If the cell was grayed out by the conditional-grayout script,
+    // remove it from the detail panel entirely (keep summary graying).
+    if (td && td.classList.contains(GRAYED_CLASS)) return null;
+
+    // If skipEmpty is set, omit the field entirely when the cell is blank.
+    if (opts.skipEmpty && (!td || isCellEmpty(td))) return null;
+
     var row = document.createElement('div');
-    row.className = PREFIX + '-field';
+    row.className = P + '-field';
 
     var lbl = document.createElement('div');
-    lbl.className = PREFIX + '-field-label';
+    lbl.className = P + '-field-label';
     lbl.textContent = label;
     row.appendChild(lbl);
 
     if (td && !isCellEmpty(td)) {
-      // Add our class to the actual <td>. This turns it into a
-      // flex child with display:block and our styling.
-      td.classList.add(PREFIX + '-field-value');
-      if (opts.notes) td.classList.add(PREFIX + '-field-value--notes');
-      // Move the actual <td> into the worksheet layout
+      td.classList.add(P + '-field-value');
+      if (opts.notes) td.classList.add(P + '-field-value--notes');
       row.appendChild(td);
     } else if (td) {
-      // Cell exists but is empty — still move it so edits work,
-      // but style it as empty
-      td.classList.add(PREFIX + '-field-value');
-      td.classList.add(PREFIX + '-field-value--empty');
-      if (opts.notes) td.classList.add(PREFIX + '-field-value--notes');
+      td.classList.add(P + '-field-value');
+      td.classList.add(P + '-field-value--empty');
+      if (opts.notes) td.classList.add(P + '-field-value--notes');
       row.appendChild(td);
     } else {
-      // No cell at all — create placeholder
       var placeholder = document.createElement('div');
-      placeholder.className = PREFIX + '-field-value ' + PREFIX + '-field-value--empty';
+      placeholder.className = P + '-field-value ' + P + '-field-value--empty';
       placeholder.textContent = '\u2014';
       row.appendChild(placeholder);
     }
@@ -426,17 +695,13 @@ td.${PREFIX}-field-value--notes {
     return row;
   }
 
-  /**
-   * Create a section wrapper with a title.
-   * Pass null/empty title for no header (identity section).
-   */
   function buildSection(title) {
     var section = document.createElement('div');
-    section.className = PREFIX + '-section';
+    section.className = P + '-section';
 
     if (title) {
       var titleEl = document.createElement('div');
-      titleEl.className = PREFIX + '-section-title';
+      titleEl.className = P + '-section-title';
       titleEl.textContent = title;
       section.appendChild(titleEl);
     }
@@ -444,115 +709,223 @@ td.${PREFIX}-field-value--notes {
     return section;
   }
 
-  /**
-   * Build the full worksheet card for a data row.
-   * Cells are MOVED out of the <tr> into the card layout.
-   */
-  function buildWorksheetCard(tr, viewCfg) {
+  // ============================================================
+  // BUILD SUMMARY BAR
+  // ============================================================
+
+  function buildSummaryBar(tr, viewCfg) {
     var f = viewCfg.fields;
     var ci = viewCfg.columnIndices || {};
 
-    var card = document.createElement('div');
-    card.className = PREFIX + '-card';
+    var bar = document.createElement('div');
+    bar.className = P + '-summary';
 
-    // ── Title bar ──
-    // Move the actual <td> elements so inline-edit bindings survive.
-    var titlebar = document.createElement('div');
-    titlebar.className = PREFIX + '-titlebar';
-
-    // Bid — move actual <td>
-    var bidTd = findCell(tr, f.bid);
-    if (bidTd) {
-      bidTd.classList.add(PREFIX + '-titlebar-item');
-      titlebar.appendChild(bidTd);
+    // ── KTL / legacy bulk-edit checkbox (if present) ──
+    var checkTd = tr.querySelector('td > input[type="checkbox"]');
+    if (checkTd) {
+      var checkCell = checkTd.closest('td');
+      checkCell.classList.add(P + '-sum-check');
+      bar.appendChild(checkCell);
     }
 
-    // Separator
-    var sep1 = document.createElement('span');
-    sep1.className = PREFIX + '-titlebar-sep';
-    sep1.textContent = '\u00b7';
-    titlebar.appendChild(sep1);
+    // ── Toggle zone: chevron + identity ──
+    var toggleZone = document.createElement('span');
+    toggleZone.className = P + '-toggle-zone';
 
-    // Label — move actual <td>, primary styling
+    var chevron = document.createElement('span');
+    chevron.className = P + '-chevron ' + P + '-collapsed';
+    chevron.innerHTML = CHEVRON_SVG;
+    toggleZone.appendChild(chevron);
+
+    var identity = document.createElement('span');
+    identity.className = P + '-identity';
+
     var labelTd = findCell(tr, f.label);
     if (labelTd) {
-      labelTd.classList.add(PREFIX + '-titlebar-item');
-      labelTd.classList.add(PREFIX + '-titlebar-item--primary');
-      titlebar.appendChild(labelTd);
+      labelTd.classList.add(P + '-sum-label-cell');
+      identity.appendChild(labelTd);
     }
 
-    // Separator
-    var sep2 = document.createElement('span');
-    sep2.className = PREFIX + '-titlebar-sep';
-    sep2.textContent = '\u00b7';
-    titlebar.appendChild(sep2);
-
-    // Product — move actual <td>, primary styling
     var productTd = findCell(tr, f.product, ci.product);
     if (productTd) {
-      productTd.classList.add(PREFIX + '-titlebar-item');
-      productTd.classList.add(PREFIX + '-titlebar-item--primary');
-      titlebar.appendChild(productTd);
+      var sep0 = document.createElement('span');
+      sep0.className = P + '-sum-sep';
+      sep0.textContent = '\u00b7';
+      identity.appendChild(sep0);
+
+      var productGroup = document.createElement('span');
+      productGroup.className = P + '-product-group';
+
+      // Warning chit (field_2454, view_3512 only)
+      if (f.warningCount) {
+        var warnTd = findCell(tr, f.warningCount);
+        var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+        if (warnVal > 0) {
+          var chit = document.createElement('span');
+          chit.className = P + '-warn-chit';
+          chit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
+            + Math.round(warnVal);
+          productGroup.appendChild(chit);
+        }
+      }
+
+      productTd.classList.add(P + '-sum-product');
+      productGroup.appendChild(productTd);
+      identity.appendChild(productGroup);
     }
 
-    // Move (IDF/MDF assignment) — move actual <td>, sits right
+    toggleZone.appendChild(identity);
+    bar.appendChild(toggleZone);
+
+    // ── Labor Desc (inline, fills middle space) ──
+    var laborDescTd = findCell(tr, f.laborDescription);
+    if (laborDescTd) {
+      var ldGroup = document.createElement('span');
+      ldGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
+      var ldLabel = document.createElement('span');
+      ldLabel.className = P + '-sum-label';
+      ldLabel.textContent = 'Labor Desc';
+      ldGroup.appendChild(ldLabel);
+      laborDescTd.classList.add(P + '-sum-field');
+      laborDescTd.classList.add(P + '-sum-field--desc');
+      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
+      ldGroup.appendChild(laborDescTd);
+      bar.appendChild(ldGroup);
+    }
+
+    // ── Right-aligned group: bid, labor, qty, ext, move ──
+    var rightGroup = document.createElement('span');
+    rightGroup.className = P + '-sum-right';
+
+    // Bid
+    var bidTd = findCell(tr, f.bid);
+    if (bidTd) {
+      var bidGroup = document.createElement('span');
+      bidGroup.className = P + '-sum-group ' + P + '-sum-group--bid';
+      var bidLabel = document.createElement('span');
+      bidLabel.className = P + '-sum-label';
+      bidLabel.textContent = 'Bid';
+      bidGroup.appendChild(bidLabel);
+      bidTd.classList.add(P + '-sum-field');
+      if (isCellEmpty(bidTd)) bidTd.classList.add(P + '-empty');
+      bidGroup.appendChild(bidTd);
+      rightGroup.appendChild(bidGroup);
+    }
+
+    // Labor $
+    var laborTd = findCell(tr, f.labor);
+    if (laborTd) {
+      var labGroup = document.createElement('span');
+      labGroup.className = P + '-sum-group ' + P + '-sum-group--labor';
+      var labLabel = document.createElement('span');
+      labLabel.className = P + '-sum-label';
+      labLabel.textContent = 'Labor';
+      labGroup.appendChild(labLabel);
+      laborTd.classList.add(P + '-sum-field');
+      if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
+      labGroup.appendChild(laborTd);
+      rightGroup.appendChild(labGroup);
+    }
+
+    // Qty (view_3505 only)
+    if (f.quantity) {
+      var qtyTd = findCell(tr, f.quantity);
+      if (qtyTd) {
+        var qtyGroup = document.createElement('span');
+        qtyGroup.className = P + '-sum-group ' + P + '-sum-group--qty';
+        var qtyLabel = document.createElement('span');
+        qtyLabel.className = P + '-sum-label';
+        qtyLabel.textContent = 'Qty';
+        qtyGroup.appendChild(qtyLabel);
+        qtyTd.classList.add(P + '-sum-field');
+        if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
+        qtyGroup.appendChild(qtyTd);
+        rightGroup.appendChild(qtyGroup);
+      }
+    }
+
+    // Extended (view_3505 only, read-only)
+    if (f.extended) {
+      var extTd = findCell(tr, f.extended);
+      if (extTd) {
+        var extGroup = document.createElement('span');
+        extGroup.className = P + '-sum-group ' + P + '-sum-group--ext';
+        var extLabel = document.createElement('span');
+        extLabel.className = P + '-sum-label';
+        extLabel.textContent = 'Extended';
+        extGroup.appendChild(extLabel);
+        extTd.classList.add(P + '-sum-field-ro');
+        extGroup.appendChild(extTd);
+        rightGroup.appendChild(extGroup);
+      }
+    }
+
+    // Move
     var moveTd = findCell(tr, f.move);
     if (moveTd) {
-      moveTd.classList.add(PREFIX + '-titlebar-item');
-      moveTd.classList.add(PREFIX + '-titlebar-move');
-      titlebar.appendChild(moveTd);
+      moveTd.classList.add(P + '-sum-move');
+      rightGroup.appendChild(moveTd);
     }
 
-    card.appendChild(titlebar);
+    bar.appendChild(rightGroup);
 
-    // ── Sections container ──
+    return bar;
+  }
+
+  // ============================================================
+  // BUILD DETAIL PANEL
+  // ============================================================
+
+  function buildDetailPanel(tr, viewCfg) {
+    var f = viewCfg.fields;
+    var ci = viewCfg.columnIndices || {};
+
+    var detail = document.createElement('div');
+    detail.className = P + '-detail';
+
     var sections = document.createElement('div');
-    sections.className = PREFIX + '-sections';
+    sections.className = P + '-sections';
 
-    // ── Identity section (no header) ──
-    var identitySection = buildSection(null);
+    // Helper: append a field row only if it wasn't grayed out (null)
+    function addRow(section, row) {
+      if (row) section.appendChild(row);
+    }
 
-    // Move the actual <td> elements into field rows
-    identitySection.appendChild(buildFieldRow('Mounting',
-      findCell(tr, f.mounting, ci.mounting)));
+    // ── Left column: Equipment Details ──
+    var equipSection = buildSection('');
 
-    identitySection.appendChild(buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
+    addRow(equipSection, buildFieldRow('Mounting\nHardware',
+      findCell(tr, f.mounting, ci.mounting), { skipEmpty: true }));
 
-    identitySection.appendChild(buildFieldRow('SCW Notes',
+    addRow(equipSection, buildFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), { notes: true }));
 
-    sections.appendChild(identitySection);
+    sections.appendChild(equipSection);
 
-    // ── SURVEY DETAILS ──
+    // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    surveySection.appendChild(buildFieldRow('Notes',
-      findCell(tr, f.surveyNotes), { notes: true }));
+    addRow(surveySection, buildFieldRow('Connected to',
+      findCell(tr, f.connections)));
 
-    // Chip stack — the boolean-chips feature has already transformed
-    // the exterior cell into a chip stack. Move the chip elements
-    // into a field row so they align with Notes / Drop Length.
+    // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
-    if (chipHostTd) {
+    if (chipHostTd && !chipHostTd.classList.contains(GRAYED_CLASS)) {
       var chipStack = chipHostTd.querySelector('.scw-chip-stack');
       if (chipStack) {
-        // Build a field row with an empty label to align chips
-        // with other field values in the section
         var chipFieldRow = document.createElement('div');
-        chipFieldRow.className = PREFIX + '-field';
+        chipFieldRow.className = P + '-field';
 
         var chipLabel = document.createElement('div');
-        chipLabel.className = PREFIX + '-field-label';
-        chipLabel.textContent = '';  // no label, just spacing
+        chipLabel.className = P + '-field-label';
+        chipLabel.textContent = '';
         chipFieldRow.appendChild(chipLabel);
 
-        // Make the chip host td invisible — just holds chips
-        chipHostTd.classList.add(PREFIX + '-chip-host');
-        chipHostTd.classList.add(PREFIX + '-field-value');
+        chipHostTd.classList.add(P + '-chip-host');
+        chipHostTd.classList.add(P + '-field-value');
         chipHostTd.innerHTML = '';
         var chipsRow = document.createElement('div');
-        chipsRow.className = PREFIX + '-chips';
+        chipsRow.className = P + '-chips';
         while (chipStack.firstChild) {
           chipsRow.appendChild(chipStack.firstChild);
         }
@@ -560,31 +933,84 @@ td.${PREFIX}-field-value--notes {
         chipFieldRow.appendChild(chipHostTd);
         surveySection.appendChild(chipFieldRow);
       } else {
-        surveySection.appendChild(buildFieldRow('Exterior',
+        addRow(surveySection, buildFieldRow('Exterior',
           chipHostTd));
       }
     }
 
-    surveySection.appendChild(buildFieldRow('Drop Length',
-      findCell(tr, f.dropLength)));
+    if (f.dropLength) {
+      addRow(surveySection, buildFieldRow('Drop Length',
+        findCell(tr, f.dropLength)));
+    }
 
-    surveySection.appendChild(buildFieldRow('Conduit Ft',
-      findCell(tr, f.conduitFeet)));
+    if (f.conduitFeet) {
+      addRow(surveySection, buildFieldRow('Conduit Ft',
+        findCell(tr, f.conduitFeet)));
+    }
+
+    addRow(surveySection, buildFieldRow('Survey\nNotes',
+      findCell(tr, f.surveyNotes), { notes: true }));
 
     sections.appendChild(surveySection);
 
-    // ── BID ──
-    var bidSection = buildSection('Bid');
+    detail.appendChild(sections);
 
-    bidSection.appendChild(buildFieldRow('Labor Desc.',
-      findCell(tr, f.laborDescription), { notes: true }));
+    return detail;
+  }
 
-    bidSection.appendChild(buildFieldRow('Labor',
-      findCell(tr, f.labor)));
+  // ============================================================
+  // ACCORDION TOGGLE
+  // ============================================================
 
-    sections.appendChild(bidSection);
+  function toggleDetail(wsTr) {
+    var detail = wsTr.querySelector('.' + P + '-detail');
+    var chevron = wsTr.querySelector('.' + P + '-chevron');
+    if (!detail) return;
 
-    card.appendChild(sections);
+    var isOpen = detail.classList.contains(P + '-open');
+
+    if (isOpen) {
+      // Collapse
+      detail.classList.remove(P + '-open');
+      if (chevron) {
+        chevron.classList.remove(P + '-expanded');
+        chevron.classList.add(P + '-collapsed');
+      }
+      // Hide the photo row too
+      var photoRow = wsTr.nextElementSibling;
+      if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
+        photoRow.classList.add(P + '-photo-hidden');
+      }
+    } else {
+      // Expand
+      detail.classList.add(P + '-open');
+      if (chevron) {
+        chevron.classList.remove(P + '-collapsed');
+        chevron.classList.add(P + '-expanded');
+      }
+      // Show the photo row
+      var photoRow2 = wsTr.nextElementSibling;
+      if (photoRow2 && photoRow2.classList.contains('scw-inline-photo-row')) {
+        photoRow2.classList.remove(P + '-photo-hidden');
+      }
+    }
+  }
+
+  // ============================================================
+  // BUILD FULL WORKSHEET CARD
+  // ============================================================
+
+  function buildWorksheetCard(tr, viewCfg) {
+    var card = document.createElement('div');
+    card.className = P + '-card';
+
+    // Summary bar (always visible)
+    var summary = buildSummaryBar(tr, viewCfg);
+    card.appendChild(summary);
+
+    // Detail panel (expandable)
+    var detail = buildDetailPanel(tr, viewCfg);
+    card.appendChild(detail);
 
     return card;
   }
@@ -600,11 +1026,8 @@ td.${PREFIX}-field-value--notes {
     var table = $view.find('table.kn-table-table, table.kn-table')[0];
     if (!table) return;
 
-    // Strip Knack table classes that add row hover/striping —
-    // our card layout handles its own styling
     table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
 
-    // Hide the table header row — we don't need column headers
     var thead = table.querySelector('thead');
     if (thead) thead.style.display = 'none';
 
@@ -613,32 +1036,27 @@ td.${PREFIX}-field-value--notes {
     $rows.each(function () {
       var tr = this;
 
-      // Skip group headers, photo rows, and already-processed rows
       if (tr.classList.contains('kn-table-group')) return;
       if (tr.classList.contains('scw-inline-photo-row')) return;
       if (tr.classList.contains(WORKSHEET_ROW)) return;
 
-      // Must have a record ID
       var recordId = getRecordId(tr);
       if (!recordId) return;
-
-      // Skip if already processed
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
-      // Build the worksheet card — this MOVES cells out of the <tr>
       var card = buildWorksheetCard(tr, viewCfg);
 
-      // Create the worksheet row
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
-      // Copy the record id so Knack can still find the row
       wsTr.id = tr.id;
-      // Remove id from original to avoid duplicate IDs
       tr.removeAttribute('id');
+
+      // Propagate bucket row classes so worksheet CSS can react
+      if (tr.classList.contains('scw-row--assumptions')) wsTr.classList.add('scw-row--assumptions');
+      if (tr.classList.contains('scw-row--services'))    wsTr.classList.add('scw-row--services');
 
       var wsTd = document.createElement('td');
 
-      // Count columns for colspan
       var headerRow = table.querySelector('thead tr');
       var colCount = 1;
       if (headerRow) {
@@ -652,14 +1070,37 @@ td.${PREFIX}-field-value--notes {
       wsTd.appendChild(card);
       wsTr.appendChild(wsTd);
 
-      // Insert the worksheet row right after the data row
-      // (before any existing photo row)
       tr.parentNode.insertBefore(wsTr, tr.nextSibling);
-
-      // Mark the original row as processed and hide it
       tr.setAttribute(PROCESSED_ATTR, '1');
     });
+
+    // After all rows are processed, hide photo rows for collapsed items
+    // and set up the bottom border on the last row of each record group
+    var wsRows = table.querySelectorAll('tr.' + WORKSHEET_ROW);
+    for (var j = 0; j < wsRows.length; j++) {
+      var ws = wsRows[j];
+      var photoRow = ws.nextElementSibling;
+      if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
+        // Start collapsed — hide the photo row
+        photoRow.classList.add(P + '-photo-hidden');
+      }
+    }
   }
+
+  // ============================================================
+  // DELEGATED CLICK HANDLER FOR ACCORDION TOGGLE
+  // ============================================================
+  // ONLY the toggle-zone (chevron + identity) toggles the detail
+  // panel.  All other clicks in the summary bar are left alone so
+  // Knack / KTL inline edit can work without interference.
+
+  $(document).on('click' + EVENT_NS, '.' + P + '-toggle-zone', function (e) {
+    e.preventDefault();
+    var wsTr = this.closest('tr.' + WORKSHEET_ROW);
+    if (wsTr) {
+      toggleDetail(wsTr);
+    }
+  });
 
   // ============================================================
   // INIT
@@ -674,19 +1115,15 @@ td.${PREFIX}-field-value--notes {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
-          // Small delay to let boolean-chips and inline-photo-row run first
           setTimeout(function () { transformView(viewCfg); }, 150);
         });
 
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
         .on('knack-cell-update.' + viewId + EVENT_NS, function () {
-          // On cell update, Knack re-renders the entire view.
-          // Our worksheet rows will be gone — transformView will
-          // re-run via knack-view-render.
+          // On cell update, Knack re-renders — transformView re-runs
         });
 
-      // If the view already exists in the DOM, transform immediately
       if ($('#' + viewId).length) {
         setTimeout(function () { transformView(viewCfg); }, 150);
       }

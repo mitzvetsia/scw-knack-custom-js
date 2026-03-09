@@ -32,6 +32,16 @@
           { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
+      },
+      {
+        viewId: 'view_3505',
+        hostFieldKey: 'field_2372',
+        hideFieldKeys: ['field_2370', 'field_2371'],
+        fields: [
+          { label: 'Exterior',         fieldKey: 'field_2372' },
+          { label: 'Existing Cabling', fieldKey: 'field_2370' },
+          { label: 'Plenum',           fieldKey: 'field_2371' }
+        ]
       }
     ]
   };
@@ -73,9 +83,9 @@
       /* ---- base chip ---- */
       '.' + CHIP_CLASS + ' {',
       '  display: inline-block;',
-      '  padding: 2px 10px;',
-      '  border-radius: 12px;',
-      '  font-size: 12px;',
+      '  padding: 1px 8px;',
+      '  border-radius: 10px;',
+      '  font-size: 11px;',
       '  font-weight: 500;',
       '  line-height: 1.5;',
       '  cursor: pointer;',
@@ -90,7 +100,7 @@
       '.' + CHIP_CLASS + '.is-yes {',
       '  background-color: #fffbeb;',
       '  color: #92400e;',
-      '  border-color: #fcd34d;',
+      '  border-color: #fde68a;',
       '}',
       '.' + CHIP_CLASS + '.is-yes:hover {',
       '  background-color: #fef3c7;',

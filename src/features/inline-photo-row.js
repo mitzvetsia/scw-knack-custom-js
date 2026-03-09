@@ -21,7 +21,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -72,7 +72,7 @@
       '  min-width: 100px;',
       '  font-size: 11px;',
       '  font-weight: 600;',
-      '  color: #94a3b8;',
+      '  color: #4b5563;',
       '  text-transform: uppercase;',
       '  letter-spacing: 0.3px;',
       '  padding-top: 5px;',
@@ -94,19 +94,16 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  align-items: center;',
-      '  max-width: 200px;',
-      '  min-width: 0;',
       '}',
 
       /* Override Knack default ".kn-content img { max-width:100% }" */
       '.kn-content .' + IMG_CLS + ' {',
-      '  max-width: 200px;',
+      '  max-width: none;',
       '}',
 
       /* Photo image — natural width, capped height */
       '.' + IMG_CLS + ' {',
       '  width: auto;',
-      '  max-width: 200px;',
       '  max-height: 200px;',
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
@@ -191,6 +188,13 @@
       '  font-size: 28px;',
       '  line-height: 1;',
       '  font-weight: 300;',
+      '}',
+
+      /* When the add button is the only item in the strip (no photos),
+         make it square — height matches width */
+      '.' + ADD_BTN_CLS + '.scw-photo-add-solo {',
+      '  min-height: 56px;',
+      '  height: 56px;',
       '}',
 
       /* Required chip */
@@ -341,7 +345,7 @@
       /* Notes beneath the card — truncated to two lines */
       '.' + NOTES_CLS + ' {',
       '  margin-top: 2px;',
-      '  width: 100%;',
+      '  max-width: 200px;',
       '  padding: 2px 6px;',
       '  font-size: 10px;',
       '  line-height: 1.3;',
@@ -364,7 +368,15 @@
       '#view_3512 th.field_2446,',
       '#view_3512 td.field_2446,',
       '#view_3512 th.field_2447,',
-      '#view_3512 td.field_2447 {',
+      '#view_3512 td.field_2447,',
+      '#view_3505 th.field_114,',
+      '#view_3505 td.field_114,',
+      '#view_3505 th.field_2445,',
+      '#view_3505 td.field_2445,',
+      '#view_3505 th.field_2446,',
+      '#view_3505 td.field_2446,',
+      '#view_3505 th.field_2447,',
+      '#view_3505 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -733,11 +745,14 @@
         }
       },
 
-      /** Clear pending state and refresh view_3512. */
+      /** Clear pending state and refresh the parent view. */
       setSuccess: function () {
         card.classList.remove(PENDING_CLS);
-        if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3512) {
-          Knack.views.view_3512.model.fetch();
+        if (typeof Knack !== 'undefined' && Knack.views) {
+          for (var vi = 0; vi < TARGET_VIEWS.length; vi++) {
+            var v = Knack.views[TARGET_VIEWS[vi]];
+            if (v && v.model) v.model.fetch();
+          }
         }
       },
 
@@ -806,6 +821,10 @@
           if (h) window.location.hash = h;
         });
       })(lineItemId);
+
+      if (photos.length === 0) {
+        addBtn.classList.add('scw-photo-add-solo');
+      }
 
       if (photos.length > 0) {
         // ── Has connected photo records ──
