@@ -12329,15 +12329,16 @@ td.${P}-sum-move {
 }
 
 .${P}-field-label {
-  flex: 0 0 auto;
-  min-width: 100px;
+  flex: 0 0 100px;
+  width: 100px;
   font-size: 11px;
   font-weight: 600;
   color: #4b5563;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   padding-top: 5px;
-  white-space: nowrap;
+  white-space: pre-line;
+  line-height: 1.3;
 }
 
 /* ── The moved <td> becomes the field value container ── */
@@ -12463,6 +12464,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // If the cell was grayed out by the conditional-grayout script,
     // remove it from the detail panel entirely (keep summary graying).
     if (td && td.classList.contains(GRAYED_CLASS)) return null;
+
+    // If skipEmpty is set, omit the field entirely when the cell is blank.
+    if (opts.skipEmpty && (!td || isCellEmpty(td))) return null;
 
     var row = document.createElement('div');
     row.className = P + '-field';
@@ -12672,8 +12676,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Left column: Equipment Details ──
     var equipSection = buildSection('Equipment Details');
 
-    addRow(equipSection, buildFieldRow('Mounting Hardware',
-      findCell(tr, f.mounting, ci.mounting)));
+    addRow(equipSection, buildFieldRow('Mounting\nHardware',
+      findCell(tr, f.mounting, ci.mounting), { skipEmpty: true }));
 
     addRow(equipSection, buildFieldRow('SCW Notes',
       findCell(tr, f.scwNotes), { notes: true }));
