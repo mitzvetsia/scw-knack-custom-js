@@ -12845,6 +12845,7 @@ td.${P}-sum-field--desc {
 td.${P}-sum-move {
   display: inline-flex !important;
   align-items: center;
+  align-self: center;
   padding: 0 4px;
   border: none !important;
   background: transparent !important;
@@ -12856,6 +12857,7 @@ td.${P}-sum-move {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   flex-shrink: 0;
   padding: 0 4px;
   border: none !important;
@@ -12875,18 +12877,21 @@ td.${P}-sum-move {
 
 /* ── Cabling group alignment (match variables column) ── */
 .${P}-sum-group--cabling {
-  align-self: flex-start;
-  padding-top: 10px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
 }
 
 /* ── Cabling toggle chit (boolean, inline in summary bar) ── */
 .${P}-cabling-chit {
-  display: inline-block;
-  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.4;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -12894,14 +12899,16 @@ td.${P}-sum-move {
   text-align: center;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
   flex-shrink: 0;
+  min-height: 44px;
+  box-sizing: border-box;
 }
 .${P}-cabling-chit.is-yes {
-  background-color: #dcfce7;
-  color: #166534;
-  border-color: #86efac;
+  background-color: #bbf7d0;
+  color: #14532d;
+  border-color: #4ade80;
 }
 .${P}-cabling-chit.is-yes:hover {
-  background-color: #bbf7d0;
+  background-color: #86efac;
   box-shadow: 0 1px 3px rgba(22,101,52,0.15);
 }
 .${P}-cabling-chit.is-no {
@@ -12917,6 +12924,29 @@ td.${P}-sum-move {
 .${P}-cabling-chit.is-saving {
   opacity: 0.6;
   pointer-events: none;
+}
+
+/* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
+td.${P}-sum-chip-host {
+  display: inline-flex !important;
+  align-items: center;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  min-height: 0 !important;
+  vertical-align: middle;
+}
+td.${P}-sum-chip-host:hover {
+  background: transparent !important;
+}
+/* KTL bulk-edit highlight on chip host */
+td.${P}-sum-chip-host.ktlInlineEditableCellsStyle:hover,
+td.${P}-sum-chip-host.bulkEditSelectSrc {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+  border-radius: 4px !important;
 }
 
 /* ── Summary-bar radio chips (Labor Variables) ── */
@@ -13111,12 +13141,12 @@ td.${P}-field-value--notes {
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #dcfce7;
-  color: #166534;
-  border-color: #86efac;
+  background-color: #bbf7d0;
+  color: #14532d;
+  border-color: #4ade80;
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #bbf7d0;
+  background-color: #86efac;
   box-shadow: 0 1px 3px rgba(22,101,52,0.15);
 }
 .${P}-radio-chip.is-unselected {
@@ -13157,8 +13187,8 @@ td.${P}-field-value--notes {
 }
 .${P}-direct-input.is-saving,
 .${P}-direct-textarea.is-saving {
-  background-color: #f0fdf4 !important;
-  border-color: #86efac !important;
+  background-color: #dcfce7 !important;
+  border-color: #4ade80 !important;
 }
 .${P}-direct-input.is-error,
 .${P}-direct-textarea.is-error {
@@ -14210,10 +14240,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       for (var j = 0; j < saving.length; j++) saving[j].classList.remove('is-saving');
     }, 400);
 
-    // Update hidden td text so re-renders stay in sync
-    var hiddenTd = container.parentNode.querySelector('td[' + RADIO_CHIPS_ATTR + ']');
+    // Update source td text so re-renders stay in sync
+    // (td may be the container's parent when chips are inside it, or a sibling)
+    var hiddenTd = container.closest('td[' + RADIO_CHIPS_ATTR + ']')
+                || container.parentNode.querySelector('td[' + RADIO_CHIPS_ATTR + ']');
     if (hiddenTd) {
-      hiddenTd.textContent = newValue;
+      var hSpan = hiddenTd.querySelector('span[style*="display"]');
+      if (hSpan) hSpan.textContent = newValue;
+      else hiddenTd.textContent = newValue;
     }
 
     // Find record ID and view ID, then save
@@ -14257,9 +14291,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     chit.classList.add(newBool === 'Yes' ? 'is-yes' : 'is-no', 'is-saving');
     setTimeout(function () { chit.classList.remove('is-saving'); }, 400);
 
-    // Update hidden td
-    var srcTd = chit.parentNode.querySelector('td[data-scw-cabling-src]');
-    if (srcTd) srcTd.textContent = newBool;
+    // Update source td (chit may be inside or beside the td)
+    var srcTd = chit.closest('td[data-scw-cabling-src]')
+             || chit.parentNode.querySelector('td[data-scw-cabling-src]');
+    if (srcTd) {
+      var hiddenSpan = srcTd.querySelector('span[style*="display"]');
+      if (hiddenSpan) hiddenSpan.textContent = newBool;
+    }
 
     // Save
     var wsTr = chit.closest('tr.' + WORKSHEET_ROW);
@@ -14455,6 +14493,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // ── Existing Cabling toggle chit (after Labor Desc) ──
+    // Keep the td visible so KTL bulk-edit can discover it; chit goes inside.
     if (f.existingCabling) {
       var cablingTd = findCell(tr, f.existingCabling);
       if (cablingTd) {
@@ -14464,12 +14503,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         cablingChit.className = P + '-cabling-chit ' + (isYes ? 'is-yes' : 'is-no');
         cablingChit.setAttribute('data-field', f.existingCabling);
         cablingChit.innerHTML = isYes ? 'Existing<br>Cabling' : 'Existing<br>Cabling';
-        // Keep hidden td for data binding
-        cablingTd.style.display = 'none';
+        // Hide original text but keep td visible for KTL bulk-edit
+        var cablingSpan = cablingTd.querySelector('span');
+        if (cablingSpan) { cablingSpan.style.display = 'none'; }
+        cablingTd.textContent = '';
+        if (cablingSpan) cablingTd.appendChild(cablingSpan);
+        cablingTd.appendChild(cablingChit);
+        cablingTd.classList.add(P + '-sum-chip-host');
         cablingTd.setAttribute('data-scw-cabling-src', '1');
         var cablingWrap = document.createElement('span');
         cablingWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
-        cablingWrap.appendChild(cablingChit);
         cablingWrap.appendChild(cablingTd);
         bar.appendChild(cablingWrap);
       }
@@ -14549,6 +14592,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // Labor Variables — selectable radio chips
+    // Keep the td visible so KTL bulk-edit can discover it; chips go inside.
     if (f.laborVariables) {
       var varsTd = findCell(tr, f.laborVariables);
       if (varsTd) {
@@ -14558,10 +14602,21 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         varsLabel.className = P + '-sum-label';
         varsLabel.textContent = 'Vars';
         varsGroup.appendChild(varsLabel);
+        // Hide original text content but keep td visible for KTL
+        var varsSpan = varsTd.querySelector('span');
+        if (varsSpan) { varsSpan.style.display = 'none'; }
+        else {
+          var varsHidden = document.createElement('span');
+          varsHidden.style.display = 'none';
+          varsHidden.textContent = readCellText(varsTd);
+          varsTd.appendChild(varsHidden);
+        }
         var varsChips = buildRadioChips(varsTd, f.laborVariables, LABOR_VARIABLE_OPTIONS);
         varsChips.classList.add(P + '-sum-chips');
-        varsGroup.appendChild(varsChips);
-        varsTd.style.display = 'none';
+        varsTd.textContent = '';
+        if (varsSpan) varsTd.appendChild(varsSpan);
+        varsTd.appendChild(varsChips);
+        varsTd.classList.add(P + '-sum-chip-host');
         varsTd.setAttribute(RADIO_CHIPS_ATTR, '1');
         varsGroup.appendChild(varsTd);
         rightGroup.appendChild(varsGroup);
