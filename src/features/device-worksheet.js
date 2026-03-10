@@ -199,12 +199,12 @@ tr[data-scw-worksheet]:hover {
   background: none !important;
   background-color: transparent !important;
 }
-tr.${WORKSHEET_ROW} > td,
-tr.${WORKSHEET_ROW}:hover > td,
+tr.${WORKSHEET_ROW} > td:not(.bulkEditSelectedRow),
+tr.${WORKSHEET_ROW}:hover > td:not(.bulkEditSelectedRow),
 tr.scw-inline-photo-row > td,
 tr.scw-inline-photo-row:hover > td,
-tr[data-scw-worksheet] > td,
-tr[data-scw-worksheet]:hover > td {
+tr[data-scw-worksheet] > td:not(.bulkEditSelectedRow),
+tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   background: none !important;
   background-color: transparent !important;
 }
