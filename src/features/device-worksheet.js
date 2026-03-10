@@ -995,19 +995,11 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
    KTL adds .bulkEditSelectedRow to individual tds when rows are
    checkbox-selected.  Our worksheet sets background:transparent
    !important everywhere, so KTL's highlight is hidden.
-   Restore a visible yellow only on the specific tds that KTL marks. */
-td.bulkEditSelectedRow.${P}-sum-field,
-td.bulkEditSelectedRow.${P}-sum-field-ro,
-td.bulkEditSelectedRow.${P}-sum-product,
-td.bulkEditSelectedRow.${P}-sum-move,
-td.bulkEditSelectedRow.${P}-sum-label-cell,
-td.bulkEditSelectedRow.${P}-field-value {
-  background-color: rgba(255, 243, 128, 0.35) !important;
-}
-td.bulkEditSelectedRow.${P}-sum-chip-host {
-  outline: 2px solid rgba(234, 179, 8, 0.5);
-  outline-offset: 1px;
-  border-radius: 4px !important;
+   Match view_3512/3505 behavior: highlight the entire card. */
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
+  background: rgba(255, 243, 128, 0.25);
+  outline: 2px solid rgba(234, 179, 8, 0.45);
+  outline-offset: -2px;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
