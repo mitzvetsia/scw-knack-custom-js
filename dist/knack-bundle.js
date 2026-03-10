@@ -13043,6 +13043,29 @@ td.${P}-field-value--notes {
   max-height: 120px;
 }
 
+/* ── Summary bar inline direct-edit inputs ── */
+td.${P}-sum-direct-edit {
+  position: relative;
+}
+td.${P}-sum-direct-edit .${P}-direct-input {
+  height: 28px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  width: 100%;
+}
+td.${P}-sum-direct-edit .${P}-direct-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  white-space: nowrap;
+  z-index: 10;
+  background: #fff;
+  padding: 2px 4px;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
@@ -13361,8 +13384,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Revert value
     input.value = previousValue;
+    input._scwPrev = previousValue;
 
-    // Update hidden td back to previous value
+    // Update hidden td back to previous value (detail panel)
     var wrapper = input.parentNode;
     var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
     if (hiddenTd) {
@@ -13413,8 +13437,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   function refreshInputConditionalColor(input) {
     var wrapper = input.parentNode;
     if (!wrapper) return;
-    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
-    if (!hiddenTd) return;
     var fieldKey = input.getAttribute('data-field');
     if (!fieldKey) return;
 
@@ -13428,14 +13450,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       warning: 'rgb(255, 243, 205)'
     };
 
-    var isEmpty = (function () {
-      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-      return raw === '' || raw === '-' || raw === '\u2014';
-    })();
-    var isZero = (function () {
-      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-      return /^[$]?0+(\.0+)?$/.test(raw);
-    })();
+    // Read value from hidden td (detail panel) or input itself (summary bar)
+    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    var rawText = hiddenTd ? (hiddenTd.textContent || '') : (input.value || '');
+    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
+    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+    // The element to update classes/styles on
+    var styleTd = hiddenTd || wrapper;
 
     var dangerCls = 'scw-cell-danger';
     var warningCls = 'scw-cell-warning';
@@ -13457,16 +13479,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       conditionColor = 'warning';
     }
 
-    // Update hidden td classes (so the condition is reflected in DOM)
-    hiddenTd.classList.remove(dangerCls, warningCls);
+    // Update td classes (so the condition is reflected in DOM)
+    styleTd.classList.remove(dangerCls, warningCls);
     if (conditionMet && conditionColor === 'danger') {
-      hiddenTd.classList.add(dangerCls);
-      hiddenTd.style.backgroundColor = COLORS_MAP.danger;
+      styleTd.classList.add(dangerCls);
+      styleTd.style.backgroundColor = COLORS_MAP.danger;
     } else if (conditionMet && conditionColor === 'warning') {
-      hiddenTd.classList.add(warningCls);
-      hiddenTd.style.backgroundColor = COLORS_MAP.warning;
+      styleTd.classList.add(warningCls);
+      styleTd.style.backgroundColor = COLORS_MAP.warning;
     } else {
-      hiddenTd.style.backgroundColor = '';
+      styleTd.style.backgroundColor = '';
     }
 
     // Update the visible input's background
@@ -13480,7 +13502,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2458'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -13675,10 +13697,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var fieldKey = input.getAttribute('data-field') || '';
     var newValue = input.value;
 
-    // Capture previous value before overwriting hidden td
+    // Capture previous value: from hidden td (detail panel) or _scwPrev (summary bar)
     var wrapper = input.parentNode;
     var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
-    var previousValue = hiddenTd ? readFieldText(hiddenTd) : '';
+    var previousValue = hiddenTd ? readFieldText(hiddenTd) : (input._scwPrev || '');
 
     // Client-side validation for number fields
     if (NUMBER_FIELDS.indexOf(fieldKey) !== -1) {
@@ -13689,10 +13711,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Optimistically update hidden td
+    // Optimistically update backing store
     if (hiddenTd) {
       hiddenTd.textContent = newValue;
     }
+    input._scwPrev = newValue;
 
     // Visual feedback — start saving
     input.classList.remove('is-error');
@@ -13741,9 +13764,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       target._scwJustSaved = true; // prevent blur save
       var wrapper = target.parentNode;
       var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
-      if (hiddenTd) {
-        target.value = readFieldText(hiddenTd);
-      }
+      target.value = hiddenTd ? readFieldText(hiddenTd) : (target._scwPrev || '');
       target.blur();
     }
   }, true);
@@ -13762,7 +13783,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // Check if value actually changed
     var wrapper = target.parentNode;
     var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
-    var originalVal = hiddenTd ? readFieldText(hiddenTd) : '';
+    var originalVal = hiddenTd ? readFieldText(hiddenTd) : (target._scwPrev || '');
     if (target.value !== originalVal) {
       handleDirectEditSave(target);
     }
@@ -13877,6 +13898,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }, true);
 
   // ============================================================
+  // SUMMARY BAR DIRECT-EDIT  (in-place input inside existing td)
+  // ============================================================
+
+  /** Inject a direct-edit input into an existing summary bar td.
+   *  The td stays visible in the DOM with all its Knack/KTL classes
+   *  so bulk-edit can still discover it.  The original span content
+   *  is replaced by an <input>; the previous value is stashed on
+   *  input._scwPrev for revert / change detection. */
+  function injectSummaryDirectEdit(td, fieldKey) {
+    var currentVal = readFieldText(td);
+    td.textContent = '';  // clear the <span> content
+    td.classList.add(P + '-sum-direct-edit');
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = DIRECT_INPUT_CLASS;
+    input.value = currentVal;
+    input.setAttribute('data-field', fieldKey);
+    input.setAttribute(DIRECT_EDIT_ATTR, '1');
+    input._scwPrev = currentVal;
+
+    // Propagate conditional background color from td to input
+    var compBg = window.getComputedStyle(td).backgroundColor;
+    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
+      input.style.backgroundColor = compBg;
+    }
+
+    td.appendChild(input);
+  }
+
+  // ============================================================
   // BUILD SUMMARY BAR
   // ============================================================
 
@@ -13944,7 +13996,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
 
-    // ── Labor Desc (inline, fills middle space) ──
+    // ── Labor Desc (inline, fills middle space — direct-edit) ──
     var laborDescTd = findCell(tr, f.laborDescription);
     if (laborDescTd) {
       var ldGroup = document.createElement('span');
@@ -13955,7 +14007,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       ldGroup.appendChild(ldLabel);
       laborDescTd.classList.add(P + '-sum-field');
       laborDescTd.classList.add(P + '-sum-field--desc');
-      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
+      injectSummaryDirectEdit(laborDescTd, f.laborDescription);
       ldGroup.appendChild(laborDescTd);
       bar.appendChild(ldGroup);
     }
@@ -13979,7 +14031,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       rightGroup.appendChild(bidGroup);
     }
 
-    // Labor $
+    // Labor $ (direct-edit)
     var laborTd = findCell(tr, f.labor);
     if (laborTd) {
       var labGroup = document.createElement('span');
@@ -13989,12 +14041,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       labLabel.textContent = 'Labor';
       labGroup.appendChild(labLabel);
       laborTd.classList.add(P + '-sum-field');
-      if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
+      injectSummaryDirectEdit(laborTd, f.labor);
       labGroup.appendChild(laborTd);
       rightGroup.appendChild(labGroup);
     }
 
-    // Qty (view_3505 only)
+    // Qty (view_3505 only, direct-edit)
     if (f.quantity) {
       var qtyTd = findCell(tr, f.quantity);
       if (qtyTd) {
@@ -14005,7 +14057,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         qtyLabel.textContent = 'Qty';
         qtyGroup.appendChild(qtyLabel);
         qtyTd.classList.add(P + '-sum-field');
-        if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
+        injectSummaryDirectEdit(qtyTd, f.quantity);
         qtyGroup.appendChild(qtyTd);
         rightGroup.appendChild(qtyGroup);
       }
