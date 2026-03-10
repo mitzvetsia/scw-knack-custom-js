@@ -594,7 +594,7 @@ td.${P}-sum-move {
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -602,8 +602,9 @@ td.${P}-sum-move {
   text-align: center;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
   flex-shrink: 0;
-  min-height: 44px;
+  height: 100%;
   box-sizing: border-box;
+  vertical-align: middle;
 }
 .${P}-cabling-chit.is-yes {
   background-color: #1a6b3c;
@@ -650,6 +651,12 @@ td.${P}-sum-chip-host.bulkEditSelectSrc {
   outline: 2px solid #93c5fd;
   outline-offset: 1px;
   border-radius: 4px !important;
+}
+/* When KTL bulk-edit is active on chip hosts, disable chit/chip interaction */
+td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-cabling-chit,
+td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-radio-chip {
+  pointer-events: none !important;
+  cursor: cell !important;
 }
 
 /* ── Summary-bar radio chips (Labor Variables) ── */
@@ -844,13 +851,13 @@ td.${P}-field-value--notes {
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #bbf7d0;
-  color: #14532d;
-  border-color: #4ade80;
+  background-color: #1a6b3c;
+  color: #ffffff;
+  border-color: #145230;
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #86efac;
-  box-shadow: 0 1px 3px rgba(22,101,52,0.15);
+  background-color: #145230;
+  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
 }
 .${P}-radio-chip.is-unselected {
   background-color: #f9fafb;
@@ -1066,6 +1073,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background-color: #dbeafe !important;
   border-color: #93c5fd !important;
   cursor: pointer;
+}
+#view_3313 td.${P}-sum-product.bulkEditSelectSrc {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+  cursor: cell !important;
 }
 
 /* Product group width for view_3575 (matches view_3512) */
@@ -1920,6 +1932,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
     if (!chip) return;
 
+    // Let KTL bulk-edit handle the click when active
+    var chipTd = chip.closest('td');
+    if (chipTd && chipTd.classList.contains('bulkEditSelectSrc')) return;
+
     e.stopPropagation();
     e.preventDefault();
 
@@ -1972,6 +1988,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   document.addEventListener('mousedown', function (e) {
     var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
     if (!chip) return;
+    var chipTd = chip.closest('td');
+    if (chipTd && chipTd.classList.contains('bulkEditSelectSrc')) return;
     e.stopPropagation();
     e.preventDefault();
   }, true);
@@ -1981,6 +1999,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   document.addEventListener('click', function (e) {
     var chit = e.target.closest(CABLING_CHIT_SEL);
     if (!chit) return;
+
+    // Let KTL bulk-edit handle the click when active
+    var chitTd = chit.closest('td');
+    if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
 
     e.stopPropagation();
     e.preventDefault();
@@ -2013,10 +2035,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
   }, true);
   document.addEventListener('mousedown', function (e) {
-    if (e.target.closest(CABLING_CHIT_SEL)) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
+    var chitEl = e.target.closest(CABLING_CHIT_SEL);
+    if (!chitEl) return;
+    var chitTd = chitEl.closest('td');
+    if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
+    e.stopPropagation();
+    e.preventDefault();
   }, true);
 
   // ============================================================
@@ -2368,7 +2392,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           '</span>';
       }
       moveTd.classList.add(P + '-sum-move');
-      rightGroup.appendChild(moveTd);
+      var moveWrap = document.createElement('span');
+      moveWrap.className = P + '-sum-group ' + P + '-sum-group--move';
+      var moveLabel = document.createElement('span');
+      moveLabel.className = P + '-sum-label';
+      moveLabel.innerHTML = '&nbsp;';
+      moveWrap.appendChild(moveLabel);
+      moveWrap.appendChild(moveTd);
+      rightGroup.appendChild(moveWrap);
     }
 
     // ── Delete link (if Knack provides one in this grid) ──
