@@ -754,14 +754,24 @@ td.${P}-sum-direct-edit {
   min-width: 0;
   padding: 0 !important;
 }
-td.${P}-sum-direct-edit .${P}-direct-input {
-  height: 28px;
+td.${P}-sum-direct-edit .${P}-direct-input,
+td.${P}-sum-direct-edit .${P}-direct-textarea {
   padding: 2px 6px;
   font-size: 13px;
   font-weight: 500;
   width: 100%;
   box-sizing: border-box;
   display: block;
+}
+td.${P}-sum-direct-edit .${P}-direct-input {
+  height: 28px;
+}
+td.${P}-sum-direct-edit .${P}-direct-textarea {
+  resize: vertical;
+  min-height: 28px;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 td.${P}-sum-direct-edit .${P}-direct-error {
   position: absolute;
@@ -773,6 +783,13 @@ td.${P}-sum-direct-edit .${P}-direct-error {
   padding: 2px 4px;
   border-radius: 2px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+/* When KTL bulk-edit copy mode is active (detected by JS adding
+   this class), disable input interaction so td handles clicks. */
+td.${P}-sum-direct-edit.${P}-bulk-copy .${P}-direct-input,
+td.${P}-sum-direct-edit.${P}-bulk-copy .${P}-direct-textarea {
+  pointer-events: none;
+  cursor: crosshair;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
@@ -1612,6 +1629,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     e.preventDefault();
   }, true);
 
+  // ── KTL bulk-edit copy mode detection ──
+  // When any header checkbox (bulkEditHeaderCbox) is checked, add a
+  // class to our direct-edit tds so CSS disables pointer-events on
+  // the inputs and the td's crosshair cursor shows through.
+  var BULK_COPY_CLASS = P + '-bulk-copy';
+  function syncBulkCopyMode() {
+    var anyChecked = !!document.querySelector('.bulkEditHeaderCbox:checked');
+    var editTds = document.querySelectorAll('td.' + P + '-sum-direct-edit');
+    for (var i = 0; i < editTds.length; i++) {
+      if (anyChecked) {
+        editTds[i].classList.add(BULK_COPY_CLASS);
+      } else {
+        editTds[i].classList.remove(BULK_COPY_CLASS);
+      }
+    }
+  }
+  // Listen for checkbox changes (KTL header checkboxes)
+  document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('bulkEditHeaderCbox') ||
+        e.target.classList.contains('bulkEditCb')) {
+      syncBulkCopyMode();
+    }
+  }, true);
+  // Also re-check after KTL may have toggled checkboxes programmatically
+  document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('bulkEditHeaderCbox') ||
+        e.target.classList.contains('masterSelector')) {
+      setTimeout(syncBulkCopyMode, 50);
+    }
+  }, true);
+
   // ============================================================
   // SUMMARY BAR DIRECT-EDIT  (in-place input inside existing td)
   // ============================================================
@@ -1619,9 +1667,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   /** Inject a direct-edit input into an existing summary bar td.
    *  The td stays visible in the DOM with all its Knack/KTL classes
    *  so bulk-edit can still discover it.  The original span content
-   *  is replaced by an <input>; the previous value is stashed on
-   *  input._scwPrev for revert / change detection. */
-  function injectSummaryDirectEdit(td, fieldKey) {
+   *  is hidden; the previous value is stashed on input._scwPrev.
+   *  opts.multiline — use a textarea that wraps and auto-grows. */
+  function injectSummaryDirectEdit(td, fieldKey, opts) {
+    opts = opts || {};
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
@@ -1634,17 +1683,24 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (existingSpan) {
       existingSpan.style.display = 'none';
     } else {
-      // No span — create a hidden one with the value
       var hiddenSpan = document.createElement('span');
       hiddenSpan.style.display = 'none';
       hiddenSpan.textContent = currentVal;
       td.appendChild(hiddenSpan);
     }
 
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = DIRECT_INPUT_CLASS;
-    input.value = currentVal;
+    var input;
+    if (opts.multiline) {
+      input = document.createElement('textarea');
+      input.className = DIRECT_TEXTAREA_CLASS;
+      input.value = currentVal;
+      input.rows = 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = DIRECT_INPUT_CLASS;
+      input.value = currentVal;
+    }
     input.setAttribute('data-field', fieldKey);
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
     input._scwPrev = currentVal;
@@ -1736,7 +1792,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       ldGroup.appendChild(ldLabel);
       laborDescTd.classList.add(P + '-sum-field');
       laborDescTd.classList.add(P + '-sum-field--desc');
-      injectSummaryDirectEdit(laborDescTd, f.laborDescription);
+      injectSummaryDirectEdit(laborDescTd, f.laborDescription, { multiline: true });
       ldGroup.appendChild(laborDescTd);
       bar.appendChild(ldGroup);
     }
