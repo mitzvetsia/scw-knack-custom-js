@@ -452,7 +452,7 @@ window.SCW = window.SCW || {};
 })();
 // ============================================================
 // Remember KTL hide/show view collapsed / open state
-// ============================================================
+// ================================================================
 //
 // KTL adds hide/show toggle buttons to Knack views. By default
 // the state resets on every page load. This feature persists
