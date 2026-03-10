@@ -13046,6 +13046,10 @@ td.${P}-field-value--notes {
 /* ── Summary bar inline direct-edit inputs ── */
 td.${P}-sum-direct-edit {
   position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0 !important;
 }
 td.${P}-sum-direct-edit .${P}-direct-input {
   height: 28px;
@@ -13053,6 +13057,8 @@ td.${P}-sum-direct-edit .${P}-direct-input {
   font-size: 13px;
   font-weight: 500;
   width: 100%;
+  box-sizing: border-box;
+  display: block;
 }
 td.${P}-sum-direct-edit .${P}-direct-error {
   position: absolute;
@@ -13392,6 +13398,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (hiddenTd) {
       hiddenTd.textContent = previousValue;
     }
+    // Update hidden span (summary bar)
+    var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
+    if (hiddenSpan) hiddenSpan.textContent = previousValue;
 
     // Show error message element
     var existing = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
@@ -13716,6 +13725,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       hiddenTd.textContent = newValue;
     }
     input._scwPrev = newValue;
+    // Update hidden span (summary bar) so dynamic-cell-colors sees new value
+    var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
+    if (hiddenSpan) hiddenSpan.textContent = newValue;
 
     // Visual feedback — start saving
     input.classList.remove('is-error');
@@ -13908,8 +13920,23 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  input._scwPrev for revert / change detection. */
   function injectSummaryDirectEdit(td, fieldKey) {
     var currentVal = readFieldText(td);
-    td.textContent = '';  // clear the <span> content
     td.classList.add(P + '-sum-direct-edit');
+
+    // Capture conditional bg BEFORE we touch the DOM
+    var compBg = window.getComputedStyle(td).backgroundColor;
+
+    // Keep a hidden span with the text value so dynamic-cell-colors
+    // (which reads $td.text()) still sees the real content.
+    var existingSpan = td.querySelector('span');
+    if (existingSpan) {
+      existingSpan.style.display = 'none';
+    } else {
+      // No span — create a hidden one with the value
+      var hiddenSpan = document.createElement('span');
+      hiddenSpan.style.display = 'none';
+      hiddenSpan.textContent = currentVal;
+      td.appendChild(hiddenSpan);
+    }
 
     var input = document.createElement('input');
     input.type = 'text';
@@ -13920,7 +13947,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     input._scwPrev = currentVal;
 
     // Propagate conditional background color from td to input
-    var compBg = window.getComputedStyle(td).backgroundColor;
     if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
       input.style.backgroundColor = compBg;
     }
