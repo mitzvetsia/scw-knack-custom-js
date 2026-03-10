@@ -1069,15 +1069,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   color: #374151;
   border: 1px solid #e5e7eb !important;
   border-radius: 4px;
-  background: #dbeafe !important;
+  background: rgba(134, 182, 223, 0.1) !important;
   padding: 2px 8px;
   height: 30px;
+  width: 100%;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
 #view_3313 td.${P}-sum-product.cell-edit:hover,
 #view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
-  background-color: #dbeafe !important;
+  background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
@@ -1102,14 +1103,45 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 280px;
   max-width: 280px;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 0;
+}
+#view_3313 .${P}-product-group > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
 }
 
 /* view_3313: editable summary fields (Sub Bid, +Hrs, +Mat) get blue background */
 #view_3313 td.${P}-sum-field.cell-edit,
 #view_3313 td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: #dbeafe !important;
+  background: rgba(134, 182, 223, 0.1) !important;
+}
+#view_3313 td.${P}-sum-field.cell-edit:hover,
+#view_3313 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
+  background: rgba(134, 182, 223, 0.18) !important;
+}
+
+/* view_3313: top-align all elements; pad non-labeled items to match label height */
+#view_3313 .${P}-toggle-zone {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+#view_3313 .${P}-chevron {
+  margin-top: 14px;
+}
+#view_3313 td.${P}-sum-label-cell {
+  margin-top: 14px;
+}
+#view_3313 .${P}-sum-sep {
+  margin-top: 14px;
+}
+#view_3313 td.${P}-sum-check {
+  align-self: flex-start;
+  padding-top: 14px !important;
+}
+#view_3313 .${P}-sum-delete {
+  align-self: flex-start;
+  padding-top: 14px;
 }
 
 /* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
@@ -1134,7 +1166,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 70px;
 }
 .${P}-sum-group--sow {
-  min-width: 70px;
+  min-width: 90px;
   flex-shrink: 0;
 }
 /* SOW field grows in height to show multiple connection values */
