@@ -12939,7 +12939,9 @@ td.${P}-sum-chip-host {
   min-height: 0 !important;
   vertical-align: middle;
 }
-td.${P}-sum-chip-host:hover {
+td.${P}-sum-chip-host:hover,
+td.${P}-sum-chip-host.ktlInlineEditableCellsStyle,
+td.${P}-sum-chip-host.cell-edit {
   background: transparent !important;
 }
 /* KTL bulk-edit highlight on chip host */
@@ -12963,6 +12965,11 @@ td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-radio-chip {
   gap: 3px;
   align-items: center;
   align-self: center;
+}
+.${P}-sum-chips .${P}-radio-chip {
+  min-width: 56px;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 /* ── Synthetic group divider bars ── */
@@ -13359,7 +13366,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   color: #374151;
   border: 1px solid #e5e7eb !important;
   border-radius: 4px;
-  background: transparent !important;
+  background: #dbeafe !important;
   padding: 2px 8px;
   height: 30px;
   box-sizing: border-box;
@@ -13376,7 +13383,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   outline-offset: 1px;
   cursor: cell !important;
 }
-
 /* Product group width for view_3575 (matches view_3512) */
 #view_3575 .${P}-product-group {
   width: 300px;
@@ -13387,10 +13393,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* ================================================================
    VIEW 3313 – SOW Build worksheet
    ================================================================ */
+/* Product group as column layout to align with editable fields */
 #view_3313 .${P}-product-group {
   width: 280px;
   min-width: 280px;
   max-width: 280px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+/* view_3313: editable summary fields (Sub Bid, +Hrs, +Mat) get blue background */
+#view_3313 td.${P}-sum-field.cell-edit,
+#view_3313 td.${P}-sum-field.ktlInlineEditableCellsStyle {
+  background: #dbeafe !important;
 }
 
 /* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
@@ -14467,6 +14483,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
       var productGroup = document.createElement('span');
       productGroup.className = P + '-product-group';
+
+      // Empty label so product aligns vertically with editable field values
+      if (viewCfg.viewId === 'view_3313') {
+        var prodLabel = document.createElement('span');
+        prodLabel.className = P + '-sum-label';
+        prodLabel.innerHTML = '&nbsp;';
+        productGroup.appendChild(prodLabel);
+      }
 
       // Warning chit (field_2454, view_3512 only)
       if (f.warningCount) {
