@@ -787,12 +787,12 @@ td.${P}-sum-direct-edit .${P}-direct-error {
 /* When KTL bulk-edit copy mode is active (KTL adds bulkEditSelectSrc
    to cell-edit tds), disable input interaction so td handles clicks. */
 td.${P}-sum-direct-edit.bulkEditSelectSrc {
-  cursor: crosshair !important;
+  cursor: cell !important;
 }
 td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-input,
 td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
   pointer-events: none !important;
-  cursor: crosshair !important;
+  cursor: cell !important;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
