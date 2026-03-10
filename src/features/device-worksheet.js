@@ -148,7 +148,8 @@
           move:             'field_1946',   // Change MDF/IDF (move icon)
 
           // ── Detail panel ──
-          dropNumber:       'field_1951',   // # (Drop Number)
+          dropPrefix:       'field_2240',   // Drop Prefix
+          dropNumber:       'field_1951',   // # (Label Number)
           mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
           connectedDevice:  'field_2197',   // Connected Device
           scwNotes:         'field_1953'    // SCW Notes
@@ -934,6 +935,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background: #fef3c7;
 }
 
+/* view_3313: Product styled as an editable field (card look) instead of
+   bold identity text, so it visually matches other clickable fields */
+#view_3313 td.${P}-sum-product,
+#view_3313 td.${P}-sum-product:hover {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 4px;
+  background: #fff !important;
+  padding: 2px 8px;
+  height: 30px;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+#view_3313 td.${P}-sum-product.cell-edit:hover,
+#view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+  background-color: #dbeafe !important;
+  border-color: #93c5fd !important;
+  cursor: pointer;
+}
+
 /* Product group width for view_3575 (matches view_3512) */
 #view_3575 .${P}-product-group {
   width: 300px;
@@ -968,21 +991,30 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 70px;
 }
 .${P}-sum-group--sow {
-  width: 90px;
-  min-width: 90px;
+  min-width: 70px;
+  flex-shrink: 0;
+}
+/* SOW field grows in height to show multiple connection values */
+.${P}-sum-group--sow td.${P}-sum-field {
+  height: auto;
+  min-height: 30px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
 }
 .${P}-sum-group--mcb {
   width: 80px;
   min-width: 80px;
 }
 
-/* Simple detail layout (single full-width section) */
-.${P}-simple-detail {
-  padding: 14px 20px 14px 16px;
+/* view_3313 detail sections grid */
+#view_3313 .${P}-sections {
+  grid-template-columns: 1fr 1fr;
 }
-.${P}-simple-detail .${P}-section {
-  border-right: none;
-  max-width: 600px;
+@media (max-width: 900px) {
+  #view_3313 .${P}-sections {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -2446,35 +2478,47 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var detail = document.createElement('div');
     detail.className = P + '-detail';
 
-    var wrapper = document.createElement('div');
-    wrapper.className = P + '-simple-detail';
+    var sections = document.createElement('div');
+    sections.className = P + '-sections';
 
-    var section = buildSection('');
+    function addRow(section, row) { if (row) section.appendChild(row); }
 
-    function addRow(row) { if (row) section.appendChild(row); }
+    // ── Left column ──
+    var leftSection = buildSection('');
+
+    if (f.dropPrefix) {
+      addRow(leftSection, buildFieldRow('Drop Prefix',
+        findCell(tr, f.dropPrefix)));
+    }
 
     if (f.dropNumber) {
-      addRow(buildFieldRow('Drop #',
+      addRow(leftSection, buildFieldRow('Label #',
         findCell(tr, f.dropNumber)));
     }
 
     if (f.mountingHardware) {
-      addRow(buildFieldRow('Mounting\nHardware',
+      addRow(leftSection, buildFieldRow('Mounting\nHardware',
         findCell(tr, f.mountingHardware)));
     }
 
+    sections.appendChild(leftSection);
+
+    // ── Right column ──
+    var rightSection = buildSection('');
+
     if (f.connectedDevice) {
-      addRow(buildFieldRow('Connected\nDevice',
+      addRow(rightSection, buildFieldRow('Connected\nDevice',
         findCell(tr, f.connectedDevice)));
     }
 
     if (f.scwNotes) {
-      addRow(buildEditableFieldRow('SCW Notes',
+      addRow(rightSection, buildEditableFieldRow('SCW Notes',
         findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
     }
 
-    wrapper.appendChild(section);
-    detail.appendChild(wrapper);
+    sections.appendChild(rightSection);
+
+    detail.appendChild(sections);
     return detail;
   }
 
