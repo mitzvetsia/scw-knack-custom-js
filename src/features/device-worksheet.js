@@ -746,41 +746,6 @@ td.${P}-field-value--notes {
   max-height: 120px;
 }
 
-/* ── Summary bar direct-edit input wrapper ── */
-.${P}-sum-input-wrap {
-  width: 100%;
-  min-width: 0;
-  position: relative;
-}
-.${P}-sum-input-wrap .${P}-direct-input {
-  height: 28px;
-  padding: 2px 6px;
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.${P}-sum-input-wrap .${P}-direct-textarea {
-  padding: 2px 6px;
-  font-size: 12px;
-  line-height: 1.3;
-  resize: none;
-  min-height: 36px;
-  max-height: 120px;
-  overflow-y: auto;
-}
-.${P}-sum-input-wrap .${P}-direct-error {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  white-space: nowrap;
-  z-index: 10;
-  background: #fff;
-  padding: 2px 4px;
-  border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
@@ -1021,22 +986,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   var DIRECT_INPUT_CLASS = P + '-direct-input';
   var DIRECT_TEXTAREA_CLASS = P + '-direct-textarea';
 
-  /** Find the hidden backing td for a direct-edit input.
-   *  Detail-panel inputs have a hidden td sibling inside their wrapper div.
-   *  Summary-bar inputs live directly inside the td (no hidden copy). */
-  function findBackingTd(input) {
-    var wrapper = input.parentNode;
-    if (!wrapper) return null;
-    return wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
-  }
-
-  /** Check whether a direct-edit input is an in-place summary bar input
-   *  (lives directly inside its td, no hidden td copy). */
-  function isSummaryInput(input) {
-    var p = input.parentNode;
-    return p && p.tagName === 'TD' && p.hasAttribute(DIRECT_EDIT_ATTR);
-  }
-
   /** Read the display text from a td, stripping whitespace. */
   function readFieldText(td) {
     if (!td) return '';
@@ -1116,10 +1065,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // Revert value
     input.value = previousValue;
 
-    // Update hidden td back to previous value (detail panel only;
-    // summary bar inputs have no hidden td — the td IS the parent)
+    // Update hidden td back to previous value
     var wrapper = input.parentNode;
-    var hiddenTd = findBackingTd(input);
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
     if (hiddenTd) {
       hiddenTd.textContent = previousValue;
     }
@@ -1144,8 +1092,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   function showInputSuccess(input) {
     input.classList.remove('is-error');
     input.classList.add('is-saving');
-    // Update defaultValue so future change-detection uses the saved value
-    input.defaultValue = input.value;
     // Remove any lingering error
     var wrapper = input.parentNode;
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
@@ -1170,16 +1116,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   function refreshInputConditionalColor(input) {
     var wrapper = input.parentNode;
     if (!wrapper) return;
+    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    if (!hiddenTd) return;
     var fieldKey = input.getAttribute('data-field');
     if (!fieldKey) return;
-
-    // For summary-bar inputs the td IS the parent; for detail-panel
-    // inputs there is a hidden td sibling.
-    var backingTd = findBackingTd(input);
-    var isSumBar = isSummaryInput(input);
-    // The element whose classes/styles reflect conditional formatting
-    var styleTd = isSumBar ? wrapper : backingTd;
-    if (!styleTd) return;
 
     // Find the view config that governs this input
     var viewEl = input.closest('[id^="view_"]');
@@ -1191,14 +1131,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       warning: 'rgb(255, 243, 205)'
     };
 
-    // Read the current value: from hidden td if available, else from input
-    var rawText = backingTd && !isSumBar
-      ? (backingTd.textContent || '')
-      : (input.value || '');
-    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-
-    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
-    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+    var isEmpty = (function () {
+      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+      return raw === '' || raw === '-' || raw === '\u2014';
+    })();
+    var isZero = (function () {
+      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+      return /^[$]?0+(\.0+)?$/.test(raw);
+    })();
 
     var dangerCls = 'scw-cell-danger';
     var warningCls = 'scw-cell-warning';
@@ -1220,16 +1160,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       conditionColor = 'warning';
     }
 
-    // Update td classes (so the condition is reflected in DOM)
-    styleTd.classList.remove(dangerCls, warningCls);
+    // Update hidden td classes (so the condition is reflected in DOM)
+    hiddenTd.classList.remove(dangerCls, warningCls);
     if (conditionMet && conditionColor === 'danger') {
-      styleTd.classList.add(dangerCls);
-      styleTd.style.backgroundColor = COLORS_MAP.danger;
+      hiddenTd.classList.add(dangerCls);
+      hiddenTd.style.backgroundColor = COLORS_MAP.danger;
     } else if (conditionMet && conditionColor === 'warning') {
-      styleTd.classList.add(warningCls);
-      styleTd.style.backgroundColor = COLORS_MAP.warning;
+      hiddenTd.classList.add(warningCls);
+      hiddenTd.style.backgroundColor = COLORS_MAP.warning;
     } else {
-      styleTd.style.backgroundColor = '';
+      hiddenTd.style.backgroundColor = '';
     }
 
     // Update the visible input's background
@@ -1243,7 +1183,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2458'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -1440,10 +1380,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Capture previous value before overwriting hidden td
     var wrapper = input.parentNode;
-    var hiddenTd = findBackingTd(input);
-    var isSumBar = isSummaryInput(input);
-    // For summary bar inputs, previous value is whatever was in input before
-    var previousValue = hiddenTd && !isSumBar ? readFieldText(hiddenTd) : (input.defaultValue || '');
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var previousValue = hiddenTd ? readFieldText(hiddenTd) : '';
 
     // Client-side validation for number fields
     if (NUMBER_FIELDS.indexOf(fieldKey) !== -1) {
@@ -1454,8 +1392,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Optimistically update hidden td (detail panel only)
-    if (hiddenTd && !isSumBar) {
+    // Optimistically update hidden td
+    if (hiddenTd) {
       hiddenTd.textContent = newValue;
     }
 
@@ -1504,11 +1442,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (e.key === 'Escape') {
       // Revert to the original value
       target._scwJustSaved = true; // prevent blur save
-      var hiddenTd = findBackingTd(target);
-      if (hiddenTd && !isSummaryInput(target)) {
+      var wrapper = target.parentNode;
+      var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+      if (hiddenTd) {
         target.value = readFieldText(hiddenTd);
-      } else {
-        target.value = target.defaultValue || '';
       }
       target.blur();
     }
@@ -1526,8 +1463,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // Check if value actually changed
-    var hiddenTd = findBackingTd(target);
-    var originalVal = hiddenTd && !isSummaryInput(target) ? readFieldText(hiddenTd) : (target.defaultValue || '');
+    var wrapper = target.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var originalVal = hiddenTd ? readFieldText(hiddenTd) : '';
     if (target.value !== originalVal) {
       handleDirectEditSave(target);
     }
@@ -1642,57 +1580,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }, true);
 
   // ============================================================
-  // SUMMARY BAR DIRECT-EDIT INPUT
-  // ============================================================
-
-  /** Convert a summary bar td into an in-place direct-edit input.
-   *  The td itself becomes the wrapper (keeps its place in the <tr>
-   *  so KTL bulk-edit can still discover and interact with it).
-   *  opts.multiline — use a textarea instead of a single-line input. */
-  function buildSummaryEditInput(td, fieldKey, opts) {
-    opts = opts || {};
-    if (!td) return null;
-
-    var currentVal = readFieldText(td);
-
-    // Clear the td's text content but keep the element in the DOM
-    td.textContent = '';
-    td.classList.add(P + '-sum-input-wrap');
-    td.setAttribute(DIRECT_EDIT_ATTR, '1');
-
-    var input;
-    if (opts.multiline) {
-      input = document.createElement('textarea');
-      input.className = DIRECT_TEXTAREA_CLASS;
-      input.value = currentVal;
-      input.rows = 4;
-    } else {
-      input = document.createElement('input');
-      input.type = 'text';
-      input.className = DIRECT_INPUT_CLASS;
-      input.value = currentVal;
-    }
-    input.setAttribute('data-field', fieldKey);
-    input.setAttribute(DIRECT_EDIT_ATTR, '1');
-
-    // Propagate conditional formatting (e.g. red background) from the td
-    var bgColor = td.style.backgroundColor;
-    if (bgColor) {
-      input.style.backgroundColor = bgColor;
-    }
-    var computed = window.getComputedStyle(td);
-    var compBg = computed.backgroundColor;
-    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
-      input.style.backgroundColor = compBg;
-    }
-
-    td.appendChild(input);
-
-    // Return the td itself — callers append it into the summary bar
-    return td;
-  }
-
-  // ============================================================
   // BUILD SUMMARY BAR
   // ============================================================
 
@@ -1760,7 +1647,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
 
-    // ── Labor Desc (inline, fills middle space — direct-edit) ──
+    // ── Labor Desc (inline, fills middle space) ──
     var laborDescTd = findCell(tr, f.laborDescription);
     if (laborDescTd) {
       var ldGroup = document.createElement('span');
@@ -1769,7 +1656,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       ldLabel.className = P + '-sum-label';
       ldLabel.textContent = 'Labor Desc';
       ldGroup.appendChild(ldLabel);
-      ldGroup.appendChild(buildSummaryEditInput(laborDescTd, f.laborDescription, { multiline: true }));
+      laborDescTd.classList.add(P + '-sum-field');
+      laborDescTd.classList.add(P + '-sum-field--desc');
+      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
+      ldGroup.appendChild(laborDescTd);
       bar.appendChild(ldGroup);
     }
 
@@ -1792,7 +1682,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       rightGroup.appendChild(bidGroup);
     }
 
-    // Labor $ (direct-edit)
+    // Labor $
     var laborTd = findCell(tr, f.labor);
     if (laborTd) {
       var labGroup = document.createElement('span');
@@ -1801,11 +1691,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       labLabel.className = P + '-sum-label';
       labLabel.textContent = 'Labor';
       labGroup.appendChild(labLabel);
-      labGroup.appendChild(buildSummaryEditInput(laborTd, f.labor));
+      laborTd.classList.add(P + '-sum-field');
+      if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
+      labGroup.appendChild(laborTd);
       rightGroup.appendChild(labGroup);
     }
 
-    // Qty (view_3505 only, direct-edit)
+    // Qty (view_3505 only)
     if (f.quantity) {
       var qtyTd = findCell(tr, f.quantity);
       if (qtyTd) {
@@ -1815,7 +1707,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         qtyLabel.className = P + '-sum-label';
         qtyLabel.textContent = 'Qty';
         qtyGroup.appendChild(qtyLabel);
-        qtyGroup.appendChild(buildSummaryEditInput(qtyTd, f.quantity));
+        qtyTd.classList.add(P + '-sum-field');
+        if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
+        qtyGroup.appendChild(qtyTd);
         rightGroup.appendChild(qtyGroup);
       }
     }
