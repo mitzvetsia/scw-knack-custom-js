@@ -13216,14 +13216,11 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
 }
 
 /* ── KTL bulk-edit selected-row yellow highlight ──
-   KTL adds .bulkEditSelectedRow to individual tds when rows are
-   checkbox-selected.  Our worksheet sets background:transparent
-   !important everywhere, so KTL's highlight is hidden.
-   Match view_3512/3505 behavior: highlight the entire card. */
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
-  background: rgba(255, 243, 128, 0.25);
-  outline: 2px solid rgba(234, 179, 8, 0.45);
-  outline-offset: -2px;
+   KTL adds .bulkEditSelectedRow to the outer td[colspan] AND each
+   inner td.  The outer td already gets KTL's yellow background —
+   just make the card transparent so it shows through. */
+td.bulkEditSelectedRow > .${P}-card {
+  background: transparent;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
