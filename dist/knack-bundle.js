@@ -13264,12 +13264,7 @@ tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatc
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val:last-child {
   background: transparent;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--warning td.${P}-sum-field,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--warning td.${P}-sum-field-ro,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--danger td.${P}-sum-field,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--danger td.${P}-sum-field-ro {
-  background: transparent !important;
-}
+
 
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
@@ -13430,34 +13425,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 #view_3313 .${P}-sum-delete {
   align-self: flex-start;
   padding-top: 11px;
-}
-
-/* view_3313: warning group (SOW empty) — amber background */
-.${P}-sum-group--warning td.${P}-sum-field,
-.${P}-sum-group--warning td.${P}-sum-field-ro {
-  background: rgb(255, 243, 205) !important;
-  border-color: #f59e0b !important;
-  border: 1px solid #f59e0b !important;
-  border-radius: 4px;
-}
-/* view_3313: danger group (Fee $0/empty) — red background */
-.${P}-sum-group--danger td.${P}-sum-field,
-.${P}-sum-group--danger td.${P}-sum-field-ro {
-  background: rgb(248, 215, 218) !important;
-  border-color: #ef4444 !important;
-  border: 1px solid #ef4444 !important;
-  border-radius: 4px;
-}
-/* Ensure warning/danger wins over blue editable-field background */
-.${P}-sum-group--warning td.${P}-sum-field.cell-edit,
-.${P}-sum-group--warning td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgb(255, 243, 205) !important;
-  border-color: #f59e0b !important;
-}
-.${P}-sum-group--danger td.${P}-sum-field.cell-edit,
-.${P}-sum-group--danger td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgb(248, 215, 218) !important;
-  border-color: #ef4444 !important;
 }
 
 /* Fee label — align with value text (match td padding-left) */
@@ -14027,20 +13994,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (span) { span.textContent = '\n' + newFee + '\n  '; }
     else { feeTd.textContent = newFee; }
     console.log('[scw-ws-fee] patchFee: updated fee cell for ' + recordId + ' to "' + newFee + '"');
-
-    // Re-evaluate danger: is new fee zero/empty?
-    var stripped = newFee.replace(/[\u00a0\s$,]/g, '').trim();
-    var feeIsZeroOrEmpty = stripped === '' || stripped === '-' || /^0+(\.0+)?$/.test(stripped);
-
-    // Toggle danger class on the editable sum-groups
-    var DANGER = P + '-sum-group--danger';
-    ['sub-bid', 'narrow'].forEach(function (suffix) {
-      var groups = wsTr.querySelectorAll('.' + P + '-sum-group--' + suffix);
-      for (var i = 0; i < groups.length; i++) {
-        if (feeIsZeroOrEmpty) groups[i].classList.add(DANGER);
-        else                  groups[i].classList.remove(DANGER);
-      }
-    });
   }
 
   /**
@@ -14816,34 +14769,21 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var sowTd = findCell(tr, f.sow);
       var sowGroup = appendSumGroup(rightGroup, 'SOW', sowTd,
         { cls: P + '-sum-group--sow' });
-      // Warning styling if SOW is empty
-      if (sowTd && isCellEmpty(sowTd) && sowGroup) {
-        sowGroup.classList.add(P + '-sum-group--warning');
-      }
     }
 
-    // Determine if Fee is $0 or empty (drives danger styling on editable fields)
     var feeTd = f.installFee ? findCell(tr, f.installFee) : null;
-    var feeIsZeroOrEmpty = false;
-    if (feeTd) {
-      var feeText = (feeTd.textContent || '').replace(/[\u00a0\s$,]/g, '').trim();
-      feeIsZeroOrEmpty = feeText === '' || feeText === '-' || /^0+(\.0+)?$/.test(feeText);
-    }
 
     if (f.subBid) {
       var sbGroup = appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
         { cls: P + '-sum-group--sub-bid', directEdit: true, fieldKey: f.subBid });
-      if (feeIsZeroOrEmpty && sbGroup) sbGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.plusHrs) {
       var phGroup = appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
         { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusHrs });
-      if (feeIsZeroOrEmpty && phGroup) phGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.plusMat) {
       var pmGroup = appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
         { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusMat });
-      if (feeIsZeroOrEmpty && pmGroup) pmGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.installFee) {
       appendSumGroup(rightGroup, 'Fee', feeTd,
@@ -15693,9 +15633,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ===========================================================
   // VIEW / FIELD CONFIG
   // Each view entry contains an array of rules.
-  //   fieldKey  – the Knack field id (matched via data-field-key attribute)
-  //   when      – "empty" | "zero" (what triggers the color)
-  //   color     – key from COLORS (or a raw CSS color string)
+  //   fieldKey         – the Knack field id to COLOR (matched via data-field-key)
+  //   when             – "empty" | "zero" (what triggers the color)
+  //   color            – key from COLORS (or a raw CSS color string)
+  //   triggerFieldKey  – (optional) check the condition on THIS field instead
+  //                      of fieldKey.  Useful for cross-field rules such as
+  //                      "when Fee is $0 → color Sub Bid as danger".
   // ===========================================================
   const VIEWS = [
     {
@@ -15727,6 +15670,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         { fieldKey: 'field_2400', when: 'zero',  color: 'warning' },
         { fieldKey: 'field_2415', when: 'empty', color: 'warning' },
         { fieldKey: 'field_2399', when: 'zero',  color: 'warning' }
+      ]
+    },
+    {
+      viewId: 'view_3313',
+      rules: [
+        // SOW empty → warning on SOW cell
+        { fieldKey: 'field_2154', when: 'empty', color: 'warning' },
+        // Fee ($0 / empty) → danger on Sub Bid, +Hrs, +Mat
+        { fieldKey: 'field_2150', triggerFieldKey: 'field_2028', when: 'empty', color: 'danger' },
+        { fieldKey: 'field_2150', triggerFieldKey: 'field_2028', when: 'zero',  color: 'danger' },
+        { fieldKey: 'field_1973', triggerFieldKey: 'field_2028', when: 'empty', color: 'danger' },
+        { fieldKey: 'field_1973', triggerFieldKey: 'field_2028', when: 'zero',  color: 'danger' },
+        { fieldKey: 'field_1974', triggerFieldKey: 'field_2028', when: 'empty', color: 'danger' },
+        { fieldKey: 'field_1974', triggerFieldKey: 'field_2028', when: 'zero',  color: 'danger' }
       ]
     }
   ];
@@ -15785,13 +15742,26 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       'tr.scw-ws-row .scw-ws-card td.scw-cell-good,    tr td.scw-cell-good    { background-color: ' + COLORS.good    + ' !important; }\n' +
       'tr.scw-ws-row .scw-ws-card td.scw-cell-bad,     tr td.scw-cell-bad     { background-color: ' + COLORS.bad     + ' !important; }\n' +
       'tr.scw-ws-row .scw-ws-card td.scw-cell-danger,  tr td.scw-cell-danger  { background-color: ' + COLORS.danger  + ' !important; }\n' +
-      'tr.scw-ws-row .scw-ws-card td.scw-cell-warning, tr td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n';
+      'tr.scw-ws-row .scw-ws-card td.scw-cell-warning, tr td.scw-cell-warning { background-color: ' + COLORS.warning + ' !important; }\n' +
+      // Yield to KTL bulk-edit yellow: (0,3,3) beats the normal color rules (0,3,2)
+      'tr.scw-ws-row:has(td.bulkEditSelectedRow) .scw-ws-card td.scw-cell-good,\n'    +
+      'tr.scw-ws-row:has(td.bulkEditSelectedRow) .scw-ws-card td.scw-cell-bad,\n'     +
+      'tr.scw-ws-row:has(td.bulkEditSelectedRow) .scw-ws-card td.scw-cell-danger,\n'  +
+      'tr.scw-ws-row:has(td.bulkEditSelectedRow) .scw-ws-card td.scw-cell-warning\n'  +
+      '  { background-color: transparent !important; }\n';
     document.head.appendChild(style);
   })();
 
   // ============================================================
   // CORE
   // ============================================================
+
+  /** Collect the unique set of target fieldKeys for a rule list. */
+  function targetFieldKeys(rules) {
+    var seen = {};
+    rules.forEach(function (r) { seen[r.fieldKey] = true; });
+    return Object.keys(seen);
+  }
 
   function applyColorsForView(viewCfg) {
     var viewId = viewCfg.viewId;
@@ -15802,17 +15772,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var $rows = $view.find('table.kn-table-table tbody tr');
     if (!$rows.length) return;
 
+    var targets = targetFieldKeys(rules);
+
     $rows.each(function () {
       var $tr = $(this);
 
       // Skip group / header rows
       if ($tr.hasClass('kn-table-group') || $tr.hasClass('kn-table-group-container')) return;
 
+      // Clear previous dynamic colors on all target cells so that
+      // cross-field rules (triggerFieldKey) are properly removed when
+      // the trigger condition no longer holds.
+      targets.forEach(function (fk) {
+        var $td = $tr.find('td[data-field-key="' + fk + '"]');
+        if ($td.length) {
+          $td.removeClass(ALL_COLOR_CLASSES);
+          $td.css('background-color', '');
+        }
+      });
+
+      // Apply matching rules (last match for a given cell wins)
       rules.forEach(function (rule) {
         var $td = $tr.find('td[data-field-key="' + rule.fieldKey + '"]');
         if (!$td.length) return;
 
-        if (matchesCondition($td, rule.when)) {
+        // Determine which cell to test the condition against
+        var $check = rule.triggerFieldKey
+          ? $tr.find('td[data-field-key="' + rule.triggerFieldKey + '"]')
+          : $td;
+        if (!$check.length) return;
+
+        if (matchesCondition($check, rule.when)) {
           $td.removeClass(ALL_COLOR_CLASSES);
           var cls = COLOR_CLASSES[rule.color];
           if (cls) $td.addClass(cls);

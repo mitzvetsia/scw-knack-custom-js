@@ -1040,12 +1040,7 @@ tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatc
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val:last-child {
   background: transparent;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--warning td.${P}-sum-field,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--warning td.${P}-sum-field-ro,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--danger td.${P}-sum-field,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--danger td.${P}-sum-field-ro {
-  background: transparent !important;
-}
+
 
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
@@ -1206,34 +1201,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 #view_3313 .${P}-sum-delete {
   align-self: flex-start;
   padding-top: 11px;
-}
-
-/* view_3313: warning group (SOW empty) — amber background */
-.${P}-sum-group--warning td.${P}-sum-field,
-.${P}-sum-group--warning td.${P}-sum-field-ro {
-  background: rgb(255, 243, 205) !important;
-  border-color: #f59e0b !important;
-  border: 1px solid #f59e0b !important;
-  border-radius: 4px;
-}
-/* view_3313: danger group (Fee $0/empty) — red background */
-.${P}-sum-group--danger td.${P}-sum-field,
-.${P}-sum-group--danger td.${P}-sum-field-ro {
-  background: rgb(248, 215, 218) !important;
-  border-color: #ef4444 !important;
-  border: 1px solid #ef4444 !important;
-  border-radius: 4px;
-}
-/* Ensure warning/danger wins over blue editable-field background */
-.${P}-sum-group--warning td.${P}-sum-field.cell-edit,
-.${P}-sum-group--warning td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgb(255, 243, 205) !important;
-  border-color: #f59e0b !important;
-}
-.${P}-sum-group--danger td.${P}-sum-field.cell-edit,
-.${P}-sum-group--danger td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgb(248, 215, 218) !important;
-  border-color: #ef4444 !important;
 }
 
 /* Fee label — align with value text (match td padding-left) */
@@ -1803,20 +1770,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (span) { span.textContent = '\n' + newFee + '\n  '; }
     else { feeTd.textContent = newFee; }
     console.log('[scw-ws-fee] patchFee: updated fee cell for ' + recordId + ' to "' + newFee + '"');
-
-    // Re-evaluate danger: is new fee zero/empty?
-    var stripped = newFee.replace(/[\u00a0\s$,]/g, '').trim();
-    var feeIsZeroOrEmpty = stripped === '' || stripped === '-' || /^0+(\.0+)?$/.test(stripped);
-
-    // Toggle danger class on the editable sum-groups
-    var DANGER = P + '-sum-group--danger';
-    ['sub-bid', 'narrow'].forEach(function (suffix) {
-      var groups = wsTr.querySelectorAll('.' + P + '-sum-group--' + suffix);
-      for (var i = 0; i < groups.length; i++) {
-        if (feeIsZeroOrEmpty) groups[i].classList.add(DANGER);
-        else                  groups[i].classList.remove(DANGER);
-      }
-    });
   }
 
   /**
@@ -2592,34 +2545,21 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var sowTd = findCell(tr, f.sow);
       var sowGroup = appendSumGroup(rightGroup, 'SOW', sowTd,
         { cls: P + '-sum-group--sow' });
-      // Warning styling if SOW is empty
-      if (sowTd && isCellEmpty(sowTd) && sowGroup) {
-        sowGroup.classList.add(P + '-sum-group--warning');
-      }
     }
 
-    // Determine if Fee is $0 or empty (drives danger styling on editable fields)
     var feeTd = f.installFee ? findCell(tr, f.installFee) : null;
-    var feeIsZeroOrEmpty = false;
-    if (feeTd) {
-      var feeText = (feeTd.textContent || '').replace(/[\u00a0\s$,]/g, '').trim();
-      feeIsZeroOrEmpty = feeText === '' || feeText === '-' || /^0+(\.0+)?$/.test(feeText);
-    }
 
     if (f.subBid) {
       var sbGroup = appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
         { cls: P + '-sum-group--sub-bid', directEdit: true, fieldKey: f.subBid });
-      if (feeIsZeroOrEmpty && sbGroup) sbGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.plusHrs) {
       var phGroup = appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
         { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusHrs });
-      if (feeIsZeroOrEmpty && phGroup) phGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.plusMat) {
       var pmGroup = appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
         { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusMat });
-      if (feeIsZeroOrEmpty && pmGroup) pmGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.installFee) {
       appendSumGroup(rightGroup, 'Fee', feeTd,
