@@ -13084,12 +13084,12 @@ td.${P}-sum-direct-edit .${P}-direct-error {
 /* When KTL bulk-edit copy mode is active (KTL adds bulkEditSelectSrc
    to cell-edit tds), disable input interaction so td handles clicks. */
 td.${P}-sum-direct-edit.bulkEditSelectSrc {
-  cursor: cell !important;
+  cursor: crosshair !important;
 }
 td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-input,
 td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
   pointer-events: none !important;
-  cursor: cell !important;
+  cursor: crosshair !important;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
@@ -14133,9 +14133,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Move
+    // Move – ensure the icon is present (replace-content-with-icon.js
+    // may not have run yet on this fresh DOM after a KTL bulk-edit refresh)
     var moveTd = findCell(tr, f.move);
     if (moveTd) {
+      if (!moveTd.querySelector('.fa-server')) {
+        moveTd.innerHTML =
+          '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
+            '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
+            '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
+              '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+              '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+            '</span>' +
+          '</span>';
+      }
       moveTd.classList.add(P + '-sum-move');
       rightGroup.appendChild(moveTd);
     }
