@@ -49,6 +49,7 @@
           exterior:         'field_2372',   // Exterior (chip host)
           existingCabling:  'field_2370',   // Existing Cabling
           plenum:           'field_2371',   // Plenum
+          mountingHeight:   'field_2455',   // Mounting Height
           dropLength:       'field_2367',   // Drop Length
           conduitFeet:      'field_2368',   // Conduit Linear Feet
           warningCount:     'field_2454'    // Warning count (shown as chit on header)
@@ -83,6 +84,22 @@
           product:  3,
           mounting: 4
         }
+      },
+      {
+        viewId: 'view_3559',
+        fields: {
+          // ── Summary row ──
+          label:            'field_1642',   // DISPLAY_mdf_idf_name (composite identity)
+
+          // ── Detail panel ──
+          mdfIdf:           'field_1641',   // MDF/IDF (radio chips: HEADEND, IDF)
+          mdfNumber:        'field_2458',   // ## (read-only)
+          name:             'field_1943',   // Name (textarea, direct-edit)
+          surveyNotes:      'field_2457'    // Survey Notes (textarea, direct-edit)
+        },
+        // Fields whose changes feed the label formula — saving any of
+        // these triggers a lightweight GET to refresh the header text.
+        headerTriggerFields: ['field_1641', 'field_2458', 'field_1943']
       }
     ]
   };
@@ -346,6 +363,16 @@ td.${P}-sum-label-cell:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* view_3559: wider label (no product column, label IS the identity) */
+#view_3559 td.${P}-sum-label-cell,
+#view_3559 td.${P}-sum-label-cell:hover {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
 td.${P}-sum-product,
@@ -461,12 +488,22 @@ td.${P}-sum-field--desc {
 
 /* Move td sits at the right end */
 td.${P}-sum-move {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   padding: 0 4px;
   border: none !important;
   background: transparent !important;
   flex-shrink: 0;
+}
+
+/* ── Synthetic group divider bars ── */
+tr.scw-synth-divider > td {
+  height: 6px;
+  padding: 0 !important;
+  background: #d1d5db;
+  border: none !important;
+  line-height: 0;
+  font-size: 0;
 }
 
 /* ================================================================
@@ -486,8 +523,18 @@ td.${P}-sum-move {
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
+/* Narrow the Equipment Details (left) section so Survey Details
+   starts roughly aligned with Labor Description in the summary bar. */
+#view_3512 .${P}-sections {
+  grid-template-columns: 455px 1fr;
+}
+#view_3505 .${P}-sections {
+  grid-template-columns: 555px 1fr;
+}
 @media (max-width: 900px) {
-  .${P}-sections {
+  .${P}-sections,
+  #view_3512 .${P}-sections,
+  #view_3505 .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
@@ -610,6 +657,144 @@ td.${P}-field-value--notes {
   font-style: italic;
 }
 
+/* ── Radio chips (Mounting Height) ── */
+.${P}-radio-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px 0;
+}
+.${P}-radio-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  text-align: center;
+}
+.${P}-radio-chip.is-selected {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+.${P}-radio-chip.is-selected:hover {
+  background-color: #bfdbfe;
+  box-shadow: 0 1px 3px rgba(30,64,175,0.15);
+}
+.${P}-radio-chip.is-unselected {
+  background-color: #f9fafb;
+  color: #9ca3af;
+  border-color: #d1d5db;
+}
+.${P}-radio-chip.is-unselected:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.${P}-radio-chip.is-saving {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Direct-edit inputs (type-and-save text fields) ── */
+.${P}-direct-input,
+.${P}-direct-textarea {
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1f2937;
+  line-height: 1.5;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+.${P}-direct-input:focus,
+.${P}-direct-textarea:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
+}
+.${P}-direct-input.is-saving,
+.${P}-direct-textarea.is-saving {
+  background-color: #f0fdf4 !important;
+  border-color: #86efac !important;
+}
+.${P}-direct-input.is-error,
+.${P}-direct-textarea.is-error {
+  background-color: #fef2f2 !important;
+  border-color: #fca5a5 !important;
+  box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.25);
+}
+.${P}-direct-error {
+  font-size: 11px;
+  color: #dc2626;
+  margin-top: 3px;
+  line-height: 1.3;
+}
+.${P}-direct-textarea {
+  resize: vertical;
+  min-height: 48px;
+  max-height: 120px;
+}
+
+/* ── Summary bar inline direct-edit inputs ── */
+td.${P}-sum-direct-edit {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0 !important;
+}
+td.${P}-sum-direct-edit .${P}-direct-input,
+td.${P}-sum-direct-edit .${P}-direct-textarea {
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  width: 100%;
+  box-sizing: border-box;
+  display: block;
+}
+td.${P}-sum-direct-edit .${P}-direct-input {
+  height: 28px;
+}
+td.${P}-sum-direct-edit .${P}-direct-textarea {
+  resize: vertical;
+  min-height: 28px;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+td.${P}-sum-direct-edit .${P}-direct-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  white-space: nowrap;
+  z-index: 10;
+  background: #fff;
+  padding: 2px 4px;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+/* When KTL bulk-edit copy mode is active (KTL adds bulkEditSelectSrc
+   to cell-edit tds), disable input interaction so td handles clicks. */
+td.${P}-sum-direct-edit.bulkEditSelectSrc {
+  cursor: cell !important;
+}
+td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-input,
+td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
+  pointer-events: none !important;
+  cursor: cell !important;
+}
+
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
@@ -650,6 +835,69 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
     return match ? match[0] : null;
+  }
+
+  // ============================================================
+  // EXPANDED STATE PERSISTENCE (across inline-edit re-renders)
+  // ============================================================
+  //
+  // Device-worksheet panels start collapsed after every transformView.
+  // Without persistence, an inline edit causes all expanded panels to
+  // close — losing the user's context.
+  //
+  // On knack-cell-update (BEFORE re-render): scan worksheet rows and
+  // save which record IDs have expanded detail panels.
+  // At the end of transformView (AFTER rebuild): re-expand saved panels.
+
+  var _expandedState = {};  // viewId → [recordId, ...]
+
+  /** Scan current worksheet rows for open detail panels and save their
+   *  record IDs so they can be re-expanded after transformView. */
+  function captureExpandedState(viewId) {
+    var expanded = [];
+    var wsRows = document.querySelectorAll('#' + viewId + ' tr.' + WORKSHEET_ROW);
+    for (var i = 0; i < wsRows.length; i++) {
+      var detail = wsRows[i].querySelector('.' + P + '-detail.' + P + '-open');
+      if (detail) {
+        var rid = getRecordId(wsRows[i]);
+        if (rid) expanded.push(rid);
+      }
+    }
+    _expandedState[viewId] = expanded;
+  }
+
+  /** Capture expanded state for ALL configured worksheet views.
+   *  Called on ANY knack-cell-update because refresh-on-inline-edit.js
+   *  may refresh sibling views — not just the one that was edited. */
+  function captureAllExpandedStates() {
+    WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      captureExpandedState(viewCfg.viewId);
+    });
+  }
+
+  /** Re-expand detail panels for previously-expanded records.
+   *  Called at the end of transformView after new worksheet rows
+   *  have been built. Uses record ID (24-char hex) for stable
+   *  identity across re-renders. */
+  function restoreExpandedState(viewId) {
+    var expanded = _expandedState[viewId];
+    if (!expanded || !expanded.length) return;
+
+    // Build a lookup set for O(1) checks
+    var expandedSet = {};
+    for (var i = 0; i < expanded.length; i++) {
+      expandedSet[expanded[i]] = true;
+    }
+
+    var wsRows = document.querySelectorAll('#' + viewId + ' tr.' + WORKSHEET_ROW);
+    for (var j = 0; j < wsRows.length; j++) {
+      var rid = getRecordId(wsRows[j]);
+      if (rid && expandedSet[rid]) {
+        toggleDetail(wsRows[j]);
+      }
+    }
+
+    delete _expandedState[viewId];
   }
 
   // ============================================================
@@ -707,6 +955,734 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     return section;
+  }
+
+  // ============================================================
+  // RADIO CHIPS – single-select chip UI for multiple-choice fields
+  // ============================================================
+  var RADIO_CHIP_CLASS = P + '-radio-chip';
+  var RADIO_CHIPS_ATTR = 'data-scw-radio-chips';
+
+  var MOUNTING_HEIGHT_OPTIONS = ["Under 16'", "16' - 24'", "Over 24'"];
+  var MDF_IDF_OPTIONS = ['HEADEND', 'IDF'];
+
+  /** Read current value from a cell's text content. */
+  function readCellText(td) {
+    if (!td) return '';
+    return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  }
+
+  /** Build radio chip elements for a set of options. */
+  function buildRadioChips(td, fieldKey, options) {
+    var currentVal = readCellText(td);
+    var container = document.createElement('div');
+    container.className = P + '-radio-chips';
+    container.setAttribute('data-field', fieldKey);
+
+    for (var i = 0; i < options.length; i++) {
+      var chip = document.createElement('span');
+      chip.className = RADIO_CHIP_CLASS;
+      chip.setAttribute('data-option', options[i]);
+      chip.setAttribute('data-field', fieldKey);
+      chip.textContent = options[i];
+
+      if (currentVal === options[i]) {
+        chip.classList.add('is-selected');
+      } else {
+        chip.classList.add('is-unselected');
+      }
+      container.appendChild(chip);
+    }
+    return container;
+  }
+
+  /** Build a field row that uses radio chips instead of the raw cell. */
+  function buildRadioChipRow(label, td, fieldKey, options) {
+    if (td && td.classList.contains(GRAYED_CLASS)) return null;
+
+    var row = document.createElement('div');
+    row.className = P + '-field';
+
+    var lbl = document.createElement('div');
+    lbl.className = P + '-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    var valueWrapper = document.createElement('div');
+    valueWrapper.className = P + '-field-value';
+    valueWrapper.style.border = 'none';
+    valueWrapper.style.padding = '0';
+    valueWrapper.style.background = 'transparent';
+
+    var chips = buildRadioChips(td, fieldKey, options);
+    valueWrapper.appendChild(chips);
+
+    // Keep the original td hidden so Knack's data binding stays alive
+    if (td) {
+      td.style.display = 'none';
+      td.setAttribute(RADIO_CHIPS_ATTR, '1');
+      valueWrapper.appendChild(td);
+    }
+
+    row.appendChild(valueWrapper);
+    return row;
+  }
+
+  // ============================================================
+  // DIRECT-EDIT INPUTS – type-and-save text fields
+  // ============================================================
+  var DIRECT_EDIT_ATTR = 'data-scw-direct-edit';
+  var DIRECT_INPUT_CLASS = P + '-direct-input';
+  var DIRECT_TEXTAREA_CLASS = P + '-direct-textarea';
+
+  /** Read the display text from a td, stripping whitespace. */
+  function readFieldText(td) {
+    if (!td) return '';
+    return (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
+  }
+
+  /** Build an editable field row with a native input or textarea. */
+  function buildEditableFieldRow(label, td, fieldKey, opts) {
+    opts = opts || {};
+    if (td && td.classList.contains(GRAYED_CLASS)) return null;
+    if (opts.skipEmpty && (!td || isCellEmpty(td))) return null;
+
+    var row = document.createElement('div');
+    row.className = P + '-field';
+
+    var lbl = document.createElement('div');
+    lbl.className = P + '-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    var valueWrapper = document.createElement('div');
+    valueWrapper.className = P + '-field-value';
+    valueWrapper.style.border = 'none';
+    valueWrapper.style.padding = '0';
+    valueWrapper.style.background = 'transparent';
+
+    var currentVal = readFieldText(td);
+    var input;
+
+    if (opts.notes) {
+      input = document.createElement('textarea');
+      input.className = DIRECT_TEXTAREA_CLASS;
+      input.value = currentVal;
+      input.rows = 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = DIRECT_INPUT_CLASS;
+      input.value = currentVal;
+    }
+
+    input.setAttribute('data-field', fieldKey);
+    input.setAttribute(DIRECT_EDIT_ATTR, '1');
+
+    valueWrapper.appendChild(input);
+
+    // Keep the original td hidden so Knack data binding stays alive
+    if (td) {
+      td.style.display = 'none';
+      td.setAttribute(DIRECT_EDIT_ATTR, '1');
+      valueWrapper.appendChild(td);
+    }
+
+    row.appendChild(valueWrapper);
+    return row;
+  }
+
+  /** Parse an error message from a Knack API response. */
+  function parseKnackError(xhr) {
+    try {
+      var body = JSON.parse(xhr.responseText || '{}');
+      // Knack returns { errors: [{ message: "..." }] } or { errors: [{ field: "...", message: "..." }] }
+      if (body.errors && body.errors.length) {
+        return body.errors.map(function (e) { return e.message || e; }).join('; ');
+      }
+      if (body.message) return body.message;
+    } catch (ignored) {}
+    return 'Save failed';
+  }
+
+  /** Show an error message below a direct-edit input, with red styling. */
+  function showInputError(input, message, previousValue) {
+    // Remove saving state, add error state
+    input.classList.remove('is-saving');
+    input.classList.add('is-error');
+
+    // Revert value
+    input.value = previousValue;
+    input._scwPrev = previousValue;
+
+    // Update hidden td back to previous value (detail panel)
+    var wrapper = input.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    if (hiddenTd) {
+      hiddenTd.textContent = previousValue;
+    }
+    // Update hidden span (summary bar)
+    var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
+    if (hiddenSpan) hiddenSpan.textContent = previousValue;
+
+    // Show error message element
+    var existing = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
+    if (existing) existing.remove();
+
+    var errEl = document.createElement('div');
+    errEl.className = P + '-direct-error';
+    errEl.textContent = message;
+    if (wrapper) wrapper.appendChild(errEl);
+
+    // Auto-clear after 4 seconds
+    setTimeout(function () {
+      input.classList.remove('is-error');
+      if (errEl.parentNode) errEl.remove();
+    }, 4000);
+  }
+
+  /** Show success feedback on input. */
+  function showInputSuccess(input) {
+    input.classList.remove('is-error');
+    input.classList.add('is-saving');
+    // Remove any lingering error
+    var wrapper = input.parentNode;
+    var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
+    if (errEl) errEl.remove();
+
+    setTimeout(function () {
+      input.classList.remove('is-saving');
+      // Re-evaluate conditional formatting after save completes.
+      // The hidden td has already been updated with the new value;
+      // recalculate whether the field still meets a danger/warning
+      // condition and update the input background accordingly.
+      refreshInputConditionalColor(input);
+    }, 600);
+  }
+
+  /**
+   * After a successful save, recalculate the conditional background
+   * color (danger/warning) for a direct-edit input based on the
+   * updated value in its hidden td.  Clears the color when the
+   * condition no longer applies.
+   */
+  function refreshInputConditionalColor(input) {
+    var wrapper = input.parentNode;
+    if (!wrapper) return;
+    var fieldKey = input.getAttribute('data-field');
+    if (!fieldKey) return;
+
+    // Find the view config that governs this input
+    var viewEl = input.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (!viewId) return;
+
+    var COLORS_MAP = {
+      danger:  'rgb(248, 215, 218)',
+      warning: 'rgb(255, 243, 205)'
+    };
+
+    // Read value from hidden td (detail panel) or input itself (summary bar)
+    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    var rawText = hiddenTd ? (hiddenTd.textContent || '') : (input.value || '');
+    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
+    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+    // The element to update classes/styles on
+    var styleTd = hiddenTd || wrapper;
+
+    var dangerCls = 'scw-cell-danger';
+    var warningCls = 'scw-cell-warning';
+
+    var conditionMet = false;
+    var conditionColor = null;
+
+    if (fieldKey === 'field_2400') {
+      if (isEmpty) { conditionMet = true; conditionColor = 'danger'; }
+      else if (isZero) { conditionMet = true; conditionColor = 'warning'; }
+    } else if (fieldKey === 'field_2409') {
+      conditionMet = isEmpty;
+      conditionColor = 'danger';
+    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
+      conditionMet = isEmpty;
+      conditionColor = 'warning';
+    } else if (fieldKey === 'field_2399') {
+      conditionMet = isZero;
+      conditionColor = 'warning';
+    }
+
+    // Update td classes (so the condition is reflected in DOM)
+    styleTd.classList.remove(dangerCls, warningCls);
+    if (conditionMet && conditionColor === 'danger') {
+      styleTd.classList.add(dangerCls);
+      styleTd.style.backgroundColor = COLORS_MAP.danger;
+    } else if (conditionMet && conditionColor === 'warning') {
+      styleTd.classList.add(warningCls);
+      styleTd.style.backgroundColor = COLORS_MAP.warning;
+    } else {
+      styleTd.style.backgroundColor = '';
+    }
+
+    // Update the visible input's background
+    if (conditionMet && COLORS_MAP[conditionColor]) {
+      input.style.backgroundColor = COLORS_MAP[conditionColor];
+    } else {
+      // Restore the default direct-edit background (light blue tint
+      // from the build step or transparent)
+      input.style.backgroundColor = 'rgba(134, 182, 223, 0.1)';
+    }
+  }
+
+  // Number fields that need client-side validation
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
+
+  // ============================================================
+  // SOFT HEADER REFRESH
+  // ============================================================
+  //
+  // For views whose header label is a Knack formula (e.g. view_3559's
+  // field_1642 = composite of field_1641 + field_2458 + field_1943),
+  // we read the recalculated formula from the PUT response after
+  // saving a trigger field and patch the label td in place.
+  //
+  // The view-level GET endpoint does NOT return formula fields, so
+  // the label must come from the PUT response itself.
+  //
+  // We also cache the last-known label per record so that if Knack
+  // re-renders the view (via model change events), we can re-apply
+  // the label in transformView without another round-trip.
+
+  var _labelCache = {};  // recordId → label text
+
+  /** Look up the viewCfg that owns a given viewId. */
+  function viewCfgFor(viewId) {
+    var views = WORKSHEET_CONFIG.views;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i].viewId === viewId) return views[i];
+    }
+    return null;
+  }
+
+  /** Returns true if fieldKey is a header-trigger field for viewId. */
+  function isHeaderTrigger(viewId, fieldKey) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.headerTriggerFields) return false;
+    return cfg.headerTriggerFields.indexOf(fieldKey) !== -1;
+  }
+
+  /** Extract the label text from a Knack API response object. */
+  function extractLabelFromResponse(viewId, resp) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return '';
+    var labelField = cfg.fields.label;
+    var raw = resp[labelField + '_raw'] || resp[labelField] || '';
+    return typeof raw === 'string'
+      ? raw.replace(/<[^>]*>/g, '').trim()
+      : String(raw);
+  }
+
+  /**
+   * Fetch the record via the OBJECT-level API (which returns formula
+   * fields) and apply the label.  The view-level API strips formulas.
+   */
+  function fetchAndApplyLabel(viewId, recordId) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return;
+
+    if (typeof Knack === 'undefined') return;
+
+    // Derive the object key from the Knack view model
+    var view = Knack.views[viewId];
+    var objectKey = null;
+    try {
+      objectKey = view.model.view.source.object;
+    } catch (ignored) { /* */ }
+    if (!objectKey) {
+      console.warn('[scw-ws-header] Cannot determine object key for ' + viewId);
+      return;
+    }
+
+    console.log('[scw-ws-header] Fetching label via object API (' + objectKey + ') for ' + recordId);
+
+    $.ajax({
+      url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      success: function (resp) {
+        var txt = extractLabelFromResponse(viewId, resp);
+        console.log('[scw-ws-header] Object API label for ' + recordId + ': "' + txt + '"');
+        if (txt) {
+          _labelCache[recordId] = txt;
+          applyLabelText(viewId, recordId, txt);
+        }
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-header] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
+      }
+    });
+  }
+
+  /** Patch the label td text for a single record in the DOM. */
+  function applyLabelText(viewId, recordId, txt) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return;
+    var labelField = cfg.fields.label;
+
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+
+    // Find ALL label tds in the view, then match by closest row id
+    var allLabels = viewEl.querySelectorAll(
+      'td.' + labelField + ', td[data-field-key="' + labelField + '"]'
+    );
+    for (var i = 0; i < allLabels.length; i++) {
+      var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
+      if (row && getRecordId(row) === recordId) {
+        allLabels[i].textContent = txt;
+        console.log('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
+        return;
+      }
+    }
+    console.warn('[scw-ws-header] Label td not found for ' + recordId);
+  }
+
+  /**
+   * Called at the end of transformView — re-apply any cached labels
+   * that Knack's re-render may have wiped with stale formula data.
+   */
+  function restoreCachedLabels(viewId) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.label) return;
+    var labelField = cfg.fields.label;
+
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+
+    var allLabels = viewEl.querySelectorAll(
+      'td.' + labelField + ', td[data-field-key="' + labelField + '"]'
+    );
+    for (var i = 0; i < allLabels.length; i++) {
+      var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
+      if (!row) continue;
+      var rid = getRecordId(row);
+      if (rid && _labelCache[rid]) {
+        var current = (allLabels[i].textContent || '').trim();
+        if (!current || current === '\u00a0') {
+          allLabels[i].textContent = _labelCache[rid];
+          console.log('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
+        }
+      }
+    }
+  }
+
+  /** Save a direct-edit field value.
+   *  For header-trigger fields, always uses AJAX PUT so we can read
+   *  the recalculated formula from the response.  For other fields,
+   *  prefers model.updateRecord to avoid a full re-render.
+   *  Calls onSuccess(resp) or onError(message) when done. */
+  function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
+    if (typeof Knack === 'undefined') return;
+
+    var data = {};
+    data[fieldKey] = value;
+    var trigger = isHeaderTrigger(viewId, fieldKey);
+
+    // Non-trigger fields: prefer model.updateRecord (no re-render)
+    if (!trigger) {
+      var view = Knack.views[viewId];
+      if (view && view.model && typeof view.model.updateRecord === 'function') {
+        view.model.updateRecord(recordId, data);
+        if (onSuccess) onSuccess(null);
+        return;
+      }
+    }
+
+    // Trigger fields (or fallback): direct AJAX PUT
+    $.ajax({
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
+      type: 'PUT',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function (resp) {
+        if (onSuccess) onSuccess(resp);
+      },
+      error: function (xhr) {
+        var msg = parseKnackError(xhr);
+        console.warn('[scw-ws-direct] Save failed for ' + recordId, xhr.responseText);
+        if (onError) onError(msg);
+      }
+    });
+  }
+
+  /** Handle save for a direct-edit input. */
+  function handleDirectEditSave(input) {
+    var fieldKey = input.getAttribute('data-field') || '';
+    var newValue = input.value;
+
+    // Capture previous value: from hidden td (detail panel) or _scwPrev (summary bar)
+    var wrapper = input.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var previousValue = hiddenTd ? readFieldText(hiddenTd) : (input._scwPrev || '');
+
+    // Client-side validation for number fields
+    if (NUMBER_FIELDS.indexOf(fieldKey) !== -1) {
+      var trimmed = newValue.trim().replace(/[$,]/g, '');
+      if (trimmed !== '' && isNaN(Number(trimmed))) {
+        showInputError(input, 'Please enter a number', previousValue);
+        return;
+      }
+    }
+
+    // Optimistically update backing store
+    if (hiddenTd) {
+      hiddenTd.textContent = newValue;
+    }
+    input._scwPrev = newValue;
+    // Update hidden span (summary bar) so dynamic-cell-colors sees new value
+    var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
+    if (hiddenSpan) hiddenSpan.textContent = newValue;
+
+    // Visual feedback — start saving
+    input.classList.remove('is-error');
+    input.classList.add('is-saving');
+    var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
+    if (errEl) errEl.remove();
+
+    // Find record ID and view ID
+    var wsTr = input.closest('tr.' + WORKSHEET_ROW);
+    if (!wsTr) return;
+    var recordId = getRecordId(wsTr);
+    var viewEl = input.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (recordId && viewId) {
+      saveDirectEditValue(viewId, recordId, fieldKey, newValue,
+        function () {
+          showInputSuccess(input);
+          if (isHeaderTrigger(viewId, fieldKey)) {
+            fetchAndApplyLabel(viewId, recordId);
+          }
+        },
+        function (msg) { showInputError(input, msg, previousValue); }
+      );
+    }
+  }
+
+  // ── Keydown handler for direct-edit inputs: save on Enter ──
+  document.addEventListener('keydown', function (e) {
+    var target = e.target;
+    if (!target.hasAttribute(DIRECT_EDIT_ATTR)) return;
+
+    if (e.key === 'Enter') {
+      // For textareas, Shift+Enter inserts newline; Enter alone saves
+      if (target.tagName === 'TEXTAREA' && e.shiftKey) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      // Mark as just-saved so blur handler doesn't double-fire
+      target._scwJustSaved = true;
+      handleDirectEditSave(target);
+      target.blur();
+    }
+
+    if (e.key === 'Escape') {
+      // Revert to the original value
+      target._scwJustSaved = true; // prevent blur save
+      var wrapper = target.parentNode;
+      var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+      target.value = hiddenTd ? readFieldText(hiddenTd) : (target._scwPrev || '');
+      target.blur();
+    }
+  }, true);
+
+  // ── Blur handler: save when focus leaves ──
+  document.addEventListener('focusout', function (e) {
+    var target = e.target;
+    if (!target.hasAttribute(DIRECT_EDIT_ATTR)) return;
+
+    // Skip if Enter/Escape already handled it
+    if (target._scwJustSaved) {
+      target._scwJustSaved = false;
+      return;
+    }
+
+    // Check if value actually changed
+    var wrapper = target.parentNode;
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var originalVal = hiddenTd ? readFieldText(hiddenTd) : (target._scwPrev || '');
+    if (target.value !== originalVal) {
+      handleDirectEditSave(target);
+    }
+  }, true);
+
+  // ── Capture-phase click/mousedown: block Knack inline-edit on direct-edit inputs ──
+  document.addEventListener('click', function (e) {
+    if (e.target.hasAttribute(DIRECT_EDIT_ATTR)) {
+      e.stopPropagation();
+    }
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    if (e.target.hasAttribute(DIRECT_EDIT_ATTR)) {
+      e.stopPropagation();
+    }
+  }, true);
+
+  /** Save a radio chip selection via Knack's internal API. */
+  function saveRadioValue(viewId, recordId, fieldKey, value, onSuccess) {
+    var data = {};
+    data[fieldKey] = value;
+    var trigger = isHeaderTrigger(viewId, fieldKey);
+
+    // Non-trigger: prefer model.updateRecord (no re-render)
+    if (!trigger) {
+      var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
+      if (view && view.model && typeof view.model.updateRecord === 'function') {
+        view.model.updateRecord(recordId, data);
+        if (onSuccess) onSuccess(null);
+        return;
+      }
+    }
+
+    // Trigger fields (or fallback): AJAX PUT — response has the formula
+    if (typeof Knack !== 'undefined') {
+      $.ajax({
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
+        type: 'PUT',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function (resp) {
+          if (onSuccess) onSuccess(resp);
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
+        }
+      });
+    }
+  }
+
+  // ── Capture-phase click handler for radio chips ──
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
+    if (!chip) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    var newValue = chip.getAttribute('data-option') || '';
+    var fieldKey = chip.getAttribute('data-field') || '';
+    var container = chip.closest('.' + P + '-radio-chips');
+    if (!container) return;
+
+    // Update chip states
+    var allChips = container.querySelectorAll('.' + RADIO_CHIP_CLASS);
+    for (var i = 0; i < allChips.length; i++) {
+      allChips[i].classList.remove('is-selected', 'is-unselected');
+      if (allChips[i].getAttribute('data-option') === newValue) {
+        allChips[i].classList.add('is-selected', 'is-saving');
+      } else {
+        allChips[i].classList.add('is-unselected');
+      }
+    }
+    setTimeout(function () {
+      var saving = container.querySelectorAll('.is-saving');
+      for (var j = 0; j < saving.length; j++) saving[j].classList.remove('is-saving');
+    }, 400);
+
+    // Update hidden td text so re-renders stay in sync
+    var hiddenTd = container.parentNode.querySelector('td[' + RADIO_CHIPS_ATTR + ']');
+    if (hiddenTd) {
+      hiddenTd.textContent = newValue;
+    }
+
+    // Find record ID and view ID, then save
+    var wsTr = chip.closest('tr.' + WORKSHEET_ROW);
+    if (!wsTr) return;
+    var recordId = getRecordId(wsTr);
+    var viewEl = chip.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (recordId && viewId) {
+      saveRadioValue(viewId, recordId, fieldKey, newValue, function () {
+        if (isHeaderTrigger(viewId, fieldKey)) {
+          fetchAndApplyLabel(viewId, recordId);
+        }
+      });
+    }
+  }, true);
+
+  // ── Capture-phase mousedown: block Knack inline-edit trigger ──
+  document.addEventListener('mousedown', function (e) {
+    var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
+    if (!chip) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
+  // ============================================================
+  // SUMMARY BAR DIRECT-EDIT  (in-place input inside existing td)
+  // ============================================================
+
+  /** Inject a direct-edit input into an existing summary bar td.
+   *  The td stays visible in the DOM with all its Knack/KTL classes
+   *  so bulk-edit can still discover it.  The original span content
+   *  is hidden; the previous value is stashed on input._scwPrev.
+   *  opts.multiline — use a textarea that wraps and auto-grows. */
+  function injectSummaryDirectEdit(td, fieldKey, opts) {
+    opts = opts || {};
+    var currentVal = readFieldText(td);
+    td.classList.add(P + '-sum-direct-edit');
+
+    // Capture conditional bg BEFORE we touch the DOM
+    var compBg = window.getComputedStyle(td).backgroundColor;
+
+    // Keep a hidden span with the text value so dynamic-cell-colors
+    // (which reads $td.text()) still sees the real content.
+    var existingSpan = td.querySelector('span');
+    if (existingSpan) {
+      existingSpan.style.display = 'none';
+    } else {
+      var hiddenSpan = document.createElement('span');
+      hiddenSpan.style.display = 'none';
+      hiddenSpan.textContent = currentVal;
+      td.appendChild(hiddenSpan);
+    }
+
+    var input;
+    if (opts.multiline) {
+      input = document.createElement('textarea');
+      input.className = DIRECT_TEXTAREA_CLASS;
+      input.value = currentVal;
+      input.rows = 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = DIRECT_INPUT_CLASS;
+      input.value = currentVal;
+    }
+    input.setAttribute('data-field', fieldKey);
+    input.setAttribute(DIRECT_EDIT_ATTR, '1');
+    input._scwPrev = currentVal;
+
+    // Propagate conditional background color from td to input
+    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
+      input.style.backgroundColor = compBg;
+    }
+
+    td.appendChild(input);
   }
 
   // ============================================================
@@ -777,7 +1753,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
 
-    // ── Labor Desc (inline, fills middle space) ──
+    // ── Labor Desc (inline, fills middle space — direct-edit) ──
     var laborDescTd = findCell(tr, f.laborDescription);
     if (laborDescTd) {
       var ldGroup = document.createElement('span');
@@ -788,7 +1764,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       ldGroup.appendChild(ldLabel);
       laborDescTd.classList.add(P + '-sum-field');
       laborDescTd.classList.add(P + '-sum-field--desc');
-      if (isCellEmpty(laborDescTd)) laborDescTd.classList.add(P + '-empty');
+      injectSummaryDirectEdit(laborDescTd, f.laborDescription, { multiline: true });
       ldGroup.appendChild(laborDescTd);
       bar.appendChild(ldGroup);
     }
@@ -812,7 +1788,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       rightGroup.appendChild(bidGroup);
     }
 
-    // Labor $
+    // Labor $ (direct-edit)
     var laborTd = findCell(tr, f.labor);
     if (laborTd) {
       var labGroup = document.createElement('span');
@@ -822,12 +1798,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       labLabel.textContent = 'Labor';
       labGroup.appendChild(labLabel);
       laborTd.classList.add(P + '-sum-field');
-      if (isCellEmpty(laborTd)) laborTd.classList.add(P + '-empty');
+      injectSummaryDirectEdit(laborTd, f.labor);
       labGroup.appendChild(laborTd);
       rightGroup.appendChild(labGroup);
     }
 
-    // Qty (view_3505 only)
+    // Qty (view_3505 only, direct-edit)
     if (f.quantity) {
       var qtyTd = findCell(tr, f.quantity);
       if (qtyTd) {
@@ -838,7 +1814,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         qtyLabel.textContent = 'Qty';
         qtyGroup.appendChild(qtyLabel);
         qtyTd.classList.add(P + '-sum-field');
-        if (isCellEmpty(qtyTd)) qtyTd.classList.add(P + '-empty');
+        injectSummaryDirectEdit(qtyTd, f.quantity);
         qtyGroup.appendChild(qtyTd);
         rightGroup.appendChild(qtyGroup);
       }
@@ -860,9 +1836,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Move
+    // Move – ensure the icon is present (replace-content-with-icon.js
+    // may not have run yet on this fresh DOM after a KTL bulk-edit refresh)
     var moveTd = findCell(tr, f.move);
     if (moveTd) {
+      if (!moveTd.querySelector('.fa-server')) {
+        moveTd.innerHTML =
+          '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
+            '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
+            '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
+              '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+              '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+            '</span>' +
+          '</span>';
+      }
       moveTd.classList.add(P + '-sum-move');
       rightGroup.appendChild(moveTd);
     }
@@ -894,19 +1881,36 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // ── Left column: Equipment Details ──
     var equipSection = buildSection('');
 
-    addRow(equipSection, buildFieldRow('Mounting\nHardware',
-      findCell(tr, f.mounting, ci.mounting), { skipEmpty: true }));
+    if (f.mdfIdf) {
+      addRow(equipSection, buildRadioChipRow('MDF/IDF',
+        findCell(tr, f.mdfIdf), f.mdfIdf, MDF_IDF_OPTIONS));
+    }
 
-    addRow(equipSection, buildFieldRow('SCW Notes',
-      findCell(tr, f.scwNotes), { notes: true }));
+    if (f.mdfNumber) {
+      addRow(equipSection, buildFieldRow('##',
+        findCell(tr, f.mdfNumber)));
+    }
+
+    addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
+      findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
+
+    if (f.name) {
+      addRow(equipSection, buildEditableFieldRow('Name',
+        findCell(tr, f.name), f.name, { notes: true }));
+    }
+
+    addRow(equipSection, buildEditableFieldRow('SCW Notes',
+      findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
 
     sections.appendChild(equipSection);
 
     // ── Right column: Survey Details ──
     var surveySection = buildSection('Survey Details');
 
-    addRow(surveySection, buildFieldRow('Connected to',
-      findCell(tr, f.connections)));
+    if (f.connections) {
+      addRow(surveySection, buildFieldRow('Connected to',
+        findCell(tr, f.connections)));
+    }
 
     // Chip stack (boolean chips for exterior/cabling/plenum)
     var chipHostTd = findCell(tr, f.exterior);
@@ -938,18 +1942,23 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
+    if (f.mountingHeight) {
+      addRow(surveySection, buildRadioChipRow('Mounting\nHeight',
+        findCell(tr, f.mountingHeight), f.mountingHeight, MOUNTING_HEIGHT_OPTIONS));
+    }
+
     if (f.dropLength) {
-      addRow(surveySection, buildFieldRow('Drop Length',
-        findCell(tr, f.dropLength)));
+      addRow(surveySection, buildEditableFieldRow('Drop Length',
+        findCell(tr, f.dropLength), f.dropLength));
     }
 
     if (f.conduitFeet) {
-      addRow(surveySection, buildFieldRow('Conduit Ft',
-        findCell(tr, f.conduitFeet)));
+      addRow(surveySection, buildEditableFieldRow('Conduit Ft',
+        findCell(tr, f.conduitFeet), f.conduitFeet));
     }
 
-    addRow(surveySection, buildFieldRow('Survey\nNotes',
-      findCell(tr, f.surveyNotes), { notes: true }));
+    addRow(surveySection, buildEditableFieldRow('Survey\nNotes',
+      findCell(tr, f.surveyNotes), f.surveyNotes, { notes: true }));
 
     sections.appendChild(surveySection);
 
@@ -1055,6 +2064,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       if (tr.classList.contains('scw-row--assumptions')) wsTr.classList.add('scw-row--assumptions');
       if (tr.classList.contains('scw-row--services'))    wsTr.classList.add('scw-row--services');
 
+      // Tag rows with empty MDF/IDF (move) field BEFORE the td is moved
+      var moveTd = findCell(tr, viewCfg.fields.move);
+      if (isCellEmpty(moveTd)) wsTr.setAttribute('data-scw-no-move', '1');
+
       var wsTd = document.createElement('td');
 
       var headerRow = table.querySelector('thead tr');
@@ -1085,6 +2098,158 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         photoRow.classList.add(P + '-photo-hidden');
       }
     }
+
+    // ── SYNTHETIC GROUP HEADERS for ungrouped Assumptions / Services ──
+    // In view_3505, rows with an empty MDF/IDF connection (field_2375)
+    // that are Assumptions or Services get collected under synthetic
+    // group-header rows placed FIRST in the table (before MDF/IDF groups).
+    if (viewCfg.viewId === 'view_3505') {
+      var tbody = table.querySelector('tbody');
+      var colSpan = 1;
+      var hdr = table.querySelector('thead tr');
+      if (hdr) {
+        colSpan = 0;
+        var hCells = hdr.children;
+        for (var ci = 0; ci < hCells.length; ci++) {
+          colSpan += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
+        }
+      }
+
+      // Pale blue accent for synthetic groups (matches view accordion style)
+      var SYNTH_ACCENT = '#5b9bd5';
+      var SYNTH_ACCENT_RGB = '91,155,213';
+
+      // Remove empty native Knack group headers (blank MDF/IDF value)
+      // and any orphaned photo rows directly beneath them.
+      var nativeGroups = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1');
+      for (var gi = 0; gi < nativeGroups.length; gi++) {
+        var grp = nativeGroups[gi];
+        if (grp.classList.contains('scw-synthetic-group')) continue;
+        var labelText = (grp.textContent || '').replace(/\s+/g, ' ').trim();
+        if (labelText.length === 0) {
+          // Remove orphaned photo rows that follow this empty header
+          var sib = grp.nextElementSibling;
+          while (sib && !sib.classList.contains('kn-table-group') &&
+                 !sib.classList.contains(WORKSHEET_ROW)) {
+            var toRemove = sib;
+            sib = sib.nextElementSibling;
+            toRemove.remove();
+          }
+          grp.remove();
+        }
+      }
+
+      // Helper: build a gray divider row
+      function makeDivider() {
+        var divTr = document.createElement('tr');
+        divTr.className = 'scw-synth-divider';
+        var divTd = document.createElement('td');
+        divTd.setAttribute('colspan', String(colSpan));
+        divTr.appendChild(divTd);
+        return divTr;
+      }
+
+      // Build synthetic groups in reverse so insertions at top keep order:
+      // Project Assumptions first, then Project Services.
+      var buckets = [
+        { cls: 'scw-row--services',    label: 'Project Services' },
+        { cls: 'scw-row--assumptions', label: 'Project Assumptions' }
+      ];
+
+      // Track the last inserted row to place the bottom divider after
+      var lastInsertedRow = null;
+      var anySyntheticBuilt = false;
+
+      buckets.forEach(function (bucket) {
+        // Find worksheet rows that belong to this bucket AND have no MDF/IDF.
+        var candidates = tbody.querySelectorAll(
+          'tr.' + WORKSHEET_ROW + '.' + bucket.cls + '[data-scw-no-move="1"]'
+        );
+        if (!candidates.length) return;
+
+        anySyntheticBuilt = true;
+
+        // Build a synthetic kn-table-group row styled with pale blue accent
+        var groupTr = document.createElement('tr');
+        groupTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group';
+        groupTr.style.cssText = '--scw-grp-accent: ' + SYNTH_ACCENT +
+          '; --scw-grp-accent-rgb: ' + SYNTH_ACCENT_RGB + ';';
+        var groupTd = document.createElement('td');
+        groupTd.setAttribute('colspan', String(colSpan));
+        groupTd.textContent = bucket.label;
+        groupTr.appendChild(groupTd);
+
+        // Collect rows to move (snapshot to avoid live-NodeList issues)
+        var rowsToMove = [];
+        for (var k = 0; k < candidates.length; k++) {
+          var wsRow = candidates[k];
+          var origRow = wsRow.previousElementSibling;
+          var photoRows = [];
+          var nxt = wsRow.nextElementSibling;
+          while (nxt && nxt.classList.contains('scw-inline-photo-row')) {
+            photoRows.push(nxt);
+            nxt = nxt.nextElementSibling;
+          }
+          rowsToMove.push({
+            orig: (origRow && origRow.getAttribute(PROCESSED_ATTR) === '1') ? origRow : null,
+            ws: wsRow,
+            photos: photoRows
+          });
+        }
+
+        // Insert the group header at the very top of tbody
+        var firstChild = tbody.firstChild;
+        tbody.insertBefore(groupTr, firstChild);
+
+        // Insert each row set right after the group header (in order)
+        var insertRef = groupTr;
+        for (var m = 0; m < rowsToMove.length; m++) {
+          var set = rowsToMove[m];
+          if (set.orig) {
+            insertRef.parentNode.insertBefore(set.orig, insertRef.nextSibling);
+            insertRef = set.orig;
+          }
+          insertRef.parentNode.insertBefore(set.ws, insertRef.nextSibling);
+          insertRef = set.ws;
+          for (var p = 0; p < set.photos.length; p++) {
+            insertRef.parentNode.insertBefore(set.photos[p], insertRef.nextSibling);
+            insertRef = set.photos[p];
+          }
+        }
+        lastInsertedRow = insertRef;
+      });
+
+      // Insert gray divider bars around the synthetic section
+      if (anySyntheticBuilt) {
+        // Bottom divider: after the last synthetic group's rows
+        if (lastInsertedRow && lastInsertedRow.nextSibling) {
+          tbody.insertBefore(makeDivider(), lastInsertedRow.nextSibling);
+        } else if (lastInsertedRow) {
+          tbody.appendChild(makeDivider());
+        }
+      }
+    }
+
+    // ── RESTORE EXPANDED STATE ──
+    // Re-expand detail panels that were open before the inline-edit
+    // re-render.  Must run AFTER all worksheet rows + photo rows are
+    // built so toggleDetail can find and show the photo row too.
+    restoreExpandedState(viewCfg.viewId);
+
+    // ── RE-APPLY GROUP COLLAPSE STATE ──
+    // transformView creates new DOM rows that are visible by default.
+    // Group-collapse may have already run and set .scw-collapsed on
+    // headers before these rows existed.  Explicitly re-enhance so
+    // collapsed groups properly hide their new content rows.
+    if (window.SCW && window.SCW.groupCollapse && window.SCW.groupCollapse.enhance) {
+      window.SCW.groupCollapse.enhance();
+    }
+
+    // ── RESTORE CACHED HEADER LABELS ──
+    // If a trigger-field save caused this re-render, the rebuilt DOM
+    // may have stale formula data.  Re-apply labels from our cache
+    // (populated from the PUT response) now that the DOM is stable.
+    restoreCachedLabels(viewCfg.viewId);
   }
 
   // ============================================================
@@ -1121,7 +2286,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
         .on('knack-cell-update.' + viewId + EVENT_NS, function () {
-          // On cell update, Knack re-renders — transformView re-runs
+          // Capture expanded panel state BEFORE Knack re-renders.
+          // transformView will restore it after rebuilding.
+          captureExpandedState(viewId);
         });
 
       if ($('#' + viewId).length) {
@@ -1130,11 +2297,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     });
   }
 
+  // Capture ALL worksheet view states on ANY cell-update, because
+  // refresh-on-inline-edit.js may trigger model.fetch() on sibling
+  // views — causing them to re-render even though the edit wasn't
+  // on their view.  The per-view handler above handles the edited
+  // view; this generic handler covers the cross-refresh case.
+  $(document)
+    .off('knack-cell-update' + EVENT_NS + 'All')
+    .on('knack-cell-update' + EVENT_NS + 'All', function () {
+      captureAllExpandedStates();
+    });
+
   if (document.readyState === 'loading') {
     $(document).ready(init);
   } else {
     init();
   }
+
+  // ── Expose API for coordination with post-edit restore ──
+  window.SCW = window.SCW || {};
+  window.SCW.deviceWorksheet = {
+    /** Capture expanded panel state for all worksheet views. */
+    captureState: captureAllExpandedStates,
+    /** Force re-transform a view (idempotent). */
+    refresh: function (viewId) {
+      WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+        if (!viewId || viewCfg.viewId === viewId) {
+          transformView(viewCfg);
+        }
+      });
+    }
+  };
 })();
 // ============================================================
 // End Device Worksheet

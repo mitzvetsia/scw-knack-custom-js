@@ -5,18 +5,27 @@
   // ======================
   // CONFIG
   // ======================
-  // Per-scene config. openIfFewerThan = record threshold below which groups
-  // default to OPEN instead of collapsed. Set to 0 to always collapse.
-  const SCENE_CONFIG = {
+  // Per-scene overrides.  openIfFewerThan = record threshold below which
+  // groups default to OPEN instead of collapsed.  Scenes not listed here
+  // use DEFAULT_THRESHOLD.
+  const SCENE_OVERRIDES = {
     scene_1085: { openIfFewerThan: 30 },
     scene_1116: { openIfFewerThan: 30 },
     scene_1140: { openIfFewerThan: 30 },
   };
-  const SCENE_IDS = Object.keys(SCENE_CONFIG);
+  const DEFAULT_THRESHOLD = 30;
   const EVENT_NS = '.scwGroupCollapse';
 
   const COLLAPSED_BY_DEFAULT = true;
   const PERSIST_STATE = true;
+
+  // ── Suppression flag ──
+  // When true, automatic enhancement from MutationObserver and
+  // knack-view-render is suppressed. The post-edit coordinator in
+  // preserve-scroll-on-refresh.js sets this during the coordinated
+  // restoration window to prevent premature enhancement on
+  // intermediate DOM states and layout-shifting flicker.
+  let _suppressAutoEnhance = false;
 
   // Record count badge: off by default, list view IDs to enable
   const RECORD_COUNT_VIEWS = ['view_3359'];
@@ -81,10 +90,8 @@
     const id = 'scw-group-collapse-css';
     if (document.getElementById(id)) return;
 
-    // Helper: expand a descendant selector for every configured scene so that
-    // comma-separated CSS selectors scope correctly to each scene root.
-    const s = (sel) =>
-      SCENE_IDS.map((id) => `#kn-${id} ${sel}`).join(',\n      ');
+    // Helper: simple descendant selector (no longer scene-scoped — works everywhere)
+    const s = (sel) => sel;
 
     const css = `
       /* Vertical-align all table cells in group-collapse scenes */
@@ -471,7 +478,7 @@
   }
 
   function isEnabledScene(sceneId) {
-    return !!sceneId && SCENE_IDS.includes(sceneId);
+    return !!sceneId;
   }
 
   // ======================
@@ -489,8 +496,8 @@
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
-    const cfg = SCENE_CONFIG[sceneId] || {};
-    const threshold = cfg.openIfFewerThan || 0;
+    const cfg = SCENE_OVERRIDES[sceneId] || {};
+    const threshold = cfg.openIfFewerThan || DEFAULT_THRESHOLD;
     const viewRecordCounts = {};
 
     $sceneRoot.find(GROUP_ROW_SEL).each(function () {
@@ -592,14 +599,24 @@
   function startObserverForScene(sceneId) {
     if (!isEnabledScene(sceneId) || observerByScene[sceneId]) return;
 
-    let raf = 0;
+    let debounceTimer = 0;
     const obs = new MutationObserver(() => {
+      // Skip during coordinated post-edit restoration (coordinator
+      // calls enhance() explicitly at the right time).
+      if (_suppressAutoEnhance) return;
+
       const current = getCurrentSceneId();
       if (!isEnabledScene(current)) return;
       if (current !== sceneId) return;
 
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => enhanceAllGroupedGrids(sceneId));
+      // Use 100ms debounce (not RAF ~16ms) so Knack's multi-step
+      // async DOM updates settle before we try to enhance.  RAF was
+      // too eager and could fire between batched row insertions.
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = 0;
+        enhanceAllGroupedGrids(sceneId);
+      }, 100);
     });
 
     obs.observe(document.body, { childList: true, subtree: true });
@@ -612,14 +629,16 @@
   injectCssOnce();
   bindClicksOnce();
 
-  SCENE_IDS.forEach((sceneId) => {
-    $(document)
-      .off(`knack-scene-render.${sceneId}${EVENT_NS}`)
-      .on(`knack-scene-render.${sceneId}${EVENT_NS}`, function () {
+  // Bind to ALL scene renders so every scene gets accordions
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      var sceneId = getCurrentSceneId();
+      if (isEnabledScene(sceneId)) {
         enhanceAllGroupedGrids(sceneId);
         startObserverForScene(sceneId);
-      });
-  });
+      }
+    });
 
   // Re-enhance after ANY view re-render (e.g. after inline-edit refresh).
   // The MutationObserver alone is unreliable because Knack's async
@@ -629,6 +648,8 @@
   $(document)
     .off('knack-view-render' + EVENT_NS)
     .on('knack-view-render' + EVENT_NS, function () {
+      // Skip during coordinated post-edit restoration
+      if (_suppressAutoEnhance) return;
       var sceneId = getCurrentSceneId();
       if (!isEnabledScene(sceneId)) return;
       if (viewRenderTimer) clearTimeout(viewRenderTimer);
@@ -643,5 +664,22 @@
     enhanceAllGroupedGrids(initialScene);
     startObserverForScene(initialScene);
   }
+
+  // ── Expose API for coordination with post-edit restore ──
+  window.SCW = window.SCW || {};
+  window.SCW.groupCollapse = {
+    /** Run enhancement pass for current scene (idempotent — safe to call
+     *  multiple times; existing chevrons/state are preserved). */
+    enhance: function () {
+      var sceneId = getCurrentSceneId();
+      if (isEnabledScene(sceneId)) {
+        enhanceAllGroupedGrids(sceneId);
+      }
+    },
+    /** Suppress/resume automatic enhancement from MutationObserver and
+     *  knack-view-render timer.  Used by the post-edit coordinator to
+     *  prevent premature enhancement on intermediate DOM states. */
+    suppress: function (val) { _suppressAutoEnhance = !!val; }
+  };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
