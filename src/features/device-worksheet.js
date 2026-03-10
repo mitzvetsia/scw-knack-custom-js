@@ -1767,64 +1767,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   /**
-   * Fetch the record via the OBJECT-level API (which returns formula
-   * fields like Install Fee) and patch the fee cell + danger styling.
-   * The view-level PUT response often strips formula fields, so this
-   * lightweight GET is the reliable way to refresh the fee after a
-   * fee-trigger save.  A short delay lets the server finish
-   * recalculating the equation before we read it back.
+   * After a fee-trigger save, refresh the view so the recalculated
+   * Install Fee is visible.  Uses Knack's own model.fetch() which
+   * re-fetches view data and fires knack-view-render → transformView
+   * rebuilds the worksheet with the fresh fee value from the server.
+   * Expanded-panel state is captured before the fetch so it survives.
    */
-  function fetchAndApplyFee(viewId, recordId) {
-    var cfg = viewCfgFor(viewId);
-    if (!cfg || !cfg.fields.installFee) return;
-
+  function refreshViewForFee(viewId) {
     if (typeof Knack === 'undefined') return;
-
     var view = Knack.views[viewId];
-    var objectKey = null;
-    try {
-      objectKey = view.model.view.source.object;
-    } catch (ignored) { /* */ }
-    if (!objectKey) {
-      console.warn('[scw-ws-fee] Cannot determine object key for ' + viewId);
+    if (!view || !view.model || typeof view.model.fetch !== 'function') {
+      console.warn('[scw-ws-fee] Cannot fetch model for ' + viewId);
       return;
     }
 
-    var feeField = cfg.fields.installFee;
+    // Capture expanded panels so transformView can restore them
+    captureExpandedState(viewId);
+    console.log('[scw-ws-fee] Refreshing ' + viewId + ' via model.fetch()');
 
-    // Small delay so the server finishes recalculating the equation
+    // Small delay to let the server finish recalculating the equation
     setTimeout(function () {
-      console.log('[scw-ws-fee] Fetching fee via object API (' + objectKey + ') for ' + recordId);
-
-      $.ajax({
-        url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
-        type: 'GET',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
-        success: function (resp) {
-          if (!resp) return;
-
-          // Object API may return formatted string or _raw object
-          var newFee = resp[feeField] || '';
-          var raw = resp[feeField + '_raw'];
-          if (!newFee && raw) {
-            // _raw for currency/number is often { number: "55.00" } or just a number
-            newFee = typeof raw === 'object' ? ('$' + (raw.number || raw.value || '0')) : String(raw);
-          }
-
-          console.log('[scw-ws-fee] Object API fee for ' + recordId + ': "' + newFee + '"',
-            '(raw:', JSON.stringify(raw), ')');
-
-          patchFeeFromResponse(viewId, recordId, resp);
-        },
-        error: function (xhr) {
-          console.warn('[scw-ws-fee] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
-        }
-      });
-    }, 750);
+      view.model.fetch();
+    }, 500);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -1972,7 +1936,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) fetchAndApplyFee(viewId, recordId);
+        if (feeTrig) refreshViewForFee(viewId);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -2126,7 +2090,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig) fetchAndApplyFee(viewId, recordId);
+          if (feeTrig) refreshViewForFee(viewId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
