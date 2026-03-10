@@ -548,7 +548,7 @@ td.${P}-sum-field--desc {
 td.${P}-sum-move {
   display: inline-flex !important;
   align-items: center;
-  align-self: center;
+  align-self: flex-start;
   padding: 0 4px;
   border: none !important;
   background: transparent !important;
@@ -606,13 +606,13 @@ td.${P}-sum-move {
   box-sizing: border-box;
 }
 .${P}-cabling-chit.is-yes {
-  background-color: #bbf7d0;
-  color: #14532d;
-  border-color: #4ade80;
+  background-color: #1a6b3c;
+  color: #ffffff;
+  border-color: #145230;
 }
 .${P}-cabling-chit.is-yes:hover {
-  background-color: #86efac;
-  box-shadow: 0 1px 3px rgba(22,101,52,0.15);
+  background-color: #145230;
+  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
 }
 .${P}-cabling-chit.is-no {
   background-color: #f9fafb;
@@ -2216,6 +2216,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         cablingTd.setAttribute('data-scw-cabling-src', '1');
         var cablingWrap = document.createElement('span');
         cablingWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
+        // Empty label placeholder so chit aligns with variables chips
+        var cablingLabel = document.createElement('span');
+        cablingLabel.className = P + '-sum-label';
+        cablingLabel.innerHTML = '&nbsp;';
+        cablingWrap.appendChild(cablingLabel);
         cablingWrap.appendChild(cablingTd);
         bar.appendChild(cablingWrap);
       }
