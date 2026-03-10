@@ -1635,30 +1635,49 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // the inputs and the td's crosshair cursor shows through.
   var BULK_COPY_CLASS = P + '-bulk-copy';
   function syncBulkCopyMode() {
-    var anyChecked = !!document.querySelector('.bulkEditHeaderCbox:checked');
+    // Detect bulk-edit by checking for selected rows (KTL adds
+    // bulkEditSelectedRow class) or checked row/header checkboxes.
+    var anySelected = !!document.querySelector('.bulkEditSelectedRow') ||
+                      !!document.querySelector('.bulkEditCb:checked') ||
+                      !!document.querySelector('.bulkEditHeaderCbox:checked');
     var editTds = document.querySelectorAll('td.' + P + '-sum-direct-edit');
     for (var i = 0; i < editTds.length; i++) {
-      if (anyChecked) {
+      if (anySelected) {
         editTds[i].classList.add(BULK_COPY_CLASS);
       } else {
         editTds[i].classList.remove(BULK_COPY_CLASS);
       }
     }
   }
-  // Listen for checkbox changes (KTL header checkboxes)
+  // Listen for checkbox changes
   document.addEventListener('change', function (e) {
     if (e.target.classList.contains('bulkEditHeaderCbox') ||
-        e.target.classList.contains('bulkEditCb')) {
-      syncBulkCopyMode();
+        e.target.classList.contains('bulkEditCb') ||
+        e.target.type === 'checkbox') {
+      setTimeout(syncBulkCopyMode, 0);
     }
   }, true);
-  // Also re-check after KTL may have toggled checkboxes programmatically
+  // Re-check after KTL may have toggled checkboxes programmatically
   document.addEventListener('click', function (e) {
     if (e.target.classList.contains('bulkEditHeaderCbox') ||
-        e.target.classList.contains('masterSelector')) {
+        e.target.classList.contains('bulkEditCb') ||
+        e.target.classList.contains('masterSelector') ||
+        (e.target.closest && e.target.closest('.bulkEditHeaderCbox, .bulkEditCb'))) {
       setTimeout(syncBulkCopyMode, 50);
     }
   }, true);
+  // Observe DOM for bulkEditSelectedRow class changes (KTL adds this
+  // programmatically and may not fire change/click events)
+  var _bulkSyncTimer;
+  var bulkEditObserver = new MutationObserver(function () {
+    clearTimeout(_bulkSyncTimer);
+    _bulkSyncTimer = setTimeout(syncBulkCopyMode, 30);
+  });
+  bulkEditObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class'],
+    subtree: true
+  });
 
   // ============================================================
   // SUMMARY BAR DIRECT-EDIT  (in-place input inside existing td)
