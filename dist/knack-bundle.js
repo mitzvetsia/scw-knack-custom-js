@@ -12445,9 +12445,12 @@ $(".kn-navigation-bar").hide();
           installFee:       'field_2028',   // Install Fee (read-only)
           move:             'field_1946',   // Change MDF/IDF (move icon)
 
+          existingCabling:  'field_2461',   // Existing Cabling
+
           // ── Detail panel ──
-          dropPrefix:       'field_2241',   // Drop Prefix
+          dropPrefix:       'field_2240',   // Drop Prefix (connection — show label)
           dropNumber:       'field_1951',   // # (Label Number)
+          dropLength:       'field_1965',   // Drop Length
           mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
           connectedDevice:  'field_2197',   // Connected Device
           scwNotes:         'field_1953'    // SCW Notes
@@ -14338,6 +14341,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       appendSumGroup(bar, 'MCB', findCell(tr, f.mountCableBoth),
         { cls: P + '-sum-group--mcb' });
     }
+    if (f.existingCabling) {
+      appendSumGroup(bar, 'Cabling', findCell(tr, f.existingCabling),
+        { cls: P + '-sum-group--cabling' });
+    }
 
     // ── Labor Desc (inline, fills middle space — direct-edit) ──
     var laborDescTd = findCell(tr, f.laborDescription);
@@ -14851,6 +14858,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (f.connectedDevice) {
       addRow(rightSection, buildFieldRow('Connected\nDevice',
         findCell(tr, f.connectedDevice)));
+    }
+
+    if (f.dropLength) {
+      addRow(rightSection, buildFieldRow('Drop Length',
+        findCell(tr, f.dropLength)));
     }
 
     if (f.scwNotes) {
