@@ -1755,6 +1755,48 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     });
   }
 
+  /**
+   * Fetch the record via the OBJECT-level API (which returns formula
+   * fields like Install Fee) and patch the fee cell + danger styling.
+   * The view-level PUT response often strips formula fields, so this
+   * lightweight GET is the reliable way to refresh the fee after a
+   * fee-trigger save.
+   */
+  function fetchAndApplyFee(viewId, recordId) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.installFee) return;
+
+    if (typeof Knack === 'undefined') return;
+
+    var view = Knack.views[viewId];
+    var objectKey = null;
+    try {
+      objectKey = view.model.view.source.object;
+    } catch (ignored) { /* */ }
+    if (!objectKey) {
+      console.warn('[scw-ws-fee] Cannot determine object key for ' + viewId);
+      return;
+    }
+
+    console.log('[scw-ws-fee] Fetching fee via object API (' + objectKey + ') for ' + recordId);
+
+    $.ajax({
+      url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      success: function (resp) {
+        if (resp) patchFeeFromResponse(viewId, recordId, resp);
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-fee] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
+      }
+    });
+  }
+
   /** Extract the label text from a Knack API response object. */
   function extractLabelFromResponse(viewId, resp) {
     var cfg = viewCfgFor(viewId);
@@ -1900,7 +1942,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig && resp) patchFeeFromResponse(viewId, recordId, resp);
+        if (feeTrig) fetchAndApplyFee(viewId, recordId);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -2054,7 +2096,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig && resp) patchFeeFromResponse(viewId, recordId, resp);
+          if (feeTrig) fetchAndApplyFee(viewId, recordId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
