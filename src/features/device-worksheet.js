@@ -677,7 +677,8 @@ td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-radio-chip {
   align-self: center;
 }
 .${P}-sum-chips .${P}-radio-chip {
-  min-width: 56px;
+  flex: 1 1 calc(50% - 2px);
+  min-width: 0;
   text-align: center;
   box-sizing: border-box;
 }
@@ -1144,11 +1145,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 #view_3313 td.${P}-sum-check {
   align-self: flex-start;
-  padding-top: 14px !important;
+  padding-top: 11px !important;
 }
 #view_3313 .${P}-sum-delete {
   align-self: flex-start;
-  padding-top: 14px;
+  padding-top: 11px;
 }
 
 /* view_3313: warning group (SOW empty) — amber background */
