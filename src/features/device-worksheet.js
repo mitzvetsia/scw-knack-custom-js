@@ -1168,6 +1168,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   border: 1px solid #ef4444 !important;
   border-radius: 4px;
 }
+/* Ensure warning/danger wins over #view_3313 blue editable-field background */
+#view_3313 .${P}-sum-group--warning td.${P}-sum-field.cell-edit,
+#view_3313 .${P}-sum-group--warning td.${P}-sum-field.ktlInlineEditableCellsStyle {
+  background: rgb(255, 243, 205) !important;
+  border-color: #f59e0b !important;
+}
+#view_3313 .${P}-sum-group--danger td.${P}-sum-field.cell-edit,
+#view_3313 .${P}-sum-group--danger td.${P}-sum-field.ktlInlineEditableCellsStyle {
+  background: rgb(248, 215, 218) !important;
+  border-color: #ef4444 !important;
+}
 
 /* Fee label — align with value text (match td padding-left) */
 .${P}-sum-group--fee > .${P}-sum-label {
@@ -1196,7 +1207,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 70px;
 }
 .${P}-sum-group--sow {
-  min-width: 90px;
+  min-width: 110px;
   flex-shrink: 0;
 }
 /* SOW field grows in height to show multiple connection values */
@@ -1664,7 +1675,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   // Number fields that need client-side validation
   var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458',
-                       'field_2150', 'field_1973', 'field_1974'];
+                       'field_2150', 'field_1973', 'field_1974', 'field_1951', 'field_1965'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -2873,8 +2884,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     if (f.dropNumber) {
-      addRow(leftSection, buildFieldRow('Label #',
-        findCell(tr, f.dropNumber)));
+      addRow(leftSection, buildEditableFieldRow('Label #',
+        findCell(tr, f.dropNumber), f.dropNumber));
     }
 
     if (f.mountingHardware) {
@@ -2893,8 +2904,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     if (f.dropLength) {
-      addRow(rightSection, buildFieldRow('Drop Length',
-        findCell(tr, f.dropLength)));
+      addRow(rightSection, buildEditableFieldRow('Drop Length',
+        findCell(tr, f.dropLength), f.dropLength));
     }
 
     if (f.scwNotes) {
