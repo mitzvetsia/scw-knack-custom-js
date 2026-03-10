@@ -12873,6 +12873,56 @@ td.${P}-sum-move {
   color: #ef4444;
 }
 
+/* ── Cabling toggle chit (boolean, inline in summary bar) ── */
+.${P}-cabling-chit {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  text-align: center;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  align-self: center;
+  flex-shrink: 0;
+}
+.${P}-cabling-chit.is-yes {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+.${P}-cabling-chit.is-yes:hover {
+  background-color: #bfdbfe;
+  box-shadow: 0 1px 3px rgba(30,64,175,0.15);
+}
+.${P}-cabling-chit.is-no {
+  background-color: #f9fafb;
+  color: #9ca3af;
+  border-color: #d1d5db;
+}
+.${P}-cabling-chit.is-no:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.${P}-cabling-chit.is-saving {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Summary-bar radio chips (Labor Variables) ── */
+.${P}-sum-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  align-self: center;
+}
+
 /* ── Synthetic group divider bars ── */
 tr.scw-synth-divider > td {
   height: 6px;
@@ -13258,8 +13308,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background: #fef3c7;
 }
 
-/* view_3313: Product styled as an editable field (card look) instead of
-   bold identity text, so it visually matches other clickable fields */
+/* view_3313: Product styled as an editable field — same treatment as
+   td.sum-field so it blends with the summary bar background */
 #view_3313 td.${P}-sum-product,
 #view_3313 td.${P}-sum-product:hover {
   font-size: 13px;
@@ -13267,7 +13317,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   color: #374151;
   border: 1px solid #e5e7eb !important;
   border-radius: 4px;
-  background: #fff !important;
+  background: transparent !important;
   padding: 2px 8px;
   height: 30px;
   box-sizing: border-box;
@@ -13515,6 +13565,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   var MOUNTING_HEIGHT_OPTIONS = ["Under 16'", "16' - 24'", "Over 24'"];
   var MDF_IDF_OPTIONS = ['HEADEND', 'IDF'];
+  var LABOR_VARIABLE_OPTIONS = ['Exterior', 'High Traffic', 'Plenum'];
 
   /** Read current value from a cell's text content. */
   function readCellText(td) {
@@ -14183,6 +14234,45 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     e.preventDefault();
   }, true);
 
+  // ── Capture-phase click handler for cabling toggle chit ──
+  var CABLING_CHIT_SEL = '.' + P + '-cabling-chit';
+  document.addEventListener('click', function (e) {
+    var chit = e.target.closest(CABLING_CHIT_SEL);
+    if (!chit) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    var fieldKey = chit.getAttribute('data-field') || '';
+    var isYes = chit.classList.contains('is-yes');
+    var newBool = isYes ? 'No' : 'Yes';
+
+    // Toggle visual state
+    chit.classList.remove('is-yes', 'is-no');
+    chit.classList.add(newBool === 'Yes' ? 'is-yes' : 'is-no', 'is-saving');
+    setTimeout(function () { chit.classList.remove('is-saving'); }, 400);
+
+    // Update hidden td
+    var srcTd = chit.parentNode.querySelector('td[data-scw-cabling-src]');
+    if (srcTd) srcTd.textContent = newBool;
+
+    // Save
+    var wsTr = chit.closest('tr.' + WORKSHEET_ROW);
+    if (!wsTr) return;
+    var recordId = getRecordId(wsTr);
+    var viewEl = chit.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (recordId && viewId) {
+      saveRadioValue(viewId, recordId, fieldKey, newBool);
+    }
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    if (e.target.closest(CABLING_CHIT_SEL)) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+
   // ============================================================
   // SUMMARY BAR DIRECT-EDIT  (in-place input inside existing td)
   // ============================================================
@@ -14332,18 +14422,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
 
-    // ── Optional pre-fill groups (SOW, Mount Cable Both) ──
-    if (f.sow) {
+    // ── Optional pre-fill groups (SOW shown here for non-3313 views, MCB) ──
+    if (f.sow && !f.subBid) {
+      // For views without subBid, SOW stays in its original position
       appendSumGroup(bar, 'SOW', findCell(tr, f.sow),
         { cls: P + '-sum-group--sow' });
     }
     if (f.mountCableBoth) {
       appendSumGroup(bar, 'MCB', findCell(tr, f.mountCableBoth),
         { cls: P + '-sum-group--mcb' });
-    }
-    if (f.existingCabling) {
-      appendSumGroup(bar, 'Cabling', findCell(tr, f.existingCabling),
-        { cls: P + '-sum-group--cabling' });
     }
 
     // ── Labor Desc (inline, fills middle space — direct-edit) ──
@@ -14360,6 +14447,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       injectSummaryDirectEdit(laborDescTd, f.laborDescription, { multiline: true });
       ldGroup.appendChild(laborDescTd);
       bar.appendChild(ldGroup);
+    }
+
+    // ── Existing Cabling toggle chit (after Labor Desc) ──
+    if (f.existingCabling) {
+      var cablingTd = findCell(tr, f.existingCabling);
+      if (cablingTd) {
+        var cablingVal = (cablingTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+        var isYes = (cablingVal === 'yes' || cablingVal === 'true');
+        var cablingChit = document.createElement('span');
+        cablingChit.className = P + '-cabling-chit ' + (isYes ? 'is-yes' : 'is-no');
+        cablingChit.setAttribute('data-field', f.existingCabling);
+        cablingChit.innerHTML = isYes ? 'Existing<br>Cabling' : 'Existing<br>Cabling';
+        // Keep hidden td for data binding
+        cablingTd.style.display = 'none';
+        cablingTd.setAttribute('data-scw-cabling-src', '1');
+        var cablingWrap = document.createElement('span');
+        cablingWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
+        cablingWrap.appendChild(cablingChit);
+        cablingWrap.appendChild(cablingTd);
+        bar.appendChild(cablingWrap);
+      }
     }
 
     // ── Right-aligned group: bid, labor, qty, ext, move ──
@@ -14434,9 +14542,31 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       appendSumGroup(rightGroup, 'Cat', findCell(tr, f.laborCategory),
         { cls: P + '-sum-group--cat' });
     }
+
+    // Labor Variables — selectable radio chips
     if (f.laborVariables) {
-      appendSumGroup(rightGroup, 'Vars', findCell(tr, f.laborVariables),
-        { cls: P + '-sum-group--vars' });
+      var varsTd = findCell(tr, f.laborVariables);
+      if (varsTd) {
+        var varsGroup = document.createElement('span');
+        varsGroup.className = P + '-sum-group ' + P + '-sum-group--vars';
+        var varsLabel = document.createElement('span');
+        varsLabel.className = P + '-sum-label';
+        varsLabel.textContent = 'Vars';
+        varsGroup.appendChild(varsLabel);
+        var varsChips = buildRadioChips(varsTd, f.laborVariables, LABOR_VARIABLE_OPTIONS);
+        varsChips.classList.add(P + '-sum-chips');
+        varsGroup.appendChild(varsChips);
+        varsTd.style.display = 'none';
+        varsTd.setAttribute(RADIO_CHIPS_ATTR, '1');
+        varsGroup.appendChild(varsTd);
+        rightGroup.appendChild(varsGroup);
+      }
+    }
+
+    // SOW — moved to right group (before Sub Bid) for view_3313
+    if (f.sow && f.subBid) {
+      appendSumGroup(rightGroup, 'SOW', findCell(tr, f.sow),
+        { cls: P + '-sum-group--sow' });
     }
     if (f.subBid) {
       appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
