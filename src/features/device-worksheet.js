@@ -551,6 +551,28 @@ td.${P}-sum-move {
   flex-shrink: 0;
 }
 
+/* ── Delete button (extracted from Knack row) ── */
+.${P}-sum-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: none !important;
+  background: transparent !important;
+}
+.${P}-sum-delete a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 14px;
+  transition: color 150ms ease;
+}
+.${P}-sum-delete a:hover {
+  color: #ef4444;
+}
+
 /* ── Synthetic group divider bars ── */
 tr.scw-synth-divider > td {
   height: 6px;
@@ -2145,6 +2167,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
       moveTd.classList.add(P + '-sum-move');
       rightGroup.appendChild(moveTd);
+    }
+
+    // ── Delete link (if Knack provides one in this grid) ──
+    var deleteLink = tr.querySelector('a.kn-link-delete');
+    if (deleteLink) {
+      var deleteTd = deleteLink.closest('td');
+      var deleteWrap = document.createElement('span');
+      deleteWrap.className = P + '-sum-delete';
+      deleteWrap.appendChild(deleteLink);
+      rightGroup.appendChild(deleteWrap);
+      // Remove the now-empty source cell so it doesn't leave a gap
+      if (deleteTd && !deleteTd.children.length) {
+        deleteTd.style.display = 'none';
+      }
     }
 
     bar.appendChild(rightGroup);
