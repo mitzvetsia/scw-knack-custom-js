@@ -576,31 +576,36 @@ td.${P}-sum-move {
   color: #ef4444;
 }
 
+/* ── Cabling group alignment (match variables column) ── */
+.${P}-sum-group--cabling {
+  align-self: flex-start;
+  padding-top: 10px;
+}
+
 /* ── Cabling toggle chit (boolean, inline in summary bar) ── */
 .${P}-cabling-chit {
   display: inline-block;
-  padding: 2px 10px;
+  padding: 1px 8px;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
-  align-self: center;
   flex-shrink: 0;
 }
 .${P}-cabling-chit.is-yes {
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-color: #93c5fd;
+  background-color: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
 }
 .${P}-cabling-chit.is-yes:hover {
-  background-color: #bfdbfe;
-  box-shadow: 0 1px 3px rgba(30,64,175,0.15);
+  background-color: #bbf7d0;
+  box-shadow: 0 1px 3px rgba(22,101,52,0.15);
 }
 .${P}-cabling-chit.is-no {
   background-color: #f9fafb;
@@ -809,13 +814,13 @@ td.${P}-field-value--notes {
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-color: #93c5fd;
+  background-color: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #bfdbfe;
-  box-shadow: 0 1px 3px rgba(30,64,175,0.15);
+  background-color: #bbf7d0;
+  box-shadow: 0 1px 3px rgba(22,101,52,0.15);
 }
 .${P}-radio-chip.is-unselected {
   background-color: #f9fafb;
