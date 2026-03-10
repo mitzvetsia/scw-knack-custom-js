@@ -13218,9 +13218,53 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
 /* ── KTL bulk-edit selected-row yellow highlight ──
    KTL adds .bulkEditSelectedRow to the outer td[colspan] AND each
    inner td.  The outer td already gets KTL's yellow background —
-   just make the card transparent so it shows through. */
+   make the card AND all opaque inner containers transparent so the
+   yellow shows through the entire row. */
 td.bulkEditSelectedRow > .${P}-card {
   background: transparent;
+}
+td.bulkEditSelectedRow .${P}-summary,
+td.bulkEditSelectedRow .${P}-summary:hover {
+  background: transparent;
+}
+td.bulkEditSelectedRow td.${P}-field-value {
+  background: transparent;
+}
+td.bulkEditSelectedRow td.${P}-field-value.cell-edit,
+td.bulkEditSelectedRow td.${P}-field-value.ktlInlineEditableCellsStyle {
+  background: transparent;
+}
+td.bulkEditSelectedRow .${P}-direct-input,
+td.bulkEditSelectedRow .${P}-direct-textarea {
+  background-color: transparent;
+}
+td.bulkEditSelectedRow .${P}-comp-row > .${P}-comp-val:last-child,
+td.bulkEditSelectedRow .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val,
+td.bulkEditSelectedRow .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val:last-child {
+  background: transparent;
+}
+/* Summary-bar fields (white bg) and hover states */
+td.bulkEditSelectedRow td.${P}-sum-field {
+  background: transparent !important;
+}
+td.bulkEditSelectedRow td.${P}-sum-field.cell-edit:hover,
+td.bulkEditSelectedRow td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
+  background-color: transparent !important;
+}
+/* view_3313 product and editable fields (blue tint with !important) */
+td.bulkEditSelectedRow td.${P}-sum-product {
+  background: transparent !important;
+}
+td.bulkEditSelectedRow td.${P}-sum-product.cell-edit:hover,
+td.bulkEditSelectedRow td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+  background-color: transparent !important;
+}
+/* Warning/danger group backgrounds yield to yellow highlight */
+td.bulkEditSelectedRow .${P}-sum-group--warning td.${P}-sum-field,
+td.bulkEditSelectedRow .${P}-sum-group--warning td.${P}-sum-field-ro,
+td.bulkEditSelectedRow .${P}-sum-group--danger td.${P}-sum-field,
+td.bulkEditSelectedRow .${P}-sum-group--danger td.${P}-sum-field-ro {
+  background: transparent !important;
 }
 
 /* ── Photo row hidden when detail collapsed ── */
