@@ -157,7 +157,10 @@
           mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
           connectedDevice:  'field_2197',   // Connected Device
           scwNotes:         'field_1953'    // SCW Notes
-        }
+        },
+        // Fields whose edits change the calculated Install Fee — save via
+        // AJAX PUT so the response carries the refreshed formula value.
+        feeTriggerFields: ['field_2461', 'field_1972', 'field_2150', 'field_1973', 'field_1974', 'field_1965']
       }
     ]
   };
@@ -1711,6 +1714,47 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return cfg.headerTriggerFields.indexOf(fieldKey) !== -1;
   }
 
+  /** Returns true if fieldKey affects the calculated Install Fee. */
+  function isFeeTrigger(viewId, fieldKey) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.feeTriggerFields) return false;
+    return cfg.feeTriggerFields.indexOf(fieldKey) !== -1;
+  }
+
+  /** After a fee-trigger save, patch the Fee cell from the API response
+   *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
+  function patchFeeFromResponse(viewId, recordId, resp) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.installFee) return;
+    var feeField = cfg.fields.installFee;
+    var newFee = resp[feeField] || '';
+
+    // Locate the worksheet row for this record
+    var wsTr = document.getElementById(recordId);
+    if (!wsTr) return;
+    var feeTd = wsTr.querySelector('td.' + feeField);
+    if (!feeTd) return;
+
+    // Update the fee cell text
+    var span = feeTd.querySelector('span');
+    if (span) { span.textContent = '\n' + newFee + '\n  '; }
+    else { feeTd.textContent = newFee; }
+
+    // Re-evaluate danger: is new fee zero/empty?
+    var stripped = newFee.replace(/[\u00a0\s$,]/g, '').trim();
+    var feeIsZeroOrEmpty = stripped === '' || stripped === '-' || /^0+(\.0+)?$/.test(stripped);
+
+    // Toggle danger class on the editable sum-groups
+    var DANGER = P + '-sum-group--danger';
+    ['sub-bid', 'narrow'].forEach(function (suffix) {
+      var groups = wsTr.querySelectorAll('.' + P + '-sum-group--' + suffix);
+      for (var i = 0; i < groups.length; i++) {
+        if (feeIsZeroOrEmpty) groups[i].classList.add(DANGER);
+        else                  groups[i].classList.remove(DANGER);
+      }
+    });
+  }
+
   /** Extract the label text from a Knack API response object. */
   function extractLabelFromResponse(viewId, resp) {
     var cfg = viewCfgFor(viewId);
@@ -1831,9 +1875,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
+    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
     // Non-trigger fields: prefer model.updateRecord (no re-render)
-    if (!trigger) {
+    if (!trigger && !feeTrig) {
       var view = Knack.views[viewId];
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
@@ -1842,7 +1887,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Trigger fields (or fallback): direct AJAX PUT
+    // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
     $.ajax({
       url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
            '/views/' + viewId + '/records/' + recordId,
@@ -1855,6 +1900,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
+        if (feeTrig && resp) patchFeeFromResponse(viewId, recordId, resp);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -1982,9 +2028,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
+    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
     // Non-trigger: prefer model.updateRecord (no re-render)
-    if (!trigger) {
+    if (!trigger && !feeTrig) {
       var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
@@ -1993,7 +2040,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Trigger fields (or fallback): AJAX PUT — response has the formula
+    // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
     if (typeof Knack !== 'undefined') {
       $.ajax({
         url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
@@ -2007,6 +2054,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
+          if (feeTrig && resp) patchFeeFromResponse(viewId, recordId, resp);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
