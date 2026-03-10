@@ -140,6 +140,7 @@
           sow:              'field_2154',   // SOW (connection)
           mountCableBoth:   'field_1968',   // Mount Cable Both
           laborDescription: 'field_2020',   // Labor Description
+          laborCategory:    'field_2462',   // Labor Category
           laborVariables:   'field_1972',   // Labor Variables
           subBid:           'field_2150',   // sub bid
           plusHrs:           'field_1973',   // +Hrs
@@ -148,7 +149,7 @@
           move:             'field_1946',   // Change MDF/IDF (move icon)
 
           // ── Detail panel ──
-          dropPrefix:       'field_2240',   // Drop Prefix
+          dropPrefix:       'field_2241',   // Drop Prefix
           dropNumber:       'field_1951',   // # (Label Number)
           mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
           connectedDevice:  'field_2197',   // Connected Device
@@ -981,6 +982,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 .${P}-sum-group--sub-bid {
   width: 65px;
   min-width: 65px;
+}
+.${P}-sum-group--cat {
+  width: 70px;
+  min-width: 70px;
 }
 .${P}-sum-group--vars {
   width: 70px;
@@ -2099,6 +2104,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // ── Additional right-aligned fields (view_3313) ──
+    if (f.laborCategory) {
+      appendSumGroup(rightGroup, 'Cat', findCell(tr, f.laborCategory),
+        { cls: P + '-sum-group--cat' });
+    }
     if (f.laborVariables) {
       appendSumGroup(rightGroup, 'Vars', findCell(tr, f.laborVariables),
         { cls: P + '-sum-group--vars' });
@@ -2832,6 +2841,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // Knack / KTL inline edit can work without interference.
 
   $(document).on('click' + EVENT_NS, '.' + P + '-toggle-zone', function (e) {
+    // Let clicks on the product cell pass through to KTL / Knack inline-edit
+    var target = e.target;
+    if (target.closest('.' + P + '-sum-product') || target.closest('.' + P + '-product-group')) {
+      return;
+    }
     e.preventDefault();
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {

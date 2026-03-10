@@ -6690,7 +6690,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   const ALL_FIELD_KEYS = [
     'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233','field_2246',
+    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246',
   ];
 
   function compileRules(human) {
@@ -6891,7 +6891,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   const ALL_FIELD_KEYS = [
     'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233','field_2246',
+    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246',
   ];
 
   function compileRules(human) {
@@ -10319,7 +10319,7 @@ $(".kn-navigation-bar").hide();
 
   const ALL_FIELD_KEYS = [
     'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2211','field_2233','field_2246',
+    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2211','field_2233','field_2246',
   ];
 
   function compileRules(human) {
@@ -12437,6 +12437,7 @@ $(".kn-navigation-bar").hide();
           sow:              'field_2154',   // SOW (connection)
           mountCableBoth:   'field_1968',   // Mount Cable Both
           laborDescription: 'field_2020',   // Labor Description
+          laborCategory:    'field_2462',   // Labor Category
           laborVariables:   'field_1972',   // Labor Variables
           subBid:           'field_2150',   // sub bid
           plusHrs:           'field_1973',   // +Hrs
@@ -12445,7 +12446,7 @@ $(".kn-navigation-bar").hide();
           move:             'field_1946',   // Change MDF/IDF (move icon)
 
           // ── Detail panel ──
-          dropPrefix:       'field_2240',   // Drop Prefix
+          dropPrefix:       'field_2241',   // Drop Prefix
           dropNumber:       'field_1951',   // # (Label Number)
           mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
           connectedDevice:  'field_2197',   // Connected Device
@@ -13278,6 +13279,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 .${P}-sum-group--sub-bid {
   width: 65px;
   min-width: 65px;
+}
+.${P}-sum-group--cat {
+  width: 70px;
+  min-width: 70px;
 }
 .${P}-sum-group--vars {
   width: 70px;
@@ -14396,6 +14401,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // ── Additional right-aligned fields (view_3313) ──
+    if (f.laborCategory) {
+      appendSumGroup(rightGroup, 'Cat', findCell(tr, f.laborCategory),
+        { cls: P + '-sum-group--cat' });
+    }
     if (f.laborVariables) {
       appendSumGroup(rightGroup, 'Vars', findCell(tr, f.laborVariables),
         { cls: P + '-sum-group--vars' });
@@ -15129,6 +15138,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // Knack / KTL inline edit can work without interference.
 
   $(document).on('click' + EVENT_NS, '.' + P + '-toggle-zone', function (e) {
+    // Let clicks on the product cell pass through to KTL / Knack inline-edit
+    var target = e.target;
+    if (target.closest('.' + P + '-sum-product') || target.closest('.' + P + '-product-group')) {
+      return;
+    }
     e.preventDefault();
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {
