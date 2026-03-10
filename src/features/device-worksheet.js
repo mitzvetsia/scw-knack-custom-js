@@ -933,7 +933,7 @@ td.${P}-field-value--notes {
 .${P}-direct-textarea {
   resize: vertical;
   min-height: 48px;
-  max-height: 120px;
+  max-height: 200px;
 }
 
 /* ── Summary bar inline direct-edit inputs ── */
@@ -1210,7 +1210,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 70px;
 }
 .${P}-sum-group--sow {
-  min-width: 110px;
+  min-width: 180px;
   flex-shrink: 0;
 }
 /* SOW field grows in height to show multiple connection values */
@@ -1511,7 +1511,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 2;
+      input.rows = 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -2248,7 +2248,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 2;
+      input.rows = 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
