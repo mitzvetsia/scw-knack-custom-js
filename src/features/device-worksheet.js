@@ -800,14 +800,20 @@ td.${P}-field-value {
 /* ── Editable hover affordance ── */
 td.${P}-field-value.cell-edit,
 td.${P}-field-value.ktlInlineEditableCellsStyle {
+  background: rgba(134, 182, 223, 0.1);
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
 td.${P}-field-value.cell-edit:hover,
 td.${P}-field-value.ktlInlineEditableCellsStyle:hover {
-  background-color: #f0f6ff !important;
+  background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
+}
+/* Detail-section direct-edit inputs/textareas — blue tint to match summary bar */
+.${P}-detail .${P}-direct-input,
+.${P}-detail .${P}-direct-textarea {
+  background-color: rgba(134, 182, 223, 0.1);
 }
 
 /* ── Chip host td — invisible cell, chips aligned with fields ── */
@@ -986,21 +992,20 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
 }
 
 /* ── KTL bulk-edit selected-row yellow highlight ──
-   KTL adds .bulkEditSelectedRow to tds when rows are checkbox-selected.
-   Our worksheet sets background:transparent !important everywhere, so
-   KTL's highlight gets hidden.  Restore a visible yellow on the card. */
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) > td {
-  background-color: rgba(255, 243, 128, 0.25) !important;
+   KTL adds .bulkEditSelectedRow to individual tds when rows are
+   checkbox-selected.  Our worksheet sets background:transparent
+   !important everywhere, so KTL's highlight is hidden.
+   Restore a visible yellow only on the specific tds that KTL marks. */
+td.bulkEditSelectedRow.${P}-sum-field,
+td.bulkEditSelectedRow.${P}-sum-field-ro,
+td.bulkEditSelectedRow.${P}-sum-product,
+td.bulkEditSelectedRow.${P}-sum-move,
+td.bulkEditSelectedRow.${P}-sum-label-cell,
+td.bulkEditSelectedRow.${P}-field-value {
+  background-color: rgba(255, 243, 128, 0.35) !important;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
-  background: rgba(255, 243, 128, 0.18);
+td.bulkEditSelectedRow.${P}-sum-chip-host {
   outline: 2px solid rgba(234, 179, 8, 0.5);
-  outline-offset: -2px;
-}
-/* Individual tds that are selected — keep their backgrounds transparent
-   so the card-level highlight shows through, but mark chip hosts */
-tr.${WORKSHEET_ROW} td.bulkEditSelectedRow.${P}-sum-chip-host {
-  outline: 2px solid rgba(234, 179, 8, 0.6);
   outline-offset: 1px;
   border-radius: 4px !important;
 }
