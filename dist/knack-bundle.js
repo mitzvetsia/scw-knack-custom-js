@@ -14912,8 +14912,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         findCell(tr, f.mdfNumber)));
     }
 
-    addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
-      findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
+    addRow(equipSection, buildFieldRow('Mounting\nHardware',
+      findCell(tr, f.mounting, ci.mounting), { skipEmpty: true }));
 
     if (f.name) {
       addRow(equipSection, buildEditableFieldRow('Name',
