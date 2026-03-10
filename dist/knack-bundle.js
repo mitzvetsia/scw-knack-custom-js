@@ -13318,6 +13318,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   var DIRECT_INPUT_CLASS = P + '-direct-input';
   var DIRECT_TEXTAREA_CLASS = P + '-direct-textarea';
 
+  /** Find the hidden backing td for a direct-edit input.
+   *  Detail-panel inputs have a hidden td sibling inside their wrapper div.
+   *  Summary-bar inputs live directly inside the td (no hidden copy). */
+  function findBackingTd(input) {
+    var wrapper = input.parentNode;
+    if (!wrapper) return null;
+    return wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+  }
+
+  /** Check whether a direct-edit input is an in-place summary bar input
+   *  (lives directly inside its td, no hidden td copy). */
+  function isSummaryInput(input) {
+    var p = input.parentNode;
+    return p && p.tagName === 'TD' && p.hasAttribute(DIRECT_EDIT_ATTR);
+  }
+
   /** Read the display text from a td, stripping whitespace. */
   function readFieldText(td) {
     if (!td) return '';
@@ -13397,9 +13413,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // Revert value
     input.value = previousValue;
 
-    // Update hidden td back to previous value
+    // Update hidden td back to previous value (detail panel only;
+    // summary bar inputs have no hidden td — the td IS the parent)
     var wrapper = input.parentNode;
-    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
+    var hiddenTd = findBackingTd(input);
     if (hiddenTd) {
       hiddenTd.textContent = previousValue;
     }
@@ -13424,6 +13441,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   function showInputSuccess(input) {
     input.classList.remove('is-error');
     input.classList.add('is-saving');
+    // Update defaultValue so future change-detection uses the saved value
+    input.defaultValue = input.value;
     // Remove any lingering error
     var wrapper = input.parentNode;
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
@@ -13448,50 +13467,42 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   function refreshInputConditionalColor(input) {
     var wrapper = input.parentNode;
     if (!wrapper) return;
-    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
-    if (!hiddenTd) return;
     var fieldKey = input.getAttribute('data-field');
     if (!fieldKey) return;
+
+    // For summary-bar inputs the td IS the parent; for detail-panel
+    // inputs there is a hidden td sibling.
+    var backingTd = findBackingTd(input);
+    var isSumBar = isSummaryInput(input);
+    // The element whose classes/styles reflect conditional formatting
+    var styleTd = isSumBar ? wrapper : backingTd;
+    if (!styleTd) return;
 
     // Find the view config that governs this input
     var viewEl = input.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (!viewId) return;
 
-    // Look up the dynamic-cell-color rules via the exposed API,
-    // or fall back to a local check using the same logic.
     var COLORS_MAP = {
       danger:  'rgb(248, 215, 218)',
       warning: 'rgb(255, 243, 205)'
     };
 
-    // Determine the applicable rule for this field from our
-    // inline knowledge of the color rules applied by dynamic-cell-colors.
-    // field_2400 = danger when empty, field_2409 = danger when empty,
-    // field_2399 = warning when zero, etc.
-    var isEmpty = (function () {
-      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-      return raw === '' || raw === '-' || raw === '\u2014';
-    })();
-    var isZero = (function () {
-      var raw = (hiddenTd.textContent || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-      return /^[$]?0+(\.0+)?$/.test(raw);
-    })();
+    // Read the current value: from hidden td if available, else from input
+    var rawText = backingTd && !isSumBar
+      ? (backingTd.textContent || '')
+      : (input.value || '');
+    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
 
-    // Check if the dynamic-cell-colors module has rules for this field
-    // by inspecting the hidden td's current classes and inline styles.
-    // If the td had a danger/warning class, remove or re-apply it.
+    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
+    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
     var dangerCls = 'scw-cell-danger';
     var warningCls = 'scw-cell-warning';
 
-    // The rules: look up from config knowledge
     var conditionMet = false;
     var conditionColor = null;
 
-    // field_2400 (labor) → danger when empty, warning when zero
-    // field_2409 (labor desc) → danger when empty
-    // field_2415 (bid), field_771 (photos) → warning when empty
-    // field_2399 (qty) → warning when zero
     if (fieldKey === 'field_2400') {
       if (isEmpty) { conditionMet = true; conditionColor = 'danger'; }
       else if (isZero) { conditionMet = true; conditionColor = 'warning'; }
@@ -13506,16 +13517,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       conditionColor = 'warning';
     }
 
-    // Update hidden td classes (so the condition is reflected in DOM)
-    hiddenTd.classList.remove(dangerCls, warningCls);
+    // Update td classes (so the condition is reflected in DOM)
+    styleTd.classList.remove(dangerCls, warningCls);
     if (conditionMet && conditionColor === 'danger') {
-      hiddenTd.classList.add(dangerCls);
-      hiddenTd.style.backgroundColor = COLORS_MAP.danger;
+      styleTd.classList.add(dangerCls);
+      styleTd.style.backgroundColor = COLORS_MAP.danger;
     } else if (conditionMet && conditionColor === 'warning') {
-      hiddenTd.classList.add(warningCls);
-      hiddenTd.style.backgroundColor = COLORS_MAP.warning;
+      styleTd.classList.add(warningCls);
+      styleTd.style.backgroundColor = COLORS_MAP.warning;
     } else {
-      hiddenTd.style.backgroundColor = '';
+      styleTd.style.backgroundColor = '';
     }
 
     // Update the visible input's background
@@ -13726,8 +13737,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Capture previous value before overwriting hidden td
     var wrapper = input.parentNode;
-    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
-    var previousValue = hiddenTd ? readFieldText(hiddenTd) : '';
+    var hiddenTd = findBackingTd(input);
+    var isSumBar = isSummaryInput(input);
+    // For summary bar inputs, previous value is whatever was in input before
+    var previousValue = hiddenTd && !isSumBar ? readFieldText(hiddenTd) : (input.defaultValue || '');
 
     // Client-side validation for number fields
     if (NUMBER_FIELDS.indexOf(fieldKey) !== -1) {
@@ -13738,8 +13751,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Optimistically update hidden td
-    if (hiddenTd) {
+    // Optimistically update hidden td (detail panel only)
+    if (hiddenTd && !isSumBar) {
       hiddenTd.textContent = newValue;
     }
 
@@ -13786,12 +13799,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     if (e.key === 'Escape') {
-      // Revert to the hidden td value
+      // Revert to the original value
       target._scwJustSaved = true; // prevent blur save
-      var wrapper = target.parentNode;
-      var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
-      if (hiddenTd) {
+      var hiddenTd = findBackingTd(target);
+      if (hiddenTd && !isSummaryInput(target)) {
         target.value = readFieldText(hiddenTd);
+      } else {
+        target.value = target.defaultValue || '';
       }
       target.blur();
     }
@@ -13809,9 +13823,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // Check if value actually changed
-    var wrapper = target.parentNode;
-    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
-    var originalVal = hiddenTd ? readFieldText(hiddenTd) : '';
+    var hiddenTd = findBackingTd(target);
+    var originalVal = hiddenTd && !isSummaryInput(target) ? readFieldText(hiddenTd) : (target.defaultValue || '');
     if (target.value !== originalVal) {
       handleDirectEditSave(target);
     }
@@ -13929,17 +13942,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // SUMMARY BAR DIRECT-EDIT INPUT
   // ============================================================
 
-  /** Build a direct-edit input that replaces a summary bar td.
-   *  Returns a wrapper div containing the input + hidden td.
+  /** Convert a summary bar td into an in-place direct-edit input.
+   *  The td itself becomes the wrapper (keeps its place in the <tr>
+   *  so KTL bulk-edit can still discover and interact with it).
    *  opts.multiline — use a textarea instead of a single-line input. */
   function buildSummaryEditInput(td, fieldKey, opts) {
     opts = opts || {};
-    var wrapper = document.createElement('div');
-    wrapper.className = P + '-sum-input-wrap';
+    if (!td) return null;
 
     var currentVal = readFieldText(td);
-    var input;
 
+    // Clear the td's text content but keep the element in the DOM
+    td.textContent = '';
+    td.classList.add(P + '-sum-input-wrap');
+    td.setAttribute(DIRECT_EDIT_ATTR, '1');
+
+    var input;
     if (opts.multiline) {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
@@ -13955,28 +13973,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
 
     // Propagate conditional formatting (e.g. red background) from the td
-    if (td) {
-      var bgColor = td.style.backgroundColor;
-      if (bgColor) {
-        input.style.backgroundColor = bgColor;
-      }
-      // Also check computed style in case Knack rules applied via class
-      var computed = window.getComputedStyle(td);
-      var compBg = computed.backgroundColor;
-      if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
-        input.style.backgroundColor = compBg;
-      }
+    var bgColor = td.style.backgroundColor;
+    if (bgColor) {
+      input.style.backgroundColor = bgColor;
+    }
+    var computed = window.getComputedStyle(td);
+    var compBg = computed.backgroundColor;
+    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
+      input.style.backgroundColor = compBg;
     }
 
-    wrapper.appendChild(input);
+    td.appendChild(input);
 
-    if (td) {
-      td.style.display = 'none';
-      td.setAttribute(DIRECT_EDIT_ATTR, '1');
-      wrapper.appendChild(td);
-    }
-
-    return wrapper;
+    // Return the td itself — callers append it into the summary bar
+    return td;
   }
 
   // ============================================================
