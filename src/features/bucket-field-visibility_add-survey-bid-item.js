@@ -22,7 +22,7 @@
       ['field_2183', 'INPUT_product quantity'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
-      ['field_2186', 'INPUT_DROP: mount_cable_both'],
+      ['field_2462', 'FLAG_use existing cabling'],
       ['field_2187', 'INPUT_DROP: variables'],
       ['field_2432', 'INPUT_survey notes'],
       ['field_2233', 'INPUT_expected sub bid #'],

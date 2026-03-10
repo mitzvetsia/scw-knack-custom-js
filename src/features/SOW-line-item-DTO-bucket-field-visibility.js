@@ -22,7 +22,7 @@
       ['field_2206', 'REL_product accessories'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
-      ['field_2186', 'INPUT_DROP: mount_cable_both'],
+      ['field_2462', 'FLAG_use existing cabling'],
       ['field_2246', 'REL_unified product field'],
       ['field_2187', 'INPUT_DROP: variables'],
     ],
