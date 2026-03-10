@@ -13209,6 +13209,26 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
   cursor: cell !important;
 }
 
+/* ── KTL bulk-edit selected-row yellow highlight ──
+   KTL adds .bulkEditSelectedRow to tds when rows are checkbox-selected.
+   Our worksheet sets background:transparent !important everywhere, so
+   KTL's highlight gets hidden.  Restore a visible yellow on the card. */
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) > td {
+  background-color: rgba(255, 243, 128, 0.25) !important;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
+  background: rgba(255, 243, 128, 0.18);
+  outline: 2px solid rgba(234, 179, 8, 0.5);
+  outline-offset: -2px;
+}
+/* Individual tds that are selected — keep their backgrounds transparent
+   so the card-level highlight shows through, but mark chip hosts */
+tr.${WORKSHEET_ROW} td.bulkEditSelectedRow.${P}-sum-chip-host {
+  outline: 2px solid rgba(234, 179, 8, 0.6);
+  outline-offset: 1px;
+  border-radius: 4px !important;
+}
+
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
