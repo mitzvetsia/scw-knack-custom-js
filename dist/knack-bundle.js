@@ -6689,7 +6689,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
+    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233','field_2246',
   ];
 
@@ -6890,7 +6890,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
+    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2204', 'field_2211','field_2233','field_2246',
   ];
 
@@ -10240,7 +10240,7 @@ $(".kn-navigation-bar").hide();
   setTimeout(() => FORMS.forEach(initEverywhere), 1000);
 })();
 ////************* /SCW: FORM BUCKET → FIELD VISIBILITY *************////
-////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
+////*************** DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
 (function () {
   'use strict';
@@ -10318,7 +10318,7 @@ $(".kn-navigation-bar").hide();
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181',
+    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2186','field_2187','field_2211','field_2233','field_2246',
   ];
 
