@@ -1289,61 +1289,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── view_3313: bulk-edit yellow on individual field cells only ──
-   Override the generic transparent-overlay approach so yellow
-   appears only on the specific field <td> elements, not the
-   entire card / summary background. */
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) > td {
-  background-color: transparent !important;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
-  background: #fff;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-summary {
-  background: #f8fafc;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-summary:hover {
-  background: #f1f5f9;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field {
-  background: #fff !important;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.cell-edit,
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgba(134, 182, 223, 0.1) !important;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product {
-  background: rgba(134, 182, 223, 0.1) !important;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value {
-  background: #fff;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.cell-edit,
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.ktlInlineEditableCellsStyle {
-  background: rgba(134, 182, 223, 0.1);
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-input,
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-textarea {
-  background-color: rgba(134, 182, 223, 0.1);
-}
-/* Restore warning / danger group colors */
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--warning td.${P}-sum-field,
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--warning td.${P}-sum-field-ro {
-  background: rgb(255, 243, 205) !important;
-}
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--danger td.${P}-sum-field,
-#view_3313 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-sum-group--danger td.${P}-sum-field-ro {
-  background: #f8d7da !important;
-}
-/* Yellow highlight on individual field cells that KTL selected */
-#view_3313 tr.${WORKSHEET_ROW} td.bulkEditSelectedRow[data-field-key] {
-  background-color: rgb(255, 253, 204) !important;
-}
-#view_3313 tr.${WORKSHEET_ROW} td.bulkEditSelectedRow[data-field-key] .${P}-direct-input,
-#view_3313 tr.${WORKSHEET_ROW} td.bulkEditSelectedRow[data-field-key] .${P}-direct-textarea {
-  background-color: transparent !important;
-}
-
 @media (max-width: 900px) {
   .${P}-comp {
     grid-template-columns: 90px 1fr 1fr;
