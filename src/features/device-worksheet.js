@@ -482,9 +482,13 @@ td.${P}-sum-field {
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
+td.${P}-sum-field.cell-edit,
+td.${P}-sum-field.ktlInlineEditableCellsStyle {
+  background: rgba(134, 182, 223, 0.1);
+}
 td.${P}-sum-field.cell-edit:hover,
 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
-  background-color: #dbeafe !important;
+  background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
@@ -1180,15 +1184,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   flex: none;
 }
 
-/* view_3313: editable summary fields (Sub Bid, +Hrs, +Mat) get blue background */
-#view_3313 td.${P}-sum-field.cell-edit,
-#view_3313 td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgba(134, 182, 223, 0.1) !important;
-}
-#view_3313 td.${P}-sum-field.cell-edit:hover,
-#view_3313 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
-  background: rgba(134, 182, 223, 0.18) !important;
-}
 
 /* view_3313: top-align all elements; pad non-labeled items to match label height */
 #view_3313 .${P}-toggle-zone {
@@ -1229,14 +1224,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   border: 1px solid #ef4444 !important;
   border-radius: 4px;
 }
-/* Ensure warning/danger wins over #view_3313 blue editable-field background */
-#view_3313 .${P}-sum-group--warning td.${P}-sum-field.cell-edit,
-#view_3313 .${P}-sum-group--warning td.${P}-sum-field.ktlInlineEditableCellsStyle {
+/* Ensure warning/danger wins over blue editable-field background */
+.${P}-sum-group--warning td.${P}-sum-field.cell-edit,
+.${P}-sum-group--warning td.${P}-sum-field.ktlInlineEditableCellsStyle {
   background: rgb(255, 243, 205) !important;
   border-color: #f59e0b !important;
 }
-#view_3313 .${P}-sum-group--danger td.${P}-sum-field.cell-edit,
-#view_3313 .${P}-sum-group--danger td.${P}-sum-field.ktlInlineEditableCellsStyle {
+.${P}-sum-group--danger td.${P}-sum-field.cell-edit,
+.${P}-sum-group--danger td.${P}-sum-field.ktlInlineEditableCellsStyle {
   background: rgb(248, 215, 218) !important;
   border-color: #ef4444 !important;
 }
