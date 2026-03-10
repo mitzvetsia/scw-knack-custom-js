@@ -14920,8 +14920,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         findCell(tr, f.name), f.name, { notes: true }));
     }
 
-    addRow(equipSection, buildEditableFieldRow('SCW Notes',
-      findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
+    addRow(equipSection, buildFieldRow('SCW Notes',
+      findCell(tr, f.scwNotes)));
 
     sections.appendChild(equipSection);
 
