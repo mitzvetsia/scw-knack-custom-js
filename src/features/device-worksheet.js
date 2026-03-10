@@ -725,13 +725,13 @@ td.${P}-field-value--notes {
 }
 .${P}-direct-input.is-saving,
 .${P}-direct-textarea.is-saving {
-  background-color: #f0fdf4;
-  border-color: #86efac;
+  background-color: #f0fdf4 !important;
+  border-color: #86efac !important;
 }
 .${P}-direct-input.is-error,
 .${P}-direct-textarea.is-error {
-  background-color: #fef2f2;
-  border-color: #fca5a5;
+  background-color: #fef2f2 !important;
+  border-color: #fca5a5 !important;
   box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.25);
 }
 .${P}-direct-error {
