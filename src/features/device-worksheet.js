@@ -129,6 +129,30 @@
           surveyChips:      'field_1972',   // Survey (TBD placeholder)
           surveyNotes:      'field_1953'    // Survey Notes
         }
+      },
+      {
+        viewId: 'view_3313',
+        simpleDetail: true,
+        fields: {
+          // ── Summary row ──
+          label:            'field_1950',   // LABEL (read-only)
+          product:          'field_1949',   // PRODUCT
+          sow:              'field_2154',   // SOW (connection)
+          mountCableBoth:   'field_1968',   // Mount Cable Both
+          laborDescription: 'field_2020',   // Labor Description
+          laborVariables:   'field_1972',   // Labor Variables
+          subBid:           'field_2150',   // sub bid
+          plusHrs:           'field_1973',   // +Hrs
+          plusMat:           'field_1974',   // +MAT
+          installFee:       'field_2028',   // Install Fee (read-only)
+          move:             'field_1946',   // Change MDF/IDF (move icon)
+
+          // ── Detail panel ──
+          dropNumber:       'field_1951',   // # (Drop Number)
+          mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
+          connectedDevice:  'field_2197',   // Connected Device
+          scwNotes:         'field_1953'    // SCW Notes
+        }
       }
     ]
   };
@@ -917,6 +941,50 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   max-width: 300px;
 }
 
+/* ================================================================
+   VIEW 3313 – SOW Build worksheet
+   ================================================================ */
+#view_3313 .${P}-product-group {
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
+}
+
+/* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
+.${P}-sum-group--narrow {
+  width: 50px;
+  min-width: 50px;
+}
+.${P}-sum-group--sub-bid {
+  width: 65px;
+  min-width: 65px;
+}
+.${P}-sum-group--vars {
+  width: 70px;
+  min-width: 70px;
+}
+.${P}-sum-group--fee {
+  width: 70px;
+  min-width: 70px;
+}
+.${P}-sum-group--sow {
+  width: 90px;
+  min-width: 90px;
+}
+.${P}-sum-group--mcb {
+  width: 80px;
+  min-width: 80px;
+}
+
+/* Simple detail layout (single full-width section) */
+.${P}-simple-detail {
+  padding: 14px 20px 14px 16px;
+}
+.${P}-simple-detail .${P}-section {
+  border-right: none;
+  max-width: 600px;
+}
+
 @media (max-width: 900px) {
   .${P}-comp {
     grid-template-columns: 90px 1fr 1fr;
@@ -1357,7 +1425,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458',
+                       'field_2150', 'field_1973', 'field_1974'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -1809,6 +1878,34 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
+  // SUMMARY GROUP HELPER
+  // ============================================================
+
+  /** Append a labelled summary-bar group to a parent element.
+   *  opts.readOnly   — use read-only styling (no edit affordance)
+   *  opts.directEdit — inject a type-and-save input
+   *  opts.fieldKey   — field key for direct-edit save target
+   *  opts.cls        — extra CSS class for the group wrapper */
+  function appendSumGroup(parent, label, td, opts) {
+    opts = opts || {};
+    if (!td) return null;
+    var group = document.createElement('span');
+    group.className = P + '-sum-group' + (opts.cls ? ' ' + opts.cls : '');
+    var lbl = document.createElement('span');
+    lbl.className = P + '-sum-label';
+    lbl.textContent = label;
+    group.appendChild(lbl);
+    td.classList.add(opts.readOnly ? (P + '-sum-field-ro') : (P + '-sum-field'));
+    if (isCellEmpty(td)) td.classList.add(P + '-empty');
+    if (opts.directEdit && opts.fieldKey) {
+      injectSummaryDirectEdit(td, opts.fieldKey);
+    }
+    group.appendChild(td);
+    parent.appendChild(group);
+    return group;
+  }
+
+  // ============================================================
   // BUILD SUMMARY BAR
   // ============================================================
 
@@ -1875,6 +1972,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
+
+    // ── Optional pre-fill groups (SOW, Mount Cable Both) ──
+    if (f.sow) {
+      appendSumGroup(bar, 'SOW', findCell(tr, f.sow),
+        { cls: P + '-sum-group--sow' });
+    }
+    if (f.mountCableBoth) {
+      appendSumGroup(bar, 'MCB', findCell(tr, f.mountCableBoth),
+        { cls: P + '-sum-group--mcb' });
+    }
 
     // ── Labor Desc (inline, fills middle space — direct-edit) ──
     var laborDescTd = findCell(tr, f.laborDescription);
@@ -1957,6 +2064,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         extGroup.appendChild(extTd);
         rightGroup.appendChild(extGroup);
       }
+    }
+
+    // ── Additional right-aligned fields (view_3313) ──
+    if (f.laborVariables) {
+      appendSumGroup(rightGroup, 'Vars', findCell(tr, f.laborVariables),
+        { cls: P + '-sum-group--vars' });
+    }
+    if (f.subBid) {
+      appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
+        { cls: P + '-sum-group--sub-bid', directEdit: true, fieldKey: f.subBid });
+    }
+    if (f.plusHrs) {
+      appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
+        { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusHrs });
+    }
+    if (f.plusMat) {
+      appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
+        { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusMat });
+    }
+    if (f.installFee) {
+      appendSumGroup(rightGroup, 'Fee', findCell(tr, f.installFee),
+        { cls: P + '-sum-group--fee', readOnly: true });
     }
 
     // Move – ensure the icon is present (replace-content-with-icon.js
@@ -2304,6 +2433,52 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
+  // BUILD SIMPLE DETAIL PANEL (view_3313)
+  // ============================================================
+  //
+  // Single-section detail with a flat list of fields.
+  // Used when the view doesn't need the two-column
+  // Equipment/Survey split of the standard detail panel.
+
+  function buildSimpleDetailPanel(tr, viewCfg) {
+    var f = viewCfg.fields;
+
+    var detail = document.createElement('div');
+    detail.className = P + '-detail';
+
+    var wrapper = document.createElement('div');
+    wrapper.className = P + '-simple-detail';
+
+    var section = buildSection('');
+
+    function addRow(row) { if (row) section.appendChild(row); }
+
+    if (f.dropNumber) {
+      addRow(buildFieldRow('Drop #',
+        findCell(tr, f.dropNumber)));
+    }
+
+    if (f.mountingHardware) {
+      addRow(buildFieldRow('Mounting\nHardware',
+        findCell(tr, f.mountingHardware)));
+    }
+
+    if (f.connectedDevice) {
+      addRow(buildFieldRow('Connected\nDevice',
+        findCell(tr, f.connectedDevice)));
+    }
+
+    if (f.scwNotes) {
+      addRow(buildEditableFieldRow('SCW Notes',
+        findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
+    }
+
+    wrapper.appendChild(section);
+    detail.appendChild(wrapper);
+    return detail;
+  }
+
+  // ============================================================
   // ACCORDION TOGGLE
   // ============================================================
 
@@ -2367,6 +2542,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var detail;
     if (viewCfg.comparisonLayout) {
       detail = buildComparisonDetailPanel(tr, viewCfg, snapshots);
+    } else if (viewCfg.simpleDetail) {
+      detail = buildSimpleDetailPanel(tr, viewCfg);
     } else {
       detail = buildDetailPanel(tr, viewCfg);
     }
