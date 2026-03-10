@@ -100,6 +100,35 @@
         // Fields whose changes feed the label formula — saving any of
         // these triggers a lightweight GET to refresh the header text.
         headerTriggerFields: ['field_1641', 'field_2458', 'field_1943']
+      },
+      {
+        viewId: 'view_3575',
+        comparisonLayout: true,
+        fields: {
+          // ── Summary row (laid out like view_3512) ──
+          label:            'field_2365',   // Label
+          product:          'field_2379',   // Product
+          laborDescription: 'field_2409',   // Labor Description
+          labor:            'field_2400',   // Labor $
+
+          // ── Detail comparison – SCW side ──
+          connections:      'field_2381',   // Connected To
+          dropLength:       'field_2367',   // Drop Length
+          exterior:         'field_2372',   // Exterior (chip host)
+          existingCabling:  'field_2370',   // Existing Cabling
+          plenum:           'field_2371',   // Plenum
+          mountingHeight:   'field_2455',   // Mounting Height (radio chips)
+          conduitFeet:      'field_2368',   // Conduit Feet
+          scwNotes:         'field_2412',   // Survey Notes (SCW side)
+
+          // ── Detail comparison – Survey side ──
+          surveyLabel:      'field_1950',   // Survey Label
+          surveyProduct:    'field_1958',   // Survey Product
+          surveyConnections:'field_2197',   // Survey Connected To
+          surveyDropLength: 'field_1965',   // Survey Drop Length
+          surveyChips:      'field_1972',   // Survey (TBD placeholder)
+          surveyNotes:      'field_1953'    // Survey Notes
+        }
       }
     ]
   };
@@ -798,6 +827,100 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
+}
+
+/* ================================================================
+   COMPARISON LAYOUT (view_3575) – side-by-side SCW vs Survey
+   ================================================================ */
+.${P}-comp {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr;
+  gap: 0;
+  padding: 8px 16px 12px;
+}
+.${P}-comp-header {
+  display: contents;
+}
+.${P}-comp-header > div {
+  padding: 8px 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #4b5563;
+  border-bottom: 2px solid #e5e7eb;
+}
+.${P}-comp-row {
+  display: contents;
+}
+.${P}-comp-row > div {
+  padding: 6px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  min-height: 28px;
+  display: flex;
+  align-items: flex-start;
+}
+.${P}-comp-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-top: 10px !important;
+  white-space: pre-line;
+  line-height: 1.3;
+}
+.${P}-comp-val {
+  min-width: 0;
+  word-break: break-word;
+}
+.${P}-comp-val > td.${P}-field-value {
+  display: block;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  min-height: 24px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.${P}-comp-text {
+  display: block;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #1f2937;
+  line-height: 1.5;
+}
+.${P}-comp-text--empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Survey column subtle background to visually distinguish sides */
+.${P}-comp-row > .${P}-comp-val:last-child {
+  background: #fafbfc;
+}
+
+/* Highlight mismatched rows for quick discrepancy identification */
+.${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val {
+  background: #fffbeb;
+}
+.${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val:last-child {
+  background: #fef3c7;
+}
+
+/* Product group width for view_3575 (matches view_3512) */
+#view_3575 .${P}-product-group {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+@media (max-width: 900px) {
+  .${P}-comp {
+    grid-template-columns: 90px 1fr 1fr;
+  }
 }
 `;
 
@@ -1968,6 +2091,219 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
+  // BUILD COMPARISON DETAIL PANEL (view_3575)
+  // ============================================================
+  //
+  // Side-by-side layout: Label | SCW Bid value | Survey value
+  // for quick visual discrepancy identification.
+  //
+  // `snapshots` contains text values for fields that were already
+  // moved into the summary bar (label, product).
+
+  function buildComparisonDetailPanel(tr, viewCfg, snapshots) {
+    var f = viewCfg.fields;
+
+    var detail = document.createElement('div');
+    detail.className = P + '-detail';
+
+    var comp = document.createElement('div');
+    comp.className = P + '-comp';
+
+    // ── Column headers ──
+    var hdr = document.createElement('div');
+    hdr.className = P + '-comp-header';
+    var hdrLabel = document.createElement('div');
+    hdrLabel.className = P + '-comp-label';
+    hdr.appendChild(hdrLabel);
+    var hdrScw = document.createElement('div');
+    hdrScw.textContent = 'SCW Bid';
+    hdr.appendChild(hdrScw);
+    var hdrSurvey = document.createElement('div');
+    hdrSurvey.textContent = 'Survey';
+    hdr.appendChild(hdrSurvey);
+    comp.appendChild(hdr);
+
+    // ── Helper: build a standard comparison row ──
+    function addCompRow(label, scwTd, surveyTd, opts) {
+      opts = opts || {};
+      var row = document.createElement('div');
+      row.className = P + '-comp-row';
+
+      // Label column
+      var lbl = document.createElement('div');
+      lbl.className = P + '-comp-label';
+      lbl.textContent = label;
+      row.appendChild(lbl);
+
+      // SCW value column
+      var scwVal = document.createElement('div');
+      scwVal.className = P + '-comp-val';
+      var scwText = '';
+      if (scwTd && !scwTd.classList.contains(GRAYED_CLASS)) {
+        scwText = readCellText(scwTd);
+        scwTd.classList.add(P + '-field-value');
+        if (opts.notes) scwTd.classList.add(P + '-field-value--notes');
+        scwVal.appendChild(scwTd);
+      } else if (opts.scwSnapshot != null) {
+        scwText = opts.scwSnapshot;
+        var span = document.createElement('span');
+        span.className = P + '-comp-text' + (scwText ? '' : ' ' + P + '-comp-text--empty');
+        span.textContent = scwText || '\u2014';
+        scwVal.appendChild(span);
+      } else {
+        scwVal.innerHTML = '<span class="' + P + '-comp-text ' + P + '-comp-text--empty">\u2014</span>';
+      }
+      row.appendChild(scwVal);
+
+      // Survey value column
+      var survVal = document.createElement('div');
+      survVal.className = P + '-comp-val';
+      var survText = '';
+      if (surveyTd && !surveyTd.classList.contains(GRAYED_CLASS)) {
+        survText = readCellText(surveyTd);
+        surveyTd.classList.add(P + '-field-value');
+        if (opts.notes) surveyTd.classList.add(P + '-field-value--notes');
+        survVal.appendChild(surveyTd);
+      } else if (!opts.emptyRight) {
+        survVal.innerHTML = '<span class="' + P + '-comp-text ' + P + '-comp-text--empty">\u2014</span>';
+      }
+      row.appendChild(survVal);
+
+      // Mismatch highlight (when both sides have comparable values)
+      if (!opts.skipMismatch && scwText && survText &&
+          scwText.toLowerCase() !== survText.toLowerCase()) {
+        row.classList.add(P + '-comp-mismatch');
+      }
+
+      comp.appendChild(row);
+      return row;
+    }
+
+    // ── LABEL ──
+    addCompRow('Label',
+      findCell(tr, f.label),          // may be null if summary took it
+      findCell(tr, f.surveyLabel),
+      { scwSnapshot: snapshots.label }
+    );
+
+    // ── PRODUCT ──
+    addCompRow('Product',
+      findCell(tr, f.product),        // may be null if summary took it
+      findCell(tr, f.surveyProduct),
+      { scwSnapshot: snapshots.product }
+    );
+
+    // ── CONNECTED TO ──
+    addCompRow('Connected To',
+      findCell(tr, f.connections),
+      findCell(tr, f.surveyConnections)
+    );
+
+    // ── DROP LENGTH ──
+    addCompRow('Drop Length',
+      findCell(tr, f.dropLength),
+      findCell(tr, f.surveyDropLength)
+    );
+
+    // ── BOOLEAN CHIPS (unlabelled) ──
+    // SCW side: reconstituted chip stack (exterior / existing cabling / plenum)
+    // Survey side: field_1972 (TBD placeholder)
+    var chipsRow = document.createElement('div');
+    chipsRow.className = P + '-comp-row';
+
+    var chipsLabel = document.createElement('div');
+    chipsLabel.className = P + '-comp-label';
+    chipsLabel.textContent = '';
+    chipsRow.appendChild(chipsLabel);
+
+    // SCW chips
+    var chipsScwVal = document.createElement('div');
+    chipsScwVal.className = P + '-comp-val';
+    var chipHostTd = findCell(tr, f.exterior);
+    if (chipHostTd && !chipHostTd.classList.contains(GRAYED_CLASS)) {
+      var chipStack = chipHostTd.querySelector('.scw-chip-stack');
+      if (chipStack) {
+        chipHostTd.classList.add(P + '-chip-host');
+        chipHostTd.classList.add(P + '-field-value');
+        chipHostTd.innerHTML = '';
+        var chipsWrap = document.createElement('div');
+        chipsWrap.className = P + '-chips';
+        while (chipStack.firstChild) {
+          chipsWrap.appendChild(chipStack.firstChild);
+        }
+        chipHostTd.appendChild(chipsWrap);
+        chipsScwVal.appendChild(chipHostTd);
+      } else {
+        chipHostTd.classList.add(P + '-field-value');
+        chipsScwVal.appendChild(chipHostTd);
+      }
+    }
+    chipsRow.appendChild(chipsScwVal);
+
+    // Survey chips placeholder
+    var chipsSurvVal = document.createElement('div');
+    chipsSurvVal.className = P + '-comp-val';
+    var surveyChipsTd = findCell(tr, f.surveyChips);
+    if (surveyChipsTd && !surveyChipsTd.classList.contains(GRAYED_CLASS)) {
+      surveyChipsTd.classList.add(P + '-field-value');
+      chipsSurvVal.appendChild(surveyChipsTd);
+    } else {
+      chipsSurvVal.innerHTML = '<span class="' + P + '-comp-text ' + P + '-comp-text--empty">\u2014</span>';
+    }
+    chipsRow.appendChild(chipsSurvVal);
+    comp.appendChild(chipsRow);
+
+    // ── MOUNT HEIGHT (radio chips, SCW only) ──
+    var mhRow = document.createElement('div');
+    mhRow.className = P + '-comp-row';
+
+    var mhLabel = document.createElement('div');
+    mhLabel.className = P + '-comp-label';
+    mhLabel.textContent = 'Mount Height';
+    mhRow.appendChild(mhLabel);
+
+    var mhScwVal = document.createElement('div');
+    mhScwVal.className = P + '-comp-val';
+    var mhTd = findCell(tr, f.mountingHeight);
+    if (mhTd && !mhTd.classList.contains(GRAYED_CLASS)) {
+      var mhWrapper = document.createElement('div');
+      mhWrapper.className = P + '-field-value';
+      mhWrapper.style.border = 'none';
+      mhWrapper.style.padding = '0';
+      mhWrapper.style.background = 'transparent';
+      var mhChips = buildRadioChips(mhTd, f.mountingHeight, MOUNTING_HEIGHT_OPTIONS);
+      mhWrapper.appendChild(mhChips);
+      mhTd.style.display = 'none';
+      mhTd.setAttribute(RADIO_CHIPS_ATTR, '1');
+      mhWrapper.appendChild(mhTd);
+      mhScwVal.appendChild(mhWrapper);
+    }
+    mhRow.appendChild(mhScwVal);
+
+    var mhSurvVal = document.createElement('div');
+    mhSurvVal.className = P + '-comp-val';
+    mhRow.appendChild(mhSurvVal);
+    comp.appendChild(mhRow);
+
+    // ── CONDUIT FEET (SCW only) ──
+    addCompRow('Conduit Feet',
+      findCell(tr, f.conduitFeet),
+      null,
+      { emptyRight: true }
+    );
+
+    // ── SURVEY NOTES ──
+    addCompRow('Survey Notes',
+      findCell(tr, f.scwNotes),
+      findCell(tr, f.surveyNotes),
+      { notes: true }
+    );
+
+    detail.appendChild(comp);
+    return detail;
+  }
+
+  // ============================================================
   // ACCORDION TOGGLE
   // ============================================================
 
@@ -2013,12 +2349,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var card = document.createElement('div');
     card.className = P + '-card';
 
+    // For comparison layouts, snapshot field text values that appear
+    // in both the summary and detail BEFORE the summary moves them.
+    var snapshots = null;
+    if (viewCfg.comparisonLayout) {
+      snapshots = {};
+      var sf = viewCfg.fields;
+      if (sf.label)   snapshots.label   = readCellText(findCell(tr, sf.label));
+      if (sf.product) snapshots.product = readCellText(findCell(tr, sf.product));
+    }
+
     // Summary bar (always visible)
     var summary = buildSummaryBar(tr, viewCfg);
     card.appendChild(summary);
 
     // Detail panel (expandable)
-    var detail = buildDetailPanel(tr, viewCfg);
+    var detail;
+    if (viewCfg.comparisonLayout) {
+      detail = buildComparisonDetailPanel(tr, viewCfg, snapshots);
+    } else {
+      detail = buildDetailPanel(tr, viewCfg);
+    }
     card.appendChild(detail);
 
     return card;
