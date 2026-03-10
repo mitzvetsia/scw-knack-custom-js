@@ -12397,6 +12397,60 @@ $(".kn-navigation-bar").hide();
         // Fields whose changes feed the label formula — saving any of
         // these triggers a lightweight GET to refresh the header text.
         headerTriggerFields: ['field_1641', 'field_2458', 'field_1943']
+      },
+      {
+        viewId: 'view_3575',
+        comparisonLayout: true,
+        fields: {
+          // ── Summary row (laid out like view_3512) ──
+          label:            'field_2365',   // Label
+          product:          'field_2379',   // Product
+          laborDescription: 'field_2409',   // Labor Description
+          labor:            'field_2400',   // Labor $
+
+          // ── Detail comparison – SCW side ──
+          connections:      'field_2381',   // Connected To
+          dropLength:       'field_2367',   // Drop Length
+          exterior:         'field_2372',   // Exterior (chip host)
+          existingCabling:  'field_2370',   // Existing Cabling
+          plenum:           'field_2371',   // Plenum
+          mountingHeight:   'field_2455',   // Mounting Height (radio chips)
+          conduitFeet:      'field_2368',   // Conduit Feet
+          scwNotes:         'field_2412',   // Survey Notes (SCW side)
+
+          // ── Detail comparison – Survey side ──
+          surveyLabel:      'field_1950',   // Survey Label
+          surveyProduct:    'field_1958',   // Survey Product
+          surveyConnections:'field_2197',   // Survey Connected To
+          surveyDropLength: 'field_1965',   // Survey Drop Length
+          surveyChips:      'field_1972',   // Survey (TBD placeholder)
+          surveyNotes:      'field_1953'    // Survey Notes
+        }
+      },
+      {
+        viewId: 'view_3313',
+        simpleDetail: true,
+        fields: {
+          // ── Summary row ──
+          label:            'field_1950',   // LABEL (read-only)
+          product:          'field_1949',   // PRODUCT
+          sow:              'field_2154',   // SOW (connection)
+          mountCableBoth:   'field_1968',   // Mount Cable Both
+          laborDescription: 'field_2020',   // Labor Description
+          laborVariables:   'field_1972',   // Labor Variables
+          subBid:           'field_2150',   // sub bid
+          plusHrs:           'field_1973',   // +Hrs
+          plusMat:           'field_1974',   // +MAT
+          installFee:       'field_2028',   // Install Fee (read-only)
+          move:             'field_1946',   // Change MDF/IDF (move icon)
+
+          // ── Detail panel ──
+          dropPrefix:       'field_2240',   // Drop Prefix
+          dropNumber:       'field_1951',   // # (Label Number)
+          mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
+          connectedDevice:  'field_2197',   // Connected Device
+          scwNotes:         'field_1953'    // SCW Notes
+        }
       }
     ]
   };
@@ -13096,6 +13150,175 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
 }
+
+/* ================================================================
+   COMPARISON LAYOUT (view_3575) – side-by-side SCW vs Survey
+   ================================================================ */
+.${P}-comp {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr;
+  gap: 0;
+  padding: 8px 16px 12px;
+}
+.${P}-comp-header {
+  display: contents;
+}
+.${P}-comp-header > div {
+  padding: 8px 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #4b5563;
+  border-bottom: 2px solid #e5e7eb;
+}
+.${P}-comp-row {
+  display: contents;
+}
+.${P}-comp-row > div {
+  padding: 6px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  min-height: 28px;
+  display: flex;
+  align-items: flex-start;
+}
+.${P}-comp-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-top: 10px !important;
+  white-space: pre-line;
+  line-height: 1.3;
+}
+.${P}-comp-val {
+  min-width: 0;
+  word-break: break-word;
+}
+.${P}-comp-val > td.${P}-field-value {
+  display: block;
+  padding: 4px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  min-height: 24px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.${P}-comp-text {
+  display: block;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #1f2937;
+  line-height: 1.5;
+}
+.${P}-comp-text--empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Survey column subtle background to visually distinguish sides */
+.${P}-comp-row > .${P}-comp-val:last-child {
+  background: #fafbfc;
+}
+
+/* Highlight mismatched rows for quick discrepancy identification */
+.${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val {
+  background: #fffbeb;
+}
+.${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val:last-child {
+  background: #fef3c7;
+}
+
+/* view_3313: Product styled as an editable field (card look) instead of
+   bold identity text, so it visually matches other clickable fields */
+#view_3313 td.${P}-sum-product,
+#view_3313 td.${P}-sum-product:hover {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 4px;
+  background: #fff !important;
+  padding: 2px 8px;
+  height: 30px;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+#view_3313 td.${P}-sum-product.cell-edit:hover,
+#view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+  background-color: #dbeafe !important;
+  border-color: #93c5fd !important;
+  cursor: pointer;
+}
+
+/* Product group width for view_3575 (matches view_3512) */
+#view_3575 .${P}-product-group {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+/* ================================================================
+   VIEW 3313 – SOW Build worksheet
+   ================================================================ */
+#view_3313 .${P}-product-group {
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
+}
+
+/* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
+.${P}-sum-group--narrow {
+  width: 50px;
+  min-width: 50px;
+}
+.${P}-sum-group--sub-bid {
+  width: 65px;
+  min-width: 65px;
+}
+.${P}-sum-group--vars {
+  width: 70px;
+  min-width: 70px;
+}
+.${P}-sum-group--fee {
+  width: 70px;
+  min-width: 70px;
+}
+.${P}-sum-group--sow {
+  min-width: 70px;
+  flex-shrink: 0;
+}
+/* SOW field grows in height to show multiple connection values */
+.${P}-sum-group--sow td.${P}-sum-field {
+  height: auto;
+  min-height: 30px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.${P}-sum-group--mcb {
+  width: 80px;
+  min-width: 80px;
+}
+
+/* view_3313 detail sections grid */
+#view_3313 .${P}-sections {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) {
+  #view_3313 .${P}-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .${P}-comp {
+    grid-template-columns: 90px 1fr 1fr;
+  }
+}
 `;
 
     var style = document.createElement('style');
@@ -13531,7 +13754,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // Number fields that need client-side validation
-  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458'];
+  var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458',
+                       'field_2150', 'field_1973', 'field_1974'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -13983,6 +14207,34 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
+  // SUMMARY GROUP HELPER
+  // ============================================================
+
+  /** Append a labelled summary-bar group to a parent element.
+   *  opts.readOnly   — use read-only styling (no edit affordance)
+   *  opts.directEdit — inject a type-and-save input
+   *  opts.fieldKey   — field key for direct-edit save target
+   *  opts.cls        — extra CSS class for the group wrapper */
+  function appendSumGroup(parent, label, td, opts) {
+    opts = opts || {};
+    if (!td) return null;
+    var group = document.createElement('span');
+    group.className = P + '-sum-group' + (opts.cls ? ' ' + opts.cls : '');
+    var lbl = document.createElement('span');
+    lbl.className = P + '-sum-label';
+    lbl.textContent = label;
+    group.appendChild(lbl);
+    td.classList.add(opts.readOnly ? (P + '-sum-field-ro') : (P + '-sum-field'));
+    if (isCellEmpty(td)) td.classList.add(P + '-empty');
+    if (opts.directEdit && opts.fieldKey) {
+      injectSummaryDirectEdit(td, opts.fieldKey);
+    }
+    group.appendChild(td);
+    parent.appendChild(group);
+    return group;
+  }
+
+  // ============================================================
   // BUILD SUMMARY BAR
   // ============================================================
 
@@ -14049,6 +14301,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
+
+    // ── Optional pre-fill groups (SOW, Mount Cable Both) ──
+    if (f.sow) {
+      appendSumGroup(bar, 'SOW', findCell(tr, f.sow),
+        { cls: P + '-sum-group--sow' });
+    }
+    if (f.mountCableBoth) {
+      appendSumGroup(bar, 'MCB', findCell(tr, f.mountCableBoth),
+        { cls: P + '-sum-group--mcb' });
+    }
 
     // ── Labor Desc (inline, fills middle space — direct-edit) ──
     var laborDescTd = findCell(tr, f.laborDescription);
@@ -14131,6 +14393,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         extGroup.appendChild(extTd);
         rightGroup.appendChild(extGroup);
       }
+    }
+
+    // ── Additional right-aligned fields (view_3313) ──
+    if (f.laborVariables) {
+      appendSumGroup(rightGroup, 'Vars', findCell(tr, f.laborVariables),
+        { cls: P + '-sum-group--vars' });
+    }
+    if (f.subBid) {
+      appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
+        { cls: P + '-sum-group--sub-bid', directEdit: true, fieldKey: f.subBid });
+    }
+    if (f.plusHrs) {
+      appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
+        { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusHrs });
+    }
+    if (f.plusMat) {
+      appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
+        { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusMat });
+    }
+    if (f.installFee) {
+      appendSumGroup(rightGroup, 'Fee', findCell(tr, f.installFee),
+        { cls: P + '-sum-group--fee', readOnly: true });
     }
 
     // Move – ensure the icon is present (replace-content-with-icon.js
@@ -14265,6 +14549,277 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
+  // BUILD COMPARISON DETAIL PANEL (view_3575)
+  // ============================================================
+  //
+  // Side-by-side layout: Label | SCW Bid value | Survey value
+  // for quick visual discrepancy identification.
+  //
+  // `snapshots` contains text values for fields that were already
+  // moved into the summary bar (label, product).
+
+  function buildComparisonDetailPanel(tr, viewCfg, snapshots) {
+    var f = viewCfg.fields;
+
+    var detail = document.createElement('div');
+    detail.className = P + '-detail';
+
+    var comp = document.createElement('div');
+    comp.className = P + '-comp';
+
+    // ── Column headers ──
+    var hdr = document.createElement('div');
+    hdr.className = P + '-comp-header';
+    var hdrLabel = document.createElement('div');
+    hdrLabel.className = P + '-comp-label';
+    hdr.appendChild(hdrLabel);
+    var hdrScw = document.createElement('div');
+    hdrScw.textContent = 'SCW Bid';
+    hdr.appendChild(hdrScw);
+    var hdrSurvey = document.createElement('div');
+    hdrSurvey.textContent = 'Survey';
+    hdr.appendChild(hdrSurvey);
+    comp.appendChild(hdr);
+
+    // ── Helper: build a standard comparison row ──
+    function addCompRow(label, scwTd, surveyTd, opts) {
+      opts = opts || {};
+      var row = document.createElement('div');
+      row.className = P + '-comp-row';
+
+      // Label column
+      var lbl = document.createElement('div');
+      lbl.className = P + '-comp-label';
+      lbl.textContent = label;
+      row.appendChild(lbl);
+
+      // SCW value column
+      var scwVal = document.createElement('div');
+      scwVal.className = P + '-comp-val';
+      var scwText = '';
+      if (scwTd && !scwTd.classList.contains(GRAYED_CLASS)) {
+        scwText = readCellText(scwTd);
+        scwTd.classList.add(P + '-field-value');
+        if (opts.notes) scwTd.classList.add(P + '-field-value--notes');
+        scwVal.appendChild(scwTd);
+      } else if (opts.scwSnapshot != null) {
+        scwText = opts.scwSnapshot;
+        var span = document.createElement('span');
+        span.className = P + '-comp-text' + (scwText ? '' : ' ' + P + '-comp-text--empty');
+        span.textContent = scwText || '\u2014';
+        scwVal.appendChild(span);
+      } else {
+        scwVal.innerHTML = '<span class="' + P + '-comp-text ' + P + '-comp-text--empty">\u2014</span>';
+      }
+      row.appendChild(scwVal);
+
+      // Survey value column
+      var survVal = document.createElement('div');
+      survVal.className = P + '-comp-val';
+      var survText = '';
+      if (surveyTd && !surveyTd.classList.contains(GRAYED_CLASS)) {
+        survText = readCellText(surveyTd);
+        surveyTd.classList.add(P + '-field-value');
+        if (opts.notes) surveyTd.classList.add(P + '-field-value--notes');
+        survVal.appendChild(surveyTd);
+      } else if (!opts.emptyRight) {
+        survVal.innerHTML = '<span class="' + P + '-comp-text ' + P + '-comp-text--empty">\u2014</span>';
+      }
+      row.appendChild(survVal);
+
+      // Mismatch highlight (when both sides have comparable values)
+      if (!opts.skipMismatch && scwText && survText &&
+          scwText.toLowerCase() !== survText.toLowerCase()) {
+        row.classList.add(P + '-comp-mismatch');
+      }
+
+      comp.appendChild(row);
+      return row;
+    }
+
+    // ── LABEL ──
+    addCompRow('Label',
+      findCell(tr, f.label),          // may be null if summary took it
+      findCell(tr, f.surveyLabel),
+      { scwSnapshot: snapshots.label }
+    );
+
+    // ── PRODUCT ──
+    addCompRow('Product',
+      findCell(tr, f.product),        // may be null if summary took it
+      findCell(tr, f.surveyProduct),
+      { scwSnapshot: snapshots.product }
+    );
+
+    // ── CONNECTED TO ──
+    addCompRow('Connected To',
+      findCell(tr, f.connections),
+      findCell(tr, f.surveyConnections)
+    );
+
+    // ── DROP LENGTH ──
+    addCompRow('Drop Length',
+      findCell(tr, f.dropLength),
+      findCell(tr, f.surveyDropLength)
+    );
+
+    // ── BOOLEAN CHIPS (unlabelled) ──
+    // SCW side: reconstituted chip stack (exterior / existing cabling / plenum)
+    // Survey side: field_1972 (TBD placeholder)
+    var chipsRow = document.createElement('div');
+    chipsRow.className = P + '-comp-row';
+
+    var chipsLabel = document.createElement('div');
+    chipsLabel.className = P + '-comp-label';
+    chipsLabel.textContent = '';
+    chipsRow.appendChild(chipsLabel);
+
+    // SCW chips
+    var chipsScwVal = document.createElement('div');
+    chipsScwVal.className = P + '-comp-val';
+    var chipHostTd = findCell(tr, f.exterior);
+    if (chipHostTd && !chipHostTd.classList.contains(GRAYED_CLASS)) {
+      var chipStack = chipHostTd.querySelector('.scw-chip-stack');
+      if (chipStack) {
+        chipHostTd.classList.add(P + '-chip-host');
+        chipHostTd.classList.add(P + '-field-value');
+        chipHostTd.innerHTML = '';
+        var chipsWrap = document.createElement('div');
+        chipsWrap.className = P + '-chips';
+        while (chipStack.firstChild) {
+          chipsWrap.appendChild(chipStack.firstChild);
+        }
+        chipHostTd.appendChild(chipsWrap);
+        chipsScwVal.appendChild(chipHostTd);
+      } else {
+        chipHostTd.classList.add(P + '-field-value');
+        chipsScwVal.appendChild(chipHostTd);
+      }
+    }
+    chipsRow.appendChild(chipsScwVal);
+
+    // Survey chips placeholder
+    var chipsSurvVal = document.createElement('div');
+    chipsSurvVal.className = P + '-comp-val';
+    var surveyChipsTd = findCell(tr, f.surveyChips);
+    if (surveyChipsTd && !surveyChipsTd.classList.contains(GRAYED_CLASS)) {
+      surveyChipsTd.classList.add(P + '-field-value');
+      chipsSurvVal.appendChild(surveyChipsTd);
+    } else {
+      chipsSurvVal.innerHTML = '<span class="' + P + '-comp-text ' + P + '-comp-text--empty">\u2014</span>';
+    }
+    chipsRow.appendChild(chipsSurvVal);
+    comp.appendChild(chipsRow);
+
+    // ── MOUNT HEIGHT (radio chips, SCW only) ──
+    var mhRow = document.createElement('div');
+    mhRow.className = P + '-comp-row';
+
+    var mhLabel = document.createElement('div');
+    mhLabel.className = P + '-comp-label';
+    mhLabel.textContent = 'Mount Height';
+    mhRow.appendChild(mhLabel);
+
+    var mhScwVal = document.createElement('div');
+    mhScwVal.className = P + '-comp-val';
+    var mhTd = findCell(tr, f.mountingHeight);
+    if (mhTd && !mhTd.classList.contains(GRAYED_CLASS)) {
+      var mhWrapper = document.createElement('div');
+      mhWrapper.className = P + '-field-value';
+      mhWrapper.style.border = 'none';
+      mhWrapper.style.padding = '0';
+      mhWrapper.style.background = 'transparent';
+      var mhChips = buildRadioChips(mhTd, f.mountingHeight, MOUNTING_HEIGHT_OPTIONS);
+      mhWrapper.appendChild(mhChips);
+      mhTd.style.display = 'none';
+      mhTd.setAttribute(RADIO_CHIPS_ATTR, '1');
+      mhWrapper.appendChild(mhTd);
+      mhScwVal.appendChild(mhWrapper);
+    }
+    mhRow.appendChild(mhScwVal);
+
+    var mhSurvVal = document.createElement('div');
+    mhSurvVal.className = P + '-comp-val';
+    mhRow.appendChild(mhSurvVal);
+    comp.appendChild(mhRow);
+
+    // ── CONDUIT FEET (SCW only) ──
+    addCompRow('Conduit Feet',
+      findCell(tr, f.conduitFeet),
+      null,
+      { emptyRight: true }
+    );
+
+    // ── SURVEY NOTES ──
+    addCompRow('Survey Notes',
+      findCell(tr, f.scwNotes),
+      findCell(tr, f.surveyNotes),
+      { notes: true }
+    );
+
+    detail.appendChild(comp);
+    return detail;
+  }
+
+  // ============================================================
+  // BUILD SIMPLE DETAIL PANEL (view_3313)
+  // ============================================================
+  //
+  // Single-section detail with a flat list of fields.
+  // Used when the view doesn't need the two-column
+  // Equipment/Survey split of the standard detail panel.
+
+  function buildSimpleDetailPanel(tr, viewCfg) {
+    var f = viewCfg.fields;
+
+    var detail = document.createElement('div');
+    detail.className = P + '-detail';
+
+    var sections = document.createElement('div');
+    sections.className = P + '-sections';
+
+    function addRow(section, row) { if (row) section.appendChild(row); }
+
+    // ── Left column ──
+    var leftSection = buildSection('');
+
+    if (f.dropPrefix) {
+      addRow(leftSection, buildFieldRow('Drop Prefix',
+        findCell(tr, f.dropPrefix)));
+    }
+
+    if (f.dropNumber) {
+      addRow(leftSection, buildFieldRow('Label #',
+        findCell(tr, f.dropNumber)));
+    }
+
+    if (f.mountingHardware) {
+      addRow(leftSection, buildFieldRow('Mounting\nHardware',
+        findCell(tr, f.mountingHardware)));
+    }
+
+    sections.appendChild(leftSection);
+
+    // ── Right column ──
+    var rightSection = buildSection('');
+
+    if (f.connectedDevice) {
+      addRow(rightSection, buildFieldRow('Connected\nDevice',
+        findCell(tr, f.connectedDevice)));
+    }
+
+    if (f.scwNotes) {
+      addRow(rightSection, buildEditableFieldRow('SCW Notes',
+        findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
+    }
+
+    sections.appendChild(rightSection);
+
+    detail.appendChild(sections);
+    return detail;
+  }
+
+  // ============================================================
   // ACCORDION TOGGLE
   // ============================================================
 
@@ -14310,12 +14865,29 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var card = document.createElement('div');
     card.className = P + '-card';
 
+    // For comparison layouts, snapshot field text values that appear
+    // in both the summary and detail BEFORE the summary moves them.
+    var snapshots = null;
+    if (viewCfg.comparisonLayout) {
+      snapshots = {};
+      var sf = viewCfg.fields;
+      if (sf.label)   snapshots.label   = readCellText(findCell(tr, sf.label));
+      if (sf.product) snapshots.product = readCellText(findCell(tr, sf.product));
+    }
+
     // Summary bar (always visible)
     var summary = buildSummaryBar(tr, viewCfg);
     card.appendChild(summary);
 
     // Detail panel (expandable)
-    var detail = buildDetailPanel(tr, viewCfg);
+    var detail;
+    if (viewCfg.comparisonLayout) {
+      detail = buildComparisonDetailPanel(tr, viewCfg, snapshots);
+    } else if (viewCfg.simpleDetail) {
+      detail = buildSimpleDetailPanel(tr, viewCfg);
+    } else {
+      detail = buildDetailPanel(tr, viewCfg);
+    }
     card.appendChild(detail);
 
     return card;
