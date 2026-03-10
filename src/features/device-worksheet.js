@@ -1767,28 +1767,38 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   /**
-   * After a fee-trigger save, refresh the view so the recalculated
-   * Install Fee is visible.  Uses Knack's own model.fetch() which
-   * re-fetches view data and fires knack-view-render → transformView
-   * rebuilds the worksheet with the fresh fee value from the server.
-   * Expanded-panel state is captured before the fetch so it survives.
+   * Fetch the record via the VIEW-level API and patch the fee cell.
+   * Uses the same URL pattern as the PUT (/v1/pages/{scene}/views/{view}/records/{id})
+   * which is same-origin and avoids CORS issues.
+   * A short delay lets the server finish recalculating the equation.
    */
-  function refreshViewForFee(viewId) {
+  function fetchAndPatchFee(viewId, recordId) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields.installFee) return;
     if (typeof Knack === 'undefined') return;
-    var view = Knack.views[viewId];
-    if (!view || !view.model || typeof view.model.fetch !== 'function') {
-      console.warn('[scw-ws-fee] Cannot fetch model for ' + viewId);
-      return;
-    }
 
-    // Capture expanded panels so transformView can restore them
-    captureExpandedState(viewId);
-    console.log('[scw-ws-fee] Refreshing ' + viewId + ' via model.fetch()');
-
-    // Small delay to let the server finish recalculating the equation
+    // Small delay so the server finishes recalculating the equation
     setTimeout(function () {
-      view.model.fetch();
-    }, 500);
+      console.log('[scw-ws-fee] Fetching fee via view API for ' + recordId);
+
+      $.ajax({
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
+        type: 'GET',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'Authorization': Knack.getUserToken()
+        },
+        success: function (resp) {
+          if (!resp) return;
+          console.log('[scw-ws-fee] View API response for ' + recordId + ':', resp[cfg.fields.installFee]);
+          patchFeeFromResponse(viewId, recordId, resp);
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-fee] View GET failed for ' + recordId, xhr.status);
+        }
+      });
+    }, 750);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -1803,46 +1813,34 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   /**
-   * Fetch the record via the OBJECT-level API (which returns formula
-   * fields) and apply the label.  The view-level API strips formulas.
+   * Fetch the record via the VIEW-level API and apply the label.
+   * Uses the same-origin view URL to avoid CORS issues.
    */
   function fetchAndApplyLabel(viewId, recordId) {
     var cfg = viewCfgFor(viewId);
     if (!cfg || !cfg.fields.label) return;
-
     if (typeof Knack === 'undefined') return;
 
-    // Derive the object key from the Knack view model
-    var view = Knack.views[viewId];
-    var objectKey = null;
-    try {
-      objectKey = view.model.view.source.object;
-    } catch (ignored) { /* */ }
-    if (!objectKey) {
-      console.warn('[scw-ws-header] Cannot determine object key for ' + viewId);
-      return;
-    }
-
-    console.log('[scw-ws-header] Fetching label via object API (' + objectKey + ') for ' + recordId);
+    console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
 
     $.ajax({
-      url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
       type: 'GET',
       headers: {
         'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
         'Authorization': Knack.getUserToken()
       },
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
-        console.log('[scw-ws-header] Object API label for ' + recordId + ': "' + txt + '"');
+        console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
         if (txt) {
           _labelCache[recordId] = txt;
           applyLabelText(viewId, recordId, txt);
         }
       },
       error: function (xhr) {
-        console.warn('[scw-ws-header] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
+        console.warn('[scw-ws-header] View GET failed for ' + recordId, xhr.status);
       }
     });
   }
@@ -1936,7 +1934,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) refreshViewForFee(viewId);
+        if (feeTrig) fetchAndPatchFee(viewId, recordId);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -2090,7 +2088,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig) refreshViewForFee(viewId);
+          if (feeTrig) fetchAndPatchFee(viewId, recordId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
