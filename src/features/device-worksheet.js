@@ -661,6 +661,13 @@ td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-radio-chip {
   cursor: cell !important;
 }
 
+/* ── field_1972 (Labor Variables): ensure no blue background leaks through ── */
+#view_3313 .${P}-sum-group--vars td,
+#view_3313 .${P}-sum-group--vars td[style] {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* ── Summary-bar radio chips (Labor Variables) ── */
 .${P}-sum-chips {
   display: flex;
@@ -1127,13 +1134,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   align-items: flex-start;
 }
 #view_3313 .${P}-chevron {
-  margin-top: 14px;
+  margin-top: 11px;
 }
 #view_3313 td.${P}-sum-label-cell {
-  margin-top: 14px;
+  margin-top: 11px;
 }
 #view_3313 .${P}-sum-sep {
-  margin-top: 14px;
+  margin-top: 11px;
 }
 #view_3313 td.${P}-sum-check {
   align-self: flex-start;
@@ -1142,6 +1149,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 #view_3313 .${P}-sum-delete {
   align-self: flex-start;
   padding-top: 14px;
+}
+
+/* view_3313: warning group (SOW empty) — amber background */
+.${P}-sum-group--warning td.${P}-sum-field,
+.${P}-sum-group--warning td.${P}-sum-field-ro {
+  background: rgb(255, 243, 205) !important;
+  border-color: #f59e0b !important;
+  border: 1px solid #f59e0b !important;
+  border-radius: 4px;
+}
+/* view_3313: danger group (Fee $0/empty) — red background */
+.${P}-sum-group--danger td.${P}-sum-field,
+.${P}-sum-group--danger td.${P}-sum-field-ro {
+  background: rgb(248, 215, 218) !important;
+  border-color: #ef4444 !important;
+  border: 1px solid #ef4444 !important;
+  border-radius: 4px;
+}
+
+/* Fee label — align with value text (match td padding-left) */
+.${P}-sum-group--fee > .${P}-sum-label {
+  padding-left: 8px;
 }
 
 /* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
@@ -2413,23 +2442,40 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // SOW — moved to right group (before Sub Bid) for view_3313
     if (f.sow && f.subBid) {
-      appendSumGroup(rightGroup, 'SOW', findCell(tr, f.sow),
+      var sowTd = findCell(tr, f.sow);
+      var sowGroup = appendSumGroup(rightGroup, 'SOW', sowTd,
         { cls: P + '-sum-group--sow' });
+      // Warning styling if SOW is empty
+      if (sowTd && isCellEmpty(sowTd) && sowGroup) {
+        sowGroup.classList.add(P + '-sum-group--warning');
+      }
     }
+
+    // Determine if Fee is $0 or empty (drives danger styling on editable fields)
+    var feeTd = f.installFee ? findCell(tr, f.installFee) : null;
+    var feeIsZeroOrEmpty = false;
+    if (feeTd) {
+      var feeText = (feeTd.textContent || '').replace(/[\u00a0\s$,]/g, '').trim();
+      feeIsZeroOrEmpty = feeText === '' || feeText === '-' || /^0+(\.0+)?$/.test(feeText);
+    }
+
     if (f.subBid) {
-      appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
+      var sbGroup = appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
         { cls: P + '-sum-group--sub-bid', directEdit: true, fieldKey: f.subBid });
+      if (feeIsZeroOrEmpty && sbGroup) sbGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.plusHrs) {
-      appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
+      var phGroup = appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
         { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusHrs });
+      if (feeIsZeroOrEmpty && phGroup) phGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.plusMat) {
-      appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
+      var pmGroup = appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
         { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusMat });
+      if (feeIsZeroOrEmpty && pmGroup) pmGroup.classList.add(P + '-sum-group--danger');
     }
     if (f.installFee) {
-      appendSumGroup(rightGroup, 'Fee', findCell(tr, f.installFee),
+      appendSumGroup(rightGroup, 'Fee', feeTd,
         { cls: P + '-sum-group--fee', readOnly: true });
     }
 
