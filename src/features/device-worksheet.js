@@ -784,10 +784,10 @@ td.${P}-sum-direct-edit .${P}-direct-error {
   border-radius: 2px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
-/* When KTL bulk-edit copy mode is active (detected by JS adding
-   this class), disable input interaction so td handles clicks. */
-td.${P}-sum-direct-edit.${P}-bulk-copy .${P}-direct-input,
-td.${P}-sum-direct-edit.${P}-bulk-copy .${P}-direct-textarea {
+/* When KTL bulk-edit copy mode is active (KTL adds bulkEditSelectSrc
+   to cell-edit tds), disable input interaction so td handles clicks. */
+td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-input,
+td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
   pointer-events: none;
   cursor: crosshair;
 }
@@ -1628,56 +1628,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     e.stopPropagation();
     e.preventDefault();
   }, true);
-
-  // ── KTL bulk-edit copy mode detection ──
-  // When any header checkbox (bulkEditHeaderCbox) is checked, add a
-  // class to our direct-edit tds so CSS disables pointer-events on
-  // the inputs and the td's crosshair cursor shows through.
-  var BULK_COPY_CLASS = P + '-bulk-copy';
-  function syncBulkCopyMode() {
-    // Detect bulk-edit by checking for selected rows (KTL adds
-    // bulkEditSelectedRow class) or checked row/header checkboxes.
-    var anySelected = !!document.querySelector('.bulkEditSelectedRow') ||
-                      !!document.querySelector('.bulkEditCb:checked') ||
-                      !!document.querySelector('.bulkEditHeaderCbox:checked');
-    var editTds = document.querySelectorAll('td.' + P + '-sum-direct-edit');
-    for (var i = 0; i < editTds.length; i++) {
-      if (anySelected) {
-        editTds[i].classList.add(BULK_COPY_CLASS);
-      } else {
-        editTds[i].classList.remove(BULK_COPY_CLASS);
-      }
-    }
-  }
-  // Listen for checkbox changes
-  document.addEventListener('change', function (e) {
-    if (e.target.classList.contains('bulkEditHeaderCbox') ||
-        e.target.classList.contains('bulkEditCb') ||
-        e.target.type === 'checkbox') {
-      setTimeout(syncBulkCopyMode, 0);
-    }
-  }, true);
-  // Re-check after KTL may have toggled checkboxes programmatically
-  document.addEventListener('click', function (e) {
-    if (e.target.classList.contains('bulkEditHeaderCbox') ||
-        e.target.classList.contains('bulkEditCb') ||
-        e.target.classList.contains('masterSelector') ||
-        (e.target.closest && e.target.closest('.bulkEditHeaderCbox, .bulkEditCb'))) {
-      setTimeout(syncBulkCopyMode, 50);
-    }
-  }, true);
-  // Observe DOM for bulkEditSelectedRow class changes (KTL adds this
-  // programmatically and may not fire change/click events)
-  var _bulkSyncTimer;
-  var bulkEditObserver = new MutationObserver(function () {
-    clearTimeout(_bulkSyncTimer);
-    _bulkSyncTimer = setTimeout(syncBulkCopyMode, 30);
-  });
-  bulkEditObserver.observe(document.body, {
-    attributes: true,
-    attributeFilter: ['class'],
-    subtree: true
-  });
 
   // ============================================================
   // SUMMARY BAR DIRECT-EDIT  (in-place input inside existing td)
