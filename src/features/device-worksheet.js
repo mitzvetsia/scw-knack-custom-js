@@ -1729,16 +1729,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var feeField = cfg.fields.installFee;
     var newFee = resp[feeField] || '';
 
+    // Object API may return _raw for equation fields
+    if (!newFee) {
+      var raw = resp[feeField + '_raw'];
+      if (raw) {
+        newFee = typeof raw === 'object' ? ('$' + (raw.number || raw.value || '0')) : String(raw);
+      }
+    }
+
+    console.log('[scw-ws-fee] patchFee: recordId=' + recordId + ', newFee="' + newFee + '"');
+
     // Locate the worksheet row for this record
     var wsTr = document.getElementById(recordId);
-    if (!wsTr) return;
+    if (!wsTr) { console.warn('[scw-ws-fee] patchFee: row not found for ' + recordId); return; }
     var feeTd = wsTr.querySelector('td.' + feeField);
-    if (!feeTd) return;
+    if (!feeTd) { console.warn('[scw-ws-fee] patchFee: td.' + feeField + ' not found in row ' + recordId); return; }
 
     // Update the fee cell text
     var span = feeTd.querySelector('span');
     if (span) { span.textContent = '\n' + newFee + '\n  '; }
     else { feeTd.textContent = newFee; }
+    console.log('[scw-ws-fee] patchFee: updated fee cell for ' + recordId + ' to "' + newFee + '"');
 
     // Re-evaluate danger: is new fee zero/empty?
     var stripped = newFee.replace(/[\u00a0\s$,]/g, '').trim();
@@ -1760,7 +1771,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    * fields like Install Fee) and patch the fee cell + danger styling.
    * The view-level PUT response often strips formula fields, so this
    * lightweight GET is the reliable way to refresh the fee after a
-   * fee-trigger save.
+   * fee-trigger save.  A short delay lets the server finish
+   * recalculating the equation before we read it back.
    */
   function fetchAndApplyFee(viewId, recordId) {
     var cfg = viewCfgFor(viewId);
@@ -1778,23 +1790,41 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       return;
     }
 
-    console.log('[scw-ws-fee] Fetching fee via object API (' + objectKey + ') for ' + recordId);
+    var feeField = cfg.fields.installFee;
 
-    $.ajax({
-      url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
-      type: 'GET',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      success: function (resp) {
-        if (resp) patchFeeFromResponse(viewId, recordId, resp);
-      },
-      error: function (xhr) {
-        console.warn('[scw-ws-fee] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
-      }
-    });
+    // Small delay so the server finishes recalculating the equation
+    setTimeout(function () {
+      console.log('[scw-ws-fee] Fetching fee via object API (' + objectKey + ') for ' + recordId);
+
+      $.ajax({
+        url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+        type: 'GET',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        success: function (resp) {
+          if (!resp) return;
+
+          // Object API may return formatted string or _raw object
+          var newFee = resp[feeField] || '';
+          var raw = resp[feeField + '_raw'];
+          if (!newFee && raw) {
+            // _raw for currency/number is often { number: "55.00" } or just a number
+            newFee = typeof raw === 'object' ? ('$' + (raw.number || raw.value || '0')) : String(raw);
+          }
+
+          console.log('[scw-ws-fee] Object API fee for ' + recordId + ': "' + newFee + '"',
+            '(raw:', JSON.stringify(raw), ')');
+
+          patchFeeFromResponse(viewId, recordId, resp);
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-fee] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
+        }
+      });
+    }, 750);
   }
 
   /** Extract the label text from a Knack API response object. */
