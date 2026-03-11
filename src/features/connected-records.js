@@ -227,7 +227,15 @@
     var parentId = match[1];
 
     setTimeout(function () {
-      $('input#field_2464').val(parentId);
+      // field_2464 is a Chosen.js connection select — set the <select> value,
+      // update the hidden connection input, and trigger Chosen to refresh.
+      var $select = $('#view_3580-field_2464');
+      var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
+
+      $select.val(parentId);
+      $select.trigger('chosen:updated');
+      $select.trigger('liszt:updated');
+      $hidden.val(parentId);
     }, 1);
   });
 
