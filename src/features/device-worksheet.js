@@ -2497,8 +2497,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     if (f.mountingHardware) {
-      addRow(leftSection, buildFieldRow('Mounting\nHardware',
-        findCell(tr, f.mountingHardware)));
+      // Use connected-records widget if available, otherwise fall back to simple field row
+      if (window.SCW && SCW.connectedRecords && typeof SCW.connectedRecords.buildWidget === 'function') {
+        var recordId = getRecordId(tr);
+        var crWidget = SCW.connectedRecords.buildWidget(viewCfg.viewId, recordId, f.mountingHardware);
+        if (crWidget) {
+          addRow(leftSection, crWidget);
+        } else {
+          addRow(leftSection, buildFieldRow('Mounting\nHardware',
+            findCell(tr, f.mountingHardware)));
+        }
+      } else {
+        addRow(leftSection, buildFieldRow('Mounting\nHardware',
+          findCell(tr, f.mountingHardware)));
+      }
     }
 
     sections.appendChild(leftSection);
