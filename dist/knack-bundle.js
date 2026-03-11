@@ -12238,13 +12238,13 @@ $(".kn-navigation-bar").hide();
           quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
                               stackWith: 'subBidTotal' },
-          subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'Ttl' },
+          subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'TOTAL' },
           plusHrs:           { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true,
                               stackWith: 'hrsTtl' },
-          hrsTtl:           { key: 'field_1997', type: 'readOnly',    label: 'Ttl' },
+          hrsTtl:           { key: 'field_1997', type: 'readOnly',    label: 'TOTAL' },
           plusMat:           { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true,
                               stackWith: 'matTtl' },
-          matTtl:           { key: 'field_2146', type: 'readOnly',    label: 'Ttl' },
+          matTtl:           { key: 'field_2146', type: 'readOnly',    label: 'TOTAL' },
           installFee:       { key: 'field_2028', type: 'readOnly',    summary: true, label: 'Fee',  group: 'right', groupCls: 'sum-group--fee', readOnlySummary: true },
           move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
@@ -13386,18 +13386,51 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 .${P}-sum-group--stacked-pair {
   display: flex !important;
   flex-direction: column !important;
-  align-items: flex-start;
+  align-items: center;
   gap: 0;
 }
-/* TTL label — same formatting as primary label, small top gap */
+/* TOTAL label — padding above, minimal below, centered */
 .${P}-sum-label--ttl {
-  margin-top: 1px;
+  margin-top: 4px;
+  margin-bottom: 0;
+  text-align: center;
+  width: 100%;
 }
-/* Read-only total in stacked pair — smaller text */
+/* Read-only total in stacked pair — match Fee value size, centered */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
-  font-size: 11px;
-  color: #64748b;
-  padding: 1px 4px !important;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  padding: 0 4px !important;
+  justify-content: center;
+  width: 100%;
+}
+
+/* view_3332: Product styled as editable field — same as view_3313 */
+#view_3332 td.${P}-sum-product,
+#view_3332 td.${P}-sum-product:hover {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 4px;
+  background: rgba(134, 182, 223, 0.1) !important;
+  padding: 2px 8px;
+  height: 30px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+#view_3332 td.${P}-sum-product.cell-edit:hover,
+#view_3332 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+  background-color: rgba(134, 182, 223, 0.18) !important;
+  border-color: #93c5fd !important;
+  cursor: pointer;
+}
+#view_3332 td.${P}-sum-product.bulkEditSelectSrc {
+  outline-offset: 1px;
+  cursor: cell !important;
+  background-color: rgb(255, 253, 204) !important;
 }
 
 /* view_3332 product group width — match view_3505 */
@@ -13405,6 +13438,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   width: 400px;
   min-width: 400px;
   max-width: 400px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+#view_3332 .${P}-product-group > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
 }
 
 /* view_3332 detail sections grid */
