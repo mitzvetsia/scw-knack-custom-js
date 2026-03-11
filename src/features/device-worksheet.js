@@ -1073,7 +1073,12 @@ tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.ktlInlineEdi
 }
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-input,
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-textarea {
-  background-color: transparent;
+  background-color: transparent !important;
+}
+/* Detail-panel: hidden td still receives bulkEditSelectedRow from KTL —
+   propagate yellow to the visible wrapper via :has() */
+.${P}-field-value:has(td.bulkEditSelectedRow) {
+  background-color: rgb(255, 253, 204) !important;
 }
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row > .${P}-comp-val:last-child,
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val,
