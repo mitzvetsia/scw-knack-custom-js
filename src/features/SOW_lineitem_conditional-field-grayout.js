@@ -19,7 +19,7 @@
   // ============================================================
   // CONFIG
   // ============================================================
-  const VIEW_IDS = ['view_3456'];
+  const VIEW_IDS = ['view_3456', 'view_3332'];
 
   // Detect field (hidden column with the bucket connection value)
   const DETECT_FIELD = 'field_2219';
