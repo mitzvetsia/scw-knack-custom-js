@@ -1453,14 +1453,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── Bucket label (SERVICE / ASSUMPTION) in product area ── */
-.${P}-bucket-label {
-  flex: 0 0 auto;
-  align-self: center;
-  font-weight: 700;
+/* ── Bucket label tag (SERVICE / ASSUMPTION) — styled like sum-label-cell ── */
+.${P}-bucket-tag {
+  display: inline-flex;
+  align-items: center;
   font-size: 14px;
+  font-weight: 700;
   color: #1e4d78;
   white-space: nowrap;
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
 }
 `;
 
@@ -1546,16 +1552,24 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // ── Inject bucket label into product area ──
+    // ── Inject bucket label as tag to the left of product (same position as label-cell) ──
     if (rule.label) {
-      var productGroup = card.querySelector('.' + P + '-product-group');
-      if (productGroup) {
-        var labelEl = document.createElement('span');
-        labelEl.className = P + '-bucket-label';
-        labelEl.textContent = rule.label;
+      var identity = card.querySelector('.' + P + '-identity');
+      if (identity) {
+        var tagEl = document.createElement('span');
+        tagEl.className = P + '-bucket-tag';
+        tagEl.textContent = rule.label;
         // visibility:visible overrides parent hidden (when product field is in hideFields)
-        labelEl.style.visibility = 'visible';
-        productGroup.insertBefore(labelEl, productGroup.firstChild);
+        tagEl.style.visibility = 'visible';
+        // Insert as first child of identity (before separator + product-group)
+        identity.insertBefore(tagEl, identity.firstChild);
+
+        // Hide separator dot when product is hidden (tag replaces the label position)
+        var productDesc = viewCfg.fields && viewCfg.fields.product;
+        if (productDesc && hideSet.has(productDesc.key)) {
+          var sep = identity.querySelector('.' + P + '-sum-sep');
+          if (sep) sep.style.display = 'none';
+        }
       }
     }
   }
