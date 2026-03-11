@@ -1303,29 +1303,30 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   width: 100%;
 }
 
-/* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
-.${P}-sum-group--narrow {
+/* Per-group width overrides (scoped under .sum-right for specificity) */
+.${P}-sum-right .${P}-sum-group--narrow {
   width: 50px;
   min-width: 50px;
 }
-.${P}-sum-group--sub-bid {
+.${P}-sum-right .${P}-sum-group--sub-bid {
   width: 65px;
   min-width: 65px;
 }
-.${P}-sum-group--cat {
+.${P}-sum-right .${P}-sum-group--cat {
   width: 70px;
   min-width: 70px;
 }
-.${P}-sum-group--vars {
+.${P}-sum-right .${P}-sum-group--vars {
   width: 70px;
   min-width: 70px;
 }
-.${P}-sum-group--fee {
+.${P}-sum-right .${P}-sum-group--fee {
   width: 70px;
   min-width: 70px;
 }
-.${P}-sum-group--sow {
-  min-width: 180px;
+.${P}-sum-right .${P}-sum-group--sow {
+  width: 100px;
+  min-width: 100px;
   flex-shrink: 0;
 }
 /* SOW field grows in height to show multiple connection values */
