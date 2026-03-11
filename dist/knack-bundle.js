@@ -13450,11 +13450,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   margin-top: 11px;
 }
 
-/* view_3332 product group width — match view_3505 */
+/* view_3332 product group width — match view_3313 */
 #view_3332 .${P}-product-group {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
   flex-direction: column;
   align-items: stretch;
   gap: 0;
