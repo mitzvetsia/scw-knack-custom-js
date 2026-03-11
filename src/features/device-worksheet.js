@@ -366,8 +366,7 @@ tr.scw-inline-photo-row > td {
 }
 /* Each field group in the right section gets fixed width for vertical alignment */
 .${P}-sum-right .${P}-sum-group {
-  width: 80px;
-  min-width: 80px;
+  width: fit-content;
 }
 /* Bid group can be a bit narrower */
 .${P}-sum-right .${P}-sum-group--bid {
