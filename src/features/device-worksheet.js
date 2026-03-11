@@ -712,8 +712,6 @@ td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-radio-chip {
 /* ── field_1972 (Labor Variables): ensure no blue background leaks through ── */
 #view_3313 .${P}-sum-group--vars td,
 #view_3313 .${P}-sum-group--vars td[style] {
-  background: transparent !important;
-  background-color: transparent !important;
 }
 
 /* ── Summary-bar radio chips (Labor Variables) ── */
