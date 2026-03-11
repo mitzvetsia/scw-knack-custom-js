@@ -12435,12 +12435,13 @@ $(".kn-navigation-bar").hide();
 
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
-          connectedDevice:  { key: 'field_1957', type: 'readOnly' }
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          mountingHardware: { key: 'field_2207', type: 'readOnly' }
         },
         summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
         detailLayout: {
           left:  ['scwNotes'],
-          right: ['connectedDevice']
+          right: ['connectedDevice', 'mountingHardware']
         }
       }
     ]
