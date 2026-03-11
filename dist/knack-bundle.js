@@ -13560,39 +13560,44 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── Stacked pair groups (editable + read-only total side by side) ── */
+/* ── Stacked pair groups (editable + read-only total stacked vertically) ── */
 .${P}-sum-group--stacked-pair {
   display: flex !important;
-  flex-direction: row !important;
-  gap: 2px;
+  flex-direction: column !important;
+  gap: 0;
 }
 .${P}-sum-stack-col {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   min-width: 0;
+  gap: 2px;
 }
 .${P}-sum-group--stacked-pair.${P}-sum-group--sub-bid {
-  width: 120px;
-  min-width: 120px;
-}
-.${P}-sum-group--stacked-pair.${P}-sum-group--sub-bid .${P}-sum-stack-col {
-  width: 58px;
-  min-width: 0;
+  width: 80px;
+  min-width: 80px;
 }
 .${P}-sum-group--stacked-pair.${P}-sum-group--narrow {
-  width: 95px;
-  min-width: 95px;
-}
-.${P}-sum-group--stacked-pair.${P}-sum-group--narrow .${P}-sum-stack-col {
-  width: 45px;
-  min-width: 0;
+  width: 65px;
+  min-width: 65px;
 }
 /* Read-only total in stacked pair — smaller text */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
   font-size: 11px;
   color: #64748b;
-  padding: 2px 4px !important;
+  padding: 1px 4px !important;
   text-align: center;
+}
+/* Label in stacked pair */
+.${P}-sum-group--stacked-pair .${P}-sum-label {
+  white-space: nowrap;
+}
+
+/* view_3332 product group width — match view_3505 */
+#view_3332 .${P}-product-group {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
 }
 
 /* view_3332 detail sections grid */
