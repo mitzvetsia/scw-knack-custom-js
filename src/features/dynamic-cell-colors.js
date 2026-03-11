@@ -181,6 +181,8 @@
         if ($td.length) {
           $td.removeClass(ALL_COLOR_CLASSES);
           $td.css('background-color', '');
+          // Clear direct-edit input bg too
+          $td.find('.scw-ws-direct-input, .scw-ws-direct-textarea').css('background-color', '');
         }
       });
 
@@ -199,7 +201,10 @@
           $td.removeClass(ALL_COLOR_CLASSES);
           var cls = COLOR_CLASSES[rule.color];
           if (cls) $td.addClass(cls);
-          $td.css('background-color', resolveColor(rule.color));
+          var color = resolveColor(rule.color);
+          $td.css('background-color', color);
+          // Propagate to direct-edit inputs so they don't mask the td color
+          $td.find('.scw-ws-direct-input, .scw-ws-direct-textarea').css('background-color', color);
         }
       });
     });
