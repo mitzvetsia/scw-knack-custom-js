@@ -2994,7 +2994,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         // Connected records widget (e.g. mounting hardware in view_3313)
         if (window.SCW && SCW.connectedRecords && typeof SCW.connectedRecords.buildWidget === 'function') {
           var recordId = getRecordId(tr);
-          var crWidget = SCW.connectedRecords.buildWidget(viewId, recordId, desc.key);
+          var crWidget = SCW.connectedRecords.buildWidget(viewId, recordId, desc.key, tr);
           if (crWidget) {
             section.appendChild(crWidget);
           } else {
