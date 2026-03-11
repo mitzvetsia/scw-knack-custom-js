@@ -120,8 +120,8 @@
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
           { cls: 'scw-row--services',    label: 'Project Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
         ]
       },
       {
@@ -1364,11 +1364,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   align-items: flex-start;
   gap: 0;
 }
-/* TTL label — slightly smaller / muted to distinguish from primary label */
+/* TTL label — same formatting as primary label, small top gap */
 .${P}-sum-label--ttl {
   margin-top: 1px;
-  font-size: 8px;
-  color: #64748b;
 }
 /* Read-only total in stacked pair — smaller text */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
