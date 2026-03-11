@@ -12268,10 +12268,7 @@ $(".kn-navigation-bar").hide();
             hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
           },
-        },
-        syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-        ]
+        }
       }
     ]
   };
@@ -13326,6 +13323,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* Fee label — align with value text (match td padding-left) */
 .${P}-sum-group--fee > .${P}-sum-label {
   padding-left: 8px;
+  text-align: center;
+  width: 100%;
 }
 
 /* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
@@ -13382,66 +13381,42 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── Stacked pair groups (editable + read-only total stacked vertically) ── */
+/* ── Stacked pair groups (editable + read-only total side by side) ── */
 .${P}-sum-group--stacked-pair {
   display: flex !important;
-  flex-direction: column !important;
-  gap: 0;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 2px;
 }
 .${P}-sum-stack-col {
   display: flex;
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
-  gap: 2px;
+  gap: 0;
 }
 .${P}-sum-group--stacked-pair.${P}-sum-group--sub-bid {
-  width: 80px;
-  min-width: 80px;
+  min-width: 0;
 }
 .${P}-sum-group--stacked-pair.${P}-sum-group--narrow {
-  width: 65px;
-  min-width: 65px;
+  min-width: 0;
 }
 /* Read-only total in stacked pair — smaller text */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
   font-size: 11px;
   color: #64748b;
   padding: 1px 4px !important;
-  text-align: center;
 }
 /* Label in stacked pair */
 .${P}-sum-group--stacked-pair .${P}-sum-label {
   white-space: nowrap;
 }
 
-/* view_3332 product group — column layout to align with editable fields */
+/* view_3332 product group width — match view_3505 */
 #view_3332 .${P}-product-group {
   width: 400px;
   min-width: 400px;
   max-width: 400px;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3332 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
-}
-
-/* view_3332: top-align all elements; pad non-labeled items to match label height */
-#view_3332 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3332 .${P}-chevron {
-  margin-top: 11px;
-}
-#view_3332 td.${P}-sum-label-cell {
-  margin-top: 11px;
-}
-#view_3332 .${P}-sum-sep {
-  margin-top: 11px;
 }
 
 /* view_3332 detail sections grid */
