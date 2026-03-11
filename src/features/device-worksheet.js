@@ -118,7 +118,11 @@
             hideFields: ['field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
           },
-        }
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Services' },
+        ]
       },
       {
         viewId: 'view_3559',
@@ -240,7 +244,11 @@
             hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
           },
-        }
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Services' },
+        ]
       }
     ]
   };
@@ -3325,10 +3333,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // ── SYNTHETIC GROUP HEADERS for ungrouped Assumptions / Services ──
-    // In view_3505, rows with an empty MDF/IDF connection (field_2375)
-    // that are Assumptions or Services get collected under synthetic
-    // group-header rows placed FIRST in the table (before MDF/IDF groups).
-    if (viewCfg.viewId === 'view_3505') {
+    // Rows with an empty MDF/IDF (move) field that are Assumptions or
+    // Services get collected under synthetic group-header rows placed
+    // FIRST in the table (before MDF/IDF groups).
+    if (viewCfg.syntheticBucketGroups && viewCfg.syntheticBucketGroups.length) {
       var tbody = table.querySelector('tbody');
       var colSpan = 1;
       var hdr = table.querySelector('thead tr');
@@ -3376,10 +3384,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
       // Build synthetic groups in reverse so insertions at top keep order:
       // Project Assumptions first, then Project Services.
-      var buckets = [
-        { cls: 'scw-row--services',    label: 'Project Services' },
-        { cls: 'scw-row--assumptions', label: 'Project Assumptions' }
-      ];
+      var buckets = viewCfg.syntheticBucketGroups;
 
       // Track the last inserted row to place the bottom divider after
       var lastInsertedRow = null;
