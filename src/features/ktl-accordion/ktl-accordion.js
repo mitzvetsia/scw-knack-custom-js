@@ -457,6 +457,46 @@
    */
   var _btnRefs = {};   // viewKey → current button element
 
+  // ── Snapshot save/restore for post-edit and modal-submit flows ──
+  // KTL resets sections to expanded on re-render; we snapshot the
+  // collapsed keys before the re-render and apply them afterward.
+  var _savedCollapsed = null;  // Set<string> of viewKeys that were collapsed
+
+  function snapshotState() {
+    _savedCollapsed = {};
+    var wrappers = document.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < wrappers.length; i++) {
+      var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
+      if (!hdr) continue;
+      var vk = hdr.getAttribute('data-view-key');
+      if (vk && !wrappers[i].classList.contains('is-expanded')) {
+        _savedCollapsed[vk] = true;
+      }
+    }
+    log('snapshotState', _savedCollapsed);
+  }
+
+  function applySavedState() {
+    if (!_savedCollapsed) return;
+    var saved = _savedCollapsed;
+    _savedCollapsed = null;
+
+    var wrappers = document.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < wrappers.length; i++) {
+      var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
+      if (!hdr) continue;
+      var vk = hdr.getAttribute('data-view-key');
+      if (vk && saved[vk]) {
+        // This accordion was collapsed — collapse it again
+        wrappers[i].classList.remove('is-expanded');
+        hdr.setAttribute('aria-expanded', 'false');
+        var bodyEl = wrappers[i].querySelector('.scw-ktl-accordion__body');
+        if (bodyEl) bodyEl.style.display = 'none';
+        log('restored collapsed', vk);
+      }
+    }
+  }
+
   function bindHeader(wrap, hdr, btnEl, vKey) {
     _btnRefs[vKey] = btnEl;               // always update to latest button
 
@@ -700,6 +740,10 @@
   window.SCW.ktlAccordion = {
     /** Force re-enhancement pass */
     refresh: enhance,
+    /** Snapshot current collapsed/expanded state (call before re-render) */
+    saveState: snapshotState,
+    /** Apply saved state after re-render (call after enhance/refresh) */
+    restoreState: applySavedState,
     /** Toggle debug logging */
     debug: function (on) { DEBUG = !!on; }
   };
