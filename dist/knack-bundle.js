@@ -12242,6 +12242,14 @@ $(".kn-navigation-bar").hide();
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
 
+  // Inject CSS upfront so field_2464 is hidden before the DOM paints
+  var hideStyle = document.createElement('style');
+  hideStyle.id = 'scw-hide-field-2464';
+  hideStyle.textContent = '#kn-input-field_2464 { display: none !important; }';
+  if (!document.getElementById(hideStyle.id)) {
+    document.head.appendChild(hideStyle);
+  }
+
   $(document).on('knack-view-render.view_3580', function (event, view, data) {
     var hash = window.location.hash || '';
     // URL: #.../add-accessory-line-item/{parentRecordId}
@@ -12249,9 +12257,6 @@ $(".kn-navigation-bar").hide();
     if (!match) return;
 
     var parentId = match[1];
-
-    // Hide field_2464 — it's auto-populated, user doesn't need to see it
-    $('#kn-input-field_2464').hide();
 
     setTimeout(function () {
       // field_2464 is a Chosen.js connection select — set the <select> value,
