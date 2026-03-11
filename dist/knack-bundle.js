@@ -13481,20 +13481,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── Bucket label tag (SERVICE / ASSUMPTION) — styled like sum-label-cell ── */
-.${P}-bucket-tag {
+/* ── Bucket chit (SERVICE / ASSUMPTION) — compact purple pill ── */
+.${P}-bucket-chit {
   display: inline-flex;
   align-items: center;
-  font-size: 14px;
+  justify-content: center;
+  font-size: 9px;
   font-weight: 700;
-  color: #1e4d78;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #fff;
+  background: #7c3aed;
+  border-radius: 3px;
   white-space: nowrap;
-  width: 80px;
-  min-width: 80px;
-  max-width: 80px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 2px;
+  padding: 2px 6px;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+/* Shrink product group when bucket chit is present */
+#view_3332 .${P}-identity:has(.${P}-bucket-chit) .${P}-product-group {
+  width: 320px;
+  min-width: 320px;
+  max-width: 320px;
 }
 `;
 
@@ -13580,12 +13588,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // ── Inject bucket label as tag to the left of product (same position as label-cell) ──
+    // ── Inject bucket chit to the left of product ──
     if (rule.label) {
       var identity = card.querySelector('.' + P + '-identity');
       if (identity) {
         var tagEl = document.createElement('span');
-        tagEl.className = P + '-bucket-tag';
+        tagEl.className = P + '-bucket-chit';
         tagEl.textContent = rule.label;
         // visibility:visible overrides parent hidden (when product field is in hideFields)
         tagEl.style.visibility = 'visible';
