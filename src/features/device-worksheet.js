@@ -3369,6 +3369,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       if (!recordId) return;
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
+      // Detect bucket and move-field emptiness BEFORE buildWorksheetCard moves tds
+      var preBucketRowClass = '';
+      if (viewCfg.bucketField && viewCfg.bucketRules) {
+        var rowBucketId = readBucketId(tr, viewCfg.bucketField);
+        var rowBucketRule = rowBucketId ? viewCfg.bucketRules[rowBucketId] : null;
+        if (rowBucketRule && rowBucketRule.rowClass) {
+          preBucketRowClass = rowBucketRule.rowClass;
+        }
+      }
+      var moveTd = findCell(tr, fieldKey(viewCfg, 'move'));
+      var hasNoMove = isCellEmpty(moveTd);
+
       var card = buildWorksheetCard(tr, viewCfg);
 
       var wsTr = document.createElement('tr');
@@ -3376,18 +3388,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.id = tr.id;
       tr.removeAttribute('id');
 
-      // Detect bucket directly and apply row class (don't rely on grayout module timing)
-      if (viewCfg.bucketField && viewCfg.bucketRules) {
-        var rowBucketId = readBucketId(tr, viewCfg.bucketField);
-        var rowBucketRule = rowBucketId ? viewCfg.bucketRules[rowBucketId] : null;
-        if (rowBucketRule && rowBucketRule.rowClass) {
-          wsTr.classList.add(rowBucketRule.rowClass);
-        }
-      }
-
-      // Tag rows with empty MDF/IDF (move) field BEFORE the td is moved
-      var moveTd = findCell(tr, fieldKey(viewCfg, 'move'));
-      if (isCellEmpty(moveTd)) wsTr.setAttribute('data-scw-no-move', '1');
+      if (preBucketRowClass) wsTr.classList.add(preBucketRowClass);
+      if (hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
 
       var wsTd = document.createElement('td');
 
