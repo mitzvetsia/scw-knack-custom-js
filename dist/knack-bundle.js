@@ -12410,6 +12410,7 @@ tr.scw-inline-photo-row > td {
 .${P}-sum-right td.${P}-sum-field-ro {
   width: 100%;
   min-width: 0;
+  height: fit-content;
 }
 
 /* ── KTL bulk-edit checkbox cell ── */
@@ -13391,7 +13392,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 /* TOTAL label — padding above, minimal below, centered */
 .${P}-sum-label--ttl {
-  margin-top: 4px;
+  margin-top: 8px;
   margin-bottom: 0;
   text-align: center;
   width: 100%;
