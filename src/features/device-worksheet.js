@@ -239,11 +239,13 @@
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
             label: 'SERVICE',
+            descLabel: 'Description of Service',
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
+            descLabel: 'Assumption',
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -1611,6 +1613,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var sep = identity.querySelector('.' + P + '-sum-sep');
           if (sep) sep.style.display = 'none';
         }
+      }
+    }
+
+    // ── Override labor-desc label per bucket ──
+    if (rule.descLabel) {
+      var ldDesc = viewCfg.fields && viewCfg.fields.laborDescription;
+      if (ldDesc) {
+        var ldGroup = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
+        if (ldGroup) ldGroup.textContent = rule.descLabel;
       }
     }
   }
