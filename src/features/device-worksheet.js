@@ -188,6 +188,36 @@
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes']
         }
+      },
+      {
+        viewId: 'view_3332',
+        fields: {
+          // ── Summary row ──
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
+                              stackWith: 'subBidTotal' },
+          subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'Ttl' },
+          plusHrs:           { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true,
+                              stackWith: 'hrsTtl' },
+          hrsTtl:           { key: 'field_1997', type: 'readOnly',    label: 'Ttl' },
+          plusMat:           { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true,
+                              stackWith: 'matTtl' },
+          matTtl:           { key: 'field_2146', type: 'readOnly',    label: 'Ttl' },
+          installFee:       { key: 'field_2028', type: 'readOnly',    summary: true, label: 'Fee',  group: 'right', groupCls: 'sum-group--fee', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel ──
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' }
+        },
+        summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+        detailLayout: {
+          left:  ['scwNotes'],
+          right: ['connectedDevice']
+        }
       }
     ]
   };
@@ -1304,6 +1334,59 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     grid-template-columns: 90px 1fr 1fr;
   }
 }
+
+/* ── Stacked pair groups (editable + read-only total side by side) ── */
+.${P}-sum-group--stacked-pair {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 2px;
+}
+.${P}-sum-stack-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.${P}-sum-group--stacked-pair.${P}-sum-group--sub-bid {
+  width: 120px;
+  min-width: 120px;
+}
+.${P}-sum-group--stacked-pair.${P}-sum-group--sub-bid .${P}-sum-stack-col {
+  width: 58px;
+  min-width: 0;
+}
+.${P}-sum-group--stacked-pair.${P}-sum-group--narrow {
+  width: 95px;
+  min-width: 95px;
+}
+.${P}-sum-group--stacked-pair.${P}-sum-group--narrow .${P}-sum-stack-col {
+  width: 45px;
+  min-width: 0;
+}
+/* Read-only total in stacked pair — smaller text */
+.${P}-sum-group--stacked-pair .${P}-sum-field-ro {
+  font-size: 11px;
+  color: #64748b;
+  padding: 2px 4px !important;
+  text-align: center;
+}
+
+/* view_3332 detail sections grid */
+#view_3332 .${P}-sections {
+  grid-template-columns: 1fr 1fr;
+}
+#view_3332 td.${P}-sum-check {
+  align-self: flex-start;
+  padding-top: 11px !important;
+}
+#view_3332 .${P}-sum-delete {
+  align-self: flex-start;
+  padding-top: 11px;
+}
+@media (max-width: 900px) {
+  #view_3332 .${P}-sections {
+    grid-template-columns: 1fr;
+  }
+}
 `;
 
     var style = document.createElement('style');
@@ -1771,7 +1854,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   // Number fields that need client-side validation
   var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458',
-                       'field_2150', 'field_1973', 'field_1974', 'field_1951', 'field_1965'];
+                       'field_2150', 'field_1973', 'field_1974', 'field_1951', 'field_1965',
+                       'field_1964'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -2388,7 +2472,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ============================================================
 
   /** Render a single field into the summary bar based on its descriptor type. */
-  function renderSummaryField(target, tr, name, desc) {
+  function renderSummaryField(target, tr, name, desc, viewCfg) {
     var td = findCell(tr, desc.key, desc.columnIndex);
 
     switch (desc.type) {
@@ -2417,6 +2501,39 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
+        } else if (desc.stackWith && viewCfg) {
+          // Stacked pair — editable field + read-only total side by side
+          if (!td) break;
+          var pairDesc = fieldDesc(viewCfg, desc.stackWith);
+          var pairTd = pairDesc ? findCell(tr, pairDesc.key, pairDesc.columnIndex) : null;
+          var pairGroup = document.createElement('span');
+          pairGroup.className = P + '-sum-group ' + P + '-sum-group--stacked-pair'
+            + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+          // Left column: editable field
+          var leftCol = document.createElement('span');
+          leftCol.className = P + '-sum-stack-col';
+          var leftLbl = document.createElement('span');
+          leftLbl.className = P + '-sum-label';
+          leftLbl.textContent = desc.label || name;
+          leftCol.appendChild(leftLbl);
+          td.classList.add(P + '-sum-field');
+          injectSummaryDirectEdit(td, desc.key);
+          leftCol.appendChild(td);
+          pairGroup.appendChild(leftCol);
+          // Right column: read-only total
+          if (pairTd) {
+            var rightCol = document.createElement('span');
+            rightCol.className = P + '-sum-stack-col';
+            var rightLbl = document.createElement('span');
+            rightLbl.className = P + '-sum-label';
+            rightLbl.textContent = pairDesc.label || desc.stackWith;
+            rightCol.appendChild(rightLbl);
+            pairTd.classList.add(P + '-sum-field-ro');
+            if (isCellEmpty(pairTd)) pairTd.classList.add(P + '-empty');
+            rightCol.appendChild(pairTd);
+            pairGroup.appendChild(rightCol);
+          }
+          target.appendChild(pairGroup);
         } else {
           appendSumGroup(target, desc.label || name, td,
             { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
@@ -2576,7 +2693,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
       // Route to the right container based on group
       var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
-      renderSummaryField(container, tr, name, desc);
+      renderSummaryField(container, tr, name, desc, viewCfg);
     }
 
     // ── Move icon (structural — always last before delete) ──
