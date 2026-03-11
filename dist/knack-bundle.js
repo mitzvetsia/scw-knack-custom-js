@@ -14040,78 +14040,23 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   /** After a fee-trigger save, patch the Fee cell from the API response
    *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
-  /** Find all readOnlySummary field keys for a view config. */
-  function getCalculatedFields(viewCfg) {
-    if (!viewCfg || !viewCfg.fields) return [];
-    var result = [];
-    Object.keys(viewCfg.fields).forEach(function (name) {
-      var desc = viewCfg.fields[name];
-      if (desc && desc.readOnlySummary) result.push(desc.key);
-    });
-    return result;
-  }
-
-  function patchCalculatedFromResponse(viewId, recordId, resp) {
-    var cfg = viewCfgFor(viewId);
-    var calcFields = getCalculatedFields(cfg);
-    if (!calcFields.length) return;
-
-    var wsTr = document.getElementById(recordId);
-    if (!wsTr) { console.warn('[scw-ws-calc] patchCalc: row not found for ' + recordId); return; }
-
-    calcFields.forEach(function (fk) {
-      var newVal = resp[fk] || '';
-
-      // Object API may return _raw for equation fields
-      if (!newVal) {
-        var raw = resp[fk + '_raw'];
-        if (raw) {
-          newVal = typeof raw === 'object' ? ('$' + (raw.number || raw.value || '0')) : String(raw);
-        }
-      }
-
-      var td = wsTr.querySelector('td.' + fk);
-      if (!td) { console.warn('[scw-ws-calc] patchCalc: td.' + fk + ' not found in row ' + recordId); return; }
-
-      var span = td.querySelector('span');
-      if (span) { span.textContent = '\n' + newVal + '\n  '; }
-      else { td.textContent = newVal; }
-      console.log('[scw-ws-calc] patched ' + fk + ' for ' + recordId + ' → "' + newVal + '"');
-    });
-  }
-
   /**
-   * Fetch the record via the VIEW-level API and patch calculated fields.
-   * Uses the same URL pattern as the PUT (/v1/pages/{scene}/views/{view}/records/{id})
-   * which is same-origin and avoids CORS issues.
-   * A short delay lets the server finish recalculating the equation.
+   * After a feeTrigger save, refresh the view so Knack re-renders
+   * with updated calculated / related values.
+   * A short delay lets the server finish recalculating.
    */
-  function fetchAndPatchCalculated(viewId, recordId) {
-    var cfg = viewCfgFor(viewId);
-    var calcFields = getCalculatedFields(cfg);
-    if (!calcFields.length) return;
+  function refreshViewAfterSave(viewId) {
     if (typeof Knack === 'undefined') return;
-
-    // Small delay so the server finishes recalculating the equation
     setTimeout(function () {
-      console.log('[scw-ws-calc] Fetching calculated fields via view API for ' + recordId);
-
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
-        type: 'GET',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'Authorization': Knack.getUserToken()
-        },
-        success: function (resp) {
-          if (!resp) return;
-          patchCalculatedFromResponse(viewId, recordId, resp);
-        },
-        error: function (xhr) {
-          console.warn('[scw-ws-calc] View GET failed for ' + recordId, xhr.status);
+      try {
+        var view = Knack.views[viewId];
+        if (view && view.model && typeof view.model.fetch === 'function') {
+          console.log('[scw-ws] Refreshing view ' + viewId + ' after fee-trigger save');
+          view.model.fetch();
         }
-      });
+      } catch (e) {
+        console.warn('[scw-ws] Could not refresh ' + viewId, e);
+      }
     }, 750);
   }
 
@@ -14248,7 +14193,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) fetchAndPatchCalculated(viewId, recordId);
+        if (feeTrig) refreshViewAfterSave(viewId);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -14403,7 +14348,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig) fetchAndPatchCalculated(viewId, recordId);
+          if (feeTrig) refreshViewAfterSave(viewId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
