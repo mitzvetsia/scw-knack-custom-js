@@ -13481,25 +13481,36 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── Bucket chit (SERVICE / ASSUMPTION) — compact purple pill ── */
+/* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
+.${P}-bucket-chit-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+/* ── Bucket chit (SERVICE / ASSUMPTION) — teal pill matching radio-chip shape ── */
 .${P}-bucket-chit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 500;
   color: #fff;
-  background: #7c3aed;
-  border-radius: 3px;
+  background: #2f6f73;
+  border-radius: 10px;
+  border: 1px solid transparent;
   white-space: nowrap;
-  padding: 2px 6px;
-  line-height: 1.2;
+  padding: 1px 8px;
+  line-height: 1.5;
   flex-shrink: 0;
+  max-width: 80px;
+}
+/* When product is empty, let chit fill up to full width */
+.${P}-bucket-chit--wide {
+  max-width: none;
 }
 /* Shrink product group when bucket chit is present */
-#view_3332 .${P}-identity:has(.${P}-bucket-chit) .${P}-product-group {
+#view_3332 .${P}-identity:has(.${P}-bucket-chit-group) .${P}-product-group {
   width: 320px;
   min-width: 320px;
   max-width: 320px;
@@ -13592,16 +13603,30 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (rule.label) {
       var identity = card.querySelector('.' + P + '-identity');
       if (identity) {
-        var tagEl = document.createElement('span');
-        tagEl.className = P + '-bucket-chit';
-        tagEl.textContent = rule.label;
-        // visibility:visible overrides parent hidden (when product field is in hideFields)
-        tagEl.style.visibility = 'visible';
-        // Insert as first child of identity (before separator + product-group)
-        identity.insertBefore(tagEl, identity.firstChild);
+        // Wrap in a group with empty label so chit aligns with labor desc input
+        var chitGroup = document.createElement('span');
+        chitGroup.className = P + '-bucket-chit-group';
+        chitGroup.style.visibility = 'visible';
+        var chitLabel = document.createElement('span');
+        chitLabel.className = P + '-sum-label';
+        chitLabel.innerHTML = '&nbsp;';
+        chitGroup.appendChild(chitLabel);
 
-        // Hide separator dot when product is hidden (tag replaces the label position)
+        var chitEl = document.createElement('span');
+        chitEl.className = P + '-bucket-chit';
+        chitEl.textContent = rule.label;
+
+        // If product is hidden/empty, allow chit to grow wider
         var productDesc = viewCfg.fields && viewCfg.fields.product;
+        if (productDesc && hideSet.has(productDesc.key)) {
+          chitEl.classList.add(P + '-bucket-chit--wide');
+        }
+        chitGroup.appendChild(chitEl);
+
+        // Insert as first child of identity (before separator + product-group)
+        identity.insertBefore(chitGroup, identity.firstChild);
+
+        // Hide separator dot when product is hidden
         if (productDesc && hideSet.has(productDesc.key)) {
           var sep = identity.querySelector('.' + P + '-sum-sep');
           if (sep) sep.style.display = 'none';
