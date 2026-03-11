@@ -1318,8 +1318,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 70px;
 }
 .${P}-sum-right .${P}-sum-group--vars {
-  width: 70px;
-  min-width: 70px;
+  width: 100px;
+  min-width: 100px;
+  overflow: hidden;
 }
 .${P}-sum-right .${P}-sum-group--fee {
   width: 70px;
