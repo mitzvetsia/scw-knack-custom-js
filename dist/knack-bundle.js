@@ -12235,6 +12235,27 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
+  // AUTO-POPULATE PARENT CONNECTION ON ADD FORM
+  // ============================================================
+  //
+  // When add-accessory-line-item form (view_3580) renders,
+  // grab the parent scope line item ID from the URL hash
+  // and set field_2464 (connection back to parent).
+
+  $(document).on('knack-view-render.view_3580', function (event, view, data) {
+    var hash = window.location.hash || '';
+    // URL: #.../add-accessory-line-item/{parentRecordId}
+    var match = hash.match(/add-accessory-line-item\/([a-f0-9]{24})/);
+    if (!match) return;
+
+    var parentId = match[1];
+
+    setTimeout(function () {
+      $('input#field_2464').val(parentId);
+    }, 1);
+  });
+
+  // ============================================================
   // PUBLIC API
   // ============================================================
 
