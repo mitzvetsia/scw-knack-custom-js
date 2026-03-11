@@ -14043,17 +14043,32 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   /**
    * After a feeTrigger save, refresh the view so Knack re-renders
    * with updated calculated / related values.
-   * A short delay lets the server finish recalculating.
+   * Holds the view's height and fades opacity to avoid a jarring flash.
    */
   function refreshViewAfterSave(viewId) {
     if (typeof Knack === 'undefined') return;
     setTimeout(function () {
       try {
         var view = Knack.views[viewId];
-        if (view && view.model && typeof view.model.fetch === 'function') {
-          console.log('[scw-ws] Refreshing view ' + viewId + ' after fee-trigger save');
-          view.model.fetch();
+        if (!view || !view.model || typeof view.model.fetch !== 'function') return;
+
+        var el = document.getElementById(viewId);
+        if (el) {
+          // Lock height + fade so the DOM doesn't collapse during fetch
+          el.style.minHeight = el.offsetHeight + 'px';
+          el.style.opacity = '0.45';
+          el.style.transition = 'opacity .15s';
+
+          // Restore on next render of this view
+          $(document).one('knack-view-render.' + viewId + '.scwRefreshFade', function () {
+            el.style.opacity = '1';
+            // Release min-height after the fade-in completes
+            setTimeout(function () { el.style.minHeight = ''; el.style.transition = ''; }, 200);
+          });
         }
+
+        console.log('[scw-ws] Refreshing view ' + viewId + ' after fee-trigger save');
+        view.model.fetch();
       } catch (e) {
         console.warn('[scw-ws] Could not refresh ' + viewId, e);
       }
