@@ -7755,10 +7755,12 @@ $(document).on('knack-view-render.view_3313', function () {
       rules: {
         [BUCKET_OTHER_SERVICES]: {
           activeFields: ['field_2020', 'field_2150', 'field_2151', 'field_1964', 'field_2028', 'field_1953'],
+          hiddenFields: ['field_1949'],   // product → replaced by "SERVICE" label
           rowClass: 'scw-row--services',
         },
         [BUCKET_ASSUMPTIONS]: {
           activeFields: ['field_2020', 'field_1953'],
+          hiddenFields: ['field_1964', 'field_2150', 'field_1973', 'field_1997', 'field_2028'],
           rowClass: 'scw-row--assumptions',
         },
       },
@@ -7771,6 +7773,7 @@ $(document).on('knack-view-render.view_3313', function () {
   const EVENT_NS      = '.scwCondGray';
   const GRAY_ATTR     = 'data-scw-cond-grayed';
   const GRAY_CLASS    = 'scw-cond-grayed';
+  const HIDDEN_CLASS  = 'scw-cond-hidden';
   const ROW_PROCESSED = 'data-scw-cond-processed';
 
   // ============================================================
@@ -7801,6 +7804,19 @@ $(document).on('knack-view-render.view_3313', function () {
       /* ── Hide content in all grayed cells ── */
       td.${GRAY_CLASS} span[class^="col-"] {
         visibility: hidden;
+      }
+
+      /* ── Fully hidden cell (no gray bg, content invisible, clicks blocked) ── */
+      td.${HIDDEN_CLASS} {
+        position: relative;
+        cursor: default !important;
+      }
+      td.${HIDDEN_CLASS} > * {
+        visibility: hidden !important;
+      }
+      td.${HIDDEN_CLASS} .cell-edit,
+      td.${HIDDEN_CLASS} .ktlInlineEditableCellsStyle {
+        pointer-events: none !important;
       }
 
       /* ── view_3456: bucket label + labor desc REPLACES product cell via ::after ── */
@@ -7834,6 +7850,13 @@ $(document).on('knack-view-render.view_3313', function () {
         white-space: nowrap;
         line-height: 1;
         margin-bottom: 2px;
+      }
+
+      /* ── view_3332: hidden product cell with label replacement (services) ── */
+      #view_3332 td.field_1949.${HIDDEN_CLASS}[data-scw-bucket-label]::before {
+        visibility: visible !important;
+        font-size: 14px;
+        margin-bottom: 0;
       }
     `;
 
@@ -7872,11 +7895,25 @@ $(document).on('knack-view-render.view_3313', function () {
       .removeClass('cell-edit ktlInlineEditableCellsStyle');
   }
 
+  function hideTd($td) {
+    if (!$td || !$td.length) return;
+    if ($td.hasClass(HIDDEN_CLASS)) return;
+
+    $td
+      .attr(GRAY_ATTR, '1')       // reuse attr so capture blocker applies
+      .addClass(HIDDEN_CLASS);
+
+    $td.removeClass('cell-edit ktlInlineEditableCellsStyle');
+    $td.find('.cell-edit, .ktlInlineEditableCellsStyle')
+      .removeClass('cell-edit ktlInlineEditableCellsStyle');
+  }
+
   function clearRow($tr, cfg) {
     $tr.find('td[' + GRAY_ATTR + '="1"]').each(function () {
       $(this)
         .removeAttr(GRAY_ATTR)
-        .removeClass(GRAY_CLASS);
+        .removeClass(GRAY_CLASS)
+        .removeClass(HIDDEN_CLASS);
     });
     Object.values(cfg.rules).forEach(function (rule) {
       $tr.removeClass(rule.rowClass);
@@ -7932,13 +7969,23 @@ $(document).on('knack-view-render.view_3313', function () {
       return;
     }
 
-    var activeSet = new Set(rule.activeFields || []);
+    var activeSet  = new Set(rule.activeFields || []);
+    var hiddenSet  = new Set(rule.hiddenFields || []);
 
-    // Gray every column not in the active set
+    // Hide or gray every column not in the active set
     cfg.allColumnKeys.forEach(function (fieldKey) {
       if (activeSet.has(fieldKey)) return;
       var $td = $tr.find('td.' + fieldKey);
-      if ($td.length) grayTd($td);
+      if (!$td.length) return;
+      if (hiddenSet.has(fieldKey)) { hideTd($td); } else { grayTd($td); }
+    });
+
+    // Hide fields listed in hiddenFields that aren't in allColumnKeys (e.g. labelTarget)
+    hiddenSet.forEach(function (fieldKey) {
+      if (cfg.allColumnKeys.indexOf(fieldKey) !== -1) return;  // already handled above
+      if (activeSet.has(fieldKey)) return;
+      var $td = $tr.find('td.' + fieldKey);
+      if ($td.length) hideTd($td);
     });
 
     // ── Bucket label injection ──
