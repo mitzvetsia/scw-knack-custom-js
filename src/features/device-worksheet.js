@@ -956,7 +956,7 @@ td.${P}-field-value--notes {
   padding: 4px 8px;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  background: #fff;
+  background: rgba(134, 182, 223, 0.1);
   box-sizing: border-box;
   transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
