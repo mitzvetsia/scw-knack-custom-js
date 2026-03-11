@@ -13381,35 +13381,24 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 }
 
-/* ── Stacked pair groups (editable + read-only total side by side) ── */
+/* ── Stacked pair groups (label → input → TTL label → value, single column) ── */
 .${P}-sum-group--stacked-pair {
   display: flex !important;
-  flex-direction: row !important;
+  flex-direction: column !important;
   align-items: flex-start;
-  gap: 2px;
-}
-.${P}-sum-stack-col {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
   gap: 0;
 }
-.${P}-sum-group--stacked-pair.${P}-sum-group--sub-bid {
-  min-width: 0;
-}
-.${P}-sum-group--stacked-pair.${P}-sum-group--narrow {
-  min-width: 0;
+/* TTL label — slightly smaller / muted to distinguish from primary label */
+.${P}-sum-label--ttl {
+  margin-top: 1px;
+  font-size: 8px;
+  color: #64748b;
 }
 /* Read-only total in stacked pair — smaller text */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
   font-size: 11px;
   color: #64748b;
   padding: 1px 4px !important;
-}
-/* Label in stacked pair */
-.${P}-sum-group--stacked-pair .${P}-sum-label {
-  white-space: nowrap;
 }
 
 /* view_3332 product group width — match view_3505 */
@@ -14623,7 +14612,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
-          // Stacked pair — editable field + read-only total side by side
+          // Stacked pair — editable field on top, read-only total below
           if (!td) break;
           var pairDesc = fieldDesc(viewCfg, desc.stackWith);
           var pairTd = pairDesc ? findCell(tr, pairDesc.key, pairDesc.columnIndex) : null;
@@ -14633,29 +14622,23 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var pairFields = [desc.key];
           if (pairDesc) pairFields.push(pairDesc.key);
           pairGroup.setAttribute('data-scw-fields', pairFields.join(' '));
-          // Left column: editable field
-          var leftCol = document.createElement('span');
-          leftCol.className = P + '-sum-stack-col';
-          var leftLbl = document.createElement('span');
-          leftLbl.className = P + '-sum-label';
-          leftLbl.textContent = desc.label || name;
-          leftCol.appendChild(leftLbl);
+          // Top: label + editable field
+          var topLbl = document.createElement('span');
+          topLbl.className = P + '-sum-label';
+          topLbl.textContent = desc.label || name;
+          pairGroup.appendChild(topLbl);
           td.classList.add(P + '-sum-field');
           injectSummaryDirectEdit(td, desc.key);
-          leftCol.appendChild(td);
-          pairGroup.appendChild(leftCol);
-          // Right column: read-only total
+          pairGroup.appendChild(td);
+          // Bottom: TTL label + read-only value
           if (pairTd) {
-            var rightCol = document.createElement('span');
-            rightCol.className = P + '-sum-stack-col';
-            var rightLbl = document.createElement('span');
-            rightLbl.className = P + '-sum-label';
-            rightLbl.textContent = pairDesc.label || desc.stackWith;
-            rightCol.appendChild(rightLbl);
+            var btmLbl = document.createElement('span');
+            btmLbl.className = P + '-sum-label ' + P + '-sum-label--ttl';
+            btmLbl.textContent = pairDesc.label || desc.stackWith;
+            pairGroup.appendChild(btmLbl);
             pairTd.classList.add(P + '-sum-field-ro');
             if (isCellEmpty(pairTd)) pairTd.classList.add(P + '-empty');
-            rightCol.appendChild(pairTd);
-            pairGroup.appendChild(rightCol);
+            pairGroup.appendChild(pairTd);
           }
           target.appendChild(pairGroup);
         } else {
