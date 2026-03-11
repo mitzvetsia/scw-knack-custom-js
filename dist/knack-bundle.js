@@ -7720,7 +7720,7 @@ $(document).on('knack-view-render.view_3313', function () {
     {
       viewId: 'view_3332',
       detectField: 'field_2219',
-      sortField: null,              // no custom sort for this view
+      sortField: 'field_2218',
       labelTarget: 'field_1949',
       // 'prefix' = keep product visible, show label above via ::before
       labelMode: 'prefix',
