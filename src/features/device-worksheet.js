@@ -3378,8 +3378,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           preBucketRowClass = rowBucketRule.rowClass;
         }
       }
-      var moveTd = findCell(tr, fieldKey(viewCfg, 'move'));
-      var hasNoMove = isCellEmpty(moveTd);
+      // Determine if this row is under a blank (orphaned) MDF/IDF group header.
+      // Walk backwards through siblings to find the nearest kn-table-group row;
+      // if its label is empty the row has no MDF/IDF assignment.
+      var hasNoMove = false;
+      if (viewCfg.syntheticBucketGroups) {
+        var prev = tr.previousElementSibling;
+        while (prev && !prev.classList.contains('kn-table-group')) {
+          prev = prev.previousElementSibling;
+        }
+        if (!prev) {
+          hasNoMove = true; // no group header at all
+        } else {
+          var grpLabel = (prev.textContent || '').replace(/\s+/g, ' ').trim();
+          hasNoMove = grpLabel.length === 0;
+        }
+      }
 
       var card = buildWorksheetCard(tr, viewCfg);
 
