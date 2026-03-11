@@ -1042,7 +1042,6 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
    then paint the outer td yellow.  Works identically across all
    worksheet views (3512, 3505, 3313). */
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) > td {
-  background-color: rgb(255, 253, 204);
 }
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
   background: transparent;
