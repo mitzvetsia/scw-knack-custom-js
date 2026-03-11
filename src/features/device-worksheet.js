@@ -246,7 +246,6 @@
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
           { cls: 'scw-row--services',    label: 'Project Services' },
         ]
       }
@@ -1392,11 +1391,33 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   white-space: nowrap;
 }
 
-/* view_3332 product group width — match view_3505 */
+/* view_3332 product group — column layout to align with editable fields */
 #view_3332 .${P}-product-group {
   width: 400px;
   min-width: 400px;
   max-width: 400px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+#view_3332 .${P}-product-group > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
+}
+
+/* view_3332: top-align all elements; pad non-labeled items to match label height */
+#view_3332 .${P}-toggle-zone {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+#view_3332 .${P}-chevron {
+  margin-top: 11px;
+}
+#view_3332 td.${P}-sum-label-cell {
+  margin-top: 11px;
+}
+#view_3332 .${P}-sum-sep {
+  margin-top: 11px;
 }
 
 /* view_3332 detail sections grid */
