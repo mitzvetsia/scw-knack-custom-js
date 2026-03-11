@@ -1410,17 +1410,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 
 /* ── Bucket label (SERVICE / ASSUMPTION) in product area ── */
-.${P}-product-group { position: relative; }
 .${P}-bucket-label {
-  position: absolute;
-  top: 50%;
-  left: 8px;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
+  align-self: center;
   font-weight: 700;
   font-size: 14px;
   color: #1e4d78;
   white-space: nowrap;
-  z-index: 1;
 }
 `;
 

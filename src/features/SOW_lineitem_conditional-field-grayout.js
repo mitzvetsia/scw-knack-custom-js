@@ -111,7 +111,7 @@
       ],
       rules: {
         [BUCKET_OTHER_SERVICES]: {
-          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_2028', 'field_1953'],
+          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028', 'field_1953'],
           rowClass: 'scw-row--services',
         },
         [BUCKET_ASSUMPTIONS]: {

@@ -7754,7 +7754,7 @@ $(document).on('knack-view-render.view_3313', function () {
       ],
       rules: {
         [BUCKET_OTHER_SERVICES]: {
-          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_2028', 'field_1953'],
+          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028', 'field_1953'],
           rowClass: 'scw-row--services',
         },
         [BUCKET_ASSUMPTIONS]: {
@@ -13434,17 +13434,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 
 /* ── Bucket label (SERVICE / ASSUMPTION) in product area ── */
-.${P}-product-group { position: relative; }
 .${P}-bucket-label {
-  position: absolute;
-  top: 50%;
-  left: 8px;
-  transform: translateY(-50%);
+  flex: 0 0 auto;
+  align-self: center;
   font-weight: 700;
   font-size: 14px;
   color: #1e4d78;
   white-space: nowrap;
-  z-index: 1;
 }
 `;
 
