@@ -13417,7 +13417,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   border-radius: 4px;
   background: rgba(134, 182, 223, 0.1) !important;
   padding: 2px 8px;
-  height: 30px;
+  height: auto;
+  min-height: 30px;
   width: 100%;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
@@ -13432,6 +13433,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   outline-offset: 1px;
   cursor: cell !important;
   background-color: rgb(255, 253, 204) !important;
+}
+
+/* view_3332: top-align toggle zone (chevron + product) */
+#view_3332 .${P}-toggle-zone {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+#view_3332 .${P}-chevron {
+  margin-top: 11px;
 }
 
 /* view_3332 product group width — match view_3505 */
