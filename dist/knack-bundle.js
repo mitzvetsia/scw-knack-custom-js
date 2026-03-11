@@ -12268,7 +12268,11 @@ $(".kn-navigation-bar").hide();
             hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
           },
-        }
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+        ]
       }
     ]
   };
