@@ -1426,11 +1426,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   margin-top: 11px;
 }
 
-/* view_3332 product group width — match view_3313 */
+/* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
+#view_3332 .${P}-identity {
+  width: 366px;
+  min-width: 366px;
+  max-width: 366px;
+  flex: 0 0 366px;
+}
+/* view_3332 product group — flex to fill identity; shrinks when bucket chit present */
 #view_3332 .${P}-product-group {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
   flex-direction: column;
   align-items: stretch;
   gap: 0;
@@ -1486,12 +1494,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 .${P}-bucket-chit--wide {
   max-width: none;
 }
-/* Shrink product group when bucket chit is present */
-#view_3332 .${P}-identity:has(.${P}-bucket-chit-group) .${P}-product-group {
-  width: 350px;
-  min-width: 350px;
-  max-width: 350px;
-}
+/* Bucket chit present — product flexes automatically within fixed identity */
 `;
 
     var style = document.createElement('style');
