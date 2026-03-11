@@ -75,54 +75,6 @@
       },
     },
     {
-      viewId: 'view_3313',
-      detectField: 'field_2219',
-      sortField: null,
-      labelTarget: 'field_1949',
-      labelMode: 'prefix',
-      laborDescField: null,
-      allColumnKeys: [
-        'field_2020', // Labor Description
-        'field_2154', // SOW
-        'field_2150', // Sub Bid
-        'field_1973', // +Hrs
-        'field_1974', // +Mat
-        'field_2028', // Install Fee
-        'field_1953', // SCW Notes
-        'field_2197', // Connected Device
-        'field_1963', // Mounting Hardware
-        'field_1965', // Drop Length
-        'field_1951', // Drop Number
-        'field_2240', // Drop Prefix
-        'field_1968', // MCB
-        'field_1972', // Labor Variables
-        'field_2461', // Existing Cabling
-        'field_2462', // Labor Category
-      ],
-      rowLocks: [
-        {
-          detectField: 'field_2230',
-          when: 'yes',
-          lockField: 'field_1964',   // Qty (if present)
-        },
-        {
-          detectField: 'field_2231',
-          whenNot: 'yes',
-          lockField: 'field_2197',   // Connected Device
-        },
-      ],
-      rules: {
-        [BUCKET_OTHER_SERVICES]: {
-          activeFields: ['field_2020', 'field_2150', 'field_1973', 'field_1974', 'field_2028', 'field_1953'],
-          rowClass: 'scw-row--services',
-        },
-        [BUCKET_ASSUMPTIONS]: {
-          activeFields: ['field_2020', 'field_1953'],
-          rowClass: 'scw-row--assumptions',
-        },
-      },
-    },
-    {
       viewId: 'view_3332',
       detectField: 'field_2219',
       sortField: null,              // no custom sort for this view
@@ -224,15 +176,13 @@
         white-space: nowrap;
       }
 
-      /* ── view_3313 / view_3332: bucket label PREFIX above product via ::before ── */
-      #view_3313 td.field_1949[data-scw-bucket-label],
+      /* ── view_3332: bucket label PREFIX above product via ::before ── */
       #view_3332 td.field_1949[data-scw-bucket-label] {
         display: flex;
         flex-direction: column;
         align-items: flex-start;
         justify-content: center;
       }
-      #view_3313 td.field_1949[data-scw-bucket-label]::before,
       #view_3332 td.field_1949[data-scw-bucket-label]::before {
         content: attr(data-scw-bucket-label);
         font-weight: 700;
