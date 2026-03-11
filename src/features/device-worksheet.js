@@ -107,6 +107,17 @@
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'surveyNotes']
+        },
+        bucketField: 'field_2366',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: [],
+            label: 'SERVICE',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_2400', 'field_2399', 'field_2401'],
+            label: 'ASSUMPTION',
+          },
         }
       },
       {
@@ -218,6 +229,17 @@
         detailLayout: {
           left:  ['scwNotes'],
           right: ['connectedDevice', 'mountingHardware']
+        },
+        bucketField: 'field_2219',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146'],
+            label: 'ASSUMPTION',
+          },
         }
       }
     ]
@@ -360,13 +382,6 @@ tr.scw-inline-photo-row > td {
 .${P}-sum-right td.${P}-sum-field-ro {
   width: 100%;
   min-width: 0;
-}
-
-/* Hide labor, qty, extended for Assumptions rows (keeps space for alignment) */
-tr.scw-row--assumptions .${P}-sum-group--labor,
-tr.scw-row--assumptions .${P}-sum-group--qty,
-tr.scw-row--assumptions .${P}-sum-group--ext {
-  visibility: hidden;
 }
 
 /* ── KTL bulk-edit checkbox cell ── */
@@ -1393,6 +1408,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Bucket label (SERVICE / ASSUMPTION) in product area ── */
+.${P}-bucket-label {
+  display: block;
+  font-weight: 700;
+  font-size: 14px;
+  color: #1e4d78;
+  white-space: nowrap;
+  margin-top: 2px;
+}
 `;
 
     var style = document.createElement('style');
@@ -1429,6 +1454,64 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
     return match ? match[0] : null;
+  }
+
+  // ── Bucket detection for per-view conditional field hiding ──
+
+  /**
+   * Read the bucket connection record ID from a detect cell.
+   * Knack renders connection values as <span data-kn="connection-value" class="<recordId>">.
+   */
+  function readBucketId(tr, bucketField) {
+    var td = tr.querySelector('td.' + bucketField);
+    if (!td) return '';
+    var span = td.querySelector('span[data-kn="connection-value"]');
+    if (span) {
+      var cls = (span.getAttribute('class') || '').trim();
+      if (cls) return cls;
+    }
+    return '';
+  }
+
+  /**
+   * Apply bucket rules to a worksheet card's summary bar.
+   * Hides summary groups whose data-scw-fields contain any field in rule.hideFields,
+   * and injects the bucket label into the product area.
+   */
+  function applyBucketRules(card, tr, viewCfg) {
+    if (!viewCfg.bucketField || !viewCfg.bucketRules) return;
+
+    var bucketId = readBucketId(tr, viewCfg.bucketField);
+    if (!bucketId) return;
+
+    var rule = viewCfg.bucketRules[bucketId];
+    if (!rule) return;
+
+    // ── Hide summary groups containing fields in hideFields ──
+    var hideSet = new Set(rule.hideFields || []);
+    if (hideSet.size) {
+      var groups = card.querySelectorAll('[data-scw-fields]');
+      for (var i = 0; i < groups.length; i++) {
+        var fields = groups[i].getAttribute('data-scw-fields').split(' ');
+        for (var j = 0; j < fields.length; j++) {
+          if (hideSet.has(fields[j])) {
+            groups[i].style.visibility = 'hidden';
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Inject bucket label into product area ──
+    if (rule.label) {
+      var productGroup = card.querySelector('.' + P + '-product-group');
+      if (productGroup) {
+        var labelEl = document.createElement('span');
+        labelEl.className = P + '-bucket-label';
+        labelEl.textContent = rule.label;
+        productGroup.appendChild(labelEl);
+      }
+    }
   }
 
   // ============================================================
@@ -2459,6 +2542,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (!td) return null;
     var group = document.createElement('span');
     group.className = P + '-sum-group' + (opts.cls ? ' ' + opts.cls : '');
+    if (opts.fieldKey) group.setAttribute('data-scw-fields', opts.fieldKey);
     var lbl = document.createElement('span');
     lbl.className = P + '-sum-label';
     lbl.textContent = label;
@@ -2485,10 +2569,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       case 'readOnly':
         if (desc.readOnlySummary) {
           appendSumGroup(target, desc.label || name, td,
-            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, readOnly: true });
+            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, readOnly: true, fieldKey: desc.key });
         } else {
           appendSumGroup(target, desc.label || name, td,
-            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined });
+            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, fieldKey: desc.key });
         }
         break;
 
@@ -2498,6 +2582,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           if (!td) break;
           var ldGroup = document.createElement('span');
           ldGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
+          ldGroup.setAttribute('data-scw-fields', desc.key);
           var ldLabel = document.createElement('span');
           ldLabel.className = P + '-sum-label';
           ldLabel.textContent = desc.label || name;
@@ -2515,6 +2600,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var pairGroup = document.createElement('span');
           pairGroup.className = P + '-sum-group ' + P + '-sum-group--stacked-pair'
             + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+          var pairFields = [desc.key];
+          if (pairDesc) pairFields.push(pairDesc.key);
+          pairGroup.setAttribute('data-scw-fields', pairFields.join(' '));
           // Left column: editable field
           var leftCol = document.createElement('span');
           leftCol.className = P + '-sum-stack-col';
@@ -2651,6 +2739,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
+        productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
         // (needed when right-group fields have stacked label+value)
@@ -3151,6 +3240,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       detail = buildDetailPanel(tr, viewCfg);
     }
     if (detail) card.appendChild(detail);
+
+    // ── Apply bucket-based field hiding + label injection ──
+    applyBucketRules(card, tr, viewCfg);
 
     return card;
   }

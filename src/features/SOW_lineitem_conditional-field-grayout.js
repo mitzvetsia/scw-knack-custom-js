@@ -112,12 +112,10 @@
       rules: {
         [BUCKET_OTHER_SERVICES]: {
           activeFields: ['field_2020', 'field_2150', 'field_2151', 'field_1964', 'field_2028', 'field_1953'],
-          hiddenFields: ['field_1949'],   // product → replaced by "SERVICE" label
           rowClass: 'scw-row--services',
         },
         [BUCKET_ASSUMPTIONS]: {
           activeFields: ['field_2020', 'field_1953'],
-          hiddenFields: ['field_1964', 'field_2150', 'field_1973', 'field_1997', 'field_2028'],
           rowClass: 'scw-row--assumptions',
         },
       },
@@ -192,29 +190,7 @@
         white-space: nowrap;
       }
 
-      /* ── view_3332: bucket label PREFIX above product via ::before ── */
-      #view_3332 td.field_1949[data-scw-bucket-label] {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        justify-content: center;
-      }
-      #view_3332 td.field_1949[data-scw-bucket-label]::before {
-        content: attr(data-scw-bucket-label);
-        font-weight: 700;
-        font-size: 11px;
-        color: #1e4d78;
-        white-space: nowrap;
-        line-height: 1;
-        margin-bottom: 2px;
-      }
-
-      /* ── view_3332: hidden product cell with label replacement (services) ── */
-      #view_3332 td.field_1949.${HIDDEN_CLASS}[data-scw-bucket-label]::before {
-        visibility: visible !important;
-        font-size: 14px;
-        margin-bottom: 0;
-      }
+      /* view_3332 label injection is handled by device-worksheet bucketRules */
     `;
 
     const style = document.createElement('style');
