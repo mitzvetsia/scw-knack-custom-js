@@ -12269,6 +12269,12 @@ $(".kn-navigation-bar").hide();
       $select.trigger('liszt:updated');
       $hidden.val(parentId);
     }, 1);
+
+    // On form submit, trigger the scroll/accordion preservation pipeline
+    // so the parent page restores accordion state after Knack re-renders.
+    $('#view_3580 form').off('submit.scwCR').on('submit.scwCR', function () {
+      $(document).trigger('knack-cell-update.scwScrollPreserve');
+    });
   });
 
   // ============================================================
