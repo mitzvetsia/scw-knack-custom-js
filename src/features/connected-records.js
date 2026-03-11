@@ -226,6 +226,9 @@
 
     var parentId = match[1];
 
+    // Hide field_2464 — it's auto-populated, user doesn't need to see it
+    $('#kn-input-field_2464').hide();
+
     setTimeout(function () {
       // field_2464 is a Chosen.js connection select — set the <select> value,
       // update the hidden connection input, and trigger Chosen to refresh.
