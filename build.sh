@@ -27,10 +27,8 @@ cat \
   src/features/highlight-duplicate-cells.js \
   src/features/replace-content-with-icon.js \
   src/features/change-record-limit.js \
-  src/features/lock-fields.js \
   src/features/SURVEY_lineitem_conditional-field-grayout.js \
   src/features/SOW_lineitem_conditional-field-grayout.js \
-  src/features/truncate-expand-function.js \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \

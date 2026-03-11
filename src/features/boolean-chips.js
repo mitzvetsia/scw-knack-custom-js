@@ -96,15 +96,15 @@
       '  text-align: center;',
       '}',
 
-      /* ---- yes state (warm amber — action, not warning) ---- */
+      /* ---- yes state (hunter green — matches radio chips & cabling chits) ---- */
       '.' + CHIP_CLASS + '.is-yes {',
-      '  background-color: #fffbeb;',
-      '  color: #92400e;',
-      '  border-color: #fde68a;',
+      '  background-color: #1a6b3c;',
+      '  color: #ffffff;',
+      '  border-color: #145230;',
       '}',
       '.' + CHIP_CLASS + '.is-yes:hover {',
-      '  background-color: #fef3c7;',
-      '  box-shadow: 0 1px 3px rgba(146,64,14,0.15);',
+      '  background-color: #145230;',
+      '  box-shadow: 0 1px 3px rgba(20,82,48,0.25);',
       '}',
 
       /* ---- no state ---- */

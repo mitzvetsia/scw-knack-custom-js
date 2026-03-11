@@ -26,137 +26,252 @@
   'use strict';
 
   // ============================================================
-  // CONFIG – plug in field keys per view here
+  // CONFIG – declarative field descriptors per view
   // ============================================================
+  //
+  // Field descriptor shape (string shorthand or object):
+  //   key            – Knack field id  (required)
+  //   type           – 'readOnly' | 'directEdit' | 'singleChip' | 'multiChip' | 'toggleChit' | 'chipStack'
+  //   summary        – true if the field appears in the summary bar
+  //   label          – display label (summary group or detail row)
+  //   group          – 'fill' | 'right' (summary bar placement)
+  //   groupCls       – extra CSS class on the summary group wrapper
+  //   readOnlySummary – render as read-only in summary (no edit affordance)
+  //   multiline      – for directEdit: use textarea
+  //   options        – for chip types: array of option labels
+  //   notes          – detail textarea/notes styling
+  //   skipEmpty      – hide detail row if cell is empty
+  //   columnIndex    – disambiguate duplicate field keys (e.g. product vs mounting)
+  //   feeTrigger     – true if saving this field should refresh the fee
+  //   headerTrigger  – true if saving this field should refresh the label
+  //   productStyle   – true to apply product identity styling in summary
+  //
+  // summaryLayout – ordered array of field names rendered in the summary bar
+  //   (label and product are handled structurally by the toggle zone)
+  // detailLayout  – { left: [...], right: [...] } for detail panel columns
+  //
   var WORKSHEET_CONFIG = {
     views: [
       {
         viewId: 'view_3512',
         fields: {
-          // ── Summary row (always visible, primary edit surface) ──
-          bid:              'field_2415',   // Bid (column 1)
-          move:             'field_2375',   // Move icon (column 2)
-          label:            'field_2364',   // Label
-          product:          'field_2379',   // Product (column 4)
-          laborDescription: 'field_2409',   // Labor Description
-          labor:            'field_2400',   // Labor $
+          // ── Summary row ──
+          bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
+          move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
+          label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+          product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 4 },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          warningCount:     { key: 'field_2454', type: 'warningChit' },
 
-          // ── Detail panel (expandable) ──
-          mounting:         'field_2379',   // Mounting Acces. (column 5 — same field, different column-index)
-          connections:      'field_2381',   // connected to
-          scwNotes:         'field_2418',   // SCW Notes
-          surveyNotes:      'field_2412',   // Survey Notes
-          exterior:         'field_2372',   // Exterior (chip host)
-          existingCabling:  'field_2370',   // Existing Cabling
-          plenum:           'field_2371',   // Plenum
-          mountingHeight:   'field_2455',   // Mounting Height
-          dropLength:       'field_2367',   // Drop Length
-          conduitFeet:      'field_2368',   // Conduit Linear Feet
-          warningCount:     'field_2454'    // Warning count (shown as chit on header)
+          // ── Detail panel ──
+          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 6, skipEmpty: true },
+          connections:      { key: 'field_2381', type: 'readOnly' },
+          scwNotes:         { key: 'field_2418', type: 'readOnly' },
+          surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
+          exterior:         { key: 'field_2372', type: 'chipStack' },
+          existingCabling:  { key: 'field_2370', type: 'readOnly' },
+          plenum:           { key: 'field_2371', type: 'readOnly' },
+          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
+          dropLength:       { key: 'field_2367', type: 'directEdit' },
+          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        columnIndices: {
-          product:  4,
-          mounting: 5
+        summaryLayout: ['laborDescription', 'bid', 'labor'],
+        detailLayout: {
+          left:  ['mounting', 'scwNotes'],
+          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         }
       },
       {
         viewId: 'view_3505',
         fields: {
-          bid:              'field_2415',
-          move:             'field_2375',
-          label:            'field_2364',
-          product:          'field_2379',
-          laborDescription: 'field_2409',
-          labor:            'field_2400',
-          quantity:         'field_2399',   // Qty (summary, inline-edit)
-          extended:         'field_2401',   // Extended / Labor Total (summary, read-only)
+          bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
+          move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
+          label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+          product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Extended', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true },
+          warningCount:     { key: 'field_2454', type: 'warningChit' },
 
-          mounting:         'field_2379',
-          connections:      'field_2380',
-          scwNotes:         'field_2418',
-          surveyNotes:      'field_2412',
-          exterior:         'field_2372',
-          existingCabling:  'field_2370',
-          plenum:           'field_2371',
-          warningCount:     'field_2454'    // Warning count (shown as chit on header)
+          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 5, skipEmpty: true },
+          connections:      { key: 'field_2380', type: 'readOnly' },
+          scwNotes:         { key: 'field_2418', type: 'readOnly' },
+          surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
+          exterior:         { key: 'field_2372', type: 'chipStack' },
+          existingCabling:  { key: 'field_2370', type: 'readOnly' },
+          plenum:           { key: 'field_2371', type: 'readOnly' }
         },
-        columnIndices: {
-          product:  3,
-          mounting: 4
-        }
+        summaryLayout: ['laborDescription', 'bid', 'labor', 'quantity', 'extended'],
+        detailLayout: {
+          left:  ['mounting', 'scwNotes'],
+          right: ['connections', 'exterior', 'surveyNotes']
+        },
+        bucketField: 'field_2366',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: [],
+            label: 'SERVICE',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_2400', 'field_2399', 'field_2401'],
+            label: 'ASSUMPTION',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+        ]
       },
       {
         viewId: 'view_3559',
         fields: {
-          // ── Summary row ──
-          label:            'field_1642',   // DISPLAY_mdf_idf_name (composite identity)
+          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
-          // ── Detail panel ──
-          mdfIdf:           'field_1641',   // MDF/IDF (radio chips: HEADEND, IDF)
-          mdfNumber:        'field_2458',   // ## (read-only)
-          name:             'field_1943',   // Name (textarea, direct-edit)
-          surveyNotes:      'field_2457'    // Survey Notes (textarea, direct-edit)
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
+          surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
         },
-        // Fields whose changes feed the label formula — saving any of
-        // these triggers a lightweight GET to refresh the header text.
-        headerTriggerFields: ['field_1641', 'field_2458', 'field_1943']
+        summaryLayout: [],
+        detailLayout: {
+          left:  ['mdfIdf', 'mdfNumber', 'name'],
+          right: ['surveyNotes']
+        }
       },
       {
         viewId: 'view_3575',
         comparisonLayout: true,
         fields: {
-          // ── Summary row (laid out like view_3512) ──
-          label:            'field_2365',   // Label
-          product:          'field_2379',   // Product
-          laborDescription: 'field_2409',   // Labor Description
-          labor:            'field_2400',   // Labor $
+          // ── Summary row ──
+          label:            { key: 'field_2365', type: 'readOnly',   summary: true },
+          product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor' },
 
           // ── Detail comparison – SCW side ──
-          connections:      'field_2381',   // Connected To
-          dropLength:       'field_2367',   // Drop Length
-          exterior:         'field_2372',   // Exterior (chip host)
-          existingCabling:  'field_2370',   // Existing Cabling
-          plenum:           'field_2371',   // Plenum
-          mountingHeight:   'field_2455',   // Mounting Height (radio chips)
-          conduitFeet:      'field_2368',   // Conduit Feet
-          scwNotes:         'field_2412',   // Survey Notes (SCW side)
+          connections:      { key: 'field_2381', type: 'readOnly' },
+          dropLength:       { key: 'field_2367', type: 'readOnly' },
+          exterior:         { key: 'field_2372', type: 'chipStack' },
+          existingCabling:  { key: 'field_2370', type: 'readOnly' },
+          plenum:           { key: 'field_2371', type: 'readOnly' },
+          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
+          conduitFeet:      { key: 'field_2368', type: 'readOnly' },
+          scwNotes:         { key: 'field_2412', type: 'readOnly' },
 
           // ── Detail comparison – Survey side ──
-          surveyLabel:      'field_1950',   // Survey Label
-          surveyProduct:    'field_1958',   // Survey Product
-          surveyConnections:'field_2197',   // Survey Connected To
-          surveyDropLength: 'field_1965',   // Survey Drop Length
-          surveyChips:      'field_1972',   // Survey (TBD placeholder)
-          surveyNotes:      'field_1953'    // Survey Notes
-        }
+          surveyLabel:      { key: 'field_1950', type: 'readOnly' },
+          surveyProduct:    { key: 'field_1958', type: 'readOnly' },
+          surveyConnections:{ key: 'field_2197', type: 'readOnly' },
+          surveyDropLength: { key: 'field_1965', type: 'readOnly' },
+          surveyChips:      { key: 'field_1972', type: 'readOnly' },
+          surveyNotes:      { key: 'field_1953', type: 'readOnly' }
+        },
+        summaryLayout: ['laborDescription', 'labor']
       },
       {
         viewId: 'view_3313',
-        simpleDetail: true,
         fields: {
           // ── Summary row ──
-          label:            'field_1950',   // LABEL (read-only)
-          product:          'field_1949',   // PRODUCT
-          sow:              'field_2154',   // SOW (connection)
-          mountCableBoth:   'field_1968',   // Mount Cable Both
-          laborDescription: 'field_2020',   // Labor Description
-          laborVariables:   'field_1972',   // Labor Variables
-          subBid:           'field_2150',   // sub bid
-          plusHrs:           'field_1973',   // +Hrs
-          plusMat:           'field_1974',   // +MAT
-          installFee:       'field_2028',   // Install Fee (read-only)
-          move:             'field_1946',   // Change MDF/IDF (move icon)
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
+          mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
+          laborVariables:   { key: 'field_1972', type: 'multiChip',   summary: true, label: 'Vars', group: 'right', groupCls: 'sum-group--vars',
+                              options: ['Exterior', 'High Traffic', 'Plenum'], feeTrigger: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+          subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
+          plusHrs:           { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
+          plusMat:           { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
+          installFee:       { key: 'field_2028', type: 'readOnly',    summary: true, label: 'Fee',  group: 'right', groupCls: 'sum-group--fee', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
           // ── Detail panel ──
-          dropPrefix:       'field_2240',   // Drop Prefix
-          dropNumber:       'field_1951',   // # (Label Number)
-          mountingHardware: 'field_1963',   // MOUNTs (Mounting Hardware)
-          connectedDevice:  'field_2197',   // Connected Device
-          scwNotes:         'field_1953'    // SCW Notes
+          dropPrefix:       { key: 'field_2240', type: 'readOnly' },
+          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+          dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
+          mountingHardware: { key: 'field_1963', type: 'connectedRecords' },
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
+                         'laborCategory', 'laborVariables', 'sow', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+        detailLayout: {
+          left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
+          right: ['connectedDevice', 'dropLength', 'scwNotes']
         }
+      },
+      {
+        viewId: 'view_3332',
+        fields: {
+          // ── Summary row ──
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
+                              stackWith: 'subBidTotal' },
+          subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'TOTAL' },
+          plusHrs:           { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true,
+                              stackWith: 'hrsTtl' },
+          hrsTtl:           { key: 'field_1997', type: 'readOnly',    label: 'TOTAL' },
+          plusMat:           { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true,
+                              stackWith: 'matTtl' },
+          matTtl:           { key: 'field_2146', type: 'readOnly',    label: 'TOTAL' },
+          installFee:       { key: 'field_2028', type: 'readOnly',    summary: true, label: 'Fee',  group: 'right', groupCls: 'sum-group--fee', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel ──
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          mountingHardware: { key: 'field_2207', type: 'readOnly' }
+        },
+        summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+        detailLayout: {
+          left:  ['scwNotes'],
+          right: ['connectedDevice', 'mountingHardware']
+        },
+        bucketField: 'field_2219',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Description of Service',
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+        ]
       }
     ]
   };
+
+  // ── Normalise config: compute derived arrays from field descriptors ──
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+    // Build feeTriggerFields from descriptors
+    var feeTriggers = [];
+    var headerTriggers = [];
+    var f = viewCfg.fields;
+    Object.keys(f).forEach(function (name) {
+      var desc = f[name];
+      if (typeof desc === 'string') { f[name] = { key: desc, type: 'readOnly' }; desc = f[name]; }
+      if (desc.feeTrigger)    feeTriggers.push(desc.key);
+      if (desc.headerTrigger) headerTriggers.push(desc.key);
+    });
+    if (feeTriggers.length)    viewCfg.feeTriggerFields  = feeTriggers;
+    if (headerTriggers.length) viewCfg.headerTriggerFields = headerTriggers;
+  });
 
   // ============================================================
   // CONSTANTS
@@ -189,15 +304,13 @@ tr.scw-inline-photo-row,
 tr.scw-inline-photo-row:hover,
 tr[data-scw-worksheet],
 tr[data-scw-worksheet]:hover {
-  background: none !important;
-  background-color: transparent !important;
 }
-tr.${WORKSHEET_ROW} > td,
-tr.${WORKSHEET_ROW}:hover > td,
+tr.${WORKSHEET_ROW} > td:not(.bulkEditSelectedRow),
+tr.${WORKSHEET_ROW}:hover > td:not(.bulkEditSelectedRow),
 tr.scw-inline-photo-row > td,
 tr.scw-inline-photo-row:hover > td,
-tr[data-scw-worksheet] > td,
-tr[data-scw-worksheet]:hover > td {
+tr[data-scw-worksheet] > td:not(.bulkEditSelectedRow),
+tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   background: none !important;
   background-color: transparent !important;
 }
@@ -255,8 +368,7 @@ tr.scw-inline-photo-row > td {
 }
 /* Each field group in the right section gets fixed width for vertical alignment */
 .${P}-sum-right .${P}-sum-group {
-  width: 80px;
-  min-width: 80px;
+  width: fit-content;
 }
 /* Bid group can be a bit narrower */
 .${P}-sum-right .${P}-sum-group--bid {
@@ -281,13 +393,7 @@ tr.scw-inline-photo-row > td {
 .${P}-sum-right td.${P}-sum-field-ro {
   width: 100%;
   min-width: 0;
-}
-
-/* Hide labor, qty, extended for Assumptions rows (keeps space for alignment) */
-tr.scw-row--assumptions .${P}-sum-group--labor,
-tr.scw-row--assumptions .${P}-sum-group--qty,
-tr.scw-row--assumptions .${P}-sum-group--ext {
-  visibility: hidden;
+  height: fit-content;
 }
 
 /* ── KTL bulk-edit checkbox cell ── */
@@ -475,9 +581,13 @@ td.${P}-sum-field {
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
+td.${P}-sum-field.cell-edit,
+td.${P}-sum-field.ktlInlineEditableCellsStyle {
+  background: rgba(134, 182, 223, 0.1);
+}
 td.${P}-sum-field.cell-edit:hover,
 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
-  background-color: #dbeafe !important;
+  background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
@@ -544,10 +654,137 @@ td.${P}-sum-field--desc {
 td.${P}-sum-move {
   display: inline-flex !important;
   align-items: center;
+  align-self: flex-start;
   padding: 0 4px;
   border: none !important;
   background: transparent !important;
   flex-shrink: 0;
+}
+
+/* ── Delete button (extracted from Knack row) ── */
+.${P}-sum-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: none !important;
+  background: transparent !important;
+}
+.${P}-sum-delete a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 14px;
+  transition: color 150ms ease;
+}
+.${P}-sum-delete a:hover {
+  color: #ef4444;
+}
+
+/* ── Cabling group alignment (match variables column) ── */
+.${P}-sum-group--cabling {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Cabling toggle chit (boolean, inline in summary bar) ── */
+.${P}-cabling-chit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  text-align: center;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  height: 100%;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+.${P}-cabling-chit.is-yes {
+  background-color: #1a6b3c;
+  color: #ffffff;
+  border-color: #145230;
+}
+.${P}-cabling-chit.is-yes:hover {
+  background-color: #145230;
+  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+}
+.${P}-cabling-chit.is-no {
+  background-color: #f9fafb;
+  color: #9ca3af;
+  border-color: #d1d5db;
+}
+.${P}-cabling-chit.is-no:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.${P}-cabling-chit.is-saving {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
+td.${P}-sum-chip-host {
+  display: inline-flex !important;
+  align-items: center;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  min-height: 0 !important;
+  vertical-align: middle;
+}
+td.${P}-sum-chip-host:hover,
+td.${P}-sum-chip-host.ktlInlineEditableCellsStyle,
+td.${P}-sum-chip-host.cell-edit {
+  background: transparent !important;
+}
+/* KTL bulk-edit highlight on chip host */
+td.${P}-sum-chip-host.ktlInlineEditableCellsStyle:hover,
+td.${P}-sum-chip-host.bulkEditSelectSrc {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+  border-radius: 4px !important;
+}
+/* When KTL bulk-edit is active on chip hosts, disable chit/chip interaction */
+td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-cabling-chit,
+td.${P}-sum-chip-host.bulkEditSelectSrc .${P}-radio-chip {
+  pointer-events: none !important;
+  cursor: cell !important;
+}
+
+/* ── field_1972 (Labor Variables): ensure no blue background leaks through ── */
+#view_3313 .${P}-sum-group--vars td,
+#view_3313 .${P}-sum-group--vars td[style] {
+}
+
+/* ── Summary-bar radio chips (Labor Variables) ── */
+.${P}-sum-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  align-self: center;
+}
+.${P}-sum-chips .${P}-radio-chip {
+  flex: 1 1 calc(50% - 2px);
+  min-width: 0;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 /* ── Synthetic group divider bars ── */
@@ -664,14 +901,20 @@ td.${P}-field-value {
 /* ── Editable hover affordance ── */
 td.${P}-field-value.cell-edit,
 td.${P}-field-value.ktlInlineEditableCellsStyle {
+  background: rgba(134, 182, 223, 0.1);
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
 td.${P}-field-value.cell-edit:hover,
 td.${P}-field-value.ktlInlineEditableCellsStyle:hover {
-  background-color: #f0f6ff !important;
+  background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25);
+}
+/* Detail-section direct-edit inputs/textareas — blue tint to match summary bar */
+.${P}-detail .${P}-direct-input,
+.${P}-detail .${P}-direct-textarea {
+  background-color: rgba(134, 182, 223, 0.1);
 }
 
 /* ── Chip host td — invisible cell, chips aligned with fields ── */
@@ -733,13 +976,13 @@ td.${P}-field-value--notes {
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-color: #93c5fd;
+  background-color: #1a6b3c;
+  color: #ffffff;
+  border-color: #145230;
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #bfdbfe;
-  box-shadow: 0 1px 3px rgba(30,64,175,0.15);
+  background-color: #145230;
+  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
 }
 .${P}-radio-chip.is-unselected {
   background-color: #f9fafb;
@@ -767,7 +1010,7 @@ td.${P}-field-value--notes {
   padding: 4px 8px;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  background: #fff;
+  background: rgba(134, 182, 223, 0.1);
   box-sizing: border-box;
   transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
@@ -779,8 +1022,8 @@ td.${P}-field-value--notes {
 }
 .${P}-direct-input.is-saving,
 .${P}-direct-textarea.is-saving {
-  background-color: #f0fdf4 !important;
-  border-color: #86efac !important;
+  background-color: #dcfce7 !important;
+  border-color: #4ade80 !important;
 }
 .${P}-direct-input.is-error,
 .${P}-direct-textarea.is-error {
@@ -797,7 +1040,7 @@ td.${P}-field-value--notes {
 .${P}-direct-textarea {
   resize: vertical;
   min-height: 48px;
-  max-height: 120px;
+  max-height: 200px;
 }
 
 /* ── Summary bar inline direct-edit inputs ── */
@@ -848,6 +1091,57 @@ td.${P}-sum-direct-edit.bulkEditSelectSrc .${P}-direct-textarea {
   pointer-events: none !important;
   cursor: cell !important;
 }
+
+/* ── KTL bulk-edit selected-row yellow highlight ──
+   KTL adds .bulkEditSelectedRow to the moved tds inside the card.
+   Use :has() to detect that and make all opaque layers transparent,
+   then paint the outer td yellow.  Works identically across all
+   worksheet views (3512, 3505, 3313). */
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) > td {
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-card {
+  background: transparent;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-summary,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-summary:hover {
+  background: transparent;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field:not(.bulkEditSelectedRow) {
+  background: transparent !important;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.cell-edit:not(.bulkEditSelectedRow):hover,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.ktlInlineEditableCellsStyle:not(.bulkEditSelectedRow):hover {
+  background-color: transparent !important;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product:not(.bulkEditSelectedRow) {
+  background: transparent !important;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product.cell-edit:not(.bulkEditSelectedRow):hover,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product.ktlInlineEditableCellsStyle:not(.bulkEditSelectedRow):hover {
+  background-color: transparent !important;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value:not(.bulkEditSelectedRow) {
+  background: transparent;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.cell-edit:not(.bulkEditSelectedRow),
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.ktlInlineEditableCellsStyle:not(.bulkEditSelectedRow) {
+  background: transparent;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-input,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-textarea {
+  background-color: transparent !important;
+}
+/* Detail-panel: hidden td still receives bulkEditSelectedRow from KTL —
+   propagate yellow to the visible wrapper via :has() */
+.${P}-field-value:has(td.bulkEditSelectedRow) {
+  background-color: rgb(255, 253, 204) !important;
+}
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row > .${P}-comp-val:last-child,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatch > .${P}-comp-val:last-child {
+  background: transparent;
+}
+
 
 /* ── Photo row hidden when detail collapsed ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
@@ -935,8 +1229,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background: #fef3c7;
 }
 
-/* view_3313: Product styled as an editable field (card look) instead of
-   bold identity text, so it visually matches other clickable fields */
+/* view_3313: Product styled as an editable field — same treatment as
+   td.sum-field so it blends with the summary bar background */
 #view_3313 td.${P}-sum-product,
 #view_3313 td.${P}-sum-product:hover {
   font-size: 13px;
@@ -944,19 +1238,24 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   color: #374151;
   border: 1px solid #e5e7eb !important;
   border-radius: 4px;
-  background: #fff !important;
+  background: rgba(134, 182, 223, 0.1) !important;
   padding: 2px 8px;
   height: 30px;
+  width: 100%;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
 #view_3313 td.${P}-sum-product.cell-edit:hover,
 #view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
-  background-color: #dbeafe !important;
+  background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
-
+#view_3313 td.${P}-sum-product.bulkEditSelectSrc {
+  outline-offset: 1px;
+  cursor: cell !important;
+  background-color: rgb(255, 253, 204) !important;
+}
 /* Product group width for view_3575 (matches view_3512) */
 #view_3575 .${P}-product-group {
   width: 300px;
@@ -967,31 +1266,76 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* ================================================================
    VIEW 3313 – SOW Build worksheet
    ================================================================ */
+/* Product group as column layout to align with editable fields */
 #view_3313 .${P}-product-group {
   width: 280px;
   min-width: 280px;
   max-width: 280px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+#view_3313 .${P}-product-group > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
 }
 
-/* Narrow summary groups for compact fields (+Hrs, +Mat, etc.) */
-.${P}-sum-group--narrow {
+
+/* view_3313: top-align all elements; pad non-labeled items to match label height */
+#view_3313 .${P}-toggle-zone {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+#view_3313 .${P}-chevron {
+  margin-top: 11px;
+}
+#view_3313 td.${P}-sum-label-cell {
+  margin-top: 11px;
+}
+#view_3313 .${P}-sum-sep {
+  margin-top: 11px;
+}
+#view_3313 td.${P}-sum-check {
+  align-self: flex-start;
+  padding-top: 11px !important;
+}
+#view_3313 .${P}-sum-delete {
+  align-self: flex-start;
+  padding-top: 11px;
+}
+
+/* Fee label — align with value text (match td padding-left) */
+.${P}-sum-group--fee > .${P}-sum-label {
+  padding-left: 8px;
+  text-align: center;
+  width: 100%;
+}
+
+/* Per-group width overrides (scoped under .sum-right for specificity) */
+.${P}-sum-right .${P}-sum-group--narrow {
   width: 50px;
   min-width: 50px;
 }
-.${P}-sum-group--sub-bid {
-  width: 65px;
-  min-width: 65px;
+.${P}-sum-right .${P}-sum-group--sub-bid {
+  width: min-content;
+  min-width: 70px;
 }
-.${P}-sum-group--vars {
+.${P}-sum-right .${P}-sum-group--cat {
   width: 70px;
   min-width: 70px;
 }
-.${P}-sum-group--fee {
-  width: 70px;
+.${P}-sum-right .${P}-sum-group--vars {
+  width: 100px;
+  min-width: 100px;
+  overflow: hidden;
+}
+.${P}-sum-right .${P}-sum-group--fee {
+  width: min-content;
   min-width: 70px;
 }
-.${P}-sum-group--sow {
-  min-width: 70px;
+.${P}-sum-right .${P}-sum-group--sow {
+  width: 100px;
+  min-width: 100px;
   flex-shrink: 0;
 }
 /* SOW field grows in height to show multiple connection values */
@@ -1022,6 +1366,137 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     grid-template-columns: 90px 1fr 1fr;
   }
 }
+
+/* ── Stacked pair groups (label → input → TTL label → value, single column) ── */
+.${P}-sum-group--stacked-pair {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center;
+  gap: 0;
+}
+/* TOTAL label — padding above, minimal below, centered */
+.${P}-sum-label--ttl {
+  margin-top: 8px;
+  margin-bottom: 0;
+  text-align: center;
+  width: 100%;
+}
+/* Read-only total in stacked pair — match Fee value size, centered */
+.${P}-sum-group--stacked-pair .${P}-sum-field-ro {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  padding: 0 4px !important;
+  justify-content: center;
+  width: 100%;
+}
+
+/* view_3332: Product styled as editable field — same as view_3313 */
+#view_3332 td.${P}-sum-product,
+#view_3332 td.${P}-sum-product:hover {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 4px;
+  background: rgba(134, 182, 223, 0.1) !important;
+  padding: 2px 8px;
+  height: auto;
+  min-height: 30px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+#view_3332 td.${P}-sum-product.cell-edit:hover,
+#view_3332 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+  background-color: rgba(134, 182, 223, 0.18) !important;
+  border-color: #93c5fd !important;
+  cursor: pointer;
+}
+#view_3332 td.${P}-sum-product.bulkEditSelectSrc {
+  outline-offset: 1px;
+  cursor: cell !important;
+  background-color: rgb(255, 253, 204) !important;
+}
+
+/* view_3332: top-align toggle zone (chevron + product) */
+#view_3332 .${P}-toggle-zone {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+#view_3332 .${P}-chevron {
+  margin-top: 11px;
+}
+
+/* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
+#view_3332 .${P}-identity {
+  width: 366px;
+  min-width: 366px;
+  max-width: 366px;
+  flex: 0 0 366px;
+}
+/* view_3332 product group — flex to fill identity; shrinks when bucket chit present */
+#view_3332 .${P}-product-group {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+#view_3332 .${P}-product-group > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
+}
+
+/* view_3332 detail sections grid */
+#view_3332 .${P}-sections {
+  grid-template-columns: 1fr 1fr;
+}
+#view_3332 td.${P}-sum-check {
+  align-self: flex-start;
+  padding-top: 11px !important;
+}
+#view_3332 .${P}-sum-delete {
+  align-self: flex-start;
+  padding-top: 11px;
+}
+@media (max-width: 900px) {
+  #view_3332 .${P}-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
+.${P}-bucket-chit-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+/* ── Bucket chit (SERVICE / ASSUMPTION) — teal pill matching radio-chip shape ── */
+.${P}-bucket-chit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: #2f6f73;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  padding: 1px 8px;
+  line-height: 1.5;
+  flex-shrink: 0;
+  min-width: 40px;
+}
+/* When product is empty, let chit fill up to full width */
+.${P}-bucket-chit--wide {
+  max-width: none;
+}
+/* Bucket chit present — product flexes automatically within fixed identity */
 `;
 
     var style = document.createElement('style');
@@ -1058,6 +1533,97 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
     return match ? match[0] : null;
+  }
+
+  // ── Bucket detection for per-view conditional field hiding ──
+
+  /**
+   * Read the bucket connection record ID from a detect cell.
+   * Knack renders connection values as <span data-kn="connection-value" class="<recordId>">.
+   */
+  function readBucketId(tr, bucketField) {
+    var td = tr.querySelector('td.' + bucketField);
+    if (!td) return '';
+    var span = td.querySelector('span[data-kn="connection-value"]');
+    if (span) {
+      var cls = (span.getAttribute('class') || '').trim();
+      if (cls) return cls;
+    }
+    return '';
+  }
+
+  /**
+   * Apply bucket rules to a worksheet card's summary bar.
+   * Hides summary groups whose data-scw-fields contain any field in rule.hideFields,
+   * and injects the bucket label into the product area.
+   */
+  function applyBucketRules(card, tr, viewCfg) {
+    if (!viewCfg.bucketField || !viewCfg.bucketRules) return;
+
+    var bucketId = readBucketId(tr, viewCfg.bucketField);
+    if (!bucketId) return;
+
+    var rule = viewCfg.bucketRules[bucketId];
+    if (!rule) return;
+
+    // ── Hide summary groups containing fields in hideFields ──
+    var hideSet = new Set(rule.hideFields || []);
+    if (hideSet.size) {
+      var groups = card.querySelectorAll('[data-scw-fields]');
+      for (var i = 0; i < groups.length; i++) {
+        var fields = groups[i].getAttribute('data-scw-fields').split(' ');
+        for (var j = 0; j < fields.length; j++) {
+          if (hideSet.has(fields[j])) {
+            groups[i].style.visibility = 'hidden';
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Inject bucket chit to the left of product ──
+    if (rule.label) {
+      var identity = card.querySelector('.' + P + '-identity');
+      if (identity) {
+        // Wrap in a group with empty label so chit aligns with labor desc input
+        var chitGroup = document.createElement('span');
+        chitGroup.className = P + '-bucket-chit-group';
+        chitGroup.style.visibility = 'visible';
+        var chitLabel = document.createElement('span');
+        chitLabel.className = P + '-sum-label';
+        chitLabel.innerHTML = '&nbsp;';
+        chitGroup.appendChild(chitLabel);
+
+        var chitEl = document.createElement('span');
+        chitEl.className = P + '-bucket-chit';
+        chitEl.textContent = rule.label;
+
+        // If product is hidden/empty, allow chit to grow wider
+        var productDesc = viewCfg.fields && viewCfg.fields.product;
+        if (productDesc && hideSet.has(productDesc.key)) {
+          chitEl.classList.add(P + '-bucket-chit--wide');
+        }
+        chitGroup.appendChild(chitEl);
+
+        // Insert as first child of identity (before separator + product-group)
+        identity.insertBefore(chitGroup, identity.firstChild);
+
+        // Hide separator dot when product is hidden
+        if (productDesc && hideSet.has(productDesc.key)) {
+          var sep = identity.querySelector('.' + P + '-sum-sep');
+          if (sep) sep.style.display = 'none';
+        }
+      }
+    }
+
+    // ── Override labor-desc label per bucket ──
+    if (rule.descLabel) {
+      var ldDesc = viewCfg.fields && viewCfg.fields.laborDescription;
+      if (ldDesc) {
+        var ldGroup = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
+        if (ldGroup) ldGroup.textContent = rule.descLabel;
+      }
+    }
   }
 
   // ============================================================
@@ -1185,9 +1751,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ============================================================
   var RADIO_CHIP_CLASS = P + '-radio-chip';
   var RADIO_CHIPS_ATTR = 'data-scw-radio-chips';
-
-  var MOUNTING_HEIGHT_OPTIONS = ["Under 16'", "16' - 24'", "Over 24'"];
-  var MDF_IDF_OPTIONS = ['HEADEND', 'IDF'];
+  var MULTI_CHIP_ATTR  = 'data-multi';
 
   /** Read current value from a cell's text content. */
   function readCellText(td) {
@@ -1195,21 +1759,54 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
-  /** Build radio chip elements for a set of options. */
-  function buildRadioChips(td, fieldKey, options) {
+  /** Resolve a field descriptor to its Knack key. */
+  function fieldKey(viewCfg, name) {
+    if (!viewCfg || !viewCfg.fields) return null;
+    var desc = viewCfg.fields[name];
+    if (!desc) return null;
+    return typeof desc === 'string' ? desc : desc.key;
+  }
+
+  /** Get the descriptor object for a field name. */
+  function fieldDesc(viewCfg, name) {
+    if (!viewCfg || !viewCfg.fields) return null;
+    var desc = viewCfg.fields[name];
+    if (!desc) return null;
+    if (typeof desc === 'string') return { key: desc, type: 'readOnly' };
+    return desc;
+  }
+
+  /** Build radio/multi chip elements for a set of options.
+   *  multi=true → multiple chips can be selected (toggle behavior). */
+  function buildRadioChips(td, fKey, options, multi) {
     var currentVal = readCellText(td);
     var container = document.createElement('div');
     container.className = P + '-radio-chips';
-    container.setAttribute('data-field', fieldKey);
+    container.setAttribute('data-field', fKey);
+
+    // For multi-chip, parse comma-separated values
+    var selectedSet = {};
+    if (multi) {
+      container.setAttribute(MULTI_CHIP_ATTR, '1');
+      var parts = currentVal.split(',');
+      for (var j = 0; j < parts.length; j++) {
+        var trimmed = parts[j].replace(/[\u00a0\s]+/g, ' ').trim();
+        if (trimmed) selectedSet[trimmed] = true;
+      }
+    }
 
     for (var i = 0; i < options.length; i++) {
       var chip = document.createElement('span');
       chip.className = RADIO_CHIP_CLASS;
       chip.setAttribute('data-option', options[i]);
-      chip.setAttribute('data-field', fieldKey);
+      chip.setAttribute('data-field', fKey);
       chip.textContent = options[i];
 
-      if (currentVal === options[i]) {
+      var isSelected = multi
+        ? !!selectedSet[options[i]]
+        : (currentVal === options[i]);
+
+      if (isSelected) {
         chip.classList.add('is-selected');
       } else {
         chip.classList.add('is-unselected');
@@ -1220,7 +1817,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   /** Build a field row that uses radio chips instead of the raw cell. */
-  function buildRadioChipRow(label, td, fieldKey, options) {
+  function buildRadioChipRow(label, td, fKey, options, multi) {
     if (td && td.classList.contains(GRAYED_CLASS)) return null;
 
     var row = document.createElement('div');
@@ -1237,7 +1834,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     valueWrapper.style.padding = '0';
     valueWrapper.style.background = 'transparent';
 
-    var chips = buildRadioChips(td, fieldKey, options);
+    var chips = buildRadioChips(td, fKey, options, multi);
     valueWrapper.appendChild(chips);
 
     // Keep the original td hidden so Knack's data binding stays alive
@@ -1291,7 +1888,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 2;
+      input.rows = 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -1458,7 +2055,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   // Number fields that need client-side validation
   var NUMBER_FIELDS = ['field_2367', 'field_2368', 'field_2400', 'field_2399', 'field_2458',
-                       'field_2150', 'field_1973', 'field_1974'];
+                       'field_2150', 'field_1973', 'field_1974', 'field_1951', 'field_1965',
+                       'field_1964'];
 
   // ============================================================
   // SOFT HEADER REFRESH
@@ -1494,11 +2092,55 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return cfg.headerTriggerFields.indexOf(fieldKey) !== -1;
   }
 
+  /** Returns true if fieldKey affects the calculated Install Fee. */
+  function isFeeTrigger(viewId, fieldKey) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.feeTriggerFields) return false;
+    return cfg.feeTriggerFields.indexOf(fieldKey) !== -1;
+  }
+
+  /** After a fee-trigger save, patch the Fee cell from the API response
+   *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
+  /**
+   * After a feeTrigger save, refresh the view so Knack re-renders
+   * with updated calculated / related values.
+   * Holds the view's height and fades opacity to avoid a jarring flash.
+   */
+  function refreshViewAfterSave(viewId) {
+    if (typeof Knack === 'undefined') return;
+    setTimeout(function () {
+      try {
+        var view = Knack.views[viewId];
+        if (!view || !view.model || typeof view.model.fetch !== 'function') return;
+
+        var el = document.getElementById(viewId);
+        if (el) {
+          // Lock height + fade so the DOM doesn't collapse during fetch
+          el.style.minHeight = el.offsetHeight + 'px';
+          el.style.opacity = '0.45';
+          el.style.transition = 'opacity .15s';
+
+          // Restore on next render of this view
+          $(document).one('knack-view-render.' + viewId + '.scwRefreshFade', function () {
+            el.style.opacity = '1';
+            // Release min-height after the fade-in completes
+            setTimeout(function () { el.style.minHeight = ''; el.style.transition = ''; }, 200);
+          });
+        }
+
+        console.log('[scw-ws] Refreshing view ' + viewId + ' after fee-trigger save');
+        view.model.fetch();
+      } catch (e) {
+        console.warn('[scw-ws] Could not refresh ' + viewId, e);
+      }
+    }, 750);
+  }
+
   /** Extract the label text from a Knack API response object. */
   function extractLabelFromResponse(viewId, resp) {
     var cfg = viewCfgFor(viewId);
-    if (!cfg || !cfg.fields.label) return '';
-    var labelField = cfg.fields.label;
+    var labelField = fieldKey(cfg, 'label');
+    if (!labelField) return '';
     var raw = resp[labelField + '_raw'] || resp[labelField] || '';
     return typeof raw === 'string'
       ? raw.replace(/<[^>]*>/g, '').trim()
@@ -1506,46 +2148,34 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   /**
-   * Fetch the record via the OBJECT-level API (which returns formula
-   * fields) and apply the label.  The view-level API strips formulas.
+   * Fetch the record via the VIEW-level API and apply the label.
+   * Uses the same-origin view URL to avoid CORS issues.
    */
   function fetchAndApplyLabel(viewId, recordId) {
     var cfg = viewCfgFor(viewId);
-    if (!cfg || !cfg.fields.label) return;
-
+    if (!cfg || !fieldKey(cfg, 'label')) return;
     if (typeof Knack === 'undefined') return;
 
-    // Derive the object key from the Knack view model
-    var view = Knack.views[viewId];
-    var objectKey = null;
-    try {
-      objectKey = view.model.view.source.object;
-    } catch (ignored) { /* */ }
-    if (!objectKey) {
-      console.warn('[scw-ws-header] Cannot determine object key for ' + viewId);
-      return;
-    }
-
-    console.log('[scw-ws-header] Fetching label via object API (' + objectKey + ') for ' + recordId);
+    console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
 
     $.ajax({
-      url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
       type: 'GET',
       headers: {
         'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
         'Authorization': Knack.getUserToken()
       },
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
-        console.log('[scw-ws-header] Object API label for ' + recordId + ': "' + txt + '"');
+        console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
         if (txt) {
           _labelCache[recordId] = txt;
           applyLabelText(viewId, recordId, txt);
         }
       },
       error: function (xhr) {
-        console.warn('[scw-ws-header] Object GET failed for ' + recordId, xhr.status, xhr.responseText);
+        console.warn('[scw-ws-header] View GET failed for ' + recordId, xhr.status);
       }
     });
   }
@@ -1553,8 +2183,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   /** Patch the label td text for a single record in the DOM. */
   function applyLabelText(viewId, recordId, txt) {
     var cfg = viewCfgFor(viewId);
-    if (!cfg || !cfg.fields.label) return;
-    var labelField = cfg.fields.label;
+    var labelField = fieldKey(cfg, 'label');
+    if (!labelField) return;
 
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
@@ -1580,8 +2210,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    */
   function restoreCachedLabels(viewId) {
     var cfg = viewCfgFor(viewId);
-    if (!cfg || !cfg.fields.label) return;
-    var labelField = cfg.fields.label;
+    var labelField = fieldKey(cfg, 'label');
+    if (!labelField) return;
 
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
@@ -1614,9 +2244,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
+    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
     // Non-trigger fields: prefer model.updateRecord (no re-render)
-    if (!trigger) {
+    if (!trigger && !feeTrig) {
       var view = Knack.views[viewId];
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
@@ -1625,7 +2256,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Trigger fields (or fallback): direct AJAX PUT
+    // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
     $.ajax({
       url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
            '/views/' + viewId + '/records/' + recordId,
@@ -1638,6 +2269,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
+        if (feeTrig) refreshViewAfterSave(viewId);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -1760,14 +2392,16 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
   }, true);
 
-  /** Save a radio chip selection via Knack's internal API. */
+  /** Save a radio/multi chip selection via Knack's internal API.
+   *  value may be a string (single chip) or an array (multi chip). */
   function saveRadioValue(viewId, recordId, fieldKey, value, onSuccess) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
+    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
     // Non-trigger: prefer model.updateRecord (no re-render)
-    if (!trigger) {
+    if (!trigger && !feeTrig) {
       var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
@@ -1776,7 +2410,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // Trigger fields (or fallback): AJAX PUT — response has the formula
+    // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
     if (typeof Knack !== 'undefined') {
       $.ajax({
         url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
@@ -1790,6 +2424,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
+          if (feeTrig) refreshViewAfterSave(viewId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
@@ -1799,38 +2434,67 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
   }
 
-  // ── Capture-phase click handler for radio chips ──
+  // ── Capture-phase click handler for radio / multi chips ──
   document.addEventListener('click', function (e) {
     var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
     if (!chip) return;
 
+    // Let KTL bulk-edit handle the click when active
+    var chipTd = chip.closest('td');
+    if (chipTd && chipTd.classList.contains('bulkEditSelectSrc')) return;
+
     e.stopPropagation();
     e.preventDefault();
 
-    var newValue = chip.getAttribute('data-option') || '';
-    var fieldKey = chip.getAttribute('data-field') || '';
+    var clickedOption = chip.getAttribute('data-option') || '';
+    var fk = chip.getAttribute('data-field') || '';
     var container = chip.closest('.' + P + '-radio-chips');
     if (!container) return;
 
-    // Update chip states
+    var isMulti = container.getAttribute(MULTI_CHIP_ATTR) === '1';
     var allChips = container.querySelectorAll('.' + RADIO_CHIP_CLASS);
-    for (var i = 0; i < allChips.length; i++) {
-      allChips[i].classList.remove('is-selected', 'is-unselected');
-      if (allChips[i].getAttribute('data-option') === newValue) {
-        allChips[i].classList.add('is-selected', 'is-saving');
-      } else {
-        allChips[i].classList.add('is-unselected');
+    var saveValue;
+
+    if (isMulti) {
+      // Toggle the clicked chip independently
+      chip.classList.toggle('is-selected');
+      chip.classList.toggle('is-unselected');
+      chip.classList.add('is-saving');
+
+      // Collect all selected options as an array
+      var selected = [];
+      for (var i = 0; i < allChips.length; i++) {
+        if (allChips[i].classList.contains('is-selected')) {
+          selected.push(allChips[i].getAttribute('data-option'));
+        }
       }
+      saveValue = selected;
+    } else {
+      // Single-select radio behavior
+      for (var j = 0; j < allChips.length; j++) {
+        allChips[j].classList.remove('is-selected', 'is-unselected');
+        if (allChips[j].getAttribute('data-option') === clickedOption) {
+          allChips[j].classList.add('is-selected', 'is-saving');
+        } else {
+          allChips[j].classList.add('is-unselected');
+        }
+      }
+      saveValue = clickedOption;
     }
+
     setTimeout(function () {
       var saving = container.querySelectorAll('.is-saving');
-      for (var j = 0; j < saving.length; j++) saving[j].classList.remove('is-saving');
+      for (var k = 0; k < saving.length; k++) saving[k].classList.remove('is-saving');
     }, 400);
 
-    // Update hidden td text so re-renders stay in sync
-    var hiddenTd = container.parentNode.querySelector('td[' + RADIO_CHIPS_ATTR + ']');
+    // Update source td text so re-renders stay in sync
+    var hiddenTd = container.closest('td[' + RADIO_CHIPS_ATTR + ']')
+                || container.parentNode.querySelector('td[' + RADIO_CHIPS_ATTR + ']');
+    var textValue = isMulti ? saveValue.join(', ') : saveValue;
     if (hiddenTd) {
-      hiddenTd.textContent = newValue;
+      var hSpan = hiddenTd.querySelector('span[style*="display"]');
+      if (hSpan) hSpan.textContent = textValue;
+      else hiddenTd.textContent = textValue;
     }
 
     // Find record ID and view ID, then save
@@ -1840,18 +2504,85 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var viewEl = chip.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
-      saveRadioValue(viewId, recordId, fieldKey, newValue, function () {
-        if (isHeaderTrigger(viewId, fieldKey)) {
+      saveRadioValue(viewId, recordId, fk, saveValue, function () {
+        if (isHeaderTrigger(viewId, fk)) {
           fetchAndApplyLabel(viewId, recordId);
         }
       });
     }
   }, true);
 
-  // ── Capture-phase mousedown: block Knack inline-edit trigger ──
+  // ── Capture-phase mousedown: block Knack inline-edit trigger on chips ──
   document.addEventListener('mousedown', function (e) {
     var chip = e.target.closest('.' + RADIO_CHIP_CLASS);
     if (!chip) return;
+    var chipTd = chip.closest('td');
+    if (chipTd && chipTd.classList.contains('bulkEditSelectSrc')) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
+  // ── Capture-phase: block Knack inline-edit on chip host td and container ──
+  document.addEventListener('click', function (e) {
+    var host = e.target.closest('td.' + P + '-sum-chip-host');
+    if (host && !host.classList.contains('bulkEditSelectSrc')) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    var host = e.target.closest('td.' + P + '-sum-chip-host');
+    if (host && !host.classList.contains('bulkEditSelectSrc')) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+
+  // ── Capture-phase click handler for cabling toggle chit ──
+  var CABLING_CHIT_SEL = '.' + P + '-cabling-chit';
+  document.addEventListener('click', function (e) {
+    var chit = e.target.closest(CABLING_CHIT_SEL);
+    if (!chit) return;
+
+    // Let KTL bulk-edit handle the click when active
+    var chitTd = chit.closest('td');
+    if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    var fieldKey = chit.getAttribute('data-field') || '';
+    var isYes = chit.classList.contains('is-yes');
+    var newBool = isYes ? 'No' : 'Yes';
+
+    // Toggle visual state
+    chit.classList.remove('is-yes', 'is-no');
+    chit.classList.add(newBool === 'Yes' ? 'is-yes' : 'is-no', 'is-saving');
+    setTimeout(function () { chit.classList.remove('is-saving'); }, 400);
+
+    // Update source td (chit may be inside or beside the td)
+    var srcTd = chit.closest('td[data-scw-cabling-src]')
+             || chit.parentNode.querySelector('td[data-scw-cabling-src]');
+    if (srcTd) {
+      var hiddenSpan = srcTd.querySelector('span[style*="display"]');
+      if (hiddenSpan) hiddenSpan.textContent = newBool;
+    }
+
+    // Save
+    var wsTr = chit.closest('tr.' + WORKSHEET_ROW);
+    if (!wsTr) return;
+    var recordId = getRecordId(wsTr);
+    var viewEl = chit.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+    if (recordId && viewId) {
+      saveRadioValue(viewId, recordId, fieldKey, newBool);
+    }
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    var chitEl = e.target.closest(CABLING_CHIT_SEL);
+    if (!chitEl) return;
+    var chitTd = chitEl.closest('td');
+    if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
     e.stopPropagation();
     e.preventDefault();
   }, true);
@@ -1890,7 +2621,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 2;
+      input.rows = 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -1923,6 +2654,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (!td) return null;
     var group = document.createElement('span');
     group.className = P + '-sum-group' + (opts.cls ? ' ' + opts.cls : '');
+    if (opts.fieldKey) group.setAttribute('data-scw-fields', opts.fieldKey);
     var lbl = document.createElement('span');
     lbl.className = P + '-sum-label';
     lbl.textContent = label;
@@ -1941,9 +2673,134 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // BUILD SUMMARY BAR
   // ============================================================
 
+  /** Render a single field into the summary bar based on its descriptor type. */
+  function renderSummaryField(target, tr, name, desc, viewCfg) {
+    var td = findCell(tr, desc.key, desc.columnIndex);
+
+    switch (desc.type) {
+      case 'readOnly':
+        if (desc.readOnlySummary) {
+          appendSumGroup(target, desc.label || name, td,
+            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, readOnly: true, fieldKey: desc.key });
+        } else {
+          appendSumGroup(target, desc.label || name, td,
+            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, fieldKey: desc.key });
+        }
+        break;
+
+      case 'directEdit':
+        if (desc.group === 'fill') {
+          // Fill group — special layout (fills middle space)
+          if (!td) break;
+          var ldGroup = document.createElement('span');
+          ldGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
+          ldGroup.setAttribute('data-scw-fields', desc.key);
+          var ldLabel = document.createElement('span');
+          ldLabel.className = P + '-sum-label';
+          ldLabel.textContent = desc.label || name;
+          ldGroup.appendChild(ldLabel);
+          td.classList.add(P + '-sum-field');
+          td.classList.add(P + '-sum-field--desc');
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline });
+          ldGroup.appendChild(td);
+          target.appendChild(ldGroup);
+        } else if (desc.stackWith && viewCfg) {
+          // Stacked pair — editable field on top, read-only total below
+          if (!td) break;
+          var pairDesc = fieldDesc(viewCfg, desc.stackWith);
+          var pairTd = pairDesc ? findCell(tr, pairDesc.key, pairDesc.columnIndex) : null;
+          var pairGroup = document.createElement('span');
+          pairGroup.className = P + '-sum-group ' + P + '-sum-group--stacked-pair'
+            + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+          var pairFields = [desc.key];
+          if (pairDesc) pairFields.push(pairDesc.key);
+          pairGroup.setAttribute('data-scw-fields', pairFields.join(' '));
+          // Top: label + editable field
+          var topLbl = document.createElement('span');
+          topLbl.className = P + '-sum-label';
+          topLbl.textContent = desc.label || name;
+          pairGroup.appendChild(topLbl);
+          td.classList.add(P + '-sum-field');
+          injectSummaryDirectEdit(td, desc.key);
+          pairGroup.appendChild(td);
+          // Bottom: TTL label + read-only value
+          if (pairTd) {
+            var btmLbl = document.createElement('span');
+            btmLbl.className = P + '-sum-label ' + P + '-sum-label--ttl';
+            btmLbl.textContent = pairDesc.label || desc.stackWith;
+            pairGroup.appendChild(btmLbl);
+            pairTd.classList.add(P + '-sum-field-ro');
+            if (isCellEmpty(pairTd)) pairTd.classList.add(P + '-empty');
+            pairGroup.appendChild(pairTd);
+          }
+          target.appendChild(pairGroup);
+        } else {
+          appendSumGroup(target, desc.label || name, td,
+            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
+              directEdit: true, fieldKey: desc.key });
+        }
+        break;
+
+      case 'multiChip':
+      case 'singleChip':
+        if (!td) break;
+        var isMulti = (desc.type === 'multiChip');
+        var chipsGroup = document.createElement('span');
+        chipsGroup.className = P + '-sum-group' + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+        var chipsLabel = document.createElement('span');
+        chipsLabel.className = P + '-sum-label';
+        chipsLabel.textContent = desc.label || name;
+        chipsGroup.appendChild(chipsLabel);
+        // Hide original text content but keep td visible for KTL
+        var chipSpan = td.querySelector('span');
+        if (chipSpan) { chipSpan.style.display = 'none'; }
+        else {
+          var chipHidden = document.createElement('span');
+          chipHidden.style.display = 'none';
+          chipHidden.textContent = readCellText(td);
+          td.appendChild(chipHidden);
+        }
+        var chips = buildRadioChips(td, desc.key, desc.options || [], isMulti);
+        chips.classList.add(P + '-sum-chips');
+        td.textContent = '';
+        if (chipSpan) td.appendChild(chipSpan);
+        td.appendChild(chips);
+        td.classList.add(P + '-sum-chip-host');
+        td.setAttribute(RADIO_CHIPS_ATTR, '1');
+        chipsGroup.appendChild(td);
+        target.appendChild(chipsGroup);
+        break;
+
+      case 'toggleChit':
+        if (!td) break;
+        var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+        var isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        var chit = document.createElement('span');
+        chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
+        chit.setAttribute('data-field', desc.key);
+        chit.innerHTML = 'Existing<br>Cabling';
+        var chitSpan = td.querySelector('span');
+        if (chitSpan) { chitSpan.style.display = 'none'; }
+        td.textContent = '';
+        if (chitSpan) td.appendChild(chitSpan);
+        td.appendChild(chit);
+        td.classList.add(P + '-sum-chip-host');
+        td.setAttribute('data-scw-cabling-src', '1');
+        var chitWrap = document.createElement('span');
+        chitWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
+        var chitLabel = document.createElement('span');
+        chitLabel.className = P + '-sum-label';
+        chitLabel.innerHTML = '&nbsp;';
+        chitWrap.appendChild(chitLabel);
+        chitWrap.appendChild(td);
+        target.appendChild(chitWrap);
+        break;
+    }
+  }
+
   function buildSummaryBar(tr, viewCfg) {
     var f = viewCfg.fields;
-    var ci = viewCfg.columnIndices || {};
+    var layout = viewCfg.summaryLayout || [];
 
     var bar = document.createElement('div');
     bar.className = P + '-summary';
@@ -1956,7 +2813,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       bar.appendChild(checkCell);
     }
 
-    // ── Toggle zone: chevron + identity ──
+    // ── Toggle zone: chevron + identity (label + product) ──
     var toggleZone = document.createElement('span');
     toggleZone.className = P + '-toggle-zone';
 
@@ -1968,174 +2825,116 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var identity = document.createElement('span');
     identity.className = P + '-identity';
 
-    var labelTd = findCell(tr, f.label);
-    if (labelTd) {
-      labelTd.classList.add(P + '-sum-label-cell');
-      identity.appendChild(labelTd);
+    var labelDesc = fieldDesc(viewCfg, 'label');
+    if (labelDesc) {
+      var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
+      if (labelTd) {
+        labelTd.classList.add(P + '-sum-label-cell');
+        identity.appendChild(labelTd);
+      }
     }
 
-    var productTd = findCell(tr, f.product, ci.product);
-    if (productTd) {
-      var sep0 = document.createElement('span');
-      sep0.className = P + '-sum-sep';
-      sep0.textContent = '\u00b7';
-      identity.appendChild(sep0);
+    var productDesc = fieldDesc(viewCfg, 'product');
+    if (productDesc && productDesc.summary) {
+      var productTd = findCell(tr, productDesc.key, productDesc.columnIndex);
+      if (productTd) {
+        var sep0 = document.createElement('span');
+        sep0.className = P + '-sum-sep';
+        sep0.textContent = '\u00b7';
+        identity.appendChild(sep0);
 
-      var productGroup = document.createElement('span');
-      productGroup.className = P + '-product-group';
+        var productGroup = document.createElement('span');
+        productGroup.className = P + '-product-group';
+        productGroup.setAttribute('data-scw-fields', productDesc.key);
 
-      // Warning chit (field_2454, view_3512 only)
-      if (f.warningCount) {
-        var warnTd = findCell(tr, f.warningCount);
-        var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
-        if (warnVal > 0) {
-          var chit = document.createElement('span');
-          chit.className = P + '-warn-chit';
-          chit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
-            + Math.round(warnVal);
-          productGroup.appendChild(chit);
+        // Empty label so product aligns vertically with editable field values
+        // (needed when right-group fields have stacked label+value)
+        var hasStackedFields = layout.some(function (n) {
+          var d = fieldDesc(viewCfg, n);
+          return d && d.group === 'right' && d.label;
+        });
+        if (hasStackedFields) {
+          var prodLabel = document.createElement('span');
+          prodLabel.className = P + '-sum-label';
+          prodLabel.innerHTML = '&nbsp;';
+          productGroup.appendChild(prodLabel);
         }
-      }
 
-      productTd.classList.add(P + '-sum-product');
-      productGroup.appendChild(productTd);
-      identity.appendChild(productGroup);
+        // Warning chit
+        var warnDesc = fieldDesc(viewCfg, 'warningCount');
+        if (warnDesc) {
+          var warnTd = findCell(tr, warnDesc.key);
+          var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+          if (warnVal > 0) {
+            var warnChit = document.createElement('span');
+            warnChit.className = P + '-warn-chit';
+            warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
+              + Math.round(warnVal);
+            productGroup.appendChild(warnChit);
+          }
+        }
+
+        productTd.classList.add(P + '-sum-product');
+        productGroup.appendChild(productTd);
+        identity.appendChild(productGroup);
+      }
     }
 
     toggleZone.appendChild(identity);
     bar.appendChild(toggleZone);
 
-    // ── Optional pre-fill groups (SOW, Mount Cable Both) ──
-    if (f.sow) {
-      appendSumGroup(bar, 'SOW', findCell(tr, f.sow),
-        { cls: P + '-sum-group--sow' });
-    }
-    if (f.mountCableBoth) {
-      appendSumGroup(bar, 'MCB', findCell(tr, f.mountCableBoth),
-        { cls: P + '-sum-group--mcb' });
-    }
-
-    // ── Labor Desc (inline, fills middle space — direct-edit) ──
-    var laborDescTd = findCell(tr, f.laborDescription);
-    if (laborDescTd) {
-      var ldGroup = document.createElement('span');
-      ldGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
-      var ldLabel = document.createElement('span');
-      ldLabel.className = P + '-sum-label';
-      ldLabel.textContent = 'Labor Desc';
-      ldGroup.appendChild(ldLabel);
-      laborDescTd.classList.add(P + '-sum-field');
-      laborDescTd.classList.add(P + '-sum-field--desc');
-      injectSummaryDirectEdit(laborDescTd, f.laborDescription, { multiline: true });
-      ldGroup.appendChild(laborDescTd);
-      bar.appendChild(ldGroup);
-    }
-
-    // ── Right-aligned group: bid, labor, qty, ext, move ──
+    // ── Walk summaryLayout: dispatch each field to its type builder ──
     var rightGroup = document.createElement('span');
     rightGroup.className = P + '-sum-right';
 
-    // Bid
-    var bidTd = findCell(tr, f.bid);
-    if (bidTd) {
-      var bidGroup = document.createElement('span');
-      bidGroup.className = P + '-sum-group ' + P + '-sum-group--bid';
-      var bidLabel = document.createElement('span');
-      bidLabel.className = P + '-sum-label';
-      bidLabel.textContent = 'Bid';
-      bidGroup.appendChild(bidLabel);
-      bidTd.classList.add(P + '-sum-field');
-      if (isCellEmpty(bidTd)) bidTd.classList.add(P + '-empty');
-      bidGroup.appendChild(bidTd);
-      rightGroup.appendChild(bidGroup);
+    for (var i = 0; i < layout.length; i++) {
+      var name = layout[i];
+      var desc = fieldDesc(viewCfg, name);
+      if (!desc || !desc.summary) continue;
+
+      // Route to the right container based on group
+      var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
+      renderSummaryField(container, tr, name, desc, viewCfg);
     }
 
-    // Labor $ (direct-edit)
-    var laborTd = findCell(tr, f.labor);
-    if (laborTd) {
-      var labGroup = document.createElement('span');
-      labGroup.className = P + '-sum-group ' + P + '-sum-group--labor';
-      var labLabel = document.createElement('span');
-      labLabel.className = P + '-sum-label';
-      labLabel.textContent = 'Labor';
-      labGroup.appendChild(labLabel);
-      laborTd.classList.add(P + '-sum-field');
-      injectSummaryDirectEdit(laborTd, f.labor);
-      labGroup.appendChild(laborTd);
-      rightGroup.appendChild(labGroup);
-    }
-
-    // Qty (view_3505 only, direct-edit)
-    if (f.quantity) {
-      var qtyTd = findCell(tr, f.quantity);
-      if (qtyTd) {
-        var qtyGroup = document.createElement('span');
-        qtyGroup.className = P + '-sum-group ' + P + '-sum-group--qty';
-        var qtyLabel = document.createElement('span');
-        qtyLabel.className = P + '-sum-label';
-        qtyLabel.textContent = 'Qty';
-        qtyGroup.appendChild(qtyLabel);
-        qtyTd.classList.add(P + '-sum-field');
-        injectSummaryDirectEdit(qtyTd, f.quantity);
-        qtyGroup.appendChild(qtyTd);
-        rightGroup.appendChild(qtyGroup);
+    // ── Move icon (structural — always last before delete) ──
+    var moveDesc = fieldDesc(viewCfg, 'move');
+    if (moveDesc && moveDesc.type === 'moveIcon') {
+      var moveTd = findCell(tr, moveDesc.key);
+      if (moveTd) {
+        if (!moveTd.querySelector('.fa-server')) {
+          moveTd.innerHTML =
+            '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
+              '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
+              '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
+                '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+                '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
+              '</span>' +
+            '</span>';
+        }
+        moveTd.classList.add(P + '-sum-move');
+        var moveWrap = document.createElement('span');
+        moveWrap.className = P + '-sum-group ' + P + '-sum-group--move';
+        var moveLabel = document.createElement('span');
+        moveLabel.className = P + '-sum-label';
+        moveLabel.innerHTML = '&nbsp;';
+        moveWrap.appendChild(moveLabel);
+        moveWrap.appendChild(moveTd);
+        rightGroup.appendChild(moveWrap);
       }
     }
 
-    // Extended (view_3505 only, read-only)
-    if (f.extended) {
-      var extTd = findCell(tr, f.extended);
-      if (extTd) {
-        var extGroup = document.createElement('span');
-        extGroup.className = P + '-sum-group ' + P + '-sum-group--ext';
-        var extLabel = document.createElement('span');
-        extLabel.className = P + '-sum-label';
-        extLabel.textContent = 'Extended';
-        extGroup.appendChild(extLabel);
-        extTd.classList.add(P + '-sum-field-ro');
-        extGroup.appendChild(extTd);
-        rightGroup.appendChild(extGroup);
+    // ── Delete link (if Knack provides one in this grid) ──
+    var deleteLink = tr.querySelector('a.kn-link-delete');
+    if (deleteLink) {
+      var deleteTd = deleteLink.closest('td');
+      var deleteWrap = document.createElement('span');
+      deleteWrap.className = P + '-sum-delete';
+      deleteWrap.appendChild(deleteLink);
+      rightGroup.appendChild(deleteWrap);
+      if (deleteTd && !deleteTd.children.length) {
+        deleteTd.style.display = 'none';
       }
-    }
-
-    // ── Additional right-aligned fields (view_3313) ──
-    if (f.laborVariables) {
-      appendSumGroup(rightGroup, 'Vars', findCell(tr, f.laborVariables),
-        { cls: P + '-sum-group--vars' });
-    }
-    if (f.subBid) {
-      appendSumGroup(rightGroup, 'Sub Bid', findCell(tr, f.subBid),
-        { cls: P + '-sum-group--sub-bid', directEdit: true, fieldKey: f.subBid });
-    }
-    if (f.plusHrs) {
-      appendSumGroup(rightGroup, '+Hrs', findCell(tr, f.plusHrs),
-        { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusHrs });
-    }
-    if (f.plusMat) {
-      appendSumGroup(rightGroup, '+Mat', findCell(tr, f.plusMat),
-        { cls: P + '-sum-group--narrow', directEdit: true, fieldKey: f.plusMat });
-    }
-    if (f.installFee) {
-      appendSumGroup(rightGroup, 'Fee', findCell(tr, f.installFee),
-        { cls: P + '-sum-group--fee', readOnly: true });
-    }
-
-    // Move – ensure the icon is present (replace-content-with-icon.js
-    // may not have run yet on this fresh DOM after a KTL bulk-edit refresh)
-    var moveTd = findCell(tr, f.move);
-    if (moveTd) {
-      if (!moveTd.querySelector('.fa-server')) {
-        moveTd.innerHTML =
-          '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
-            '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
-            '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
-              '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-              '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-            '</span>' +
-          '</span>';
-      }
-      moveTd.classList.add(P + '-sum-move');
-      rightGroup.appendChild(moveTd);
     }
 
     bar.appendChild(rightGroup);
@@ -2144,12 +2943,105 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ============================================================
-  // BUILD DETAIL PANEL
+  // BUILD DETAIL PANEL (data-driven from detailLayout)
   // ============================================================
 
+  // Label map for detail rows — maps field names to display labels.
+  // Falls back to a prettified version of the field name if not listed.
+  var DETAIL_LABELS = {
+    mounting:         'Mounting\nHardware',
+    mountingHardware: 'Mounting\nHardware',
+    connections:      'Connected to',
+    connectedDevice:  'Connected\nDevice',
+    scwNotes:         'SCW Notes',
+    surveyNotes:      'Survey\nNotes',
+    exterior:         'Exterior',
+    existingCabling:  'Existing Cabling',
+    plenum:           'Plenum',
+    mountingHeight:   'Mounting\nHeight',
+    dropLength:       'Drop Length',
+    conduitFeet:      'Conduit Ft',
+    mdfIdf:           'MDF/IDF',
+    mdfNumber:        '##',
+    name:             'Name',
+    dropPrefix:       'Drop Prefix',
+    dropNumber:       'Label #'
+  };
+
+  /** Render a single field into a detail section based on its descriptor type. */
+  function renderDetailField(section, tr, name, desc, viewId) {
+    var td = findCell(tr, desc.key, desc.columnIndex);
+    var label = DETAIL_LABELS[name] || desc.label || name;
+
+    switch (desc.type) {
+      case 'readOnly':
+        var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
+        if (row) section.appendChild(row);
+        break;
+
+      case 'directEdit':
+        var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
+        if (editRow) section.appendChild(editRow);
+        break;
+
+      case 'singleChip':
+      case 'multiChip':
+        var chipRow = buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip');
+        if (chipRow) section.appendChild(chipRow);
+        break;
+
+      case 'connectedRecords':
+        // Connected records widget (e.g. mounting hardware in view_3313)
+        if (window.SCW && SCW.connectedRecords && typeof SCW.connectedRecords.buildWidget === 'function') {
+          var recordId = getRecordId(tr);
+          var crWidget = SCW.connectedRecords.buildWidget(viewId, recordId, desc.key);
+          if (crWidget) {
+            section.appendChild(crWidget);
+          } else {
+            var crFallback = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty });
+            if (crFallback) section.appendChild(crFallback);
+          }
+        } else {
+          var crFallback2 = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty });
+          if (crFallback2) section.appendChild(crFallback2);
+        }
+        break;
+
+      case 'chipStack':
+        // Boolean chip stack (exterior/cabling/plenum) injected by boolean-chips.js
+        if (!td || td.classList.contains(GRAYED_CLASS)) break;
+        var chipStack = td.querySelector('.scw-chip-stack');
+        if (chipStack) {
+          var chipFieldRow = document.createElement('div');
+          chipFieldRow.className = P + '-field';
+
+          var chipLabel = document.createElement('div');
+          chipLabel.className = P + '-field-label';
+          chipLabel.textContent = '';
+          chipFieldRow.appendChild(chipLabel);
+
+          td.classList.add(P + '-chip-host');
+          td.classList.add(P + '-field-value');
+          td.innerHTML = '';
+          var chipsRow = document.createElement('div');
+          chipsRow.className = P + '-chips';
+          while (chipStack.firstChild) {
+            chipsRow.appendChild(chipStack.firstChild);
+          }
+          td.appendChild(chipsRow);
+          chipFieldRow.appendChild(td);
+          section.appendChild(chipFieldRow);
+        } else {
+          var fallbackRow = buildFieldRow(label, td);
+          if (fallbackRow) section.appendChild(fallbackRow);
+        }
+        break;
+    }
+  }
+
   function buildDetailPanel(tr, viewCfg) {
-    var f = viewCfg.fields;
-    var ci = viewCfg.columnIndices || {};
+    var layout = viewCfg.detailLayout;
+    if (!layout) return null;
 
     var detail = document.createElement('div');
     detail.className = P + '-detail';
@@ -2157,97 +3049,25 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var sections = document.createElement('div');
     sections.className = P + '-sections';
 
-    // Helper: append a field row only if it wasn't grayed out (null)
-    function addRow(section, row) {
-      if (row) section.appendChild(row);
-    }
+    var sides = ['left', 'right'];
+    for (var s = 0; s < sides.length; s++) {
+      var side = sides[s];
+      var fieldNames = layout[side];
+      if (!fieldNames || !fieldNames.length) continue;
 
-    // ── Left column: Equipment Details ──
-    var equipSection = buildSection('');
+      var section = buildSection('');
 
-    if (f.mdfIdf) {
-      addRow(equipSection, buildRadioChipRow('MDF/IDF',
-        findCell(tr, f.mdfIdf), f.mdfIdf, MDF_IDF_OPTIONS));
-    }
-
-    if (f.mdfNumber) {
-      addRow(equipSection, buildFieldRow('##',
-        findCell(tr, f.mdfNumber)));
-    }
-
-    addRow(equipSection, buildEditableFieldRow('Mounting\nHardware',
-      findCell(tr, f.mounting, ci.mounting), f.mounting, { skipEmpty: true }));
-
-    if (f.name) {
-      addRow(equipSection, buildEditableFieldRow('Name',
-        findCell(tr, f.name), f.name, { notes: true }));
-    }
-
-    addRow(equipSection, buildEditableFieldRow('SCW Notes',
-      findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
-
-    sections.appendChild(equipSection);
-
-    // ── Right column: Survey Details ──
-    var surveySection = buildSection('Survey Details');
-
-    if (f.connections) {
-      addRow(surveySection, buildFieldRow('Connected to',
-        findCell(tr, f.connections)));
-    }
-
-    // Chip stack (boolean chips for exterior/cabling/plenum)
-    var chipHostTd = findCell(tr, f.exterior);
-    if (chipHostTd && !chipHostTd.classList.contains(GRAYED_CLASS)) {
-      var chipStack = chipHostTd.querySelector('.scw-chip-stack');
-      if (chipStack) {
-        var chipFieldRow = document.createElement('div');
-        chipFieldRow.className = P + '-field';
-
-        var chipLabel = document.createElement('div');
-        chipLabel.className = P + '-field-label';
-        chipLabel.textContent = '';
-        chipFieldRow.appendChild(chipLabel);
-
-        chipHostTd.classList.add(P + '-chip-host');
-        chipHostTd.classList.add(P + '-field-value');
-        chipHostTd.innerHTML = '';
-        var chipsRow = document.createElement('div');
-        chipsRow.className = P + '-chips';
-        while (chipStack.firstChild) {
-          chipsRow.appendChild(chipStack.firstChild);
-        }
-        chipHostTd.appendChild(chipsRow);
-        chipFieldRow.appendChild(chipHostTd);
-        surveySection.appendChild(chipFieldRow);
-      } else {
-        addRow(surveySection, buildFieldRow('Exterior',
-          chipHostTd));
+      for (var i = 0; i < fieldNames.length; i++) {
+        var name = fieldNames[i];
+        var desc = fieldDesc(viewCfg, name);
+        if (!desc) continue;
+        renderDetailField(section, tr, name, desc, viewCfg.viewId);
       }
+
+      sections.appendChild(section);
     }
-
-    if (f.mountingHeight) {
-      addRow(surveySection, buildRadioChipRow('Mounting\nHeight',
-        findCell(tr, f.mountingHeight), f.mountingHeight, MOUNTING_HEIGHT_OPTIONS));
-    }
-
-    if (f.dropLength) {
-      addRow(surveySection, buildEditableFieldRow('Drop Length',
-        findCell(tr, f.dropLength), f.dropLength));
-    }
-
-    if (f.conduitFeet) {
-      addRow(surveySection, buildEditableFieldRow('Conduit Ft',
-        findCell(tr, f.conduitFeet), f.conduitFeet));
-    }
-
-    addRow(surveySection, buildEditableFieldRow('Survey\nNotes',
-      findCell(tr, f.surveyNotes), f.surveyNotes, { notes: true }));
-
-    sections.appendChild(surveySection);
 
     detail.appendChild(sections);
-
     return detail;
   }
 
@@ -2262,7 +3082,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // moved into the summary bar (label, product).
 
   function buildComparisonDetailPanel(tr, viewCfg, snapshots) {
-    var f = viewCfg.fields;
+    // Resolve field keys from descriptors
+    var f = {};
+    Object.keys(viewCfg.fields).forEach(function (name) {
+      var desc = viewCfg.fields[name];
+      f[name] = typeof desc === 'string' ? desc : desc.key;
+    });
 
     var detail = document.createElement('div');
     detail.className = P + '-detail';
@@ -2432,7 +3257,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       mhWrapper.style.border = 'none';
       mhWrapper.style.padding = '0';
       mhWrapper.style.background = 'transparent';
-      var mhChips = buildRadioChips(mhTd, f.mountingHeight, MOUNTING_HEIGHT_OPTIONS);
+      var mhDesc = fieldDesc(viewCfg, 'mountingHeight');
+      var mhOpts = (mhDesc && mhDesc.options) || ["Under 16'", "16' - 24'", "Over 24'"];
+      var mhChips = buildRadioChips(mhTd, f.mountingHeight, mhOpts);
       mhWrapper.appendChild(mhChips);
       mhTd.style.display = 'none';
       mhTd.setAttribute(RADIO_CHIPS_ATTR, '1');
@@ -2464,75 +3291,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     return detail;
   }
 
-  // ============================================================
-  // BUILD SIMPLE DETAIL PANEL (view_3313)
-  // ============================================================
-  //
-  // Single-section detail with a flat list of fields.
-  // Used when the view doesn't need the two-column
-  // Equipment/Survey split of the standard detail panel.
-
-  function buildSimpleDetailPanel(tr, viewCfg) {
-    var f = viewCfg.fields;
-
-    var detail = document.createElement('div');
-    detail.className = P + '-detail';
-
-    var sections = document.createElement('div');
-    sections.className = P + '-sections';
-
-    function addRow(section, row) { if (row) section.appendChild(row); }
-
-    // ── Left column ──
-    var leftSection = buildSection('');
-
-    if (f.dropPrefix) {
-      addRow(leftSection, buildFieldRow('Drop Prefix',
-        findCell(tr, f.dropPrefix)));
-    }
-
-    if (f.dropNumber) {
-      addRow(leftSection, buildFieldRow('Label #',
-        findCell(tr, f.dropNumber)));
-    }
-
-    if (f.mountingHardware) {
-      // Use connected-records widget if available, otherwise fall back to simple field row
-      if (window.SCW && SCW.connectedRecords && typeof SCW.connectedRecords.buildWidget === 'function') {
-        var recordId = getRecordId(tr);
-        var crWidget = SCW.connectedRecords.buildWidget(viewCfg.viewId, recordId, f.mountingHardware);
-        if (crWidget) {
-          addRow(leftSection, crWidget);
-        } else {
-          addRow(leftSection, buildFieldRow('Mounting\nHardware',
-            findCell(tr, f.mountingHardware)));
-        }
-      } else {
-        addRow(leftSection, buildFieldRow('Mounting\nHardware',
-          findCell(tr, f.mountingHardware)));
-      }
-    }
-
-    sections.appendChild(leftSection);
-
-    // ── Right column ──
-    var rightSection = buildSection('');
-
-    if (f.connectedDevice) {
-      addRow(rightSection, buildFieldRow('Connected\nDevice',
-        findCell(tr, f.connectedDevice)));
-    }
-
-    if (f.scwNotes) {
-      addRow(rightSection, buildEditableFieldRow('SCW Notes',
-        findCell(tr, f.scwNotes), f.scwNotes, { notes: true }));
-    }
-
-    sections.appendChild(rightSection);
-
-    detail.appendChild(sections);
-    return detail;
-  }
+  // (buildSimpleDetailPanel removed — merged into generic buildDetailPanel)
 
   // ============================================================
   // ACCORDION TOGGLE
@@ -2585,9 +3344,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var snapshots = null;
     if (viewCfg.comparisonLayout) {
       snapshots = {};
-      var sf = viewCfg.fields;
-      if (sf.label)   snapshots.label   = readCellText(findCell(tr, sf.label));
-      if (sf.product) snapshots.product = readCellText(findCell(tr, sf.product));
+      var labelK = fieldKey(viewCfg, 'label');
+      var prodK  = fieldKey(viewCfg, 'product');
+      var prodDesc = fieldDesc(viewCfg, 'product');
+      if (labelK) snapshots.label   = readCellText(findCell(tr, labelK));
+      if (prodK)  snapshots.product = readCellText(findCell(tr, prodK, prodDesc ? prodDesc.columnIndex : undefined));
     }
 
     // Summary bar (always visible)
@@ -2598,12 +3359,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var detail;
     if (viewCfg.comparisonLayout) {
       detail = buildComparisonDetailPanel(tr, viewCfg, snapshots);
-    } else if (viewCfg.simpleDetail) {
-      detail = buildSimpleDetailPanel(tr, viewCfg);
     } else {
       detail = buildDetailPanel(tr, viewCfg);
     }
-    card.appendChild(detail);
+    if (detail) card.appendChild(detail);
+
+    // ── Apply bucket-based field hiding + label injection ──
+    applyBucketRules(card, tr, viewCfg);
 
     return card;
   }
@@ -2637,6 +3399,32 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       if (!recordId) return;
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
+      // Detect bucket and move-field emptiness BEFORE buildWorksheetCard moves tds
+      var preBucketRowClass = '';
+      if (viewCfg.bucketField && viewCfg.bucketRules) {
+        var rowBucketId = readBucketId(tr, viewCfg.bucketField);
+        var rowBucketRule = rowBucketId ? viewCfg.bucketRules[rowBucketId] : null;
+        if (rowBucketRule && rowBucketRule.rowClass) {
+          preBucketRowClass = rowBucketRule.rowClass;
+        }
+      }
+      // Determine if this row is under a blank (orphaned) MDF/IDF group header.
+      // Walk backwards through siblings to find the nearest kn-table-group row;
+      // if its label is empty the row has no MDF/IDF assignment.
+      var hasNoMove = false;
+      if (viewCfg.syntheticBucketGroups) {
+        var prev = tr.previousElementSibling;
+        while (prev && !prev.classList.contains('kn-table-group')) {
+          prev = prev.previousElementSibling;
+        }
+        if (!prev) {
+          hasNoMove = true; // no group header at all
+        } else {
+          var grpLabel = (prev.textContent || '').replace(/\s+/g, ' ').trim();
+          hasNoMove = grpLabel.length === 0;
+        }
+      }
+
       var card = buildWorksheetCard(tr, viewCfg);
 
       var wsTr = document.createElement('tr');
@@ -2644,13 +3432,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.id = tr.id;
       tr.removeAttribute('id');
 
-      // Propagate bucket row classes so worksheet CSS can react
-      if (tr.classList.contains('scw-row--assumptions')) wsTr.classList.add('scw-row--assumptions');
-      if (tr.classList.contains('scw-row--services'))    wsTr.classList.add('scw-row--services');
-
-      // Tag rows with empty MDF/IDF (move) field BEFORE the td is moved
-      var moveTd = findCell(tr, viewCfg.fields.move);
-      if (isCellEmpty(moveTd)) wsTr.setAttribute('data-scw-no-move', '1');
+      if (preBucketRowClass) wsTr.classList.add(preBucketRowClass);
+      if (hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
 
       var wsTd = document.createElement('td');
 
@@ -2684,10 +3467,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // ── SYNTHETIC GROUP HEADERS for ungrouped Assumptions / Services ──
-    // In view_3505, rows with an empty MDF/IDF connection (field_2375)
-    // that are Assumptions or Services get collected under synthetic
-    // group-header rows placed FIRST in the table (before MDF/IDF groups).
-    if (viewCfg.viewId === 'view_3505') {
+    // Rows with an empty MDF/IDF (move) field that are Assumptions or
+    // Services get collected under synthetic group-header rows placed
+    // FIRST in the table (before MDF/IDF groups).
+    if (viewCfg.syntheticBucketGroups && viewCfg.syntheticBucketGroups.length) {
       var tbody = table.querySelector('tbody');
       var colSpan = 1;
       var hdr = table.querySelector('thead tr');
@@ -2735,10 +3518,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
       // Build synthetic groups in reverse so insertions at top keep order:
       // Project Assumptions first, then Project Services.
-      var buckets = [
-        { cls: 'scw-row--services',    label: 'Project Services' },
-        { cls: 'scw-row--assumptions', label: 'Project Assumptions' }
-      ];
+      var buckets = viewCfg.syntheticBucketGroups;
 
       // Track the last inserted row to place the bottom divider after
       var lastInsertedRow = null;
@@ -2844,6 +3624,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // Knack / KTL inline edit can work without interference.
 
   $(document).on('click' + EVENT_NS, '.' + P + '-toggle-zone', function (e) {
+    // Let clicks on the product cell pass through to KTL / Knack inline-edit
+    var target = e.target;
+    if (target.closest('.' + P + '-sum-product') || target.closest('.' + P + '-product-group')) {
+      return;
+    }
     e.preventDefault();
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {
