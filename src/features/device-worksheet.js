@@ -239,8 +239,6 @@ tr.scw-inline-photo-row,
 tr.scw-inline-photo-row:hover,
 tr[data-scw-worksheet],
 tr[data-scw-worksheet]:hover {
-  background: none !important;
-  background-color: transparent !important;
 }
 tr.${WORKSHEET_ROW} > td:not(.bulkEditSelectedRow),
 tr.${WORKSHEET_ROW}:hover > td:not(.bulkEditSelectedRow),
@@ -1053,25 +1051,25 @@ tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-summary,
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-summary:hover {
   background: transparent;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field {
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field:not(.bulkEditSelectedRow) {
   background: transparent !important;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.cell-edit:hover,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.cell-edit:not(.bulkEditSelectedRow):hover,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-field.ktlInlineEditableCellsStyle:not(.bulkEditSelectedRow):hover {
   background-color: transparent !important;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product {
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product:not(.bulkEditSelectedRow) {
   background: transparent !important;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product.cell-edit:hover,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product.cell-edit:not(.bulkEditSelectedRow):hover,
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-sum-product.ktlInlineEditableCellsStyle:not(.bulkEditSelectedRow):hover {
   background-color: transparent !important;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value {
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value:not(.bulkEditSelectedRow) {
   background: transparent;
 }
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.cell-edit,
-tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.ktlInlineEditableCellsStyle {
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.cell-edit:not(.bulkEditSelectedRow),
+tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) td.${P}-field-value.ktlInlineEditableCellsStyle:not(.bulkEditSelectedRow) {
   background: transparent;
 }
 tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-direct-input,
@@ -1194,9 +1192,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   cursor: pointer;
 }
 #view_3313 td.${P}-sum-product.bulkEditSelectSrc {
-  outline: 2px solid #93c5fd;
   outline-offset: 1px;
   cursor: cell !important;
+  background-color: rgb(255, 253, 204) !important;
 }
 /* Product group width for view_3575 (matches view_3512) */
 #view_3575 .${P}-product-group {
