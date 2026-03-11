@@ -2,7 +2,8 @@
 window.SCW = window.SCW || {};
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
-  MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81"
+  MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
+  MAKE_DELETE_RECORD_WEBHOOK: ""
 };
 window.SCW = window.SCW || {};
 
@@ -12141,6 +12142,34 @@ $(".kn-navigation-bar").hide();
         text-decoration: underline;
       }
 
+      .scw-cr-delete {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        background: none;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #999;
+        padding: 0;
+        flex-shrink: 0;
+        transition: color 0.15s, background 0.15s;
+      }
+      .scw-cr-delete:hover {
+        color: #d93025;
+        background: rgba(217,48,37,0.08);
+      }
+      .scw-cr-delete svg {
+        width: 14px;
+        height: 14px;
+      }
+      .scw-cr-item.scw-cr-deleting {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+
       .scw-cr-add {
         display: inline-flex;
         align-items: center;
@@ -12166,6 +12195,78 @@ $(".kn-navigation-bar").hide();
         font-style: italic;
         padding: 2px 4px;
       }
+
+      /* ── Delete confirmation modal ── */
+      .scw-cr-modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: scwCrFadeIn 0.15s ease-out;
+      }
+      @keyframes scwCrFadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      .scw-cr-modal {
+        background: #fff;
+        border-radius: 12px;
+        padding: 28px 32px 24px;
+        max-width: 380px;
+        width: 90%;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        text-align: center;
+      }
+      .scw-cr-modal__icon {
+        font-size: 36px;
+        margin-bottom: 12px;
+      }
+      .scw-cr-modal__msg {
+        font-size: 15px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+      }
+      .scw-cr-modal__name {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 20px;
+        word-break: break-word;
+      }
+      .scw-cr-modal__btns {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+      .scw-cr-modal__btn {
+        padding: 8px 20px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        transition: background 0.15s, transform 0.1s;
+      }
+      .scw-cr-modal__btn:active {
+        transform: scale(0.97);
+      }
+      .scw-cr-modal__btn--cancel {
+        background: #f1f3f4;
+        color: #333;
+      }
+      .scw-cr-modal__btn--cancel:hover {
+        background: #e0e2e4;
+      }
+      .scw-cr-modal__btn--delete {
+        background: #d93025;
+        color: #fff;
+      }
+      .scw-cr-modal__btn--delete:hover {
+        background: #b71c1c;
+      }
     `;
 
     var style = document.createElement('style');
@@ -12178,9 +12279,22 @@ $(".kn-navigation-bar").hide();
   // DOM READING
   // ============================================================
 
+  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+
+  /**
+   * Extract record ID from a connection link href.
+   * Knack hrefs look like: #pages/scene_xxx/.../view_xxx/recordId
+   * The record ID is the last 24-char hex segment.
+   */
+  function extractRecordId(href) {
+    if (!href) return '';
+    var match = href.match(/([a-f0-9]{24})(?:[\/]?$)/);
+    return match ? match[1] : '';
+  }
+
   /**
    * Extract connection links from the field_1963 <td> element.
-   * Returns [{text, href}] from <a data-kn="connection-link"> tags.
+   * Returns [{text, href, recordId}] from <a data-kn="connection-link"> tags.
    */
   function readConnectionLinks(tr, fieldKey) {
     var td = tr.querySelector('td.' + fieldKey);
@@ -12192,8 +12306,16 @@ $(".kn-navigation-bar").hide();
       var a = anchors[i];
       var span = a.querySelector('span[data-kn="connection-value"]');
       var text = span ? span.textContent.trim() : a.textContent.trim();
+      var href = a.getAttribute('href') || '';
+      var recId = '';
+      // Try span id first (e.g. id="5f3a...")
+      if (span && span.id && /^[a-f0-9]{24}$/.test(span.id)) {
+        recId = span.id;
+      } else {
+        recId = extractRecordId(href);
+      }
       if (text && text !== '&nbsp;' && text !== '\u00a0') {
-        links.push({ text: text, href: a.getAttribute('href') || '' });
+        links.push({ text: text, href: href, recordId: recId });
       }
     }
     return links;
@@ -12209,6 +12331,119 @@ $(".kn-navigation-bar").hide();
       if (href.indexOf(slug) !== -1) return href;
     }
     return '';
+  }
+
+  // ============================================================
+  // DELETE CONFIRMATION + WEBHOOK
+  // ============================================================
+
+  /**
+   * Show a confirmation modal. Returns a Promise that resolves
+   * true (delete) or false (cancel).
+   */
+  function confirmDelete(recordName) {
+    return new Promise(function (resolve) {
+      var overlay = document.createElement('div');
+      overlay.className = 'scw-cr-modal-overlay';
+
+      overlay.innerHTML =
+        '<div class="scw-cr-modal">' +
+          '<div class="scw-cr-modal__icon">\u26A0\uFE0F</div>' +
+          '<div class="scw-cr-modal__msg">Are you fucking sure you want to delete this?</div>' +
+          '<div class="scw-cr-modal__name"></div>' +
+          '<div class="scw-cr-modal__btns">' +
+            '<button class="scw-cr-modal__btn scw-cr-modal__btn--cancel">Cancel</button>' +
+            '<button class="scw-cr-modal__btn scw-cr-modal__btn--delete">Delete</button>' +
+          '</div>' +
+        '</div>';
+
+      // Set name safely via textContent to avoid XSS
+      overlay.querySelector('.scw-cr-modal__name').textContent = recordName;
+
+      function close(result) {
+        overlay.remove();
+        resolve(result);
+      }
+
+      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function () { close(false); });
+      overlay.querySelector('.scw-cr-modal__btn--delete').addEventListener('click', function () { close(true); });
+
+      // Click outside modal = cancel
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close(false);
+      });
+
+      // Escape key = cancel
+      function onKey(e) {
+        if (e.key === 'Escape') {
+          document.removeEventListener('keydown', onKey);
+          close(false);
+        }
+      }
+      document.addEventListener('keydown', onKey);
+
+      document.body.appendChild(overlay);
+
+      // Auto-focus cancel button
+      overlay.querySelector('.scw-cr-modal__btn--cancel').focus();
+    });
+  }
+
+  /**
+   * POST to Make webhook to delete a connected record.
+   * @param {string} recordId  - The 24-char record ID to delete
+   * @param {string} recordName - Display name (for logging)
+   * @param {HTMLElement} itemEl - The .scw-cr-item element (for UI state)
+   */
+  function deleteRecord(recordId, recordName, itemEl) {
+    var webhookUrl = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+    if (!webhookUrl) {
+      console.error('[SCW] No MAKE_DELETE_RECORD_WEBHOOK configured');
+      return;
+    }
+
+    // Visual pending state
+    itemEl.classList.add('scw-cr-deleting');
+
+    fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recordId: recordId, recordName: recordName })
+    })
+    .then(function (resp) {
+      if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
+      return resp.json().catch(function () { return {}; });
+    })
+    .then(function () {
+      // Remove the item from the DOM
+      itemEl.remove();
+
+      // Trigger preservation pipeline + refresh parent views
+      $(document).trigger('knack-cell-update.scwScrollPreserve');
+
+      // Refresh the parent view so Knack reloads the connection data
+      CONFIG.views.forEach(function (cfg) {
+        var viewObj = Knack.views[cfg.parentViewId];
+        if (viewObj && viewObj.model && viewObj.model.fetch) {
+          viewObj.model.fetch();
+        }
+      });
+    })
+    .catch(function (err) {
+      console.error('[SCW] Delete record error:', err);
+      itemEl.classList.remove('scw-cr-deleting');
+      alert('Delete failed: ' + err.message);
+    });
+  }
+
+  /**
+   * Handle trash icon click: confirm, then delete via webhook.
+   */
+  function onDeleteClick(recordId, recordName, itemEl) {
+    confirmDelete(recordName).then(function (confirmed) {
+      if (!confirmed) return;
+      deleteRecord(recordId, recordName, itemEl);
+    });
   }
 
   // ============================================================
@@ -12270,6 +12505,24 @@ $(".kn-navigation-bar").hide();
         a.title = links[i].text;
         a.href = links[i].href;
         item.appendChild(a);
+
+        // Trash icon (only if we have a record ID)
+        if (links[i].recordId) {
+          var delBtn = document.createElement('button');
+          delBtn.className = 'scw-cr-delete';
+          delBtn.title = 'Delete';
+          delBtn.innerHTML = TRASH_SVG;
+          delBtn.setAttribute('data-record-id', links[i].recordId);
+          delBtn.setAttribute('data-record-name', links[i].text);
+          (function (rid, rname, el, btn) {
+            btn.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              onDeleteClick(rid, rname, el);
+            });
+          })(links[i].recordId, links[i].text, item, delBtn);
+          item.appendChild(delBtn);
+        }
 
         valueDiv.appendChild(item);
       }
