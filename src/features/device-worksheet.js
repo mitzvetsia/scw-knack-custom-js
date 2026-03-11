@@ -1315,8 +1315,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 50px;
 }
 .${P}-sum-right .${P}-sum-group--sub-bid {
-  width: 65px;
-  min-width: 65px;
+  width: min-content;
+  min-width: 70px;
 }
 .${P}-sum-right .${P}-sum-group--cat {
   width: 70px;
@@ -1328,7 +1328,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   overflow: hidden;
 }
 .${P}-sum-right .${P}-sum-group--fee {
-  width: 70px;
+  width: min-content;
   min-width: 70px;
 }
 .${P}-sum-right .${P}-sum-group--sow {
