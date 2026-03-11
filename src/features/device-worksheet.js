@@ -237,7 +237,7 @@
             label: 'SERVICE',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146'],
+            hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
           },
         }
@@ -1410,13 +1410,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 
 /* ── Bucket label (SERVICE / ASSUMPTION) in product area ── */
+.${P}-product-group { position: relative; }
 .${P}-bucket-label {
-  display: block;
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
   font-weight: 700;
   font-size: 14px;
   color: #1e4d78;
   white-space: nowrap;
-  margin-top: 2px;
+  z-index: 1;
 }
 `;
 
@@ -1509,7 +1513,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var labelEl = document.createElement('span');
         labelEl.className = P + '-bucket-label';
         labelEl.textContent = rule.label;
-        productGroup.appendChild(labelEl);
+        // visibility:visible overrides parent hidden (when product field is in hideFields)
+        labelEl.style.visibility = 'visible';
+        productGroup.insertBefore(labelEl, productGroup.firstChild);
       }
     }
   }
