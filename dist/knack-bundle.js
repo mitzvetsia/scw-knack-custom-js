@@ -12263,10 +12263,12 @@ $(".kn-navigation-bar").hide();
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
             label: 'SERVICE',
+            rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
+            rowClass: 'scw-row--assumptions',
           },
         },
         syntheticBucketGroups: [
@@ -13503,7 +13505,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   padding: 1px 8px;
   line-height: 1.5;
   flex-shrink: 0;
-  max-width: 80px;
+  min-width: 40px;
 }
 /* When product is empty, let chit fill up to full width */
 .${P}-bucket-chit--wide {
@@ -13511,9 +13513,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 /* Shrink product group when bucket chit is present */
 #view_3332 .${P}-identity:has(.${P}-bucket-chit-group) .${P}-product-group {
-  width: 320px;
-  min-width: 320px;
-  max-width: 320px;
+  width: 350px;
+  min-width: 350px;
+  max-width: 350px;
 }
 `;
 
@@ -15398,9 +15400,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.id = tr.id;
       tr.removeAttribute('id');
 
-      // Propagate bucket row classes so worksheet CSS can react
-      if (tr.classList.contains('scw-row--assumptions')) wsTr.classList.add('scw-row--assumptions');
-      if (tr.classList.contains('scw-row--services'))    wsTr.classList.add('scw-row--services');
+      // Detect bucket directly and apply row class (don't rely on grayout module timing)
+      if (viewCfg.bucketField && viewCfg.bucketRules) {
+        var rowBucketId = readBucketId(tr, viewCfg.bucketField);
+        var rowBucketRule = rowBucketId ? viewCfg.bucketRules[rowBucketId] : null;
+        if (rowBucketRule && rowBucketRule.rowClass) {
+          wsTr.classList.add(rowBucketRule.rowClass);
+        }
+      }
 
       // Tag rows with empty MDF/IDF (move) field BEFORE the td is moved
       var moveTd = findCell(tr, fieldKey(viewCfg, 'move'));
