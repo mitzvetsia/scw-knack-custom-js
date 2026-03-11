@@ -12285,7 +12285,7 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 4 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor' },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
@@ -12314,8 +12314,8 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor' },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty' },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Extended', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -14040,49 +14040,61 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   /** After a fee-trigger save, patch the Fee cell from the API response
    *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
-  function patchFeeFromResponse(viewId, recordId, resp) {
+  /** Find all readOnlySummary field keys for a view config. */
+  function getCalculatedFields(viewCfg) {
+    if (!viewCfg || !viewCfg.fields) return [];
+    var result = [];
+    Object.keys(viewCfg.fields).forEach(function (name) {
+      var desc = viewCfg.fields[name];
+      if (desc && desc.readOnlySummary) result.push(desc.key);
+    });
+    return result;
+  }
+
+  function patchCalculatedFromResponse(viewId, recordId, resp) {
     var cfg = viewCfgFor(viewId);
-    var feeField = fieldKey(cfg, 'installFee');
-    if (!feeField) return;
-    var newFee = resp[feeField] || '';
+    var calcFields = getCalculatedFields(cfg);
+    if (!calcFields.length) return;
 
-    // Object API may return _raw for equation fields
-    if (!newFee) {
-      var raw = resp[feeField + '_raw'];
-      if (raw) {
-        newFee = typeof raw === 'object' ? ('$' + (raw.number || raw.value || '0')) : String(raw);
-      }
-    }
-
-    console.log('[scw-ws-fee] patchFee: recordId=' + recordId + ', newFee="' + newFee + '"');
-
-    // Locate the worksheet row for this record
     var wsTr = document.getElementById(recordId);
-    if (!wsTr) { console.warn('[scw-ws-fee] patchFee: row not found for ' + recordId); return; }
-    var feeTd = wsTr.querySelector('td.' + feeField);
-    if (!feeTd) { console.warn('[scw-ws-fee] patchFee: td.' + feeField + ' not found in row ' + recordId); return; }
+    if (!wsTr) { console.warn('[scw-ws-calc] patchCalc: row not found for ' + recordId); return; }
 
-    // Update the fee cell text
-    var span = feeTd.querySelector('span');
-    if (span) { span.textContent = '\n' + newFee + '\n  '; }
-    else { feeTd.textContent = newFee; }
-    console.log('[scw-ws-fee] patchFee: updated fee cell for ' + recordId + ' to "' + newFee + '"');
+    calcFields.forEach(function (fk) {
+      var newVal = resp[fk] || '';
+
+      // Object API may return _raw for equation fields
+      if (!newVal) {
+        var raw = resp[fk + '_raw'];
+        if (raw) {
+          newVal = typeof raw === 'object' ? ('$' + (raw.number || raw.value || '0')) : String(raw);
+        }
+      }
+
+      var td = wsTr.querySelector('td.' + fk);
+      if (!td) { console.warn('[scw-ws-calc] patchCalc: td.' + fk + ' not found in row ' + recordId); return; }
+
+      var span = td.querySelector('span');
+      if (span) { span.textContent = '\n' + newVal + '\n  '; }
+      else { td.textContent = newVal; }
+      console.log('[scw-ws-calc] patched ' + fk + ' for ' + recordId + ' → "' + newVal + '"');
+    });
   }
 
   /**
-   * Fetch the record via the VIEW-level API and patch the fee cell.
+   * Fetch the record via the VIEW-level API and patch calculated fields.
    * Uses the same URL pattern as the PUT (/v1/pages/{scene}/views/{view}/records/{id})
    * which is same-origin and avoids CORS issues.
    * A short delay lets the server finish recalculating the equation.
    */
-  function fetchAndPatchFee(viewId, recordId) {
+  function fetchAndPatchCalculated(viewId, recordId) {
     var cfg = viewCfgFor(viewId);
-    if (!cfg || !fieldKey(cfg, 'installFee')) return;
+    var calcFields = getCalculatedFields(cfg);
+    if (!calcFields.length) return;
     if (typeof Knack === 'undefined') return;
 
     // Small delay so the server finishes recalculating the equation
     setTimeout(function () {
-      console.log('[scw-ws-fee] Fetching fee via view API for ' + recordId);
+      console.log('[scw-ws-calc] Fetching calculated fields via view API for ' + recordId);
 
       $.ajax({
         url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
@@ -14094,11 +14106,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         },
         success: function (resp) {
           if (!resp) return;
-          console.log('[scw-ws-fee] View API response for ' + recordId + ':', resp[fieldKey(cfg, 'installFee')]);
-          patchFeeFromResponse(viewId, recordId, resp);
+          patchCalculatedFromResponse(viewId, recordId, resp);
         },
         error: function (xhr) {
-          console.warn('[scw-ws-fee] View GET failed for ' + recordId, xhr.status);
+          console.warn('[scw-ws-calc] View GET failed for ' + recordId, xhr.status);
         }
       });
     }, 750);
@@ -14237,7 +14248,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) fetchAndPatchFee(viewId, recordId);
+        if (feeTrig) fetchAndPatchCalculated(viewId, recordId);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -14392,7 +14403,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig) fetchAndPatchFee(viewId, recordId);
+          if (feeTrig) fetchAndPatchCalculated(viewId, recordId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
