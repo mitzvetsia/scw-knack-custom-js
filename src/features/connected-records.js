@@ -135,10 +135,10 @@
 
       .scw-cr-hdr-warning {
         color: #d97706;
-        margin-left: 6px;
-        vertical-align: middle;
         display: inline-flex;
         align-items: center;
+        margin: 0 4px;
+        flex-shrink: 0;
       }
 
       /* ── Delete confirmation modal ── */

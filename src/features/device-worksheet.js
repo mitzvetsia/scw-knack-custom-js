@@ -3399,18 +3399,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (detail) card.appendChild(detail);
 
     // ── Accessory mismatch header warning ──
-    // If any connected-records widget flagged a warning, add icon to identity
+    // If any connected-records widget flagged a warning, add icon between label and separator
     var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
     for (var w = 0; w < crWidgets.length; w++) {
       var parentField = crWidgets[w].parentElement;
       if (parentField && parentField._hasWarning) {
-        var identity = card.querySelector('.' + P + '-identity');
-        if (identity && !identity.querySelector('.scw-cr-hdr-warning')) {
+        var labelTdWarn = card.querySelector('td.' + P + '-sum-label-cell');
+        var sepEl = card.querySelector('.' + P + '-sum-sep');
+        if (labelTdWarn && sepEl) {
           var warnIcon = document.createElement('span');
           warnIcon.className = 'scw-cr-hdr-warning';
-          warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
           warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
-          identity.appendChild(warnIcon);
+          sepEl.parentNode.insertBefore(warnIcon, sepEl);
         }
         break;
       }
