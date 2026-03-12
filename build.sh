@@ -49,6 +49,7 @@ cat \
   src/features/boolean-chips.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/grid-direct-edit.js \
   src/features/dynamic-cell-colors.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \
