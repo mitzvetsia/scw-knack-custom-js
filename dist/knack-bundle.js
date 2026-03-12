@@ -2456,8 +2456,7 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 .scw-concat-cameras { line-height: 1.2; }
 .scw-concat-cameras--mounting { line-height: 1.15; }
 
-.scw-l4-2019 { display: inline-block; margin-top: 2px; line-height: 1.2; }
-.scw-l4-2019-br { line-height: 0; }
+.scw-l4-2019 { display: block; line-height: 1.2; }
 
 .scw-l4-2019 b,
 .scw-concat-cameras b,
@@ -3178,10 +3177,6 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
       $groupRow.data('scwL4_2019_RunId', runId);
       return;
     }
-
-    const br = document.createElement('br');
-    br.className = 'scw-l4-2019-br';
-    labelCell.appendChild(br);
 
     const span = document.createElement('span');
     span.className = 'scw-l4-2019';
