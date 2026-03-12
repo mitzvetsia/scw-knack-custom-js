@@ -7,6 +7,7 @@
     // viewId → array of { key, number?, multiline? }
     'view_32': [
       { key: 'field_32' },
+      { key: 'field_71' },
       { key: 'field_960' },
       { key: 'field_98' },
       { key: 'field_1730' },
