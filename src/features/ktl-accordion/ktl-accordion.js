@@ -508,30 +508,42 @@
     var saved = _savedCollapsed || loadPersistedState();
     _savedCollapsed = null;
 
-    if (!saved || !Object.keys(saved).length) return;
+    if (!saved) return;
 
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
       if (!hdr) continue;
       var vk = hdr.getAttribute('data-view-key');
-      if (vk && saved[vk]) {
+      if (!vk) continue;
+
+      var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
+      var arrow = document.getElementById('hideShow_' + vk + '_arrow');
+
+      if (saved[vk]) {
         // This accordion was collapsed — collapse it again
         wrappers[i].classList.remove('is-expanded');
         hdr.setAttribute('aria-expanded', 'false');
         var bodyEl = wrappers[i].querySelector('.scw-ktl-accordion__body');
         if (bodyEl) bodyEl.style.display = 'none';
-
-        // Also collapse the underlying KTL section so isExpanded()
-        // returns false — prevents syncState from re-expanding.
-        var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
         if (section) section.style.display = 'none';
-        var arrow = document.getElementById('hideShow_' + vk + '_arrow');
         if (arrow) {
           arrow.classList.remove('ktlDown');
           arrow.classList.add('ktlUp');
         }
         log('restored collapsed', vk);
+      } else {
+        // This accordion was expanded — ensure it stays open
+        wrappers[i].classList.add('is-expanded');
+        hdr.setAttribute('aria-expanded', 'true');
+        var bodyOpen = wrappers[i].querySelector('.scw-ktl-accordion__body');
+        if (bodyOpen) bodyOpen.style.display = '';
+        if (section) section.style.display = '';
+        if (arrow) {
+          arrow.classList.remove('ktlUp');
+          arrow.classList.add('ktlDown');
+        }
+        log('restored expanded', vk);
       }
     }
   }
