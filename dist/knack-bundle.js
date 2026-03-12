@@ -12610,7 +12610,7 @@ $(".kn-navigation-bar").hide();
       ? warningMap[recordId]
       : (warningMap._all || false);
 
-    if (isYes) {
+    if (!isYes) {
       var icon = document.createElement('span');
       icon.className = 'scw-cr-warning';
       icon.innerHTML = WARNING_SVG;
