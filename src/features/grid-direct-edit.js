@@ -30,6 +30,11 @@
 td.' + PREFIX + '-cell {\
   position: relative;\
   padding: 0 !important;\
+  pointer-events: none;\
+}\
+td.' + PREFIX + '-cell .' + PREFIX + '-input,\
+td.' + PREFIX + '-cell .' + PREFIX + '-textarea {\
+  pointer-events: auto;\
 }\
 td.' + PREFIX + '-cell > .kn-value,\
 td.' + PREFIX + '-cell > span {\
