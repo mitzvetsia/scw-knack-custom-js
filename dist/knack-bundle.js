@@ -12590,12 +12590,12 @@ $(".kn-navigation-bar").hide();
         var rid = (spans[i].id || '').trim();
         if (!rid) continue;
         var val = (spans[i].textContent || '').trim().toLowerCase();
-        map[rid] = (val === 'yes');
+        map[rid] = (val === 'yes' || val === 'true');
       }
     } else {
       // Single value for all items (fallback)
       var plainVal = (cell.textContent || '').trim().toLowerCase();
-      map._all = (plainVal === 'yes');
+      map._all = (plainVal === 'yes' || plainVal === 'true');
     }
 
     return map;
