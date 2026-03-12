@@ -457,29 +457,58 @@
    */
   var _btnRefs = {};   // viewKey → current button element
 
-  // ── Snapshot save/restore for post-edit and modal-submit flows ──
-  // KTL resets sections to expanded on re-render; we snapshot the
-  // collapsed keys before the re-render and apply them afterward.
-  var _savedCollapsed = null;  // Set<string> of viewKeys that were collapsed
+  // ── Persistent accordion state ──────────────────────────────
+  // Collapsed viewKeys are stored in sessionStorage so state
+  // survives both inline-edit re-renders AND full page refreshes.
+  // The in-memory _savedCollapsed is still used as a fast-path
+  // for the coordinated post-edit restore flow.
 
-  function snapshotState() {
-    _savedCollapsed = {};
+  var STORAGE_KEY = 'scw_ktl_accordion_state';
+  var _savedCollapsed = null;  // transient snapshot for post-edit flow
+
+  /** Read persisted collapsed set from sessionStorage. */
+  function loadPersistedState() {
+    try {
+      var raw = sessionStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+
+  /** Write collapsed set to sessionStorage. */
+  function persistState(collapsedMap) {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(collapsedMap));
+    } catch (e) { /* quota / unavailable */ }
+  }
+
+  /** Scan current DOM and persist which accordions are collapsed. */
+  function persistCurrentState() {
+    var collapsed = {};
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
       if (!hdr) continue;
       var vk = hdr.getAttribute('data-view-key');
       if (vk && !wrappers[i].classList.contains('is-expanded')) {
-        _savedCollapsed[vk] = true;
+        collapsed[vk] = true;
       }
     }
+    persistState(collapsed);
+    return collapsed;
+  }
+
+  function snapshotState() {
+    _savedCollapsed = persistCurrentState();
     log('snapshotState', _savedCollapsed);
   }
 
   function applySavedState() {
-    if (!_savedCollapsed) return;
-    var saved = _savedCollapsed;
+    // Use in-memory snapshot if available (post-edit flow),
+    // otherwise fall back to sessionStorage (page refresh).
+    var saved = _savedCollapsed || loadPersistedState();
     _savedCollapsed = null;
+
+    if (!saved || !Object.keys(saved).length) return;
 
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < wrappers.length; i++) {
@@ -518,6 +547,7 @@
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           syncState(wrap, hdr, vKey);
+          persistCurrentState();   // persist toggle to sessionStorage
         });
       });
     }
@@ -710,13 +740,19 @@
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
-      setTimeout(enhance, 80);
+      setTimeout(function () {
+        enhance();
+        applySavedState();
+      }, 80);
     });
 
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
-      setTimeout(enhance, 80);
+      setTimeout(function () {
+        enhance();
+        applySavedState();
+      }, 80);
     });
 
   // Global MutationObserver to catch KTL buttons added outside
@@ -731,8 +767,15 @@
   });
   globalObs.observe(document.body, { childList: true, subtree: true });
 
+  // Persist collapsed state before page unload (refresh / close)
+  window.addEventListener('beforeunload', persistCurrentState);
+
   $(document).ready(function () {
-    setTimeout(enhance, 300);
+    setTimeout(function () {
+      enhance();
+      // Restore collapsed state from sessionStorage after initial build
+      applySavedState();
+    }, 300);
   });
 
   // ── Expose API ──
