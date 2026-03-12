@@ -12741,6 +12741,7 @@ $(".kn-navigation-bar").hide();
       $select.trigger('chosen:updated');
       $select.trigger('liszt:updated');
       $hidden.val(parentId);
+      $select.trigger('change');
     }, 1);
 
     // On form submit, trigger the scroll/accordion preservation pipeline
