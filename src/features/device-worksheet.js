@@ -210,7 +210,7 @@
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          connectedDevice:  { key: 'field_2197', type: 'readOnly', warningField: 'field_2244' },
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
@@ -970,15 +970,6 @@ td.${P}-field-value--notes {
 .${P}-field-value--empty {
   color: #9ca3af;
   font-style: italic;
-}
-
-/* ── Warning icon beside field value ── */
-.${P}-field-warning {
-  color: #d97706;
-  font-size: 15px;
-  margin-right: 4px;
-  vertical-align: middle;
-  line-height: 1;
 }
 
 /* ── Radio chips (Mounting Height) ── */
@@ -3003,24 +2994,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     switch (desc.type) {
       case 'readOnly':
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
-        if (row) {
-          // Conditional warning icon: if warningField cell = "Yes", prepend ⚠ icon
-          if (desc.warningField) {
-            var warnTd = findCell(tr, desc.warningField);
-            var warnText = warnTd ? (warnTd.textContent || '').trim().toLowerCase() : '';
-            if (warnText === 'yes') {
-              var valEl = row.querySelector('.' + P + '-field-value');
-              if (valEl) {
-                var warnIcon = document.createElement('span');
-                warnIcon.className = P + '-field-warning';
-                warnIcon.textContent = '\u26A0';
-                warnIcon.title = 'Warning';
-                valEl.insertBefore(warnIcon, valEl.firstChild);
-              }
-            }
-          }
-          section.appendChild(row);
-        }
+        if (row) section.appendChild(row);
         break;
 
       case 'directEdit':

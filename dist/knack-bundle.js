@@ -12185,7 +12185,8 @@ $(".kn-navigation-bar").hide();
         parentViewId: 'view_3313',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item'
+        addSlug: 'add-accessory-line-item',
+        warningField: 'field_2244'
       }
     ]
   };
@@ -12286,6 +12287,13 @@ $(".kn-navigation-bar").hide();
         color: #999;
         font-style: italic;
         padding: 2px 4px;
+      }
+
+      .scw-cr-warning {
+        color: #d97706;
+        font-size: 14px;
+        flex-shrink: 0;
+        line-height: 1;
       }
 
       /* ── Delete confirmation modal ── */
@@ -12557,6 +12565,51 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
+  // WARNING ICON — async field check on connected records
+  // ============================================================
+
+  var WARNING_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /**
+   * Fetch a single record from the Knack API and check a boolean field.
+   * If the field is truthy / "Yes", prepend a warning icon to the item element.
+   */
+  function checkWarningField(viewId, recordId, fieldKey, itemEl) {
+    if (!recordId || !fieldKey) return;
+
+    var url = Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+              '/views/' + viewId + '/records/' + recordId;
+
+    $.ajax({
+      url: url,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      success: function (resp) {
+        var raw = resp[fieldKey + '_raw'] || resp[fieldKey] || '';
+        var isYes = (typeof raw === 'boolean' && raw) ||
+                    (typeof raw === 'string' && raw.trim().toLowerCase() === 'yes');
+        if (isYes) {
+          var icon = document.createElement('span');
+          icon.className = 'scw-cr-warning';
+          icon.innerHTML = WARNING_SVG;
+          icon.title = 'Warning';
+          var linkEl = itemEl.querySelector('.scw-cr-link');
+          if (linkEl) {
+            itemEl.insertBefore(icon, linkEl);
+          }
+        }
+      },
+      error: function () {
+        // silent — non-critical UI enhancement
+      }
+    });
+  }
+
+  // ============================================================
   // WIDGET BUILDER
   // ============================================================
 
@@ -12637,6 +12690,11 @@ $(".kn-navigation-bar").hide();
             });
           })(links[i].recordId, links[i].text, item, delBtn);
           item.appendChild(delBtn);
+        }
+
+        // Async warning icon check
+        if (cfg.warningField && links[i].recordId) {
+          checkWarningField(viewId, links[i].recordId, cfg.warningField, item);
         }
 
         valueDiv.appendChild(item);
@@ -12923,7 +12981,7 @@ $(".kn-navigation-bar").hide();
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          connectedDevice:  { key: 'field_2197', type: 'readOnly', warningField: 'field_2244' },
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
@@ -13683,15 +13741,6 @@ td.${P}-field-value--notes {
 .${P}-field-value--empty {
   color: #9ca3af;
   font-style: italic;
-}
-
-/* ── Warning icon beside field value ── */
-.${P}-field-warning {
-  color: #d97706;
-  font-size: 15px;
-  margin-right: 4px;
-  vertical-align: middle;
-  line-height: 1;
 }
 
 /* ── Radio chips (Mounting Height) ── */
@@ -15716,24 +15765,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     switch (desc.type) {
       case 'readOnly':
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
-        if (row) {
-          // Conditional warning icon: if warningField cell = "Yes", prepend ⚠ icon
-          if (desc.warningField) {
-            var warnTd = findCell(tr, desc.warningField);
-            var warnText = warnTd ? (warnTd.textContent || '').trim().toLowerCase() : '';
-            if (warnText === 'yes') {
-              var valEl = row.querySelector('.' + P + '-field-value');
-              if (valEl) {
-                var warnIcon = document.createElement('span');
-                warnIcon.className = P + '-field-warning';
-                warnIcon.textContent = '\u26A0';
-                warnIcon.title = 'Warning';
-                valEl.insertBefore(warnIcon, valEl.firstChild);
-              }
-            }
-          }
-          section.appendChild(row);
-        }
+        if (row) section.appendChild(row);
         break;
 
       case 'directEdit':

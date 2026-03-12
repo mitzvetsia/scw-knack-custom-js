@@ -14,7 +14,8 @@
         parentViewId: 'view_3313',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item'
+        addSlug: 'add-accessory-line-item',
+        warningField: 'field_2244'
       }
     ]
   };
@@ -115,6 +116,13 @@
         color: #999;
         font-style: italic;
         padding: 2px 4px;
+      }
+
+      .scw-cr-warning {
+        color: #d97706;
+        font-size: 14px;
+        flex-shrink: 0;
+        line-height: 1;
       }
 
       /* ── Delete confirmation modal ── */
@@ -386,6 +394,51 @@
   }
 
   // ============================================================
+  // WARNING ICON — async field check on connected records
+  // ============================================================
+
+  var WARNING_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /**
+   * Fetch a single record from the Knack API and check a boolean field.
+   * If the field is truthy / "Yes", prepend a warning icon to the item element.
+   */
+  function checkWarningField(viewId, recordId, fieldKey, itemEl) {
+    if (!recordId || !fieldKey) return;
+
+    var url = Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+              '/views/' + viewId + '/records/' + recordId;
+
+    $.ajax({
+      url: url,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      success: function (resp) {
+        var raw = resp[fieldKey + '_raw'] || resp[fieldKey] || '';
+        var isYes = (typeof raw === 'boolean' && raw) ||
+                    (typeof raw === 'string' && raw.trim().toLowerCase() === 'yes');
+        if (isYes) {
+          var icon = document.createElement('span');
+          icon.className = 'scw-cr-warning';
+          icon.innerHTML = WARNING_SVG;
+          icon.title = 'Warning';
+          var linkEl = itemEl.querySelector('.scw-cr-link');
+          if (linkEl) {
+            itemEl.insertBefore(icon, linkEl);
+          }
+        }
+      },
+      error: function () {
+        // silent — non-critical UI enhancement
+      }
+    });
+  }
+
+  // ============================================================
   // WIDGET BUILDER
   // ============================================================
 
@@ -466,6 +519,11 @@
             });
           })(links[i].recordId, links[i].text, item, delBtn);
           item.appendChild(delBtn);
+        }
+
+        // Async warning icon check
+        if (cfg.warningField && links[i].recordId) {
+          checkWarningField(viewId, links[i].recordId, cfg.warningField, item);
         }
 
         valueDiv.appendChild(item);
