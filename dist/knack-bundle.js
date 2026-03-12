@@ -12344,29 +12344,47 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * Extract connection links from the field_1963 <td> element.
-   * Returns [{text, href, recordId}] from <a data-kn="connection-link"> tags.
+   * Extract connection data from a field <td> element.
+   * Handles two Knack DOM formats:
+   *   1) <a data-kn="connection-link"> wrapping <span data-kn="connection-value">
+   *   2) Bare <span data-kn="connection-value"> (no anchor wrapper)
+   * Returns [{text, href, recordId}].
    */
   function readConnectionLinks(tr, fieldKey) {
     var td = tr.querySelector('td.' + fieldKey);
     if (!td) return [];
 
-    var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
     var links = [];
-    for (var i = 0; i < anchors.length; i++) {
-      var a = anchors[i];
-      var span = a.querySelector('span[data-kn="connection-value"]');
-      var text = span ? span.textContent.trim() : a.textContent.trim();
-      var href = a.getAttribute('href') || '';
-      var recId = '';
-      // Try span id first (e.g. id="5f3a...")
-      if (span && span.id && /^[a-f0-9]{24}$/.test(span.id)) {
-        recId = span.id;
-      } else {
-        recId = extractRecordId(href);
+
+    // Format 1: anchor-wrapped connection links
+    var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
+    if (anchors.length) {
+      for (var i = 0; i < anchors.length; i++) {
+        var a = anchors[i];
+        var span = a.querySelector('span[data-kn="connection-value"]');
+        var text = span ? span.textContent.trim() : a.textContent.trim();
+        var href = a.getAttribute('href') || '';
+        var recId = '';
+        if (span && span.id && /^[a-f0-9]{24}$/.test(span.id)) {
+          recId = span.id;
+        } else {
+          recId = extractRecordId(href);
+        }
+        if (text && text !== '&nbsp;' && text !== '\u00a0') {
+          links.push({ text: text, href: href, recordId: recId });
+        }
       }
-      if (text && text !== '&nbsp;' && text !== '\u00a0') {
-        links.push({ text: text, href: href, recordId: recId });
+      return links;
+    }
+
+    // Format 2: bare spans (no anchor wrapper) — e.g. field_1958
+    var spans = td.querySelectorAll('span[data-kn="connection-value"]');
+    for (var j = 0; j < spans.length; j++) {
+      var sp = spans[j];
+      var spText = sp.textContent.trim();
+      var spId = (sp.id && /^[a-f0-9]{24}$/.test(sp.id)) ? sp.id : '';
+      if (spText && spText !== '&nbsp;' && spText !== '\u00a0') {
+        links.push({ text: spText, href: '', recordId: spId });
       }
     }
     return links;
@@ -12550,12 +12568,17 @@ $(".kn-navigation-bar").hide();
         var item = document.createElement('div');
         item.className = 'scw-cr-item';
 
-        var a = document.createElement('a');
-        a.className = 'scw-cr-link';
-        a.textContent = links[i].text;
-        a.title = links[i].text;
-        a.href = links[i].href;
-        item.appendChild(a);
+        var linkEl;
+        if (links[i].href) {
+          linkEl = document.createElement('a');
+          linkEl.href = links[i].href;
+        } else {
+          linkEl = document.createElement('span');
+        }
+        linkEl.className = 'scw-cr-link';
+        linkEl.textContent = links[i].text;
+        linkEl.title = links[i].text;
+        item.appendChild(linkEl);
 
         // Trash icon (only if we have a record ID)
         if (links[i].recordId) {
