@@ -16534,7 +16534,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       { key: 'field_98', number: true },
       { key: 'field_1730' },
       { key: 'field_12', number: true },
-      { key: 'field_1731', number: true },
       { key: 'field_1734', number: true }
     ]
   };
