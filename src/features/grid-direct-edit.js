@@ -91,6 +91,14 @@ td.' + PREFIX + '-cell > span {\
   border-radius: 2px;\
   box-shadow: 0 1px 4px rgba(0,0,0,0.15);\
 }\
+td.' + PREFIX + '-cell.bulkEditSelectSrc {\
+  cursor: cell !important;\
+}\
+td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-input,\
+td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
+  pointer-events: none !important;\
+  cursor: cell !important;\
+}\
 ';
 
   // ── Inject styles ──────────────────────────────────────────────
@@ -270,7 +278,6 @@ td.' + PREFIX + '-cell > span {\
 
         var currentVal = readCellText(td);
         td.classList.add(PREFIX + '-cell');
-        td.classList.remove('cell-edit');
 
         var input;
         if (field.number) {
