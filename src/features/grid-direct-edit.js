@@ -23,7 +23,7 @@
   var PREFIX = 'scw-gde';
   var EDIT_ATTR = 'data-scw-grid-edit';
   var STYLE_ID = PREFIX + '-css';
-  var OBSERVER_KEY = PREFIX + '-obs';
+  var OBSERVER_KEY = 'scwGdeObs';
 
   // ── CSS ────────────────────────────────────────────────────────
   var CSS = '\
@@ -96,27 +96,81 @@ td.' + PREFIX + '-cell > span {\
     document.head.appendChild(el);
   }
 
+  // ── Look up a field's type from Knack.objects ───────────────────
+  function getFieldType(fieldKey) {
+    if (typeof Knack === 'undefined' || !Knack.objects) return null;
+    for (var i = 0; i < Knack.objects.length; i++) {
+      var obj = Knack.objects[i];
+      if (!obj.fields) continue;
+      for (var j = 0; j < obj.fields.length; j++) {
+        if (obj.fields[j].key === fieldKey) return obj.fields[j].type;
+      }
+    }
+    return null;
+  }
+
   // ── Detect which fields are editable ───────────────────────────
   function getEditableFields(viewId) {
     var fields = [];
+    var seen = {};
     try {
+      // Strategy 1: try Knack.views columns metadata
       var view = Knack.views[viewId];
-      if (!view || !view.model || !view.model.view) return fields;
-      var columns = view.model.view.columns || [];
-      columns.forEach(function (col) {
-        if (!col.field || !col.field.key) return;
-        var type = col.field.type;
-        // Skip types we know aren't simple text/number
-        if (SKIP_TYPES.indexOf(type) !== -1) return;
-        // Accept known editable types
-        if (EDITABLE_TYPES.indexOf(type) !== -1) {
-          fields.push({
-            key: col.field.key,
-            type: type,
-            multiline: (type === 'paragraph_text' || type === 'rich_text')
-          });
+      if (view && view.model && view.model.view) {
+        var columns = view.model.view.columns || [];
+        columns.forEach(function (col) {
+          var key = col.field ? col.field.key : (col.id || '');
+          if (!key || seen[key]) return;
+          var type = (col.field && col.field.type) ? col.field.type : getFieldType(key);
+          if (!type) return;
+          if (SKIP_TYPES.indexOf(type) !== -1) return;
+          if (EDITABLE_TYPES.indexOf(type) !== -1) {
+            seen[key] = true;
+            fields.push({
+              key: key,
+              type: type,
+              multiline: (type === 'paragraph_text' || type === 'rich_text')
+            });
+          }
+        });
+      }
+
+      // Strategy 2: if no fields found, scan DOM for td[data-field-key] and look up types
+      if (!fields.length) {
+        var viewEl = document.getElementById(viewId);
+        if (viewEl) {
+          var firstRow = viewEl.querySelector('table.kn-table tbody tr[id]');
+          if (firstRow) {
+            var tds = firstRow.querySelectorAll('td[data-field-key]');
+            for (var t = 0; t < tds.length; t++) {
+              var key = tds[t].getAttribute('data-field-key');
+              if (!key || seen[key]) continue;
+              var type = getFieldType(key);
+              if (!type) {
+                // Heuristic: if td has no connection spans, no checkboxes, treat as text
+                var hasConnection = tds[t].querySelector('[data-kn="connection-value"]');
+                var hasCheckbox = tds[t].querySelector('input[type="checkbox"]');
+                if (!hasConnection && !hasCheckbox) {
+                  type = 'short_text';
+                } else {
+                  continue;
+                }
+              }
+              if (SKIP_TYPES.indexOf(type) !== -1) continue;
+              if (EDITABLE_TYPES.indexOf(type) !== -1) {
+                seen[key] = true;
+                fields.push({
+                  key: key,
+                  type: type,
+                  multiline: (type === 'paragraph_text' || type === 'rich_text')
+                });
+              }
+            }
+          }
         }
-      });
+      }
+
+      console.log('[' + PREFIX + '] Detected fields for ' + viewId + ':', fields.map(function(f) { return f.key + '(' + f.type + ')'; }).join(', '));
     } catch (e) {
       console.warn('[' + PREFIX + '] Could not read columns for ' + viewId, e);
     }
