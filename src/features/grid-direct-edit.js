@@ -10,7 +10,7 @@
       { key: 'field_71' },
       { key: 'field_960' },
       { key: 'field_98', number: true },
-      { key: 'field_1730' },
+      { key: 'field_1730', number: true },
       { key: 'field_12', number: true },
       { key: 'field_1734', number: true }
     ]
