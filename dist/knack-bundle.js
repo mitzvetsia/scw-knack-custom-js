@@ -16679,16 +16679,7 @@ td.' + PREFIX + '-cell > span {\
               var key = tds[t].getAttribute('data-field-key');
               if (!key || seen[key]) continue;
               var type = getFieldType(key);
-              if (!type) {
-                // Heuristic: if td has no connection spans, no checkboxes, treat as text
-                var hasConnection = tds[t].querySelector('[data-kn="connection-value"]');
-                var hasCheckbox = tds[t].querySelector('input[type="checkbox"]');
-                if (!hasConnection && !hasCheckbox) {
-                  type = 'short_text';
-                } else {
-                  continue;
-                }
-              }
+              if (!type) continue; // skip unknown fields — no guessing
               if (SKIP_TYPES.indexOf(type) !== -1) continue;
               if (EDITABLE_TYPES.indexOf(type) !== -1) {
                 seen[key] = true;
