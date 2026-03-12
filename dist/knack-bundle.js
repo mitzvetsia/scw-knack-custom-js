@@ -16866,6 +16866,8 @@ td.' + PREFIX + '-cell > span {\
 
         var currentVal = readCellText(td);
         td.classList.add(PREFIX + '-cell');
+        // Remove Knack's inline-edit trigger so it doesn't intercept clicks
+        td.classList.remove('cell-edit');
 
         var input;
         if (field.multiline) {
