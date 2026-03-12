@@ -1513,14 +1513,16 @@ window.SCW = window.SCW || {};
   }
 
   function syncState(wrapper, header, viewKey) {
-    var expanded = isExpanded(viewKey);
-    wrapper.classList.toggle('is-expanded', expanded);
-    header.setAttribute('aria-expanded', String(expanded));
+    // Skip expand/collapse sync while applySavedState is active —
+    // prevents the MutationObserver from undoing the restored state.
+    if (!_restoreActive) {
+      var expanded = isExpanded(viewKey);
+      wrapper.classList.toggle('is-expanded', expanded);
+      header.setAttribute('aria-expanded', String(expanded));
 
-    // Toggle body visibility via JS (not CSS) so the KTL button
-    // inside the body stays clickable when we need to expand.
-    var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
-    if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+      var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
+      if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+    }
 
     // Count pill
     var countEl = header.querySelector('.scw-acc-count');
@@ -1566,6 +1568,7 @@ window.SCW = window.SCW || {};
 
   var STORAGE_KEY = 'scw_ktl_accordion_state';
   var _savedCollapsed = null;  // transient snapshot for post-edit flow
+  var _restoreActive = false;  // suppress syncState during restore window
 
   /** Read persisted collapsed set from sessionStorage. */
   function loadPersistedState() {
@@ -1611,6 +1614,10 @@ window.SCW = window.SCW || {};
 
     if (!saved) return;
 
+    // Block syncState from overriding our state while we apply it
+    // (MutationObserver fires enhance→syncState on each DOM change).
+    _restoreActive = true;
+
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
@@ -1634,12 +1641,14 @@ window.SCW = window.SCW || {};
         }
         log('restored collapsed', vk);
       } else {
-        // This accordion was expanded — ensure it stays open
+        // This accordion was expanded — force it open.
+        // Use explicit 'block' (not '') so KTL's own hidden state
+        // doesn't bleed through when the inline style is removed.
         wrappers[i].classList.add('is-expanded');
         hdr.setAttribute('aria-expanded', 'true');
         var bodyOpen = wrappers[i].querySelector('.scw-ktl-accordion__body');
         if (bodyOpen) bodyOpen.style.display = '';
-        if (section) section.style.display = '';
+        if (section) section.style.display = 'block';
         if (arrow) {
           arrow.classList.remove('ktlUp');
           arrow.classList.add('ktlDown');
@@ -1647,6 +1656,9 @@ window.SCW = window.SCW || {};
         log('restored expanded', vk);
       }
     }
+
+    // Keep the guard up long enough for MutationObserver + rAF to settle
+    setTimeout(function () { _restoreActive = false; }, 600);
   }
 
   function bindHeader(wrap, hdr, btnEl, vKey) {
@@ -12186,29 +12198,28 @@ $(".kn-navigation-bar").hide();
 
       .scw-cr-item {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 6px;
         padding: 3px 6px;
         border-radius: 4px;
         background: rgba(0,0,0,0.03);
         transition: background 0.15s;
+        width: 100%;
+        box-sizing: border-box;
       }
       .scw-cr-item:hover {
         background: rgba(0,0,0,0.06);
       }
 
       .scw-cr-link {
-        flex: 1;
+        flex: 1 1 0%;
+        min-width: 0;
         font-size: 12px;
         line-height: 1.3;
         color: #1a73e8;
         text-decoration: none;
         padding: 2px 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 280px;
-        cursor: pointer;
+        word-break: break-word;
       }
       .scw-cr-link:hover {
         text-decoration: underline;
@@ -12220,7 +12231,6 @@ $(".kn-navigation-bar").hide();
         justify-content: center;
         width: 22px;
         height: 22px;
-        margin-left: auto;
         background: none;
         border: none;
         border-radius: 4px;

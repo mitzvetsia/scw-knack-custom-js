@@ -36,29 +36,28 @@
 
       .scw-cr-item {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 6px;
         padding: 3px 6px;
         border-radius: 4px;
         background: rgba(0,0,0,0.03);
         transition: background 0.15s;
+        width: 100%;
+        box-sizing: border-box;
       }
       .scw-cr-item:hover {
         background: rgba(0,0,0,0.06);
       }
 
       .scw-cr-link {
-        flex: 1;
+        flex: 1 1 0%;
+        min-width: 0;
         font-size: 12px;
         line-height: 1.3;
         color: #1a73e8;
         text-decoration: none;
         padding: 2px 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 280px;
-        cursor: pointer;
+        word-break: break-word;
       }
       .scw-cr-link:hover {
         text-decoration: underline;
@@ -70,7 +69,6 @@
         justify-content: center;
         width: 22px;
         height: 22px;
-        margin-left: auto;
         background: none;
         border: none;
         border-radius: 4px;
