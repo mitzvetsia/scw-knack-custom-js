@@ -323,6 +323,35 @@ td.' + PREFIX + '-cell > span {\
       target.value = target._scwPrev || '';
       target.blur();
     }
+
+    // Tab / Shift+Tab: move down/up the same column
+    if (e.key === 'Tab') {
+      var fieldKey = target.getAttribute('data-field');
+      var currentTr = target.closest('tr');
+      if (!fieldKey || !currentTr) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Save current if changed
+      if (target.value !== (target._scwPrev || '')) {
+        target._scwJustSaved = true;
+        handleSave(target);
+      }
+
+      // Find next/prev row's same-field input
+      var siblingTr = e.shiftKey ? currentTr.previousElementSibling : currentTr.nextElementSibling;
+      while (siblingTr && !siblingTr.id) {
+        siblingTr = e.shiftKey ? siblingTr.previousElementSibling : siblingTr.nextElementSibling;
+      }
+      if (siblingTr) {
+        var nextInput = siblingTr.querySelector('[' + EDIT_ATTR + '][data-field="' + fieldKey + '"]');
+        if (nextInput) {
+          nextInput.focus();
+          nextInput.select();
+        }
+      }
+    }
   }, true);
 
   // Blur: auto-save if value changed
