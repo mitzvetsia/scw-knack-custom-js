@@ -400,42 +400,55 @@
   var WARNING_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
   /**
-   * Fetch a single record from the Knack API and check a boolean field.
-   * If the field is truthy / "Yes", prepend a warning icon to the item element.
+   * Build a map of recordId → boolean from a warning field cell in the DOM.
+   * Reads per-record span[id][data-kn="connection-value"] elements (same
+   * pattern as inline-photo-row's extractPhotoRecords reads field_2446).
+   * Falls back to reading the cell's plain text when no per-record spans exist.
    */
-  function checkWarningField(viewId, recordId, fieldKey, itemEl) {
-    if (!recordId || !fieldKey) return;
+  function buildWarningMap(tr, warningFieldKey) {
+    var map = {};
+    if (!tr || !warningFieldKey) return map;
 
-    var url = Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-              '/views/' + viewId + '/records/' + recordId;
+    var cell = tr.querySelector('td[data-field-key="' + warningFieldKey + '"]');
+    if (!cell) return map;
 
-    $.ajax({
-      url: url,
-      type: 'GET',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      success: function (resp) {
-        var raw = resp[fieldKey + '_raw'] || resp[fieldKey] || '';
-        var isYes = (typeof raw === 'boolean' && raw) ||
-                    (typeof raw === 'string' && raw.trim().toLowerCase() === 'yes');
-        if (isYes) {
-          var icon = document.createElement('span');
-          icon.className = 'scw-cr-warning';
-          icon.innerHTML = WARNING_SVG;
-          icon.title = 'Warning';
-          var linkEl = itemEl.querySelector('.scw-cr-link');
-          if (linkEl) {
-            itemEl.insertBefore(icon, linkEl);
-          }
-        }
-      },
-      error: function () {
-        // silent — non-critical UI enhancement
+    // Per-record connection-value spans (preferred — like photo strip)
+    var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+    if (spans.length > 0) {
+      for (var i = 0; i < spans.length; i++) {
+        var rid = (spans[i].id || '').trim();
+        if (!rid) continue;
+        var val = (spans[i].textContent || '').trim().toLowerCase();
+        map[rid] = (val === 'yes');
       }
-    });
+    } else {
+      // Single value for all items (fallback)
+      var plainVal = (cell.textContent || '').trim().toLowerCase();
+      map._all = (plainVal === 'yes');
+    }
+
+    return map;
+  }
+
+  /**
+   * If the warning map indicates this record should show a warning,
+   * prepend a warning icon to the item element.
+   */
+  function applyWarningIcon(warningMap, recordId, itemEl) {
+    var isYes = warningMap.hasOwnProperty(recordId)
+      ? warningMap[recordId]
+      : (warningMap._all || false);
+
+    if (isYes) {
+      var icon = document.createElement('span');
+      icon.className = 'scw-cr-warning';
+      icon.innerHTML = WARNING_SVG;
+      icon.title = 'Warning';
+      var linkEl = itemEl.querySelector('.scw-cr-link');
+      if (linkEl) {
+        itemEl.insertBefore(icon, linkEl);
+      }
+    }
   }
 
   // ============================================================
@@ -480,6 +493,9 @@
     var links = readConnectionLinks(tr, fieldKey);
     var addUrl = findAddUrl(tr, cfg.addSlug);
 
+    // Build warning map from DOM (like photo strip reads field_2446)
+    var warningMap = cfg.warningField ? buildWarningMap(tr, cfg.warningField) : {};
+
     // Render items
     if (links.length === 0) {
       var empty = document.createElement('div');
@@ -521,9 +537,9 @@
           item.appendChild(delBtn);
         }
 
-        // Async warning icon check
+        // Warning icon from DOM data (no API call needed)
         if (cfg.warningField && links[i].recordId) {
-          checkWarningField(viewId, links[i].recordId, cfg.warningField, item);
+          applyWarningIcon(warningMap, links[i].recordId, item);
         }
 
         valueDiv.appendChild(item);
