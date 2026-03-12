@@ -27,10 +27,8 @@ cat \
   src/features/highlight-duplicate-cells.js \
   src/features/replace-content-with-icon.js \
   src/features/change-record-limit.js \
-  src/features/lock-fields.js \
   src/features/SURVEY_lineitem_conditional-field-grayout.js \
   src/features/SOW_lineitem_conditional-field-grayout.js \
-  src/features/truncate-expand-function.js \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
@@ -49,6 +47,7 @@ cat \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
   src/features/boolean-chips.js \
+  src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/dynamic-cell-colors.js \
   src/features/legacy/checkbox-grid.field_739.js \

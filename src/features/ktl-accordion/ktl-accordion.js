@@ -412,14 +412,16 @@
   }
 
   function syncState(wrapper, header, viewKey) {
-    var expanded = isExpanded(viewKey);
-    wrapper.classList.toggle('is-expanded', expanded);
-    header.setAttribute('aria-expanded', String(expanded));
+    // Skip expand/collapse sync while applySavedState is active —
+    // prevents the MutationObserver from undoing the restored state.
+    if (!_restoreActive) {
+      var expanded = isExpanded(viewKey);
+      wrapper.classList.toggle('is-expanded', expanded);
+      header.setAttribute('aria-expanded', String(expanded));
 
-    // Toggle body visibility via JS (not CSS) so the KTL button
-    // inside the body stays clickable when we need to expand.
-    var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
-    if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+      var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
+      if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+    }
 
     // Count pill
     var countEl = header.querySelector('.scw-acc-count');
@@ -457,6 +459,107 @@
    */
   var _btnRefs = {};   // viewKey → current button element
 
+  // ── Persistent accordion state ──────────────────────────────
+  // Collapsed viewKeys are stored in sessionStorage so state
+  // survives both inline-edit re-renders AND full page refreshes.
+  // The in-memory _savedCollapsed is still used as a fast-path
+  // for the coordinated post-edit restore flow.
+
+  var STORAGE_KEY = 'scw_ktl_accordion_state';
+  var _savedCollapsed = null;  // transient snapshot for post-edit flow
+  var _restoreActive = false;  // suppress syncState during restore window
+
+  /** Read persisted collapsed set from sessionStorage. */
+  function loadPersistedState() {
+    try {
+      var raw = sessionStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+
+  /** Write collapsed set to sessionStorage. */
+  function persistState(collapsedMap) {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(collapsedMap));
+    } catch (e) { /* quota / unavailable */ }
+  }
+
+  /** Scan current DOM and persist which accordions are collapsed. */
+  function persistCurrentState() {
+    var collapsed = {};
+    var wrappers = document.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < wrappers.length; i++) {
+      var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
+      if (!hdr) continue;
+      var vk = hdr.getAttribute('data-view-key');
+      if (vk && !wrappers[i].classList.contains('is-expanded')) {
+        collapsed[vk] = true;
+      }
+    }
+    persistState(collapsed);
+    return collapsed;
+  }
+
+  function snapshotState() {
+    _savedCollapsed = persistCurrentState();
+    log('snapshotState', _savedCollapsed);
+  }
+
+  function applySavedState() {
+    // Use in-memory snapshot if available (post-edit flow),
+    // otherwise fall back to sessionStorage (page refresh).
+    var saved = _savedCollapsed || loadPersistedState();
+    _savedCollapsed = null;
+
+    if (!saved) return;
+
+    // Block syncState from overriding our state while we apply it
+    // (MutationObserver fires enhance→syncState on each DOM change).
+    _restoreActive = true;
+
+    var wrappers = document.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < wrappers.length; i++) {
+      var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
+      if (!hdr) continue;
+      var vk = hdr.getAttribute('data-view-key');
+      if (!vk) continue;
+
+      var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
+      var arrow = document.getElementById('hideShow_' + vk + '_arrow');
+
+      if (saved[vk]) {
+        // This accordion was collapsed — collapse it again
+        wrappers[i].classList.remove('is-expanded');
+        hdr.setAttribute('aria-expanded', 'false');
+        var bodyEl = wrappers[i].querySelector('.scw-ktl-accordion__body');
+        if (bodyEl) bodyEl.style.display = 'none';
+        if (section) section.style.display = 'none';
+        if (arrow) {
+          arrow.classList.remove('ktlDown');
+          arrow.classList.add('ktlUp');
+        }
+        log('restored collapsed', vk);
+      } else {
+        // This accordion was expanded — force it open.
+        // Use explicit 'block' (not '') so KTL's own hidden state
+        // doesn't bleed through when the inline style is removed.
+        wrappers[i].classList.add('is-expanded');
+        hdr.setAttribute('aria-expanded', 'true');
+        var bodyOpen = wrappers[i].querySelector('.scw-ktl-accordion__body');
+        if (bodyOpen) bodyOpen.style.display = '';
+        if (section) section.style.display = 'block';
+        if (arrow) {
+          arrow.classList.remove('ktlUp');
+          arrow.classList.add('ktlDown');
+        }
+        log('restored expanded', vk);
+      }
+    }
+
+    // Keep the guard up long enough for MutationObserver + rAF to settle
+    setTimeout(function () { _restoreActive = false; }, 600);
+  }
+
   function bindHeader(wrap, hdr, btnEl, vKey) {
     _btnRefs[vKey] = btnEl;               // always update to latest button
 
@@ -478,6 +581,7 @@
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           syncState(wrap, hdr, vKey);
+          persistCurrentState();   // persist toggle to sessionStorage
         });
       });
     }
@@ -670,13 +774,19 @@
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
-      setTimeout(enhance, 80);
+      setTimeout(function () {
+        enhance();
+        applySavedState();
+      }, 80);
     });
 
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
-      setTimeout(enhance, 80);
+      setTimeout(function () {
+        enhance();
+        applySavedState();
+      }, 80);
     });
 
   // Global MutationObserver to catch KTL buttons added outside
@@ -691,8 +801,15 @@
   });
   globalObs.observe(document.body, { childList: true, subtree: true });
 
+  // Persist collapsed state before page unload (refresh / close)
+  window.addEventListener('beforeunload', persistCurrentState);
+
   $(document).ready(function () {
-    setTimeout(enhance, 300);
+    setTimeout(function () {
+      enhance();
+      // Restore collapsed state from sessionStorage after initial build
+      applySavedState();
+    }, 300);
   });
 
   // ── Expose API ──
@@ -700,6 +817,10 @@
   window.SCW.ktlAccordion = {
     /** Force re-enhancement pass */
     refresh: enhance,
+    /** Snapshot current collapsed/expanded state (call before re-render) */
+    saveState: snapshotState,
+    /** Apply saved state after re-render (call after enhance/refresh) */
+    restoreState: applySavedState,
     /** Toggle debug logging */
     debug: function (on) { DEBUG = !!on; }
   };

@@ -39,6 +39,14 @@
 
   };
 
+  // Views to SKIP — group-collapse will NOT enhance these views.
+  // Proposal grids manage their own grouping UI via proposal-grid.js.
+  const SKIP_VIEWS = new Set([
+    'view_3301',
+    'view_3341',
+    'view_3371',
+  ]);
+
   // ======================
   // STATE (localStorage)
   // ======================
@@ -505,6 +513,8 @@
       const $view = $tr.closest('.kn-view[id^="view_"]');
       const viewId = $view.attr('id') || 'unknown_view';
 
+      if (SKIP_VIEWS.has(viewId)) return;
+
       $view.addClass('scw-group-collapse-enabled');
 
       // Cache record count per view (count once, exclude group headers and totals)
@@ -566,6 +576,8 @@
 
         const $view = $tr.closest('.kn-view[id^="view_"]');
         const viewId = $view.attr('id') || 'unknown_view';
+
+        if (SKIP_VIEWS.has(viewId)) return;
 
         $view.addClass('scw-group-collapse-enabled');
 

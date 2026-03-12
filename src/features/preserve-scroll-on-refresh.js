@@ -273,6 +273,11 @@
       window.SCW.groupCollapse.suppress(true);
     }
 
+    // Snapshot KTL accordion collapsed/expanded state before re-render
+    if (window.SCW && window.SCW.ktlAccordion && window.SCW.ktlAccordion.saveState) {
+      window.SCW.ktlAccordion.saveState();
+    }
+
     // Safety net: if no knack-view-render fires within 3s (e.g.,
     // Knack updated the cell in-place without a full view re-render),
     // run restore anyway so we don't stay stuck.
@@ -343,9 +348,13 @@
       }
 
       // Step 4: SYNC KTL ACCORDIONS — ensure accordion wrappers
-      //         are re-adopted after view DOM replacement.
+      //         are re-adopted after view DOM replacement, then
+      //         restore saved collapsed/expanded state.
       if (window.SCW && window.SCW.ktlAccordion) {
         window.SCW.ktlAccordion.refresh();
+        if (window.SCW.ktlAccordion.restoreState) {
+          window.SCW.ktlAccordion.restoreState();
+        }
       }
 
       // Step 5: RESTORE SCROLL POSITION — wait 2 requestAnimationFrame
