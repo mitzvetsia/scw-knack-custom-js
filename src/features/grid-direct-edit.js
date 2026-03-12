@@ -39,11 +39,12 @@ td.' + PREFIX + '-cell > span {\
 .' + PREFIX + '-textarea {\
   width: 100%;\
   box-sizing: border-box;\
-  border: 1px solid transparent;\
+  border: 1px solid #ddd;\
+  border-radius: 3px;\
   padding: 4px 6px;\
   font-size: 13px;\
   font-family: inherit;\
-  background: transparent;\
+  background: #fff;\
   outline: none;\
   transition: border-color 0.15s, background-color 0.15s;\
 }\
