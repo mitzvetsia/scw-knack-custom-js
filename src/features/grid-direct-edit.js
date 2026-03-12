@@ -4,21 +4,18 @@
 
   // ── Configuration ──────────────────────────────────────────────
   var CONFIG = {
-    views: ['view_32']
+    // viewId → array of { key, number?, multiline? }
+    'view_32': [
+      { key: 'field_32' },
+      { key: 'field_960' },
+      { key: 'field_98' },
+      { key: 'field_409' },
+      { key: 'field_1721' },
+      { key: 'field_1730' },
+      { key: 'field_12' },
+      { key: 'field_1734', number: true }
+    ]
   };
-
-  // Field types eligible for direct-edit (Knack type keys)
-  var EDITABLE_TYPES = [
-    'short_text', 'paragraph_text', 'number', 'currency',
-    'rich_text', 'equation'  // equation included read-only in Knack but often editable via API
-  ];
-
-  // Field types to explicitly skip
-  var SKIP_TYPES = [
-    'multiple_choice', 'boolean', 'connection', 'image',
-    'file', 'date_time', 'timer', 'auto_increment',
-    'signature', 'address', 'phone', 'email', 'link', 'rating'
-  ];
 
   var PREFIX = 'scw-gde';
   var EDIT_ATTR = 'data-scw-grid-edit';
@@ -102,86 +99,9 @@ td.' + PREFIX + '-cell > span {\
     document.head.appendChild(el);
   }
 
-  // ── Look up a field's type from Knack.objects ───────────────────
-  function getFieldType(fieldKey) {
-    if (typeof Knack === 'undefined' || !Knack.objects) return null;
-    var objects = Knack.objects;
-    // Knack.objects may be a keyed hash or an array
-    if (!Array.isArray(objects)) {
-      objects = Object.keys(objects).map(function (k) { return objects[k]; });
-    }
-    for (var i = 0; i < objects.length; i++) {
-      var obj = objects[i];
-      if (!obj || !obj.fields || !Array.isArray(obj.fields)) continue;
-      for (var j = 0; j < obj.fields.length; j++) {
-        if (obj.fields[j] && obj.fields[j].key === fieldKey) return obj.fields[j].type;
-      }
-    }
-    return null;
-  }
-
-  // ── Detect which fields are editable ───────────────────────────
-  function getEditableFields(viewId) {
-    var fields = [];
-    var seen = {};
-    try {
-      // Strategy 1: try Knack.views columns metadata
-      var view = Knack.views[viewId];
-      if (view && view.model && view.model.view) {
-        var columns = view.model.view.columns || [];
-        columns.forEach(function (col) {
-          var key = col.field ? col.field.key : (col.id || '');
-          if (!key || seen[key]) return;
-          var type = (col.field && col.field.type) ? col.field.type : getFieldType(key);
-          if (!type) return;
-          if (SKIP_TYPES.indexOf(type) !== -1) return;
-          if (EDITABLE_TYPES.indexOf(type) !== -1) {
-            seen[key] = true;
-            fields.push({
-              key: key,
-              type: type,
-              multiline: (type === 'paragraph_text' || type === 'rich_text')
-            });
-          }
-        });
-      }
-
-      // Strategy 2: if no fields found, scan DOM for td[data-field-key] and look up types
-      if (!fields.length) {
-        var viewEl = document.getElementById(viewId);
-        if (viewEl) {
-          var firstRow = viewEl.querySelector('table.kn-table tbody tr[id]');
-          if (firstRow) {
-            var tds = firstRow.querySelectorAll('td[data-field-key]');
-            for (var t = 0; t < tds.length; t++) {
-              var key = tds[t].getAttribute('data-field-key');
-              if (!key || seen[key]) continue;
-              var type = getFieldType(key);
-              if (!type) continue; // skip unknown fields — no guessing
-              if (SKIP_TYPES.indexOf(type) !== -1) continue;
-              if (EDITABLE_TYPES.indexOf(type) !== -1) {
-                seen[key] = true;
-                fields.push({
-                  key: key,
-                  type: type,
-                  multiline: (type === 'paragraph_text' || type === 'rich_text')
-                });
-              }
-            }
-          }
-        }
-      }
-
-      console.log('[' + PREFIX + '] Detected fields for ' + viewId + ':', fields.map(function(f) { return f.key + '(' + f.type + ')'; }).join(', '));
-    } catch (e) {
-      console.warn('[' + PREFIX + '] Could not read columns for ' + viewId, e);
-    }
-    return fields;
-  }
-
-  // ── Determine if a field is a number type ──────────────────────
-  function isNumberType(type) {
-    return type === 'number' || type === 'currency' || type === 'equation';
+  // ── Get configured fields for a view ─────────────────────────
+  function getFields(viewId) {
+    return CONFIG[viewId] || [];
   }
 
   // ── Read cell text ─────────────────────────────────────────────
@@ -281,12 +201,11 @@ td.' + PREFIX + '-cell > span {\
   // ── Handle save ────────────────────────────────────────────────
   function handleSave(input) {
     var fieldKey = input.getAttribute('data-field') || '';
-    var fieldType = input.getAttribute('data-field-type') || '';
     var newValue = input.value;
     var previousValue = input._scwPrev || '';
 
     // Client-side number validation
-    if (isNumberType(fieldType)) {
+    if (input.hasAttribute('data-number')) {
       var trimmed = newValue.trim().replace(/[$,]/g, '');
       if (trimmed !== '' && isNaN(Number(trimmed))) {
         showError(input, 'Please enter a number', previousValue);
@@ -320,9 +239,9 @@ td.' + PREFIX + '-cell > span {\
     var $view = document.getElementById(viewId);
     if (!$view) return;
 
-    var editableFields = getEditableFields(viewId);
-    if (!editableFields.length) {
-      console.log('[' + PREFIX + '] No editable fields found for ' + viewId);
+    var fields = getFields(viewId);
+    if (!fields.length) {
+      console.log('[' + PREFIX + '] No fields configured for ' + viewId);
       return;
     }
 
@@ -333,14 +252,13 @@ td.' + PREFIX + '-cell > span {\
       var tr = rows[r];
       if (!tr.id) continue; // skip non-record rows
 
-      for (var f = 0; f < editableFields.length; f++) {
-        var field = editableFields[f];
+      for (var f = 0; f < fields.length; f++) {
+        var field = fields[f];
         var td = tr.querySelector('td[data-field-key="' + field.key + '"]');
         if (!td || td.classList.contains(PREFIX + '-cell')) continue; // already enhanced
 
         var currentVal = readCellText(td);
         td.classList.add(PREFIX + '-cell');
-        // Remove Knack's inline-edit trigger so it doesn't intercept clicks
         td.classList.remove('cell-edit');
 
         var input;
@@ -357,7 +275,7 @@ td.' + PREFIX + '-cell > span {\
         }
 
         input.setAttribute('data-field', field.key);
-        input.setAttribute('data-field-type', field.type);
+        if (field.number) input.setAttribute('data-number', '1');
         input.setAttribute(EDIT_ATTR, '1');
         input._scwPrev = currentVal;
 
@@ -365,7 +283,7 @@ td.' + PREFIX + '-cell > span {\
       }
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + editableFields.length + ' direct-edit fields');
+    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + fields.length + ' direct-edit fields');
   }
 
   // ── MutationObserver for re-render handling ────────────────────
@@ -431,7 +349,8 @@ td.' + PREFIX + '-cell > span {\
   }, true);
 
   // ── Bind to view renders ──────────────────────────────────────
-  CONFIG.views.forEach(function (viewId) {
+  var VIEW_IDS = Object.keys(CONFIG);
+  VIEW_IDS.forEach(function (viewId) {
     $(document).on('knack-view-render.' + viewId + '.scwGridDirectEdit', function (event, view) {
       injectStyles();
       enhanceView(viewId);
@@ -439,5 +358,5 @@ td.' + PREFIX + '-cell > span {\
     });
   });
 
-  console.log('[' + PREFIX + '] Grid direct-edit module loaded for: ' + CONFIG.views.join(', '));
+  console.log('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
 })();
