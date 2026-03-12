@@ -12721,13 +12721,7 @@ $(".kn-navigation-bar").hide();
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
 
-  // Inject CSS upfront so field_2464 is hidden before the DOM paints
-  var hideStyle = document.createElement('style');
-  hideStyle.id = 'scw-hide-field-2464';
-  hideStyle.textContent = '#kn-input-field_2464 { display: none !important; }';
-  if (!document.getElementById(hideStyle.id)) {
-    document.head.appendChild(hideStyle);
-  }
+  // NOTE: field_2464 hide removed — keeping visible for debugging
 
   $(document).on('knack-view-render.view_3580', function (event, view, data) {
     var hash = window.location.hash || '';
