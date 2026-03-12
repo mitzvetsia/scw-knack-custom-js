@@ -12,7 +12,7 @@
     views: [
       {
         parentViewId: 'view_3313',
-        connectionField: 'field_1963',
+        connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item'
       }
@@ -70,6 +70,7 @@
         justify-content: center;
         width: 22px;
         height: 22px;
+        margin-left: auto;
         background: none;
         border: none;
         border-radius: 4px;
