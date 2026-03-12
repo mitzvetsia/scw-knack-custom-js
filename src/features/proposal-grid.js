@@ -89,7 +89,7 @@
 
       hideL2Footer: {
         enabled: true,
-        labels: ['Assumptions'],
+        labels: ['Assumptions', 'General Project Assumptions'],
         recordIds: ['697b7a023a31502ec68b3303'],
       },
 
@@ -168,7 +168,7 @@
       {
         key: 'assumptions',
         recordIds: ['697b7a023a31502ec68b3303'],
-        labels: ['Assumptions'],
+        labels: ['Assumptions', 'General Project Assumptions'],
         hideLevel3Summary: true,
         hideQtyCostColumns: true,
         hideSubtotalFilter: true,
