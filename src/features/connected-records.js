@@ -137,7 +137,7 @@
         color: #d97706;
         display: inline-flex;
         align-items: center;
-        margin: 0 4px;
+        margin-left: 4px;
         flex-shrink: 0;
       }
 
