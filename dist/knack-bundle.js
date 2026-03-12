@@ -1137,7 +1137,7 @@ window.SCW = window.SCW || {};
   var ENHANCED   = 'data-scw-ktl-accordion';
   var OPT_OUT    = 'data-scw-no-accordion';
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
-  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true };
+  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true };
 
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
@@ -6557,7 +6557,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return null;
   }
 
-  var DISABLED_SCENES = { scene_828: true, scene_833: true };
+  var DISABLED_SCENES = { scene_828: true, scene_833: true, scene_873: true };
 
   function isEnabledScene(sceneId) {
     return !!sceneId && !DISABLED_SCENES[sceneId];

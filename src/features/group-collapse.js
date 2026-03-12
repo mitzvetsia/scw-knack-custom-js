@@ -485,7 +485,7 @@
     return null;
   }
 
-  var DISABLED_SCENES = { scene_828: true, scene_833: true };
+  var DISABLED_SCENES = { scene_828: true, scene_833: true, scene_873: true };
 
   function isEnabledScene(sceneId) {
     return !!sceneId && !DISABLED_SCENES[sceneId];
