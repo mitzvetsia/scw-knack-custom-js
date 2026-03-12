@@ -99,11 +99,16 @@ td.' + PREFIX + '-cell > span {\
   // ── Look up a field's type from Knack.objects ───────────────────
   function getFieldType(fieldKey) {
     if (typeof Knack === 'undefined' || !Knack.objects) return null;
-    for (var i = 0; i < Knack.objects.length; i++) {
-      var obj = Knack.objects[i];
-      if (!obj.fields) continue;
+    var objects = Knack.objects;
+    // Knack.objects may be a keyed hash or an array
+    if (!Array.isArray(objects)) {
+      objects = Object.keys(objects).map(function (k) { return objects[k]; });
+    }
+    for (var i = 0; i < objects.length; i++) {
+      var obj = objects[i];
+      if (!obj || !obj.fields || !Array.isArray(obj.fields)) continue;
       for (var j = 0; j < obj.fields.length; j++) {
-        if (obj.fields[j].key === fieldKey) return obj.fields[j].type;
+        if (obj.fields[j] && obj.fields[j].key === fieldKey) return obj.fields[j].type;
       }
     }
     return null;
