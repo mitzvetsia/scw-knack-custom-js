@@ -110,7 +110,7 @@ td.' + PREFIX + '-cell > span {\
   // ── Auto-resize textarea to fit content ─────────────────────────
   function autoResize(el) {
     if (el.tagName !== 'TEXTAREA') return;
-    el.style.height = 'auto';
+    el.style.height = '0';
     el.style.height = el.scrollHeight + 'px';
   }
 
@@ -258,6 +258,7 @@ td.' + PREFIX + '-cell > span {\
     var rows = $view.querySelectorAll('table.kn-table tbody tr');
     if (!rows.length) return;
 
+    var pendingResize = [];
     for (var r = 0; r < rows.length; r++) {
       var tr = rows[r];
       if (!tr.id) continue; // skip non-record rows
@@ -292,8 +293,15 @@ td.' + PREFIX + '-cell > span {\
         input._scwPrev = currentVal;
 
         td.appendChild(input);
-        autoResize(input);
+        if (input.tagName === 'TEXTAREA') pendingResize.push(input);
       }
+    }
+
+    // Defer autoResize until after browser layout so scrollHeight is accurate
+    if (pendingResize.length) {
+      requestAnimationFrame(function () {
+        for (var i = 0; i < pendingResize.length; i++) autoResize(pendingResize[i]);
+      });
     }
 
     console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + fields.length + ' direct-edit fields');
