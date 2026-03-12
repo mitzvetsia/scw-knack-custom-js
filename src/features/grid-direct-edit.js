@@ -39,39 +39,36 @@ td.' + PREFIX + '-cell > span {\
 .' + PREFIX + '-textarea {\
   width: 100%;\
   box-sizing: border-box;\
-  border: 1px solid #ddd;\
-  border-radius: 3px;\
+  border: none;\
   padding: 4px 6px;\
   font-size: 13px;\
   font-family: inherit;\
-  background: #fff;\
+  background: transparent;\
   outline: none;\
-  transition: border-color 0.15s, background-color 0.15s;\
+  transition: background-color 0.15s;\
+  overflow: hidden;\
+  resize: none;\
 }\
 .' + PREFIX + '-input {\
-  height: 30px;\
+  height: 28px;\
 }\
 .' + PREFIX + '-textarea {\
-  resize: vertical;\
-  min-height: 30px;\
+  min-height: 28px;\
   line-height: 1.3;\
   white-space: pre-wrap;\
   word-wrap: break-word;\
 }\
 .' + PREFIX + '-input:focus,\
 .' + PREFIX + '-textarea:focus {\
-  border-color: #4a90d9;\
-  background: #fff;\
+  background: rgba(74, 144, 217, 0.06);\
 }\
 .' + PREFIX + '-input.is-saving,\
 .' + PREFIX + '-textarea.is-saving {\
   background: #e8f5e9;\
-  border-color: #4caf50;\
 }\
 .' + PREFIX + '-input.is-error,\
 .' + PREFIX + '-textarea.is-error {\
   background: #fdecea;\
-  border-color: #f44336;\
 }\
 .' + PREFIX + '-error {\
   position: absolute;\
@@ -100,6 +97,13 @@ td.' + PREFIX + '-cell > span {\
   // ── Get configured fields for a view ─────────────────────────
   function getFields(viewId) {
     return CONFIG[viewId] || [];
+  }
+
+  // ── Auto-resize textarea to fit content ─────────────────────────
+  function autoResize(el) {
+    if (el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
   }
 
   // ── Read cell text ─────────────────────────────────────────────
@@ -260,24 +264,27 @@ td.' + PREFIX + '-cell > span {\
         td.classList.remove('cell-edit');
 
         var input;
-        if (field.multiline) {
-          input = document.createElement('textarea');
-          input.className = PREFIX + '-textarea';
-          input.value = currentVal;
-          input.rows = 2;
-        } else {
+        if (field.number) {
           input = document.createElement('input');
           input.type = 'text';
           input.className = PREFIX + '-input';
           input.value = currentVal;
+          input.setAttribute('data-number', '1');
+        } else {
+          // Use textarea for text fields so they auto-grow
+          input = document.createElement('textarea');
+          input.className = PREFIX + '-textarea';
+          input.value = currentVal;
+          input.rows = 1;
+          input.addEventListener('input', function () { autoResize(this); });
         }
 
         input.setAttribute('data-field', field.key);
-        if (field.number) input.setAttribute('data-number', '1');
         input.setAttribute(EDIT_ATTR, '1');
         input._scwPrev = currentVal;
 
         td.appendChild(input);
+        autoResize(input);
       }
     }
 
