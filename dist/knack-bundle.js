@@ -12645,35 +12645,6 @@ $(".kn-navigation-bar").hide();
   // WIDGET BUILDER
   // ============================================================
 
-  /**
-   * Add a warning icon to the worksheet summary/header row when
-   * any connected accessory has a mismatch (field_2244 = false).
-   */
-  function applyHeaderWarning(recordId) {
-    if (!recordId) return;
-    // Defer until after device-worksheet finishes DOM restructuring:
-    // buildWidget runs while the card is being built, before the new
-    // tr.scw-ws-row is inserted into the table.
-    setTimeout(function () {
-      var wsTr = document.getElementById(recordId);
-      if (!wsTr) return;
-      // Don't duplicate
-      if (wsTr.querySelector('.scw-cr-hdr-warning')) return;
-
-      var identity = wsTr.querySelector('.scw-ws-identity');
-      if (!identity) {
-        identity = wsTr.querySelector('td.scw-ws-sum-label-cell');
-      }
-      if (!identity) return;
-
-      var icon = document.createElement('span');
-      icon.className = 'scw-cr-hdr-warning';
-      icon.innerHTML = WARNING_SVG;
-      icon.title = 'Accessory mismatch — one or more accessories do not match parent product';
-      identity.appendChild(icon);
-    }, 0);
-  }
-
   function findConfig(viewId) {
     for (var i = 0; i < CONFIG.views.length; i++) {
       if (CONFIG.views[i].parentViewId === viewId) return CONFIG.views[i];
@@ -12768,11 +12739,6 @@ $(".kn-navigation-bar").hide();
       }
     }
 
-    // If any accessory has a warning, add warning icon to the worksheet header row
-    if (hasAnyWarning) {
-      applyHeaderWarning(recordId);
-    }
-
     // "+ Add" button
     if (addUrl) {
       var addBtn = document.createElement('a');
@@ -12782,6 +12748,8 @@ $(".kn-navigation-bar").hide();
       valueDiv.appendChild(addBtn);
     }
 
+    // Return element + warning state so the caller can add header warning
+    container._hasWarning = hasAnyWarning;
     return container;
   }
 
@@ -16235,6 +16203,24 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       detail = buildDetailPanel(tr, viewCfg);
     }
     if (detail) card.appendChild(detail);
+
+    // ── Accessory mismatch header warning ──
+    // If any connected-records widget flagged a warning, add icon to identity
+    var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
+    for (var w = 0; w < crWidgets.length; w++) {
+      var parentField = crWidgets[w].parentElement;
+      if (parentField && parentField._hasWarning) {
+        var identity = card.querySelector('.' + P + '-identity');
+        if (identity && !identity.querySelector('.scw-cr-hdr-warning')) {
+          var warnIcon = document.createElement('span');
+          warnIcon.className = 'scw-cr-hdr-warning';
+          warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
+          identity.appendChild(warnIcon);
+        }
+        break;
+      }
+    }
 
     // ── Apply bucket-based field hiding + label injection ──
     applyBucketRules(card, tr, viewCfg);

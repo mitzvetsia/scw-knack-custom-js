@@ -474,35 +474,6 @@
   // WIDGET BUILDER
   // ============================================================
 
-  /**
-   * Add a warning icon to the worksheet summary/header row when
-   * any connected accessory has a mismatch (field_2244 = false).
-   */
-  function applyHeaderWarning(recordId) {
-    if (!recordId) return;
-    // Defer until after device-worksheet finishes DOM restructuring:
-    // buildWidget runs while the card is being built, before the new
-    // tr.scw-ws-row is inserted into the table.
-    setTimeout(function () {
-      var wsTr = document.getElementById(recordId);
-      if (!wsTr) return;
-      // Don't duplicate
-      if (wsTr.querySelector('.scw-cr-hdr-warning')) return;
-
-      var identity = wsTr.querySelector('.scw-ws-identity');
-      if (!identity) {
-        identity = wsTr.querySelector('td.scw-ws-sum-label-cell');
-      }
-      if (!identity) return;
-
-      var icon = document.createElement('span');
-      icon.className = 'scw-cr-hdr-warning';
-      icon.innerHTML = WARNING_SVG;
-      icon.title = 'Accessory mismatch — one or more accessories do not match parent product';
-      identity.appendChild(icon);
-    }, 0);
-  }
-
   function findConfig(viewId) {
     for (var i = 0; i < CONFIG.views.length; i++) {
       if (CONFIG.views[i].parentViewId === viewId) return CONFIG.views[i];
@@ -597,11 +568,6 @@
       }
     }
 
-    // If any accessory has a warning, add warning icon to the worksheet header row
-    if (hasAnyWarning) {
-      applyHeaderWarning(recordId);
-    }
-
     // "+ Add" button
     if (addUrl) {
       var addBtn = document.createElement('a');
@@ -611,6 +577,8 @@
       valueDiv.appendChild(addBtn);
     }
 
+    // Return element + warning state so the caller can add header warning
+    container._hasWarning = hasAnyWarning;
     return container;
   }
 
