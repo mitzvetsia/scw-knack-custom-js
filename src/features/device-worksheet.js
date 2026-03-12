@@ -141,6 +141,22 @@
         }
       },
       {
+        viewId: 'view_3577',
+        fields: {
+          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
+
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
+          surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
+        },
+        summaryLayout: [],
+        detailLayout: {
+          left:  ['mdfIdf', 'mdfNumber', 'name'],
+          right: ['surveyNotes']
+        }
+      },
+      {
         viewId: 'view_3575',
         comparisonLayout: true,
         fields: {
