@@ -16555,9 +16555,11 @@ td.' + PREFIX + '-cell > span {\
 }\
 .' + PREFIX + '-input,\
 .' + PREFIX + '-textarea {\
+  position: absolute;\
+  top: 0;\
+  left: 0;\
   width: 100%;\
   height: 100%;\
-  min-height: 100%;\
   box-sizing: border-box;\
   border: none;\
   padding: 4px 6px;\
@@ -16568,7 +16570,6 @@ td.' + PREFIX + '-cell > span {\
   transition: background-color 0.15s;\
   overflow: hidden;\
   resize: none;\
-  display: block;\
 }\
 .' + PREFIX + '-textarea {\
   line-height: 1.3;\
