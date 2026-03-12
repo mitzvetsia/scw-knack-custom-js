@@ -16548,11 +16548,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 td.' + PREFIX + '-cell {\
   position: relative;\
   padding: 0 !important;\
-  pointer-events: none;\
-}\
-td.' + PREFIX + '-cell .' + PREFIX + '-input,\
-td.' + PREFIX + '-cell .' + PREFIX + '-textarea {\
-  pointer-events: auto;\
 }\
 td.' + PREFIX + '-cell > .kn-value,\
 td.' + PREFIX + '-cell > span {\
@@ -16561,6 +16556,8 @@ td.' + PREFIX + '-cell > span {\
 .' + PREFIX + '-input,\
 .' + PREFIX + '-textarea {\
   width: 100%;\
+  height: 100%;\
+  min-height: 100%;\
   box-sizing: border-box;\
   border: none;\
   padding: 4px 6px;\
@@ -16571,12 +16568,9 @@ td.' + PREFIX + '-cell > span {\
   transition: background-color 0.15s;\
   overflow: hidden;\
   resize: none;\
-}\
-.' + PREFIX + '-input {\
-  height: 28px;\
+  display: block;\
 }\
 .' + PREFIX + '-textarea {\
-  min-height: 28px;\
   line-height: 1.3;\
   white-space: pre-wrap;\
   word-wrap: break-word;\
