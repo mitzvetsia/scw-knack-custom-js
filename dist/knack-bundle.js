@@ -10781,7 +10781,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -10806,7 +10806,8 @@ $(".kn-navigation-bar").hide();
 
   // View-specific add-photo URL path segments
   var ADD_PHOTO_PATHS = {
-    'view_3559': 'add-photo-to-mdf-idf'
+    'view_3559': 'add-photo-to-mdf-idf',
+    'view_3577': 'add-photo-to-mdf-idf2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -11150,7 +11151,15 @@ $(".kn-navigation-bar").hide();
       '#view_3559 th.field_2446,',
       '#view_3559 td.field_2446,',
       '#view_3559 th.field_2447,',
-      '#view_3559 td.field_2447 {',
+      '#view_3559 td.field_2447,',
+      '#view_3577 th.field_114,',
+      '#view_3577 td.field_114,',
+      '#view_3577 th.field_2445,',
+      '#view_3577 td.field_2445,',
+      '#view_3577 th.field_2446,',
+      '#view_3577 td.field_2446,',
+      '#view_3577 th.field_2447,',
+      '#view_3577 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -13243,9 +13252,11 @@ td.${P}-sum-label-cell:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* view_3559: wider label (no product column, label IS the identity) */
+/* view_3559 / view_3577: wider label (no product column, label IS the identity) */
 #view_3559 td.${P}-sum-label-cell,
-#view_3559 td.${P}-sum-label-cell:hover {
+#view_3559 td.${P}-sum-label-cell:hover,
+#view_3577 td.${P}-sum-label-cell,
+#view_3577 td.${P}-sum-label-cell:hover {
   width: 400px;
   min-width: 400px;
   max-width: 400px;

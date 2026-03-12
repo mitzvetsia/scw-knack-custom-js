@@ -539,9 +539,11 @@ td.${P}-sum-label-cell:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* view_3559: wider label (no product column, label IS the identity) */
+/* view_3559 / view_3577: wider label (no product column, label IS the identity) */
 #view_3559 td.${P}-sum-label-cell,
-#view_3559 td.${P}-sum-label-cell:hover {
+#view_3559 td.${P}-sum-label-cell:hover,
+#view_3577 td.${P}-sum-label-cell,
+#view_3577 td.${P}-sum-label-cell:hover {
   width: 400px;
   min-width: 400px;
   max-width: 400px;
