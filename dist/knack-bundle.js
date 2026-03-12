@@ -14440,6 +14440,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   var _expandedState = {};  // viewId → [recordId, ...]
 
+  // localStorage helpers for persisting accordion state across page refreshes
+  function wsStorageKey(viewId) { return 'scw:ws-expanded:' + viewId; }
+  function loadWsState(viewId) {
+    try { return JSON.parse(localStorage.getItem(wsStorageKey(viewId)) || '[]'); }
+    catch (e) { return []; }
+  }
+  function saveWsState(viewId, expanded) {
+    try { localStorage.setItem(wsStorageKey(viewId), JSON.stringify(expanded)); }
+    catch (e) {}
+  }
+
   /** Scan current worksheet rows for open detail panels and save their
    *  record IDs so they can be re-expanded after transformView. */
   function captureExpandedState(viewId) {
@@ -14453,6 +14464,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
     _expandedState[viewId] = expanded;
+    saveWsState(viewId, expanded);
   }
 
   /** Capture expanded state for ALL configured worksheet views.
@@ -14469,7 +14481,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  have been built. Uses record ID (24-char hex) for stable
    *  identity across re-renders. */
   function restoreExpandedState(viewId) {
+    // Prefer in-memory state (inline edit); fall back to localStorage (page refresh)
     var expanded = _expandedState[viewId];
+    if (!expanded || !expanded.length) {
+      expanded = loadWsState(viewId);
+    }
     if (!expanded || !expanded.length) return;
 
     // Build a lookup set for O(1) checks
@@ -16433,6 +16449,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {
       toggleDetail(wsTr);
+      // Persist accordion state to localStorage after toggle
+      var viewEl = wsTr.closest('.kn-view');
+      if (viewEl) captureExpandedState(viewEl.id);
     }
   });
 
