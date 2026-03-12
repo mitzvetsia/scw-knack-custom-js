@@ -31,8 +31,7 @@ td.' + PREFIX + '-cell > .kn-value,\
 td.' + PREFIX + '-cell > span {\
   display: none !important;\
 }\
-.' + PREFIX + '-input,\
-.' + PREFIX + '-textarea {\
+.' + PREFIX + '-input {\
   position: absolute;\
   top: 0;\
   left: 0;\
@@ -50,6 +49,19 @@ td.' + PREFIX + '-cell > span {\
   resize: none;\
 }\
 .' + PREFIX + '-textarea {\
+  display: block;\
+  width: 100%;\
+  min-height: 100%;\
+  box-sizing: border-box;\
+  border: none;\
+  padding: 4px 6px;\
+  font-size: 13px;\
+  font-family: inherit;\
+  background: transparent;\
+  outline: none;\
+  transition: background-color 0.15s;\
+  overflow: hidden;\
+  resize: none;\
   line-height: 1.3;\
   white-space: pre-wrap;\
   word-wrap: break-word;\
