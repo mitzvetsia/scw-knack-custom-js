@@ -1622,6 +1622,16 @@ window.SCW = window.SCW || {};
         hdr.setAttribute('aria-expanded', 'false');
         var bodyEl = wrappers[i].querySelector('.scw-ktl-accordion__body');
         if (bodyEl) bodyEl.style.display = 'none';
+
+        // Also collapse the underlying KTL section so isExpanded()
+        // returns false — prevents syncState from re-expanding.
+        var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
+        if (section) section.style.display = 'none';
+        var arrow = document.getElementById('hideShow_' + vk + '_arrow');
+        if (arrow) {
+          arrow.classList.remove('ktlDown');
+          arrow.classList.add('ktlUp');
+        }
         log('restored collapsed', vk);
       }
     }
@@ -12865,7 +12875,7 @@ $(".kn-navigation-bar").hide();
           dropPrefix:       { key: 'field_2240', type: 'readOnly' },
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
-          mountingHardware: { key: 'field_1963', type: 'connectedRecords' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },

@@ -521,6 +521,16 @@
         hdr.setAttribute('aria-expanded', 'false');
         var bodyEl = wrappers[i].querySelector('.scw-ktl-accordion__body');
         if (bodyEl) bodyEl.style.display = 'none';
+
+        // Also collapse the underlying KTL section so isExpanded()
+        // returns false — prevents syncState from re-expanding.
+        var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
+        if (section) section.style.display = 'none';
+        var arrow = document.getElementById('hideShow_' + vk + '_arrow');
+        if (arrow) {
+          arrow.classList.remove('ktlDown');
+          arrow.classList.add('ktlUp');
+        }
         log('restored collapsed', vk);
       }
     }
