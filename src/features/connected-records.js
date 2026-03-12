@@ -134,11 +134,15 @@
       }
 
       .scw-cr-hdr-warning {
-        color: #d97706;
+        color: #b45309;
         display: inline-flex;
         align-items: center;
-        margin-left: 4px;
+        margin-left: 10px;
         flex-shrink: 0;
+      }
+      .scw-cr-hdr-warning svg {
+        width: 18px;
+        height: 18px;
       }
 
       /* ── Delete confirmation modal ── */
