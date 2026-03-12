@@ -36,6 +36,7 @@
   var ENHANCED   = 'data-scw-ktl-accordion';
   var OPT_OUT    = 'data-scw-no-accordion';
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
+  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true };
 
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
@@ -620,6 +621,13 @@
       if (btn.hasAttribute(OPT_OUT)) continue;
       var knView = btn.closest('.kn-view');
       if (knView && knView.hasAttribute(OPT_OUT)) continue;
+
+      // Scene exclusion — skip accordion enhancement on disabled scenes
+      var knScene = btn.closest('.kn-scene');
+      if (knScene) {
+        var sceneId = (knScene.id || '').replace('kn-', '');
+        if (DISABLED_ACCORDION_SCENES[sceneId]) continue;
+      }
 
       // Already enhanced?
       if (btn.getAttribute(ENHANCED) === '1') {
