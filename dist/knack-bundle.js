@@ -16529,11 +16529,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // viewId → array of { key, number?, multiline? }
     'view_32': [
       { key: 'field_32' },
-      { key: 'field_71' },
+      { key: 'field_71', number: true },
       { key: 'field_960' },
-      { key: 'field_98' },
+      { key: 'field_98', number: true },
       { key: 'field_1730' },
-      { key: 'field_12' },
+      { key: 'field_12', number: true },
+      { key: 'field_1731', number: true },
       { key: 'field_1734', number: true }
     ]
   };
