@@ -12221,6 +12221,14 @@ $(".kn-navigation-bar").hide();
         background: rgba(0,0,0,0.06);
       }
 
+      .scw-cr-item-warn {
+        background: #fff3cd !important;
+        border-left: 3px solid #d97706;
+      }
+      .scw-cr-item-warn:hover {
+        background: #ffecb3 !important;
+      }
+
       .scw-cr-link {
         flex: 1 1 0%;
         min-width: 0;
@@ -12294,6 +12302,14 @@ $(".kn-navigation-bar").hide();
         font-size: 14px;
         flex-shrink: 0;
         line-height: 1;
+      }
+
+      .scw-cr-hdr-warning {
+        color: #d97706;
+        margin-left: 6px;
+        vertical-align: middle;
+        display: inline-flex;
+        align-items: center;
       }
 
       /* ── Delete confirmation modal ── */
@@ -12611,20 +12627,47 @@ $(".kn-navigation-bar").hide();
       : (warningMap._all || false);
 
     if (!isYes) {
+      itemEl.classList.add('scw-cr-item-warn');
       var icon = document.createElement('span');
       icon.className = 'scw-cr-warning';
       icon.innerHTML = WARNING_SVG;
-      icon.title = 'Warning';
+      icon.title = 'Accessory does not match parent product';
       var linkEl = itemEl.querySelector('.scw-cr-link');
       if (linkEl) {
         itemEl.insertBefore(icon, linkEl);
       }
+      return true; // warning was applied
     }
+    return false; // no warning
   }
 
   // ============================================================
   // WIDGET BUILDER
   // ============================================================
+
+  /**
+   * Add a warning icon to the worksheet summary/header row when
+   * any connected accessory has a mismatch (field_2244 = false).
+   */
+  function applyHeaderWarning(tr) {
+    if (!tr) return;
+    // Don't duplicate
+    if (tr.querySelector('.scw-cr-hdr-warning')) return;
+
+    // Find the worksheet summary bar identity area
+    var identity = tr.querySelector('.scw-ws-identity');
+    if (!identity) {
+      // Fallback: find the label cell
+      identity = tr.querySelector('td.scw-ws-sum-label-cell');
+    }
+    if (!identity) return;
+
+    var icon = document.createElement('span');
+    icon.className = 'scw-cr-hdr-warning';
+    icon.innerHTML = WARNING_SVG;
+    icon.title = 'Accessory mismatch — one or more accessories do not match parent product';
+    identity.appendChild(icon);
+  }
 
   function findConfig(viewId) {
     for (var i = 0; i < CONFIG.views.length; i++) {
@@ -12668,6 +12711,7 @@ $(".kn-navigation-bar").hide();
     var warningMap = cfg.warningField ? buildWarningMap(tr, cfg.warningField) : {};
 
     // Render items
+    var hasAnyWarning = false;
     if (links.length === 0) {
       var empty = document.createElement('div');
       empty.className = 'scw-cr-empty';
@@ -12710,11 +12754,18 @@ $(".kn-navigation-bar").hide();
 
         // Warning icon from DOM data (no API call needed)
         if (cfg.warningField && links[i].recordId) {
-          applyWarningIcon(warningMap, links[i].recordId, item);
+          if (applyWarningIcon(warningMap, links[i].recordId, item)) {
+            hasAnyWarning = true;
+          }
         }
 
         valueDiv.appendChild(item);
       }
+    }
+
+    // If any accessory has a warning, add warning icon to the worksheet header row
+    if (hasAnyWarning) {
+      applyHeaderWarning(tr);
     }
 
     // "+ Add" button
