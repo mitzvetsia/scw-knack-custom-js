@@ -9,8 +9,6 @@
       { key: 'field_32' },
       { key: 'field_960' },
       { key: 'field_98' },
-      { key: 'field_409' },
-      { key: 'field_1721' },
       { key: 'field_1730' },
       { key: 'field_12' },
       { key: 'field_1734', number: true }
