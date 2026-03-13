@@ -10860,7 +10860,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -11238,7 +11238,15 @@ $(".kn-navigation-bar").hide();
       '#view_3577 th.field_2446,',
       '#view_3577 td.field_2446,',
       '#view_3577 th.field_2447,',
-      '#view_3577 td.field_2447 {',
+      '#view_3577 td.field_2447,',
+      '#view_3313 th.field_114,',
+      '#view_3313 td.field_114,',
+      '#view_3313 th.field_2445,',
+      '#view_3313 td.field_2445,',
+      '#view_3313 th.field_2446,',
+      '#view_3313 td.field_2446,',
+      '#view_3313 th.field_2447,',
+      '#view_3313 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
