@@ -13727,21 +13727,39 @@ td.${P}-sum-check input[type="checkbox"] {
   flex: 0 0 auto;
   min-width: 0;
 }
-.${P}-toggle-zone--stacked {
+/* When summary has stacked label+value fields, push non-labeled elements
+   down so they align with the value row, not the label row.
+   --scw-label-h is measured once at runtime and set on the summary bar. */
+.${P}-summary--stacked {
+  --scw-label-h: 11px; /* CSS fallback; JS sets the real value */
+}
+.${P}-summary--stacked .${P}-toggle-zone {
   align-self: flex-start;
   align-items: flex-start;
 }
+.${P}-summary--stacked .${P}-chevron {
+  margin-top: var(--scw-label-h);
+}
+.${P}-summary--stacked td.${P}-sum-check {
+  align-self: flex-start;
+  padding-top: var(--scw-label-h) !important;
+}
+.${P}-summary--stacked td.${P}-sum-label-cell {
+  margin-top: var(--scw-label-h);
+}
+.${P}-summary--stacked .${P}-sum-sep {
+  margin-top: var(--scw-label-h);
+}
+.${P}-summary--stacked .${P}-sum-delete {
+  align-self: flex-start;
+  padding-top: var(--scw-label-h);
+}
+.${P}-summary--stacked .${P}-identity > .scw-cr-hdr-warning {
+  margin-top: var(--scw-label-h);
+  align-self: flex-start;
+}
 .${P}-toggle-zone:hover .${P}-chevron {
   color: #6b7280;
-}
-
-/* Column wrapper: invisible label spacer + element, used to align
-   chevron / checkbox / label-cell with stacked label+value fields */
-.${P}-stacked-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-shrink: 0;
 }
 
 /* Chevron toggle */
@@ -14782,6 +14800,21 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     style.id = STYLE_ID;
     style.textContent = css;
     document.head.appendChild(style);
+
+    // Measure the actual rendered height of a sum-label and set
+    // the CSS variable so stacked alignment is pixel-perfect.
+    requestAnimationFrame(function () {
+      var probe = document.createElement('span');
+      probe.className = P + '-sum-label';
+      probe.innerHTML = '&nbsp;';
+      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+      document.body.appendChild(probe);
+      var h = probe.getBoundingClientRect().height;
+      probe.remove();
+      if (h > 0) {
+        document.documentElement.style.setProperty('--scw-label-h', h + 'px');
+      }
+    });
   }
 
   // ============================================================
@@ -16118,48 +16151,24 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var d = fieldDesc(viewCfg, n);
       return d && d.group === 'right' && d.label;
     });
-
-    // Helper: create an invisible label spacer matching sum-label height
-    function makeLabelSpacer() {
-      var sp = document.createElement('span');
-      sp.className = P + '-sum-label';
-      sp.innerHTML = '&nbsp;';
-      return sp;
-    }
+    if (hasStackedFields) bar.classList.add(P + '-summary--stacked');
 
     // ── KTL / legacy bulk-edit checkbox (if present) ──
     var checkTd = tr.querySelector('td > input[type="checkbox"]');
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      if (hasStackedFields) {
-        var checkWrap = document.createElement('span');
-        checkWrap.className = P + '-stacked-wrap';
-        checkWrap.appendChild(makeLabelSpacer());
-        checkWrap.appendChild(checkCell);
-        bar.appendChild(checkWrap);
-      } else {
-        bar.appendChild(checkCell);
-      }
+      bar.appendChild(checkCell);
     }
 
     // ── Toggle zone: chevron + identity (label + product) ──
     var toggleZone = document.createElement('span');
     toggleZone.className = P + '-toggle-zone';
-    if (hasStackedFields) toggleZone.classList.add(P + '-toggle-zone--stacked');
 
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
-    if (hasStackedFields) {
-      var chevWrap = document.createElement('span');
-      chevWrap.className = P + '-stacked-wrap';
-      chevWrap.appendChild(makeLabelSpacer());
-      chevWrap.appendChild(chevron);
-      toggleZone.appendChild(chevWrap);
-    } else {
-      toggleZone.appendChild(chevron);
-    }
+    toggleZone.appendChild(chevron);
 
     var identity = document.createElement('span');
     identity.className = P + '-identity';
@@ -16169,15 +16178,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
-        if (hasStackedFields) {
-          var lblWrap = document.createElement('span');
-          lblWrap.className = P + '-stacked-wrap';
-          lblWrap.appendChild(makeLabelSpacer());
-          lblWrap.appendChild(labelTd);
-          identity.appendChild(lblWrap);
-        } else {
-          identity.appendChild(labelTd);
-        }
+        identity.appendChild(labelTd);
       }
     }
 
@@ -16188,15 +16189,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var sep0 = document.createElement('span');
         sep0.className = P + '-sum-sep';
         sep0.textContent = '\u00b7';
-        if (hasStackedFields) {
-          var sepWrap = document.createElement('span');
-          sepWrap.className = P + '-stacked-wrap';
-          sepWrap.appendChild(makeLabelSpacer());
-          sepWrap.appendChild(sep0);
-          identity.appendChild(sepWrap);
-        } else {
-          identity.appendChild(sep0);
-        }
+        identity.appendChild(sep0);
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
@@ -16204,7 +16197,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
         // Empty label so product aligns vertically with editable field values
         if (hasStackedFields) {
-          productGroup.appendChild(makeLabelSpacer());
+          var prodLabel = document.createElement('span');
+          prodLabel.className = P + '-sum-label';
+          prodLabel.innerHTML = '&nbsp;';
+          productGroup.appendChild(prodLabel);
         }
 
         // Warning chit
@@ -16278,15 +16274,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      if (hasStackedFields) {
-        var delStackWrap = document.createElement('span');
-        delStackWrap.className = P + '-stacked-wrap';
-        delStackWrap.appendChild(makeLabelSpacer());
-        delStackWrap.appendChild(deleteWrap);
-        rightGroup.appendChild(delStackWrap);
-      } else {
-        rightGroup.appendChild(deleteWrap);
-      }
+      rightGroup.appendChild(deleteWrap);
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
@@ -16741,20 +16729,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var identityEl = card.querySelector('.' + P + '-identity');
           var productGroupEl = card.querySelector('.' + P + '-product-group');
           if (identityEl && productGroupEl) {
-            // Wrap in stacked-wrap if stacked labels are present
-            var isStacked = !!card.querySelector('.' + P + '-toggle-zone--stacked');
-            if (isStacked) {
-              var warnWrap = document.createElement('span');
-              warnWrap.className = P + '-stacked-wrap';
-              var wSpacer = document.createElement('span');
-              wSpacer.className = P + '-sum-label';
-              wSpacer.innerHTML = '&nbsp;';
-              warnWrap.appendChild(wSpacer);
-              warnWrap.appendChild(warnIcon);
-              identityEl.insertBefore(warnWrap, productGroupEl);
-            } else {
-              identityEl.insertBefore(warnIcon, productGroupEl);
-            }
+            identityEl.insertBefore(warnIcon, productGroupEl);
           } else if (identityEl) {
             identityEl.appendChild(warnIcon);
           }
