@@ -12718,6 +12718,11 @@ $(".kn-navigation-bar").hide();
       .scw-cr-modal__btn--confirm:hover {
         background: #b71c1c;
       }
+
+      /* Hide parent-connection field on add-accessory form before JS runs */
+      #view_3580 #kn-input-field_2464 {
+        display: none !important;
+      }
     `;
 
     var style = document.createElement('style');
@@ -13241,9 +13246,6 @@ $(".kn-navigation-bar").hide();
   // and set field_2464 (connection back to parent).
 
   $(document).on('knack-view-render.view_3580', function (event, view, data) {
-    // Hide field_2464 from the user — it's set programmatically
-    $('#kn-input-field_2464').hide();
-
     var hash = window.location.hash || '';
     // URL: #.../add-accessory-line-item/{parentRecordId}
     var match = hash.match(/add-accessory-line-item\/([a-f0-9]{24})/);
