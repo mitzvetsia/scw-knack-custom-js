@@ -12380,33 +12380,16 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
-  // $.ajax MONKEY-PATCH
+  // XMLHttpRequest INTERCEPT
   // ============================================================
+  // Patch at the XHR level — catches everything regardless of
+  // whether Knack/Backbone caches $.ajax references at load time.
 
-  if (typeof $ === 'undefined' || typeof $.ajax !== 'function') {
-    console.warn('[SCW][delete-intercept] jQuery not available — cannot install intercept');
-    return;
-  }
+  var _origOpen = XMLHttpRequest.prototype.open;
 
-  var _origAjax = $.ajax;
-
-  $.ajax = function (urlOrOptions, maybeOptions) {
-    // jQuery.ajax supports two signatures:
-    //   $.ajax(url, options)  and  $.ajax(options)
-    var opts;
-    if (typeof urlOrOptions === 'string') {
-      opts = maybeOptions || {};
-      opts.url = urlOrOptions;
-    } else {
-      opts = urlOrOptions || {};
-    }
-
-    var method = (opts.type || opts.method || 'GET').toUpperCase();
-
-    if (method === 'DELETE') {
-      var url = opts.url || '';
+  XMLHttpRequest.prototype.open = function (method, url) {
+    if (typeof method === 'string' && method.toUpperCase() === 'DELETE' && typeof url === 'string') {
       var recordId = extractRecordId(url);
-
       if (recordId) {
         var viewId = extractViewId(url);
         console.log('[SCW][delete-intercept] DELETE detected for record ' + recordId + (viewId ? ' in ' + viewId : ''));
@@ -12420,18 +12403,10 @@ $(".kn-navigation-bar").hide();
       }
     }
 
-    // Always pass through to original $.ajax
-    return _origAjax.apply(this, arguments);
+    return _origOpen.apply(this, arguments);
   };
 
-  // Preserve any static properties on $.ajax (e.g. $.ajax.active)
-  for (var prop in _origAjax) {
-    if (_origAjax.hasOwnProperty(prop)) {
-      $.ajax[prop] = _origAjax[prop];
-    }
-  }
-
-  console.log('[SCW][delete-intercept] Installed — monkey-patched $.ajax to monitor DELETE requests');
+  console.log('[SCW][delete-intercept] Installed — patched XMLHttpRequest.open to monitor DELETE requests');
 })();
 /*** CONNECTED RECORDS EDITOR ***/
 (function () {
