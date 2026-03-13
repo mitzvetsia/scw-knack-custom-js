@@ -13730,33 +13730,9 @@ td.${P}-sum-check input[type="checkbox"] {
 /* When summary has stacked label+value fields, push non-labeled elements
    down so they align with the value row, not the label row.
    --scw-label-h is measured once at runtime and set on the summary bar. */
-.${P}-summary--stacked {
-  --scw-label-h: 11px; /* CSS fallback; JS sets the real value */
-}
 .${P}-summary--stacked .${P}-toggle-zone {
   align-self: flex-start;
   align-items: flex-start;
-}
-.${P}-summary--stacked .${P}-chevron {
-  margin-top: var(--scw-label-h);
-}
-.${P}-summary--stacked td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: var(--scw-label-h) !important;
-}
-.${P}-summary--stacked td.${P}-sum-label-cell {
-  margin-top: var(--scw-label-h);
-}
-.${P}-summary--stacked .${P}-sum-sep {
-  margin-top: var(--scw-label-h);
-}
-.${P}-summary--stacked .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: var(--scw-label-h);
-}
-.${P}-summary--stacked .${P}-identity > .scw-cr-hdr-warning {
-  margin-top: var(--scw-label-h);
-  align-self: flex-start;
 }
 .${P}-toggle-zone:hover .${P}-chevron {
   color: #6b7280;
@@ -14800,21 +14776,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     style.id = STYLE_ID;
     style.textContent = css;
     document.head.appendChild(style);
-
-    // Measure the actual rendered height of a sum-label and set
-    // the CSS variable so stacked alignment is pixel-perfect.
-    requestAnimationFrame(function () {
-      var probe = document.createElement('span');
-      probe.className = P + '-sum-label';
-      probe.innerHTML = '&nbsp;';
-      probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
-      document.body.appendChild(probe);
-      var h = probe.getBoundingClientRect().height;
-      probe.remove();
-      if (h > 0) {
-        document.documentElement.style.setProperty('--scw-label-h', h + 'px');
-      }
-    });
   }
 
   // ============================================================
@@ -16153,11 +16114,28 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     });
     if (hasStackedFields) bar.classList.add(P + '-summary--stacked');
 
+    // When stacked, measure the label row height so we can push non-labeled
+    // elements down to align with the value row.  Cached after first measure.
+    var labelH = 0;
+    if (hasStackedFields) {
+      if (buildSummaryBar._labelH == null) {
+        var probe = document.createElement('span');
+        probe.className = P + '-sum-label';
+        probe.innerHTML = '&nbsp;';
+        probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+        document.body.appendChild(probe);
+        buildSummaryBar._labelH = probe.getBoundingClientRect().height || 11;
+        probe.remove();
+      }
+      labelH = buildSummaryBar._labelH;
+    }
+
     // ── KTL / legacy bulk-edit checkbox (if present) ──
     var checkTd = tr.querySelector('td > input[type="checkbox"]');
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
+      if (hasStackedFields) checkCell.style.paddingTop = labelH + 'px';
       bar.appendChild(checkCell);
     }
 
@@ -16168,6 +16146,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
+    if (hasStackedFields) chevron.style.marginTop = labelH + 'px';
     toggleZone.appendChild(chevron);
 
     var identity = document.createElement('span');
@@ -16178,6 +16157,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
+        if (hasStackedFields) labelTd.style.marginTop = labelH + 'px';
         identity.appendChild(labelTd);
       }
     }
@@ -16189,6 +16169,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var sep0 = document.createElement('span');
         sep0.className = P + '-sum-sep';
         sep0.textContent = '\u00b7';
+        if (hasStackedFields) sep0.style.marginTop = labelH + 'px';
         identity.appendChild(sep0);
 
         var productGroup = document.createElement('span');
@@ -16273,6 +16254,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var deleteTd = deleteLink.closest('td');
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
+      if (hasStackedFields) deleteWrap.style.paddingTop = labelH + 'px';
       deleteWrap.appendChild(deleteLink);
       rightGroup.appendChild(deleteWrap);
       if (deleteTd && !deleteTd.children.length) {
@@ -16729,6 +16711,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var identityEl = card.querySelector('.' + P + '-identity');
           var productGroupEl = card.querySelector('.' + P + '-product-group');
           if (identityEl && productGroupEl) {
+            // Push down when stacked so it aligns with value row
+            if (card.querySelector('.' + P + '-summary--stacked')) {
+              var lh = buildSummaryBar._labelH || 11;
+              warnIcon.style.marginTop = lh + 'px';
+            }
             identityEl.insertBefore(warnIcon, productGroupEl);
           } else if (identityEl) {
             identityEl.appendChild(warnIcon);
