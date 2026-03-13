@@ -6920,9 +6920,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   //  Helpers
   // ───────────────────────────────────────────────
 
-  /** Find all bulk-edit checkbox inputs within a container element. */
+  /** Find all bulk-edit checkbox inputs within a container element.
+   *  Matches both standard Knack bulk checkboxes (.kn-table-bulk-checkbox)
+   *  and KTL row checkboxes (.ktlCheckbox-row) used in worksheet views. */
   function findCheckboxes(container) {
-    return container.querySelectorAll('.kn-table-bulk-checkbox input[type="checkbox"]');
+    return container.querySelectorAll(
+      '.kn-table-bulk-checkbox input[type="checkbox"], ' +
+      'input.ktlCheckbox-row[type="checkbox"]'
+    );
   }
 
   /** Toggle all checkboxes: if any unchecked → check all, else uncheck all.
@@ -7057,7 +7062,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var rows = rowsInGroup(tr);
       var hasCheckboxes = false;
       for (var r = 0; r < rows.length; r++) {
-        if (rows[r].querySelector('.kn-table-bulk-checkbox input[type="checkbox"]')) {
+        if (rows[r].querySelector('.kn-table-bulk-checkbox input[type="checkbox"], input.ktlCheckbox-row[type="checkbox"]')) {
           hasCheckboxes = true;
           break;
         }
@@ -7096,7 +7101,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           var checkboxes = [];
           for (var g = 0; g < groupRows.length; g++) {
             var cbs = groupRows[g].querySelectorAll(
-              '.kn-table-bulk-checkbox input[type="checkbox"]'
+              '.kn-table-bulk-checkbox input[type="checkbox"], input.ktlCheckbox-row[type="checkbox"]'
             );
             for (var c = 0; c < cbs.length; c++) checkboxes.push(cbs[c]);
           }
