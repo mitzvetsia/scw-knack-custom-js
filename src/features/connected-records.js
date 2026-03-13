@@ -369,27 +369,50 @@
       return;
     }
 
+    console.log('[SCW][CR-DELETE] deleteRecord called', {
+      recordId: recordId,
+      recordName: recordName,
+      webhookUrl: webhookUrl,
+      itemEl: itemEl
+    });
+
+    // Log the parent row context for debugging
+    var parentTr = itemEl.closest('tr');
+    var parentRecordId = parentTr ? parentTr.id : '(no tr found)';
+    console.log('[SCW][CR-DELETE] Parent row context', {
+      parentTrId: parentRecordId,
+      parentTr: parentTr
+    });
+
     // Visual pending state
     itemEl.classList.add('scw-cr-deleting');
 
+    console.log('[SCW][CR-DELETE] Sending webhook POST…');
     fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recordId: recordId, recordName: recordName })
     })
     .then(function (resp) {
+      console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return {}; });
     })
-    .then(function () {
+    .then(function (body) {
+      console.log('[SCW][CR-DELETE] Webhook response body:', body);
+
       // Remove the item from the DOM
       itemEl.remove();
+
+      // Log what we're about to trigger
+      console.log('[SCW][CR-DELETE] Triggering knack-cell-update.scwScrollPreserve');
 
       // Trigger preservation pipeline + refresh parent views
       $(document).trigger('knack-cell-update.scwScrollPreserve');
 
       // Refresh the parent view so Knack reloads the connection data
       CONFIG.views.forEach(function (cfg) {
+        console.log('[SCW][CR-DELETE] Calling model.fetch() on', cfg.parentViewId);
         var viewObj = Knack.views[cfg.parentViewId];
         if (viewObj && viewObj.model && viewObj.model.fetch) {
           viewObj.model.fetch();
@@ -397,7 +420,7 @@
       });
     })
     .catch(function (err) {
-      console.error('[SCW] Delete record error:', err);
+      console.error('[SCW][CR-DELETE] Delete record error:', err);
       itemEl.classList.remove('scw-cr-deleting');
       alert('Delete failed: ' + err.message);
     });
@@ -407,7 +430,12 @@
    * Handle trash icon click: confirm, then delete via webhook.
    */
   function onDeleteClick(recordId, recordName, itemEl) {
+    console.log('[SCW][CR-DELETE] onDeleteClick fired', {
+      recordId: recordId,
+      recordName: recordName
+    });
     confirmDelete(recordName).then(function (confirmed) {
+      console.log('[SCW][CR-DELETE] Confirmation result:', confirmed);
       if (!confirmed) return;
       deleteRecord(recordId, recordName, itemEl);
     });
@@ -515,6 +543,10 @@
     // Read links from DOM
     var links = readConnectionLinks(tr, fieldKey);
     var addUrl = findAddUrl(tr, cfg.addSlug);
+
+    console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
+      return { text: l.text, recordId: l.recordId, href: l.href };
+    }));
 
     // Build warning map from DOM (like photo strip reads field_2446)
     var warningMap = cfg.warningField ? buildWarningMap(tr, cfg.warningField) : {};
