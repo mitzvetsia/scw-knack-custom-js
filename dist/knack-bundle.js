@@ -16112,8 +16112,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      if (hasStackedFields) checkCell.style.alignSelf = 'flex-start';
-      bar.appendChild(checkCell);
+      if (hasStackedFields) {
+        // Wrap in column-flex with empty label so checkbox aligns with value row
+        var checkWrap = document.createElement('span');
+        checkWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+        var checkSpacer = document.createElement('span');
+        checkSpacer.className = P + '-sum-label';
+        checkSpacer.innerHTML = '&nbsp;';
+        checkWrap.appendChild(checkSpacer);
+        checkWrap.appendChild(checkCell);
+        bar.appendChild(checkWrap);
+      } else {
+        bar.appendChild(checkCell);
+      }
     }
 
     // ── Toggle zone: chevron + identity (label + product) ──
@@ -16127,7 +16138,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
-    toggleZone.appendChild(chevron);
+    if (hasStackedFields) {
+      // Wrap in column-flex with empty label so chevron aligns with value row
+      var chevWrap = document.createElement('span');
+      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var chevSpacer = document.createElement('span');
+      chevSpacer.className = P + '-sum-label';
+      chevSpacer.innerHTML = '&nbsp;';
+      chevWrap.appendChild(chevSpacer);
+      chevWrap.appendChild(chevron);
+      toggleZone.appendChild(chevWrap);
+    } else {
+      toggleZone.appendChild(chevron);
+    }
 
     var identity = document.createElement('span');
     identity.className = P + '-identity';
