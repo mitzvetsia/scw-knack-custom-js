@@ -12380,35 +12380,58 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
-  // $.ajax INTERCEPT
+  // $.ajax MONKEY-PATCH
   // ============================================================
 
-  if (typeof $ === 'undefined' || !$.ajaxPrefilter) {
+  if (typeof $ === 'undefined' || typeof $.ajax !== 'function') {
     console.warn('[SCW][delete-intercept] jQuery not available — cannot install intercept');
     return;
   }
 
-  $.ajaxPrefilter(function (options) {
-    var method = (options.type || options.method || '').toUpperCase();
-    if (method !== 'DELETE') return;
+  var _origAjax = $.ajax;
 
-    var url = options.url || '';
-    var recordId = extractRecordId(url);
-    if (!recordId) return;
-
-    var viewId = extractViewId(url);
-
-    console.log('[SCW][delete-intercept] DELETE detected for record ' + recordId + (viewId ? ' in ' + viewId : ''));
-
-    var accessoryIds = getConnectedIds(recordId, viewId);
-    if (accessoryIds.length) {
-      fireWebhook(recordId, accessoryIds);
+  $.ajax = function (urlOrOptions, maybeOptions) {
+    // jQuery.ajax supports two signatures:
+    //   $.ajax(url, options)  and  $.ajax(options)
+    var opts;
+    if (typeof urlOrOptions === 'string') {
+      opts = maybeOptions || {};
+      opts.url = urlOrOptions;
     } else {
-      console.log('[SCW][delete-intercept] No connected accessories found for ' + recordId);
+      opts = urlOrOptions || {};
     }
-  });
 
-  console.log('[SCW][delete-intercept] Installed — monitoring DELETE requests');
+    var method = (opts.type || opts.method || 'GET').toUpperCase();
+
+    if (method === 'DELETE') {
+      var url = opts.url || '';
+      var recordId = extractRecordId(url);
+
+      if (recordId) {
+        var viewId = extractViewId(url);
+        console.log('[SCW][delete-intercept] DELETE detected for record ' + recordId + (viewId ? ' in ' + viewId : ''));
+
+        var accessoryIds = getConnectedIds(recordId, viewId);
+        if (accessoryIds.length) {
+          fireWebhook(recordId, accessoryIds);
+        } else {
+          console.log('[SCW][delete-intercept] No connected accessories found for ' + recordId);
+        }
+      }
+    }
+
+    // Always pass through to original $.ajax
+    return _origAjax.apply(this, arguments);
+  };
+
+  // Preserve any static properties on $.ajax (e.g. $.ajax.active)
+  for (var prop in _origAjax) {
+    if (_origAjax.hasOwnProperty(prop)) {
+      $.ajax[prop] = _origAjax[prop];
+    }
+  }
+
+  console.log('[SCW][delete-intercept] Installed — monkey-patched $.ajax to monitor DELETE requests');
 })();
 /*** CONNECTED RECORDS EDITOR ***/
 (function () {
