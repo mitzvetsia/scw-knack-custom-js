@@ -748,9 +748,10 @@
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
 
-  // NOTE: field_2464 hide removed — keeping visible for debugging
-
   $(document).on('knack-view-render.view_3580', function (event, view, data) {
+    // Hide field_2464 from the user — it's set programmatically
+    $('#kn-input-field_2464').hide();
+
     var hash = window.location.hash || '';
     // URL: #.../add-accessory-line-item/{parentRecordId}
     var match = hash.match(/add-accessory-line-item\/([a-f0-9]{24})/);
