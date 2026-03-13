@@ -6838,21 +6838,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
-/*** SELECT-ALL CHECKBOXES — view accordion + group header buttons ***/
+/*** SELECT-ALL CHECKBOXES — view header row + group header checkboxes ***/
 (function () {
   'use strict';
 
-  var STYLE_ID = 'scw-select-all-css';
-  var ENHANCED_ACCORDION = 'data-scw-select-all';
-  var ENHANCED_GROUP = 'data-scw-select-all-grp';
-
-  // ── SVG icon (checkbox with checkmark) ──
-  var CHECK_ALL_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
-    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-    '<polyline points="9 11 12 14 22 4"/>' +
-    '<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>' +
-    '</svg>';
+  var STYLE_ID  = 'scw-select-all-css';
+  var HEADER_ATTR = 'data-scw-sa-header';
+  var GROUP_ATTR  = 'data-scw-sa-grp';
+  var CB_SELECTOR =
+    '.kn-table-bulk-checkbox input[type="checkbox"], ' +
+    'input.ktlCheckbox-row[type="checkbox"]';
 
   // ───────────────────────────────────────────────
   //  CSS
@@ -6861,53 +6856,93 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (document.getElementById(STYLE_ID)) return;
 
     var css = [
-      /* ── Shared button style ── */
-      '.scw-select-all-btn {',
+      /* ── View-level header bar ── */
+      '.scw-sa-header {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  padding: 4px 12px;',
+      '  background: #e2e8f0;',
+      '  border-bottom: 2px solid #cbd5e1;',
+      '  min-height: 28px;',
+      '  user-select: none;',
+      '  position: sticky;',
+      '  top: 0;',
+      '  z-index: 5;',
+      '}',
+      '.scw-sa-header-check {',
+      '  flex: 0 0 auto;',
+      '  min-width: 20px;',
       '  display: inline-flex;',
       '  align-items: center;',
-      '  gap: 4px;',
-      '  padding: 3px 10px;',
-      '  font-size: 11px;',
-      '  font-weight: 600;',
-      '  line-height: 1.4;',
-      '  border-radius: 10px;',
-      '  border: 1px solid rgba(0,0,0,.15);',
-      '  background: rgba(255,255,255,.85);',
-      '  color: #475569;',
+      '  justify-content: center;',
+      '  padding: 0 4px;',
+      '}',
+      '.scw-sa-header-check input[type="checkbox"] {',
+      '  margin: 0;',
       '  cursor: pointer;',
-      '  user-select: none;',
+      '  width: 15px;',
+      '  height: 15px;',
+      '}',
+      /* labels mirror summary bar layout */
+      '.scw-sa-header-identity {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  flex: 0 0 auto;',
+      '  min-width: 0;',
+      '}',
+      '.scw-sa-header-fill {',
+      '  flex: 1 1 auto;',
+      '  min-width: 0;',
+      '}',
+      '.scw-sa-header-right {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 4px;',
+      '  margin-left: auto;',
+      '  flex-shrink: 0;',
+      '}',
+      '.scw-sa-header-label {',
+      '  font-size: 10px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  color: #374151;',
       '  white-space: nowrap;',
-      '  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;',
-      '  flex-shrink: 0;',
+      '  text-align: center;',
       '}',
-      '.scw-select-all-btn:hover {',
-      '  background: rgba(255,255,255,1);',
-      '  border-color: rgba(0,0,0,.25);',
-      '  color: #1e293b;',
-      '}',
-      '.scw-select-all-btn svg {',
-      '  flex-shrink: 0;',
-      '}',
+      /* per-group widths matching summary bar */
+      '.scw-sa-hdr-narrow  { width: 50px;  min-width: 50px;  }',
+      '.scw-sa-hdr-sub-bid { width: 70px;  min-width: 70px;  }',
+      '.scw-sa-hdr-vars    { width: 100px; min-width: 100px; }',
+      '.scw-sa-hdr-fee     { width: 70px;  min-width: 70px;  }',
+      '.scw-sa-hdr-sow     { width: 100px; min-width: 100px; }',
+      '.scw-sa-hdr-cat     { width: 70px;  min-width: 70px;  }',
+      '.scw-sa-hdr-bid     { width: 70px;  min-width: 70px;  }',
+      '.scw-sa-hdr-qty     { width: 50px;  min-width: 50px;  }',
+      '.scw-sa-hdr-mcb     { width: 80px;  min-width: 80px;  }',
+      '.scw-sa-hdr-cabling { min-width: 60px; }',
+      '.scw-sa-hdr-move    { width: 40px;  min-width: 40px;  }',
+      '.scw-sa-hdr-delete  { width: 28px;  min-width: 28px;  }',
 
-      /* ── Active state (all selected) ── */
-      '.scw-select-all-btn.is-all-selected {',
-      '  background: rgba(34,197,94,.12);',
-      '  border-color: rgba(34,197,94,.35);',
-      '  color: #16a34a;',
+      /* ── Group header checkbox ── */
+      '.scw-sa-grp-check {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  flex: 0 0 auto;',
+      '  min-width: 20px;',
+      '  padding: 0 4px;',
+      '  margin-right: 4px;',
       '}',
-      '.scw-select-all-btn.is-all-selected:hover {',
-      '  background: rgba(34,197,94,.18);',
+      '.scw-sa-grp-check input[type="checkbox"] {',
+      '  margin: 0;',
+      '  cursor: pointer;',
+      '  width: 15px;',
+      '  height: 15px;',
       '}',
-
-      /* ── Accordion header placement ── */
-      '.scw-ktl-accordion__header .scw-select-all-btn {',
-      '  margin-right: 6px;',
-      '}',
-
-      /* ── Group header placement ── */
-      '.scw-group-badges .scw-select-all-btn {',
-      '  margin-right: 2px;',
-      '}',
+      /* Group header td already display:flex from group-collapse, insert checkbox before collapse icon */
     ].join('\n');
 
     var el = document.createElement('style');
@@ -6920,14 +6955,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   //  Helpers
   // ───────────────────────────────────────────────
 
-  /** Find all bulk-edit checkbox inputs within a container element.
-   *  Matches both standard Knack bulk checkboxes (.kn-table-bulk-checkbox)
-   *  and KTL row checkboxes (.ktlCheckbox-row) used in worksheet views. */
+  /** Find all bulk-edit checkbox inputs within a container element. */
   function findCheckboxes(container) {
-    return container.querySelectorAll(
-      '.kn-table-bulk-checkbox input[type="checkbox"], ' +
-      'input.ktlCheckbox-row[type="checkbox"]'
-    );
+    return container.querySelectorAll(CB_SELECTOR);
   }
 
   /** Toggle all checkboxes: if any unchecked → check all, else uncheck all.
@@ -6937,99 +6967,252 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     for (var i = 0; i < checkboxes.length; i++) {
       if (!checkboxes[i].checked) { allChecked = false; break; }
     }
-
     for (var j = 0; j < checkboxes.length; j++) {
       if (allChecked) {
-        // Deselect all
         if (checkboxes[j].checked) checkboxes[j].click();
       } else {
-        // Select all unchecked
         if (!checkboxes[j].checked) checkboxes[j].click();
       }
     }
-
-    return !allChecked; // new state: true = now all selected
+    return !allChecked;
   }
 
-  /** Update button visual state based on checkbox status. */
-  function syncButtonState(btn, checkboxes) {
-    if (!checkboxes.length) {
-      btn.style.display = 'none';
-      return;
-    }
-    btn.style.display = '';
+  /** Sync a checkbox's checked state with a set of target checkboxes. */
+  function syncCheckbox(cb, targets) {
+    if (!targets.length) return;
     var allChecked = true;
-    for (var i = 0; i < checkboxes.length; i++) {
-      if (!checkboxes[i].checked) { allChecked = false; break; }
+    var anyChecked = false;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].checked) anyChecked = true;
+      else allChecked = false;
     }
-    btn.classList.toggle('is-all-selected', allChecked);
-    btn.textContent = '';
-    btn.innerHTML = CHECK_ALL_SVG + (allChecked ? ' Deselect' : ' Select All');
+    cb.checked = allChecked;
+    cb.indeterminate = !allChecked && anyChecked;
   }
 
   // ───────────────────────────────────────────────
-  //  1) KTL Accordion — view-level "Select All"
+  //  1) View-level header row
   // ───────────────────────────────────────────────
 
-  function enhanceAccordions() {
-    var headers = document.querySelectorAll('.scw-ktl-accordion__header');
+  /** Read column labels from the first rendered summary bar in a view. */
+  function readHeaderLayout(viewEl) {
+    var bar = viewEl.querySelector('.scw-ws-summary');
+    if (!bar) return null;
 
-    for (var i = 0; i < headers.length; i++) {
-      var header = headers[i];
-      if (header.getAttribute(ENHANCED_ACCORDION) === '1') continue;
+    var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
 
+    // Identity: label cell + product
+    var labelCell = bar.querySelector('.scw-ws-sum-label-cell');
+    if (labelCell) result.identity.push('Label');
+    var productCell = bar.querySelector('.scw-ws-sum-product');
+    if (productCell) result.identity.push('Product');
+
+    // Fill: labor description
+    var fillGroup = bar.querySelector('.scw-ws-sum-group--fill');
+    if (fillGroup) {
+      var fillLabel = fillGroup.querySelector('.scw-ws-sum-label');
+      result.fill = fillLabel ? fillLabel.textContent.trim() : 'Labor Desc';
+    }
+
+    // Right groups — read in DOM order
+    var rightContainer = bar.querySelector('.scw-ws-sum-right');
+    if (rightContainer) {
+      var groups = rightContainer.querySelectorAll('.scw-ws-sum-group');
+      for (var i = 0; i < groups.length; i++) {
+        var g = groups[i];
+        var cls = g.className;
+
+        if (cls.indexOf('sum-group--cabling') !== -1) {
+          result.hasCabling = true;
+          continue;
+        }
+        if (cls.indexOf('sum-group--move') !== -1) {
+          result.hasMove = true;
+          continue;
+        }
+        if (cls.indexOf('sum-group--delete') !== -1 || g.querySelector('.kn-link-delete')) {
+          result.hasDelete = true;
+          continue;
+        }
+
+        var lbl = g.querySelector('.scw-ws-sum-label');
+        var text = lbl ? lbl.textContent.trim() : '';
+        if (!text) continue;
+
+        // Determine width class
+        var widthCls = '';
+        if (cls.indexOf('sum-group--narrow') !== -1)   widthCls = 'scw-sa-hdr-narrow';
+        else if (cls.indexOf('sum-group--sub-bid') !== -1) widthCls = 'scw-sa-hdr-sub-bid';
+        else if (cls.indexOf('sum-group--vars') !== -1)    widthCls = 'scw-sa-hdr-vars';
+        else if (cls.indexOf('sum-group--fee') !== -1)     widthCls = 'scw-sa-hdr-fee';
+        else if (cls.indexOf('sum-group--sow') !== -1)     widthCls = 'scw-sa-hdr-sow';
+        else if (cls.indexOf('sum-group--cat') !== -1)     widthCls = 'scw-sa-hdr-cat';
+        else if (cls.indexOf('sum-group--bid') !== -1)     widthCls = 'scw-sa-hdr-bid';
+        else if (cls.indexOf('sum-group--qty') !== -1)     widthCls = 'scw-sa-hdr-qty';
+        else if (cls.indexOf('sum-group--mcb') !== -1)     widthCls = 'scw-sa-hdr-mcb';
+        else if (cls.indexOf('sum-group--ext') !== -1)     widthCls = 'scw-sa-hdr-fee';
+
+        result.right.push({ text: text, widthCls: widthCls });
+      }
+    }
+
+    // Check for cabling by looking at chit
+    if (!result.hasCabling && bar.querySelector('.scw-ws-cabling-chit')) {
+      result.hasCabling = true;
+    }
+
+    // Check for delete
+    if (!result.hasDelete && bar.querySelector('.scw-ws-sum-delete')) {
+      result.hasDelete = true;
+    }
+
+    return result;
+  }
+
+  /** Build and insert the header bar above the table's first group/data row. */
+  function buildHeaderBar(viewEl, viewKey) {
+    var layout = readHeaderLayout(viewEl);
+    if (!layout) return;
+
+    var bar = document.createElement('div');
+    bar.className = 'scw-sa-header';
+    bar.setAttribute('data-scw-sa-view', viewKey);
+
+    // ── Select-all checkbox ──
+    var checkWrap = document.createElement('span');
+    checkWrap.className = 'scw-sa-header-check';
+    var selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.setAttribute('aria-label', 'Select all rows in this view');
+    selectAllCb.title = 'Select / deselect all';
+    checkWrap.appendChild(selectAllCb);
+    bar.appendChild(checkWrap);
+
+    // ── Identity labels ──
+    var idSpan = document.createElement('span');
+    idSpan.className = 'scw-sa-header-identity';
+    for (var id = 0; id < layout.identity.length; id++) {
+      var s = document.createElement('span');
+      s.className = 'scw-sa-header-label';
+      s.textContent = layout.identity[id];
+      idSpan.appendChild(s);
+      if (id < layout.identity.length - 1) {
+        var sep = document.createElement('span');
+        sep.textContent = ' · ';
+        sep.style.cssText = 'color:#94a3b8;font-size:11px;';
+        idSpan.appendChild(sep);
+      }
+    }
+    bar.appendChild(idSpan);
+
+    // ── Fill label (labor desc) ──
+    if (layout.fill) {
+      var fillSpan = document.createElement('span');
+      fillSpan.className = 'scw-sa-header-fill scw-sa-header-label';
+      fillSpan.textContent = layout.fill;
+      bar.appendChild(fillSpan);
+    }
+
+    // ── Right-side labels ──
+    var rightSpan = document.createElement('span');
+    rightSpan.className = 'scw-sa-header-right';
+
+    if (layout.hasCabling) {
+      var cab = document.createElement('span');
+      cab.className = 'scw-sa-header-label scw-sa-hdr-cabling';
+      cab.textContent = 'Cabling';
+      rightSpan.appendChild(cab);
+    }
+
+    for (var r = 0; r < layout.right.length; r++) {
+      var item = layout.right[r];
+      var lbl = document.createElement('span');
+      lbl.className = 'scw-sa-header-label' + (item.widthCls ? ' ' + item.widthCls : '');
+      lbl.textContent = item.text;
+      rightSpan.appendChild(lbl);
+    }
+
+    if (layout.hasMove) {
+      var mv = document.createElement('span');
+      mv.className = 'scw-sa-header-label scw-sa-hdr-move';
+      mv.textContent = 'Move';
+      rightSpan.appendChild(mv);
+    }
+    if (layout.hasDelete) {
+      var del = document.createElement('span');
+      del.className = 'scw-sa-header-label scw-sa-hdr-delete';
+      del.innerHTML = '&nbsp;';
+      rightSpan.appendChild(del);
+    }
+
+    bar.appendChild(rightSpan);
+
+    // ── Insert before the table wrapper ──
+    var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
+    if (tableWrapper) {
+      tableWrapper.parentNode.insertBefore(bar, tableWrapper);
+    } else {
+      // fallback: prepend inside the view
+      viewEl.insertBefore(bar, viewEl.querySelector('.kn-records-nav'));
+    }
+
+    // ── Click handler ──
+    selectAllCb.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var el = document.getElementById(viewKey);
+      if (!el) return;
+      var cbs = findCheckboxes(el);
+      if (!cbs.length) return;
+
+      var shouldCheck = selectAllCb.checked;
+      for (var k = 0; k < cbs.length; k++) {
+        if (cbs[k].checked !== shouldCheck) cbs[k].click();
+      }
+      selectAllCb.indeterminate = false;
+    });
+
+    // ── Sync state on any checkbox change within view ──
+    $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
+      var cbs = findCheckboxes(document.getElementById(viewKey));
+      syncCheckbox(selectAllCb, cbs);
+    });
+
+    // Initial sync
+    syncCheckbox(selectAllCb, findCheckboxes(viewEl));
+
+    return bar;
+  }
+
+  function enhanceViews() {
+    var accordions = document.querySelectorAll('.scw-ktl-accordion__header');
+
+    for (var i = 0; i < accordions.length; i++) {
+      var header = accordions[i];
       var viewKey = header.getAttribute('data-view-key');
       if (!viewKey) continue;
 
       var viewEl = document.getElementById(viewKey);
       if (!viewEl) continue;
+      if (viewEl.getAttribute(HEADER_ATTR) === '1') continue;
 
       // Only add if this view has bulk checkboxes
       var checkboxes = findCheckboxes(viewEl);
       if (!checkboxes.length) continue;
 
-      header.setAttribute(ENHANCED_ACCORDION, '1');
+      // Remove old button from accordion header if present
+      var oldBtn = header.querySelector('.scw-select-all-btn');
+      if (oldBtn) oldBtn.remove();
 
-      var btn = document.createElement('button');
-      btn.className = 'scw-select-all-btn';
-      btn.type = 'button';
-      btn.setAttribute('data-scw-sa-view', viewKey);
-      btn.innerHTML = CHECK_ALL_SVG + ' Select All';
-
-      // Insert before the chevron
-      var chevron = header.querySelector('.scw-acc-chevron');
-      if (chevron) {
-        header.insertBefore(btn, chevron);
-      } else {
-        header.appendChild(btn);
-      }
-
-      // Click handler
-      (function (button, vKey) {
-        button.addEventListener('click', function (e) {
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          e.preventDefault();
-
-          var el = document.getElementById(vKey);
-          if (!el) return;
-          var cbs = findCheckboxes(el);
-          var nowSelected = toggleAll(cbs);
-          button.classList.toggle('is-all-selected', nowSelected);
-          button.innerHTML = CHECK_ALL_SVG + (nowSelected ? ' Deselect' : ' Select All');
-        });
-      })(btn, viewKey);
-
-      syncButtonState(btn, checkboxes);
+      viewEl.setAttribute(HEADER_ATTR, '1');
+      buildHeaderBar(viewEl, viewKey);
     }
   }
 
   // ───────────────────────────────────────────────
-  //  2) Group-collapse — group-level "Select All"
+  //  2) Group header checkboxes
   // ───────────────────────────────────────────────
 
-  /** Find all data rows (non-group, non-totals) between this group header
-   *  and the next group header of the same or higher level. */
+  /** Find all data rows between this group header and the next. */
   function rowsInGroup(headerTr) {
     var isL2 = headerTr.classList.contains('kn-group-level-2');
     var rows = [];
@@ -7037,8 +7220,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     while (next) {
       if (next.classList.contains('kn-table-group')) {
-        if (isL2) break; // L2: stop at any group row
-        if (next.classList.contains('kn-group-level-1')) break; // L1: stop at next L1
+        if (isL2) break;
+        if (next.classList.contains('kn-group-level-1')) break;
       }
       if (!next.classList.contains('kn-table-group') &&
           !next.classList.contains('kn-table-totals')) {
@@ -7050,68 +7233,96 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   function enhanceGroupHeaders() {
-    var groupHeaders = document.querySelectorAll(
-      'tr.kn-table-group.scw-group-header'
-    );
+    var groupHeaders = document.querySelectorAll('tr.kn-table-group.scw-group-header');
 
     for (var i = 0; i < groupHeaders.length; i++) {
       var tr = groupHeaders[i];
-      if (tr.getAttribute(ENHANCED_GROUP) === '1') continue;
+      if (tr.getAttribute(GROUP_ATTR) === '1') continue;
 
-      // Check if any rows in this group have bulk checkboxes
       var rows = rowsInGroup(tr);
       var hasCheckboxes = false;
       for (var r = 0; r < rows.length; r++) {
-        if (rows[r].querySelector('.kn-table-bulk-checkbox input[type="checkbox"], input.ktlCheckbox-row[type="checkbox"]')) {
+        if (rows[r].querySelector(CB_SELECTOR)) {
           hasCheckboxes = true;
           break;
         }
       }
       if (!hasCheckboxes) continue;
 
-      tr.setAttribute(ENHANCED_GROUP, '1');
+      tr.setAttribute(GROUP_ATTR, '1');
 
-      var btn = document.createElement('button');
-      btn.className = 'scw-select-all-btn';
-      btn.type = 'button';
-      btn.innerHTML = CHECK_ALL_SVG + ' Select All';
+      // Remove old select-all button if present
+      var oldBtn = tr.querySelector('.scw-select-all-btn');
+      if (oldBtn) oldBtn.remove();
 
-      // Place inside .scw-group-badges if it exists, otherwise append to first td
-      var badges = tr.querySelector('.scw-group-badges');
-      if (badges) {
-        badges.insertBefore(btn, badges.firstChild);
-      } else {
-        var td = tr.querySelector('td');
-        if (!td) continue;
-        // Create a badges wrapper for consistency
-        var wrapper = document.createElement('span');
-        wrapper.className = 'scw-group-badges';
-        wrapper.appendChild(btn);
-        td.appendChild(wrapper);
-      }
+      // Create checkbox
+      var checkWrap = document.createElement('span');
+      checkWrap.className = 'scw-sa-grp-check';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.setAttribute('aria-label', 'Select all rows in this group');
+      cb.title = 'Select / deselect group';
+      checkWrap.appendChild(cb);
 
-      // Click handler — must stop propagation so group collapse doesn't toggle
-      (function (button, headerRow) {
-        button.addEventListener('click', function (e) {
+      // Insert at the start of td, before collapse icon
+      var td = tr.querySelector('td');
+      if (!td) continue;
+      td.insertBefore(checkWrap, td.firstChild);
+
+      // Click handler
+      (function (checkbox, headerRow) {
+        checkbox.addEventListener('click', function (e) {
           e.stopPropagation();
           e.stopImmediatePropagation();
-          e.preventDefault();
 
           var groupRows = rowsInGroup(headerRow);
-          var checkboxes = [];
+          var targets = [];
           for (var g = 0; g < groupRows.length; g++) {
-            var cbs = groupRows[g].querySelectorAll(
-              '.kn-table-bulk-checkbox input[type="checkbox"], input.ktlCheckbox-row[type="checkbox"]'
-            );
-            for (var c = 0; c < cbs.length; c++) checkboxes.push(cbs[c]);
+            var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
+            for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
           }
-          if (!checkboxes.length) return;
+          if (!targets.length) return;
 
-          var nowSelected = toggleAll(checkboxes);
-          button.classList.toggle('is-all-selected', nowSelected);
-          button.innerHTML = CHECK_ALL_SVG + (nowSelected ? ' Deselect' : ' Select All');
+          var shouldCheck = checkbox.checked;
+          for (var k = 0; k < targets.length; k++) {
+            if (targets[k].checked !== shouldCheck) targets[k].click();
+          }
+          checkbox.indeterminate = false;
+
+          // Also sync view-level header checkbox
+          var viewEl = headerRow.closest('.kn-table.kn-view');
+          if (viewEl) {
+            var headerBar = viewEl.previousElementSibling;
+            if (headerBar && headerBar.classList.contains('scw-sa-header')) {
+              var viewCb = headerBar.querySelector('input[type="checkbox"]');
+              if (viewCb) syncCheckbox(viewCb, findCheckboxes(viewEl));
+            }
+          }
         });
-      })(btn, tr);
+
+        // Listen for row checkbox changes to update group checkbox state
+        var parentTable = headerRow.closest('table');
+        if (parentTable) {
+          $(parentTable).off('change.scwSaGrp' + i).on('change.scwSaGrp' + i, 'input[type="checkbox"]', function () {
+            var groupRows = rowsInGroup(headerRow);
+            var targets = [];
+            for (var g = 0; g < groupRows.length; g++) {
+              var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
+              for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
+            }
+            syncCheckbox(checkbox, targets);
+          });
+        }
+      })(cb, tr);
+
+      // Initial sync
+      var initRows = rowsInGroup(tr);
+      var initTargets = [];
+      for (var ir = 0; ir < initRows.length; ir++) {
+        var initCbs = initRows[ir].querySelectorAll(CB_SELECTOR);
+        for (var ic = 0; ic < initCbs.length; ic++) initTargets.push(initCbs[ic]);
+      }
+      syncCheckbox(cb, initTargets);
     }
   }
 
@@ -7121,11 +7332,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   injectCss();
 
   function enhance() {
-    enhanceAccordions();
+    enhanceViews();
     enhanceGroupHeaders();
   }
 
-  // Run after KTL accordion and group-collapse have finished
   $(document)
     .off('knack-scene-render.any.scwSelectAll')
     .on('knack-scene-render.any.scwSelectAll', function () {
