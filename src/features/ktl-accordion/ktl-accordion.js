@@ -357,6 +357,12 @@
 
     var tbody = viewEl.querySelector('table.kn-table tbody');
     if (tbody) {
+      // If device-worksheet has transformed this view, count only the
+      // worksheet rows (scw-ws-row) — otherwise we'd double-count
+      // because the original Knack <tr> rows are hidden but still present.
+      var wsRows = tbody.querySelectorAll('tr.scw-ws-row');
+      if (wsRows.length) return wsRows.length;
+
       var rows = tbody.querySelectorAll('tr');
       var real = 0;
       for (var i = 0; i < rows.length; i++) {
