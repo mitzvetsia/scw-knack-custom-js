@@ -1470,6 +1470,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   flex: none;
 }
 
+/* view_3332 header warning icon — standalone before product group */
+#view_3332 .${P}-identity > .scw-cr-hdr-warning {
+  margin-left: 0;
+  margin-top: 11px;
+  align-self: flex-start;
+}
 /* view_3332 detail sections grid */
 #view_3332 .${P}-sections {
   grid-template-columns: 1fr 1fr;
@@ -1556,6 +1562,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ── Bucket detection for per-view conditional field hiding ──
+
+  /**
+   * Return the true label text of a Knack group-header row, ignoring any
+   * elements injected by group-collapse (collapse icons, record-count badges).
+   */
+  function getGroupLabelText(groupRow) {
+    var td = groupRow.querySelector('td');
+    if (!td) return '';
+    var clone = td.cloneNode(true);
+    var extras = clone.querySelectorAll('.scw-collapse-icon, .scw-group-badges');
+    for (var i = 0; i < extras.length; i++) extras[i].remove();
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
 
   /**
    * Read the bucket connection record ID from a detect cell.
@@ -3402,19 +3421,30 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // ── Accessory mismatch header warning ──
     // If any connected-records widget flagged a warning, add icon to summary row.
-    // Prefer the label cell (view_3313); fall back to the product group (view_3332).
+    // Prefer the label cell (view_3313); when no label cell exists (view_3332),
+    // insert as a standalone element in the identity, before the product group.
     var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
     for (var w = 0; w < crWidgets.length; w++) {
       var parentField = crWidgets[w].parentElement;
       if (parentField && parentField._hasWarning) {
-        var warnTarget = card.querySelector('td.' + P + '-sum-label-cell')
-                      || card.querySelector('.' + P + '-product-group');
-        if (warnTarget) {
-          var warnIcon = document.createElement('span');
-          warnIcon.className = 'scw-cr-hdr-warning';
-          warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-          warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
-          warnTarget.appendChild(warnIcon);
+        var warnIcon = document.createElement('span');
+        warnIcon.className = 'scw-cr-hdr-warning';
+        warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
+
+        var labelCell = card.querySelector('td.' + P + '-sum-label-cell');
+        if (labelCell) {
+          // view_3313 style: append to label cell
+          labelCell.appendChild(warnIcon);
+        } else {
+          // view_3332 style: insert before product group in identity
+          var identityEl = card.querySelector('.' + P + '-identity');
+          var productGroupEl = card.querySelector('.' + P + '-product-group');
+          if (identityEl && productGroupEl) {
+            identityEl.insertBefore(warnIcon, productGroupEl);
+          } else if (identityEl) {
+            identityEl.appendChild(warnIcon);
+          }
         }
         break;
       }
@@ -3477,8 +3507,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         if (!prev) {
           hasNoMove = true; // no group header at all
         } else {
-          var grpLabel = (prev.textContent || '').replace(/\s+/g, ' ').trim();
-          hasNoMove = grpLabel.length === 0;
+          hasNoMove = getGroupLabelText(prev).length === 0;
         }
       }
 
@@ -3549,7 +3578,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       for (var gi = 0; gi < nativeGroups.length; gi++) {
         var grp = nativeGroups[gi];
         if (grp.classList.contains('scw-synthetic-group')) continue;
-        var labelText = (grp.textContent || '').replace(/\s+/g, ' ').trim();
+        var labelText = getGroupLabelText(grp);
         if (labelText.length === 0) {
           // Remove orphaned photo rows that follow this empty header
           var sib = grp.nextElementSibling;
