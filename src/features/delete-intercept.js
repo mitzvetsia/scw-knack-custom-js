@@ -31,20 +31,11 @@
   function getConnectedIdsFromDOM(recordId) {
     var ids = [];
 
-    // Find the Knack table row (original <tr> with id = recordId)
-    var tr = document.getElementById(recordId);
-    if (!tr) {
-      console.log('[SCW][delete-intercept] No <tr> found for ' + recordId);
-      return ids;
-    }
-
-    // The worksheet card is in the next sibling tr.scw-ws-row,
-    // or the tr itself might be a scw-ws-row.
-    var wsRow = tr.classList.contains('scw-ws-row')
-      ? tr
-      : tr.nextElementSibling;
-
-    if (wsRow && wsRow.classList.contains('scw-ws-row')) {
+    // The device worksheet creates a tr.scw-ws-row with the same record ID.
+    // The original hidden Knack <tr> also has this ID, so getElementById
+    // may return the wrong one. Query specifically for the worksheet row.
+    var wsRow = document.querySelector('tr.scw-ws-row[id="' + recordId + '"]');
+    if (wsRow) {
       var buttons = wsRow.querySelectorAll('.scw-cr-remove[data-record-id]');
       for (var i = 0; i < buttons.length; i++) {
         var rid = buttons[i].getAttribute('data-record-id');
@@ -52,12 +43,15 @@
       }
     }
 
-    // Also check the original tr itself (in case widget is embedded directly)
+    // Fallback: search any <tr> with this ID
     if (!ids.length) {
-      var btns = tr.querySelectorAll('.scw-cr-remove[data-record-id]');
-      for (var b = 0; b < btns.length; b++) {
-        var id = btns[b].getAttribute('data-record-id');
-        if (id) ids.push(id);
+      var rows = document.querySelectorAll('tr[id="' + recordId + '"]');
+      for (var r = 0; r < rows.length; r++) {
+        var btns = rows[r].querySelectorAll('.scw-cr-remove[data-record-id]');
+        for (var b = 0; b < btns.length; b++) {
+          var id = btns[b].getAttribute('data-record-id');
+          if (id) ids.push(id);
+        }
       }
     }
 
