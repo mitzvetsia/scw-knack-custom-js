@@ -20,7 +20,7 @@
       '.scw-sa-header {',
       '  display: flex;',
       '  align-items: center;',
-      '  gap: 6px;',
+      '  gap: 0;',
       '  padding: 4px 12px;',
       '  background: #e2e8f0;',
       '  border-bottom: 2px solid #cbd5e1;',
@@ -44,7 +44,8 @@
       '  width: 15px;',
       '  height: 15px;',
       '}',
-      /* labels mirror summary bar layout */
+
+      /* identity mirrors toggle-zone width */
       '.scw-sa-header-identity {',
       '  display: flex;',
       '  align-items: center;',
@@ -63,6 +64,16 @@
       '  margin-left: auto;',
       '  flex-shrink: 0;',
       '}',
+
+      /* Each header label cell: contains label text + optional checkbox */
+      '.scw-sa-header-cell {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  justify-content: flex-end;',
+      '  gap: 2px;',
+      '  flex-shrink: 0;',
+      '}',
       '.scw-sa-header-label {',
       '  font-size: 10px;',
       '  font-weight: 700;',
@@ -71,7 +82,20 @@
       '  color: #374151;',
       '  white-space: nowrap;',
       '  text-align: center;',
+      '  line-height: 1.2;',
       '}',
+      /* Bulk-edit column checkbox inside header cell */
+      '.scw-sa-hdr-cbox {',
+      '  margin: 0;',
+      '  cursor: pointer;',
+      '  width: 13px;',
+      '  height: 13px;',
+      '}',
+      /* Hidden by default, shown when KTL bulk-edit header checkboxes become visible */
+      '.scw-sa-hdr-cbox.scw-sa-hdr-cbox--hidden {',
+      '  display: none;',
+      '}',
+
       /* per-group widths matching summary bar */
       '.scw-sa-hdr-narrow  { width: 50px;  min-width: 50px;  }',
       '.scw-sa-hdr-sub-bid { width: 70px;  min-width: 70px;  }',
@@ -165,27 +189,74 @@
   }
 
   // ───────────────────────────────────────────────
+  //  KTL bulk-edit header checkbox helpers
+  // ───────────────────────────────────────────────
+
+  /**
+   * Build a map from field key → <input> for all bulkEditHeaderCbox checkboxes
+   * inside the view's hidden <thead>.
+   */
+  function readTheadCheckboxes(viewEl) {
+    var map = {};
+    var thead = viewEl.querySelector('thead');
+    if (!thead) return map;
+    var ths = thead.querySelectorAll('th');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var cbox = th.querySelector('input.bulkEditHeaderCbox');
+      if (!cbox) continue;
+      // field key from the th class list
+      var cls = th.className.split(/\s+/);
+      for (var c = 0; c < cls.length; c++) {
+        if (cls[c].indexOf('field_') === 0) {
+          map[cls[c]] = cbox;
+          break;
+        }
+      }
+    }
+    return map;
+  }
+
+  /**
+   * Check whether KTL bulk-edit header checkboxes are currently visible
+   * (KTL shows them when a row checkbox is selected and copy/paste mode is active).
+   */
+  function areBulkEditCboxesVisible(viewEl) {
+    var thead = viewEl.querySelector('thead');
+    if (!thead) return false;
+    var sample = thead.querySelector('input.bulkEditHeaderCbox');
+    if (!sample) return false;
+    // KTL toggles ktlDisplayNone class to show/hide
+    return !sample.classList.contains('ktlDisplayNone');
+  }
+
+  // ───────────────────────────────────────────────
   //  1) View-level header row
   // ───────────────────────────────────────────────
 
-  /** Read column labels from the first rendered summary bar in a view. */
+  /**
+   * Read column layout from the first rendered summary bar.
+   * Returns an object with info about each group including its data-scw-fields.
+   */
   function readHeaderLayout(viewEl) {
     var bar = viewEl.querySelector('.scw-ws-summary');
     if (!bar) return null;
 
     var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
 
-    // Identity: label cell + product
-    var labelCell = bar.querySelector('.scw-ws-sum-label-cell');
-    if (labelCell) result.identity.push('Label');
+    // Identity: product
     var productCell = bar.querySelector('.scw-ws-sum-product');
-    if (productCell) result.identity.push('Product');
+    if (productCell) result.identity.push({ text: 'Product', field: productCell.getAttribute('data-field-key') || 'field_1949' });
 
     // Fill: labor description
     var fillGroup = bar.querySelector('.scw-ws-sum-group--fill');
     if (fillGroup) {
       var fillLabel = fillGroup.querySelector('.scw-ws-sum-label');
-      result.fill = fillLabel ? fillLabel.textContent.trim() : 'Labor Desc';
+      var fillFields = fillGroup.getAttribute('data-scw-fields') || '';
+      result.fill = {
+        text: fillLabel ? fillLabel.textContent.trim() : 'Labor Desc',
+        fields: fillFields.split(/\s+/).filter(function(f) { return f; })
+      };
     }
 
     // Right groups — read in DOM order
@@ -201,7 +272,10 @@
           continue;
         }
         if (cls.indexOf('sum-group--move') !== -1) {
+          // Extract field from the td inside
+          var moveTd = g.querySelector('td[data-field-key]');
           result.hasMove = true;
+          result.moveField = moveTd ? moveTd.getAttribute('data-field-key') : 'field_1946';
           continue;
         }
         if (cls.indexOf('sum-group--delete') !== -1 || g.querySelector('.kn-link-delete')) {
@@ -213,9 +287,12 @@
         var text = lbl ? lbl.textContent.trim() : '';
         if (!text) continue;
 
+        // Read data-scw-fields to know which field keys belong to this group
+        var fieldKeys = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
+
         // Determine width class
         var widthCls = '';
-        if (cls.indexOf('sum-group--narrow') !== -1)   widthCls = 'scw-sa-hdr-narrow';
+        if (cls.indexOf('sum-group--narrow') !== -1)     widthCls = 'scw-sa-hdr-narrow';
         else if (cls.indexOf('sum-group--sub-bid') !== -1) widthCls = 'scw-sa-hdr-sub-bid';
         else if (cls.indexOf('sum-group--vars') !== -1)    widthCls = 'scw-sa-hdr-vars';
         else if (cls.indexOf('sum-group--fee') !== -1)     widthCls = 'scw-sa-hdr-fee';
@@ -226,7 +303,7 @@
         else if (cls.indexOf('sum-group--mcb') !== -1)     widthCls = 'scw-sa-hdr-mcb';
         else if (cls.indexOf('sum-group--ext') !== -1)     widthCls = 'scw-sa-hdr-fee';
 
-        result.right.push({ text: text, widthCls: widthCls });
+        result.right.push({ text: text, widthCls: widthCls, fields: fieldKeys });
       }
     }
 
@@ -243,16 +320,69 @@
     return result;
   }
 
-  /** Build and insert the header bar above the table's first group/data row. */
+  /**
+   * Build a header cell (label + optional bulk-edit checkbox).
+   * @param {string} labelText
+   * @param {string[]} fieldKeys — field keys for this group (first one checked for thead cbox)
+   * @param {Object} theadMap — field→checkbox map from readTheadCheckboxes
+   * @param {boolean} bulkVisible — whether bulk-edit checkboxes are currently visible
+   * @param {string} extraCls — extra CSS class for width
+   * @returns {HTMLElement}
+   */
+  function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, extraCls) {
+    var cell = document.createElement('span');
+    cell.className = 'scw-sa-header-cell' + (extraCls ? ' ' + extraCls : '');
+
+    var lbl = document.createElement('span');
+    lbl.className = 'scw-sa-header-label';
+    lbl.textContent = labelText;
+    cell.appendChild(lbl);
+
+    // Check if any of this group's fields has a bulkEditHeaderCbox
+    var matchedCbox = null;
+    for (var i = 0; i < fieldKeys.length; i++) {
+      if (theadMap[fieldKeys[i]]) {
+        matchedCbox = theadMap[fieldKeys[i]];
+        break;
+      }
+    }
+
+    if (matchedCbox) {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'scw-sa-hdr-cbox' + (bulkVisible ? '' : ' scw-sa-hdr-cbox--hidden');
+      cb.checked = matchedCbox.checked;
+      cb.title = 'Include "' + labelText + '" in copy';
+      cb.setAttribute('data-scw-thead-field', fieldKeys[0]);
+      // Sync clicks both ways
+      cb.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (matchedCbox.checked !== cb.checked) {
+          matchedCbox.click(); // trigger KTL handler
+        }
+      });
+      cell.appendChild(cb);
+    }
+
+    return cell;
+  }
+
+  /** Build and insert the header bar inside the view, between kn-records-nav and kn-table-wrapper. */
   function buildHeaderBar(viewEl, viewKey) {
     var layout = readHeaderLayout(viewEl);
     if (!layout) return null;
 
     // Remove any previously-inserted header bar (defensive)
     var sel = '.scw-sa-header[data-scw-sa-view="' + viewKey + '"]';
-    var existing = viewEl.parentNode ? viewEl.parentNode.querySelector(sel) : null;
-    if (!existing) existing = viewEl.querySelector(sel);
+    var existing = viewEl.querySelector(sel);
+    if (!existing && viewEl.parentNode) {
+      existing = viewEl.parentNode.querySelector(sel);
+    }
     if (existing) existing.remove();
+
+    // Read thead checkbox map for KTL bulk-edit column selection
+    var theadMap = readTheadCheckboxes(viewEl);
+    var bulkVisible = areBulkEditCboxesVisible(viewEl);
 
     var bar = document.createElement('div');
     bar.className = 'scw-sa-header';
@@ -268,29 +398,21 @@
     checkWrap.appendChild(selectAllCb);
     bar.appendChild(checkWrap);
 
-    // ── Identity labels ──
+    // ── Identity labels (Product) ──
     var idSpan = document.createElement('span');
     idSpan.className = 'scw-sa-header-identity';
     for (var id = 0; id < layout.identity.length; id++) {
-      var s = document.createElement('span');
-      s.className = 'scw-sa-header-label';
-      s.textContent = layout.identity[id];
-      idSpan.appendChild(s);
-      if (id < layout.identity.length - 1) {
-        var sep = document.createElement('span');
-        sep.textContent = ' · ';
-        sep.style.cssText = 'color:#94a3b8;font-size:11px;';
-        idSpan.appendChild(sep);
-      }
+      var idItem = layout.identity[id];
+      var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, '');
+      idSpan.appendChild(idCell);
     }
     bar.appendChild(idSpan);
 
     // ── Fill label (labor desc) ──
     if (layout.fill) {
-      var fillSpan = document.createElement('span');
-      fillSpan.className = 'scw-sa-header-fill scw-sa-header-label';
-      fillSpan.textContent = layout.fill;
-      bar.appendChild(fillSpan);
+      var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, '');
+      fillCell.classList.add('scw-sa-header-fill');
+      bar.appendChild(fillCell);
     }
 
     // ── Right-side labels ──
@@ -298,48 +420,38 @@
     rightSpan.className = 'scw-sa-header-right';
 
     if (layout.hasCabling) {
-      var cab = document.createElement('span');
-      cab.className = 'scw-sa-header-label scw-sa-hdr-cabling';
-      cab.textContent = 'Cabling';
-      rightSpan.appendChild(cab);
+      var cabCell = buildHeaderCell('Cabling', [], theadMap, bulkVisible, 'scw-sa-hdr-cabling');
+      rightSpan.appendChild(cabCell);
     }
 
     for (var r = 0; r < layout.right.length; r++) {
       var item = layout.right[r];
-      var lbl = document.createElement('span');
-      lbl.className = 'scw-sa-header-label' + (item.widthCls ? ' ' + item.widthCls : '');
-      lbl.textContent = item.text;
-      rightSpan.appendChild(lbl);
+      var rCell = buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, item.widthCls);
+      rightSpan.appendChild(rCell);
     }
 
     if (layout.hasMove) {
-      var mv = document.createElement('span');
-      mv.className = 'scw-sa-header-label scw-sa-hdr-move';
-      mv.textContent = 'Move';
-      rightSpan.appendChild(mv);
+      var mvCell = buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, 'scw-sa-hdr-move');
+      rightSpan.appendChild(mvCell);
     }
     if (layout.hasDelete) {
-      var del = document.createElement('span');
-      del.className = 'scw-sa-header-label scw-sa-hdr-delete';
-      del.innerHTML = '&nbsp;';
-      rightSpan.appendChild(del);
+      var delCell = document.createElement('span');
+      delCell.className = 'scw-sa-header-cell scw-sa-hdr-delete';
+      delCell.innerHTML = '&nbsp;';
+      rightSpan.appendChild(delCell);
     }
 
     bar.appendChild(rightSpan);
 
-    // ── Insert before the view element (survives Knack re-renders) ──
-    // Preferred: place inside accordion body, just before the view div.
-    // Fallback: place inside view before the table wrapper.
-    if (viewEl.parentNode) {
+    // ── Insert inside the view, between kn-records-nav and kn-table-wrapper ──
+    var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
+    if (tableWrapper) {
+      tableWrapper.parentNode.insertBefore(bar, tableWrapper);
+    } else if (viewEl.parentNode) {
       viewEl.parentNode.insertBefore(bar, viewEl);
-    } else {
-      var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
-      if (tableWrapper) {
-        tableWrapper.parentNode.insertBefore(bar, tableWrapper);
-      }
     }
 
-    // ── Click handler ──
+    // ── Click handler for select-all ──
     selectAllCb.addEventListener('click', function (e) {
       e.stopPropagation();
       var el = document.getElementById(viewKey);
@@ -366,6 +478,37 @@
     return bar;
   }
 
+  /**
+   * Sync visibility + checked state of header bar's column checkboxes
+   * with the KTL bulk-edit header checkboxes in the hidden <thead>.
+   */
+  function syncBulkEditCheckboxes(viewEl, viewKey) {
+    var sel = '.scw-sa-header[data-scw-sa-view="' + viewKey + '"]';
+    var bar = viewEl.querySelector(sel);
+    if (!bar && viewEl.parentNode) {
+      bar = viewEl.parentNode.querySelector(sel);
+    }
+    if (!bar) return;
+
+    var theadMap = readTheadCheckboxes(viewEl);
+    var visible = areBulkEditCboxesVisible(viewEl);
+    var hdrCboxes = bar.querySelectorAll('.scw-sa-hdr-cbox');
+    for (var i = 0; i < hdrCboxes.length; i++) {
+      var hcb = hdrCboxes[i];
+      var fk = hcb.getAttribute('data-scw-thead-field');
+      // Show/hide
+      if (visible) {
+        hcb.classList.remove('scw-sa-hdr-cbox--hidden');
+      } else {
+        hcb.classList.add('scw-sa-hdr-cbox--hidden');
+      }
+      // Sync checked state from thead
+      if (fk && theadMap[fk]) {
+        hcb.checked = theadMap[fk].checked;
+      }
+    }
+  }
+
   function enhanceViews() {
     var accordions = document.querySelectorAll('.scw-ktl-accordion__header');
 
@@ -379,13 +522,15 @@
 
       // If attribute is set, check whether the bar still exists in the DOM
       if (viewEl.getAttribute(HEADER_ATTR) === '1') {
-        var existingBar = viewEl.parentNode &&
-          viewEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
-        if (!existingBar) {
-          // Also check inside the view
-          existingBar = viewEl.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
+        var existingBar = viewEl.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
+        if (!existingBar && viewEl.parentNode) {
+          existingBar = viewEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
         }
-        if (existingBar) continue; // already present, skip
+        if (existingBar) {
+          // Bar exists — just sync KTL bulk-edit checkboxes
+          syncBulkEditCheckboxes(viewEl, viewKey);
+          continue;
+        }
         // Bar was removed — reset and rebuild
         viewEl.removeAttribute(HEADER_ATTR);
       }
@@ -493,13 +638,12 @@
           // Also sync view-level header checkbox
           var vEl = headerRow.closest('[id^="view_"]');
           if (vEl) {
-            var hBar = vEl.previousElementSibling;
-            if (!hBar || !hBar.classList.contains('scw-sa-header')) {
-              // Try parent lookup
-              hBar = vEl.parentNode && vEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + vEl.id + '"]');
+            var hBar = vEl.querySelector('.scw-sa-header[data-scw-sa-view="' + vEl.id + '"]');
+            if (!hBar && vEl.parentNode) {
+              hBar = vEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + vEl.id + '"]');
             }
             if (hBar) {
-              var viewCb = hBar.querySelector('input[type="checkbox"]');
+              var viewCb = hBar.querySelector('.scw-sa-header-check input[type="checkbox"]');
               if (viewCb) syncCheckbox(viewCb, findCheckboxes(vEl));
             }
           }
