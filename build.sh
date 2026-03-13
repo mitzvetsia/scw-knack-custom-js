@@ -47,6 +47,7 @@ cat \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
   src/features/boolean-chips.js \
+  src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/grid-direct-edit.js \
