@@ -55,6 +55,7 @@
 
   // View-specific add-photo URL path segments
   var ADD_PHOTO_PATHS = {
+    'view_3313': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2'
   };
