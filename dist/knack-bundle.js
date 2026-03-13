@@ -13727,13 +13727,6 @@ td.${P}-sum-check input[type="checkbox"] {
   flex: 0 0 auto;
   min-width: 0;
 }
-/* When summary has stacked label+value fields, push non-labeled elements
-   down so they align with the value row, not the label row.
-   --scw-label-h is measured once at runtime and set on the summary bar. */
-.${P}-summary--stacked .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
 .${P}-toggle-zone:hover .${P}-chevron {
   color: #6b7280;
 }
@@ -16135,13 +16128,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      if (hasStackedFields) checkCell.style.paddingTop = labelH + 'px';
+      if (hasStackedFields) {
+        checkCell.style.alignSelf = 'flex-start';
+        checkCell.style.paddingTop = labelH + 'px';
+      }
       bar.appendChild(checkCell);
     }
 
     // ── Toggle zone: chevron + identity (label + product) ──
     var toggleZone = document.createElement('span');
     toggleZone.className = P + '-toggle-zone';
+    if (hasStackedFields) {
+      toggleZone.style.alignSelf = 'flex-start';
+      toggleZone.style.alignItems = 'flex-start';
+    }
 
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
@@ -16254,7 +16254,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var deleteTd = deleteLink.closest('td');
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
-      if (hasStackedFields) deleteWrap.style.paddingTop = labelH + 'px';
+      if (hasStackedFields) {
+        deleteWrap.style.alignSelf = 'flex-start';
+        deleteWrap.style.paddingTop = labelH + 'px';
+      }
       deleteWrap.appendChild(deleteLink);
       rightGroup.appendChild(deleteWrap);
       if (deleteTd && !deleteTd.children.length) {
