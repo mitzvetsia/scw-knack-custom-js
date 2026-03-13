@@ -1139,6 +1139,9 @@ window.SCW = window.SCW || {};
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
   var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true };
 
+  // Views where the record count pill is hidden (set to true to hide)
+  var HIDE_COUNT = {};
+
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
@@ -1531,15 +1534,19 @@ window.SCW = window.SCW || {};
       if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
     }
 
-    // Count pill
+    // Count pill (hidden for views listed in HIDE_COUNT)
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
-      var count = computeCount(viewKey);
-      if (count !== null) {
-        countEl.textContent = count;
-        countEl.style.display = '';
-      } else {
+      if (HIDE_COUNT[viewKey]) {
         countEl.style.display = 'none';
+      } else {
+        var count = computeCount(viewKey);
+        if (count !== null) {
+          countEl.textContent = count;
+          countEl.style.display = '';
+        } else {
+          countEl.style.display = 'none';
+        }
       }
     }
 
@@ -6105,8 +6112,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // intermediate DOM states and layout-shifting flicker.
   let _suppressAutoEnhance = false;
 
-  // Record count badge: off by default, list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359'];
+  // Record count badge: list view IDs to enable
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -6444,7 +6451,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const $cell = $tr.children('td,th').first();
 
     const $block = rowsUntilNextRelevantGroup($tr);
-    const count = $block.not('.kn-table-group, .kn-table-totals').length;
+    // For worksheet views, count only scw-ws-row to avoid double-counting
+    // (the original hidden Knack rows are still in the DOM).
+    const $wsRows = $block.filter('tr.scw-ws-row');
+    const count = $wsRows.length
+      ? $wsRows.length
+      : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length;
 
     // Skip DOM update if badge already shows the correct count (avoids MutationObserver loop)
     const $existing = $cell.find('.scw-record-count');
@@ -13080,8 +13092,8 @@ $(".kn-navigation-bar").hide();
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       },
       {
@@ -13226,8 +13238,8 @@ $(".kn-navigation-bar").hide();
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       }
     ]

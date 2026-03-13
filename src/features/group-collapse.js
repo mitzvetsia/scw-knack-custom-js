@@ -27,8 +27,8 @@
   // intermediate DOM states and layout-shifting flicker.
   let _suppressAutoEnhance = false;
 
-  // Record count badge: off by default, list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359'];
+  // Record count badge: list view IDs to enable
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -366,7 +366,12 @@
     const $cell = $tr.children('td,th').first();
 
     const $block = rowsUntilNextRelevantGroup($tr);
-    const count = $block.not('.kn-table-group, .kn-table-totals').length;
+    // For worksheet views, count only scw-ws-row to avoid double-counting
+    // (the original hidden Knack rows are still in the DOM).
+    const $wsRows = $block.filter('tr.scw-ws-row');
+    const count = $wsRows.length
+      ? $wsRows.length
+      : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length;
 
     // Skip DOM update if badge already shows the correct count (avoids MutationObserver loop)
     const $existing = $cell.find('.scw-record-count');

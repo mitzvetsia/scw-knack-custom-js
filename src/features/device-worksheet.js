@@ -122,8 +122,8 @@
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       },
       {
@@ -268,8 +268,8 @@
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       }
     ]

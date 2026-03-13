@@ -38,6 +38,9 @@
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
   var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true };
 
+  // Views where the record count pill is hidden (set to true to hide)
+  var HIDE_COUNT = {};
+
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
@@ -430,15 +433,19 @@
       if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
     }
 
-    // Count pill
+    // Count pill (hidden for views listed in HIDE_COUNT)
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
-      var count = computeCount(viewKey);
-      if (count !== null) {
-        countEl.textContent = count;
-        countEl.style.display = '';
-      } else {
+      if (HIDE_COUNT[viewKey]) {
         countEl.style.display = 'none';
+      } else {
+        var count = computeCount(viewKey);
+        if (count !== null) {
+          countEl.textContent = count;
+          countEl.style.display = '';
+        } else {
+          countEl.style.display = 'none';
+        }
       }
     }
 
