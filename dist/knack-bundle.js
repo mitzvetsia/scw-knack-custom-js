@@ -12196,7 +12196,8 @@ $(".kn-navigation-bar").hide();
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
-        warningField: 'field_2244'
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
       }
     ]
   };
@@ -12482,6 +12483,54 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
+  // KNACK API HELPERS
+  // ============================================================
+
+  /**
+   * Find the Knack object key that owns a given field key.
+   * Searches Knack.objects (Backbone collection) at runtime.
+   * Returns the object key (e.g. 'object_123') or null.
+   */
+  function getObjectKeyForField(fieldKey) {
+    try {
+      var models = Knack.objects.models;
+      for (var i = 0; i < models.length; i++) {
+        var fields = models[i].attributes.fields;
+        for (var j = 0; j < fields.length; j++) {
+          if (fields[j].key === fieldKey) return models[i].attributes.key;
+        }
+      }
+    } catch (e) {
+      console.warn('[SCW][CR-DELETE] Could not search Knack.objects:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Clear a field on a record via Knack's object-level REST API.
+   * Returns a Promise that resolves on success or rejects on error.
+   */
+  function clearFieldOnRecord(objectKey, recordId, fieldKey) {
+    var data = {};
+    data[fieldKey] = '';
+    return new Promise(function (resolve, reject) {
+      $.ajax({
+        url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+        type: 'PUT',
+        contentType: 'application/json',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        data: JSON.stringify(data),
+        success: function () { resolve(); },
+        error: function (xhr) { reject(new Error('PUT ' + xhr.status)); }
+      });
+    });
+  }
+
+  // ============================================================
   // DELETE CONFIRMATION + WEBHOOK
   // ============================================================
 
@@ -12538,8 +12587,26 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * POST to Make webhook to delete a connected record.
-   * @param {string} recordId  - The 24-char record ID to delete
+   * Find the CONFIG entry that owns a given record ID (by checking which
+   * view's widget contains the itemEl).  Falls back to the first entry.
+   */
+  function findCfgForItem(itemEl) {
+    for (var i = 0; i < CONFIG.views.length; i++) {
+      var cfg = CONFIG.views[i];
+      var viewEl = itemEl.closest('#' + cfg.parentViewId);
+      if (viewEl) return cfg;
+    }
+    return CONFIG.views[0] || null;
+  }
+
+  /**
+   * Disconnect the accessory record from its parent (clear the back-
+   * connection field) then delete it via the Make webhook.
+   *
+   * Clearing the parent connection BEFORE delete prevents Knack from
+   * cascading the delete up to the parent record.
+   *
+   * @param {string} recordId   - The 24-char record ID to delete
    * @param {string} recordName - Display name (for logging)
    * @param {HTMLElement} itemEl - The .scw-cr-item element (for UI state)
    */
@@ -12550,29 +12617,49 @@ $(".kn-navigation-bar").hide();
       return;
     }
 
+    var cfg = findCfgForItem(itemEl);
+    var parentField = cfg ? cfg.parentConnectionField : null;
+
     console.log('[SCW][CR-DELETE] deleteRecord called', {
       recordId: recordId,
       recordName: recordName,
-      webhookUrl: webhookUrl,
-      itemEl: itemEl
-    });
-
-    // Log the parent row context for debugging
-    var parentTr = itemEl.closest('tr');
-    var parentRecordId = parentTr ? parentTr.id : '(no tr found)';
-    console.log('[SCW][CR-DELETE] Parent row context', {
-      parentTrId: parentRecordId,
-      parentTr: parentTr
+      parentConnectionField: parentField
     });
 
     // Visual pending state
     itemEl.classList.add('scw-cr-deleting');
 
-    console.log('[SCW][CR-DELETE] Sending webhook POST…');
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recordId: recordId, recordName: recordName })
+    // Step 1: Clear the parent connection field so Knack can't cascade
+    var disconnectPromise;
+    if (parentField) {
+      var objectKey = getObjectKeyForField(parentField);
+      console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
+                  'on', recordId, '(object:', objectKey + ')');
+      if (objectKey) {
+        disconnectPromise = clearFieldOnRecord(objectKey, recordId, parentField)
+          .then(function () {
+            console.log('[SCW][CR-DELETE] Disconnect succeeded');
+          })
+          .catch(function (err) {
+            console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
+          });
+      } else {
+        console.warn('[SCW][CR-DELETE] Could not find object key for', parentField,
+                      '— skipping disconnect');
+        disconnectPromise = Promise.resolve();
+      }
+    } else {
+      disconnectPromise = Promise.resolve();
+    }
+
+    // Step 2: After disconnect, send the delete webhook
+    disconnectPromise.then(function () {
+      console.log('[SCW][CR-DELETE] Sending webhook POST…');
+      return fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId: recordId, recordName: recordName })
+      });
     })
     .then(function (resp) {
       console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
@@ -12585,15 +12672,9 @@ $(".kn-navigation-bar").hide();
       // Remove the item from the DOM
       itemEl.remove();
 
-      // Log what we're about to trigger
-      console.log('[SCW][CR-DELETE] Triggering knack-cell-update.scwScrollPreserve');
-
       // Trigger preservation pipeline + refresh parent views
       $(document).trigger('knack-cell-update.scwScrollPreserve');
-
-      // Refresh the parent view so Knack reloads the connection data
       CONFIG.views.forEach(function (cfg) {
-        console.log('[SCW][CR-DELETE] Calling model.fetch() on', cfg.parentViewId);
         var viewObj = Knack.views[cfg.parentViewId];
         if (viewObj && viewObj.model && viewObj.model.fetch) {
           viewObj.model.fetch();
