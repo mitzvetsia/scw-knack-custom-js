@@ -2875,7 +2875,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
-        identity.appendChild(labelTd);
+        if (hasStackedFields) {
+          var labelWrap = document.createElement('span');
+          labelWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+          var labelSpacer = document.createElement('span');
+          labelSpacer.className = P + '-sum-label';
+          labelSpacer.innerHTML = '&nbsp;';
+          labelWrap.appendChild(labelSpacer);
+          labelWrap.appendChild(labelTd);
+          identity.appendChild(labelWrap);
+        } else {
+          identity.appendChild(labelTd);
+        }
       }
     }
 
@@ -2886,7 +2897,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var sep0 = document.createElement('span');
         sep0.className = P + '-sum-sep';
         sep0.textContent = '\u00b7';
-        identity.appendChild(sep0);
+        if (hasStackedFields) {
+          var sepWrap = document.createElement('span');
+          sepWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+          var sepSpacer = document.createElement('span');
+          sepSpacer.className = P + '-sum-label';
+          sepSpacer.innerHTML = '&nbsp;';
+          sepWrap.appendChild(sepSpacer);
+          sepWrap.appendChild(sep0);
+          identity.appendChild(sepWrap);
+        } else {
+          identity.appendChild(sep0);
+        }
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
@@ -3425,10 +3447,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           // view_3332 style: insert before product group in identity
           var identityEl = card.querySelector('.' + P + '-identity');
           var productGroupEl = card.querySelector('.' + P + '-product-group');
+          var isStacked = card.querySelector('.' + P + '-summary--stacked');
+          var warnNode = warnIcon;
+          if (isStacked) {
+            var warnWrap = document.createElement('span');
+            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+            var warnSpacer = document.createElement('span');
+            warnSpacer.className = P + '-sum-label';
+            warnSpacer.innerHTML = '&nbsp;';
+            warnWrap.appendChild(warnSpacer);
+            warnWrap.appendChild(warnIcon);
+            warnNode = warnWrap;
+          }
           if (identityEl && productGroupEl) {
-            identityEl.insertBefore(warnIcon, productGroupEl);
+            identityEl.insertBefore(warnNode, productGroupEl);
           } else if (identityEl) {
-            identityEl.appendChild(warnIcon);
+            identityEl.appendChild(warnNode);
           }
         }
         break;
