@@ -73,7 +73,7 @@
         text-decoration: underline;
       }
 
-      .scw-cr-delete {
+      .scw-cr-remove {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -88,11 +88,11 @@
         flex-shrink: 0;
         transition: color 0.15s, background 0.15s;
       }
-      .scw-cr-delete:hover {
+      .scw-cr-remove:hover {
         color: #d93025;
         background: rgba(217,48,37,0.08);
       }
-      .scw-cr-delete svg {
+      .scw-cr-remove svg {
         width: 14px;
         height: 14px;
       }
@@ -210,11 +210,11 @@
       .scw-cr-modal__btn--cancel:hover {
         background: #e0e2e4;
       }
-      .scw-cr-modal__btn--delete {
+      .scw-cr-modal__btn--confirm {
         background: #d93025;
         color: #fff;
       }
-      .scw-cr-modal__btn--delete:hover {
+      .scw-cr-modal__btn--confirm:hover {
         background: #b71c1c;
       }
     `;
@@ -229,7 +229,7 @@
   // DOM READING
   // ============================================================
 
-  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  var REMOVE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
   /**
    * Extract record ID from a connection link href.
@@ -326,15 +326,36 @@
   }
 
   /**
-   * Clear a field on a record via Knack's object-level REST API.
+   * Clear a field on a record via Knack's internal model API.
+   * Uses the scene/view REST endpoint (CORS-safe within Knack).
+   * Tries Knack.views[viewId].model.updateRecord first, then
+   * falls back to a direct scene/view PUT.
    * Returns a Promise that resolves on success or rejects on error.
    */
-  function clearFieldOnRecord(objectKey, recordId, fieldKey) {
+  function clearFieldOnRecord(viewId, recordId, fieldKey) {
     var data = {};
     data[fieldKey] = '';
+
+    // Approach 1: Knack's internal model API
+    try {
+      var viewObj = Knack.views[viewId];
+      if (viewObj && viewObj.model && typeof viewObj.model.updateRecord === 'function') {
+        return new Promise(function (resolve, reject) {
+          viewObj.model.updateRecord(recordId, data, {
+            success: function () { resolve(); },
+            error: function () { reject(new Error('updateRecord failed')); }
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('[SCW][CR-DELETE] updateRecord not available:', e);
+    }
+
+    // Approach 2: Direct scene/view PUT (CORS-safe)
     return new Promise(function (resolve, reject) {
       $.ajax({
-        url: Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId,
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
         type: 'PUT',
         contentType: 'application/json',
         headers: {
@@ -369,7 +390,7 @@
           '<div class="scw-cr-modal__name"></div>' +
           '<div class="scw-cr-modal__btns">' +
             '<button class="scw-cr-modal__btn scw-cr-modal__btn--cancel">Cancel</button>' +
-            '<button class="scw-cr-modal__btn scw-cr-modal__btn--delete">Delete</button>' +
+            '<button class="scw-cr-modal__btn scw-cr-modal__btn--confirm">Remove</button>' +
           '</div>' +
         '</div>';
 
@@ -381,8 +402,12 @@
         resolve(result);
       }
 
-      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function () { close(false); });
-      overlay.querySelector('.scw-cr-modal__btn--delete').addEventListener('click', function () { close(true); });
+      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); close(false);
+      });
+      overlay.querySelector('.scw-cr-modal__btn--confirm').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); close(true);
+      });
 
       // Click outside modal = cancel
       overlay.addEventListener('click', function (e) {
@@ -450,23 +475,17 @@
 
     // Step 1: Clear the parent connection field so Knack can't cascade
     var disconnectPromise;
-    if (parentField) {
-      var objectKey = getObjectKeyForField(parentField);
+    var viewId = cfg ? cfg.parentViewId : null;
+    if (parentField && viewId) {
       console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
-                  'on', recordId, '(object:', objectKey + ')');
-      if (objectKey) {
-        disconnectPromise = clearFieldOnRecord(objectKey, recordId, parentField)
-          .then(function () {
-            console.log('[SCW][CR-DELETE] Disconnect succeeded');
-          })
-          .catch(function (err) {
-            console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
-          });
-      } else {
-        console.warn('[SCW][CR-DELETE] Could not find object key for', parentField,
-                      '— skipping disconnect');
-        disconnectPromise = Promise.resolve();
-      }
+                  'on', recordId, 'via', viewId);
+      disconnectPromise = clearFieldOnRecord(viewId, recordId, parentField)
+        .then(function () {
+          console.log('[SCW][CR-DELETE] Disconnect succeeded');
+        })
+        .catch(function (err) {
+          console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
+        });
     } else {
       disconnectPromise = Promise.resolve();
     }
@@ -659,9 +678,9 @@
         // Trash icon (only if we have a record ID)
         if (links[i].recordId) {
           var delBtn = document.createElement('button');
-          delBtn.className = 'scw-cr-delete';
+          delBtn.className = 'scw-cr-remove';
           delBtn.title = 'Delete';
-          delBtn.innerHTML = TRASH_SVG;
+          delBtn.innerHTML = REMOVE_SVG;
           delBtn.setAttribute('data-record-id', links[i].recordId);
           delBtn.setAttribute('data-record-name', links[i].text);
           (function (rid, rname, el, btn) {
