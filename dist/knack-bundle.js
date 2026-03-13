@@ -13727,8 +13727,21 @@ td.${P}-sum-check input[type="checkbox"] {
   flex: 0 0 auto;
   min-width: 0;
 }
+.${P}-toggle-zone--stacked {
+  align-self: flex-start;
+  align-items: flex-start;
+}
 .${P}-toggle-zone:hover .${P}-chevron {
   color: #6b7280;
+}
+
+/* Column wrapper: invisible label spacer + element, used to align
+   chevron / checkbox / label-cell with stacked label+value fields */
+.${P}-stacked-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 /* Chevron toggle */
@@ -14586,28 +14599,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 
 
-/* view_3313: top-align all elements; pad non-labeled items to match label height */
-#view_3313 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3313 .${P}-chevron {
-  margin-top: 11px;
-}
-#view_3313 td.${P}-sum-label-cell {
-  margin-top: 11px;
-}
-#view_3313 .${P}-sum-sep {
-  margin-top: 11px;
-}
-#view_3313 td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: 11px !important;
-}
-#view_3313 .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: 11px;
-}
 
 /* Fee label — align with value text (match td padding-left) */
 .${P}-sum-group--fee > .${P}-sum-label {
@@ -14724,15 +14715,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background-color: rgb(255, 253, 204) !important;
 }
 
-/* view_3332: top-align toggle zone (chevron + product) */
-#view_3332 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3332 .${P}-chevron {
-  margin-top: 11px;
-}
-
 /* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
 #view_3332 .${P}-identity {
   width: 366px;
@@ -14755,23 +14737,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   flex: none;
 }
 
-/* view_3332 header warning icon — standalone before product group */
-#view_3332 .${P}-identity > .scw-cr-hdr-warning {
-  margin-left: 0;
-  margin-top: 11px;
-  align-self: flex-start;
-}
 /* view_3332 detail sections grid */
 #view_3332 .${P}-sections {
   grid-template-columns: 1fr 1fr;
-}
-#view_3332 td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: 11px !important;
-}
-#view_3332 .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: 11px;
 }
 @media (max-width: 900px) {
   #view_3332 .${P}-sections {
@@ -16145,22 +16113,53 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var bar = document.createElement('div');
     bar.className = P + '-summary';
 
+    // Detect stacked labels early — needed for vertical alignment of all elements
+    var hasStackedFields = layout.some(function (n) {
+      var d = fieldDesc(viewCfg, n);
+      return d && d.group === 'right' && d.label;
+    });
+
+    // Helper: create an invisible label spacer matching sum-label height
+    function makeLabelSpacer() {
+      var sp = document.createElement('span');
+      sp.className = P + '-sum-label';
+      sp.innerHTML = '&nbsp;';
+      return sp;
+    }
+
     // ── KTL / legacy bulk-edit checkbox (if present) ──
     var checkTd = tr.querySelector('td > input[type="checkbox"]');
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      bar.appendChild(checkCell);
+      if (hasStackedFields) {
+        var checkWrap = document.createElement('span');
+        checkWrap.className = P + '-stacked-wrap';
+        checkWrap.appendChild(makeLabelSpacer());
+        checkWrap.appendChild(checkCell);
+        bar.appendChild(checkWrap);
+      } else {
+        bar.appendChild(checkCell);
+      }
     }
 
     // ── Toggle zone: chevron + identity (label + product) ──
     var toggleZone = document.createElement('span');
     toggleZone.className = P + '-toggle-zone';
+    if (hasStackedFields) toggleZone.classList.add(P + '-toggle-zone--stacked');
 
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
-    toggleZone.appendChild(chevron);
+    if (hasStackedFields) {
+      var chevWrap = document.createElement('span');
+      chevWrap.className = P + '-stacked-wrap';
+      chevWrap.appendChild(makeLabelSpacer());
+      chevWrap.appendChild(chevron);
+      toggleZone.appendChild(chevWrap);
+    } else {
+      toggleZone.appendChild(chevron);
+    }
 
     var identity = document.createElement('span');
     identity.className = P + '-identity';
@@ -16170,7 +16169,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
-        identity.appendChild(labelTd);
+        if (hasStackedFields) {
+          var lblWrap = document.createElement('span');
+          lblWrap.className = P + '-stacked-wrap';
+          lblWrap.appendChild(makeLabelSpacer());
+          lblWrap.appendChild(labelTd);
+          identity.appendChild(lblWrap);
+        } else {
+          identity.appendChild(labelTd);
+        }
       }
     }
 
@@ -16181,23 +16188,23 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var sep0 = document.createElement('span');
         sep0.className = P + '-sum-sep';
         sep0.textContent = '\u00b7';
-        identity.appendChild(sep0);
+        if (hasStackedFields) {
+          var sepWrap = document.createElement('span');
+          sepWrap.className = P + '-stacked-wrap';
+          sepWrap.appendChild(makeLabelSpacer());
+          sepWrap.appendChild(sep0);
+          identity.appendChild(sepWrap);
+        } else {
+          identity.appendChild(sep0);
+        }
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // (needed when right-group fields have stacked label+value)
-        var hasStackedFields = layout.some(function (n) {
-          var d = fieldDesc(viewCfg, n);
-          return d && d.group === 'right' && d.label;
-        });
         if (hasStackedFields) {
-          var prodLabel = document.createElement('span');
-          prodLabel.className = P + '-sum-label';
-          prodLabel.innerHTML = '&nbsp;';
-          productGroup.appendChild(prodLabel);
+          productGroup.appendChild(makeLabelSpacer());
         }
 
         // Warning chit
@@ -16271,7 +16278,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      rightGroup.appendChild(deleteWrap);
+      if (hasStackedFields) {
+        var delStackWrap = document.createElement('span');
+        delStackWrap.className = P + '-stacked-wrap';
+        delStackWrap.appendChild(makeLabelSpacer());
+        delStackWrap.appendChild(deleteWrap);
+        rightGroup.appendChild(delStackWrap);
+      } else {
+        rightGroup.appendChild(deleteWrap);
+      }
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
@@ -16726,7 +16741,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var identityEl = card.querySelector('.' + P + '-identity');
           var productGroupEl = card.querySelector('.' + P + '-product-group');
           if (identityEl && productGroupEl) {
-            identityEl.insertBefore(warnIcon, productGroupEl);
+            // Wrap in stacked-wrap if stacked labels are present
+            var isStacked = !!card.querySelector('.' + P + '-toggle-zone--stacked');
+            if (isStacked) {
+              var warnWrap = document.createElement('span');
+              warnWrap.className = P + '-stacked-wrap';
+              var wSpacer = document.createElement('span');
+              wSpacer.className = P + '-sum-label';
+              wSpacer.innerHTML = '&nbsp;';
+              warnWrap.appendChild(wSpacer);
+              warnWrap.appendChild(warnIcon);
+              identityEl.insertBefore(warnWrap, productGroupEl);
+            } else {
+              identityEl.insertBefore(warnIcon, productGroupEl);
+            }
           } else if (identityEl) {
             identityEl.appendChild(warnIcon);
           }
