@@ -139,7 +139,8 @@
   }
 
   $.ajaxPrefilter(function (options) {
-    if (!options.type || options.type.toUpperCase() !== 'DELETE') return;
+    var method = (options.type || options.method || '').toUpperCase();
+    if (method !== 'DELETE') return;
 
     var url = options.url || '';
     var recordId = extractRecordId(url);
