@@ -189,7 +189,7 @@
         summaryLayout: ['laborDescription', 'labor']
       },
       {
-        viewId: 'view_3313',
+        viewId: 'view_3313', disabled: true, // TEMPORARY: toggled off for debugging
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -3429,6 +3429,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ============================================================
 
   function transformView(viewCfg) {
+    if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
 
