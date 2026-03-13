@@ -13520,8 +13520,8 @@ $(".kn-navigation-bar").hide();
         },
         summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
         detailLayout: {
-          left:  ['scwNotes'],
-          right: ['connectedDevice', 'mountingHardware']
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['scwNotes']
         },
         bucketField: 'field_2219',
         bucketRules: {
