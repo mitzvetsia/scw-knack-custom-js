@@ -30,6 +30,7 @@
   function getConnectedIds(recordId) {
     // Search all view models
     var viewKeys = Object.keys(Knack.views || {});
+    console.log('[SCW][delete-intercept] Searching ' + viewKeys.length + ' views for record ' + recordId);
     for (var v = 0; v < viewKeys.length; v++) {
       var vw = Knack.views[viewKeys[v]];
       if (!vw || !vw.model || !vw.model.data) continue;
@@ -38,10 +39,14 @@
         var r = models[j];
         var a = r.attributes || r;
         if (a.id === recordId) {
+          console.log('[SCW][delete-intercept] Found record in ' + viewKeys[v] + '. Keys:', Object.keys(a).filter(function(k) { return k.indexOf('field_1958') !== -1; }));
+          console.log('[SCW][delete-intercept] field_1958_raw:', a.field_1958_raw);
+          console.log('[SCW][delete-intercept] field_1958:', a.field_1958);
           return extractFromRecord(a);
         }
       }
     }
+    console.warn('[SCW][delete-intercept] Record ' + recordId + ' NOT found in any view model');
     return [];
   }
 
