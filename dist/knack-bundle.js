@@ -12515,6 +12515,7 @@ $(".kn-navigation-bar").hide();
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       }
@@ -12791,13 +12792,26 @@ $(".kn-navigation-bar").hide();
 
   /**
    * Find the add-accessory-line-item URL from the row's link columns.
+   * If no explicit add link exists, derive one by swapping editSlug → addSlug
+   * in an existing edit link (for views that lack a dedicated add action column).
    */
-  function findAddUrl(tr, slug) {
+  function findAddUrl(tr, slug, editSlug) {
     var anchors = tr.querySelectorAll('td.kn-table-link a');
     for (var i = 0; i < anchors.length; i++) {
       var href = anchors[i].getAttribute('href') || '';
       if (href.indexOf(slug) !== -1) return href;
     }
+
+    // Fallback: derive from an edit link by replacing editSlug with addSlug
+    if (editSlug) {
+      for (var j = 0; j < anchors.length; j++) {
+        var editHref = anchors[j].getAttribute('href') || '';
+        if (editHref.indexOf(editSlug) !== -1) {
+          return editHref.replace(editSlug, slug);
+        }
+      }
+    }
+
     return '';
   }
 
@@ -13142,7 +13156,7 @@ $(".kn-navigation-bar").hide();
 
     // Read links from DOM
     var links = readConnectionLinks(tr, fieldKey);
-    var addUrl = findAddUrl(tr, cfg.addSlug);
+    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug);
 
     console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
       return { text: l.text, recordId: l.recordId, href: l.href };
