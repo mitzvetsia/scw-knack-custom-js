@@ -2892,7 +2892,15 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         productGroup.className = P + '-product-group';
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
-
+        // Empty label so product aligns vertically with editable field values
+        // Only needed when there's no label-cell (view_3332); when there IS a
+        // label-cell (view_3313) the identity wrapper handles alignment.
+        if (hasStackedFields && !labelDesc) {
+          var prodLabel = document.createElement('span');
+          prodLabel.className = P + '-sum-label';
+          prodLabel.innerHTML = '&nbsp;';
+          productGroup.appendChild(prodLabel);
+        }
 
         // Warning chit
         var warnDesc = fieldDesc(viewCfg, 'warningCount');
@@ -2914,7 +2922,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    if (hasStackedFields) {
+    if (hasStackedFields && labelDesc) {
+      // Wrap entire identity so label-cell, separator, and product all
+      // drop down together — keeps them aligned with checkbox & chevron.
       var idWrap = document.createElement('span');
       idWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-self:flex-start;';
       var idSpacer = document.createElement('span');
