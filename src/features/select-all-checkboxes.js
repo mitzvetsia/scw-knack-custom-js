@@ -88,19 +88,33 @@
 
       /* ── Group header checkbox ── */
       '.scw-sa-grp-check {',
-      '  display: inline-flex;',
+      '  display: inline-flex !important;',
       '  align-items: center;',
       '  justify-content: center;',
       '  flex: 0 0 auto;',
       '  min-width: 20px;',
       '  padding: 0 4px;',
       '  margin-right: 4px;',
+      '  visibility: visible !important;',
+      '  opacity: 1 !important;',
+      '  order: -1;',
       '}',
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
-      '  width: 15px;',
-      '  height: 15px;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
+      '  display: inline-block !important;',
+      '  appearance: auto !important;',
+      '  -webkit-appearance: checkbox !important;',
+      '  opacity: 1 !important;',
+      '  visibility: visible !important;',
+      '  position: static !important;',
+      '}',
+      'tr.scw-group-header > td { overflow: visible !important; }',
+      '.scw-sa-header-check input[type="checkbox"],',
+      '.scw-sa-grp-check input[type="checkbox"] {',
+      '  pointer-events: auto;',
       '}',
       /* Group header td already display:flex from group-collapse, insert checkbox before collapse icon */
     ].join('\n');
@@ -232,7 +246,13 @@
   /** Build and insert the header bar above the table's first group/data row. */
   function buildHeaderBar(viewEl, viewKey) {
     var layout = readHeaderLayout(viewEl);
-    if (!layout) return;
+    if (!layout) return null;
+
+    // Remove any previously-inserted header bar (defensive)
+    var sel = '.scw-sa-header[data-scw-sa-view="' + viewKey + '"]';
+    var existing = viewEl.parentNode ? viewEl.parentNode.querySelector(sel) : null;
+    if (!existing) existing = viewEl.querySelector(sel);
+    if (existing) existing.remove();
 
     var bar = document.createElement('div');
     bar.className = 'scw-sa-header';
@@ -307,13 +327,16 @@
 
     bar.appendChild(rightSpan);
 
-    // ── Insert before the table wrapper ──
-    var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
-    if (tableWrapper) {
-      tableWrapper.parentNode.insertBefore(bar, tableWrapper);
+    // ── Insert before the view element (survives Knack re-renders) ──
+    // Preferred: place inside accordion body, just before the view div.
+    // Fallback: place inside view before the table wrapper.
+    if (viewEl.parentNode) {
+      viewEl.parentNode.insertBefore(bar, viewEl);
     } else {
-      // fallback: prepend inside the view
-      viewEl.insertBefore(bar, viewEl.querySelector('.kn-records-nav'));
+      var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
+      if (tableWrapper) {
+        tableWrapper.parentNode.insertBefore(bar, tableWrapper);
+      }
     }
 
     // ── Click handler ──
@@ -353,7 +376,19 @@
 
       var viewEl = document.getElementById(viewKey);
       if (!viewEl) continue;
-      if (viewEl.getAttribute(HEADER_ATTR) === '1') continue;
+
+      // If attribute is set, check whether the bar still exists in the DOM
+      if (viewEl.getAttribute(HEADER_ATTR) === '1') {
+        var existingBar = viewEl.parentNode &&
+          viewEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
+        if (!existingBar) {
+          // Also check inside the view
+          existingBar = viewEl.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
+        }
+        if (existingBar) continue; // already present, skip
+        // Bar was removed — reset and rebuild
+        viewEl.removeAttribute(HEADER_ATTR);
+      }
 
       // Only add if this view has bulk checkboxes
       var checkboxes = findCheckboxes(viewEl);
@@ -363,8 +398,10 @@
       var oldBtn = header.querySelector('.scw-select-all-btn');
       if (oldBtn) oldBtn.remove();
 
-      viewEl.setAttribute(HEADER_ATTR, '1');
-      buildHeaderBar(viewEl, viewKey);
+      var headerBar = buildHeaderBar(viewEl, viewKey);
+      if (headerBar) {
+        viewEl.setAttribute(HEADER_ATTR, '1');
+      }
     }
   }
 
@@ -397,7 +434,11 @@
 
     for (var i = 0; i < groupHeaders.length; i++) {
       var tr = groupHeaders[i];
-      if (tr.getAttribute(GROUP_ATTR) === '1') continue;
+      if (tr.getAttribute(GROUP_ATTR) === '1') {
+        // Verify checkbox still exists in DOM
+        if (tr.querySelector('.scw-sa-grp-check')) continue;
+        tr.removeAttribute(GROUP_ATTR); // reset for rebuild
+      }
 
       var rows = rowsInGroup(tr);
       var hasCheckboxes = false;
@@ -450,12 +491,16 @@
           checkbox.indeterminate = false;
 
           // Also sync view-level header checkbox
-          var viewEl = headerRow.closest('.kn-table.kn-view');
-          if (viewEl) {
-            var headerBar = viewEl.previousElementSibling;
-            if (headerBar && headerBar.classList.contains('scw-sa-header')) {
-              var viewCb = headerBar.querySelector('input[type="checkbox"]');
-              if (viewCb) syncCheckbox(viewCb, findCheckboxes(viewEl));
+          var vEl = headerRow.closest('[id^="view_"]');
+          if (vEl) {
+            var hBar = vEl.previousElementSibling;
+            if (!hBar || !hBar.classList.contains('scw-sa-header')) {
+              // Try parent lookup
+              hBar = vEl.parentNode && vEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + vEl.id + '"]');
+            }
+            if (hBar) {
+              var viewCb = hBar.querySelector('input[type="checkbox"]');
+              if (viewCb) syncCheckbox(viewCb, findCheckboxes(vEl));
             }
           }
         });
@@ -508,14 +553,11 @@
       setTimeout(enhance, 350);
     });
 
-  // MutationObserver fallback
-  var raf = 0;
+  // MutationObserver fallback — debounced to avoid infinite loops
+  var debounceTimer = 0;
   var obs = new MutationObserver(function () {
-    if (raf) cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(function () {
-      raf = 0;
-      enhance();
-    });
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(enhance, 300);
   });
   obs.observe(document.body, { childList: true, subtree: true });
 
