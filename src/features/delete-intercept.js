@@ -24,51 +24,44 @@
   // ============================================================
 
   /**
-   * Look up a record in Knack's in-memory models and return the raw
-   * connected record IDs for the configured connection fields.
+   * Get connected accessory record IDs from the DOM.
+   * The connected-records widget renders .scw-cr-remove buttons with
+   * data-record-id on each accessory item inside the worksheet row.
    */
-  function getConnectedIds(recordId) {
-    // Search all view models
-    var viewKeys = Object.keys(Knack.views || {});
-    console.log('[SCW][delete-intercept] Searching ' + viewKeys.length + ' views for record ' + recordId);
-    for (var v = 0; v < viewKeys.length; v++) {
-      var vw = Knack.views[viewKeys[v]];
-      if (!vw || !vw.model || !vw.model.data) continue;
-      var models = vw.model.data.models || [];
-      for (var j = 0; j < models.length; j++) {
-        var r = models[j];
-        var a = r.attributes || r;
-        if (a.id === recordId) {
-          console.log('[SCW][delete-intercept] Found record in ' + viewKeys[v] + '. Keys:', Object.keys(a).filter(function(k) { return k.indexOf('field_1958') !== -1; }));
-          console.log('[SCW][delete-intercept] field_1958_raw:', a.field_1958_raw);
-          console.log('[SCW][delete-intercept] field_1958:', a.field_1958);
-          return extractFromRecord(a);
-        }
-      }
-    }
-    console.warn('[SCW][delete-intercept] Record ' + recordId + ' NOT found in any view model');
-    return [];
-  }
-
-  /**
-   * Given a record's attributes, pull connected record IDs from
-   * the configured connection fields.
-   */
-  function extractFromRecord(attrs) {
+  function getConnectedIdsFromDOM(recordId) {
     var ids = [];
-    for (var f = 0; f < CONNECTION_FIELDS.length; f++) {
-      var fieldKey = CONNECTION_FIELDS[f];
-      var raw = attrs[fieldKey + '_raw'];
-      if (!raw) continue;
 
-      // Knack stores connections as an array of {id, identifier, ...}
-      var arr = Array.isArray(raw) ? raw : [raw];
-      for (var k = 0; k < arr.length; k++) {
-        if (arr[k] && arr[k].id) {
-          ids.push(arr[k].id);
-        }
+    // Find the Knack table row (original <tr> with id = recordId)
+    var tr = document.getElementById(recordId);
+    if (!tr) {
+      console.log('[SCW][delete-intercept] No <tr> found for ' + recordId);
+      return ids;
+    }
+
+    // The worksheet card is in the next sibling tr.scw-ws-row,
+    // or the tr itself might be a scw-ws-row.
+    var wsRow = tr.classList.contains('scw-ws-row')
+      ? tr
+      : tr.nextElementSibling;
+
+    if (wsRow && wsRow.classList.contains('scw-ws-row')) {
+      var buttons = wsRow.querySelectorAll('.scw-cr-remove[data-record-id]');
+      for (var i = 0; i < buttons.length; i++) {
+        var rid = buttons[i].getAttribute('data-record-id');
+        if (rid) ids.push(rid);
       }
     }
+
+    // Also check the original tr itself (in case widget is embedded directly)
+    if (!ids.length) {
+      var btns = tr.querySelectorAll('.scw-cr-remove[data-record-id]');
+      for (var b = 0; b < btns.length; b++) {
+        var id = btns[b].getAttribute('data-record-id');
+        if (id) ids.push(id);
+      }
+    }
+
+    console.log('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
     return ids;
   }
 
@@ -192,7 +185,7 @@
     // Collect all accessory IDs across all deleted records
     var allAccessoryIds = [];
     for (var i = 0; i < deletedRecordIds.length; i++) {
-      var accessories = getConnectedIds(deletedRecordIds[i]);
+      var accessories = getConnectedIdsFromDOM(deletedRecordIds[i]);
       if (accessories.length) {
         console.log('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
         allAccessoryIds = allAccessoryIds.concat(accessories);
