@@ -16160,18 +16160,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
-        if (hasStackedFields) {
-          var labelWrap = document.createElement('span');
-          labelWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-          var labelSpacer = document.createElement('span');
-          labelSpacer.className = P + '-sum-label';
-          labelSpacer.innerHTML = '&nbsp;';
-          labelWrap.appendChild(labelSpacer);
-          labelWrap.appendChild(labelTd);
-          identity.appendChild(labelWrap);
-        } else {
-          identity.appendChild(labelTd);
-        }
+        identity.appendChild(labelTd);
       }
     }
 
@@ -16182,30 +16171,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var sep0 = document.createElement('span');
         sep0.className = P + '-sum-sep';
         sep0.textContent = '\u00b7';
-        if (hasStackedFields) {
-          var sepWrap = document.createElement('span');
-          sepWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-          var sepSpacer = document.createElement('span');
-          sepSpacer.className = P + '-sum-label';
-          sepSpacer.innerHTML = '&nbsp;';
-          sepWrap.appendChild(sepSpacer);
-          sepWrap.appendChild(sep0);
-          identity.appendChild(sepWrap);
-        } else {
-          identity.appendChild(sep0);
-        }
+        identity.appendChild(sep0);
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
-        // Empty label so product aligns vertically with editable field values
-        if (hasStackedFields) {
-          var prodLabel = document.createElement('span');
-          prodLabel.className = P + '-sum-label';
-          prodLabel.innerHTML = '&nbsp;';
-          productGroup.appendChild(prodLabel);
-        }
+
 
         // Warning chit
         var warnDesc = fieldDesc(viewCfg, 'warningCount');
@@ -16227,7 +16199,18 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    toggleZone.appendChild(identity);
+    if (hasStackedFields) {
+      var idWrap = document.createElement('span');
+      idWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-self:flex-start;';
+      var idSpacer = document.createElement('span');
+      idSpacer.className = P + '-sum-label';
+      idSpacer.innerHTML = '&nbsp;';
+      idWrap.appendChild(idSpacer);
+      idWrap.appendChild(identity);
+      toggleZone.appendChild(idWrap);
+    } else {
+      toggleZone.appendChild(identity);
+    }
     bar.appendChild(toggleZone);
 
     // ── Walk summaryLayout: dispatch each field to its type builder ──
