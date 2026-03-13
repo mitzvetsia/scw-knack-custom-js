@@ -453,8 +453,27 @@
     return match ? match[1] : '';
   }
 
-  /** Build the edit-doc-photo hash path for a photo record. */
-  function editPhotoHash(photoRecordId) {
+  /**
+   * Extract the build-sow base path from the current URL hash.
+   * URL pattern: #team-calendar/project-dashboard/{id}/build-sow/{id}/...
+   * Returns the full base path up to and including build-sow/{id}, or ''.
+   */
+  function getBuildSowBasePath() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-sow\/[a-f0-9]{24})/);
+    return match ? match[1] : '';
+  }
+
+  // Views that use the build-sow URL structure instead of survey
+  var SOW_VIEWS = { 'view_3313': true };
+
+  /** Build the edit-photo hash path for a photo record. */
+  function editPhotoHash(photoRecordId, viewId) {
+    if (viewId && SOW_VIEWS[viewId]) {
+      var sowBase = getBuildSowBasePath();
+      if (!sowBase) return '';
+      return sowBase + '/edit-photo/' + photoRecordId;
+    }
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
     return 'subcontractor-portal/site-survey-request-details/' +
@@ -463,6 +482,12 @@
 
   /** Build the add-photo hash path (view-specific segment). */
   function addPhotoHash(lineItemId, viewId) {
+    if (viewId && SOW_VIEWS[viewId]) {
+      var sowBase = getBuildSowBasePath();
+      if (!sowBase) return '';
+      var pathSegment = ADD_PHOTO_PATHS[viewId] || DEFAULT_ADD_PATH;
+      return sowBase + '/' + pathSegment + '/' + lineItemId;
+    }
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
     var pathSegment = (viewId && ADD_PHOTO_PATHS[viewId]) || DEFAULT_ADD_PATH;
@@ -898,12 +923,12 @@
               ? (photo.type || 'Photo') + ' for ' + labelText
               : 'Site survey photo';
             imgEl.title = 'Drag to an empty required slot, or click to edit';
-            (function (rid) {
+            (function (rid, vid) {
               imgEl.addEventListener('click', function () {
-                var h = editPhotoHash(rid);
+                var h = editPhotoHash(rid, vid);
                 if (h) window.location.hash = h;
               });
-            })(photo.id);
+            })(photo.id, viewId);
             card.appendChild(imgEl);
           } else {
             // Photo record exists but no image uploaded — potential drop target
@@ -916,12 +941,12 @@
             empty.title = photo.type
               ? 'Upload: ' + photo.type
               : 'Click to edit photo';
-            (function (rid) {
+            (function (rid, vid) {
               empty.addEventListener('click', function () {
-                var h = editPhotoHash(rid);
+                var h = editPhotoHash(rid, vid);
                 if (h) window.location.hash = h;
               });
-            })(photo.id);
+            })(photo.id, viewId);
             card.appendChild(empty);
 
             // Drop helper text (hidden until drag starts)
