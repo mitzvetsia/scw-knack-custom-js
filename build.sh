@@ -22,6 +22,7 @@ cat \
   src/features/proposal-grid.js \
   src/features/bid-items-grid.js \
   src/features/group-collapse.js \
+  src/features/select-all-checkboxes.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
