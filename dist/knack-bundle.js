@@ -13443,7 +13443,7 @@ $(".kn-navigation-bar").hide();
         summaryLayout: ['laborDescription', 'labor']
       },
       {
-        viewId: 'view_3313', disabled: true, // TEMPORARY: toggled off for debugging
+        viewId: 'view_3313',
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
