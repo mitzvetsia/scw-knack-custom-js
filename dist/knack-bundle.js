@@ -8666,15 +8666,8 @@ $(document).on('knack-view-render.view_3313', function () {
     });
   }
 
-  function applyWithRetries(viewId, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyForView(viewId);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // ============================================================
   // CAPTURE-PHASE EVENT BLOCKER
@@ -8711,8 +8704,10 @@ $(document).on('knack-view-render.view_3313', function () {
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var obsTimer = 0;
     var obs = new MutationObserver(function () {
-      applyForView(viewId);
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(viewId); }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -8728,7 +8723,7 @@ $(document).on('knack-view-render.view_3313', function () {
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
         sortRows(viewId);
-        applyWithRetries(viewId);
+        applyForView(viewId);
         installObserver(viewId);
       });
   });
@@ -9154,15 +9149,8 @@ $(document).on('knack-view-render.view_3313', function () {
     });
   }
 
-  function applyWithRetries(cfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyForView(cfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // ============================================================
   // CAPTURE-PHASE EVENT BLOCKER
@@ -9198,8 +9186,10 @@ $(document).on('knack-view-render.view_3313', function () {
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var obsTimer = 0;
     var obs = new MutationObserver(function () {
-      applyForView(cfg);
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(cfg); }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -9215,7 +9205,7 @@ $(document).on('knack-view-render.view_3313', function () {
       .off('knack-view-render.' + cfg.viewId + EVENT_NS)
       .on('knack-view-render.' + cfg.viewId + EVENT_NS, function () {
         sortRows(cfg);
-        applyWithRetries(cfg);
+        applyForView(cfg);
         installObserver(cfg);
       });
   });
@@ -10975,10 +10965,9 @@ $(".kn-navigation-bar").hide();
     $scopes.forEach(($s) => {
       applyRulesToScope($s, cfg);
 
-      // KTL / Chosen / persistent forms: value can settle a beat later
-      setTimeout(() => applyRulesToScope($s, cfg), 50);
-      setTimeout(() => applyRulesToScope($s, cfg), 250);
-      setTimeout(() => applyRulesToScope($s, cfg), 800);
+      // KTL / Chosen / persistent forms: value can settle a beat later.
+      // Single rAF recheck instead of 3 blind timers (50/250/800ms).
+      requestAnimationFrame(() => applyRulesToScope($s, cfg));
     });
   }
 
@@ -10986,8 +10975,8 @@ $(".kn-navigation-bar").hide();
   // MutationObserver: re-run when KTL rebuilds or moves nodes
   // ============================================================
   function installObservers() {
-    // Single observer for the whole document (cheap enough)
-    const target = document.body;
+    // Scope to #knack-dist (Knack's content area) instead of document.body
+    const target = document.getElementById('knack-dist') || document.body;
     if (!target) return;
 
     // Avoid double-install
@@ -11052,11 +11041,9 @@ $(".kn-navigation-bar").hide();
       setTimeout(() => FORMS.forEach(initEverywhere), 50);
     });
 
-  // Boot
+  // Boot — observer + view-render/scene-render hooks cover re-init.
   installObservers();
   $(function () { FORMS.forEach(initEverywhere); });
-  setTimeout(() => FORMS.forEach(initEverywhere), 250);
-  setTimeout(() => FORMS.forEach(initEverywhere), 1000);
 })();
 ////************* /SCW: FORM BUCKET → FIELD VISIBILITY *************////
 ////*************** DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////

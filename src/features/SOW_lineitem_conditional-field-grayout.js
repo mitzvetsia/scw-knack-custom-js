@@ -418,15 +418,8 @@
     });
   }
 
-  function applyWithRetries(cfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyForView(cfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // ============================================================
   // CAPTURE-PHASE EVENT BLOCKER
@@ -462,8 +455,10 @@
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var obsTimer = 0;
     var obs = new MutationObserver(function () {
-      applyForView(cfg);
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(cfg); }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -479,7 +474,7 @@
       .off('knack-view-render.' + cfg.viewId + EVENT_NS)
       .on('knack-view-render.' + cfg.viewId + EVENT_NS, function () {
         sortRows(cfg);
-        applyWithRetries(cfg);
+        applyForView(cfg);
         installObserver(cfg);
       });
   });
