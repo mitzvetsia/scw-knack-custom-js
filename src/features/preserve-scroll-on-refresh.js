@@ -278,21 +278,40 @@
   // ══════════════════════════════════════════════════════════
   //  Non-edit triggers (page load, SPA navigation, unload)
   //  These are simple — no coordination needed.
+  //
+  //  IMPORTANT: document.ready and knack-scene-render can both
+  //  fire on page load.  We debounce them into a single restore
+  //  and clear the saved position after restoring, so a stale
+  //  position can't be restored a second time after the user
+  //  has already scrolled.
   // ══════════════════════════════════════════════════════════
 
   // Save position right before the page unloads (refresh / close)
   window.addEventListener('beforeunload', save);
 
+  var _navRestoreTimer = null;
+
+  /** Schedule a single debounced restore for navigation / page load.
+   *  Clears the saved position after restoring so it can't fire twice. */
+  function scheduleNavRestore() {
+    if (_navRestoreTimer) clearTimeout(_navRestoreTimer);
+    _navRestoreTimer = setTimeout(function () {
+      _navRestoreTimer = null;
+      restore();
+      clear();   // consumed — don't restore this stale position again
+    }, 300);
+  }
+
   // Restore on initial page load (short delay for content layout)
   $(document).ready(function () {
-    setTimeout(restore, 300);
+    scheduleNavRestore();
   });
 
   // Restore after SPA hash-navigation scene renders
   $(document).on('knack-scene-render.any.scwScrollPreserve', function () {
     // Clear pending-edit flag on navigation (stale if user navigated away)
     clearPendingState();
-    setTimeout(restore, 300);
+    scheduleNavRestore();
   });
 
   // ══════════════════════════════════════════════════════════
