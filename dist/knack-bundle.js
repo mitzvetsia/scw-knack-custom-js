@@ -7101,7 +7101,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ───────────────────────────────────────────────
 
   function readHeaderLayout(viewEl) {
-    var bar = viewEl.querySelector('.scw-ws-summary');
+    // Find a visible summary bar (first may be inside a collapsed group)
+    var allBars = viewEl.querySelectorAll('.scw-ws-summary');
+    var bar = null;
+    for (var bi = 0; bi < allBars.length; bi++) {
+      if (allBars[bi].getBoundingClientRect().width > 0) {
+        bar = allBars[bi];
+        break;
+      }
+    }
     if (!bar) return null;
 
     var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
@@ -7235,11 +7243,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   /**
-   * Measure the first summary bar in the view and apply matching widths
+   * Measure a VISIBLE summary bar in the view and apply matching widths
    * to the header bar cells so columns are perfectly aligned.
    */
   function alignHeaderToSummary(bar, viewEl) {
-    var summary = viewEl.querySelector('.scw-ws-summary');
+    // Find a visible summary bar (first one may be in a collapsed group)
+    var summaries = viewEl.querySelectorAll('.scw-ws-summary');
+    var summary = null;
+    for (var si = 0; si < summaries.length; si++) {
+      if (summaries[si].getBoundingClientRect().width > 0) {
+        summary = summaries[si];
+        break;
+      }
+    }
     if (!summary) return;
 
     // ── Left side: check + toggle zone → header check + toggle ──
