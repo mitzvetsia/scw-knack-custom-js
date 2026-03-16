@@ -9,9 +9,12 @@
     '.kn-table-bulk-checkbox input[type="checkbox"], ' +
     'input.ktlCheckbox-row[type="checkbox"]';
 
-  /* KTL class strings — match native Knack + KTL exactly */
-  var KTL_MASTER_CLS = 'ktlCheckbox masterSelector ktlCheckbox-master ktlCheckbox-table bulkEditCb ktlCheckbox-bulkops';
-  var KTL_HEADER_CLS = 'ktlCheckbox bulkEditHeaderCbox ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
+  /* Our own class strings — must NOT include KTL bulk-edit classes
+     (bulkEditCb, bulkEditHeaderCbox, masterSelector, ktlCheckbox-master)
+     because when the header bar is inside the view, KTL would find
+     these duplicates and break its bulk-edit processing. */
+  var SCW_MASTER_CLS = 'scw-sa-master-cb';
+  var SCW_HEADER_CB_CLS = 'scw-sa-hdr-cbox';
 
   // ───────────────────────────────────────────────
   //  CSS
@@ -333,7 +336,7 @@
 
     if (hasSortLink) {
       var wrapper = document.createElement('span');
-      wrapper.className = 'table-fixed-label' + (theadMap[sortFieldKey] ? ' bulkEditTh' : '');
+      wrapper.className = 'table-fixed-label';
 
       var sortEl = document.createElement('span');
       sortEl.className = 'scw-sa-sort-link';
@@ -371,10 +374,9 @@
       if (matchedCbox) {
         var cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.className = KTL_HEADER_CLS + ' scw-sa-hdr-cbox' + (bulkVisible ? '' : ' ktlDisplayNone');
+        cb.className = SCW_HEADER_CB_CLS + (bulkVisible ? '' : ' ktlDisplayNone');
         cb.checked = matchedCbox.checked;
         cb.setAttribute('aria-label', 'Select column');
-        cb.setAttribute('data-ktl-bulkops', '1');
         cb.setAttribute('data-scw-thead-field', fieldKeys[0]);
         cb.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -475,10 +477,8 @@
     checkWrap.className = 'scw-sa-header-check';
     var selectAllCb = document.createElement('input');
     selectAllCb.type = 'checkbox';
-    selectAllCb.className = KTL_MASTER_CLS;
+    selectAllCb.className = SCW_MASTER_CLS;
     selectAllCb.setAttribute('aria-label', 'Select all rows');
-    selectAllCb.setAttribute('data-ktl-selection', 'ktlCheckbox');
-    selectAllCb.setAttribute('data-ktl-bulkops', '1');
     selectAllCb.title = 'Select / deselect all';
     checkWrap.appendChild(selectAllCb);
     bar.appendChild(checkWrap);
