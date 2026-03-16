@@ -16756,8 +16756,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
-    // Capture conditional bg BEFORE we touch the DOM
-    var compBg = window.getComputedStyle(td).backgroundColor;
+    // Use pre-cached bg from the read phase if available.  The read
+    // phase (in transformView) caches getComputedStyle results for ALL
+    // rows before any DOM writes, eliminating N-1 forced style
+    // recalculations that previously occurred when writes from earlier
+    // rows dirtied the layout for later rows' getComputedStyle calls.
+    var compBg = td._scwPreBg || window.getComputedStyle(td).backgroundColor;
+    delete td._scwPreBg;
 
     // Keep a hidden span with the text value so dynamic-cell-colors
     // (which reads $td.text()) still sees the real content.
@@ -17632,18 +17637,46 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     var $rows = $(table).find('tbody > tr');
 
+    // ── Hoist colCount — same for every row, no need to recompute ──
+    var headerRow = table.querySelector('thead tr');
+    var colCount = 1;
+    if (headerRow) {
+      colCount = 0;
+      var hCells = headerRow.children;
+      for (var ci = 0; ci < hCells.length; ci++) {
+        colCount += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
+      }
+    }
+
+    // ── PHASE 1: READ — filter eligible rows, pre-read computed styles ──
+    //
+    // getComputedStyle() forces a synchronous style recalculation when
+    // the layout is dirty.  Without pre-caching, each row's
+    // getComputedStyle pays the cost of recalculating styles that were
+    // dirtied by the PREVIOUS row's DOM insertions — O(n) forced
+    // recalcs for n rows.  Reading them all up front while the layout
+    // is still clean collapses this to a single recalculation.
+    var eligible = [];
+    var summaryLayout = viewCfg.summaryLayout || [];
+
     $rows.each(function () {
       var tr = this;
-
       if (tr.classList.contains('kn-table-group')) return;
       if (tr.classList.contains('scw-inline-photo-row')) return;
       if (tr.classList.contains(WORKSHEET_ROW)) return;
-
-      var recordId = getRecordId(tr);
-      if (!recordId) return;
+      if (!getRecordId(tr)) return;
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
-      // Detect bucket and move-field emptiness BEFORE buildWorksheetCard moves tds
+      // Pre-read computed background colors for direct-edit summary fields.
+      // Cached as td._scwPreBg and consumed by injectSummaryDirectEdit().
+      for (var si = 0; si < summaryLayout.length; si++) {
+        var desc = fieldDesc(viewCfg, summaryLayout[si]);
+        if (!desc || desc.type !== 'directEdit') continue;
+        var td = findCell(tr, desc.key, desc.columnIndex);
+        if (td) td._scwPreBg = window.getComputedStyle(td).backgroundColor;
+      }
+
+      // Pre-read bucket and move-field info (DOM reads, no layout cost)
       var preBucketRowClass = '';
       if (viewCfg.bucketField && viewCfg.bucketRules) {
         var rowBucketId = readBucketId(tr, viewCfg.bucketField);
@@ -17652,9 +17685,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           preBucketRowClass = rowBucketRule.rowClass;
         }
       }
-      // Determine if this row is under a blank (orphaned) MDF/IDF group header.
-      // Walk backwards through siblings to find the nearest kn-table-group row;
-      // if its label is empty the row has no MDF/IDF assignment.
       var hasNoMove = false;
       if (viewCfg.syntheticBucketGroups) {
         var prev = tr.previousElementSibling;
@@ -17662,11 +17692,26 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           prev = prev.previousElementSibling;
         }
         if (!prev) {
-          hasNoMove = true; // no group header at all
+          hasNoMove = true;
         } else {
           hasNoMove = getGroupLabelText(prev).length === 0;
         }
       }
+
+      eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
+    });
+
+    // ── PHASE 2: BUILD — construct cards from pre-read data ──
+    //
+    // buildWorksheetCard reparents <td> elements into the card DOM,
+    // which mutates the source rows.  Because all getComputedStyle
+    // reads happened in Phase 1, these mutations don't trigger forced
+    // style recalculations.
+    var pendingInserts = [];
+
+    for (var ri = 0; ri < eligible.length; ri++) {
+      var entry = eligible[ri];
+      var tr = entry.tr;
 
       var card = buildWorksheetCard(tr, viewCfg);
 
@@ -17675,27 +17720,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.id = tr.id;
       tr.removeAttribute('id');
 
-      if (preBucketRowClass) wsTr.classList.add(preBucketRowClass);
-      if (hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
+      if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);
+      if (entry.hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
 
       var wsTd = document.createElement('td');
-
-      var headerRow = table.querySelector('thead tr');
-      var colCount = 1;
-      if (headerRow) {
-        colCount = 0;
-        var cells = headerRow.children;
-        for (var i = 0; i < cells.length; i++) {
-          colCount += parseInt(cells[i].getAttribute('colspan') || '1', 10);
-        }
-      }
       wsTd.setAttribute('colspan', String(colCount));
       wsTd.appendChild(card);
       wsTr.appendChild(wsTd);
 
-      tr.parentNode.insertBefore(wsTr, tr.nextSibling);
       tr.setAttribute(PROCESSED_ATTR, '1');
-    });
+      pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
+    }
+
+    // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
+    //
+    // Batching avoids interleaving writes with the reads that happened
+    // in Phase 1.  The browser can coalesce these mutations into a
+    // single reflow instead of reflowing after each insertion.
+    for (var pi = 0; pi < pendingInserts.length; pi++) {
+      var ins = pendingInserts[pi];
+      ins.sourceTr.parentNode.insertBefore(ins.wsTr, ins.sourceTr.nextSibling);
+    }
 
     // After all rows are processed, hide photo rows for collapsed items
     // and set up the bottom border on the last row of each record group
