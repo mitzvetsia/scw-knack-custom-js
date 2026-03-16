@@ -6856,15 +6856,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (document.getElementById(STYLE_ID)) return;
 
     var css = [
-      /* ── View-level header bar ── */
+      /* ── View-level header bar — styled like native Knack <thead> ── */
       '.scw-sa-header {',
       '  display: flex;',
-      '  align-items: center;',
+      '  align-items: stretch;',
       '  gap: 0;',
-      '  padding: 4px 12px;',
-      '  background: #e2e8f0;',
-      '  border-bottom: 2px solid #cbd5e1;',
-      '  min-height: 28px;',
+      '  padding: 0 12px;',
+      '  background: #fafafa;',
+      '  border-bottom: 1px solid #dbdbdb;',
+      '  min-height: 34px;',
       '  user-select: none;',
       '  position: sticky;',
       '  top: 0;',
@@ -6872,11 +6872,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
       '.scw-sa-header-check {',
       '  flex: 0 0 auto;',
-      '  min-width: 20px;',
+      '  min-width: 24px;',
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  padding: 0 4px;',
+      '  padding: 0;',
       '}',
       '.scw-sa-header-check input[type="checkbox"] {',
       '  margin: 0;',
@@ -6905,36 +6905,55 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  flex-shrink: 0;',
       '}',
 
-      /* Each header label cell: contains label text + optional checkbox */
+      /* Each header label cell: styled like native <th> */
       '.scw-sa-header-cell {',
-      '  display: flex;',
-      '  flex-direction: column;',
+      '  display: inline-flex;',
       '  align-items: center;',
-      '  justify-content: flex-end;',
+      '  justify-content: center;',
       '  gap: 2px;',
       '  flex-shrink: 0;',
+      '  padding: 6px 4px;',
       '}',
-      '.scw-sa-header-label {',
-      '  font-size: 10px;',
-      '  font-weight: 700;',
-      '  text-transform: uppercase;',
-      '  letter-spacing: 0.5px;',
-      '  color: #374151;',
+
+      /* ── Sort link — mimics native Knack <a class="kn-sort"> ── */
+      '.scw-sa-header-sort {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 3px;',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  color: #485fc7;',
       '  white-space: nowrap;',
       '  text-align: center;',
-      '  line-height: 1.2;',
-      '}',
-      /* Sortable label cursor */
-      '.scw-sa-header-label[data-scw-sort-field] {',
+      '  line-height: 1.3;',
       '  cursor: pointer;',
+      '  text-decoration: none;',
       '}',
-      '.scw-sa-header-label[data-scw-sort-field]:hover {',
-      '  color: #1e40af;',
-      '  text-decoration: underline;',
+      '.scw-sa-header-sort:hover {',
+      '  color: #363636;',
       '}',
+
+      /* Non-sortable label (delete column, etc.) */
+      '.scw-sa-header-label {',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  color: #363636;',
+      '  white-space: nowrap;',
+      '  text-align: center;',
+      '  line-height: 1.3;',
+      '}',
+
+      /* Sort direction icon — matches native Knack fa-sort-amount-* */
+      '.scw-sa-sort-icon {',
+      '  font-size: 11px;',
+      '  opacity: 0.6;',
+      '  margin-left: 2px;',
+      '}',
+      '.scw-sa-header-sort.is-sorted .scw-sa-sort-icon { opacity: 1; }',
+
       /* Bulk-edit column checkbox inside header cell */
       '.scw-sa-hdr-cbox {',
-      '  margin: 0;',
+      '  margin: 0 0 0 4px;',
       '  cursor: pointer;',
       '  width: 13px;',
       '  height: 13px;',
@@ -7043,16 +7062,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   /**
    * Find the native Knack sort link in the hidden <thead> for a given field key.
    * Sort links use href="#field_XXXX|asc" (or |desc).
+   * Returns { link, th } or null.
    */
   function findSortLink(viewEl, fieldKey) {
     var thead = viewEl.querySelector('thead');
     if (!thead) return null;
-    // Try exact match first: href contains the field key
-    var links = thead.querySelectorAll('a.kn-sort');
-    for (var i = 0; i < links.length; i++) {
-      var href = links[i].getAttribute('href') || '';
-      if (href.indexOf(fieldKey) !== -1) return links[i];
+    var ths = thead.querySelectorAll('th');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      if (th.className.indexOf(fieldKey) === -1) continue;
+      var link = th.querySelector('a.kn-sort');
+      if (link) return { link: link, th: th };
     }
+    // Fallback: search by href
+    var links = thead.querySelectorAll('a.kn-sort');
+    for (var j = 0; j < links.length; j++) {
+      var href = links[j].getAttribute('href') || '';
+      if (href.indexOf(fieldKey) !== -1) return { link: links[j], th: links[j].closest('th') };
+    }
+    return null;
+  }
+
+  /**
+   * Read the current sort direction for a field from the hidden <thead>.
+   * Returns 'asc', 'desc', or null.
+   */
+  function readSortState(viewEl, fieldKey) {
+    var info = findSortLink(viewEl, fieldKey);
+    if (!info || !info.th) return null;
+    if (info.th.classList.contains('sorted-asc')) return 'asc';
+    if (info.th.classList.contains('sorted-desc')) return 'desc';
     return null;
   }
 
@@ -7061,9 +7100,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    */
   function triggerSort(viewEl, fieldKeys) {
     for (var i = 0; i < fieldKeys.length; i++) {
-      var link = findSortLink(viewEl, fieldKeys[i]);
-      if (link) {
-        link.click();
+      var info = findSortLink(viewEl, fieldKeys[i]);
+      if (info && info.link) {
+        info.link.click();
         return true;
       }
     }
@@ -7203,38 +7242,59 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   /**
-   * Build a header cell (label + optional bulk-edit checkbox).
-   * @param {string} labelText
-   * @param {string[]} fieldKeys — field keys for this group (first one checked for thead cbox)
-   * @param {Object} theadMap — field→checkbox map from readTheadCheckboxes
-   * @param {boolean} bulkVisible — whether bulk-edit checkboxes are currently visible
-   * @param {string} extraCls — extra CSS class for width
-   * @param {HTMLElement} viewEl — the view DOM element (for sort link lookup)
-   * @returns {HTMLElement}
+   * Build a header cell (sort link + optional bulk-edit checkbox).
+   * Styled to look like a native Knack <th> with <a class="kn-sort">.
    */
   function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, extraCls, viewEl) {
     var cell = document.createElement('span');
     cell.className = 'scw-sa-header-cell' + (extraCls ? ' ' + extraCls : '');
 
-    var lbl = document.createElement('span');
-    lbl.className = 'scw-sa-header-label';
-    lbl.textContent = labelText;
-
-    // Make label sortable if there's a matching sort link in the hidden thead
+    // Check if any of this group's fields has a native sort link
+    var sortInfo = null;
     if (viewEl && fieldKeys.length) {
-      var hasSortLink = false;
       for (var s = 0; s < fieldKeys.length; s++) {
-        if (findSortLink(viewEl, fieldKeys[s])) { hasSortLink = true; break; }
-      }
-      if (hasSortLink) {
-        lbl.setAttribute('data-scw-sort-field', fieldKeys[0]);
-        lbl.addEventListener('click', function () {
-          triggerSort(viewEl, fieldKeys);
-        });
+        sortInfo = findSortLink(viewEl, fieldKeys[s]);
+        if (sortInfo) break;
       }
     }
 
-    cell.appendChild(lbl);
+    if (sortInfo) {
+      // Sortable column — build a link-like element matching native <a class="kn-sort">
+      var sortEl = document.createElement('span');
+      sortEl.className = 'scw-sa-header-sort';
+
+      // Check current sort direction
+      var dir = readSortState(viewEl, fieldKeys[0]);
+      if (dir) sortEl.classList.add('is-sorted');
+
+      var textSpan = document.createElement('span');
+      textSpan.textContent = labelText;
+      sortEl.appendChild(textSpan);
+
+      // Sort direction icon (font-awesome, matching native Knack)
+      var iconSpan = document.createElement('span');
+      iconSpan.className = 'scw-sa-sort-icon';
+      var icon = document.createElement('i');
+      icon.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+      // Only show icon if actively sorted, or show a faint default
+      if (!dir) iconSpan.style.visibility = 'hidden';
+      iconSpan.appendChild(icon);
+      sortEl.appendChild(iconSpan);
+
+      sortEl.addEventListener('click', function () {
+        triggerSort(viewEl, fieldKeys);
+        // Schedule header rebuilds to survive the re-render
+        scheduleRebuild();
+      });
+
+      cell.appendChild(sortEl);
+    } else {
+      // Non-sortable column — plain label
+      var lbl = document.createElement('span');
+      lbl.className = 'scw-sa-header-label';
+      lbl.textContent = labelText;
+      cell.appendChild(lbl);
+    }
 
     // Check if any of this group's fields has a bulkEditHeaderCbox
     var matchedCbox = null;
@@ -7583,6 +7643,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     enhanceGroupHeaders();
   }
 
+  /**
+   * Schedule multiple enhance() calls at staggered delays to ensure
+   * the header bar is rebuilt after sort-triggered view re-renders.
+   * (transformView runs at ~150ms; KTL adds checkboxes later.)
+   */
+  var _rebuildTimers = [];
+  function scheduleRebuild() {
+    // Cancel any pending rebuild timers
+    for (var t = 0; t < _rebuildTimers.length; t++) clearTimeout(_rebuildTimers[t]);
+    _rebuildTimers = [
+      setTimeout(enhance, 400),
+      setTimeout(enhance, 700),
+      setTimeout(enhance, 1200)
+    ];
+  }
+
   $(document)
     .off('knack-scene-render.any.scwSelectAll')
     .on('knack-scene-render.any.scwSelectAll', function () {
@@ -7593,6 +7669,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     .off('knack-view-render.any.scwSelectAll')
     .on('knack-view-render.any.scwSelectAll', function () {
       setTimeout(enhance, 350);
+      // Also schedule a later pass for views where transformView
+      // or KTL enhancement hasn't finished at 350ms.
+      setTimeout(enhance, 700);
     });
 
   // MutationObserver fallback — debounced to avoid infinite loops
