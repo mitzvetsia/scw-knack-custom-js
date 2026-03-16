@@ -664,9 +664,12 @@
         continue;
       }
 
-      // Only add if this view has bulk checkboxes
-      var checkboxes = findCheckboxes(viewEl);
-      if (!checkboxes.length) continue;
+      // Build if this view has a device-worksheet summary bar OR bulk checkboxes.
+      // After inline edits, KTL checkboxes may appear later than the summary bar,
+      // so checking for summary bar is the primary guard.
+      var hasSummary = !!viewEl.querySelector('.scw-ws-summary');
+      var hasCheckboxes = findCheckboxes(viewEl).length > 0;
+      if (!hasSummary && !hasCheckboxes) continue;
 
       var oldBtn = header.querySelector('.scw-select-all-btn');
       if (oldBtn) oldBtn.remove();
@@ -809,6 +812,7 @@
     .on('knack-view-render.any.scwSelectAll', function () {
       setTimeout(enhance, 350);
       setTimeout(enhance, 700);
+      setTimeout(enhance, 1500);
     });
 
   // After inline edits, the post-edit coordinator rebuilds accordions
