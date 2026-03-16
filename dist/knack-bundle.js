@@ -9897,7 +9897,6 @@ $(".kn-navigation-bar").hide();
 });
 /**************************************************************************************************
  * FEATURE: McGandy’s Experiment (scene_213) — margin/cost math
- * ⚠ Contains likely bug: document.querySelector('text#field_1365') should probably be input#field_1365
  **************************************************************************************************/
 (function mcgandyExperiment_scene213() {
   SCW.onSceneRender('scene_213', function (event, view, record) {
@@ -9924,7 +9923,7 @@ $(".kn-navigation-bar").hide();
         var survey_cost = $(this).val();
         var subcontractor_cost = document.querySelector('input#field_1364').value;
         var total_cost = Math.abs(Math.abs(survey_cost) + Math.abs(subcontractor_cost));
-        var margin = document.querySelector('text#field_1365').value; // ⚠ likely wrong selector
+        var margin = document.querySelector('input#field_1365').value;
         var marked_up_labor = Math.round(total_cost / (1 - margin));
 
         $('input#field_1366').val(marked_up_labor);
@@ -12927,13 +12926,14 @@ $(".kn-navigation-bar").hide();
   /**
    * Update a field value via Knack's internal APIs.
    */
-  function saveFieldValue(viewId, recordId, fieldKey, boolValue) {
+  function saveFieldValue(viewId, recordId, fieldKey, boolValue, onDone) {
     var data = {};
     data[fieldKey] = boolValue === 'yes';
 
     var view = Knack.views[viewId];
     if (view && view.model && typeof view.model.updateRecord === 'function') {
       view.model.updateRecord(recordId, data);
+      if (onDone) onDone();
       return;
     }
 
@@ -12950,6 +12950,7 @@ $(".kn-navigation-bar").hide();
         if (typeof model.save === 'function') {
           data.id = recordId;
           model.save(data);
+          if (onDone) onDone();
           return;
         }
       }
@@ -12967,6 +12968,7 @@ $(".kn-navigation-bar").hide();
       contentType: 'application/json',
       data: JSON.stringify(data),
       success: function () {
+        if (onDone) onDone();
         if (Knack.views[viewId] && Knack.views[viewId].model &&
             typeof Knack.views[viewId].model.fetch === 'function') {
           Knack.views[viewId].model.fetch();
@@ -12974,6 +12976,7 @@ $(".kn-navigation-bar").hide();
       },
       error: function (xhr) {
         console.warn('[scw-bool-chips] Save failed for ' + recordId, xhr.responseText);
+        if (onDone) onDone();
       }
     });
   }
@@ -13089,8 +13092,6 @@ $(".kn-navigation-bar").hide();
     newChip.classList.add('is-saving');
     chip.parentNode.replaceChild(newChip, chip);
 
-    setTimeout(function () { newChip.classList.remove('is-saving'); }, 400);
-
     // Also update the hidden source cell so re-renders stay in sync
     var $tr = $(td).closest('tr');
     var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
@@ -13098,12 +13099,16 @@ $(".kn-navigation-bar").hide();
       $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
     }
 
-    // Save
+    // Save — remove is-saving (pointer-events: none) only after the
+    // save completes, not on a blind 400ms timer.
     var tr = td.closest('tr');
     var recordId = tr ? getRecordId(tr) : null;
     if (recordId) {
-      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue);
+      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue, function () {
+        newChip.classList.remove('is-saving');
+      });
     } else {
+      newChip.classList.remove('is-saving');
       console.warn('[scw-bool-chips] Could not determine record ID for save');
     }
   }
