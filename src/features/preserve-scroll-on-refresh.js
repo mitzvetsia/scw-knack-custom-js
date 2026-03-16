@@ -73,6 +73,25 @@
 
   var STORAGE_KEY = 'scw_scroll_position';
 
+  // ══════════════════════════════════════════════════════════
+  //  Debug instrumentation
+  //  Toggle from console: SCW.scrollPreserve.debug = true
+  //  Shows timestamped lifecycle events so you can see exactly
+  //  what happens during scroll save/restore sequences.
+  // ══════════════════════════════════════════════════════════
+  var _debug = false;
+  var _debugT0 = 0;  // timestamp of the cell-update that started the sequence
+
+  function log(label, data) {
+    if (!_debug) return;
+    var elapsed = _debugT0 ? '+' + (Date.now() - _debugT0) + 'ms' : 't0';
+    if (data !== undefined) {
+      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
+    } else {
+      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
+    }
+  }
+
   // ── How long after the LAST knack-view-render to wait before
   //    considering all views settled.  300ms balances speed with
   //    reliability — Knack's model.fetch() calls go out in parallel
@@ -99,9 +118,11 @@
 
   function save() {
     try {
+      var pos = $(window).scrollTop();
       var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
-      data[getPageKey()] = $(window).scrollTop();
+      data[getPageKey()] = pos;
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      log('save pixel', { pos: pos, key: getPageKey() });
     } catch (e) {
       // sessionStorage may be unavailable in some contexts
     }
@@ -112,7 +133,11 @@
       var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
       var pos = data[getPageKey()];
       if (typeof pos === 'number' && pos > 0) {
+        log('restore pixel', { target: pos, before: $(window).scrollTop(), key: getPageKey() });
         $(window).scrollTop(pos);
+        log('restore pixel done', { actual: $(window).scrollTop(), wanted: pos });
+      } else {
+        log('restore pixel — no saved position', { key: getPageKey() });
       }
     } catch (e) {
       // ignore
@@ -155,6 +180,7 @@
   function saveAnchor() {
     var best = null;
     var bestDist = Infinity;
+    var candidates = [];
 
     $('[id^="view_"]').filter(':visible').each(function () {
       // Only match canonical view IDs (view_1234)
@@ -162,6 +188,7 @@
 
       var rect = this.getBoundingClientRect();
       var dist = Math.abs(rect.top);
+      if (_debug) candidates.push({ id: this.id, top: Math.round(rect.top), dist: Math.round(dist) });
       if (dist < bestDist) {
         bestDist = dist;
         best = {
@@ -177,6 +204,10 @@
       best.pageKey = getPageKey();
     }
     _savedAnchor = best;
+    log('save anchor', best
+      ? { anchor: best.id, topOffset: Math.round(best.topOffset), candidates: candidates.length }
+      : 'no visible views found');
+    if (_debug && candidates.length <= 10) log('  candidates', candidates);
   }
 
   /**
@@ -185,19 +216,40 @@
    * Returns true if the anchor was found and scroll was applied.
    */
   function restoreFromAnchor() {
-    if (!_savedAnchor) return false;
+    if (!_savedAnchor) {
+      log('restore anchor — no saved anchor');
+      return false;
+    }
     var anchor = _savedAnchor;
     _savedAnchor = null;
 
     var el = document.getElementById(anchor.id);
-    if (!el || !$(el).is(':visible')) return false;
+    if (!el || !$(el).is(':visible')) {
+      log('restore anchor FAILED — element not found or hidden', { id: anchor.id });
+      return false;
+    }
 
     var rect = el.getBoundingClientRect();
     var drift = rect.top - anchor.topOffset;
+    var scrollBefore = $(window).scrollTop();
+
+    log('restore anchor', {
+      id: anchor.id,
+      savedOffset: Math.round(anchor.topOffset),
+      currentOffset: Math.round(rect.top),
+      drift: Math.round(drift),
+      scrollBefore: scrollBefore
+    });
 
     // Only adjust if the drift is meaningful (> 5px)
     if (Math.abs(drift) > 5) {
-      $(window).scrollTop($(window).scrollTop() + drift);
+      $(window).scrollTop(scrollBefore + drift);
+      log('restore anchor applied', {
+        scrollAfter: $(window).scrollTop(),
+        wanted: scrollBefore + drift
+      });
+    } else {
+      log('restore anchor — drift < 5px, no adjustment needed');
     }
     return true;
   }
@@ -212,7 +264,11 @@
       var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
       var pos = data[frozenKey];
       if (typeof pos === 'number' && pos > 0) {
+        log('restore pixel (frozen key)', { target: pos, before: $(window).scrollTop(), key: frozenKey });
         $(window).scrollTop(pos);
+        log('restore pixel done', { actual: $(window).scrollTop(), wanted: pos });
+      } else {
+        log('restore pixel (frozen key) — no saved position', { key: frozenKey });
       }
     } catch (e) {
       // ignore
@@ -262,6 +318,8 @@
   // Fires BEFORE Knack re-renders views, so the scroll position and
   // accordion state in localStorage are both accurate at this moment.
   $(document).on('knack-cell-update.scwScrollPreserve', function () {
+    _debugT0 = Date.now();
+    log('=== CELL UPDATE ===', { scrollTop: $(window).scrollTop(), pageHeight: document.body.scrollHeight });
     save();            // pixel position (for reload / SPA nav fallback)
     saveAnchor();      // contextual anchor (for post-edit restore)
     _pendingEdit = true;
@@ -285,14 +343,22 @@
     _safetyTimer = setTimeout(function () {
       _safetyTimer = null;
       if (_pendingEdit) {
+        log('SAFETY TIMEOUT — no view-render in ' + SAFETY_TIMEOUT_MS + 'ms, forcing restore');
         runPostEditRestore();
       }
     }, SAFETY_TIMEOUT_MS);
   });
 
   // ── SETTLE DETECTION: Debounce view-renders to find the quiet point ──
-  $(document).on('knack-view-render.scwScrollPreserve', function () {
+  var _viewRenderCount = 0;
+  $(document).on('knack-view-render.scwScrollPreserve', function (e, view) {
+    var viewId = (view && view.key) || 'unknown';
     if (_pendingEdit) {
+      _viewRenderCount++;
+      log('view-render #' + _viewRenderCount + ' (pending edit)', {
+        viewId: viewId,
+        resettingSettleTimer: SETTLE_MS + 'ms'
+      });
       // Coordinated post-edit flow: reset settle timer on each render.
       // The restore sequence runs SETTLE_MS after the LAST view-render,
       // ensuring all async-fetched views have finished.
@@ -321,6 +387,14 @@
   // ══════════════════════════════════════════════════════════
 
   function runPostEditRestore() {
+    log('--- runPostEditRestore START ---', {
+      trigger: _settleTimer ? 'settle' : 'safety',
+      viewRenders: _viewRenderCount,
+      pageHeight: document.body.scrollHeight,
+      scrollTop: $(window).scrollTop()
+    });
+    _viewRenderCount = 0;
+
     // Clear timers (we may have been called by either settle or safety)
     if (_settleTimer) { clearTimeout(_settleTimer); _settleTimer = null; }
     if (_safetyTimer) { clearTimeout(_safetyTimer); _safetyTimer = null; }
@@ -329,56 +403,93 @@
     var frozenPageKey = _savedAnchor ? _savedAnchor.pageKey : getPageKey();
 
     // Step 1: Verify DOM readiness — poll until tables have content rows.
-    // Knack's async re-render may not be fully complete even after
-    // knack-view-render fires (e.g., grouped rows added in batches).
+    log('step 1: polling for DOM readiness');
     pollForDOM(function () {
+      log('step 1 done: DOM ready', { pageHeight: document.body.scrollHeight });
 
       // Step 2: Re-enable group-collapse auto-enhancement
-      //         (so MutationObserver works normally going forward)
+      log('step 2: re-enable group-collapse');
       if (window.SCW && window.SCW.groupCollapse) {
         window.SCW.groupCollapse.suppress(false);
       }
 
-      // Step 3: REBUILD GROUPED ACCORDIONS — run group-collapse
-      //         enhancement which reads saved state from localStorage
-      //         and applies collapsed/expanded classes + row visibility.
-      //         This is idempotent — safe if group-collapse already ran.
+      // Step 3: REBUILD GROUPED ACCORDIONS
+      var heightBefore = document.body.scrollHeight;
+      log('step 3: group-collapse enhance', { pageHeight: heightBefore });
       if (window.SCW && window.SCW.groupCollapse) {
         window.SCW.groupCollapse.enhance();
       }
+      var heightAfterGC = document.body.scrollHeight;
+      if (heightAfterGC !== heightBefore) {
+        log('step 3: page height CHANGED by group-collapse', {
+          before: heightBefore, after: heightAfterGC, delta: heightAfterGC - heightBefore
+        });
+      }
 
-      // Step 4: SYNC KTL ACCORDIONS — ensure accordion wrappers
-      //         are re-adopted after view DOM replacement, then
-      //         restore saved collapsed/expanded state.
+      // Step 4: SYNC KTL ACCORDIONS
+      log('step 4: KTL accordion refresh');
       if (window.SCW && window.SCW.ktlAccordion) {
         window.SCW.ktlAccordion.refresh();
         if (window.SCW.ktlAccordion.restoreState) {
           window.SCW.ktlAccordion.restoreState();
         }
       }
+      var heightAfterKTL = document.body.scrollHeight;
+      if (heightAfterKTL !== heightAfterGC) {
+        log('step 4: page height CHANGED by KTL accordion', {
+          before: heightAfterGC, after: heightAfterKTL, delta: heightAfterKTL - heightAfterGC
+        });
+      }
 
-      // Step 5: RESTORE SCROLL POSITION — wait 2 requestAnimationFrame
-      //         cycles so the browser has painted the updated layout
-      //         (expanded/collapsed rows, accordion bodies) before we
-      //         scroll.  This is the minimum reliable wait for layout
-      //         stability without a blind timeout.
+      // Step 5: RESTORE SCROLL POSITION
+      log('step 5: waiting 2 rAF frames for layout');
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
+          var heightAtRestore = document.body.scrollHeight;
+          log('step 5: restoring scroll', {
+            pageHeight: heightAtRestore,
+            scrollBefore: $(window).scrollTop()
+          });
+
           // Primary: anchor-based restore (reliable when layout changes)
           var anchorWorked = restoreFromAnchor();
 
           // Fallback: pixel-based restore using frozen page key
           if (!anchorWorked) {
+            log('anchor failed — falling back to pixel restore');
             restoreWithFrozenKey(frozenPageKey);
           }
 
+          var scrollAfterRestore = $(window).scrollTop();
           _pendingEdit = false;
 
-          // Signal that post-edit restoration is complete — DOM is
-          // stable, accordions are rebuilt, scroll is restored.
-          // Dependents (e.g., select-all-checkboxes) listen for this
-          // instead of using blind setTimeout after knack-cell-update.
+          // Signal that post-edit restoration is complete
           document.dispatchEvent(new CustomEvent('scw-post-edit-ready'));
+
+          // Step 6: DRIFT CHECK — detect if something moves the scroll
+          // AFTER we restored it (e.g., a late MutationObserver, KTL
+          // re-render, or browser auto-scroll).  Log after a short delay.
+          if (_debug) {
+            var checkScroll = scrollAfterRestore;
+            setTimeout(function () {
+              var now = $(window).scrollTop();
+              var heightNow = document.body.scrollHeight;
+              if (Math.abs(now - checkScroll) > 3) {
+                log('POST-RESTORE DRIFT DETECTED', {
+                  restoredTo: checkScroll,
+                  nowAt: now,
+                  drift: now - checkScroll,
+                  heightAtRestore: heightAtRestore,
+                  heightNow: heightNow,
+                  heightDelta: heightNow - heightAtRestore
+                });
+              } else {
+                log('=== RESTORE COMPLETE (stable) ===', {
+                  finalScroll: now, pageHeight: heightNow
+                });
+              }
+            }, 500);
+          }
         });
       });
     });
@@ -438,4 +549,19 @@
     restore: restore,
     clear: clear
   };
+
+  // Debug mode — getter/setter on the public API so you can toggle
+  // from the console:  SCW.scrollPreserve.debug = true
+  Object.defineProperty(window.SCW.scrollPreserve, 'debug', {
+    get: function () { return _debug; },
+    set: function (val) {
+      _debug = !!val;
+      if (_debug) {
+        console.log(
+          '%c[scroll] Debug ON — edit any cell to see the full restore timeline.',
+          'color:#1a73e8; font-weight:bold'
+        );
+      }
+    }
+  });
 })();
