@@ -133,17 +133,22 @@
     });
 
   // ── MutationObserver: detect KTL button injection ──
+  // Scoped to #knack-dist (Knack's main content area) instead of
+  // document.body to avoid firing on unrelated DOM mutations.
+  // Debounced at 200ms (was rAF ~16ms) since button injection
+  // happens in batches and we only need to run once after they settle.
 
-  var pendingRaf = 0;
+  var obsTimer = 0;
   var observer = new MutationObserver(function () {
-    if (pendingRaf) cancelAnimationFrame(pendingRaf);
-    pendingRaf = requestAnimationFrame(function () {
-      pendingRaf = 0;
+    if (obsTimer) clearTimeout(obsTimer);
+    obsTimer = setTimeout(function () {
+      obsTimer = 0;
       restoreAllVisible();
-    });
+    }, 200);
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
+  var obsRoot = document.getElementById('knack-dist') || document.body;
+  observer.observe(obsRoot, { childList: true, subtree: true });
 
   // ── scene render: reset the "already restored" guard ──
 

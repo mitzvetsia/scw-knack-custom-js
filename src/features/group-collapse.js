@@ -689,7 +689,10 @@
       }, 100);
     });
 
-    obs.observe(document.body, { childList: true, subtree: true });
+    // Scope observer to the scene container instead of document.body.
+    // This avoids firing on DOM mutations in other scenes / unrelated UI.
+    var sceneRoot = document.getElementById('kn-' + sceneId);
+    obs.observe(sceneRoot || document.body, { childList: true, subtree: true });
     observerByScene[sceneId] = obs;
   }
 

@@ -601,17 +601,22 @@ window.SCW = window.SCW || {};
     });
 
   // ── MutationObserver: detect KTL button injection ──
+  // Scoped to #knack-dist (Knack's main content area) instead of
+  // document.body to avoid firing on unrelated DOM mutations.
+  // Debounced at 200ms (was rAF ~16ms) since button injection
+  // happens in batches and we only need to run once after they settle.
 
-  var pendingRaf = 0;
+  var obsTimer = 0;
   var observer = new MutationObserver(function () {
-    if (pendingRaf) cancelAnimationFrame(pendingRaf);
-    pendingRaf = requestAnimationFrame(function () {
-      pendingRaf = 0;
+    if (obsTimer) clearTimeout(obsTimer);
+    obsTimer = setTimeout(function () {
+      obsTimer = 0;
       restoreAllVisible();
-    });
+    }, 200);
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
+  var obsRoot = document.getElementById('knack-dist') || document.body;
+  observer.observe(obsRoot, { childList: true, subtree: true });
 
   // ── scene render: reset the "already restored" guard ──
 
@@ -6780,7 +6785,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }, 100);
     });
 
-    obs.observe(document.body, { childList: true, subtree: true });
+    // Scope observer to the scene container instead of document.body.
+    // This avoids firing on DOM mutations in other scenes / unrelated UI.
+    var sceneRoot = document.getElementById('kn-' + sceneId);
+    obs.observe(sceneRoot || document.body, { childList: true, subtree: true });
     observerByScene[sceneId] = obs;
   }
 
@@ -18641,17 +18649,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     });
   }
 
-  function applyWithRetries(viewCfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyColorsForView(viewCfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
-
-  // Re-apply after KTL / Knack tbody mutations
+  // Re-apply after KTL / Knack tbody mutations (debounced)
   function installObserver(viewCfg) {
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
@@ -18661,8 +18659,13 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var debounceTimer = 0;
     var obs = new MutationObserver(function () {
-      applyColorsForView(viewCfg);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        debounceTimer = 0;
+        applyColorsForView(viewCfg);
+      }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -18676,7 +18679,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     $(document)
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
-        applyWithRetries(viewCfg);
+        applyColorsForView(viewCfg);
         installObserver(viewCfg);
       });
   });
