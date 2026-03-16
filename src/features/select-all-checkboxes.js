@@ -534,8 +534,16 @@
 
     // ── Sync state on any checkbox change within view ──
     $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
-      var cbs = findCheckboxes(document.getElementById(viewKey));
+      var freshEl = document.getElementById(viewKey);
+      if (!freshEl) return;
+      var cbs = findCheckboxes(freshEl);
       syncCheckbox(selectAllCb, cbs);
+      // After a row checkbox changes, KTL toggles ktlDisplayNone on native
+      // thead checkboxes (class change). Delay sync so KTL processes first.
+      setTimeout(function () {
+        var el = document.getElementById(viewKey);
+        if (el) syncHeaderBar(el, viewKey);
+      }, 150);
     });
 
     syncCheckbox(selectAllCb, findCheckboxes(viewEl));
