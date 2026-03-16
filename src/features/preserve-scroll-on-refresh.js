@@ -373,6 +373,12 @@
           }
 
           _pendingEdit = false;
+
+          // Signal that post-edit restoration is complete — DOM is
+          // stable, accordions are rebuilt, scroll is restored.
+          // Dependents (e.g., select-all-checkboxes) listen for this
+          // instead of using blind setTimeout after knack-cell-update.
+          document.dispatchEvent(new CustomEvent('scw-post-edit-ready'));
         });
       });
     });

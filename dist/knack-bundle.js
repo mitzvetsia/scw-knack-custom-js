@@ -400,6 +400,12 @@ window.SCW = window.SCW || {};
           }
 
           _pendingEdit = false;
+
+          // Signal that post-edit restoration is complete — DOM is
+          // stable, accordions are rebuilt, scroll is restored.
+          // Dependents (e.g., select-all-checkboxes) listen for this
+          // instead of using blind setTimeout after knack-cell-update.
+          document.dispatchEvent(new CustomEvent('scw-post-edit-ready'));
         });
       });
     });
@@ -7649,50 +7655,48 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     enhanceGroupHeaders();
   }
 
-  // ── Primary trigger: device-worksheet.js dispatches this event
-  //    after transformView() finishes and the DOM is stable.
-  //    One enhance() call per view transform — no blind timers needed.
+  // ── Event-driven triggers ──────────────────────────────
+  //
+  //  Previously this module had 7 blind setTimeout schedules (reduced
+  //  to 5 in a prior pass).  Now we use targeted custom events from the
+  //  modules that actually change the DOM, plus a single short debounce
+  //  for non-worksheet views:
+  //
+  //  1. scw-worksheet-ready  — device-worksheet.js dispatches after
+  //     transformView() completes.  Event-driven, no timer.
+  //  2. scw-post-edit-ready  — preserve-scroll-on-refresh.js dispatches
+  //     after its full post-edit restoration sequence (accordions rebuilt,
+  //     scroll restored).  Replaces the old 1200ms knack-cell-update timer.
+  //  3. knack-view-render    — short 100ms debounce for non-worksheet
+  //     views (plain tables with KTL checkboxes).  100ms is enough since
+  //     these views don't go through transformView().
+  //
+  //  Removed (redundant):
+  //  - knack-scene-render: every view in the scene fires knack-view-render
+  //  - document.ready: Knack fires knack-view-render on initial load
+  //  - knack-cell-update: covered by scw-post-edit-ready event
+
+  // 1. Worksheet views — event-driven, no blind timer
   document.addEventListener('scw-worksheet-ready', function () {
-    setTimeout(enhance, 50);
+    requestAnimationFrame(enhance);
   });
 
-  // ── Scene render: new page / SPA navigation.
-  //    Single delayed call is enough — worksheet transform will fire
-  //    its own scw-worksheet-ready event for views that have worksheets.
-  $(document)
-    .off('knack-scene-render.any.scwSelectAll')
-    .on('knack-scene-render.any.scwSelectAll', function () {
-      setTimeout(enhance, 350);
-    });
+  // 2. Post-inline-edit — event-driven, replaces 1200ms blind timer
+  document.addEventListener('scw-post-edit-ready', function () {
+    requestAnimationFrame(enhance);
+  });
 
-  // ── View render: covers views WITHOUT device-worksheet (plain tables
-  //    with KTL checkboxes that still need header bars).
-  //    Single call at 350ms — worksheet views get their own targeted
-  //    enhance via the scw-worksheet-ready event above.
+  // 3. Non-worksheet views — short debounce after view render
+  var _viewRenderTimer = null;
   $(document)
     .off('knack-view-render.any.scwSelectAll')
     .on('knack-view-render.any.scwSelectAll', function () {
-      setTimeout(enhance, 350);
+      if (_viewRenderTimer) clearTimeout(_viewRenderTimer);
+      _viewRenderTimer = setTimeout(function () {
+        _viewRenderTimer = null;
+        enhance();
+      }, 100);
     });
-
-  // ── Cell update: post-edit coordinator rebuilds accordions and
-  //    worksheet summary bars; a single late call catches everything.
-  $(document)
-    .off('knack-cell-update.scwSelectAll')
-    .on('knack-cell-update.scwSelectAll', function () {
-      setTimeout(enhance, 1200);
-    });
-
-  // ── NOTE: The body-level MutationObserver that was here has been
-  //    removed. It observed document.body with subtree:true, which
-  //    fired hundreds of times during transformView() as <td> elements
-  //    were reparented — each firing a debounced enhance() that forced
-  //    layout reflows via getBoundingClientRect(). The event-driven
-  //    approach above is both faster and more predictable.
-
-  $(document).ready(function () {
-    setTimeout(enhance, 500);
-  });
 })();
 /*** END SELECT-ALL CHECKBOXES ***/
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
