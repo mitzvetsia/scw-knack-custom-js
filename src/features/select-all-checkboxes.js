@@ -809,37 +809,46 @@
     enhanceGroupHeaders();
   }
 
+  // ── Primary trigger: device-worksheet.js dispatches this event
+  //    after transformView() finishes and the DOM is stable.
+  //    One enhance() call per view transform — no blind timers needed.
+  document.addEventListener('scw-worksheet-ready', function () {
+    setTimeout(enhance, 50);
+  });
+
+  // ── Scene render: new page / SPA navigation.
+  //    Single delayed call is enough — worksheet transform will fire
+  //    its own scw-worksheet-ready event for views that have worksheets.
   $(document)
     .off('knack-scene-render.any.scwSelectAll')
     .on('knack-scene-render.any.scwSelectAll', function () {
       setTimeout(enhance, 350);
     });
 
+  // ── View render: covers views WITHOUT device-worksheet (plain tables
+  //    with KTL checkboxes that still need header bars).
+  //    Single call at 350ms — worksheet views get their own targeted
+  //    enhance via the scw-worksheet-ready event above.
   $(document)
     .off('knack-view-render.any.scwSelectAll')
     .on('knack-view-render.any.scwSelectAll', function () {
       setTimeout(enhance, 350);
-      setTimeout(enhance, 700);
-      setTimeout(enhance, 1500);
     });
 
-  // After inline edits, the post-edit coordinator rebuilds accordions
-  // and device-worksheet summary bars before our enhance() runs.
-  // Schedule a late rebuild to ensure header bars are restored after
-  // all other features have finished their post-edit work.
+  // ── Cell update: post-edit coordinator rebuilds accordions and
+  //    worksheet summary bars; a single late call catches everything.
   $(document)
     .off('knack-cell-update.scwSelectAll')
     .on('knack-cell-update.scwSelectAll', function () {
       setTimeout(enhance, 1200);
-      setTimeout(enhance, 2000);
     });
 
-  var debounceTimer = 0;
-  var obs = new MutationObserver(function () {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(enhance, 300);
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
+  // ── NOTE: The body-level MutationObserver that was here has been
+  //    removed. It observed document.body with subtree:true, which
+  //    fired hundreds of times during transformView() as <td> elements
+  //    were reparented — each firing a debounced enhance() that forced
+  //    layout reflows via getBoundingClientRect(). The event-driven
+  //    approach above is both faster and more predictable.
 
   $(document).ready(function () {
     setTimeout(enhance, 500);

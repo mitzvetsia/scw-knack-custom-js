@@ -3712,6 +3712,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // may have stale formula data.  Re-apply labels from our cache
     // (populated from the PUT response) now that the DOM is stable.
     restoreCachedLabels(viewCfg.viewId);
+
+    // ── NOTIFY DEPENDENT MODULES ──
+    // Dispatch a custom event so modules like select-all-checkboxes can
+    // run exactly once after the worksheet DOM is stable, instead of
+    // relying on blind timers or a body-level MutationObserver.
+    document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
+      detail: { viewId: viewCfg.viewId }
+    }));
   }
 
   // ============================================================
