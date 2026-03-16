@@ -1666,6 +1666,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  may refresh sibling views — not just the one that was edited. */
   function captureAllExpandedStates() {
     WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      // Skip views not in the current DOM — avoids unnecessary
+      // querySelectorAll on views that aren't on this page.
+      if (!document.getElementById(viewCfg.viewId)) return;
       captureExpandedState(viewCfg.viewId);
     });
   }
