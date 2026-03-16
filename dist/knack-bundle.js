@@ -6924,10 +6924,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 0.85rem;',
       '  font-weight: 600;',
       '  color: #485fc7;',
-      '  white-space: nowrap;',
+      '  white-space: normal;',
+      '  text-align: center;',
       '  cursor: pointer;',
       '  text-decoration: none;',
-      '  line-height: 1;',
+      '  line-height: 1.15;',
       '}',
       '.scw-sa-sort-link:hover {',
       '  color: #363636;',
@@ -6938,9 +6939,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 0.85rem;',
       '  font-weight: 600;',
       '  color: #363636;',
-      '  white-space: nowrap;',
+      '  white-space: normal;',
       '  text-align: center;',
-      '  line-height: 1;',
+      '  line-height: 1.15;',
       '}',
 
       /* Sort direction icon */
@@ -6948,9 +6949,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  margin-left: 3px;',
       '}',
 
-      /* Bulk-edit column checkbox */
+      /* Wrapper inside header cell — vertical stack: label on top, checkbox below */
+      '.scw-sa-header-cell .table-fixed-label {',
+      '  display: flex !important;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  gap: 2px;',
+      '}',
+
+      /* Bulk-edit column checkbox — centered below label */
       '.scw-sa-hdr-cbox {',
-      '  margin: 0 0 0 4px;',
+      '  margin: 0;',
       '  cursor: pointer;',
       '}',
 
@@ -7157,7 +7166,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (hasSortLink) {
       var wrapper = document.createElement('span');
       wrapper.className = 'table-fixed-label' + (theadMap[sortFieldKey] ? ' bulkEditTh' : '');
-      wrapper.style.display = 'inline-flex';
 
       var sortEl = document.createElement('span');
       sortEl.className = 'scw-sa-sort-link';
