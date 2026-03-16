@@ -7109,16 +7109,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   //  1) View-level header row
   // ───────────────────────────────────────────────
 
-  function readHeaderLayout(viewEl) {
-    // Find a visible summary bar (first may be inside a collapsed group)
-    var allBars = viewEl.querySelectorAll('.scw-ws-summary');
-    var bar = null;
-    for (var bi = 0; bi < allBars.length; bi++) {
-      if (allBars[bi].getBoundingClientRect().width > 0) {
-        bar = allBars[bi];
-        break;
-      }
+  /** Find the first visible summary bar in a view.
+   *  Uses offsetParent (no forced layout) instead of getBoundingClientRect. */
+  function findVisibleSummary(viewEl) {
+    var bars = viewEl.querySelectorAll('.scw-ws-summary');
+    for (var i = 0; i < bars.length; i++) {
+      if (bars[i].offsetParent !== null) return bars[i];
     }
+    return null;
+  }
+
+  function readHeaderLayout(viewEl) {
+    var bar = findVisibleSummary(viewEl);
     if (!bar) return null;
 
     var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
@@ -7255,48 +7257,53 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * to the header bar cells so columns are perfectly aligned.
    */
   function alignHeaderToSummary(bar, viewEl) {
-    // Find a visible summary bar (first one may be in a collapsed group)
-    var summaries = viewEl.querySelectorAll('.scw-ws-summary');
-    var summary = null;
-    for (var si = 0; si < summaries.length; si++) {
-      if (summaries[si].getBoundingClientRect().width > 0) {
-        summary = summaries[si];
-        break;
-      }
-    }
+    var summary = findVisibleSummary(viewEl);
     if (!summary) return;
 
-    // ── Left side: check + toggle zone → header check + toggle ──
+    // ── PHASE 1: READ all widths (single layout calculation) ──
+    var checkWidth = null;
     var sumCheck = summary.querySelector('.scw-ws-sum-check');
     var hdrCheck = bar.querySelector('.scw-sa-header-check');
     if (sumCheck && hdrCheck) {
-      var cw = sumCheck.getBoundingClientRect().width;
-      hdrCheck.style.width = cw + 'px';
-      hdrCheck.style.minWidth = cw + 'px';
-      hdrCheck.style.flex = '0 0 ' + cw + 'px';
+      checkWidth = sumCheck.getBoundingClientRect().width;
     }
 
+    var toggleWidth = null;
     var sumToggle = summary.querySelector('.scw-ws-toggle-zone');
     var hdrToggle = bar.querySelector('.scw-sa-header-toggle');
     if (sumToggle && hdrToggle) {
-      var tw = sumToggle.getBoundingClientRect().width;
-      hdrToggle.style.width = tw + 'px';
-      hdrToggle.style.minWidth = tw + 'px';
-      hdrToggle.style.flex = '0 0 ' + tw + 'px';
+      toggleWidth = sumToggle.getBoundingClientRect().width;
     }
 
-    // ── Right side: match each group width ──
+    var groupWidths = [];
     var sumRight = summary.querySelector('.scw-ws-sum-right');
     var hdrRight = bar.querySelector('.scw-sa-header-right');
+    var hdrCells = null;
     if (sumRight && hdrRight) {
       var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
-      var hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
+      hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
       for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
-        var gw = sumGroups[i].getBoundingClientRect().width;
-        hdrCells[i].style.width = Math.round(gw) + 'px';
-        hdrCells[i].style.minWidth = Math.round(gw) + 'px';
-        hdrCells[i].style.flex = '0 0 ' + Math.round(gw) + 'px';
+        groupWidths.push(Math.round(sumGroups[i].getBoundingClientRect().width));
       }
+    }
+
+    // ── PHASE 2: WRITE all styles (no interleaved reads) ──
+    if (checkWidth !== null) {
+      hdrCheck.style.width = checkWidth + 'px';
+      hdrCheck.style.minWidth = checkWidth + 'px';
+      hdrCheck.style.flex = '0 0 ' + checkWidth + 'px';
+    }
+
+    if (toggleWidth !== null) {
+      hdrToggle.style.width = toggleWidth + 'px';
+      hdrToggle.style.minWidth = toggleWidth + 'px';
+      hdrToggle.style.flex = '0 0 ' + toggleWidth + 'px';
+    }
+
+    for (var j = 0; j < groupWidths.length; j++) {
+      hdrCells[j].style.width = groupWidths[j] + 'px';
+      hdrCells[j].style.minWidth = groupWidths[j] + 'px';
+      hdrCells[j].style.flex = '0 0 ' + groupWidths[j] + 'px';
     }
   }
 
