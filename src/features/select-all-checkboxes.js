@@ -525,25 +525,17 @@
 
     bar.appendChild(rightSpan);
 
-    // ── Insert OUTSIDE the view element ──
-    // First try: viewEl is already inside its accordion body.
-    // Second try: find the accordion body via the header's data-view-key
-    //             (handles post-inline-edit when the new view element
-    //             hasn't been re-adopted into the accordion yet).
-    var accordionBody = viewEl.closest('.scw-ktl-accordion__body');
-    if (!accordionBody) {
-      var accHdr = document.querySelector(
-        '.scw-ktl-accordion__header[data-view-key="' + viewKey + '"]'
-      );
-      if (accHdr) {
-        var accWrapper = accHdr.closest('.scw-ktl-accordion');
-        if (accWrapper) accordionBody = accWrapper.querySelector('.scw-ktl-accordion__body');
-      }
+    // ── Insert INSIDE the view, after kn-records-nav ──
+    // Primary: place after .kn-records-nav so the bar sits between
+    //          the filters/pagination row and the table content.
+    // Fallback: before .kn-table-wrapper, or before viewEl itself.
+    var inserted = false;
+    var recordsNav = viewEl.querySelector('.kn-records-nav');
+    if (recordsNav) {
+      recordsNav.parentNode.insertBefore(bar, recordsNav.nextSibling);
+      inserted = true;
     }
-    if (accordionBody) {
-      // Always insert as first child of the body so it stays above the view
-      accordionBody.insertBefore(bar, accordionBody.firstChild);
-    } else {
+    if (!inserted) {
       var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
       if (tableWrapper) {
         tableWrapper.parentNode.insertBefore(bar, tableWrapper);
