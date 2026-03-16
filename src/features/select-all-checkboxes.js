@@ -84,6 +84,14 @@
       '  text-align: center;',
       '  line-height: 1.2;',
       '}',
+      /* Sortable label cursor */
+      '.scw-sa-header-label[data-scw-sort-field] {',
+      '  cursor: pointer;',
+      '}',
+      '.scw-sa-header-label[data-scw-sort-field]:hover {',
+      '  color: #1e40af;',
+      '  text-decoration: underline;',
+      '}',
       /* Bulk-edit column checkbox inside header cell */
       '.scw-sa-hdr-cbox {',
       '  margin: 0;',
@@ -186,6 +194,40 @@
     }
     cb.checked = allChecked;
     cb.indeterminate = !allChecked && anyChecked;
+  }
+
+  // ───────────────────────────────────────────────
+  //  Sort helpers
+  // ───────────────────────────────────────────────
+
+  /**
+   * Find the native Knack sort link in the hidden <thead> for a given field key.
+   * Sort links use href="#field_XXXX|asc" (or |desc).
+   */
+  function findSortLink(viewEl, fieldKey) {
+    var thead = viewEl.querySelector('thead');
+    if (!thead) return null;
+    // Try exact match first: href contains the field key
+    var links = thead.querySelectorAll('a.kn-sort');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      if (href.indexOf(fieldKey) !== -1) return links[i];
+    }
+    return null;
+  }
+
+  /**
+   * Trigger sort by programmatically clicking the native Knack sort link.
+   */
+  function triggerSort(viewEl, fieldKeys) {
+    for (var i = 0; i < fieldKeys.length; i++) {
+      var link = findSortLink(viewEl, fieldKeys[i]);
+      if (link) {
+        link.click();
+        return true;
+      }
+    }
+    return false;
   }
 
   // ───────────────────────────────────────────────
@@ -327,15 +369,31 @@
    * @param {Object} theadMap — field→checkbox map from readTheadCheckboxes
    * @param {boolean} bulkVisible — whether bulk-edit checkboxes are currently visible
    * @param {string} extraCls — extra CSS class for width
+   * @param {HTMLElement} viewEl — the view DOM element (for sort link lookup)
    * @returns {HTMLElement}
    */
-  function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, extraCls) {
+  function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, extraCls, viewEl) {
     var cell = document.createElement('span');
     cell.className = 'scw-sa-header-cell' + (extraCls ? ' ' + extraCls : '');
 
     var lbl = document.createElement('span');
     lbl.className = 'scw-sa-header-label';
     lbl.textContent = labelText;
+
+    // Make label sortable if there's a matching sort link in the hidden thead
+    if (viewEl && fieldKeys.length) {
+      var hasSortLink = false;
+      for (var s = 0; s < fieldKeys.length; s++) {
+        if (findSortLink(viewEl, fieldKeys[s])) { hasSortLink = true; break; }
+      }
+      if (hasSortLink) {
+        lbl.setAttribute('data-scw-sort-field', fieldKeys[0]);
+        lbl.addEventListener('click', function () {
+          triggerSort(viewEl, fieldKeys);
+        });
+      }
+    }
+
     cell.appendChild(lbl);
 
     // Check if any of this group's fields has a bulkEditHeaderCbox
@@ -403,14 +461,14 @@
     idSpan.className = 'scw-sa-header-identity';
     for (var id = 0; id < layout.identity.length; id++) {
       var idItem = layout.identity[id];
-      var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, '');
+      var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, '', viewEl);
       idSpan.appendChild(idCell);
     }
     bar.appendChild(idSpan);
 
     // ── Fill label (labor desc) ──
     if (layout.fill) {
-      var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, '');
+      var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, '', viewEl);
       fillCell.classList.add('scw-sa-header-fill');
       bar.appendChild(fillCell);
     }
@@ -420,18 +478,18 @@
     rightSpan.className = 'scw-sa-header-right';
 
     if (layout.hasCabling) {
-      var cabCell = buildHeaderCell('Cabling', [], theadMap, bulkVisible, 'scw-sa-hdr-cabling');
+      var cabCell = buildHeaderCell('Cabling', [], theadMap, bulkVisible, 'scw-sa-hdr-cabling', viewEl);
       rightSpan.appendChild(cabCell);
     }
 
     for (var r = 0; r < layout.right.length; r++) {
       var item = layout.right[r];
-      var rCell = buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, item.widthCls);
+      var rCell = buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, item.widthCls, viewEl);
       rightSpan.appendChild(rCell);
     }
 
     if (layout.hasMove) {
-      var mvCell = buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, 'scw-sa-hdr-move');
+      var mvCell = buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, 'scw-sa-hdr-move', viewEl);
       rightSpan.appendChild(mvCell);
     }
     if (layout.hasDelete) {
