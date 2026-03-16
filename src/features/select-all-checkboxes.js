@@ -9,6 +9,10 @@
     '.kn-table-bulk-checkbox input[type="checkbox"], ' +
     'input.ktlCheckbox-row[type="checkbox"]';
 
+  /* KTL class strings — match native Knack + KTL exactly */
+  var KTL_MASTER_CLS = 'ktlCheckbox masterSelector ktlCheckbox-master ktlCheckbox-table bulkEditCb ktlCheckbox-bulkops';
+  var KTL_HEADER_CLS = 'ktlCheckbox bulkEditHeaderCbox ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
+
   // ───────────────────────────────────────────────
   //  CSS
   // ───────────────────────────────────────────────
@@ -16,7 +20,7 @@
     if (document.getElementById(STYLE_ID)) return;
 
     var css = [
-      /* ── View-level header bar — styled like native Knack <thead> ── */
+      /* ── View-level header bar — styled like native Knack <thead> row ── */
       '.scw-sa-header {',
       '  display: flex;',
       '  align-items: stretch;',
@@ -24,7 +28,7 @@
       '  padding: 0 12px;',
       '  background: #fafafa;',
       '  border-bottom: 1px solid #dbdbdb;',
-      '  min-height: 34px;',
+      '  min-height: 36px;',
       '  user-select: none;',
       '  position: sticky;',
       '  top: 0;',
@@ -41,8 +45,6 @@
       '.scw-sa-header-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
-      '  width: 15px;',
-      '  height: 15px;',
       '}',
 
       /* identity mirrors toggle-zone width */
@@ -70,32 +72,32 @@
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  gap: 2px;',
       '  flex-shrink: 0;',
-      '  padding: 6px 4px;',
+      '  padding: 8px 4px;',
       '}',
 
-      /* ── Sort link — mimics native Knack <a class="kn-sort"> ── */
-      '.scw-sa-header-sort {',
+      /*',
+       * Sort link — uses native Knack classes (kn-sort, level, is-compact)',
+       * but we add a wrapper span so we can target it without Knack bindings.',
+       */
+      '.scw-sa-header-cell .table-fixed-label {',
       '  display: inline-flex;',
       '  align-items: center;',
-      '  gap: 3px;',
-      '  font-size: 12px;',
-      '  font-weight: 600;',
-      '  color: #485fc7;',
-      '  white-space: nowrap;',
-      '  text-align: center;',
-      '  line-height: 1.3;',
-      '  cursor: pointer;',
-      '  text-decoration: none;',
       '}',
-      '.scw-sa-header-sort:hover {',
+      '.scw-sa-header-cell a.kn-sort {',
+      '  color: #485fc7;',
+      '  text-decoration: none;',
+      '  font-size: 0.85rem;',
+      '  font-weight: 600;',
+      '  white-space: nowrap;',
+      '}',
+      '.scw-sa-header-cell a.kn-sort:hover {',
       '  color: #363636;',
       '}',
 
       /* Non-sortable label (delete column, etc.) */
       '.scw-sa-header-label {',
-      '  font-size: 12px;',
+      '  font-size: 0.85rem;',
       '  font-weight: 600;',
       '  color: #363636;',
       '  white-space: nowrap;',
@@ -103,20 +105,15 @@
       '  line-height: 1.3;',
       '}',
 
-      /* Sort direction icon — matches native Knack fa-sort-amount-* */
-      '.scw-sa-sort-icon {',
-      '  font-size: 11px;',
-      '  opacity: 0.6;',
-      '  margin-left: 2px;',
+      /* Sort direction icon — native Knack uses icon.is-small.is-transparent */
+      '.scw-sa-header-cell .icon.is-small {',
+      '  margin-left: 3px;',
       '}',
-      '.scw-sa-header-sort.is-sorted .scw-sa-sort-icon { opacity: 1; }',
 
       /* Bulk-edit column checkbox inside header cell */
       '.scw-sa-hdr-cbox {',
       '  margin: 0 0 0 4px;',
       '  cursor: pointer;',
-      '  width: 13px;',
-      '  height: 13px;',
       '}',
       /* Hidden by default, shown when KTL bulk-edit header checkboxes become visible */
       '.scw-sa-hdr-cbox.scw-sa-hdr-cbox--hidden {',
@@ -221,12 +218,15 @@
 
   /**
    * Find the native Knack sort link in the hidden <thead> for a given field key.
-   * Sort links use href="#field_XXXX|asc" (or |desc).
+   * Always does a fresh DOM lookup using viewKey string.
    * Returns { link, th } or null.
    */
-  function findSortLink(viewEl, fieldKey) {
+  function findSortLink(viewKey, fieldKey) {
+    var viewEl = document.getElementById(viewKey);
+    if (!viewEl) return null;
     var thead = viewEl.querySelector('thead');
     if (!thead) return null;
+    // Match by th class first (most reliable)
     var ths = thead.querySelectorAll('th');
     for (var i = 0; i < ths.length; i++) {
       var th = ths[i];
@@ -247,8 +247,8 @@
    * Read the current sort direction for a field from the hidden <thead>.
    * Returns 'asc', 'desc', or null.
    */
-  function readSortState(viewEl, fieldKey) {
-    var info = findSortLink(viewEl, fieldKey);
+  function readSortState(viewKey, fieldKey) {
+    var info = findSortLink(viewKey, fieldKey);
     if (!info || !info.th) return null;
     if (info.th.classList.contains('sorted-asc')) return 'asc';
     if (info.th.classList.contains('sorted-desc')) return 'desc';
@@ -256,11 +256,21 @@
   }
 
   /**
-   * Trigger sort by programmatically clicking the native Knack sort link.
+   * Read the native sort link href for a field (e.g. "#field_2154|asc").
    */
-  function triggerSort(viewEl, fieldKeys) {
+  function readSortHref(viewKey, fieldKey) {
+    var info = findSortLink(viewKey, fieldKey);
+    if (!info || !info.link) return '#';
+    return info.link.getAttribute('href') || '#';
+  }
+
+  /**
+   * Trigger sort by programmatically clicking the native Knack sort link.
+   * Always does a fresh DOM lookup.
+   */
+  function triggerSort(viewKey, fieldKeys) {
     for (var i = 0; i < fieldKeys.length; i++) {
-      var info = findSortLink(viewEl, fieldKeys[i]);
+      var info = findSortLink(viewKey, fieldKeys[i]);
       if (info && info.link) {
         info.link.click();
         return true;
@@ -402,100 +412,124 @@
   }
 
   /**
-   * Build a header cell (sort link + optional bulk-edit checkbox).
-   * Styled to look like a native Knack <th> with <a class="kn-sort">.
+   * Build a header cell using native Knack DOM structure:
+   *   <span class="scw-sa-header-cell [widthCls]">
+   *     <span class="table-fixed-label [bulkEditTh]">
+   *       <a href="#field|dir" class="kn-sort level is-compact">
+   *         <span>Label</span>
+   *         <span class="icon is-small is-transparent">
+   *           <i class="fa fa-sort-amount-asc"></i>
+   *         </span>
+   *       </a>
+   *       <input class="ktlCheckbox bulkEditHeaderCbox ..." />
+   *     </span>
+   *   </span>
    */
-  function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, extraCls, viewEl) {
+  function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, extraCls, viewKey) {
     var cell = document.createElement('span');
     cell.className = 'scw-sa-header-cell' + (extraCls ? ' ' + extraCls : '');
 
     // Check if any of this group's fields has a native sort link
-    var sortInfo = null;
-    if (viewEl && fieldKeys.length) {
-      for (var s = 0; s < fieldKeys.length; s++) {
-        sortInfo = findSortLink(viewEl, fieldKeys[s]);
-        if (sortInfo) break;
-      }
+    var hasSortLink = false;
+    var sortFieldKey = fieldKeys.length ? fieldKeys[0] : null;
+    if (sortFieldKey) {
+      hasSortLink = !!findSortLink(viewKey, sortFieldKey);
     }
 
-    if (sortInfo) {
-      // Sortable column — build a link-like element matching native <a class="kn-sort">
-      var sortEl = document.createElement('span');
-      sortEl.className = 'scw-sa-header-sort';
+    if (hasSortLink) {
+      // ── Sortable: replicate native Knack <th> internals ──
+      var fixedLabel = document.createElement('span');
+      fixedLabel.className = 'table-fixed-label' + (theadMap[sortFieldKey] ? ' bulkEditTh' : '');
+      fixedLabel.style.display = 'inline-flex';
 
-      // Check current sort direction
-      var dir = readSortState(viewEl, fieldKeys[0]);
-      if (dir) sortEl.classList.add('is-sorted');
+      var dir = readSortState(viewKey, sortFieldKey);
+      var href = readSortHref(viewKey, sortFieldKey);
+
+      var sortLink = document.createElement('a');
+      sortLink.href = href;
+      sortLink.className = 'kn-sort level is-compact';
 
       var textSpan = document.createElement('span');
       textSpan.textContent = labelText;
-      sortEl.appendChild(textSpan);
+      sortLink.appendChild(textSpan);
 
-      // Sort direction icon (font-awesome, matching native Knack)
-      var iconSpan = document.createElement('span');
-      iconSpan.className = 'scw-sa-sort-icon';
-      var icon = document.createElement('i');
-      icon.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
-      // Only show icon if actively sorted, or show a faint default
-      if (!dir) iconSpan.style.visibility = 'hidden';
-      iconSpan.appendChild(icon);
-      sortEl.appendChild(iconSpan);
+      // Sort direction icon (only visible when actively sorted)
+      if (dir) {
+        var iconWrap = document.createElement('span');
+        iconWrap.className = 'icon is-small is-transparent';
+        iconWrap.style.marginLeft = '3px';
+        var icon = document.createElement('i');
+        icon.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+        iconWrap.appendChild(icon);
+        sortLink.appendChild(iconWrap);
+      }
 
-      sortEl.addEventListener('click', function () {
-        triggerSort(viewEl, fieldKeys);
-        // Schedule header rebuilds to survive the re-render
-        scheduleRebuild();
+      // Click: trigger the native hidden sort link (not follow this href)
+      sortLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerSort(viewKey, fieldKeys);
       });
 
-      cell.appendChild(sortEl);
+      fixedLabel.appendChild(sortLink);
+
+      // Bulk-edit column checkbox (KTL-compatible)
+      var matchedCbox = null;
+      for (var i = 0; i < fieldKeys.length; i++) {
+        if (theadMap[fieldKeys[i]]) { matchedCbox = theadMap[fieldKeys[i]]; break; }
+      }
+      if (matchedCbox) {
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = KTL_HEADER_CLS + ' scw-sa-hdr-cbox' + (bulkVisible ? '' : ' scw-sa-hdr-cbox--hidden');
+        cb.checked = matchedCbox.checked;
+        cb.setAttribute('aria-label', 'Select column');
+        cb.setAttribute('data-ktl-bulkops', '1');
+        cb.setAttribute('data-scw-thead-field', fieldKeys[0]);
+        cb.addEventListener('click', function (e) {
+          e.stopPropagation();
+          // Fresh lookup — native thead may have been rebuilt
+          var freshEl = document.getElementById(viewKey);
+          if (!freshEl) return;
+          var freshMap = readTheadCheckboxes(freshEl);
+          var nativeCb = freshMap[fieldKeys[0]];
+          if (nativeCb && nativeCb.checked !== cb.checked) {
+            nativeCb.click();
+          }
+        });
+        fixedLabel.appendChild(cb);
+      }
+
+      cell.appendChild(fixedLabel);
     } else {
-      // Non-sortable column — plain label
+      // ── Non-sortable column: plain label ──
       var lbl = document.createElement('span');
       lbl.className = 'scw-sa-header-label';
       lbl.textContent = labelText;
       cell.appendChild(lbl);
     }
 
-    // Check if any of this group's fields has a bulkEditHeaderCbox
-    var matchedCbox = null;
-    for (var i = 0; i < fieldKeys.length; i++) {
-      if (theadMap[fieldKeys[i]]) {
-        matchedCbox = theadMap[fieldKeys[i]];
-        break;
-      }
-    }
-
-    if (matchedCbox) {
-      var cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.className = 'scw-sa-hdr-cbox' + (bulkVisible ? '' : ' scw-sa-hdr-cbox--hidden');
-      cb.checked = matchedCbox.checked;
-      cb.title = 'Include "' + labelText + '" in copy';
-      cb.setAttribute('data-scw-thead-field', fieldKeys[0]);
-      // Sync clicks both ways
-      cb.addEventListener('click', function (e) {
-        e.stopPropagation();
-        if (matchedCbox.checked !== cb.checked) {
-          matchedCbox.click(); // trigger KTL handler
-        }
-      });
-      cell.appendChild(cb);
-    }
-
     return cell;
   }
 
-  /** Build and insert the header bar inside the view, between kn-records-nav and kn-table-wrapper. */
+  /**
+   * Find the header bar for a given viewKey anywhere in the document.
+   */
+  function findHeaderBar(viewKey) {
+    return document.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
+  }
+
+  /**
+   * Build and insert the header bar.
+   * Inserts OUTSIDE the view element (in accordion body) when possible,
+   * so it survives Knack view re-renders.
+   */
   function buildHeaderBar(viewEl, viewKey) {
     var layout = readHeaderLayout(viewEl);
     if (!layout) return null;
 
-    // Remove any previously-inserted header bar (defensive)
-    var sel = '.scw-sa-header[data-scw-sa-view="' + viewKey + '"]';
-    var existing = viewEl.querySelector(sel);
-    if (!existing && viewEl.parentNode) {
-      existing = viewEl.parentNode.querySelector(sel);
-    }
+    // Remove any previously-inserted header bar (search globally)
+    var existing = findHeaderBar(viewKey);
     if (existing) existing.remove();
 
     // Read thead checkbox map for KTL bulk-edit column selection
@@ -506,12 +540,15 @@
     bar.className = 'scw-sa-header';
     bar.setAttribute('data-scw-sa-view', viewKey);
 
-    // ── Select-all checkbox ──
+    // ── Select-all checkbox (with KTL classes) ──
     var checkWrap = document.createElement('span');
     checkWrap.className = 'scw-sa-header-check';
     var selectAllCb = document.createElement('input');
     selectAllCb.type = 'checkbox';
-    selectAllCb.setAttribute('aria-label', 'Select all rows in this view');
+    selectAllCb.className = KTL_MASTER_CLS;
+    selectAllCb.setAttribute('aria-label', 'Select all rows');
+    selectAllCb.setAttribute('data-ktl-selection', 'ktlCheckbox');
+    selectAllCb.setAttribute('data-ktl-bulkops', '1');
     selectAllCb.title = 'Select / deselect all';
     checkWrap.appendChild(selectAllCb);
     bar.appendChild(checkWrap);
@@ -521,14 +558,14 @@
     idSpan.className = 'scw-sa-header-identity';
     for (var id = 0; id < layout.identity.length; id++) {
       var idItem = layout.identity[id];
-      var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, '', viewEl);
+      var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, '', viewKey);
       idSpan.appendChild(idCell);
     }
     bar.appendChild(idSpan);
 
     // ── Fill label (labor desc) ──
     if (layout.fill) {
-      var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, '', viewEl);
+      var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, '', viewKey);
       fillCell.classList.add('scw-sa-header-fill');
       bar.appendChild(fillCell);
     }
@@ -538,18 +575,18 @@
     rightSpan.className = 'scw-sa-header-right';
 
     if (layout.hasCabling) {
-      var cabCell = buildHeaderCell('Cabling', [], theadMap, bulkVisible, 'scw-sa-hdr-cabling', viewEl);
+      var cabCell = buildHeaderCell('Cabling', [], theadMap, bulkVisible, 'scw-sa-hdr-cabling', viewKey);
       rightSpan.appendChild(cabCell);
     }
 
     for (var r = 0; r < layout.right.length; r++) {
       var item = layout.right[r];
-      var rCell = buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, item.widthCls, viewEl);
+      var rCell = buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, item.widthCls, viewKey);
       rightSpan.appendChild(rCell);
     }
 
     if (layout.hasMove) {
-      var mvCell = buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, 'scw-sa-hdr-move', viewEl);
+      var mvCell = buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, 'scw-sa-hdr-move', viewKey);
       rightSpan.appendChild(mvCell);
     }
     if (layout.hasDelete) {
@@ -561,15 +598,22 @@
 
     bar.appendChild(rightSpan);
 
-    // ── Insert inside the view, between kn-records-nav and kn-table-wrapper ──
-    var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
-    if (tableWrapper) {
-      tableWrapper.parentNode.insertBefore(bar, tableWrapper);
-    } else if (viewEl.parentNode) {
-      viewEl.parentNode.insertBefore(bar, viewEl);
+    // ── Insert OUTSIDE the view element when possible ──
+    // The accordion body wraps the view; inserting there survives view re-renders.
+    var accordionBody = viewEl.closest('.scw-ktl-accordion__body');
+    if (accordionBody) {
+      accordionBody.insertBefore(bar, viewEl);
+    } else {
+      // Fallback: inside the view, before the table wrapper
+      var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
+      if (tableWrapper) {
+        tableWrapper.parentNode.insertBefore(bar, tableWrapper);
+      } else if (viewEl.parentNode) {
+        viewEl.parentNode.insertBefore(bar, viewEl);
+      }
     }
 
-    // ── Click handler for select-all ──
+    // ── Click handler for select-all (fresh DOM lookup) ──
     selectAllCb.addEventListener('click', function (e) {
       e.stopPropagation();
       var el = document.getElementById(viewKey);
@@ -599,31 +643,65 @@
   /**
    * Sync visibility + checked state of header bar's column checkboxes
    * with the KTL bulk-edit header checkboxes in the hidden <thead>.
+   * Also updates sort direction indicators.
    */
-  function syncBulkEditCheckboxes(viewEl, viewKey) {
-    var sel = '.scw-sa-header[data-scw-sa-view="' + viewKey + '"]';
-    var bar = viewEl.querySelector(sel);
-    if (!bar && viewEl.parentNode) {
-      bar = viewEl.parentNode.querySelector(sel);
-    }
+  function syncHeaderBar(viewEl, viewKey) {
+    var bar = findHeaderBar(viewKey);
     if (!bar) return;
 
     var theadMap = readTheadCheckboxes(viewEl);
     var visible = areBulkEditCboxesVisible(viewEl);
+
+    // Sync bulk-edit column checkboxes
     var hdrCboxes = bar.querySelectorAll('.scw-sa-hdr-cbox');
     for (var i = 0; i < hdrCboxes.length; i++) {
       var hcb = hdrCboxes[i];
       var fk = hcb.getAttribute('data-scw-thead-field');
-      // Show/hide
       if (visible) {
         hcb.classList.remove('scw-sa-hdr-cbox--hidden');
       } else {
         hcb.classList.add('scw-sa-hdr-cbox--hidden');
       }
-      // Sync checked state from thead
       if (fk && theadMap[fk]) {
         hcb.checked = theadMap[fk].checked;
       }
+    }
+
+    // Sync sort direction indicators
+    var sortLinks = bar.querySelectorAll('a.kn-sort');
+    for (var s = 0; s < sortLinks.length; s++) {
+      var a = sortLinks[s];
+      var oldHref = a.getAttribute('href') || '';
+      // Extract field key from href (e.g. "#field_2154|asc" → "field_2154")
+      var match = oldHref.match(/(field_\d+)/);
+      if (!match) continue;
+      var fld = match[1];
+      var dir = readSortState(viewKey, fld);
+      var newHref = readSortHref(viewKey, fld);
+      a.setAttribute('href', newHref);
+
+      // Update icon
+      var iconWrap = a.querySelector('.icon.is-small');
+      if (dir && !iconWrap) {
+        iconWrap = document.createElement('span');
+        iconWrap.className = 'icon is-small is-transparent';
+        iconWrap.style.marginLeft = '3px';
+        var icon = document.createElement('i');
+        icon.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+        iconWrap.appendChild(icon);
+        a.appendChild(iconWrap);
+      } else if (dir && iconWrap) {
+        var ic = iconWrap.querySelector('i');
+        if (ic) ic.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+      } else if (!dir && iconWrap) {
+        iconWrap.remove();
+      }
+    }
+
+    // Sync select-all checkbox state
+    var masterCb = bar.querySelector('.scw-sa-header-check input[type="checkbox"]');
+    if (masterCb) {
+      syncCheckbox(masterCb, findCheckboxes(viewEl));
     }
   }
 
@@ -638,19 +716,13 @@
       var viewEl = document.getElementById(viewKey);
       if (!viewEl) continue;
 
-      // If attribute is set, check whether the bar still exists in the DOM
-      if (viewEl.getAttribute(HEADER_ATTR) === '1') {
-        var existingBar = viewEl.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
-        if (!existingBar && viewEl.parentNode) {
-          existingBar = viewEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
-        }
-        if (existingBar) {
-          // Bar exists — just sync KTL bulk-edit checkboxes
-          syncBulkEditCheckboxes(viewEl, viewKey);
-          continue;
-        }
-        // Bar was removed — reset and rebuild
-        viewEl.removeAttribute(HEADER_ATTR);
+      // Check if the bar already exists (may be outside view, in accordion body)
+      var existingBar = findHeaderBar(viewKey);
+      if (existingBar) {
+        // Bar exists — just sync checkboxes and sort state
+        syncHeaderBar(viewEl, viewKey);
+        viewEl.setAttribute(HEADER_ATTR, '1');
+        continue;
       }
 
       // Only add if this view has bulk checkboxes
@@ -756,10 +828,7 @@
           // Also sync view-level header checkbox
           var vEl = headerRow.closest('[id^="view_"]');
           if (vEl) {
-            var hBar = vEl.querySelector('.scw-sa-header[data-scw-sa-view="' + vEl.id + '"]');
-            if (!hBar && vEl.parentNode) {
-              hBar = vEl.parentNode.querySelector('.scw-sa-header[data-scw-sa-view="' + vEl.id + '"]');
-            }
+            var hBar = findHeaderBar(vEl.id);
             if (hBar) {
               var viewCb = hBar.querySelector('.scw-sa-header-check input[type="checkbox"]');
               if (viewCb) syncCheckbox(viewCb, findCheckboxes(vEl));
@@ -803,22 +872,6 @@
     enhanceGroupHeaders();
   }
 
-  /**
-   * Schedule multiple enhance() calls at staggered delays to ensure
-   * the header bar is rebuilt after sort-triggered view re-renders.
-   * (transformView runs at ~150ms; KTL adds checkboxes later.)
-   */
-  var _rebuildTimers = [];
-  function scheduleRebuild() {
-    // Cancel any pending rebuild timers
-    for (var t = 0; t < _rebuildTimers.length; t++) clearTimeout(_rebuildTimers[t]);
-    _rebuildTimers = [
-      setTimeout(enhance, 400),
-      setTimeout(enhance, 700),
-      setTimeout(enhance, 1200)
-    ];
-  }
-
   $(document)
     .off('knack-scene-render.any.scwSelectAll')
     .on('knack-scene-render.any.scwSelectAll', function () {
@@ -829,8 +882,7 @@
     .off('knack-view-render.any.scwSelectAll')
     .on('knack-view-render.any.scwSelectAll', function () {
       setTimeout(enhance, 350);
-      // Also schedule a later pass for views where transformView
-      // or KTL enhancement hasn't finished at 350ms.
+      // Second pass for views where transformView / KTL hasn't finished
       setTimeout(enhance, 700);
     });
 
