@@ -7452,9 +7452,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Re-align columns (summary bar may have re-rendered with different widths)
     alignHeaderToSummary(bar, viewEl);
 
-    // Sync select-all checkbox
+    // Sync select-all checkbox + re-bind change handler to (possibly new) viewEl
     var masterCb = bar.querySelector('.scw-sa-header-check input[type="checkbox"]');
-    if (masterCb) syncCheckbox(masterCb, findCheckboxes(viewEl));
+    if (masterCb) {
+      syncCheckbox(masterCb, findCheckboxes(viewEl));
+      // Re-bind change handler — after inline edits Knack replaces the view
+      // element, so the old handler (bound to the destroyed element) is dead.
+      $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
+        var freshEl = document.getElementById(viewKey);
+        if (!freshEl) return;
+        var cbs = findCheckboxes(freshEl);
+        syncCheckbox(masterCb, cbs);
+        setTimeout(function () {
+          var el = document.getElementById(viewKey);
+          if (el) syncHeaderBar(el, viewKey);
+        }, 150);
+      });
+    }
   }
 
   function enhanceViews() {
@@ -7621,6 +7635,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     .on('knack-view-render.any.scwSelectAll', function () {
       setTimeout(enhance, 350);
       setTimeout(enhance, 700);
+    });
+
+  // After inline edits, the post-edit coordinator rebuilds accordions
+  // and device-worksheet summary bars before our enhance() runs.
+  // Schedule a late rebuild to ensure header bars are restored after
+  // all other features have finished their post-edit work.
+  $(document)
+    .off('knack-cell-update.scwSelectAll')
+    .on('knack-cell-update.scwSelectAll', function () {
+      setTimeout(enhance, 1200);
+      setTimeout(enhance, 2000);
     });
 
   var debounceTimer = 0;
