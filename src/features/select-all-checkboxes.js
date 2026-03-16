@@ -510,9 +510,23 @@
     bar.appendChild(rightSpan);
 
     // ── Insert OUTSIDE the view element ──
+    // First try: viewEl is already inside its accordion body.
+    // Second try: find the accordion body via the header's data-view-key
+    //             (handles post-inline-edit when the new view element
+    //             hasn't been re-adopted into the accordion yet).
     var accordionBody = viewEl.closest('.scw-ktl-accordion__body');
+    if (!accordionBody) {
+      var accHdr = document.querySelector(
+        '.scw-ktl-accordion__header[data-view-key="' + viewKey + '"]'
+      );
+      if (accHdr) {
+        var accWrapper = accHdr.closest('.scw-ktl-accordion');
+        if (accWrapper) accordionBody = accWrapper.querySelector('.scw-ktl-accordion__body');
+      }
+    }
     if (accordionBody) {
-      accordionBody.insertBefore(bar, viewEl);
+      // Always insert as first child of the body so it stays above the view
+      accordionBody.insertBefore(bar, accordionBody.firstChild);
     } else {
       var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
       if (tableWrapper) {
