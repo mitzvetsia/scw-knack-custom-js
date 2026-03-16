@@ -350,37 +350,29 @@
   });
 
   // ── SETTLE DETECTION: Debounce view-renders to find the quiet point ──
+  //
+  // Only the POST-EDIT path listens for view-renders here.
+  // Non-edit view re-renders (KTL refresh, grid-direct-edit, etc.)
+  // must NOT trigger pixel restore — the saved position goes stale
+  // as soon as the user scrolls, and restoring it would yank them
+  // back to a previous position.  Scene-render + document.ready
+  // already cover the navigation / page-load cases.
   var _viewRenderCount = 0;
   $(document).on('knack-view-render.scwScrollPreserve', function (e, view) {
-    var viewId = (view && view.key) || 'unknown';
-    if (_pendingEdit) {
-      _viewRenderCount++;
-      log('view-render #' + _viewRenderCount + ' (pending edit)', {
-        viewId: viewId,
-        resettingSettleTimer: SETTLE_MS + 'ms'
-      });
-      // Coordinated post-edit flow: reset settle timer on each render.
-      // The restore sequence runs SETTLE_MS after the LAST view-render,
-      // ensuring all async-fetched views have finished.
-      if (_settleTimer) clearTimeout(_settleTimer);
-      _settleTimer = setTimeout(runPostEditRestore, SETTLE_MS);
-    } else {
-      // Normal view-render (not post-edit): simple debounced restore.
-      // 500ms allows device-worksheet + group-collapse independent
-      // timers to finish before we scroll.
-      debouncedRestore(500);
-    }
-  });
+    if (!_pendingEdit) return;  // ignore non-edit view renders
 
-  // Simple debounced restore for non-edit view renders
-  var _restoreTimer = null;
-  function debouncedRestore(delay) {
-    if (_restoreTimer) clearTimeout(_restoreTimer);
-    _restoreTimer = setTimeout(function () {
-      _restoreTimer = null;
-      restore();
-    }, delay);
-  }
+    var viewId = (view && view.key) || 'unknown';
+    _viewRenderCount++;
+    log('view-render #' + _viewRenderCount + ' (pending edit)', {
+      viewId: viewId,
+      resettingSettleTimer: SETTLE_MS + 'ms'
+    });
+    // Coordinated post-edit flow: reset settle timer on each render.
+    // The restore sequence runs SETTLE_MS after the LAST view-render,
+    // ensuring all async-fetched views have finished.
+    if (_settleTimer) clearTimeout(_settleTimer);
+    _settleTimer = setTimeout(runPostEditRestore, SETTLE_MS);
+  });
 
   // ══════════════════════════════════════════════════════════
   //  Post-edit restoration sequence
