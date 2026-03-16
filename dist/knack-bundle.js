@@ -16135,6 +16135,43 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }, 600);
   }
 
+  // ============================================================
+  // CONDITIONAL CELL COLOR EVALUATOR (shared by render + save)
+  // ============================================================
+  //
+  // Pure-logic function: given a field key and its text value,
+  // returns the conditional color key ('danger', 'warning') or
+  // null.  Used both at initial render (to set input bg without
+  // getComputedStyle) and after saves (refreshInputConditionalColor).
+  //
+  // Rules mirror dynamic-cell-colors.js for the direct-edit fields
+  // that device-worksheet manages.
+
+  var COND_COLORS_MAP = {
+    danger:  'rgb(248, 215, 218)',
+    warning: 'rgb(255, 243, 205)'
+  };
+
+  var COND_DEFAULT_BG = 'rgba(134, 182, 223, 0.1)';
+
+  function evaluateConditionalColor(fieldKey, rawText) {
+    var cleaned = (rawText || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
+    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
+    if (fieldKey === 'field_2400') {
+      if (isEmpty) return 'danger';
+      if (isZero)  return 'warning';
+    } else if (fieldKey === 'field_2409') {
+      if (isEmpty) return 'danger';
+    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
+      if (isEmpty) return 'warning';
+    } else if (fieldKey === 'field_2399') {
+      if (isZero) return 'warning';
+    }
+    return null;
+  }
+
   /**
    * After a successful save, recalculate the conditional background
    * color (danger/warning) for a direct-edit input based on the
@@ -16147,64 +16184,33 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var fieldKey = input.getAttribute('data-field');
     if (!fieldKey) return;
 
-    // Find the view config that governs this input
-    var viewEl = input.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
-    if (!viewId) return;
-
-    var COLORS_MAP = {
-      danger:  'rgb(248, 215, 218)',
-      warning: 'rgb(255, 243, 205)'
-    };
-
     // Read value from hidden td (detail panel) or input itself (summary bar)
-    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
     var rawText = hiddenTd ? (hiddenTd.textContent || '') : (input.value || '');
-    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
-    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
+    var conditionColor = evaluateConditionalColor(fieldKey, rawText);
+
     // The element to update classes/styles on
     var styleTd = hiddenTd || wrapper;
-
     var dangerCls = 'scw-cell-danger';
     var warningCls = 'scw-cell-warning';
 
-    var conditionMet = false;
-    var conditionColor = null;
-
-    if (fieldKey === 'field_2400') {
-      if (isEmpty) { conditionMet = true; conditionColor = 'danger'; }
-      else if (isZero) { conditionMet = true; conditionColor = 'warning'; }
-    } else if (fieldKey === 'field_2409') {
-      conditionMet = isEmpty;
-      conditionColor = 'danger';
-    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
-      conditionMet = isEmpty;
-      conditionColor = 'warning';
-    } else if (fieldKey === 'field_2399') {
-      conditionMet = isZero;
-      conditionColor = 'warning';
-    }
-
-    // Update td classes (so the condition is reflected in DOM)
     styleTd.classList.remove(dangerCls, warningCls);
-    if (conditionMet && conditionColor === 'danger') {
+    if (conditionColor === 'danger') {
       styleTd.classList.add(dangerCls);
-      styleTd.style.backgroundColor = COLORS_MAP.danger;
-    } else if (conditionMet && conditionColor === 'warning') {
+      styleTd.style.backgroundColor = COND_COLORS_MAP.danger;
+    } else if (conditionColor === 'warning') {
       styleTd.classList.add(warningCls);
-      styleTd.style.backgroundColor = COLORS_MAP.warning;
+      styleTd.style.backgroundColor = COND_COLORS_MAP.warning;
     } else {
       styleTd.style.backgroundColor = '';
     }
 
     // Update the visible input's background
-    if (conditionMet && COLORS_MAP[conditionColor]) {
-      input.style.backgroundColor = COLORS_MAP[conditionColor];
+    if (conditionColor && COND_COLORS_MAP[conditionColor]) {
+      input.style.backgroundColor = COND_COLORS_MAP[conditionColor];
     } else {
-      // Restore the default direct-edit background (light blue tint
-      // from the build step or transparent)
-      input.style.backgroundColor = 'rgba(134, 182, 223, 0.1)';
+      input.style.backgroundColor = COND_DEFAULT_BG;
     }
   }
 
@@ -16756,13 +16762,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
-    // Use pre-cached bg from the read phase if available.  The read
-    // phase (in transformView) caches getComputedStyle results for ALL
-    // rows before any DOM writes, eliminating N-1 forced style
-    // recalculations that previously occurred when writes from earlier
-    // rows dirtied the layout for later rows' getComputedStyle calls.
-    var compBg = td._scwPreBg || window.getComputedStyle(td).backgroundColor;
-    delete td._scwPreBg;
+    // Compute conditional background color from the field value
+    // instead of reading getComputedStyle on the td.  This avoids
+    // forced style recalculations entirely — the color is derived
+    // from pure logic (field key + text value) using the same rules
+    // as dynamic-cell-colors.js, rather than asking the browser to
+    // resolve the computed style of each td in the document.
+    var condColor = evaluateConditionalColor(fieldKey, currentVal);
 
     // Keep a hidden span with the text value so dynamic-cell-colors
     // (which reads $td.text()) still sees the real content.
@@ -16792,9 +16798,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
     input._scwPrev = currentVal;
 
-    // Propagate conditional background color from td to input
-    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
-      input.style.backgroundColor = compBg;
+    // Apply conditional background color to the input
+    if (condColor && COND_COLORS_MAP[condColor]) {
+      input.style.backgroundColor = COND_COLORS_MAP[condColor];
     }
 
     td.appendChild(input);
@@ -17648,16 +17654,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    // ── PHASE 1: READ — filter eligible rows, pre-read computed styles ──
+    // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
     //
-    // getComputedStyle() forces a synchronous style recalculation when
-    // the layout is dirty.  Without pre-caching, each row's
-    // getComputedStyle pays the cost of recalculating styles that were
-    // dirtied by the PREVIOUS row's DOM insertions — O(n) forced
-    // recalcs for n rows.  Reading them all up front while the layout
-    // is still clean collapses this to a single recalculation.
+    // Conditional cell colors (danger/warning) are now computed from
+    // field values using evaluateConditionalColor() instead of reading
+    // getComputedStyle() on each td.  This eliminates ALL forced style
+    // recalculations from the render path — the color is derived from
+    // pure logic (field key + text value), not from the browser's
+    // computed style resolution.
+    //
+    // Bucket and move-field info are also collected here (DOM tree
+    // reads with no layout cost) so Phase 2 can build cards without
+    // any reads from the live document.
     var eligible = [];
-    var summaryLayout = viewCfg.summaryLayout || [];
 
     $rows.each(function () {
       var tr = this;
@@ -17666,15 +17675,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       if (tr.classList.contains(WORKSHEET_ROW)) return;
       if (!getRecordId(tr)) return;
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
-
-      // Pre-read computed background colors for direct-edit summary fields.
-      // Cached as td._scwPreBg and consumed by injectSummaryDirectEdit().
-      for (var si = 0; si < summaryLayout.length; si++) {
-        var desc = fieldDesc(viewCfg, summaryLayout[si]);
-        if (!desc || desc.type !== 'directEdit') continue;
-        var td = findCell(tr, desc.key, desc.columnIndex);
-        if (td) td._scwPreBg = window.getComputedStyle(td).backgroundColor;
-      }
 
       // Pre-read bucket and move-field info (DOM reads, no layout cost)
       var preBucketRowClass = '';
@@ -17701,11 +17701,12 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
-    // ── PHASE 2: BUILD — construct cards from pre-read data ──
+    // ── PHASE 2: BUILD — construct cards from collected data ──
     //
     // buildWorksheetCard reparents <td> elements into the card DOM,
-    // which mutates the source rows.  Because all getComputedStyle
-    // reads happened in Phase 1, these mutations don't trigger forced
+    // which mutates the source rows.  Conditional colors are computed
+    // from field values (evaluateConditionalColor), not from the
+    // browser's computed style, so these mutations cause zero forced
     // style recalculations.
     var pendingInserts = [];
 
