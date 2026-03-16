@@ -267,6 +267,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     if (!rows.length) return;
 
     var pendingResize = [];
+    var cellsEnhanced = 0;
     for (var r = 0; r < rows.length; r++) {
       var tr = rows[r];
       if (!tr.id) continue; // skip non-record rows
@@ -301,8 +302,12 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
         td.appendChild(input);
         if (input.tagName === 'TEXTAREA') pendingResize.push(input);
+        cellsEnhanced++;
       }
     }
+
+    // Nothing to do — all cells already enhanced (observer re-fire)
+    if (!cellsEnhanced) return;
 
     // Defer autoResize until after browser layout so scrollHeight is accurate
     if (pendingResize.length) {
@@ -311,7 +316,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       });
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + fields.length + ' direct-edit fields');
+    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
   }
 
   // ── MutationObserver for re-render handling ────────────────────
