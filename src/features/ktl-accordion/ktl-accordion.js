@@ -36,6 +36,10 @@
   var ENHANCED   = 'data-scw-ktl-accordion';
   var OPT_OUT    = 'data-scw-no-accordion';
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
+  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true };
+
+  // Views where the record count pill is hidden (set to true to hide)
+  var HIDE_COUNT = {};
 
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
@@ -356,6 +360,12 @@
 
     var tbody = viewEl.querySelector('table.kn-table tbody');
     if (tbody) {
+      // If device-worksheet has transformed this view, count only the
+      // worksheet rows (scw-ws-row) — otherwise we'd double-count
+      // because the original Knack <tr> rows are hidden but still present.
+      var wsRows = tbody.querySelectorAll('tr.scw-ws-row');
+      if (wsRows.length) return wsRows.length;
+
       var rows = tbody.querySelectorAll('tr');
       var real = 0;
       for (var i = 0; i < rows.length; i++) {
@@ -423,15 +433,19 @@
       if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
     }
 
-    // Count pill
+    // Count pill (hidden for views listed in HIDE_COUNT)
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
-      var count = computeCount(viewKey);
-      if (count !== null) {
-        countEl.textContent = count;
-        countEl.style.display = '';
-      } else {
+      if (HIDE_COUNT[viewKey]) {
         countEl.style.display = 'none';
+      } else {
+        var count = computeCount(viewKey);
+        if (count !== null) {
+          countEl.textContent = count;
+          countEl.style.display = '';
+        } else {
+          countEl.style.display = 'none';
+        }
       }
     }
 
@@ -620,6 +634,13 @@
       if (btn.hasAttribute(OPT_OUT)) continue;
       var knView = btn.closest('.kn-view');
       if (knView && knView.hasAttribute(OPT_OUT)) continue;
+
+      // Scene exclusion — skip accordion enhancement on disabled scenes
+      var knScene = btn.closest('.kn-scene');
+      if (knScene) {
+        var sceneId = (knScene.id || '').replace('kn-', '');
+        if (DISABLED_ACCORDION_SCENES[sceneId]) continue;
+      }
 
       // Already enhanced?
       if (btn.getAttribute(ENHANCED) === '1') {

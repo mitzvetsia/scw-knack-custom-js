@@ -27,8 +27,8 @@
   // intermediate DOM states and layout-shifting flicker.
   let _suppressAutoEnhance = false;
 
-  // Record count badge: off by default, list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359'];
+  // Record count badge: list view IDs to enable
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -158,6 +158,8 @@
 
       ${s('.scw-group-collapse-enabled tr.scw-group-header > td')} {
         position: relative;
+        display: flex;
+        align-items: center;
       }
 
       /* ══════════════════════════════════════════════════
@@ -289,16 +291,43 @@
         border-top: 2px solid #fff;
       }
 
-      /* ── Record count badge ── */
-      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-record-count')} {
-        display: inline-block;
-        margin-left: .6em;
+      /* ── Badge wrapper (right-aligned) ── */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-group-badges')} {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      /* ── Warning count badge ── */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-warning-count')} {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
         padding: 1px 8px;
         font-size: 11px;
         font-weight: 600;
         line-height: 1.5;
         border-radius: 10px;
-        vertical-align: middle;
+        background: rgba(220, 38, 38, 0.12);
+        color: #dc2626;
+        border: 1px solid rgba(220, 38, 38, 0.22);
+      }
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-warning-count svg')} {
+        width: 12px;
+        height: 12px;
+        flex-shrink: 0;
+      }
+
+      /* ── Record count badge ── */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-record-count')} {
+        display: inline-block;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.5;
+        border-radius: 10px;
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-record-count')} {
         background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.14);
@@ -360,28 +389,55 @@
     }
   }
 
-  function ensureRecordCount($tr, viewId) {
+  var WARNING_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  function ensureBadges($tr, viewId) {
     if (!RECORD_COUNT_VIEWS.length) return;
     if (!RECORD_COUNT_VIEWS.includes(viewId)) return;
     const $cell = $tr.children('td,th').first();
 
     const $block = rowsUntilNextRelevantGroup($tr);
-    const count = $block.not('.kn-table-group, .kn-table-totals').length;
+    // For worksheet views, count only scw-ws-row to avoid double-counting
+    const $wsRows = $block.filter('tr.scw-ws-row');
+    const count = $wsRows.length
+      ? $wsRows.length
+      : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length;
 
-    // Skip DOM update if badge already shows the correct count (avoids MutationObserver loop)
-    const $existing = $cell.find('.scw-record-count');
-    if ($existing.length && $existing.text() === String(count)) return;
+    // Count accessory mismatch warnings within this group's rows
+    var warnCount = 0;
+    if ($wsRows.length) {
+      $wsRows.each(function () {
+        if (this.querySelector('.scw-cr-hdr-warning')) warnCount++;
+      });
+    }
 
-    $existing.remove();
-    if (count > 0) {
-      $cell.append('<span class="scw-record-count">' + count + '</span>');
+    // Skip DOM update if badges already show the correct values
+    const $wrapper = $cell.find('.scw-group-badges');
+    if ($wrapper.length) {
+      var existingCount = $wrapper.find('.scw-record-count').text();
+      var existingWarn = $wrapper.find('.scw-warning-count').attr('data-count') || '0';
+      if (existingCount === String(count) && existingWarn === String(warnCount)) return;
+    }
+
+    $wrapper.remove();
+
+    if (count > 0 || warnCount > 0) {
+      var html = '<span class="scw-group-badges">';
+      if (warnCount > 0) {
+        html += '<span class="scw-warning-count" data-count="' + warnCount + '" title="' + warnCount + ' accessory mismatch warning' + (warnCount > 1 ? 's' : '') + '">' + WARNING_SVG + warnCount + '</span>';
+      }
+      if (count > 0) {
+        html += '<span class="scw-record-count">' + count + '</span>';
+      }
+      html += '</span>';
+      $cell.append(html);
     }
   }
 
   function getRowLabelText($tr) {
     return $tr
       .clone()
-      .find('.scw-collapse-icon, .scw-record-count')
+      .find('.scw-collapse-icon, .scw-group-badges')
       .remove()
       .end()
       .text()
@@ -485,8 +541,10 @@
     return null;
   }
 
+  var DISABLED_SCENES = { scene_828: true, scene_833: true, scene_873: true };
+
   function isEnabledScene(sceneId) {
-    return !!sceneId;
+    return !!sceneId && !DISABLED_SCENES[sceneId];
   }
 
   // ======================
@@ -550,7 +608,7 @@
         this.style.setProperty('--scw-grp-accent-rgb', rgb.join(','));
       }
 
-      ensureRecordCount($tr, viewId);
+      ensureBadges($tr, viewId);
 
       const key = buildKey($tr, level);
       const shouldCollapse = key in state ? !!state[key] : (belowThreshold ? false : COLLAPSED_BY_DEFAULT);

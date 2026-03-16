@@ -113,15 +113,17 @@
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: [],
             label: 'SERVICE',
+            rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
+            rowClass: 'scw-row--assumptions',
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       },
       {
@@ -243,12 +245,12 @@
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
           connectedDevice:  { key: 'field_1957', type: 'readOnly' },
-          mountingHardware: { key: 'field_2207', type: 'readOnly' }
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
         detailLayout: {
-          left:  ['scwNotes'],
-          right: ['connectedDevice', 'mountingHardware']
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['scwNotes']
         },
         bucketField: 'field_2219',
         bucketRules: {
@@ -266,8 +268,8 @@
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       }
     ]
@@ -1299,28 +1301,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 
 
-/* view_3313: top-align all elements; pad non-labeled items to match label height */
-#view_3313 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3313 .${P}-chevron {
-  margin-top: 11px;
-}
-#view_3313 td.${P}-sum-label-cell {
-  margin-top: 11px;
-}
-#view_3313 .${P}-sum-sep {
-  margin-top: 11px;
-}
-#view_3313 td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: 11px !important;
-}
-#view_3313 .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: 11px;
-}
 
 /* Fee label — align with value text (match td padding-left) */
 .${P}-sum-group--fee > .${P}-sum-label {
@@ -1437,15 +1417,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background-color: rgb(255, 253, 204) !important;
 }
 
-/* view_3332: top-align toggle zone (chevron + product) */
-#view_3332 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3332 .${P}-chevron {
-  margin-top: 11px;
-}
-
 /* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
 #view_3332 .${P}-identity {
   width: 366px;
@@ -1471,14 +1442,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* view_3332 detail sections grid */
 #view_3332 .${P}-sections {
   grid-template-columns: 1fr 1fr;
-}
-#view_3332 td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: 11px !important;
-}
-#view_3332 .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: 11px;
 }
 @media (max-width: 900px) {
   #view_3332 .${P}-sections {
@@ -1554,6 +1517,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ── Bucket detection for per-view conditional field hiding ──
+
+  /**
+   * Return the true label text of a Knack group-header row, ignoring any
+   * elements injected by group-collapse (collapse icons, record-count badges).
+   */
+  function getGroupLabelText(groupRow) {
+    var td = groupRow.querySelector('td');
+    if (!td) return '';
+    var clone = td.cloneNode(true);
+    var extras = clone.querySelectorAll('.scw-collapse-icon, .scw-group-badges');
+    for (var i = 0; i < extras.length; i++) extras[i].remove();
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
 
   /**
    * Read the bucket connection record ID from a detect cell.
@@ -1658,6 +1634,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   var _expandedState = {};  // viewId → [recordId, ...]
 
+  // localStorage helpers for persisting accordion state across page refreshes
+  function wsStorageKey(viewId) { return 'scw:ws-expanded:' + viewId; }
+  function loadWsState(viewId) {
+    try { return JSON.parse(localStorage.getItem(wsStorageKey(viewId)) || '[]'); }
+    catch (e) { return []; }
+  }
+  function saveWsState(viewId, expanded) {
+    try { localStorage.setItem(wsStorageKey(viewId), JSON.stringify(expanded)); }
+    catch (e) {}
+  }
+
   /** Scan current worksheet rows for open detail panels and save their
    *  record IDs so they can be re-expanded after transformView. */
   function captureExpandedState(viewId) {
@@ -1671,6 +1658,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
     _expandedState[viewId] = expanded;
+    saveWsState(viewId, expanded);
   }
 
   /** Capture expanded state for ALL configured worksheet views.
@@ -1687,7 +1675,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  have been built. Uses record ID (24-char hex) for stable
    *  identity across re-renders. */
   function restoreExpandedState(viewId) {
+    // Prefer in-memory state (inline edit); fall back to localStorage (page refresh)
     var expanded = _expandedState[viewId];
+    if (!expanded || !expanded.length) {
+      expanded = loadWsState(viewId);
+    }
     if (!expanded || !expanded.length) return;
 
     // Build a lookup set for O(1) checks
@@ -2823,22 +2815,57 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var bar = document.createElement('div');
     bar.className = P + '-summary';
 
+    // Detect stacked labels early — needed for vertical alignment of all elements
+    var hasStackedFields = layout.some(function (n) {
+      var d = fieldDesc(viewCfg, n);
+      return d && d.group === 'right' && d.label;
+    });
+    if (hasStackedFields) bar.classList.add(P + '-summary--stacked');
+
     // ── KTL / legacy bulk-edit checkbox (if present) ──
     var checkTd = tr.querySelector('td > input[type="checkbox"]');
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      bar.appendChild(checkCell);
+      if (hasStackedFields) {
+        // Wrap in column-flex with empty label so checkbox aligns with value row
+        var checkWrap = document.createElement('span');
+        checkWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+        var checkSpacer = document.createElement('span');
+        checkSpacer.className = P + '-sum-label';
+        checkSpacer.innerHTML = '&nbsp;';
+        checkWrap.appendChild(checkSpacer);
+        checkWrap.appendChild(checkCell);
+        bar.appendChild(checkWrap);
+      } else {
+        bar.appendChild(checkCell);
+      }
     }
 
     // ── Toggle zone: chevron + identity (label + product) ──
     var toggleZone = document.createElement('span');
     toggleZone.className = P + '-toggle-zone';
+    if (hasStackedFields) {
+      toggleZone.style.alignSelf = 'flex-start';
+      toggleZone.style.alignItems = 'flex-start';
+    }
 
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
-    toggleZone.appendChild(chevron);
+    if (hasStackedFields) {
+      // Wrap in column-flex with empty label so chevron aligns with value row
+      var chevWrap = document.createElement('span');
+      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var chevSpacer = document.createElement('span');
+      chevSpacer.className = P + '-sum-label';
+      chevSpacer.innerHTML = '&nbsp;';
+      chevWrap.appendChild(chevSpacer);
+      chevWrap.appendChild(chevron);
+      toggleZone.appendChild(chevWrap);
+    } else {
+      toggleZone.appendChild(chevron);
+    }
 
     var identity = document.createElement('span');
     identity.className = P + '-identity';
@@ -2866,12 +2893,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // (needed when right-group fields have stacked label+value)
-        var hasStackedFields = layout.some(function (n) {
-          var d = fieldDesc(viewCfg, n);
-          return d && d.group === 'right' && d.label;
-        });
-        if (hasStackedFields) {
+        // Only needed when there's no label-cell (view_3332); when there IS a
+        // label-cell (view_3313) the identity wrapper handles alignment.
+        if (hasStackedFields && !labelDesc) {
           var prodLabel = document.createElement('span');
           prodLabel.className = P + '-sum-label';
           prodLabel.innerHTML = '&nbsp;';
@@ -2898,7 +2922,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    toggleZone.appendChild(identity);
+    if (hasStackedFields && labelDesc) {
+      // Wrap entire identity so label-cell, separator, and product all
+      // drop down together — keeps them aligned with checkbox & chevron.
+      var idWrap = document.createElement('span');
+      idWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-self:flex-start;';
+      var idSpacer = document.createElement('span');
+      idSpacer.className = P + '-sum-label';
+      idSpacer.innerHTML = '&nbsp;';
+      idWrap.appendChild(idSpacer);
+      idWrap.appendChild(identity);
+      toggleZone.appendChild(idWrap);
+    } else {
+      toggleZone.appendChild(identity);
+    }
     bar.appendChild(toggleZone);
 
     // ── Walk summaryLayout: dispatch each field to its type builder ──
@@ -3382,6 +3419,49 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
     if (detail) card.appendChild(detail);
 
+    // ── Accessory mismatch header warning ──
+    // If any connected-records widget flagged a warning, add icon to summary row.
+    // Prefer the label cell (view_3313); when no label cell exists (view_3332),
+    // insert as a standalone element in the identity, before the product group.
+    var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
+    for (var w = 0; w < crWidgets.length; w++) {
+      var parentField = crWidgets[w].parentElement;
+      if (parentField && parentField._hasWarning) {
+        var warnIcon = document.createElement('span');
+        warnIcon.className = 'scw-cr-hdr-warning';
+        warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
+
+        var labelCell = card.querySelector('td.' + P + '-sum-label-cell');
+        if (labelCell) {
+          // view_3313 style: append to label cell
+          labelCell.appendChild(warnIcon);
+        } else {
+          // view_3332 style: insert before product group in identity
+          var identityEl = card.querySelector('.' + P + '-identity');
+          var productGroupEl = card.querySelector('.' + P + '-product-group');
+          var isStacked = card.querySelector('.' + P + '-summary--stacked');
+          var warnNode = warnIcon;
+          if (isStacked) {
+            var warnWrap = document.createElement('span');
+            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+            var warnSpacer = document.createElement('span');
+            warnSpacer.className = P + '-sum-label';
+            warnSpacer.innerHTML = '&nbsp;';
+            warnWrap.appendChild(warnSpacer);
+            warnWrap.appendChild(warnIcon);
+            warnNode = warnWrap;
+          }
+          if (identityEl && productGroupEl) {
+            identityEl.insertBefore(warnNode, productGroupEl);
+          } else if (identityEl) {
+            identityEl.appendChild(warnNode);
+          }
+        }
+        break;
+      }
+    }
+
     // ── Apply bucket-based field hiding + label injection ──
     applyBucketRules(card, tr, viewCfg);
 
@@ -3393,6 +3473,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ============================================================
 
   function transformView(viewCfg) {
+    if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
 
@@ -3438,8 +3519,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         if (!prev) {
           hasNoMove = true; // no group header at all
         } else {
-          var grpLabel = (prev.textContent || '').replace(/\s+/g, ' ').trim();
-          hasNoMove = grpLabel.length === 0;
+          hasNoMove = getGroupLabelText(prev).length === 0;
         }
       }
 
@@ -3510,7 +3590,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       for (var gi = 0; gi < nativeGroups.length; gi++) {
         var grp = nativeGroups[gi];
         if (grp.classList.contains('scw-synthetic-group')) continue;
-        var labelText = (grp.textContent || '').replace(/\s+/g, ' ').trim();
+        var labelText = getGroupLabelText(grp);
         if (labelText.length === 0) {
           // Remove orphaned photo rows that follow this empty header
           var sib = grp.nextElementSibling;
@@ -3651,6 +3731,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {
       toggleDetail(wsTr);
+      // Persist accordion state to localStorage after toggle
+      var viewEl = wsTr.closest('.kn-view');
+      if (viewEl) captureExpandedState(viewEl.id);
     }
   });
 

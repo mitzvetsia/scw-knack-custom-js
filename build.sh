@@ -22,6 +22,7 @@ cat \
   src/features/proposal-grid.js \
   src/features/bid-items-grid.js \
   src/features/group-collapse.js \
+  src/features/select-all-checkboxes.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
@@ -47,8 +48,10 @@ cat \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
   src/features/boolean-chips.js \
+  src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/grid-direct-edit.js \
   src/features/dynamic-cell-colors.js \
   src/features/legacy/checkbox-grid.field_739.js \
   src/features/legacy/expand-collapse-legacy-function.js \

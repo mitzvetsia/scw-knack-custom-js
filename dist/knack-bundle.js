@@ -1137,6 +1137,10 @@ window.SCW = window.SCW || {};
   var ENHANCED   = 'data-scw-ktl-accordion';
   var OPT_OUT    = 'data-scw-no-accordion';
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
+  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true };
+
+  // Views where the record count pill is hidden (set to true to hide)
+  var HIDE_COUNT = {};
 
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
@@ -1457,6 +1461,12 @@ window.SCW = window.SCW || {};
 
     var tbody = viewEl.querySelector('table.kn-table tbody');
     if (tbody) {
+      // If device-worksheet has transformed this view, count only the
+      // worksheet rows (scw-ws-row) — otherwise we'd double-count
+      // because the original Knack <tr> rows are hidden but still present.
+      var wsRows = tbody.querySelectorAll('tr.scw-ws-row');
+      if (wsRows.length) return wsRows.length;
+
       var rows = tbody.querySelectorAll('tr');
       var real = 0;
       for (var i = 0; i < rows.length; i++) {
@@ -1524,15 +1534,19 @@ window.SCW = window.SCW || {};
       if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
     }
 
-    // Count pill
+    // Count pill (hidden for views listed in HIDE_COUNT)
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
-      var count = computeCount(viewKey);
-      if (count !== null) {
-        countEl.textContent = count;
-        countEl.style.display = '';
-      } else {
+      if (HIDE_COUNT[viewKey]) {
         countEl.style.display = 'none';
+      } else {
+        var count = computeCount(viewKey);
+        if (count !== null) {
+          countEl.textContent = count;
+          countEl.style.display = '';
+        } else {
+          countEl.style.display = 'none';
+        }
       }
     }
 
@@ -1721,6 +1735,13 @@ window.SCW = window.SCW || {};
       if (btn.hasAttribute(OPT_OUT)) continue;
       var knView = btn.closest('.kn-view');
       if (knView && knView.hasAttribute(OPT_OUT)) continue;
+
+      // Scene exclusion — skip accordion enhancement on disabled scenes
+      var knScene = btn.closest('.kn-scene');
+      if (knScene) {
+        var sceneId = (knScene.id || '').replace('kn-', '');
+        if (DISABLED_ACCORDION_SCENES[sceneId]) continue;
+      }
 
       // Already enhanced?
       if (btn.getAttribute(ENHANCED) === '1') {
@@ -6091,8 +6112,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // intermediate DOM states and layout-shifting flicker.
   let _suppressAutoEnhance = false;
 
-  // Record count badge: off by default, list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359'];
+  // Record count badge: list view IDs to enable
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -6222,6 +6243,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       ${s('.scw-group-collapse-enabled tr.scw-group-header > td')} {
         position: relative;
+        display: flex;
+        align-items: center;
       }
 
       /* ══════════════════════════════════════════════════
@@ -6353,16 +6376,43 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         border-top: 2px solid #fff;
       }
 
-      /* ── Record count badge ── */
-      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-record-count')} {
-        display: inline-block;
-        margin-left: .6em;
+      /* ── Badge wrapper (right-aligned) ── */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-group-badges')} {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      /* ── Warning count badge ── */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-warning-count')} {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
         padding: 1px 8px;
         font-size: 11px;
         font-weight: 600;
         line-height: 1.5;
         border-radius: 10px;
-        vertical-align: middle;
+        background: rgba(220, 38, 38, 0.12);
+        color: #dc2626;
+        border: 1px solid rgba(220, 38, 38, 0.22);
+      }
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-warning-count svg')} {
+        width: 12px;
+        height: 12px;
+        flex-shrink: 0;
+      }
+
+      /* ── Record count badge ── */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header .scw-record-count')} {
+        display: inline-block;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.5;
+        border-radius: 10px;
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-record-count')} {
         background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.14);
@@ -6424,28 +6474,55 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
   }
 
-  function ensureRecordCount($tr, viewId) {
+  var WARNING_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  function ensureBadges($tr, viewId) {
     if (!RECORD_COUNT_VIEWS.length) return;
     if (!RECORD_COUNT_VIEWS.includes(viewId)) return;
     const $cell = $tr.children('td,th').first();
 
     const $block = rowsUntilNextRelevantGroup($tr);
-    const count = $block.not('.kn-table-group, .kn-table-totals').length;
+    // For worksheet views, count only scw-ws-row to avoid double-counting
+    const $wsRows = $block.filter('tr.scw-ws-row');
+    const count = $wsRows.length
+      ? $wsRows.length
+      : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length;
 
-    // Skip DOM update if badge already shows the correct count (avoids MutationObserver loop)
-    const $existing = $cell.find('.scw-record-count');
-    if ($existing.length && $existing.text() === String(count)) return;
+    // Count accessory mismatch warnings within this group's rows
+    var warnCount = 0;
+    if ($wsRows.length) {
+      $wsRows.each(function () {
+        if (this.querySelector('.scw-cr-hdr-warning')) warnCount++;
+      });
+    }
 
-    $existing.remove();
-    if (count > 0) {
-      $cell.append('<span class="scw-record-count">' + count + '</span>');
+    // Skip DOM update if badges already show the correct values
+    const $wrapper = $cell.find('.scw-group-badges');
+    if ($wrapper.length) {
+      var existingCount = $wrapper.find('.scw-record-count').text();
+      var existingWarn = $wrapper.find('.scw-warning-count').attr('data-count') || '0';
+      if (existingCount === String(count) && existingWarn === String(warnCount)) return;
+    }
+
+    $wrapper.remove();
+
+    if (count > 0 || warnCount > 0) {
+      var html = '<span class="scw-group-badges">';
+      if (warnCount > 0) {
+        html += '<span class="scw-warning-count" data-count="' + warnCount + '" title="' + warnCount + ' accessory mismatch warning' + (warnCount > 1 ? 's' : '') + '">' + WARNING_SVG + warnCount + '</span>';
+      }
+      if (count > 0) {
+        html += '<span class="scw-record-count">' + count + '</span>';
+      }
+      html += '</span>';
+      $cell.append(html);
     }
   }
 
   function getRowLabelText($tr) {
     return $tr
       .clone()
-      .find('.scw-collapse-icon, .scw-record-count')
+      .find('.scw-collapse-icon, .scw-group-badges')
       .remove()
       .end()
       .text()
@@ -6549,8 +6626,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return null;
   }
 
+  var DISABLED_SCENES = { scene_828: true, scene_833: true, scene_873: true };
+
   function isEnabledScene(sceneId) {
-    return !!sceneId;
+    return !!sceneId && !DISABLED_SCENES[sceneId];
   }
 
   // ======================
@@ -6614,7 +6693,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         this.style.setProperty('--scw-grp-accent-rgb', rgb.join(','));
       }
 
-      ensureRecordCount($tr, viewId);
+      ensureBadges($tr, viewId);
 
       const key = buildKey($tr, level);
       const shouldCollapse = key in state ? !!state[key] : (belowThreshold ? false : COLLAPSED_BY_DEFAULT);
@@ -6759,6 +6838,854 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/
+/*** SELECT-ALL CHECKBOXES — view header row + group header checkboxes ***/
+(function () {
+  'use strict';
+
+  var STYLE_ID  = 'scw-select-all-css';
+  var HEADER_ATTR = 'data-scw-sa-header';
+  var GROUP_ATTR  = 'data-scw-sa-grp';
+  var CB_SELECTOR =
+    '.kn-table-bulk-checkbox input[type="checkbox"], ' +
+    'input.ktlCheckbox-row[type="checkbox"]';
+
+  /* Our own class strings — must NOT include KTL bulk-edit classes
+     (bulkEditCb, bulkEditHeaderCbox, masterSelector, ktlCheckbox-master)
+     because when the header bar is inside the view, KTL would find
+     these duplicates and break its bulk-edit processing. */
+  var SCW_MASTER_CLS = 'scw-sa-master-cb';
+  var SCW_HEADER_CB_CLS = 'scw-sa-hdr-cbox';
+
+  // ───────────────────────────────────────────────
+  //  CSS
+  // ───────────────────────────────────────────────
+  function injectCss() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    var css = [
+      /* ── View-level header bar — styled like native Knack <thead> row ── */
+      '.scw-sa-header {',
+      '  display: flex;',
+      '  align-items: stretch;',
+      '  gap: 6px;',
+      '  padding: 6px 12px;',
+      '  background: #fafafa;',
+      '  border-bottom: 1px solid #dbdbdb;',
+      '  min-height: 36px;',
+      '  user-select: none;',
+      '  position: sticky;',
+      '  top: 0;',
+      '  z-index: 5;',
+      '}',
+
+      '.scw-sa-header-check {',
+      '  flex: 0 0 auto;',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  padding: 0 4px;',
+      '}',
+      '.scw-sa-header-check input[type="checkbox"] {',
+      '  margin: 0;',
+      '  cursor: pointer;',
+      '}',
+
+      /* identity + chevron placeholder — width set dynamically via JS */
+      '.scw-sa-header-toggle {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  flex: 0 0 auto;',
+      '  min-width: 0;',
+      '}',
+      '.scw-sa-header-fill {',
+      '  flex: 1 1 auto;',
+      '  min-width: 0;',
+      '}',
+      '.scw-sa-header-right {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 4px;',
+      '  margin-left: auto;',
+      '  flex-shrink: 0;',
+      '}',
+
+      /* Each header label cell */
+      '.scw-sa-header-cell {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  flex-shrink: 0;',
+      '  padding: 0;',
+      '}',
+
+      /* ── Sort link — styled to match native <a class="kn-sort"> ── */
+      '.scw-sa-header-cell .scw-sa-sort-link {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 3px;',
+      '  font-size: 0.85rem;',
+      '  font-weight: 600;',
+      '  color: #485fc7;',
+      '  white-space: normal;',
+      '  text-align: center;',
+      '  cursor: pointer;',
+      '  text-decoration: none;',
+      '  line-height: 1.15;',
+      '}',
+      '.scw-sa-sort-link:hover {',
+      '  color: #363636;',
+      '}',
+
+      /* Non-sortable label */
+      '.scw-sa-header-label {',
+      '  font-size: 0.85rem;',
+      '  font-weight: 600;',
+      '  color: #363636;',
+      '  white-space: normal;',
+      '  text-align: center;',
+      '  line-height: 1.15;',
+      '}',
+
+      /* Sort direction icon */
+      '.scw-sa-sort-link .icon.is-small {',
+      '  margin-left: 3px;',
+      '}',
+
+      /* Wrapper inside header cell — vertical stack: label on top, checkbox below */
+      '.scw-sa-header-cell .table-fixed-label {',
+      '  display: flex !important;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  gap: 2px;',
+      '}',
+
+      /* Bulk-edit column checkbox — centered below label */
+      '.scw-sa-hdr-cbox {',
+      '  margin: 0;',
+      '  cursor: pointer;',
+      '}',
+
+      /* ── Group header checkbox ── */
+      '.scw-sa-grp-check {',
+      '  display: inline-flex !important;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  flex: 0 0 auto;',
+      '  min-width: 20px;',
+      '  padding: 0 4px;',
+      '  margin-right: 4px;',
+      '  visibility: visible !important;',
+      '  opacity: 1 !important;',
+      '  order: -1;',
+      '}',
+      '.scw-sa-grp-check input[type="checkbox"] {',
+      '  margin: 0;',
+      '  cursor: pointer;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
+      '  display: inline-block !important;',
+      '  appearance: auto !important;',
+      '  -webkit-appearance: checkbox !important;',
+      '  opacity: 1 !important;',
+      '  visibility: visible !important;',
+      '  position: static !important;',
+      '}',
+      'tr.scw-group-header > td { overflow: visible !important; }',
+      '.scw-sa-header-check input[type="checkbox"],',
+      '.scw-sa-grp-check input[type="checkbox"] {',
+      '  pointer-events: auto;',
+      '}',
+    ].join('\n');
+
+    var el = document.createElement('style');
+    el.id = STYLE_ID;
+    el.textContent = css;
+    document.head.appendChild(el);
+  }
+
+  // ───────────────────────────────────────────────
+  //  Helpers
+  // ───────────────────────────────────────────────
+
+  function findCheckboxes(container) {
+    return container.querySelectorAll(CB_SELECTOR);
+  }
+
+  function syncCheckbox(cb, targets) {
+    if (!targets.length) return;
+    var allChecked = true;
+    var anyChecked = false;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].checked) anyChecked = true;
+      else allChecked = false;
+    }
+    cb.checked = allChecked;
+    cb.indeterminate = !allChecked && anyChecked;
+  }
+
+  // ───────────────────────────────────────────────
+  //  Sort helpers (always fresh DOM lookups via viewKey)
+  // ───────────────────────────────────────────────
+
+  function findSortLink(viewKey, fieldKey) {
+    var viewEl = document.getElementById(viewKey);
+    if (!viewEl) return null;
+    var thead = viewEl.querySelector('thead');
+    if (!thead) return null;
+    var ths = thead.querySelectorAll('th');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      if (th.className.indexOf(fieldKey) === -1) continue;
+      var link = th.querySelector('a.kn-sort');
+      if (link) return { link: link, th: th };
+    }
+    var links = thead.querySelectorAll('a.kn-sort');
+    for (var j = 0; j < links.length; j++) {
+      var href = links[j].getAttribute('href') || '';
+      if (href.indexOf(fieldKey) !== -1) return { link: links[j], th: links[j].closest('th') };
+    }
+    return null;
+  }
+
+  function readSortState(viewKey, fieldKey) {
+    var info = findSortLink(viewKey, fieldKey);
+    if (!info || !info.th) return null;
+    if (info.th.classList.contains('sorted-asc')) return 'asc';
+    if (info.th.classList.contains('sorted-desc')) return 'desc';
+    return null;
+  }
+
+  function triggerSort(viewKey, fieldKeys) {
+    for (var i = 0; i < fieldKeys.length; i++) {
+      var info = findSortLink(viewKey, fieldKeys[i]);
+      if (info && info.link) {
+        info.link.click();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ───────────────────────────────────────────────
+  //  KTL bulk-edit header checkbox helpers
+  // ───────────────────────────────────────────────
+
+  function readTheadCheckboxes(viewEl) {
+    var map = {};
+    var thead = viewEl.querySelector('thead');
+    if (!thead) return map;
+    var ths = thead.querySelectorAll('th');
+    for (var i = 0; i < ths.length; i++) {
+      var th = ths[i];
+      var cbox = th.querySelector('input.bulkEditHeaderCbox');
+      if (!cbox) continue;
+      var cls = th.className.split(/\s+/);
+      for (var c = 0; c < cls.length; c++) {
+        if (cls[c].indexOf('field_') === 0) {
+          map[cls[c]] = cbox;
+          break;
+        }
+      }
+    }
+    return map;
+  }
+
+  function areBulkEditCboxesVisible(viewEl) {
+    var thead = viewEl.querySelector('thead');
+    if (!thead) return false;
+    var sample = thead.querySelector('input.bulkEditHeaderCbox');
+    if (!sample) return false;
+    return !sample.classList.contains('ktlDisplayNone');
+  }
+
+  // ───────────────────────────────────────────────
+  //  1) View-level header row
+  // ───────────────────────────────────────────────
+
+  function readHeaderLayout(viewEl) {
+    // Find a visible summary bar (first may be inside a collapsed group)
+    var allBars = viewEl.querySelectorAll('.scw-ws-summary');
+    var bar = null;
+    for (var bi = 0; bi < allBars.length; bi++) {
+      if (allBars[bi].getBoundingClientRect().width > 0) {
+        bar = allBars[bi];
+        break;
+      }
+    }
+    if (!bar) return null;
+
+    var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
+
+    var productCell = bar.querySelector('.scw-ws-sum-product');
+    if (productCell) result.identity.push({ text: 'Product', field: productCell.getAttribute('data-field-key') || 'field_1949' });
+
+    var fillGroup = bar.querySelector('.scw-ws-sum-group--fill');
+    if (fillGroup) {
+      var fillLabel = fillGroup.querySelector('.scw-ws-sum-label');
+      var fillFields = fillGroup.getAttribute('data-scw-fields') || '';
+      result.fill = {
+        text: fillLabel ? fillLabel.textContent.trim() : 'Labor Desc',
+        fields: fillFields.split(/\s+/).filter(function(f) { return f; })
+      };
+    }
+
+    var rightContainer = bar.querySelector('.scw-ws-sum-right');
+    if (rightContainer) {
+      var groups = rightContainer.querySelectorAll('.scw-ws-sum-group');
+      for (var i = 0; i < groups.length; i++) {
+        var g = groups[i];
+        var cls = g.className;
+
+        if (cls.indexOf('sum-group--cabling') !== -1) { result.hasCabling = true; continue; }
+        if (cls.indexOf('sum-group--move') !== -1) {
+          var moveTd = g.querySelector('td[data-field-key]');
+          result.hasMove = true;
+          result.moveField = moveTd ? moveTd.getAttribute('data-field-key') : 'field_1946';
+          continue;
+        }
+        if (cls.indexOf('sum-group--delete') !== -1 || g.querySelector('.kn-link-delete')) { result.hasDelete = true; continue; }
+
+        var lbl = g.querySelector('.scw-ws-sum-label');
+        var text = lbl ? lbl.textContent.trim() : '';
+        if (!text) continue;
+
+        var fieldKeys = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
+
+        result.right.push({ text: text, fields: fieldKeys });
+      }
+    }
+
+    if (!result.hasCabling && bar.querySelector('.scw-ws-cabling-chit')) result.hasCabling = true;
+    if (!result.hasDelete && bar.querySelector('.scw-ws-sum-delete')) result.hasDelete = true;
+
+    return result;
+  }
+
+  /**
+   * Build a header cell: sort link + optional bulk-edit checkbox.
+   * Uses <span> (not <a class="kn-sort">) to avoid Knack delegated handler interference.
+   */
+  function buildHeaderCell(labelText, fieldKeys, theadMap, bulkVisible, viewKey) {
+    var cell = document.createElement('span');
+    cell.className = 'scw-sa-header-cell';
+
+    var hasSortLink = false;
+    var sortFieldKey = fieldKeys.length ? fieldKeys[0] : null;
+    if (sortFieldKey) hasSortLink = !!findSortLink(viewKey, sortFieldKey);
+
+    if (hasSortLink) {
+      var wrapper = document.createElement('span');
+      wrapper.className = 'table-fixed-label';
+
+      var sortEl = document.createElement('span');
+      sortEl.className = 'scw-sa-sort-link';
+      if (sortFieldKey) sortEl.setAttribute('data-scw-sort-field', sortFieldKey);
+
+      var dir = readSortState(viewKey, sortFieldKey);
+
+      var textSpan = document.createElement('span');
+      textSpan.textContent = labelText;
+      sortEl.appendChild(textSpan);
+
+      if (dir) {
+        var iconWrap = document.createElement('span');
+        iconWrap.className = 'icon is-small is-transparent';
+        iconWrap.style.marginLeft = '3px';
+        var icon = document.createElement('i');
+        icon.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+        iconWrap.appendChild(icon);
+        sortEl.appendChild(iconWrap);
+      }
+
+      sortEl.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerSort(viewKey, fieldKeys);
+      });
+
+      wrapper.appendChild(sortEl);
+
+      // Bulk-edit column checkbox (full KTL classes)
+      var matchedCbox = null;
+      for (var i = 0; i < fieldKeys.length; i++) {
+        if (theadMap[fieldKeys[i]]) { matchedCbox = theadMap[fieldKeys[i]]; break; }
+      }
+      if (matchedCbox) {
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = SCW_HEADER_CB_CLS + (bulkVisible ? '' : ' ktlDisplayNone');
+        cb.checked = matchedCbox.checked;
+        cb.setAttribute('aria-label', 'Select column');
+        cb.setAttribute('data-scw-thead-field', fieldKeys[0]);
+        cb.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var freshEl = document.getElementById(viewKey);
+          if (!freshEl) return;
+          var freshMap = readTheadCheckboxes(freshEl);
+          var nativeCb = freshMap[fieldKeys[0]];
+          if (nativeCb && nativeCb.checked !== cb.checked) nativeCb.click();
+        });
+        wrapper.appendChild(cb);
+      }
+
+      cell.appendChild(wrapper);
+    } else {
+      var lbl = document.createElement('span');
+      lbl.className = 'scw-sa-header-label';
+      lbl.textContent = labelText;
+      cell.appendChild(lbl);
+    }
+
+    return cell;
+  }
+
+  function findHeaderBar(viewKey) {
+    return document.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
+  }
+
+  /**
+   * Measure a VISIBLE summary bar in the view and apply matching widths
+   * to the header bar cells so columns are perfectly aligned.
+   */
+  function alignHeaderToSummary(bar, viewEl) {
+    // Find a visible summary bar (first one may be in a collapsed group)
+    var summaries = viewEl.querySelectorAll('.scw-ws-summary');
+    var summary = null;
+    for (var si = 0; si < summaries.length; si++) {
+      if (summaries[si].getBoundingClientRect().width > 0) {
+        summary = summaries[si];
+        break;
+      }
+    }
+    if (!summary) return;
+
+    // ── Left side: check + toggle zone → header check + toggle ──
+    var sumCheck = summary.querySelector('.scw-ws-sum-check');
+    var hdrCheck = bar.querySelector('.scw-sa-header-check');
+    if (sumCheck && hdrCheck) {
+      var cw = sumCheck.getBoundingClientRect().width;
+      hdrCheck.style.width = cw + 'px';
+      hdrCheck.style.minWidth = cw + 'px';
+      hdrCheck.style.flex = '0 0 ' + cw + 'px';
+    }
+
+    var sumToggle = summary.querySelector('.scw-ws-toggle-zone');
+    var hdrToggle = bar.querySelector('.scw-sa-header-toggle');
+    if (sumToggle && hdrToggle) {
+      var tw = sumToggle.getBoundingClientRect().width;
+      hdrToggle.style.width = tw + 'px';
+      hdrToggle.style.minWidth = tw + 'px';
+      hdrToggle.style.flex = '0 0 ' + tw + 'px';
+    }
+
+    // ── Right side: match each group width ──
+    var sumRight = summary.querySelector('.scw-ws-sum-right');
+    var hdrRight = bar.querySelector('.scw-sa-header-right');
+    if (sumRight && hdrRight) {
+      var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
+      var hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
+      for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
+        var gw = sumGroups[i].getBoundingClientRect().width;
+        hdrCells[i].style.width = Math.round(gw) + 'px';
+        hdrCells[i].style.minWidth = Math.round(gw) + 'px';
+        hdrCells[i].style.flex = '0 0 ' + Math.round(gw) + 'px';
+      }
+    }
+  }
+
+  /**
+   * Build and insert the header bar.
+   * Inserts OUTSIDE the view (in accordion body) to survive re-renders.
+   */
+  function buildHeaderBar(viewEl, viewKey) {
+    var layout = readHeaderLayout(viewEl);
+    if (!layout) return null;
+
+    var existing = findHeaderBar(viewKey);
+    if (existing) existing.remove();
+
+    var theadMap = readTheadCheckboxes(viewEl);
+    var bulkVisible = areBulkEditCboxesVisible(viewEl);
+
+    var bar = document.createElement('div');
+    bar.className = 'scw-sa-header';
+    bar.setAttribute('data-scw-sa-view', viewKey);
+
+    // ── Select-all checkbox (with KTL classes) ──
+    var checkWrap = document.createElement('span');
+    checkWrap.className = 'scw-sa-header-check';
+    var selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.className = SCW_MASTER_CLS;
+    selectAllCb.setAttribute('aria-label', 'Select all rows');
+    selectAllCb.title = 'Select / deselect all';
+    checkWrap.appendChild(selectAllCb);
+    bar.appendChild(checkWrap);
+
+    // ── Toggle zone placeholder (mirrors summary toggle-zone width) ──
+    var toggleSpan = document.createElement('span');
+    toggleSpan.className = 'scw-sa-header-toggle';
+    for (var id = 0; id < layout.identity.length; id++) {
+      var idItem = layout.identity[id];
+      var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, viewKey);
+      toggleSpan.appendChild(idCell);
+    }
+    bar.appendChild(toggleSpan);
+
+    // ── Fill label (labor desc) ──
+    if (layout.fill) {
+      var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, viewKey);
+      fillCell.classList.add('scw-sa-header-fill');
+      bar.appendChild(fillCell);
+    }
+
+    // ── Right-side labels ──
+    var rightSpan = document.createElement('span');
+    rightSpan.className = 'scw-sa-header-right';
+
+    if (layout.hasCabling) {
+      rightSpan.appendChild(buildHeaderCell('Cabling', [], theadMap, bulkVisible, viewKey));
+    }
+
+    for (var r = 0; r < layout.right.length; r++) {
+      var item = layout.right[r];
+      rightSpan.appendChild(buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, viewKey));
+    }
+
+    if (layout.hasMove) {
+      rightSpan.appendChild(buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, viewKey));
+    }
+    if (layout.hasDelete) {
+      var delCell = document.createElement('span');
+      delCell.className = 'scw-sa-header-cell';
+      delCell.innerHTML = '&nbsp;';
+      rightSpan.appendChild(delCell);
+    }
+
+    bar.appendChild(rightSpan);
+
+    // ── Insert INSIDE the view, after kn-records-nav ──
+    // Primary: place after .kn-records-nav so the bar sits between
+    //          the filters/pagination row and the table content.
+    // Fallback: before .kn-table-wrapper, or before viewEl itself.
+    var inserted = false;
+    var recordsNav = viewEl.querySelector('.kn-records-nav');
+    if (recordsNav) {
+      recordsNav.parentNode.insertBefore(bar, recordsNav.nextSibling);
+      inserted = true;
+    }
+    if (!inserted) {
+      var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
+      if (tableWrapper) {
+        tableWrapper.parentNode.insertBefore(bar, tableWrapper);
+      } else if (viewEl.parentNode) {
+        viewEl.parentNode.insertBefore(bar, viewEl);
+      }
+    }
+
+    // ── Align columns to summary bar ──
+    alignHeaderToSummary(bar, viewEl);
+
+    // ── Click handler for select-all (fresh DOM lookup) ──
+    selectAllCb.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var el = document.getElementById(viewKey);
+      if (!el) return;
+      var cbs = findCheckboxes(el);
+      if (!cbs.length) return;
+
+      var shouldCheck = selectAllCb.checked;
+      for (var k = 0; k < cbs.length; k++) {
+        if (cbs[k].checked !== shouldCheck) cbs[k].click();
+      }
+      selectAllCb.indeterminate = false;
+    });
+
+    // ── Sync state on any checkbox change within view ──
+    $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
+      var freshEl = document.getElementById(viewKey);
+      if (!freshEl) return;
+      var cbs = findCheckboxes(freshEl);
+      syncCheckbox(selectAllCb, cbs);
+      // After a row checkbox changes, KTL toggles ktlDisplayNone on native
+      // thead checkboxes (class change). Delay sync so KTL processes first.
+      setTimeout(function () {
+        var el = document.getElementById(viewKey);
+        if (el) syncHeaderBar(el, viewKey);
+      }, 150);
+    });
+
+    syncCheckbox(selectAllCb, findCheckboxes(viewEl));
+
+    return bar;
+  }
+
+  /**
+   * Sync the header bar with current view state: checkbox visibility,
+   * sort direction indicators, column alignment, and select-all state.
+   */
+  function syncHeaderBar(viewEl, viewKey) {
+    var bar = findHeaderBar(viewKey);
+    if (!bar) return;
+
+    var theadMap = readTheadCheckboxes(viewEl);
+    var visible = areBulkEditCboxesVisible(viewEl);
+
+    // Sync bulk-edit column checkboxes
+    var hdrCboxes = bar.querySelectorAll('.scw-sa-hdr-cbox');
+    for (var i = 0; i < hdrCboxes.length; i++) {
+      var hcb = hdrCboxes[i];
+      var fk = hcb.getAttribute('data-scw-thead-field');
+      if (visible) {
+        hcb.classList.remove('ktlDisplayNone');
+      } else {
+        hcb.classList.add('ktlDisplayNone');
+      }
+      if (fk && theadMap[fk]) hcb.checked = theadMap[fk].checked;
+    }
+
+    // Sync sort direction indicators
+    var sortLinks = bar.querySelectorAll('.scw-sa-sort-link');
+    for (var s = 0; s < sortLinks.length; s++) {
+      var sl = sortLinks[s];
+      var fld = sl.getAttribute('data-scw-sort-field');
+      if (!fld) continue;
+      var dir = readSortState(viewKey, fld);
+
+      // Update icon
+      var existingIcon = sl.querySelector('.icon.is-small');
+      if (dir && !existingIcon) {
+        var iconWrap = document.createElement('span');
+        iconWrap.className = 'icon is-small is-transparent';
+        iconWrap.style.marginLeft = '3px';
+        var ic = document.createElement('i');
+        ic.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+        iconWrap.appendChild(ic);
+        sl.appendChild(iconWrap);
+      } else if (dir && existingIcon) {
+        var icEl = existingIcon.querySelector('i');
+        if (icEl) icEl.className = dir === 'desc' ? 'fa fa-sort-amount-desc' : 'fa fa-sort-amount-asc';
+      } else if (!dir && existingIcon) {
+        existingIcon.remove();
+      }
+    }
+
+    // Re-align columns (summary bar may have re-rendered with different widths)
+    alignHeaderToSummary(bar, viewEl);
+
+    // Sync select-all checkbox + re-bind change handler to (possibly new) viewEl
+    var masterCb = bar.querySelector('.scw-sa-header-check input[type="checkbox"]');
+    if (masterCb) {
+      syncCheckbox(masterCb, findCheckboxes(viewEl));
+      // Re-bind change handler — after inline edits Knack replaces the view
+      // element, so the old handler (bound to the destroyed element) is dead.
+      $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
+        var freshEl = document.getElementById(viewKey);
+        if (!freshEl) return;
+        var cbs = findCheckboxes(freshEl);
+        syncCheckbox(masterCb, cbs);
+        setTimeout(function () {
+          var el = document.getElementById(viewKey);
+          if (el) syncHeaderBar(el, viewKey);
+        }, 150);
+      });
+    }
+  }
+
+  function enhanceViews() {
+    var accordions = document.querySelectorAll('.scw-ktl-accordion__header');
+
+    for (var i = 0; i < accordions.length; i++) {
+      var header = accordions[i];
+      var viewKey = header.getAttribute('data-view-key');
+      if (!viewKey) continue;
+
+      var viewEl = document.getElementById(viewKey);
+      if (!viewEl) continue;
+
+      // Check if the bar already exists (outside view, in accordion body)
+      var existingBar = findHeaderBar(viewKey);
+      if (existingBar) {
+        syncHeaderBar(viewEl, viewKey);
+        viewEl.setAttribute(HEADER_ATTR, '1');
+        continue;
+      }
+
+      // Build if this view has a device-worksheet summary bar OR bulk checkboxes.
+      // After inline edits, KTL checkboxes may appear later than the summary bar,
+      // so checking for summary bar is the primary guard.
+      var hasSummary = !!viewEl.querySelector('.scw-ws-summary');
+      var hasCheckboxes = findCheckboxes(viewEl).length > 0;
+      if (!hasSummary && !hasCheckboxes) continue;
+
+      var oldBtn = header.querySelector('.scw-select-all-btn');
+      if (oldBtn) oldBtn.remove();
+
+      var headerBar = buildHeaderBar(viewEl, viewKey);
+      if (headerBar) {
+        viewEl.setAttribute(HEADER_ATTR, '1');
+      }
+    }
+  }
+
+  // ───────────────────────────────────────────────
+  //  2) Group header checkboxes
+  // ───────────────────────────────────────────────
+
+  function rowsInGroup(headerTr) {
+    var isL2 = headerTr.classList.contains('kn-group-level-2');
+    var rows = [];
+    var next = headerTr.nextElementSibling;
+
+    while (next) {
+      if (next.classList.contains('kn-table-group')) {
+        if (isL2) break;
+        if (next.classList.contains('kn-group-level-1')) break;
+      }
+      if (!next.classList.contains('kn-table-group') &&
+          !next.classList.contains('kn-table-totals')) {
+        rows.push(next);
+      }
+      next = next.nextElementSibling;
+    }
+    return rows;
+  }
+
+  function enhanceGroupHeaders() {
+    var groupHeaders = document.querySelectorAll('tr.kn-table-group.scw-group-header');
+
+    for (var i = 0; i < groupHeaders.length; i++) {
+      var tr = groupHeaders[i];
+      if (tr.getAttribute(GROUP_ATTR) === '1') {
+        if (tr.querySelector('.scw-sa-grp-check')) continue;
+        tr.removeAttribute(GROUP_ATTR);
+      }
+
+      var rows = rowsInGroup(tr);
+      var hasCheckboxes = false;
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].querySelector(CB_SELECTOR)) { hasCheckboxes = true; break; }
+      }
+      if (!hasCheckboxes) continue;
+
+      tr.setAttribute(GROUP_ATTR, '1');
+
+      var oldBtn = tr.querySelector('.scw-select-all-btn');
+      if (oldBtn) oldBtn.remove();
+
+      var checkWrap = document.createElement('span');
+      checkWrap.className = 'scw-sa-grp-check';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.setAttribute('aria-label', 'Select all rows in this group');
+      cb.title = 'Select / deselect group';
+      checkWrap.appendChild(cb);
+
+      var td = tr.querySelector('td');
+      if (!td) continue;
+      td.insertBefore(checkWrap, td.firstChild);
+
+      (function (checkbox, headerRow) {
+        checkbox.addEventListener('click', function (e) {
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+
+          var groupRows = rowsInGroup(headerRow);
+          var targets = [];
+          for (var g = 0; g < groupRows.length; g++) {
+            var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
+            for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
+          }
+          if (!targets.length) return;
+
+          var shouldCheck = checkbox.checked;
+          for (var k = 0; k < targets.length; k++) {
+            if (targets[k].checked !== shouldCheck) targets[k].click();
+          }
+          checkbox.indeterminate = false;
+
+          var vEl = headerRow.closest('[id^="view_"]');
+          if (vEl) {
+            var hBar = findHeaderBar(vEl.id);
+            if (hBar) {
+              var viewCb = hBar.querySelector('.scw-sa-header-check input[type="checkbox"]');
+              if (viewCb) syncCheckbox(viewCb, findCheckboxes(vEl));
+            }
+          }
+        });
+
+        var parentTable = headerRow.closest('table');
+        if (parentTable) {
+          $(parentTable).off('change.scwSaGrp' + i).on('change.scwSaGrp' + i, 'input[type="checkbox"]', function () {
+            var groupRows = rowsInGroup(headerRow);
+            var targets = [];
+            for (var g = 0; g < groupRows.length; g++) {
+              var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
+              for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
+            }
+            syncCheckbox(checkbox, targets);
+          });
+        }
+      })(cb, tr);
+
+      var initRows = rowsInGroup(tr);
+      var initTargets = [];
+      for (var ir = 0; ir < initRows.length; ir++) {
+        var initCbs = initRows[ir].querySelectorAll(CB_SELECTOR);
+        for (var ic = 0; ic < initCbs.length; ic++) initTargets.push(initCbs[ic]);
+      }
+      syncCheckbox(cb, initTargets);
+    }
+  }
+
+  // ───────────────────────────────────────────────
+  //  Lifecycle
+  // ───────────────────────────────────────────────
+  injectCss();
+
+  function enhance() {
+    enhanceViews();
+    enhanceGroupHeaders();
+  }
+
+  $(document)
+    .off('knack-scene-render.any.scwSelectAll')
+    .on('knack-scene-render.any.scwSelectAll', function () {
+      setTimeout(enhance, 350);
+    });
+
+  $(document)
+    .off('knack-view-render.any.scwSelectAll')
+    .on('knack-view-render.any.scwSelectAll', function () {
+      setTimeout(enhance, 350);
+      setTimeout(enhance, 700);
+      setTimeout(enhance, 1500);
+    });
+
+  // After inline edits, the post-edit coordinator rebuilds accordions
+  // and device-worksheet summary bars before our enhance() runs.
+  // Schedule a late rebuild to ensure header bars are restored after
+  // all other features have finished their post-edit work.
+  $(document)
+    .off('knack-cell-update.scwSelectAll')
+    .on('knack-cell-update.scwSelectAll', function () {
+      setTimeout(enhance, 1200);
+      setTimeout(enhance, 2000);
+    });
+
+  var debounceTimer = 0;
+  var obs = new MutationObserver(function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(enhance, 300);
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+
+  $(document).ready(function () {
+    setTimeout(enhance, 500);
+  });
+})();
+/*** END SELECT-ALL CHECKBOXES ***/
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
 (function () {
@@ -10781,7 +11708,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -10806,6 +11733,8 @@ $(".kn-navigation-bar").hide();
 
   // View-specific add-photo URL path segments
   var ADD_PHOTO_PATHS = {
+    'view_3313': 'add-photo-to-sow-line-item',
+    'view_3332': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2'
   };
@@ -11159,7 +12088,23 @@ $(".kn-navigation-bar").hide();
       '#view_3577 th.field_2446,',
       '#view_3577 td.field_2446,',
       '#view_3577 th.field_2447,',
-      '#view_3577 td.field_2447 {',
+      '#view_3577 td.field_2447,',
+      '#view_3313 th.field_114,',
+      '#view_3313 td.field_114,',
+      '#view_3313 th.field_2445,',
+      '#view_3313 td.field_2445,',
+      '#view_3313 th.field_2446,',
+      '#view_3313 td.field_2446,',
+      '#view_3313 th.field_2447,',
+      '#view_3313 td.field_2447,',
+      '#view_3332 th.field_114,',
+      '#view_3332 td.field_114,',
+      '#view_3332 th.field_2445,',
+      '#view_3332 td.field_2445,',
+      '#view_3332 th.field_2446,',
+      '#view_3332 td.field_2446,',
+      '#view_3332 th.field_2447,',
+      '#view_3332 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -11195,8 +12140,27 @@ $(".kn-navigation-bar").hide();
     return match ? match[1] : '';
   }
 
-  /** Build the edit-doc-photo hash path for a photo record. */
-  function editPhotoHash(photoRecordId) {
+  /**
+   * Extract the build-sow base path from the current URL hash.
+   * URL pattern: #team-calendar/project-dashboard/{id}/build-sow/{id}/...
+   * Returns the full base path up to and including build-sow/{id}, or ''.
+   */
+  function getBuildSowBasePath() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-sow\/[a-f0-9]{24})/);
+    return match ? match[1] : '';
+  }
+
+  // Views that use the build-sow URL structure instead of survey
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true };
+
+  /** Build the edit-photo hash path for a photo record. */
+  function editPhotoHash(photoRecordId, viewId) {
+    if (viewId && SOW_VIEWS[viewId]) {
+      var sowBase = getBuildSowBasePath();
+      if (!sowBase) return '';
+      return sowBase + '/edit-photo/' + photoRecordId;
+    }
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
     return 'subcontractor-portal/site-survey-request-details/' +
@@ -11205,6 +12169,12 @@ $(".kn-navigation-bar").hide();
 
   /** Build the add-photo hash path (view-specific segment). */
   function addPhotoHash(lineItemId, viewId) {
+    if (viewId && SOW_VIEWS[viewId]) {
+      var sowBase = getBuildSowBasePath();
+      if (!sowBase) return '';
+      var pathSegment = ADD_PHOTO_PATHS[viewId] || DEFAULT_ADD_PATH;
+      return sowBase + '/' + pathSegment + '/' + lineItemId;
+    }
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
     var pathSegment = (viewId && ADD_PHOTO_PATHS[viewId]) || DEFAULT_ADD_PATH;
@@ -11640,12 +12610,12 @@ $(".kn-navigation-bar").hide();
               ? (photo.type || 'Photo') + ' for ' + labelText
               : 'Site survey photo';
             imgEl.title = 'Drag to an empty required slot, or click to edit';
-            (function (rid) {
+            (function (rid, vid) {
               imgEl.addEventListener('click', function () {
-                var h = editPhotoHash(rid);
+                var h = editPhotoHash(rid, vid);
                 if (h) window.location.hash = h;
               });
-            })(photo.id);
+            })(photo.id, viewId);
             card.appendChild(imgEl);
           } else {
             // Photo record exists but no image uploaded — potential drop target
@@ -11658,12 +12628,12 @@ $(".kn-navigation-bar").hide();
             empty.title = photo.type
               ? 'Upload: ' + photo.type
               : 'Click to edit photo';
-            (function (rid) {
+            (function (rid, vid) {
               empty.addEventListener('click', function () {
-                var h = editPhotoHash(rid);
+                var h = editPhotoHash(rid, vid);
                 if (h) window.location.hash = h;
               });
-            })(photo.id);
+            })(photo.id, viewId);
             card.appendChild(empty);
 
             // Drop helper text (hidden until drag starts)
@@ -12169,6 +13139,205 @@ $(".kn-navigation-bar").hide();
 // ============================================================
 // End Boolean Chips
 // ============================================================
+/*** DELETE INTERCEPT — fire accessory IDs to webhook before record deletion ***/
+(function () {
+  'use strict';
+
+  // ============================================================
+  // CONFIG
+  // ============================================================
+
+  // Connection fields whose linked record IDs should be sent to the
+  // webhook when the parent record is deleted.
+  var CONNECTION_FIELDS = ['field_1958'];
+
+  // Webhook URL — reuses the existing delete record webhook.
+  function getWebhookUrl() {
+    return (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+  }
+
+  // Delete confirm message patterns
+  var SINGLE_DELETE_RE = /are you sure you want to delete this/i;
+  var BULK_DELETE_RE = /are you sure you want to permanently delete \d+ records/i;
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  /**
+   * Get connected accessory record IDs from the DOM.
+   * The connected-records widget renders .scw-cr-remove buttons with
+   * data-record-id on each accessory item inside the worksheet row.
+   */
+  function getConnectedIdsFromDOM(recordId) {
+    var ids = [];
+
+    // The device worksheet creates a tr.scw-ws-row with the same record ID.
+    // The original hidden Knack <tr> also has this ID, so getElementById
+    // may return the wrong one. Query specifically for the worksheet row.
+    var wsRow = document.querySelector('tr.scw-ws-row[id="' + recordId + '"]');
+    if (wsRow) {
+      var buttons = wsRow.querySelectorAll('.scw-cr-remove[data-record-id]');
+      for (var i = 0; i < buttons.length; i++) {
+        var rid = buttons[i].getAttribute('data-record-id');
+        if (rid) ids.push(rid);
+      }
+    }
+
+    // Fallback: search any <tr> with this ID
+    if (!ids.length) {
+      var rows = document.querySelectorAll('tr[id="' + recordId + '"]');
+      for (var r = 0; r < rows.length; r++) {
+        var btns = rows[r].querySelectorAll('.scw-cr-remove[data-record-id]');
+        for (var b = 0; b < btns.length; b++) {
+          var id = btns[b].getAttribute('data-record-id');
+          if (id) ids.push(id);
+        }
+      }
+    }
+
+    console.log('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
+    return ids;
+  }
+
+  /**
+   * Fire-and-forget webhook with the accessory record IDs.
+   */
+  function fireWebhook(deletedRecordIds, accessoryIds) {
+    var url = getWebhookUrl();
+    if (!url) {
+      console.warn('[SCW][delete-intercept] No webhook URL configured');
+      return;
+    }
+
+    var payload = {
+      deletedRecordIds: deletedRecordIds,
+      accessoryRecordIds: accessoryIds
+    };
+
+    console.log('[SCW][delete-intercept] Sending to webhook:', payload);
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (resp) {
+      if (!resp.ok) {
+        console.warn('[SCW][delete-intercept] Webhook responded ' + resp.status);
+      }
+    }).catch(function (err) {
+      console.warn('[SCW][delete-intercept] Webhook failed:', err);
+    });
+  }
+
+  // ============================================================
+  // TRACK WHICH ROW THE USER CLICKED (for single delete)
+  // ============================================================
+
+  var _lastClickedRecordId = null;
+
+  // Capture clicks on delete icons / links BEFORE the confirm dialog fires.
+  // Uses capture phase so we see it before Knack's handler calls confirm().
+  document.addEventListener('click', function (e) {
+    // Knack delete links are <a> with class "kn-link-delete" or inside
+    // a td.kn-table-link with a trash icon. Walk up to the <tr>.
+    var link = e.target.closest('a.kn-link-delete, .kn-link-delete, td.kn-table-link a');
+    if (!link) {
+      _lastClickedRecordId = null;
+      return;
+    }
+
+    var tr = link.closest('tr[id]');
+    if (tr && /^[a-f0-9]{24}$/.test(tr.id)) {
+      _lastClickedRecordId = tr.id;
+      console.log('[SCW][delete-intercept] Tracked click on record ' + tr.id);
+    }
+  }, true); // capture phase
+
+  // ============================================================
+  // GET BULK-SELECTED RECORD IDs (for KTL bulk delete)
+  // ============================================================
+
+  function getBulkSelectedRecordIds() {
+    var ids = [];
+    // KTL marks selected rows with .bulkEditSelectedRow on <td> elements
+    var cells = document.querySelectorAll('td.bulkEditSelectedRow');
+    var seen = {};
+    for (var i = 0; i < cells.length; i++) {
+      var tr = cells[i].closest('tr[id]');
+      if (tr && /^[a-f0-9]{24}$/.test(tr.id) && !seen[tr.id]) {
+        seen[tr.id] = true;
+        ids.push(tr.id);
+      }
+    }
+
+    // Also check for selected rows via Knack's own checkbox selection
+    if (!ids.length) {
+      var checked = document.querySelectorAll('tr .kn-table-bulk-checkbox input:checked');
+      for (var c = 0; c < checked.length; c++) {
+        var row = checked[c].closest('tr[id]');
+        if (row && /^[a-f0-9]{24}$/.test(row.id) && !seen[row.id]) {
+          seen[row.id] = true;
+          ids.push(row.id);
+        }
+      }
+    }
+
+    return ids;
+  }
+
+  // ============================================================
+  // window.confirm INTERCEPT
+  // ============================================================
+
+  var _origConfirm = window.confirm;
+
+  window.confirm = function (msg) {
+    var result = _origConfirm.call(window, msg);
+
+    // Only act if user clicked OK
+    if (!result) return result;
+
+    var deletedRecordIds = [];
+
+    if (BULK_DELETE_RE.test(msg)) {
+      // KTL bulk delete
+      deletedRecordIds = getBulkSelectedRecordIds();
+      console.log('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
+
+    } else if (SINGLE_DELETE_RE.test(msg)) {
+      // Single record delete
+      if (_lastClickedRecordId) {
+        deletedRecordIds = [_lastClickedRecordId];
+        console.log('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
+      } else {
+        console.warn('[SCW][delete-intercept] Single delete confirmed but no record ID captured');
+      }
+    }
+
+    if (!deletedRecordIds.length) return result;
+
+    // Collect all accessory IDs across all deleted records
+    var allAccessoryIds = [];
+    for (var i = 0; i < deletedRecordIds.length; i++) {
+      var accessories = getConnectedIdsFromDOM(deletedRecordIds[i]);
+      if (accessories.length) {
+        console.log('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
+        allAccessoryIds = allAccessoryIds.concat(accessories);
+      }
+    }
+
+    if (allAccessoryIds.length) {
+      fireWebhook(deletedRecordIds, allAccessoryIds);
+    } else {
+      console.log('[SCW][delete-intercept] No connected accessories found for deleted records');
+    }
+
+    return result;
+  };
+
+  console.log('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
+})();
 /*** CONNECTED RECORDS EDITOR ***/
 (function () {
   'use strict';
@@ -12185,7 +13354,18 @@ $(".kn-navigation-bar").hide();
         parentViewId: 'view_3313',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item'
+        addSlug: 'add-accessory-line-item',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
+      },
+      {
+        parentViewId: 'view_3332',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
       }
     ]
   };
@@ -12220,6 +13400,14 @@ $(".kn-navigation-bar").hide();
         background: rgba(0,0,0,0.06);
       }
 
+      .scw-cr-item-warn {
+        background: #fff3cd !important;
+        border-left: 3px solid #d97706;
+      }
+      .scw-cr-item-warn:hover {
+        background: #ffecb3 !important;
+      }
+
       .scw-cr-link {
         flex: 1 1 0%;
         min-width: 0;
@@ -12234,7 +13422,7 @@ $(".kn-navigation-bar").hide();
         text-decoration: underline;
       }
 
-      .scw-cr-delete {
+      .scw-cr-remove {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -12249,11 +13437,11 @@ $(".kn-navigation-bar").hide();
         flex-shrink: 0;
         transition: color 0.15s, background 0.15s;
       }
-      .scw-cr-delete:hover {
+      .scw-cr-remove:hover {
         color: #d93025;
         background: rgba(217,48,37,0.08);
       }
-      .scw-cr-delete svg {
+      .scw-cr-remove svg {
         width: 14px;
         height: 14px;
       }
@@ -12286,6 +13474,25 @@ $(".kn-navigation-bar").hide();
         color: #999;
         font-style: italic;
         padding: 2px 4px;
+      }
+
+      .scw-cr-warning {
+        color: #d97706;
+        font-size: 14px;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+
+      .scw-cr-hdr-warning {
+        color: #b45309;
+        display: inline-flex;
+        align-items: center;
+        margin-left: 10px;
+        flex-shrink: 0;
+      }
+      .scw-cr-hdr-warning svg {
+        width: 18px;
+        height: 18px;
       }
 
       /* ── Delete confirmation modal ── */
@@ -12352,12 +13559,17 @@ $(".kn-navigation-bar").hide();
       .scw-cr-modal__btn--cancel:hover {
         background: #e0e2e4;
       }
-      .scw-cr-modal__btn--delete {
+      .scw-cr-modal__btn--confirm {
         background: #d93025;
         color: #fff;
       }
-      .scw-cr-modal__btn--delete:hover {
+      .scw-cr-modal__btn--confirm:hover {
         background: #b71c1c;
+      }
+
+      /* Hide parent-connection field on add-accessory form before JS runs */
+      #view_3580 #kn-input-field_2464 {
+        display: none !important;
       }
     `;
 
@@ -12371,7 +13583,7 @@ $(".kn-navigation-bar").hide();
   // DOM READING
   // ============================================================
 
-  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  var REMOVE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
   /**
    * Extract record ID from a connection link href.
@@ -12433,14 +13645,96 @@ $(".kn-navigation-bar").hide();
 
   /**
    * Find the add-accessory-line-item URL from the row's link columns.
+   * If no explicit add link exists, derive one by swapping editSlug → addSlug
+   * in an existing edit link (for views that lack a dedicated add action column).
    */
-  function findAddUrl(tr, slug) {
+  function findAddUrl(tr, slug, editSlug) {
     var anchors = tr.querySelectorAll('td.kn-table-link a');
     for (var i = 0; i < anchors.length; i++) {
       var href = anchors[i].getAttribute('href') || '';
       if (href.indexOf(slug) !== -1) return href;
     }
+
+    // Fallback: derive from an edit link by replacing editSlug with addSlug
+    if (editSlug) {
+      for (var j = 0; j < anchors.length; j++) {
+        var editHref = anchors[j].getAttribute('href') || '';
+        if (editHref.indexOf(editSlug) !== -1) {
+          return editHref.replace(editSlug, slug);
+        }
+      }
+    }
+
     return '';
+  }
+
+  // ============================================================
+  // KNACK API HELPERS
+  // ============================================================
+
+  /**
+   * Find the Knack object key that owns a given field key.
+   * Searches Knack.objects (Backbone collection) at runtime.
+   * Returns the object key (e.g. 'object_123') or null.
+   */
+  function getObjectKeyForField(fieldKey) {
+    try {
+      var models = Knack.objects.models;
+      for (var i = 0; i < models.length; i++) {
+        var fields = models[i].attributes.fields;
+        for (var j = 0; j < fields.length; j++) {
+          if (fields[j].key === fieldKey) return models[i].attributes.key;
+        }
+      }
+    } catch (e) {
+      console.warn('[SCW][CR-DELETE] Could not search Knack.objects:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Clear a field on a record via Knack's internal model API.
+   * Uses the scene/view REST endpoint (CORS-safe within Knack).
+   * Tries Knack.views[viewId].model.updateRecord first, then
+   * falls back to a direct scene/view PUT.
+   * Returns a Promise that resolves on success or rejects on error.
+   */
+  function clearFieldOnRecord(viewId, recordId, fieldKey) {
+    var data = {};
+    data[fieldKey] = '';
+
+    // Approach 1: Knack's internal model API
+    try {
+      var viewObj = Knack.views[viewId];
+      if (viewObj && viewObj.model && typeof viewObj.model.updateRecord === 'function') {
+        return new Promise(function (resolve, reject) {
+          viewObj.model.updateRecord(recordId, data, {
+            success: function () { resolve(); },
+            error: function () { reject(new Error('updateRecord failed')); }
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('[SCW][CR-DELETE] updateRecord not available:', e);
+    }
+
+    // Approach 2: Direct scene/view PUT (CORS-safe)
+    return new Promise(function (resolve, reject) {
+      $.ajax({
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
+        type: 'PUT',
+        contentType: 'application/json',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        data: JSON.stringify(data),
+        success: function () { resolve(); },
+        error: function (xhr) { reject(new Error('PUT ' + xhr.status)); }
+      });
+    });
   }
 
   // ============================================================
@@ -12463,7 +13757,7 @@ $(".kn-navigation-bar").hide();
           '<div class="scw-cr-modal__name"></div>' +
           '<div class="scw-cr-modal__btns">' +
             '<button class="scw-cr-modal__btn scw-cr-modal__btn--cancel">Cancel</button>' +
-            '<button class="scw-cr-modal__btn scw-cr-modal__btn--delete">Delete</button>' +
+            '<button class="scw-cr-modal__btn scw-cr-modal__btn--confirm">Remove</button>' +
           '</div>' +
         '</div>';
 
@@ -12475,8 +13769,12 @@ $(".kn-navigation-bar").hide();
         resolve(result);
       }
 
-      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function () { close(false); });
-      overlay.querySelector('.scw-cr-modal__btn--delete').addEventListener('click', function () { close(true); });
+      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); close(false);
+      });
+      overlay.querySelector('.scw-cr-modal__btn--confirm').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); close(true);
+      });
 
       // Click outside modal = cancel
       overlay.addEventListener('click', function (e) {
@@ -12500,8 +13798,26 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * POST to Make webhook to delete a connected record.
-   * @param {string} recordId  - The 24-char record ID to delete
+   * Find the CONFIG entry that owns a given record ID (by checking which
+   * view's widget contains the itemEl).  Falls back to the first entry.
+   */
+  function findCfgForItem(itemEl) {
+    for (var i = 0; i < CONFIG.views.length; i++) {
+      var cfg = CONFIG.views[i];
+      var viewEl = itemEl.closest('#' + cfg.parentViewId);
+      if (viewEl) return cfg;
+    }
+    return CONFIG.views[0] || null;
+  }
+
+  /**
+   * Disconnect the accessory record from its parent (clear the back-
+   * connection field) then delete it via the Make webhook.
+   *
+   * Clearing the parent connection BEFORE delete prevents Knack from
+   * cascading the delete up to the parent record.
+   *
+   * @param {string} recordId   - The 24-char record ID to delete
    * @param {string} recordName - Display name (for logging)
    * @param {HTMLElement} itemEl - The .scw-cr-item element (for UI state)
    */
@@ -12512,26 +13828,57 @@ $(".kn-navigation-bar").hide();
       return;
     }
 
+    var cfg = findCfgForItem(itemEl);
+    var parentField = cfg ? cfg.parentConnectionField : null;
+
+    console.log('[SCW][CR-DELETE] deleteRecord called', {
+      recordId: recordId,
+      recordName: recordName,
+      parentConnectionField: parentField
+    });
+
     // Visual pending state
     itemEl.classList.add('scw-cr-deleting');
 
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recordId: recordId, recordName: recordName })
+    // Step 1: Clear the parent connection field so Knack can't cascade
+    var disconnectPromise;
+    var viewId = cfg ? cfg.parentViewId : null;
+    if (parentField && viewId) {
+      console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
+                  'on', recordId, 'via', viewId);
+      disconnectPromise = clearFieldOnRecord(viewId, recordId, parentField)
+        .then(function () {
+          console.log('[SCW][CR-DELETE] Disconnect succeeded');
+        })
+        .catch(function (err) {
+          console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
+        });
+    } else {
+      disconnectPromise = Promise.resolve();
+    }
+
+    // Step 2: After disconnect, send the delete webhook
+    disconnectPromise.then(function () {
+      console.log('[SCW][CR-DELETE] Sending webhook POST…');
+      return fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId: recordId, recordName: recordName })
+      });
     })
     .then(function (resp) {
+      console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return {}; });
     })
-    .then(function () {
+    .then(function (body) {
+      console.log('[SCW][CR-DELETE] Webhook response body:', body);
+
       // Remove the item from the DOM
       itemEl.remove();
 
       // Trigger preservation pipeline + refresh parent views
       $(document).trigger('knack-cell-update.scwScrollPreserve');
-
-      // Refresh the parent view so Knack reloads the connection data
       CONFIG.views.forEach(function (cfg) {
         var viewObj = Knack.views[cfg.parentViewId];
         if (viewObj && viewObj.model && viewObj.model.fetch) {
@@ -12540,7 +13887,7 @@ $(".kn-navigation-bar").hide();
       });
     })
     .catch(function (err) {
-      console.error('[SCW] Delete record error:', err);
+      console.error('[SCW][CR-DELETE] Delete record error:', err);
       itemEl.classList.remove('scw-cr-deleting');
       alert('Delete failed: ' + err.message);
     });
@@ -12550,10 +13897,76 @@ $(".kn-navigation-bar").hide();
    * Handle trash icon click: confirm, then delete via webhook.
    */
   function onDeleteClick(recordId, recordName, itemEl) {
+    console.log('[SCW][CR-DELETE] onDeleteClick fired', {
+      recordId: recordId,
+      recordName: recordName
+    });
     confirmDelete(recordName).then(function (confirmed) {
+      console.log('[SCW][CR-DELETE] Confirmation result:', confirmed);
       if (!confirmed) return;
       deleteRecord(recordId, recordName, itemEl);
     });
+  }
+
+  // ============================================================
+  // WARNING ICON — async field check on connected records
+  // ============================================================
+
+  var WARNING_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /**
+   * Build a map of recordId → boolean from a warning field cell in the DOM.
+   * Reads per-record span[id][data-kn="connection-value"] elements (same
+   * pattern as inline-photo-row's extractPhotoRecords reads field_2446).
+   * Falls back to reading the cell's plain text when no per-record spans exist.
+   */
+  function buildWarningMap(tr, warningFieldKey) {
+    var map = {};
+    if (!tr || !warningFieldKey) return map;
+
+    var cell = tr.querySelector('td[data-field-key="' + warningFieldKey + '"]');
+    if (!cell) return map;
+
+    // Per-record connection-value spans (preferred — like photo strip)
+    var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+    if (spans.length > 0) {
+      for (var i = 0; i < spans.length; i++) {
+        var rid = (spans[i].id || '').trim();
+        if (!rid) continue;
+        var val = (spans[i].textContent || '').trim().toLowerCase();
+        map[rid] = (val === 'yes' || val === 'true');
+      }
+    } else {
+      // Single value for all items (fallback)
+      var plainVal = (cell.textContent || '').trim().toLowerCase();
+      map._all = (plainVal === 'yes' || plainVal === 'true');
+    }
+
+    return map;
+  }
+
+  /**
+   * If the warning map indicates this record should show a warning,
+   * prepend a warning icon to the item element.
+   */
+  function applyWarningIcon(warningMap, recordId, itemEl) {
+    var isYes = warningMap.hasOwnProperty(recordId)
+      ? warningMap[recordId]
+      : (warningMap._all || false);
+
+    if (!isYes) {
+      itemEl.classList.add('scw-cr-item-warn');
+      var icon = document.createElement('span');
+      icon.className = 'scw-cr-warning';
+      icon.innerHTML = WARNING_SVG;
+      icon.title = 'Accessory does not match parent product';
+      var linkEl = itemEl.querySelector('.scw-cr-link');
+      if (linkEl) {
+        itemEl.insertBefore(icon, linkEl);
+      }
+      return true; // warning was applied
+    }
+    return false; // no warning
   }
 
   // ============================================================
@@ -12596,9 +14009,17 @@ $(".kn-navigation-bar").hide();
 
     // Read links from DOM
     var links = readConnectionLinks(tr, fieldKey);
-    var addUrl = findAddUrl(tr, cfg.addSlug);
+    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug);
+
+    console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
+      return { text: l.text, recordId: l.recordId, href: l.href };
+    }));
+
+    // Build warning map from DOM (like photo strip reads field_2446)
+    var warningMap = cfg.warningField ? buildWarningMap(tr, cfg.warningField) : {};
 
     // Render items
+    var hasAnyWarning = false;
     if (links.length === 0) {
       var empty = document.createElement('div');
       empty.className = 'scw-cr-empty';
@@ -12624,9 +14045,9 @@ $(".kn-navigation-bar").hide();
         // Trash icon (only if we have a record ID)
         if (links[i].recordId) {
           var delBtn = document.createElement('button');
-          delBtn.className = 'scw-cr-delete';
+          delBtn.className = 'scw-cr-remove';
           delBtn.title = 'Delete';
-          delBtn.innerHTML = TRASH_SVG;
+          delBtn.innerHTML = REMOVE_SVG;
           delBtn.setAttribute('data-record-id', links[i].recordId);
           delBtn.setAttribute('data-record-name', links[i].text);
           (function (rid, rname, el, btn) {
@@ -12637,6 +14058,13 @@ $(".kn-navigation-bar").hide();
             });
           })(links[i].recordId, links[i].text, item, delBtn);
           item.appendChild(delBtn);
+        }
+
+        // Warning icon from DOM data (no API call needed)
+        if (cfg.warningField && links[i].recordId) {
+          if (applyWarningIcon(warningMap, links[i].recordId, item)) {
+            hasAnyWarning = true;
+          }
         }
 
         valueDiv.appendChild(item);
@@ -12652,6 +14080,8 @@ $(".kn-navigation-bar").hide();
       valueDiv.appendChild(addBtn);
     }
 
+    // Return element + warning state so the caller can add header warning
+    container._hasWarning = hasAnyWarning;
     return container;
   }
 
@@ -12662,14 +14092,6 @@ $(".kn-navigation-bar").hide();
   // When add-accessory-line-item form (view_3580) renders,
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
-
-  // Inject CSS upfront so field_2464 is hidden before the DOM paints
-  var hideStyle = document.createElement('style');
-  hideStyle.id = 'scw-hide-field-2464';
-  hideStyle.textContent = '#kn-input-field_2464 { display: none !important; }';
-  if (!document.getElementById(hideStyle.id)) {
-    document.head.appendChild(hideStyle);
-  }
 
   $(document).on('knack-view-render.view_3580', function (event, view, data) {
     var hash = window.location.hash || '';
@@ -12689,6 +14111,7 @@ $(".kn-navigation-bar").hide();
       $select.trigger('chosen:updated');
       $select.trigger('liszt:updated');
       $hidden.val(parentId);
+      $select.trigger('change');
     }, 1);
 
     // On form submit, trigger the scroll/accordion preservation pipeline
@@ -12826,15 +14249,17 @@ $(".kn-navigation-bar").hide();
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: [],
             label: 'SERVICE',
+            rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
+            rowClass: 'scw-row--assumptions',
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       },
       {
@@ -12956,12 +14381,12 @@ $(".kn-navigation-bar").hide();
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
           connectedDevice:  { key: 'field_1957', type: 'readOnly' },
-          mountingHardware: { key: 'field_2207', type: 'readOnly' }
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
         detailLayout: {
-          left:  ['scwNotes'],
-          right: ['connectedDevice', 'mountingHardware']
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['scwNotes']
         },
         bucketField: 'field_2219',
         bucketRules: {
@@ -12979,8 +14404,8 @@ $(".kn-navigation-bar").hide();
           },
         },
         syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Assumptions' },
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
       }
     ]
@@ -14012,28 +15437,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 
 
-/* view_3313: top-align all elements; pad non-labeled items to match label height */
-#view_3313 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3313 .${P}-chevron {
-  margin-top: 11px;
-}
-#view_3313 td.${P}-sum-label-cell {
-  margin-top: 11px;
-}
-#view_3313 .${P}-sum-sep {
-  margin-top: 11px;
-}
-#view_3313 td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: 11px !important;
-}
-#view_3313 .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: 11px;
-}
 
 /* Fee label — align with value text (match td padding-left) */
 .${P}-sum-group--fee > .${P}-sum-label {
@@ -14150,15 +15553,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background-color: rgb(255, 253, 204) !important;
 }
 
-/* view_3332: top-align toggle zone (chevron + product) */
-#view_3332 .${P}-toggle-zone {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-#view_3332 .${P}-chevron {
-  margin-top: 11px;
-}
-
 /* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
 #view_3332 .${P}-identity {
   width: 366px;
@@ -14184,14 +15578,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* view_3332 detail sections grid */
 #view_3332 .${P}-sections {
   grid-template-columns: 1fr 1fr;
-}
-#view_3332 td.${P}-sum-check {
-  align-self: flex-start;
-  padding-top: 11px !important;
-}
-#view_3332 .${P}-sum-delete {
-  align-self: flex-start;
-  padding-top: 11px;
 }
 @media (max-width: 900px) {
   #view_3332 .${P}-sections {
@@ -14267,6 +15653,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   }
 
   // ── Bucket detection for per-view conditional field hiding ──
+
+  /**
+   * Return the true label text of a Knack group-header row, ignoring any
+   * elements injected by group-collapse (collapse icons, record-count badges).
+   */
+  function getGroupLabelText(groupRow) {
+    var td = groupRow.querySelector('td');
+    if (!td) return '';
+    var clone = td.cloneNode(true);
+    var extras = clone.querySelectorAll('.scw-collapse-icon, .scw-group-badges');
+    for (var i = 0; i < extras.length; i++) extras[i].remove();
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
 
   /**
    * Read the bucket connection record ID from a detect cell.
@@ -14371,6 +15770,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
   var _expandedState = {};  // viewId → [recordId, ...]
 
+  // localStorage helpers for persisting accordion state across page refreshes
+  function wsStorageKey(viewId) { return 'scw:ws-expanded:' + viewId; }
+  function loadWsState(viewId) {
+    try { return JSON.parse(localStorage.getItem(wsStorageKey(viewId)) || '[]'); }
+    catch (e) { return []; }
+  }
+  function saveWsState(viewId, expanded) {
+    try { localStorage.setItem(wsStorageKey(viewId), JSON.stringify(expanded)); }
+    catch (e) {}
+  }
+
   /** Scan current worksheet rows for open detail panels and save their
    *  record IDs so they can be re-expanded after transformView. */
   function captureExpandedState(viewId) {
@@ -14384,6 +15794,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
     _expandedState[viewId] = expanded;
+    saveWsState(viewId, expanded);
   }
 
   /** Capture expanded state for ALL configured worksheet views.
@@ -14400,7 +15811,11 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  have been built. Uses record ID (24-char hex) for stable
    *  identity across re-renders. */
   function restoreExpandedState(viewId) {
+    // Prefer in-memory state (inline edit); fall back to localStorage (page refresh)
     var expanded = _expandedState[viewId];
+    if (!expanded || !expanded.length) {
+      expanded = loadWsState(viewId);
+    }
     if (!expanded || !expanded.length) return;
 
     // Build a lookup set for O(1) checks
@@ -15536,22 +16951,57 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var bar = document.createElement('div');
     bar.className = P + '-summary';
 
+    // Detect stacked labels early — needed for vertical alignment of all elements
+    var hasStackedFields = layout.some(function (n) {
+      var d = fieldDesc(viewCfg, n);
+      return d && d.group === 'right' && d.label;
+    });
+    if (hasStackedFields) bar.classList.add(P + '-summary--stacked');
+
     // ── KTL / legacy bulk-edit checkbox (if present) ──
     var checkTd = tr.querySelector('td > input[type="checkbox"]');
     if (checkTd) {
       var checkCell = checkTd.closest('td');
       checkCell.classList.add(P + '-sum-check');
-      bar.appendChild(checkCell);
+      if (hasStackedFields) {
+        // Wrap in column-flex with empty label so checkbox aligns with value row
+        var checkWrap = document.createElement('span');
+        checkWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+        var checkSpacer = document.createElement('span');
+        checkSpacer.className = P + '-sum-label';
+        checkSpacer.innerHTML = '&nbsp;';
+        checkWrap.appendChild(checkSpacer);
+        checkWrap.appendChild(checkCell);
+        bar.appendChild(checkWrap);
+      } else {
+        bar.appendChild(checkCell);
+      }
     }
 
     // ── Toggle zone: chevron + identity (label + product) ──
     var toggleZone = document.createElement('span');
     toggleZone.className = P + '-toggle-zone';
+    if (hasStackedFields) {
+      toggleZone.style.alignSelf = 'flex-start';
+      toggleZone.style.alignItems = 'flex-start';
+    }
 
     var chevron = document.createElement('span');
     chevron.className = P + '-chevron ' + P + '-collapsed';
     chevron.innerHTML = CHEVRON_SVG;
-    toggleZone.appendChild(chevron);
+    if (hasStackedFields) {
+      // Wrap in column-flex with empty label so chevron aligns with value row
+      var chevWrap = document.createElement('span');
+      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var chevSpacer = document.createElement('span');
+      chevSpacer.className = P + '-sum-label';
+      chevSpacer.innerHTML = '&nbsp;';
+      chevWrap.appendChild(chevSpacer);
+      chevWrap.appendChild(chevron);
+      toggleZone.appendChild(chevWrap);
+    } else {
+      toggleZone.appendChild(chevron);
+    }
 
     var identity = document.createElement('span');
     identity.className = P + '-identity';
@@ -15579,12 +17029,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // (needed when right-group fields have stacked label+value)
-        var hasStackedFields = layout.some(function (n) {
-          var d = fieldDesc(viewCfg, n);
-          return d && d.group === 'right' && d.label;
-        });
-        if (hasStackedFields) {
+        // Only needed when there's no label-cell (view_3332); when there IS a
+        // label-cell (view_3313) the identity wrapper handles alignment.
+        if (hasStackedFields && !labelDesc) {
           var prodLabel = document.createElement('span');
           prodLabel.className = P + '-sum-label';
           prodLabel.innerHTML = '&nbsp;';
@@ -15611,7 +17058,20 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       }
     }
 
-    toggleZone.appendChild(identity);
+    if (hasStackedFields && labelDesc) {
+      // Wrap entire identity so label-cell, separator, and product all
+      // drop down together — keeps them aligned with checkbox & chevron.
+      var idWrap = document.createElement('span');
+      idWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-self:flex-start;';
+      var idSpacer = document.createElement('span');
+      idSpacer.className = P + '-sum-label';
+      idSpacer.innerHTML = '&nbsp;';
+      idWrap.appendChild(idSpacer);
+      idWrap.appendChild(identity);
+      toggleZone.appendChild(idWrap);
+    } else {
+      toggleZone.appendChild(identity);
+    }
     bar.appendChild(toggleZone);
 
     // ── Walk summaryLayout: dispatch each field to its type builder ──
@@ -16095,6 +17555,49 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
     if (detail) card.appendChild(detail);
 
+    // ── Accessory mismatch header warning ──
+    // If any connected-records widget flagged a warning, add icon to summary row.
+    // Prefer the label cell (view_3313); when no label cell exists (view_3332),
+    // insert as a standalone element in the identity, before the product group.
+    var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
+    for (var w = 0; w < crWidgets.length; w++) {
+      var parentField = crWidgets[w].parentElement;
+      if (parentField && parentField._hasWarning) {
+        var warnIcon = document.createElement('span');
+        warnIcon.className = 'scw-cr-hdr-warning';
+        warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
+
+        var labelCell = card.querySelector('td.' + P + '-sum-label-cell');
+        if (labelCell) {
+          // view_3313 style: append to label cell
+          labelCell.appendChild(warnIcon);
+        } else {
+          // view_3332 style: insert before product group in identity
+          var identityEl = card.querySelector('.' + P + '-identity');
+          var productGroupEl = card.querySelector('.' + P + '-product-group');
+          var isStacked = card.querySelector('.' + P + '-summary--stacked');
+          var warnNode = warnIcon;
+          if (isStacked) {
+            var warnWrap = document.createElement('span');
+            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+            var warnSpacer = document.createElement('span');
+            warnSpacer.className = P + '-sum-label';
+            warnSpacer.innerHTML = '&nbsp;';
+            warnWrap.appendChild(warnSpacer);
+            warnWrap.appendChild(warnIcon);
+            warnNode = warnWrap;
+          }
+          if (identityEl && productGroupEl) {
+            identityEl.insertBefore(warnNode, productGroupEl);
+          } else if (identityEl) {
+            identityEl.appendChild(warnNode);
+          }
+        }
+        break;
+      }
+    }
+
     // ── Apply bucket-based field hiding + label injection ──
     applyBucketRules(card, tr, viewCfg);
 
@@ -16106,6 +17609,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   // ============================================================
 
   function transformView(viewCfg) {
+    if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
 
@@ -16151,8 +17655,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         if (!prev) {
           hasNoMove = true; // no group header at all
         } else {
-          var grpLabel = (prev.textContent || '').replace(/\s+/g, ' ').trim();
-          hasNoMove = grpLabel.length === 0;
+          hasNoMove = getGroupLabelText(prev).length === 0;
         }
       }
 
@@ -16223,7 +17726,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       for (var gi = 0; gi < nativeGroups.length; gi++) {
         var grp = nativeGroups[gi];
         if (grp.classList.contains('scw-synthetic-group')) continue;
-        var labelText = (grp.textContent || '').replace(/\s+/g, ' ').trim();
+        var labelText = getGroupLabelText(grp);
         if (labelText.length === 0) {
           // Remove orphaned photo rows that follow this empty header
           var sib = grp.nextElementSibling;
@@ -16364,6 +17867,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var wsTr = this.closest('tr.' + WORKSHEET_ROW);
     if (wsTr) {
       toggleDetail(wsTr);
+      // Persist accordion state to localStorage after toggle
+      var viewEl = wsTr.closest('.kn-view');
+      if (viewEl) captureExpandedState(viewEl.id);
     }
   });
 
@@ -16432,6 +17938,425 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 // ============================================================
 // End Device Worksheet
 // ============================================================
+/*** GRID DIRECT-EDIT — type-and-save inputs for standard Knack grids ***/
+(function () {
+  'use strict';
+
+  // ── Configuration ──────────────────────────────────────────────
+  var CONFIG = {
+    // viewId → array of { key, number?, multiline? }
+    'view_32': [
+      { key: 'field_32' },
+      { key: 'field_71' },
+      { key: 'field_960' },
+      { key: 'field_98', number: true },
+      { key: 'field_1730', number: true },
+      { key: 'field_12', number: true },
+      { key: 'field_1734', number: true }
+    ]
+  };
+
+  var PREFIX = 'scw-gde';
+  var EDIT_ATTR = 'data-scw-grid-edit';
+  var STYLE_ID = PREFIX + '-css';
+  var OBSERVER_KEY = 'scwGdeObs';
+
+  // ── CSS ────────────────────────────────────────────────────────
+  var CSS = '\
+td.' + PREFIX + '-cell {\
+  position: relative;\
+  padding: 0 !important;\
+}\
+td.' + PREFIX + '-cell > .kn-value,\
+td.' + PREFIX + '-cell > span {\
+  display: none !important;\
+}\
+.' + PREFIX + '-input {\
+  position: absolute;\
+  top: 0;\
+  left: 0;\
+  width: 100%;\
+  height: 100%;\
+  box-sizing: border-box;\
+  border: none;\
+  padding: 4px 6px;\
+  font-size: 13px;\
+  font-family: inherit;\
+  background: transparent;\
+  outline: none;\
+  transition: background-color 0.15s;\
+  overflow: hidden;\
+  resize: none;\
+}\
+.' + PREFIX + '-textarea {\
+  display: block;\
+  width: 100%;\
+  min-height: 100%;\
+  box-sizing: border-box;\
+  border: none;\
+  padding: 4px 6px;\
+  font-size: 13px;\
+  font-family: inherit;\
+  background: transparent;\
+  outline: none;\
+  transition: background-color 0.15s;\
+  overflow: hidden;\
+  resize: none;\
+  line-height: 1.3;\
+  white-space: pre-wrap;\
+  word-wrap: break-word;\
+}\
+.' + PREFIX + '-input:focus,\
+.' + PREFIX + '-textarea:focus {\
+  background: rgba(74, 144, 217, 0.06);\
+}\
+.' + PREFIX + '-input.is-saving,\
+.' + PREFIX + '-textarea.is-saving {\
+  background: #e8f5e9;\
+}\
+.' + PREFIX + '-input.is-error,\
+.' + PREFIX + '-textarea.is-error {\
+  background: #fdecea;\
+}\
+.' + PREFIX + '-error {\
+  position: absolute;\
+  top: 100%;\
+  left: 0;\
+  white-space: nowrap;\
+  z-index: 10;\
+  background: #fff;\
+  color: #c62828;\
+  font-size: 11px;\
+  padding: 2px 6px;\
+  border-radius: 2px;\
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);\
+}\
+td.' + PREFIX + '-cell.bulkEditSelectSrc {\
+  cursor: cell !important;\
+}\
+td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-input,\
+td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
+  pointer-events: none !important;\
+  cursor: cell !important;\
+}\
+';
+
+  // ── Inject styles ──────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var el = document.createElement('style');
+    el.id = STYLE_ID;
+    el.textContent = CSS;
+    document.head.appendChild(el);
+  }
+
+  // ── Get configured fields for a view ─────────────────────────
+  function getFields(viewId) {
+    return CONFIG[viewId] || [];
+  }
+
+  // ── Auto-resize textarea to fit content ─────────────────────────
+  function autoResize(el) {
+    if (el.tagName !== 'TEXTAREA') return;
+    el.style.height = '0';
+    el.style.height = el.scrollHeight + 'px';
+  }
+
+  // ── Read cell text ─────────────────────────────────────────────
+  function readCellText(td) {
+    if (!td) return '';
+    // Try kn-value span first
+    var span = td.querySelector('.kn-value');
+    if (span) return (span.textContent || '').replace(/[\u00a0]/g, ' ').trim();
+    return (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
+  }
+
+  // ── Get record ID from table row ──────────────────────────────
+  function getRecordId(tr) {
+    // Knack grid rows: <tr id="5abcdef1234567890abcdef">
+    return (tr && tr.id) ? tr.id : null;
+  }
+
+  // ── Parse Knack error ─────────────────────────────────────────
+  function parseKnackError(xhr) {
+    try {
+      var body = JSON.parse(xhr.responseText || '{}');
+      if (body.errors && body.errors.length) {
+        return body.errors.map(function (e) { return e.message || e; }).join('; ');
+      }
+      if (body.message) return body.message;
+    } catch (ignored) {}
+    return 'Save failed';
+  }
+
+  // ── Save value via Knack API ──────────────────────────────────
+  function saveValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
+    if (typeof Knack === 'undefined') return;
+
+    var data = {};
+    data[fieldKey] = value;
+
+    // Prefer model.updateRecord — no re-render
+    var view = Knack.views[viewId];
+    if (view && view.model && typeof view.model.updateRecord === 'function') {
+      view.model.updateRecord(recordId, data);
+      if (onSuccess) onSuccess(null);
+      return;
+    }
+
+    // Fallback: direct AJAX PUT
+    $.ajax({
+      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId,
+      type: 'PUT',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      },
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function (resp) { if (onSuccess) onSuccess(resp); },
+      error: function (xhr) {
+        var msg = parseKnackError(xhr);
+        console.warn('[' + PREFIX + '] Save failed for ' + recordId, xhr.responseText);
+        if (onError) onError(msg);
+      }
+    });
+  }
+
+  // ── Visual feedback helpers ────────────────────────────────────
+  function showSuccess(input) {
+    input.classList.remove('is-error');
+    input.classList.add('is-saving');
+    var wrapper = input.closest('td');
+    var errEl = wrapper ? wrapper.querySelector('.' + PREFIX + '-error') : null;
+    if (errEl) errEl.remove();
+    setTimeout(function () { input.classList.remove('is-saving'); }, 600);
+  }
+
+  function showError(input, message, previousValue) {
+    input.classList.remove('is-saving');
+    input.classList.add('is-error');
+    input.value = previousValue;
+    input._scwPrev = previousValue;
+
+    var wrapper = input.closest('td');
+    var existing = wrapper ? wrapper.querySelector('.' + PREFIX + '-error') : null;
+    if (existing) existing.remove();
+
+    var errEl = document.createElement('div');
+    errEl.className = PREFIX + '-error';
+    errEl.textContent = message;
+    if (wrapper) wrapper.appendChild(errEl);
+
+    setTimeout(function () {
+      input.classList.remove('is-error');
+      if (errEl.parentNode) errEl.remove();
+    }, 4000);
+  }
+
+  // ── Handle save ────────────────────────────────────────────────
+  function handleSave(input) {
+    var fieldKey = input.getAttribute('data-field') || '';
+    var newValue = input.value;
+    var previousValue = input._scwPrev || '';
+
+    // Client-side number validation
+    if (input.hasAttribute('data-number')) {
+      var trimmed = newValue.trim().replace(/[$,]/g, '');
+      if (trimmed !== '' && isNaN(Number(trimmed))) {
+        showError(input, 'Please enter a number', previousValue);
+        return;
+      }
+    }
+
+    input._scwPrev = newValue;
+    input.classList.remove('is-error');
+    input.classList.add('is-saving');
+    var wrapper = input.closest('td');
+    var errEl = wrapper ? wrapper.querySelector('.' + PREFIX + '-error') : null;
+    if (errEl) errEl.remove();
+
+    // Find record ID and view ID
+    var tr = input.closest('tr');
+    var recordId = getRecordId(tr);
+    var viewEl = input.closest('[id^="view_"]');
+    var viewId = viewEl ? viewEl.id : null;
+
+    if (recordId && viewId) {
+      saveValue(viewId, recordId, fieldKey, newValue,
+        function () { showSuccess(input); },
+        function (msg) { showError(input, msg, previousValue); }
+      );
+    }
+  }
+
+  // ── Inject inputs into a single view ──────────────────────────
+  function enhanceView(viewId) {
+    var $view = document.getElementById(viewId);
+    if (!$view) return;
+
+    var fields = getFields(viewId);
+    if (!fields.length) {
+      console.log('[' + PREFIX + '] No fields configured for ' + viewId);
+      return;
+    }
+
+    var rows = $view.querySelectorAll('table.kn-table tbody tr');
+    if (!rows.length) return;
+
+    var pendingResize = [];
+    for (var r = 0; r < rows.length; r++) {
+      var tr = rows[r];
+      if (!tr.id) continue; // skip non-record rows
+
+      for (var f = 0; f < fields.length; f++) {
+        var field = fields[f];
+        var td = tr.querySelector('td[data-field-key="' + field.key + '"]');
+        if (!td || td.classList.contains(PREFIX + '-cell')) continue; // already enhanced
+
+        var currentVal = readCellText(td);
+        td.classList.add(PREFIX + '-cell');
+
+        var input;
+        if (field.number) {
+          input = document.createElement('input');
+          input.type = 'text';
+          input.className = PREFIX + '-input';
+          input.value = currentVal;
+          input.setAttribute('data-number', '1');
+        } else {
+          // Use textarea for text fields so they auto-grow
+          input = document.createElement('textarea');
+          input.className = PREFIX + '-textarea';
+          input.value = currentVal;
+          input.rows = 1;
+          input.addEventListener('input', function () { autoResize(this); });
+        }
+
+        input.setAttribute('data-field', field.key);
+        input.setAttribute(EDIT_ATTR, '1');
+        input._scwPrev = currentVal;
+
+        td.appendChild(input);
+        if (input.tagName === 'TEXTAREA') pendingResize.push(input);
+      }
+    }
+
+    // Defer autoResize until after browser layout so scrollHeight is accurate
+    if (pendingResize.length) {
+      requestAnimationFrame(function () {
+        for (var i = 0; i < pendingResize.length; i++) autoResize(pendingResize[i]);
+      });
+    }
+
+    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + fields.length + ' direct-edit fields');
+  }
+
+  // ── MutationObserver for re-render handling ────────────────────
+  function installObserver(viewId) {
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+    if (viewEl.dataset[OBSERVER_KEY]) return; // already observing
+    viewEl.dataset[OBSERVER_KEY] = '1';
+
+    var debounceTimer;
+    var obs = new MutationObserver(function () {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () { enhanceView(viewId); }, 150);
+    });
+
+    obs.observe(viewEl, { childList: true, subtree: true });
+  }
+
+  // ── Global event handlers (capture phase) ─────────────────────
+
+  // Keydown: Enter saves, Escape reverts
+  document.addEventListener('keydown', function (e) {
+    var target = e.target;
+    if (!target.hasAttribute(EDIT_ATTR)) return;
+
+    if (e.key === 'Enter') {
+      if (target.tagName === 'TEXTAREA' && e.shiftKey) return; // Shift+Enter = newline
+      e.preventDefault();
+      e.stopPropagation();
+      target._scwJustSaved = true;
+      handleSave(target);
+      target.blur();
+    }
+
+    if (e.key === 'Escape') {
+      target._scwJustSaved = true;
+      target.value = target._scwPrev || '';
+      target.blur();
+    }
+
+    // Tab / Shift+Tab: move down/up the same column
+    if (e.key === 'Tab') {
+      var fieldKey = target.getAttribute('data-field');
+      var currentTr = target.closest('tr');
+      if (!fieldKey || !currentTr) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Save current if changed
+      if (target.value !== (target._scwPrev || '')) {
+        target._scwJustSaved = true;
+        handleSave(target);
+      }
+
+      // Find next/prev row's same-field input
+      var siblingTr = e.shiftKey ? currentTr.previousElementSibling : currentTr.nextElementSibling;
+      while (siblingTr && !siblingTr.id) {
+        siblingTr = e.shiftKey ? siblingTr.previousElementSibling : siblingTr.nextElementSibling;
+      }
+      if (siblingTr) {
+        var nextInput = siblingTr.querySelector('[' + EDIT_ATTR + '][data-field="' + fieldKey + '"]');
+        if (nextInput) {
+          nextInput.focus();
+          nextInput.select();
+        }
+      }
+    }
+  }, true);
+
+  // Blur: auto-save if value changed
+  document.addEventListener('focusout', function (e) {
+    var target = e.target;
+    if (!target.hasAttribute(EDIT_ATTR)) return;
+
+    if (target._scwJustSaved) {
+      target._scwJustSaved = false;
+      return;
+    }
+
+    if (target.value !== (target._scwPrev || '')) {
+      handleSave(target);
+    }
+  }, true);
+
+  // Block Knack inline-edit on our inputs
+  document.addEventListener('click', function (e) {
+    if (e.target.hasAttribute(EDIT_ATTR)) e.stopPropagation();
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    if (e.target.hasAttribute(EDIT_ATTR)) e.stopPropagation();
+  }, true);
+
+  // ── Bind to view renders ──────────────────────────────────────
+  var VIEW_IDS = Object.keys(CONFIG);
+  VIEW_IDS.forEach(function (viewId) {
+    $(document).on('knack-view-render.' + viewId + '.scwGridDirectEdit', function (event, view) {
+      injectStyles();
+      enhanceView(viewId);
+      installObserver(viewId);
+    });
+  });
+
+  console.log('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
+})();
 /*************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
 (function () {
   'use strict';

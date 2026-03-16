@@ -126,6 +126,29 @@ Features use Knack's internal APIs for saving data, in order of preference:
 2. `Knack.models[key].save(data)` — fallback
 3. Direct `$.ajax` PUT to Knack REST API — last resort
 
+### Setting Form Fields Programmatically
+
+Knack maintains an internal model for form data that is separate from the DOM. Changing DOM values alone (e.g., `$.val()`) will **not** persist on submit — you must also fire a `change` event so Knack's model syncs.
+
+**Connection fields** (Chosen.js dropdowns):
+```js
+var $select = $('#view_XXXX-field_YYYY');
+var $hidden = $('#kn-input-field_YYYY input.connection[name="field_YYYY"]');
+
+$select.val(recordId);
+$select.trigger('chosen:updated');   // refresh Chosen UI
+$select.trigger('liszt:updated');    // legacy Chosen event
+$hidden.val(recordId);               // sync the hidden input
+$select.trigger('change');           // ← CRITICAL: syncs Knack's internal model
+```
+
+**Standard fields** (text, number, etc.):
+```js
+$('#view_XXXX-field_YYYY').val(newValue).trigger('change');
+```
+
+The `change` event is the key — without it, Knack reads stale/empty data from its internal model on form submit, even though the UI looks correct.
+
 ### MutationObserver Pattern
 
 Many features install MutationObservers to re-apply enhancements after Knack re-renders the DOM. Always:

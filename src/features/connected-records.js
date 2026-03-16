@@ -14,7 +14,18 @@
         parentViewId: 'view_3313',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item'
+        addSlug: 'add-accessory-line-item',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
+      },
+      {
+        parentViewId: 'view_3332',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
       }
     ]
   };
@@ -49,6 +60,14 @@
         background: rgba(0,0,0,0.06);
       }
 
+      .scw-cr-item-warn {
+        background: #fff3cd !important;
+        border-left: 3px solid #d97706;
+      }
+      .scw-cr-item-warn:hover {
+        background: #ffecb3 !important;
+      }
+
       .scw-cr-link {
         flex: 1 1 0%;
         min-width: 0;
@@ -63,7 +82,7 @@
         text-decoration: underline;
       }
 
-      .scw-cr-delete {
+      .scw-cr-remove {
         display: flex;
         align-items: center;
         justify-content: center;
@@ -78,11 +97,11 @@
         flex-shrink: 0;
         transition: color 0.15s, background 0.15s;
       }
-      .scw-cr-delete:hover {
+      .scw-cr-remove:hover {
         color: #d93025;
         background: rgba(217,48,37,0.08);
       }
-      .scw-cr-delete svg {
+      .scw-cr-remove svg {
         width: 14px;
         height: 14px;
       }
@@ -115,6 +134,25 @@
         color: #999;
         font-style: italic;
         padding: 2px 4px;
+      }
+
+      .scw-cr-warning {
+        color: #d97706;
+        font-size: 14px;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+
+      .scw-cr-hdr-warning {
+        color: #b45309;
+        display: inline-flex;
+        align-items: center;
+        margin-left: 10px;
+        flex-shrink: 0;
+      }
+      .scw-cr-hdr-warning svg {
+        width: 18px;
+        height: 18px;
       }
 
       /* ── Delete confirmation modal ── */
@@ -181,12 +219,17 @@
       .scw-cr-modal__btn--cancel:hover {
         background: #e0e2e4;
       }
-      .scw-cr-modal__btn--delete {
+      .scw-cr-modal__btn--confirm {
         background: #d93025;
         color: #fff;
       }
-      .scw-cr-modal__btn--delete:hover {
+      .scw-cr-modal__btn--confirm:hover {
         background: #b71c1c;
+      }
+
+      /* Hide parent-connection field on add-accessory form before JS runs */
+      #view_3580 #kn-input-field_2464 {
+        display: none !important;
       }
     `;
 
@@ -200,7 +243,7 @@
   // DOM READING
   // ============================================================
 
-  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
+  var REMOVE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
   /**
    * Extract record ID from a connection link href.
@@ -262,14 +305,96 @@
 
   /**
    * Find the add-accessory-line-item URL from the row's link columns.
+   * If no explicit add link exists, derive one by swapping editSlug → addSlug
+   * in an existing edit link (for views that lack a dedicated add action column).
    */
-  function findAddUrl(tr, slug) {
+  function findAddUrl(tr, slug, editSlug) {
     var anchors = tr.querySelectorAll('td.kn-table-link a');
     for (var i = 0; i < anchors.length; i++) {
       var href = anchors[i].getAttribute('href') || '';
       if (href.indexOf(slug) !== -1) return href;
     }
+
+    // Fallback: derive from an edit link by replacing editSlug with addSlug
+    if (editSlug) {
+      for (var j = 0; j < anchors.length; j++) {
+        var editHref = anchors[j].getAttribute('href') || '';
+        if (editHref.indexOf(editSlug) !== -1) {
+          return editHref.replace(editSlug, slug);
+        }
+      }
+    }
+
     return '';
+  }
+
+  // ============================================================
+  // KNACK API HELPERS
+  // ============================================================
+
+  /**
+   * Find the Knack object key that owns a given field key.
+   * Searches Knack.objects (Backbone collection) at runtime.
+   * Returns the object key (e.g. 'object_123') or null.
+   */
+  function getObjectKeyForField(fieldKey) {
+    try {
+      var models = Knack.objects.models;
+      for (var i = 0; i < models.length; i++) {
+        var fields = models[i].attributes.fields;
+        for (var j = 0; j < fields.length; j++) {
+          if (fields[j].key === fieldKey) return models[i].attributes.key;
+        }
+      }
+    } catch (e) {
+      console.warn('[SCW][CR-DELETE] Could not search Knack.objects:', e);
+    }
+    return null;
+  }
+
+  /**
+   * Clear a field on a record via Knack's internal model API.
+   * Uses the scene/view REST endpoint (CORS-safe within Knack).
+   * Tries Knack.views[viewId].model.updateRecord first, then
+   * falls back to a direct scene/view PUT.
+   * Returns a Promise that resolves on success or rejects on error.
+   */
+  function clearFieldOnRecord(viewId, recordId, fieldKey) {
+    var data = {};
+    data[fieldKey] = '';
+
+    // Approach 1: Knack's internal model API
+    try {
+      var viewObj = Knack.views[viewId];
+      if (viewObj && viewObj.model && typeof viewObj.model.updateRecord === 'function') {
+        return new Promise(function (resolve, reject) {
+          viewObj.model.updateRecord(recordId, data, {
+            success: function () { resolve(); },
+            error: function () { reject(new Error('updateRecord failed')); }
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('[SCW][CR-DELETE] updateRecord not available:', e);
+    }
+
+    // Approach 2: Direct scene/view PUT (CORS-safe)
+    return new Promise(function (resolve, reject) {
+      $.ajax({
+        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+             '/views/' + viewId + '/records/' + recordId,
+        type: 'PUT',
+        contentType: 'application/json',
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        data: JSON.stringify(data),
+        success: function () { resolve(); },
+        error: function (xhr) { reject(new Error('PUT ' + xhr.status)); }
+      });
+    });
   }
 
   // ============================================================
@@ -292,7 +417,7 @@
           '<div class="scw-cr-modal__name"></div>' +
           '<div class="scw-cr-modal__btns">' +
             '<button class="scw-cr-modal__btn scw-cr-modal__btn--cancel">Cancel</button>' +
-            '<button class="scw-cr-modal__btn scw-cr-modal__btn--delete">Delete</button>' +
+            '<button class="scw-cr-modal__btn scw-cr-modal__btn--confirm">Remove</button>' +
           '</div>' +
         '</div>';
 
@@ -304,8 +429,12 @@
         resolve(result);
       }
 
-      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function () { close(false); });
-      overlay.querySelector('.scw-cr-modal__btn--delete').addEventListener('click', function () { close(true); });
+      overlay.querySelector('.scw-cr-modal__btn--cancel').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); close(false);
+      });
+      overlay.querySelector('.scw-cr-modal__btn--confirm').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation(); close(true);
+      });
 
       // Click outside modal = cancel
       overlay.addEventListener('click', function (e) {
@@ -329,8 +458,26 @@
   }
 
   /**
-   * POST to Make webhook to delete a connected record.
-   * @param {string} recordId  - The 24-char record ID to delete
+   * Find the CONFIG entry that owns a given record ID (by checking which
+   * view's widget contains the itemEl).  Falls back to the first entry.
+   */
+  function findCfgForItem(itemEl) {
+    for (var i = 0; i < CONFIG.views.length; i++) {
+      var cfg = CONFIG.views[i];
+      var viewEl = itemEl.closest('#' + cfg.parentViewId);
+      if (viewEl) return cfg;
+    }
+    return CONFIG.views[0] || null;
+  }
+
+  /**
+   * Disconnect the accessory record from its parent (clear the back-
+   * connection field) then delete it via the Make webhook.
+   *
+   * Clearing the parent connection BEFORE delete prevents Knack from
+   * cascading the delete up to the parent record.
+   *
+   * @param {string} recordId   - The 24-char record ID to delete
    * @param {string} recordName - Display name (for logging)
    * @param {HTMLElement} itemEl - The .scw-cr-item element (for UI state)
    */
@@ -341,26 +488,57 @@
       return;
     }
 
+    var cfg = findCfgForItem(itemEl);
+    var parentField = cfg ? cfg.parentConnectionField : null;
+
+    console.log('[SCW][CR-DELETE] deleteRecord called', {
+      recordId: recordId,
+      recordName: recordName,
+      parentConnectionField: parentField
+    });
+
     // Visual pending state
     itemEl.classList.add('scw-cr-deleting');
 
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recordId: recordId, recordName: recordName })
+    // Step 1: Clear the parent connection field so Knack can't cascade
+    var disconnectPromise;
+    var viewId = cfg ? cfg.parentViewId : null;
+    if (parentField && viewId) {
+      console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
+                  'on', recordId, 'via', viewId);
+      disconnectPromise = clearFieldOnRecord(viewId, recordId, parentField)
+        .then(function () {
+          console.log('[SCW][CR-DELETE] Disconnect succeeded');
+        })
+        .catch(function (err) {
+          console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
+        });
+    } else {
+      disconnectPromise = Promise.resolve();
+    }
+
+    // Step 2: After disconnect, send the delete webhook
+    disconnectPromise.then(function () {
+      console.log('[SCW][CR-DELETE] Sending webhook POST…');
+      return fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId: recordId, recordName: recordName })
+      });
     })
     .then(function (resp) {
+      console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return {}; });
     })
-    .then(function () {
+    .then(function (body) {
+      console.log('[SCW][CR-DELETE] Webhook response body:', body);
+
       // Remove the item from the DOM
       itemEl.remove();
 
       // Trigger preservation pipeline + refresh parent views
       $(document).trigger('knack-cell-update.scwScrollPreserve');
-
-      // Refresh the parent view so Knack reloads the connection data
       CONFIG.views.forEach(function (cfg) {
         var viewObj = Knack.views[cfg.parentViewId];
         if (viewObj && viewObj.model && viewObj.model.fetch) {
@@ -369,7 +547,7 @@
       });
     })
     .catch(function (err) {
-      console.error('[SCW] Delete record error:', err);
+      console.error('[SCW][CR-DELETE] Delete record error:', err);
       itemEl.classList.remove('scw-cr-deleting');
       alert('Delete failed: ' + err.message);
     });
@@ -379,10 +557,76 @@
    * Handle trash icon click: confirm, then delete via webhook.
    */
   function onDeleteClick(recordId, recordName, itemEl) {
+    console.log('[SCW][CR-DELETE] onDeleteClick fired', {
+      recordId: recordId,
+      recordName: recordName
+    });
     confirmDelete(recordName).then(function (confirmed) {
+      console.log('[SCW][CR-DELETE] Confirmation result:', confirmed);
       if (!confirmed) return;
       deleteRecord(recordId, recordName, itemEl);
     });
+  }
+
+  // ============================================================
+  // WARNING ICON — async field check on connected records
+  // ============================================================
+
+  var WARNING_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /**
+   * Build a map of recordId → boolean from a warning field cell in the DOM.
+   * Reads per-record span[id][data-kn="connection-value"] elements (same
+   * pattern as inline-photo-row's extractPhotoRecords reads field_2446).
+   * Falls back to reading the cell's plain text when no per-record spans exist.
+   */
+  function buildWarningMap(tr, warningFieldKey) {
+    var map = {};
+    if (!tr || !warningFieldKey) return map;
+
+    var cell = tr.querySelector('td[data-field-key="' + warningFieldKey + '"]');
+    if (!cell) return map;
+
+    // Per-record connection-value spans (preferred — like photo strip)
+    var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+    if (spans.length > 0) {
+      for (var i = 0; i < spans.length; i++) {
+        var rid = (spans[i].id || '').trim();
+        if (!rid) continue;
+        var val = (spans[i].textContent || '').trim().toLowerCase();
+        map[rid] = (val === 'yes' || val === 'true');
+      }
+    } else {
+      // Single value for all items (fallback)
+      var plainVal = (cell.textContent || '').trim().toLowerCase();
+      map._all = (plainVal === 'yes' || plainVal === 'true');
+    }
+
+    return map;
+  }
+
+  /**
+   * If the warning map indicates this record should show a warning,
+   * prepend a warning icon to the item element.
+   */
+  function applyWarningIcon(warningMap, recordId, itemEl) {
+    var isYes = warningMap.hasOwnProperty(recordId)
+      ? warningMap[recordId]
+      : (warningMap._all || false);
+
+    if (!isYes) {
+      itemEl.classList.add('scw-cr-item-warn');
+      var icon = document.createElement('span');
+      icon.className = 'scw-cr-warning';
+      icon.innerHTML = WARNING_SVG;
+      icon.title = 'Accessory does not match parent product';
+      var linkEl = itemEl.querySelector('.scw-cr-link');
+      if (linkEl) {
+        itemEl.insertBefore(icon, linkEl);
+      }
+      return true; // warning was applied
+    }
+    return false; // no warning
   }
 
   // ============================================================
@@ -425,9 +669,17 @@
 
     // Read links from DOM
     var links = readConnectionLinks(tr, fieldKey);
-    var addUrl = findAddUrl(tr, cfg.addSlug);
+    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug);
+
+    console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
+      return { text: l.text, recordId: l.recordId, href: l.href };
+    }));
+
+    // Build warning map from DOM (like photo strip reads field_2446)
+    var warningMap = cfg.warningField ? buildWarningMap(tr, cfg.warningField) : {};
 
     // Render items
+    var hasAnyWarning = false;
     if (links.length === 0) {
       var empty = document.createElement('div');
       empty.className = 'scw-cr-empty';
@@ -453,9 +705,9 @@
         // Trash icon (only if we have a record ID)
         if (links[i].recordId) {
           var delBtn = document.createElement('button');
-          delBtn.className = 'scw-cr-delete';
+          delBtn.className = 'scw-cr-remove';
           delBtn.title = 'Delete';
-          delBtn.innerHTML = TRASH_SVG;
+          delBtn.innerHTML = REMOVE_SVG;
           delBtn.setAttribute('data-record-id', links[i].recordId);
           delBtn.setAttribute('data-record-name', links[i].text);
           (function (rid, rname, el, btn) {
@@ -466,6 +718,13 @@
             });
           })(links[i].recordId, links[i].text, item, delBtn);
           item.appendChild(delBtn);
+        }
+
+        // Warning icon from DOM data (no API call needed)
+        if (cfg.warningField && links[i].recordId) {
+          if (applyWarningIcon(warningMap, links[i].recordId, item)) {
+            hasAnyWarning = true;
+          }
         }
 
         valueDiv.appendChild(item);
@@ -481,6 +740,8 @@
       valueDiv.appendChild(addBtn);
     }
 
+    // Return element + warning state so the caller can add header warning
+    container._hasWarning = hasAnyWarning;
     return container;
   }
 
@@ -491,14 +752,6 @@
   // When add-accessory-line-item form (view_3580) renders,
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
-
-  // Inject CSS upfront so field_2464 is hidden before the DOM paints
-  var hideStyle = document.createElement('style');
-  hideStyle.id = 'scw-hide-field-2464';
-  hideStyle.textContent = '#kn-input-field_2464 { display: none !important; }';
-  if (!document.getElementById(hideStyle.id)) {
-    document.head.appendChild(hideStyle);
-  }
 
   $(document).on('knack-view-render.view_3580', function (event, view, data) {
     var hash = window.location.hash || '';
@@ -518,6 +771,7 @@
       $select.trigger('chosen:updated');
       $select.trigger('liszt:updated');
       $hidden.val(parentId);
+      $select.trigger('change');
     }, 1);
 
     // On form submit, trigger the scroll/accordion preservation pipeline
