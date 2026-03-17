@@ -81,6 +81,7 @@
     var $tbody = $table.find('tbody');
     var groups = [];
     var currentGroup = null;
+    var ungroupedRows = [];
 
     $tbody.children('tr').each(function () {
       var $row = $(this);
@@ -89,35 +90,54 @@
         groups.push(currentGroup);
       } else if (currentGroup) {
         currentGroup.rows.push($row);
+      } else {
+        /* Rows before any group header (flat table / no groups) */
+        if (!$row.hasClass('kn-tr-nodata') && !$row.hasClass('kn-table-totals')) {
+          ungroupedRows.push($row);
+        }
       }
     });
+
+    /* If no group headers at all, treat all data rows as one group */
+    if (groups.length === 0 && ungroupedRows.length > 1) {
+      groups.push({ header: null, rows: ungroupedRows });
+    }
+
+    var compareFn = function (a, b) {
+      var a1 = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_SORT_1 + '"]')));
+      var b1 = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_SORT_1 + '"]')));
+      /* field_419 descending (highest first) */
+      if (!isNaN(a1) && !isNaN(b1) && a1 !== b1) return b1 - a1;
+      if (isNaN(a1) && !isNaN(b1)) return 1;
+      if (!isNaN(b1) && isNaN(a1)) return -1;
+
+      /* field_416 ascending (lowest first) */
+      var a2 = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_SORT_2 + '"]')));
+      var b2 = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_SORT_2 + '"]')));
+      if (!isNaN(a2) && !isNaN(b2)) return a2 - b2;
+      if (isNaN(a2) && !isNaN(b2)) return 1;
+      if (!isNaN(b2) && isNaN(a2)) return -1;
+      return 0;
+    };
 
     groups.forEach(function (group) {
       if (group.rows.length < 2) return;
 
-      group.rows.sort(function (a, b) {
-        var a1 = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_SORT_1 + '"]')));
-        var b1 = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_SORT_1 + '"]')));
-        /* field_419 descending (highest first) */
-        if (!isNaN(a1) && !isNaN(b1) && a1 !== b1) return b1 - a1;
-        if (isNaN(a1) && !isNaN(b1)) return 1;
-        if (!isNaN(b1) && isNaN(a1)) return -1;
+      group.rows.sort(compareFn);
 
-        /* field_416 ascending (lowest first) */
-        var a2 = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_SORT_2 + '"]')));
-        var b2 = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_SORT_2 + '"]')));
-        if (!isNaN(a2) && !isNaN(b2)) return a2 - b2;
-        if (isNaN(a2) && !isNaN(b2)) return 1;
-        if (!isNaN(b2) && isNaN(a2)) return -1;
-        return 0;
-      });
-
-      /* Re-insert rows in sorted order after the group header */
-      var $after = group.header;
-      group.rows.forEach(function ($row) {
-        $after.after($row);
-        $after = $row;
-      });
+      if (group.header) {
+        /* Re-insert rows after the group header */
+        var $after = group.header;
+        group.rows.forEach(function ($row) {
+          $after.after($row);
+          $after = $row;
+        });
+      } else {
+        /* No group header — prepend sorted rows to tbody */
+        for (var i = group.rows.length - 1; i >= 0; i--) {
+          $tbody.prepend(group.rows[i]);
+        }
+      }
     });
   }
 
