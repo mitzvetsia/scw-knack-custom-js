@@ -18668,6 +18668,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
   var FIELD_FLOOR    = 'field_324';   // Floor
   var FIELD_UPPER    = 'field_325';   // Upper Limit
   var FIELD_REVENUE  = 'field_415';   // Total Revenue from Schedule
+  var FIELD_NEEDED   = 'field_417';   // Amount needed to unlock tier
 
   /* ── colors ─────────────────────────────────────────── */
   var COLOR_GREEN = '#d4edda';  // pale green – at/above upper
@@ -18753,6 +18754,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       var $floorTd   = $row.find('td[data-field-key="' + FIELD_FLOOR   + '"]');
       var $upperTd   = $row.find('td[data-field-key="' + FIELD_UPPER   + '"]');
       var $revTd     = $row.find('td[data-field-key="' + FIELD_REVENUE + '"]');
+      var $neededTd  = $row.find('td[data-field-key="' + FIELD_NEEDED  + '"]');
       if (!$revTd.length) return;
 
       var floor   = parseCurrency(cellText($floorTd));
@@ -18770,8 +18772,11 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       $revTd.css('text-align', '');
 
       if (revenue < floor) {
-        /* ── below floor → hide the revenue number ── */
+        /* ── below floor → show amount needed to unlock ── */
+        var neededVal = cellText($neededTd);
         $span.css('display', 'none');
+        $revTd.css('text-align', 'center');
+        $revTd.append('<span class="scw-rev-tier-label">' + neededVal + ' needed to unlock tier!</span>');
 
       } else if (isNaN(upper) || upper <= floor) {
         /* ── top tier (no upper limit) and revenue >= floor → full green ── */
