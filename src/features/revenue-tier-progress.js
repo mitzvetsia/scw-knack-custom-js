@@ -46,6 +46,17 @@
       '.scw-rev-tier-cell span {',
       '  position: relative;',
       '  z-index: 1;',
+      '}',
+      '.scw-rev-tier-label {',
+      '  position: relative;',
+      '  z-index: 1;',
+      '  font-weight: 600;',
+      '  font-size: 12px;',
+      '  white-space: nowrap;',
+      '}',
+      '.scw-rev-tier-label svg {',
+      '  vertical-align: -2px;',
+      '  margin-right: 3px;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
@@ -72,26 +83,36 @@
       /* Reset */
       $revTd.addClass('scw-rev-tier-cell');
       $revTd.find('.scw-rev-tier-fill').remove();
+      $revTd.find('.scw-rev-tier-label').remove();
 
       var $fill = $('<div class="scw-rev-tier-fill"></div>');
+      var $span = $revTd.find('span').first();
+      var CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 
       if (revenue < floor) {
-        /* ── below floor → full red ── */
+        /* ── below floor → full red, hide value ── */
         $fill.css({ width: '100%', background: COLOR_RED });
+        $span.css('visibility', 'hidden');
 
       } else if (isNaN(upper) || upper <= floor) {
         /* ── top tier (no upper limit) and revenue >= floor → full green ── */
         $fill.css({ width: '100%', background: COLOR_GREEN });
+        $span.css('visibility', 'hidden');
+        $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
 
       } else if (revenue >= upper) {
         /* ── at or above upper limit → full green ── */
         $fill.css({ width: '100%', background: COLOR_GREEN });
+        $span.css('visibility', 'hidden');
+        $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
 
       } else {
         /* ── between floor and upper → partial green ── */
         var pct = ((revenue - floor) / (upper - floor)) * 100;
         pct = Math.max(0, Math.min(100, pct));
         $fill.css({ width: pct + '%', background: COLOR_GREEN });
+        $span.css('visibility', 'hidden');
+        $revTd.append('<span class="scw-rev-tier-label">' + Math.round(pct) + '% Achieved</span>');
       }
 
       $revTd.prepend($fill);
