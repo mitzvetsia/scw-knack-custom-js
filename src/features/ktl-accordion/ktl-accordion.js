@@ -74,6 +74,7 @@
       '  box-shadow: 0 2px 12px rgba(0,0,0,.06);',
       '  overflow: hidden;',
       '  margin: 10px 0;',
+      '  width: 100%;',
       '  max-width: 100%;',
       '}',
 
@@ -263,6 +264,14 @@
       '  padding: 10px 12px 14px 12px;',
       '  background: #fff !important;',
       '  overflow-x: auto;',
+      '}',
+
+      /* Ensure tables stretch to fill the accordion body */
+      '.scw-ktl-accordion__body .kn-table-wrapper {',
+      '  width: 100%;',
+      '}',
+      '.scw-ktl-accordion__body table.kn-table {',
+      '  width: 100%;',
       '}',
 
       /* Legacy accent containers inside the body — targeted instead of
