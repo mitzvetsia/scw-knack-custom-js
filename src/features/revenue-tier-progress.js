@@ -11,6 +11,8 @@
   var FIELD_UPPER    = 'field_325';   // Upper Limit
   var FIELD_REVENUE  = 'field_415';   // Total Revenue from Schedule
   var FIELD_NEEDED   = 'field_417';   // Amount needed to unlock tier
+  var FIELD_SORT_1   = 'field_419';   // Primary sort   (desc – highest first)
+  var FIELD_SORT_2   = 'field_416';   // Secondary sort (asc  – lowest first)
 
   /* ── colors ─────────────────────────────────────────── */
   var COLOR_GREEN = '#d4edda';  // pale green – at/above upper
@@ -74,6 +76,51 @@
     return n || hCells.length || 1;
   }
 
+  /* ── sort rows within each accordion group ──────────── */
+  function sortGroupRows($table) {
+    var $tbody = $table.find('tbody');
+    var groups = [];
+    var currentGroup = null;
+
+    $tbody.children('tr').each(function () {
+      var $row = $(this);
+      if ($row.hasClass('kn-table-group')) {
+        currentGroup = { header: $row, rows: [] };
+        groups.push(currentGroup);
+      } else if (currentGroup) {
+        currentGroup.rows.push($row);
+      }
+    });
+
+    groups.forEach(function (group) {
+      if (group.rows.length < 2) return;
+
+      group.rows.sort(function (a, b) {
+        var a1 = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_SORT_1 + '"]')));
+        var b1 = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_SORT_1 + '"]')));
+        /* field_419 descending (highest first) */
+        if (!isNaN(a1) && !isNaN(b1) && a1 !== b1) return b1 - a1;
+        if (isNaN(a1) && !isNaN(b1)) return 1;
+        if (!isNaN(b1) && isNaN(a1)) return -1;
+
+        /* field_416 ascending (lowest first) */
+        var a2 = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_SORT_2 + '"]')));
+        var b2 = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_SORT_2 + '"]')));
+        if (!isNaN(a2) && !isNaN(b2)) return a2 - b2;
+        if (isNaN(a2) && !isNaN(b2)) return 1;
+        if (!isNaN(b2) && isNaN(a2)) return -1;
+        return 0;
+      });
+
+      /* Re-insert rows in sorted order after the group header */
+      var $after = group.header;
+      group.rows.forEach(function ($row) {
+        $after.after($row);
+        $after = $row;
+      });
+    });
+  }
+
   /* ── core logic ─────────────────────────────────────── */
   function applyProgress(viewId) {
     var $view = $('#' + viewId);
@@ -90,6 +137,9 @@
         $cell.attr('colspan', colCount);
       }
     });
+
+    /* Sort rows within each accordion group before applying progress bars */
+    sortGroupRows($table);
 
     $table.find('tbody tr:not(.kn-table-group)').each(function () {
       var $row = $(this);
