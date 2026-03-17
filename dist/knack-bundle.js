@@ -18743,6 +18743,13 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       '  font-weight: 600;',
       '  font-size: 12px;',
       '  white-space: nowrap;',
+      '}',
+
+      /* Target badge in accordion group header */
+      '.scw-rev-tier-target {',
+      '  margin-left: auto;',
+      '  color: #355e3b;',
+      '  white-space: nowrap;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
@@ -18815,6 +18822,47 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     });
   }
 
+  /* ── format number as currency ──────────────────────── */
+  function formatCurrency(n) {
+    return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /* ── inject average field_419 into each group header ── */
+  function injectGroupTargets($table) {
+    var $tbody = $table.find('tbody');
+    var currentHeader = null;
+    var rows = [];
+
+    function flush() {
+      if (!currentHeader || !rows.length) return;
+      /* Remove any previously injected badge */
+      currentHeader.find('.scw-rev-tier-target').remove();
+
+      var sum = 0, count = 0;
+      rows.forEach(function ($r) {
+        var v = parseCurrency(cellText($r.find('td[data-field-key="' + FIELD_GRP_SORT + '"]')));
+        if (!isNaN(v)) { sum += v; count++; }
+      });
+      if (count === 0) return;
+      var avg = sum / count;
+      var $inner = currentHeader.find('.scw-group-inner');
+      if (!$inner.length) $inner = currentHeader.find('td').first();
+      $inner.append('<span class="scw-rev-tier-target">Target: ' + formatCurrency(avg) + '</span>');
+    }
+
+    $tbody.children('tr').each(function () {
+      var $row = $(this);
+      if ($row.hasClass('kn-table-group')) {
+        flush();
+        currentHeader = $row;
+        rows = [];
+      } else {
+        rows.push($row);
+      }
+    });
+    flush();
+  }
+
   /* ── core logic ─────────────────────────────────────── */
   function applyProgress(viewId) {
     var $view = $('#' + viewId);
@@ -18834,6 +18882,9 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
     /* Sort rows within each accordion group before applying progress bars */
     sortGroupRows($table);
+
+    /* Inject average target into each group header */
+    injectGroupTargets($table);
 
     $table.find('tbody tr:not(.kn-table-group)').each(function () {
       var $row = $(this);
