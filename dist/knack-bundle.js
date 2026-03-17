@@ -18662,7 +18662,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
   var EVENT_NS = '.scwRevTierProgress';
   var STYLE_ID = 'scw-revenue-tier-progress-css';
-  var VIEW_IDS = ['view_352', 'view_256', 'view_325'];
+  var VIEW_IDS = ['view_352', 'view_256', 'view_325', 'view_383'];
 
   /* ── field keys ─────────────────────────────────────── */
   var FIELD_FLOOR    = 'field_324';   // Floor
