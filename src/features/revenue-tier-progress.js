@@ -15,7 +15,8 @@
   var FIELD_ROW_SORT = 'field_323';   // Row sort       (asc  – lowest first / Sequence)
 
   /* ── colors ─────────────────────────────────────────── */
-  var COLOR_GREEN = '#d4edda';  // pale green – at/above upper
+  var COLOR_GREEN   = '#b6dfca';  // green – at/above upper
+  var COLOR_PARTIAL = '#f5d89a';  // warm amber – partial progress
 
   /* ── helpers ────────────────────────────────────────── */
   function parseCurrency(text) {
@@ -34,31 +35,56 @@
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = [
-      '/* Revenue-tier progress bar fill */',
+      '/* Revenue-tier progress bar */',
       '.scw-rev-tier-cell {',
       '  position: relative;',
-      '  overflow: hidden;',
       '}',
+
+      /* Track — the background "rail" for the progress bar */
+      '.scw-rev-tier-track {',
+      '  position: relative;',
+      '  height: 22px;',
+      '  background: #e9ecef;',
+      '  border-radius: 12px;',
+      '  overflow: hidden;',
+      '  box-shadow: inset 0 1px 2px rgba(0,0,0,.08);',
+      '  min-width: 60px;',
+      '}',
+
+      /* Fill — the colored portion inside the track */
       '.scw-rev-tier-fill {',
       '  position: absolute;',
       '  top: 0; left: 0; bottom: 0;',
+      '  border-radius: 12px;',
       '  pointer-events: none;',
       '  transition: width .3s ease;',
+      '  min-width: 0;',
       '}',
-      'tr:not(.kn-table-group) > .scw-rev-tier-cell > span {',
-      '  position: relative;',
-      '  z-index: 1;',
-      '}',
+
+      /* Label text — sits centered over the track */
       '.scw-rev-tier-label {',
-      '  position: relative;',
-      '  z-index: 1;',
+      '  position: absolute;',
+      '  top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
       '  font-weight: 600;',
-      '  font-size: 12px;',
+      '  font-size: 11px;',
       '  white-space: nowrap;',
+      '  color: #333;',
+      '  text-shadow: 0 0 3px rgba(255,255,255,.7);',
+      '  z-index: 1;',
       '}',
       '.scw-rev-tier-label svg {',
       '  vertical-align: -2px;',
       '  margin-right: 3px;',
+      '}',
+
+      /* "needed to unlock" text — no track, just inline */
+      '.scw-rev-tier-needed {',
+      '  font-weight: 600;',
+      '  font-size: 12px;',
+      '  white-space: nowrap;',
       '}'
     ].join('\n');
     document.head.appendChild(style);
@@ -167,8 +193,8 @@
 
       /* Reset */
       $revTd.addClass('scw-rev-tier-cell');
-      $revTd.find('.scw-rev-tier-fill').remove();
-      $revTd.find('.scw-rev-tier-label').remove();
+      $revTd.find('.scw-rev-tier-track').remove();
+      $revTd.find('.scw-rev-tier-needed').remove();
       var $span = $revTd.find('span').first();
       $span.css('display', '');
       $revTd.css('text-align', '');
@@ -178,36 +204,34 @@
         var neededVal = cellText($neededTd);
         $span.css('display', 'none');
         $revTd.css('text-align', 'center');
-        $revTd.append('<span class="scw-rev-tier-label">' + neededVal + ' needed to unlock tier!</span>');
-
-      } else if (isNaN(upper) || upper <= floor) {
-        /* ── top tier (no upper limit) and revenue >= floor → full green ── */
-        var $fill = $('<div class="scw-rev-tier-fill"></div>');
-        $fill.css({ width: '100%', background: COLOR_GREEN });
-        $span.css('display', 'none');
-        $revTd.css('text-align', 'center');
-        $revTd.prepend($fill);
-        $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
-
-      } else if (revenue >= upper) {
-        /* ── at or above upper limit → full green ── */
-        var $fill2 = $('<div class="scw-rev-tier-fill"></div>');
-        $fill2.css({ width: '100%', background: COLOR_GREEN });
-        $span.css('display', 'none');
-        $revTd.css('text-align', 'center');
-        $revTd.prepend($fill2);
-        $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
+        $revTd.append('<span class="scw-rev-tier-needed">' + neededVal + ' needed to unlock tier!</span>');
 
       } else {
-        /* ── between floor and upper → partial green ── */
-        var pct = ((revenue - floor) / (upper - floor)) * 100;
-        pct = Math.max(0, Math.min(100, pct));
-        var $fill3 = $('<div class="scw-rev-tier-fill"></div>');
-        $fill3.css({ width: pct + '%', background: COLOR_GREEN });
+        /* ── at or above floor → show progress bar ── */
+        var pct, labelText, fillColor;
+
+        if (isNaN(upper) || upper <= floor || revenue >= upper) {
+          pct = 100;
+          labelText = CHECK_SVG + '100% Achieved!';
+          fillColor = COLOR_GREEN;
+        } else {
+          pct = ((revenue - floor) / (upper - floor)) * 100;
+          pct = Math.max(0, Math.min(100, pct));
+          labelText = Math.round(pct) + '% Achieved';
+          fillColor = pct >= 100 ? COLOR_GREEN : COLOR_PARTIAL;
+        }
+
         $span.css('display', 'none');
         $revTd.css('text-align', 'center');
-        $revTd.prepend($fill3);
-        $revTd.append('<span class="scw-rev-tier-label">' + Math.round(pct) + '% Achieved</span>');
+
+        var $track = $('<div class="scw-rev-tier-track"></div>');
+        var $fill  = $('<div class="scw-rev-tier-fill"></div>');
+        var $label = $('<span class="scw-rev-tier-label"></span>');
+
+        $fill.css({ width: pct + '%', background: fillColor });
+        $label.html(labelText);
+        $track.append($fill).append($label);
+        $revTd.append($track);
       }
     });
   }
