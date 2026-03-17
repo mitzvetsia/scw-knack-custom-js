@@ -1326,6 +1326,10 @@ window.SCW = window.SCW || {};
       '  width: 100%;',
       '  max-width: 100%;',
       '}',
+      /* When expanded, allow dropdowns (Chosen.js) to overflow */
+      '.scw-ktl-accordion.is-expanded {',
+      '  overflow: visible;',
+      '}',
 
       /* ══════════════════════════════════════════════════
          2) Neutralize legacy styles ONLY inside our wrapper
@@ -1513,6 +1517,10 @@ window.SCW = window.SCW || {};
       '  padding: 10px 12px 14px 12px;',
       '  background: #fff !important;',
       '  overflow-x: auto;',
+      '}',
+      /* Let dropdowns overflow the body when accordion is open */
+      '.scw-ktl-accordion.is-expanded > .scw-ktl-accordion__body {',
+      '  overflow: visible;',
       '}',
 
       /* Ensure tables stretch to fill the accordion body */
