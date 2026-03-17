@@ -6402,6 +6402,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         position: relative;
         display: flex;
         align-items: center;
+        width: 100%;
       }
 
       /* ══════════════════════════════════════════════════
