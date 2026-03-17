@@ -158,9 +158,12 @@
 
       ${s('.scw-group-collapse-enabled tr.scw-group-header > td')} {
         position: relative;
+      }
+      /* Flex layout lives on an inner wrapper so the TD keeps
+         display:table-cell and respects its colspan. */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header > td > .scw-group-inner')} {
         display: flex;
         align-items: center;
-        width: 100%;
       }
 
       /* ══════════════════════════════════════════════════
@@ -383,10 +386,19 @@
     return $tr.hasClass('kn-group-level-2') ? 2 : 1;
   }
 
+  function ensureInnerWrap($tr) {
+    const $cell = $tr.children('td,th').first();
+    if (!$cell.children('.scw-group-inner').length) {
+      $cell.wrapInner('<div class="scw-group-inner"></div>');
+    }
+  }
+
   function ensureIcon($tr) {
     const $cell = $tr.children('td,th').first();
-    if (!$cell.find('.scw-collapse-icon').length) {
-      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
+    var $inner = $cell.children('.scw-group-inner');
+    var $target = $inner.length ? $inner : $cell;
+    if (!$target.find('.scw-collapse-icon').length) {
+      $target.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
     }
   }
 
@@ -431,7 +443,8 @@
         html += '<span class="scw-record-count">' + count + '</span>';
       }
       html += '</span>';
-      $cell.append(html);
+      var $inner = $cell.children('.scw-group-inner');
+      ($inner.length ? $inner : $cell).append(html);
     }
   }
 
@@ -619,6 +632,7 @@
       const state = loadState(sceneId, viewId);
 
       $tr.addClass('scw-group-header');
+      ensureInnerWrap($tr);
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
@@ -664,6 +678,7 @@
         $view.addClass('scw-group-collapse-enabled');
 
         $tr.addClass('scw-group-header');
+        ensureInnerWrap($tr);
         ensureIcon($tr);
 
         const level = getGroupLevel($tr);
