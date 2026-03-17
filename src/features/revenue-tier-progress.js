@@ -4,7 +4,7 @@
 
   var EVENT_NS = '.scwRevTierProgress';
   var STYLE_ID = 'scw-revenue-tier-progress-css';
-  var VIEW_ID  = 'view_352';
+  var VIEW_IDS = ['view_352', 'view_256', 'view_325'];
 
   /* ── field keys ─────────────────────────────────────── */
   var FIELD_FLOOR    = 'field_324';   // Floor
@@ -12,7 +12,6 @@
   var FIELD_REVENUE  = 'field_415';   // Total Revenue from Schedule
 
   /* ── colors ─────────────────────────────────────────── */
-  var COLOR_RED   = '#f8d7da';  // pale red  – below floor
   var COLOR_GREEN = '#d4edda';  // pale green – at/above upper
 
   /* ── helpers ────────────────────────────────────────── */
@@ -43,7 +42,7 @@
       '  pointer-events: none;',
       '  transition: width .3s ease;',
       '}',
-      '.scw-rev-tier-cell span {',
+      'tr:not(.kn-table-group) > .scw-rev-tier-cell > span {',
       '  position: relative;',
       '  z-index: 1;',
       '}',
@@ -62,12 +61,36 @@
     document.head.appendChild(style);
   }
 
+  var CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+  /* ── helpers: column count for colspan fix ──────────── */
+  function getColCount($table) {
+    var hCells = $table.find('thead th');
+    var n = 0;
+    hCells.each(function () {
+      n += parseInt($(this).attr('colspan') || '1', 10);
+    });
+    return n || hCells.length || 1;
+  }
+
   /* ── core logic ─────────────────────────────────────── */
-  function applyProgress() {
-    var $view = $('#' + VIEW_ID);
+  function applyProgress(viewId) {
+    var $view = $('#' + viewId);
     if (!$view.length) return;
 
-    $view.find('table.kn-table tbody tr:not(.kn-table-group)').each(function () {
+    var $table = $view.find('table.kn-table').first();
+    var colCount = getColCount($table);
+
+    /* Fix group-header colspan so accordion rows span full width */
+    $table.find('tr.kn-table-group td').each(function () {
+      var $cell = $(this);
+      var cur = parseInt($cell.attr('colspan') || '1', 10);
+      if (cur < colCount) {
+        $cell.attr('colspan', colCount);
+      }
+    });
+
+    $table.find('tbody tr:not(.kn-table-group)').each(function () {
       var $row = $(this);
       var $floorTd   = $row.find('td[data-field-key="' + FIELD_FLOOR   + '"]');
       var $upperTd   = $row.find('td[data-field-key="' + FIELD_UPPER   + '"]');
@@ -84,60 +107,62 @@
       $revTd.addClass('scw-rev-tier-cell');
       $revTd.find('.scw-rev-tier-fill').remove();
       $revTd.find('.scw-rev-tier-label').remove();
-
-      var $fill = $('<div class="scw-rev-tier-fill"></div>');
       var $span = $revTd.find('span').first();
-      var CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      $span.css('visibility', '');
 
       if (revenue < floor) {
-        /* ── below floor → full red, hide value ── */
-        $fill.css({ width: '100%', background: COLOR_RED });
-        $span.css('visibility', 'hidden');
+        /* ── below floor → no background, just leave the cell alone ── */
 
       } else if (isNaN(upper) || upper <= floor) {
         /* ── top tier (no upper limit) and revenue >= floor → full green ── */
+        var $fill = $('<div class="scw-rev-tier-fill"></div>');
         $fill.css({ width: '100%', background: COLOR_GREEN });
         $span.css('visibility', 'hidden');
+        $revTd.prepend($fill);
         $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
 
       } else if (revenue >= upper) {
         /* ── at or above upper limit → full green ── */
-        $fill.css({ width: '100%', background: COLOR_GREEN });
+        var $fill2 = $('<div class="scw-rev-tier-fill"></div>');
+        $fill2.css({ width: '100%', background: COLOR_GREEN });
         $span.css('visibility', 'hidden');
+        $revTd.prepend($fill2);
         $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
 
       } else {
         /* ── between floor and upper → partial green ── */
         var pct = ((revenue - floor) / (upper - floor)) * 100;
         pct = Math.max(0, Math.min(100, pct));
-        $fill.css({ width: pct + '%', background: COLOR_GREEN });
+        var $fill3 = $('<div class="scw-rev-tier-fill"></div>');
+        $fill3.css({ width: pct + '%', background: COLOR_GREEN });
         $span.css('visibility', 'hidden');
+        $revTd.prepend($fill3);
         $revTd.append('<span class="scw-rev-tier-label">' + Math.round(pct) + '% Achieved</span>');
       }
-
-      $revTd.prepend($fill);
     });
   }
 
   /* ── bind ────────────────────────────────────────────── */
   injectStyles();
 
-  $(document)
-    .off('knack-view-render.' + VIEW_ID + EVENT_NS)
-    .on('knack-view-render.'  + VIEW_ID + EVENT_NS, function () {
-      applyProgress();
+  VIEW_IDS.forEach(function (viewId) {
+    $(document)
+      .off('knack-view-render.' + viewId + EVENT_NS)
+      .on('knack-view-render.'  + viewId + EVENT_NS, function () {
+        applyProgress(viewId);
 
-      /* Re-apply after Knack DOM mutations (inline edits, etc.) */
-      var el = document.getElementById(VIEW_ID);
-      if (!el || $(el).data('scwRevTierObs')) return;
+        /* Re-apply after Knack DOM mutations (inline edits, etc.) */
+        var el = document.getElementById(viewId);
+        if (!el || $(el).data('scwRevTierObs')) return;
 
-      var timer = 0;
-      var obs = new MutationObserver(function () {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(function () { timer = 0; applyProgress(); }, 150);
+        var timer = 0;
+        var obs = new MutationObserver(function () {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(function () { timer = 0; applyProgress(viewId); }, 150);
+        });
+        obs.observe(el, { childList: true, subtree: true });
+        $(el).data('scwRevTierObs', true);
       });
-      obs.observe(el, { childList: true, subtree: true });
-      $(el).data('scwRevTierObs', true);
-    });
+  });
 
 })();
