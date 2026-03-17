@@ -18766,17 +18766,19 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       $revTd.find('.scw-rev-tier-fill').remove();
       $revTd.find('.scw-rev-tier-label').remove();
       var $span = $revTd.find('span').first();
-      $span.css('visibility', '');
+      $span.css('display', '');
+      $revTd.css('text-align', '');
 
       if (revenue < floor) {
         /* ── below floor → hide the revenue number ── */
-        $span.css('visibility', 'hidden');
+        $span.css('display', 'none');
 
       } else if (isNaN(upper) || upper <= floor) {
         /* ── top tier (no upper limit) and revenue >= floor → full green ── */
         var $fill = $('<div class="scw-rev-tier-fill"></div>');
         $fill.css({ width: '100%', background: COLOR_GREEN });
-        $span.css('visibility', 'hidden');
+        $span.css('display', 'none');
+        $revTd.css('text-align', 'center');
         $revTd.prepend($fill);
         $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
 
@@ -18784,7 +18786,8 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
         /* ── at or above upper limit → full green ── */
         var $fill2 = $('<div class="scw-rev-tier-fill"></div>');
         $fill2.css({ width: '100%', background: COLOR_GREEN });
-        $span.css('visibility', 'hidden');
+        $span.css('display', 'none');
+        $revTd.css('text-align', 'center');
         $revTd.prepend($fill2);
         $revTd.append('<span class="scw-rev-tier-label">' + CHECK_SVG + '100% Achieved!</span>');
 
@@ -18794,7 +18797,8 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
         pct = Math.max(0, Math.min(100, pct));
         var $fill3 = $('<div class="scw-rev-tier-fill"></div>');
         $fill3.css({ width: pct + '%', background: COLOR_GREEN });
-        $span.css('visibility', 'hidden');
+        $span.css('display', 'none');
+        $revTd.css('text-align', 'center');
         $revTd.prepend($fill3);
         $revTd.append('<span class="scw-rev-tier-label">' + Math.round(pct) + '% Achieved</span>');
       }
