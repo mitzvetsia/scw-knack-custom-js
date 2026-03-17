@@ -18769,7 +18769,8 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       $span.css('visibility', '');
 
       if (revenue < floor) {
-        /* ── below floor → no background, just leave the cell alone ── */
+        /* ── below floor → hide the revenue number ── */
+        $span.css('visibility', 'hidden');
 
       } else if (isNaN(upper) || upper <= floor) {
         /* ── top tier (no upper limit) and revenue >= floor → full green ── */
