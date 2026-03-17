@@ -6633,6 +6633,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!$cell.children('.scw-group-inner').length) {
       $cell.wrapInner('<div class="scw-group-inner"></div>');
     }
+    // Fix colspan="0" — HTML5 treats 0 as 1, breaking full-row span.
+    // Recalculate from thead every time since Knack may re-render rows.
+    var table = $tr.closest('table')[0];
+    if (table) {
+      var headerRow = table.querySelector('thead tr');
+      if (headerRow) {
+        var colCount = 0;
+        var hCells = headerRow.children;
+        for (var i = 0; i < hCells.length; i++) {
+          colCount += parseInt(hCells[i].getAttribute('colspan') || '1', 10);
+        }
+        var cur = parseInt($cell.attr('colspan') || '1', 10);
+        if (colCount > 0 && cur < colCount) {
+          $cell.attr('colspan', colCount);
+        }
+      }
+    }
   }
 
   function ensureIcon($tr) {
@@ -6821,7 +6838,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const cfg = SCENE_OVERRIDES[sceneId] || {};
     const threshold = cfg.openIfFewerThan || DEFAULT_THRESHOLD;
     const viewRecordCounts = {};
-    const viewColCounts = {};
 
     $sceneRoot.find(GROUP_ROW_SEL).each(function () {
       const $tr = $(this);
@@ -6838,28 +6854,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var groupTr = $view.find('table tbody tr.kn-table-group').length;
         var totalsTr = $view.find('table tbody tr.kn-table-totals').length;
         viewRecordCounts[viewId] = allTr - groupTr - totalsTr;
-      }
-
-      // Fix colspan="0" on group header TDs — HTML5 treats 0 as 1,
-      // so group headers only span one column instead of the full table.
-      // Calculate the real column count from thead and set it explicitly.
-      if (!viewColCounts[viewId]) {
-        var headerRow = $view.find('table thead tr')[0];
-        if (headerRow) {
-          var count = 0;
-          var hCells = headerRow.children;
-          for (var ci = 0; ci < hCells.length; ci++) {
-            count += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
-          }
-          viewColCounts[viewId] = count;
-        }
-      }
-      if (viewColCounts[viewId]) {
-        var $td = $tr.children('td').first();
-        var cur = parseInt($td.attr('colspan') || '1', 10);
-        if (cur < viewColCounts[viewId]) {
-          $td.attr('colspan', viewColCounts[viewId]);
-        }
       }
 
       const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
