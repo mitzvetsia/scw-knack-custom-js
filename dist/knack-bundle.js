@@ -7336,14 +7336,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   //  1) View-level header row
   // ───────────────────────────────────────────────
 
-  /** Find the first visible summary bar in a view.
-   *  Uses offsetParent (no forced layout) instead of getBoundingClientRect. */
+  /** Find the first summary bar in a view.
+   *  Prefers a visible bar but falls back to the first one in the DOM
+   *  so that collapsed accordion views still get a header bar built. */
   function findVisibleSummary(viewEl) {
     var bars = viewEl.querySelectorAll('.scw-ws-summary');
+    var first = null;
     for (var i = 0; i < bars.length; i++) {
+      if (!first) first = bars[i];
       if (bars[i].offsetParent !== null) return bars[i];
     }
-    return null;
+    return first;
   }
 
   function readHeaderLayout(viewEl) {
