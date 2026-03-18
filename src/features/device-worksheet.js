@@ -1552,6 +1552,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     grid-template-columns: 1fr;
   }
 }
+/* view_3586 right-group widths — compact to leave room for SCW Notes fill */
+.${P}-sum-right .${P}-sum-group--retail {
+  width: min-content;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--disc-pct {
+  width: 55px;
+  min-width: 55px;
+}
+.${P}-sum-right .${P}-sum-group--disc-dlr {
+  width: 60px;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--applied {
+  width: min-content;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--total {
+  width: min-content;
+  min-width: 70px;
+}
 
 /* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
 .${P}-bucket-chit-group {
