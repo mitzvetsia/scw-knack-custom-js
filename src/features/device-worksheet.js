@@ -274,6 +274,7 @@
       },
       {
         viewId: 'view_3586',
+        stackedSummary: false,
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -1575,6 +1576,17 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 90px;
 }
 
+/* ── Non-stacked alignment: push checkbox/chevron/product down by label height ── */
+.${P}-summary:not(.${P}-summary--stacked) td.${P}-sum-check,
+.${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
+  margin-top: 13px;
+}
+/* Non-stacked fill textarea — compact (detail panel is for long edits) */
+.${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
+  min-height: 28px;
+  max-height: 60px;
+}
+
 /* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
 .${P}-bucket-chit-group {
   display: flex;
@@ -2752,7 +2764,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 4;
+      input.rows = opts.rows || 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -2832,7 +2844,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           ldGroup.appendChild(ldLabel);
           td.classList.add(P + '-sum-field');
           td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline });
+          var fillRows = (viewCfg.stackedSummary === false) ? 2 : 4;
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: fillRows });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -2937,7 +2950,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     bar.className = P + '-summary';
 
     // Detect stacked labels early — needed for vertical alignment of all elements
-    var hasStackedFields = layout.some(function (n) {
+    // Views can opt out via stackedSummary: false (alignment handled by CSS margin-top)
+    var hasStackedFields = viewCfg.stackedSummary !== false && layout.some(function (n) {
       var d = fieldDesc(viewCfg, n);
       return d && d.group === 'right' && d.label;
     });
