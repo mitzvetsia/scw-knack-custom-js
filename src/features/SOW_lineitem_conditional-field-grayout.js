@@ -120,6 +120,48 @@
         },
       },
     },
+    {
+      viewId: 'view_3586',
+      detectField: 'field_2219',
+      sortField: 'field_2218',
+      labelTarget: 'field_1949',
+      labelMode: 'prefix',
+      laborDescField: null,
+      allColumnKeys: [
+        'field_1949', // PRODUCT
+        'field_1957', // Connected Devices
+        'field_1960', // Retail Price
+        'field_2020', // Labor Description
+        'field_1953', // SCW Notes
+        'field_2261', // Cust Disc %
+        'field_2262', // Cust Disc $
+        'field_1964', // Qty
+        'field_2303', // Applied Disc
+        'field_2269', // Line Item Total
+      ],
+      rowLocks: [
+        {
+          detectField: 'field_2230',
+          when: 'yes',
+          lockField: 'field_1964',   // Qty
+        },
+        {
+          detectField: 'field_2231',
+          whenNot: 'yes',
+          lockField: 'field_1957',   // Connected Devices
+        },
+      ],
+      rules: {
+        [BUCKET_OTHER_SERVICES]: {
+          activeFields: ['field_2020', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+          rowClass: 'scw-row--services',
+        },
+        [BUCKET_ASSUMPTIONS]: {
+          activeFields: ['field_2020', 'field_1953'],
+          rowClass: 'scw-row--assumptions',
+        },
+      },
+    },
   ];
 
   // ============================================================

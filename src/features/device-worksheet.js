@@ -278,7 +278,7 @@
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'SCW Notes', group: 'fill' },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
           retailPrice:      { key: 'field_1960', type: 'readOnly',    summary: true, label: 'Retail',   group: 'right', groupCls: 'sum-group--retail', readOnlySummary: true },
           quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',      group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           customDiscPct:    { key: 'field_2261', type: 'directEdit',  summary: true, label: 'Disc %',   group: 'right', groupCls: 'sum-group--disc-pct', feeTrigger: true },
@@ -295,7 +295,26 @@
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['laborDescription']
-        }
+        },
+        bucketField: 'field_2219',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Description of Service',
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
       }
     ]
   };
@@ -1470,6 +1489,66 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 @media (max-width: 900px) {
   #view_3332 .${P}-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* view_3586: Product styled as editable field — same as view_3332 */
+#view_3586 td.${P}-sum-product,
+#view_3586 td.${P}-sum-product:hover {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 4px;
+  background: rgba(134, 182, 223, 0.1) !important;
+  padding: 2px 8px;
+  height: auto;
+  min-height: 30px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+#view_3586 td.${P}-sum-product.cell-edit:hover,
+#view_3586 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+  background-color: rgba(134, 182, 223, 0.18) !important;
+  border-color: #93c5fd !important;
+  cursor: pointer;
+}
+#view_3586 td.${P}-sum-product.bulkEditSelectSrc {
+  outline-offset: 1px;
+  cursor: cell !important;
+  background-color: rgb(255, 253, 204) !important;
+}
+
+/* view_3586 identity — fixed width to match view_3332 */
+#view_3586 .${P}-identity {
+  width: 366px;
+  min-width: 366px;
+  max-width: 366px;
+  flex: 0 0 366px;
+}
+/* view_3586 product group — flex to fill identity; shrinks when bucket chit present */
+#view_3586 .${P}-product-group {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+#view_3586 .${P}-product-group > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
+}
+
+/* view_3586 detail sections grid */
+#view_3586 .${P}-sections {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 900px) {
+  #view_3586 .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
@@ -3040,7 +3119,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     mdfNumber:        '##',
     name:             'Name',
     dropPrefix:       'Drop Prefix',
-    dropNumber:       'Label #'
+    dropNumber:       'Label #',
+    laborDescription: 'Labor\nDesc'
   };
 
   /** Render a single field into a detail section based on its descriptor type. */
@@ -3464,7 +3544,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           var warnNode = warnIcon;
           if (isStacked) {
             var warnWrap = document.createElement('span');
-            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-end;align-self:stretch;';
             var warnSpacer = document.createElement('span');
             warnSpacer.className = P + '-sum-label';
             warnSpacer.innerHTML = '&nbsp;';
