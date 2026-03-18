@@ -7200,7 +7200,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  pointer-events: auto;',
       '}',
 
-      /* ── Normalize ALL KTL + SCW checkboxes to 15px ── */',
+      '/* ── Normalize ALL KTL + SCW checkboxes to 15px ── */',
       '.kn-table thead input.ktlCheckbox[type="checkbox"],',
       '.scw-sa-header-check input[type="checkbox"],',
       '.scw-sa-grp-check input[type="checkbox"] {',
