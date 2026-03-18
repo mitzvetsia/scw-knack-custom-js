@@ -21,8 +21,7 @@ window.SCW = window.SCW || {};
 
 // ── Authenticated Knack AJAX wrapper ─────────────────────────
 // Detects 401/403 "Invalid token" responses and shows a
-// non-intrusive reload toast so the user can re-authenticate
-// without a full logout / login cycle.
+// non-intrusive toast prompting the user to log out and back in.
 (function (namespace) {
   var TOAST_ID = 'scw-session-toast';
   var _toastVisible = false;
@@ -34,8 +33,8 @@ window.SCW = window.SCW || {};
     var el = document.createElement('div');
     el.id = TOAST_ID;
     el.innerHTML =
-      '<span>Session expired &mdash; save failed.</span>' +
-      '<button id="scw-session-reload">Reload page</button>' +
+      '<span>Session expired &mdash; save failed. Please log out and back in.</span>' +
+      '<button id="scw-session-logout">Log out now</button>' +
       '<button id="scw-session-dismiss">&times;</button>';
 
     var css =
@@ -44,7 +43,7 @@ window.SCW = window.SCW || {};
         'display:flex;align-items:center;gap:12px;' +
         'background:#b91c1c;color:#fff;padding:12px 20px;border-radius:8px;' +
         'font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.35);}' +
-      '#scw-session-reload{' +
+      '#scw-session-logout{' +
         'background:#fff;color:#b91c1c;border:none;border-radius:4px;' +
         'padding:6px 14px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;}' +
       '#scw-session-dismiss{' +
@@ -57,8 +56,9 @@ window.SCW = window.SCW || {};
 
     document.body.appendChild(el);
 
-    document.getElementById('scw-session-reload').addEventListener('click', function () {
-      window.location.reload();
+    document.getElementById('scw-session-logout').addEventListener('click', function () {
+      // Navigate to the Knack logout hash — triggers Knack's built-in logout flow
+      window.location.hash = '#logout';
     });
     document.getElementById('scw-session-dismiss').addEventListener('click', function () {
       el.remove();
