@@ -15904,7 +15904,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* ── Non-stacked alignment: push checkbox/chevron/product down by label height ── */
 .${P}-summary:not(.${P}-summary--stacked) td.${P}-sum-check,
 .${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
-  margin-top: 13px;
+  margin-top: 10px;
 }
 /* Non-stacked fill textarea — compact (detail panel is for long edits) */
 .${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
