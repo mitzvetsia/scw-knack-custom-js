@@ -48,6 +48,8 @@
       '.scw-sa-header-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
       '}',
 
       /* identity + chevron placeholder — width set dynamically via JS */
@@ -751,7 +753,9 @@
 
       var td = tr.querySelector('td');
       if (!td) continue;
-      td.insertBefore(checkWrap, td.firstChild);
+      var inner = td.querySelector('.scw-group-inner');
+      var target = inner || td;
+      target.insertBefore(checkWrap, target.firstChild);
 
       (function (checkbox, headerRow) {
         checkbox.addEventListener('click', function (e) {
