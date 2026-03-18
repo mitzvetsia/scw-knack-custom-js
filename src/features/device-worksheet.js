@@ -274,6 +274,7 @@
       },
       {
         viewId: 'view_3586',
+        stackedSummary: false,
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -2936,7 +2937,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     bar.className = P + '-summary';
 
     // Detect stacked labels early — needed for vertical alignment of all elements
-    var hasStackedFields = layout.some(function (n) {
+    // Views can opt out via stackedSummary: false when few right-group fields
+    var hasStackedFields = viewCfg.stackedSummary !== false && layout.some(function (n) {
       var d = fieldDesc(viewCfg, n);
       return d && d.group === 'right' && d.label;
     });
