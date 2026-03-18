@@ -271,6 +271,31 @@
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
+      },
+      {
+        viewId: 'view_3586',
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'SCW Notes', group: 'fill' },
+          retailPrice:      { key: 'field_1960', type: 'readOnly',    summary: true, label: 'Retail',   group: 'right', groupCls: 'sum-group--retail', readOnlySummary: true },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',      group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          customDiscPct:    { key: 'field_2261', type: 'directEdit',  summary: true, label: 'Disc %',   group: 'right', groupCls: 'sum-group--disc-pct', feeTrigger: true },
+          customDiscDlr:    { key: 'field_2262', type: 'directEdit',  summary: true, label: 'Disc $',   group: 'right', groupCls: 'sum-group--disc-dlr', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly',    summary: true, label: 'Applied',  group: 'right', groupCls: 'sum-group--applied', readOnlySummary: true },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+
+          // ── Detail panel ──
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'retailPrice', 'quantity', 'customDiscPct', 'customDiscDlr', 'appliedDiscount', 'lineItemTotal'],
+        detailLayout: {
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['laborDescription']
+        }
       }
     ]
   };

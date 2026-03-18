@@ -11846,7 +11846,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -11873,6 +11873,7 @@ $(".kn-navigation-bar").hide();
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
     'view_3332': 'add-photo-to-sow-line-item',
+    'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2'
   };
@@ -12242,7 +12243,15 @@ $(".kn-navigation-bar").hide();
       '#view_3332 th.field_2446,',
       '#view_3332 td.field_2446,',
       '#view_3332 th.field_2447,',
-      '#view_3332 td.field_2447 {',
+      '#view_3332 td.field_2447,',
+      '#view_3586 th.field_114,',
+      '#view_3586 td.field_114,',
+      '#view_3586 th.field_2445,',
+      '#view_3586 td.field_2445,',
+      '#view_3586 th.field_2446,',
+      '#view_3586 td.field_2446,',
+      '#view_3586 th.field_2447,',
+      '#view_3586 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -12290,7 +12299,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3586': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -13503,6 +13512,14 @@ $(".kn-navigation-bar").hide();
         editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3586',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
       }
     ]
   };
@@ -14537,6 +14554,31 @@ $(".kn-navigation-bar").hide();
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
+      },
+      {
+        viewId: 'view_3586',
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'SCW Notes', group: 'fill' },
+          retailPrice:      { key: 'field_1960', type: 'readOnly',    summary: true, label: 'Retail',   group: 'right', groupCls: 'sum-group--retail', readOnlySummary: true },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',      group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          customDiscPct:    { key: 'field_2261', type: 'directEdit',  summary: true, label: 'Disc %',   group: 'right', groupCls: 'sum-group--disc-pct', feeTrigger: true },
+          customDiscDlr:    { key: 'field_2262', type: 'directEdit',  summary: true, label: 'Disc $',   group: 'right', groupCls: 'sum-group--disc-dlr', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly',    summary: true, label: 'Applied',  group: 'right', groupCls: 'sum-group--applied', readOnlySummary: true },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+
+          // ── Detail panel ──
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'retailPrice', 'quantity', 'customDiscPct', 'customDiscDlr', 'appliedDiscount', 'lineItemTotal'],
+        detailLayout: {
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['laborDescription']
+        }
       }
     ]
   };
