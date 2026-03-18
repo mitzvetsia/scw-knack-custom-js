@@ -14605,19 +14605,20 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-          customDiscDlr:    { key: 'field_2262', type: 'directEdit',  summary: true, label: 'Disc $',   group: 'right', groupCls: 'sum-group--disc-dlr', feeTrigger: true },
           lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
           // ── Detail panel ──
           retailPrice:      { key: 'field_1960', type: 'readOnly' },
           quantity:         { key: 'field_1964', type: 'directEdit', feeTrigger: true },
           customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
           connectedDevice:  { key: 'field_1957', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
-        summaryLayout: ['scwNotes', 'customDiscDlr', 'lineItemTotal'],
+        summaryLayout: ['scwNotes', 'lineItemTotal'],
         detailLayout: {
           left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'connectedDevice', 'mountingHardware'],
           right: ['laborDescription']
@@ -14789,7 +14790,7 @@ td.${P}-sum-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
+  align-self: flex-start;
   flex: 0 0 auto;
   padding: 0 4px !important;
   border: none !important;
@@ -14805,7 +14806,7 @@ td.${P}-sum-check input[type="checkbox"] {
 .${P}-toggle-zone {
   display: flex;
   align-items: center;
-  align-self: center;
+  align-self: flex-start;
   gap: 6px;
   cursor: pointer;
   user-select: none;
