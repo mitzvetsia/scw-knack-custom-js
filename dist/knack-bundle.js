@@ -7199,6 +7199,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  pointer-events: auto;',
       '}',
+
+      /* ── Normalize ALL KTL + SCW checkboxes to 15px ── */',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"],',
+      '.scw-sa-header-check input[type="checkbox"],',
+      '.scw-sa-grp-check input[type="checkbox"] {',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
+      '}',
+
+      /* ── Polish <thead> row — match .scw-sa-header bar look ── */
+      '.kn-table thead th {',
+      '  background: #fafafa;',
+      '  border-bottom: 2px solid #dbdbdb;',
+      '  padding: 8px 10px;',
+      '  font-size: 0.85rem;',
+      '  font-weight: 600;',
+      '  color: #363636;',
+      '  white-space: normal;',
+      '  vertical-align: middle;',
+      '}',
+      '.kn-table thead th .kn-sort {',
+      '  color: #485fc7;',
+      '}',
+      '.kn-table thead th .kn-sort:hover {',
+      '  color: #363636;',
+      '}',
+      '.kn-table thead .ktlCheckboxHeaderCell {',
+      '  text-align: center;',
+      '  vertical-align: middle;',
+      '}',
     ].join('\n');
 
     var el = document.createElement('style');
