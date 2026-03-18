@@ -14599,7 +14599,6 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3586',
-        stackedSummary: false,
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -15897,8 +15896,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 60px;
 }
 .${P}-sum-right .${P}-sum-group--total {
-  width: min-content;
-  min-width: 70px;
+  width: 90px;
+  min-width: 90px;
 }
 
 /* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
@@ -17263,8 +17262,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     bar.className = P + '-summary';
 
     // Detect stacked labels early — needed for vertical alignment of all elements
-    // Views can opt out via stackedSummary: false when few right-group fields
-    var hasStackedFields = viewCfg.stackedSummary !== false && layout.some(function (n) {
+    var hasStackedFields = layout.some(function (n) {
       var d = fieldDesc(viewCfg, n);
       return d && d.group === 'right' && d.label;
     });
