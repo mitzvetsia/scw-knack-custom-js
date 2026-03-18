@@ -209,16 +209,9 @@
       }
     }
 
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function () {
         if (onDone) onDone();

@@ -2177,14 +2177,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
 
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'GET',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'Authorization': Knack.getUserToken()
-      },
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
         console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
@@ -2276,16 +2271,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
         if (feeTrig) refreshViewAfterSave(viewId);
@@ -2431,16 +2419,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
     if (typeof Knack !== 'undefined') {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
         type: 'PUT',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
-        contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
           if (feeTrig) refreshViewAfterSave(viewId);

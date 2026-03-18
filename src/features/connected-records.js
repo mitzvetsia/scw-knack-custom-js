@@ -380,16 +380,9 @@
 
     // Approach 2: Direct scene/view PUT (CORS-safe)
     return new Promise(function (resolve, reject) {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
         type: 'PUT',
-        contentType: 'application/json',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
         data: JSON.stringify(data),
         success: function () { resolve(); },
         error: function (xhr) { reject(new Error('PUT ' + xhr.status)); }
