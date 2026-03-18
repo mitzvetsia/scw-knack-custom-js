@@ -24,7 +24,19 @@ window.SCW = window.SCW || {};
 // non-intrusive toast prompting the user to log out and back in.
 (function (namespace) {
   var TOAST_ID = 'scw-session-toast';
+  var RETURN_KEY = 'scw-session-return';
   var _toastVisible = false;
+
+  /** After login, redirect back to the page the user was on. */
+  function checkReturnRedirect() {
+    var returnHash = sessionStorage.getItem(RETURN_KEY);
+    if (returnHash && window.location.hash !== '#logout') {
+      sessionStorage.removeItem(RETURN_KEY);
+      window.location.hash = returnHash;
+    }
+  }
+  // Run on load — if we're returning from a re-login, restore the page
+  checkReturnRedirect();
 
   function showSessionToast() {
     if (_toastVisible) return;
@@ -34,7 +46,7 @@ window.SCW = window.SCW || {};
     el.id = TOAST_ID;
     el.innerHTML =
       '<span>Session expired &mdash; save failed. Please log out and back in.</span>' +
-      '<button id="scw-session-logout">Log out now</button>' +
+      '<button id="scw-session-logout">Log out &amp; come back</button>' +
       '<button id="scw-session-dismiss">&times;</button>';
 
     var css =
@@ -57,7 +69,8 @@ window.SCW = window.SCW || {};
     document.body.appendChild(el);
 
     document.getElementById('scw-session-logout').addEventListener('click', function () {
-      // Navigate to the Knack logout hash — triggers Knack's built-in logout flow
+      // Save current page so we can return after re-login
+      sessionStorage.setItem(RETURN_KEY, window.location.hash);
       window.location.hash = '#logout';
     });
     document.getElementById('scw-session-dismiss').addEventListener('click', function () {
