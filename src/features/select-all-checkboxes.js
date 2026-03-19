@@ -163,9 +163,12 @@
       '.kn-table thead input.ktlCheckbox[type="checkbox"],',
       '.kn-table tbody input.ktlCheckbox-row[type="checkbox"],',
       '.scw-sa-header-check input[type="checkbox"],',
-      '.scw-sa-grp-check input[type="checkbox"] {',
+      '.scw-sa-grp-check input[type="checkbox"],',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"] {',
       '  width: 15px !important;',
       '  height: 15px !important;',
+      '  appearance: auto !important;',
+      '  -webkit-appearance: checkbox !important;',
       '}',
 
       /* ── Polish <thead> row — match .scw-sa-header bar look ── */
