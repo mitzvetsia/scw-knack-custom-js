@@ -137,6 +137,19 @@ window.SCW = window.SCW || {};
     return Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
            '/views/' + viewId + '/records/' + recordId;
   };
+
+  // ── Global 401/403 interceptor ──
+  // Catches auth failures from ANY jQuery AJAX call (including KTL bulk ops)
+  // and shows the session-expired toast.
+  $(document).ajaxError(function (event, xhr, settings) {
+    if (xhr.status === 401 || xhr.status === 403) {
+      var url = settings.url || '';
+      // Only intercept Knack API calls
+      if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
+        showSessionToast();
+      }
+    }
+  });
 })(window.SCW);
 // ============================================================
 // Preserve scroll position + coordinated post-edit restoration
