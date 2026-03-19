@@ -12387,7 +12387,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3586': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3586': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
