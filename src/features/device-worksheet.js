@@ -318,6 +318,44 @@
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
+      },
+      {
+        viewId: 'view_3588',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', detailGrid: '1fr 1fr 1fr' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior<br>Chit' },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel – left (pricing) ──
+          retailPrice:      { key: 'field_2150', type: 'readOnly' },
+          quantity:         { key: 'field_1965', type: 'directEdit', feeTrigger: true },
+          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_1960', type: 'readOnly' },
+
+          // ── Detail panel – center (identity) ──
+          dropPrefix:       { key: 'field_2240', type: 'directEdit' },
+          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+
+          // ── Detail panel – right ──
+          dropLength:       { key: 'field_2035', type: 'readOnly' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+        detailLayout: {
+          left:   ['retailPrice', 'quantity', 'discountDlr', 'appliedDiscount', 'total'],
+          center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
+          right:  ['dropLength', 'laborDescription']
+        }
       }
     ]
   };
@@ -2856,7 +2894,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var chit = document.createElement('span');
         chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
         chit.setAttribute('data-field', desc.key);
-        chit.innerHTML = 'Existing<br>Cabling';
+        chit.innerHTML = desc.chitLabel || 'Existing<br>Cabling';
         var chitSpan = td.querySelector('span');
         if (chitSpan) { chitSpan.style.display = 'none'; }
         td.textContent = '';
@@ -3105,7 +3143,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     retailPrice:      'Retail Price',
     quantity:         'Qty',
     customDiscPct:    'Custom\nDisc %',
-    appliedDiscount:  'Applied\nDiscount'
+    discountDlr:      'Discount $',
+    appliedDiscount:  'Applied\nDiscount',
+    total:            'Total'
   };
 
   /** Render a single field into a detail section based on its descriptor type. */
@@ -3189,7 +3229,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var sections = document.createElement('div');
     sections.className = P + '-sections';
 
-    var sides = ['left', 'right'];
+    var sides = ['left', 'center', 'right'];
     for (var s = 0; s < sides.length; s++) {
       var side = sides[s];
       var fieldNames = layout[side];
