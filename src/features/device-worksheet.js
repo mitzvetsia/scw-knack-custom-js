@@ -473,7 +473,7 @@ td.${P}-sum-check {
   min-width: 20px;
 }
 td.${P}-sum-check input[type="checkbox"] {
-  margin: 0;
+  margin: 2px 0 0;
   cursor: pointer;
 }
 
@@ -1579,7 +1579,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 /* ── Non-stacked alignment: push checkbox/chevron/product down by label height ── */
 .${P}-summary:not(.${P}-summary--stacked) td.${P}-sum-check,
 .${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 /* Non-stacked fill textarea — compact (detail panel is for long edits) */
 .${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
