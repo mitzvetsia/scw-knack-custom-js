@@ -6625,7 +6625,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         color: #1e293b !important;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
-        padding: 10px 14px !important;
+        padding: 10px 14px 10px 10px !important;
         border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15);
         border-left: 4px solid var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
       }
