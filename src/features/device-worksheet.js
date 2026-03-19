@@ -2808,6 +2808,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       injectSummaryDirectEdit(td, opts.fieldKey);
     }
     group.appendChild(td);
+
+    // Inherit Knack's text-align setting (e.g. center) so the value
+    // AND label honour the column alignment configured in the builder.
+    var tdAlign = td.style.textAlign || getComputedStyle(td).textAlign;
+    if (tdAlign === 'center' || tdAlign === 'right') {
+      group.style.alignItems = 'center';
+    }
+
     parent.appendChild(group);
     return group;
   }
