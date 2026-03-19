@@ -161,6 +161,7 @@
 
       '/* ── Normalize ALL KTL + SCW checkboxes to 15px ── */',
       '.kn-table thead input.ktlCheckbox[type="checkbox"],',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"],',
       '.scw-sa-header-check input[type="checkbox"],',
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  width: 15px !important;',

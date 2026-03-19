@@ -7392,6 +7392,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       '/* ── Normalize ALL KTL + SCW checkboxes to 15px ── */',
       '.kn-table thead input.ktlCheckbox[type="checkbox"],',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"],',
       '.scw-sa-header-check input[type="checkbox"],',
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  width: 15px !important;',
@@ -15004,6 +15005,8 @@ td.${P}-sum-check {
   min-width: 20px;
 }
 td.${P}-sum-check input[type="checkbox"] {
+  width: 15px !important;
+  height: 15px !important;
   margin: 2px 0 0;
   cursor: pointer;
 }
@@ -15626,6 +15629,8 @@ td.${P}-sum-direct-edit {
   width: 100%;
   min-width: 0;
   padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
 }
 td.${P}-sum-direct-edit .${P}-direct-input,
 td.${P}-sum-direct-edit .${P}-direct-textarea {
@@ -17267,8 +17272,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           ldGroup.appendChild(ldLabel);
           td.classList.add(P + '-sum-field');
           td.classList.add(P + '-sum-field--desc');
-          var fillRows = (viewCfg.stackedSummary === false) ? 2 : 4;
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: fillRows });
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -17428,6 +17432,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var identity = document.createElement('span');
     identity.className = P + '-identity';
 
+    // Warning chit — placed before label so it appears at the left of the identity block
+    var warnDesc = fieldDesc(viewCfg, 'warningCount');
+    if (warnDesc) {
+      var warnTd = findCell(tr, warnDesc.key);
+      var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+      if (warnVal > 0) {
+        var warnChit = document.createElement('span');
+        warnChit.className = P + '-warn-chit';
+        warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
+            + Math.round(warnVal);
+        identity.appendChild(warnChit);
+      }
+    }
+
     var labelDesc = fieldDesc(viewCfg, 'label');
     if (labelDesc) {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
@@ -17466,20 +17484,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           prodLabel.className = P + '-sum-label';
           prodLabel.innerHTML = '&nbsp;';
           productGroup.appendChild(prodLabel);
-        }
-
-        // Warning chit
-        var warnDesc = fieldDesc(viewCfg, 'warningCount');
-        if (warnDesc) {
-          var warnTd = findCell(tr, warnDesc.key);
-          var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
-          if (warnVal > 0) {
-            var warnChit = document.createElement('span');
-            warnChit.className = P + '-warn-chit';
-            warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
-              + Math.round(warnVal);
-            productGroup.appendChild(warnChit);
-          }
         }
 
         productTd.classList.add(P + '-sum-product');
