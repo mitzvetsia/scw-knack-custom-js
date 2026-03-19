@@ -14787,7 +14787,7 @@ $(".kn-navigation-bar").hide();
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior<br>Chit' },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
           lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
           move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
@@ -15282,45 +15282,48 @@ td.${P}-sum-move {
   align-items: center;
 }
 
-/* ── Cabling toggle chit (boolean, inline in summary bar) ── */
+/* ── Toggle chit (boolean, inline in summary bar) ── */
 .${P}-cabling-chit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  transition: all 0.15s ease;
   flex-shrink: 0;
   height: 100%;
   box-sizing: border-box;
   vertical-align: middle;
 }
 .${P}-cabling-chit.is-yes {
-  background-color: #1a6b3c;
+  background: #059669;
   color: #ffffff;
-  border-color: #145230;
+  border-color: #047857;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
 }
 .${P}-cabling-chit.is-yes:hover {
-  background-color: #145230;
-  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+  background: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 .${P}-cabling-chit.is-no {
-  background-color: #f9fafb;
-  color: #9ca3af;
+  background: #ffffff;
+  color: #6b7280;
   border-color: #d1d5db;
 }
 .${P}-cabling-chit.is-no:hover {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .${P}-cabling-chit.is-saving {
   opacity: 0.6;
@@ -17272,7 +17275,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           ldGroup.appendChild(ldLabel);
           td.classList.add(P + '-sum-field');
           td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 2 });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -17349,7 +17352,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var chit = document.createElement('span');
         chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
         chit.setAttribute('data-field', desc.key);
-        chit.innerHTML = desc.chitLabel || 'Existing<br>Cabling';
+        chit.innerHTML = desc.chitLabel || 'Existing Cabling';
         var chitSpan = td.querySelector('span');
         if (chitSpan) { chitSpan.style.display = 'none'; }
         td.textContent = '';
