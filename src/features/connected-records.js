@@ -168,6 +168,7 @@
         align-items: center;
         margin-left: 10px;
         flex-shrink: 0;
+        padding-top: 5px;
       }
       .scw-cr-hdr-warning svg {
         width: 18px;
