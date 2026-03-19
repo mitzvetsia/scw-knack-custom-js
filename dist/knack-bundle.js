@@ -12443,8 +12443,8 @@ $(".kn-navigation-bar").hide();
     if (viewId && SOW_VIEWS[viewId]) {
       var sowBase = getBuildSowBasePath();
       if (!sowBase) return '';
-      // sales-portal/scope-of-work-details uses edit-doc-photo; build-sow/build-quote uses edit-photo
-      var editSlug = sowBase.indexOf('scope-of-work-details') !== -1 ? 'edit-doc-photo' : 'edit-photo';
+      // sales-portal/scope-of-work-details uses edit-doc-photo2; build-sow/build-quote uses edit-photo
+      var editSlug = sowBase.indexOf('scope-of-work-details') !== -1 ? 'edit-doc-photo2' : 'edit-photo';
       return sowBase + '/' + editSlug + '/' + photoRecordId;
     }
     var surveyId = getSurveyRequestId();
