@@ -3529,7 +3529,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           var warnNode = warnIcon;
           if (isStacked) {
             var warnWrap = document.createElement('span');
-            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-end;align-self:stretch;';
+            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
             var warnSpacer = document.createElement('span');
             warnSpacer.className = P + '-sum-label';
             warnSpacer.innerHTML = '&nbsp;';
