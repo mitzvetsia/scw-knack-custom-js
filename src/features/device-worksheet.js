@@ -541,7 +541,7 @@ td.${P}-sum-check {
   justify-content: center;
   align-self: flex-start;
   flex: 0 0 auto;
-  padding: 0 4px !important;
+  padding: 5px 4px 0 4px !important;
   border: none !important;
   background: transparent !important;
   min-width: 20px;
