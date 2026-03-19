@@ -777,10 +777,23 @@ td.${P}-sum-field--desc {
   flex-shrink: 0;
 }
 
-/* Labor desc group — fills middle space, pushes right group to far right */
+/* Labor desc group — fills middle space, pushes right group to far right.
+   align-self:stretch makes it match the tallest sibling (e.g. stacked chips). */
 .${P}-sum-group--fill {
   flex: 1 1 auto;
   min-width: 80px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+/* Fill td + textarea stretch to fill the group height */
+.${P}-sum-group--fill td.${P}-sum-direct-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.${P}-sum-group--fill td.${P}-sum-direct-edit .${P}-direct-textarea {
+  flex: 1;
 }
 
 /* Move td sits at the right end */
@@ -1078,7 +1091,7 @@ td.${P}-field-value--notes {
   font-style: italic;
 }
 
-/* ── Radio chips (Mounting Height) ── */
+/* ── Radio chips (Mounting Height / Labor Variables) ── */
 .${P}-radio-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1087,36 +1100,39 @@ td.${P}-field-value--notes {
 }
 .${P}-radio-chip {
   display: inline-block;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.5;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: all 0.15s ease;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #1a6b3c;
+  background: #059669;
   color: #ffffff;
-  border-color: #145230;
+  border-color: #047857;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #145230;
-  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+  background: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 .${P}-radio-chip.is-unselected {
-  background-color: #f9fafb;
-  color: #9ca3af;
+  background: #ffffff;
+  color: #6b7280;
   border-color: #d1d5db;
 }
 .${P}-radio-chip.is-unselected:hover {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .${P}-radio-chip.is-saving {
   opacity: 0.6;
@@ -1489,9 +1505,9 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
   margin-top: 12px;
 }
-/* Non-stacked fill textarea — match product field height, grow for extra text */
+/* Non-stacked fill textarea — stretches to match tallest sibling, grows for extra text */
 .${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
-  min-height: 28px;
+  min-height: 24px;
   max-height: none;
 }
 
@@ -2817,7 +2833,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           ldGroup.appendChild(ldLabel);
           td.classList.add(P + '-sum-field');
           td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 2 });
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
