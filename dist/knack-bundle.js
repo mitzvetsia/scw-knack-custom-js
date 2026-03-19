@@ -15109,6 +15109,22 @@ td.${P}-sum-check input[type="checkbox"] {
   color: #6b7280;
 }
 
+/* Fixed-width warning slot between chevron and identity — always present */
+.${P}-warn-slot {
+  flex: 0 0 18px;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+.${P}-warn-slot:empty {
+  visibility: hidden;
+}
+.${P}-warn-slot .scw-cr-hdr-warning {
+  margin-left: 0;
+}
+
 /* Label + Product identity block */
 .${P}-identity {
   display: flex;
@@ -17511,6 +17527,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       toggleZone.appendChild(chevron);
     }
 
+    // Fixed-width warning slot — always present so layout never shifts
+    var warnSlot = document.createElement('span');
+    warnSlot.className = P + '-warn-slot';
+    if (hasStackedFields) {
+      var slotWrap = document.createElement('span');
+      slotWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var slotSpacer = document.createElement('span');
+      slotSpacer.className = P + '-sum-label';
+      slotSpacer.innerHTML = '&nbsp;';
+      slotWrap.appendChild(slotSpacer);
+      slotWrap.appendChild(warnSlot);
+      toggleZone.appendChild(slotWrap);
+    } else {
+      toggleZone.appendChild(warnSlot);
+    }
+
     var identity = document.createElement('span');
     identity.className = P + '-identity';
 
@@ -18082,9 +18114,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (detail) card.appendChild(detail);
 
     // ── Accessory mismatch header warning ──
-    // If any connected-records widget flagged a warning, add icon to summary row.
-    // Prefer the label cell (view_3313); when no label cell exists (view_3332),
-    // insert as a standalone element in the identity, before the product group.
+    // If any connected-records widget flagged a warning, place icon in the
+    // fixed-width warn-slot (between chevron and identity) so it never shifts layout.
     var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
     for (var w = 0; w < crWidgets.length; w++) {
       var parentField = crWidgets[w].parentElement;
@@ -18094,32 +18125,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
         warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
 
-        var labelCell = card.querySelector('td.' + P + '-sum-label-cell');
-        if (labelCell) {
-          // view_3313 style: append to label cell
-          labelCell.appendChild(warnIcon);
-        } else {
-          // view_3332 style: insert before product group in identity
-          var identityEl = card.querySelector('.' + P + '-identity');
-          var productGroupEl = card.querySelector('.' + P + '-product-group');
-          var isStacked = card.querySelector('.' + P + '-summary--stacked');
-          var warnNode = warnIcon;
-          if (isStacked) {
-            var warnWrap = document.createElement('span');
-            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-            var warnSpacer = document.createElement('span');
-            warnSpacer.className = P + '-sum-label';
-            warnSpacer.innerHTML = '&nbsp;';
-            warnWrap.appendChild(warnSpacer);
-            warnWrap.appendChild(warnIcon);
-            warnNode = warnWrap;
-          }
-          if (identityEl && productGroupEl) {
-            identityEl.insertBefore(warnNode, productGroupEl);
-          } else if (identityEl) {
-            identityEl.appendChild(warnNode);
-          }
-        }
+        var slot = card.querySelector('.' + P + '-warn-slot');
+        if (slot) slot.appendChild(warnIcon);
         break;
       }
     }
