@@ -15101,6 +15101,7 @@ td.${P}-sum-check input[type="checkbox"] {
   color: #9ca3af;
   transition: transform 200ms ease, color 150ms ease;
   transform: rotate(0deg);
+  padding-top: 5px;
 }
 .${P}-chevron.${P}-collapsed {
   transform: rotate(0deg);
