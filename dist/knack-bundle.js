@@ -13821,7 +13821,8 @@ $(".kn-navigation-bar").hide();
       }
 
       /* Hide parent-connection field on add-accessory form before JS runs */
-      #view_3580 #kn-input-field_2464 {
+      #view_3580 #kn-input-field_2464,
+      #view_3590 #kn-input-field_2464 {
         display: none !important;
       }
     `;
@@ -14352,33 +14353,38 @@ $(".kn-navigation-bar").hide();
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
 
-  $(document).on('knack-view-render.view_3580', function (event, view, data) {
-    var hash = window.location.hash || '';
-    // URL: #.../add-accessory-line-item/{parentRecordId}
-    var match = hash.match(/add-accessory-line-item\/([a-f0-9]{24})/);
-    if (!match) return;
+  function initAddAccessoryForm(viewId) {
+    $(document).on('knack-view-render.' + viewId, function (event, view, data) {
+      var hash = window.location.hash || '';
+      // URL: #.../add-accessory-line-item/{parentRecordId} or add-accessory-line-item2/...
+      var match = hash.match(/add-accessory-line-item[2]?\/([a-f0-9]{24})/);
+      if (!match) return;
 
-    var parentId = match[1];
+      var parentId = match[1];
 
-    setTimeout(function () {
-      // field_2464 is a Chosen.js connection select — set the <select> value,
-      // update the hidden connection input, and trigger Chosen to refresh.
-      var $select = $('#view_3580-field_2464');
-      var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
+      setTimeout(function () {
+        // field_2464 is a Chosen.js connection select — set the <select> value,
+        // update the hidden connection input, and trigger Chosen to refresh.
+        var $select = $('#' + viewId + '-field_2464');
+        var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
 
-      $select.val(parentId);
-      $select.trigger('chosen:updated');
-      $select.trigger('liszt:updated');
-      $hidden.val(parentId);
-      $select.trigger('change');
-    }, 1);
+        $select.val(parentId);
+        $select.trigger('chosen:updated');
+        $select.trigger('liszt:updated');
+        $hidden.val(parentId);
+        $select.trigger('change');
+      }, 1);
 
-    // On form submit, trigger the scroll/accordion preservation pipeline
-    // so the parent page restores accordion state after Knack re-renders.
-    $('#view_3580 form').off('submit.scwCR').on('submit.scwCR', function () {
-      $(document).trigger('knack-cell-update.scwScrollPreserve');
+      // On form submit, trigger the scroll/accordion preservation pipeline
+      // so the parent page restores accordion state after Knack re-renders.
+      $('#' + viewId + ' form').off('submit.scwCR').on('submit.scwCR', function () {
+        $(document).trigger('knack-cell-update.scwScrollPreserve');
+      });
     });
-  });
+  }
+
+  initAddAccessoryForm('view_3580');
+  initAddAccessoryForm('view_3590');
 
   // ============================================================
   // PUBLIC API
