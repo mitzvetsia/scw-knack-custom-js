@@ -15166,16 +15166,12 @@ td.${P}-sum-field {
   color: #374151;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  background: #fff;
+  background: rgba(134, 182, 223, 0.1);
   white-space: nowrap;
   height: 30px;
   min-width: 40px;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
-}
-td.${P}-sum-field.cell-edit,
-td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgba(134, 182, 223, 0.1);
 }
 td.${P}-sum-field.cell-edit:hover,
 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
@@ -15195,7 +15191,7 @@ td.${P}-sum-field-ro {
   align-items: center;
   position: relative;
   padding: 2px 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
   border: none !important;
@@ -15908,7 +15904,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 /* Read-only total in stacked pair — match Fee value size, centered */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
   padding: 0 4px !important;
@@ -15943,10 +15939,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
   margin-top: 12px;
 }
-/* Non-stacked fill textarea — compact (detail panel is for long edits) */
+/* Non-stacked fill textarea — match product field height, grow for extra text */
 .${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
   min-height: 28px;
-  max-height: 60px;
+  max-height: none;
 }
 
 /* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
