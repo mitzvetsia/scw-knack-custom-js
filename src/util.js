@@ -132,15 +132,33 @@ window.SCW = window.SCW || {};
   };
 
   // ── Global 401/403 interceptor ──
-  // Catches auth failures from ANY jQuery AJAX call (including KTL bulk ops)
+  // Catches auth failures from ANY AJAX/fetch call (including KTL bulk ops)
   // and shows the session-expired toast.
+
+  // 1) jQuery $.ajax errors
   $(document).ajaxError(function (event, xhr, settings) {
     if (xhr.status === 401 || xhr.status === 403) {
       var url = settings.url || '';
-      // Only intercept Knack API calls
       if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
         showSessionToast();
       }
     }
   });
+
+  // 2) fetch() errors — KTL uses fetch for bulk delete/write operations
+  var _origFetch = window.fetch;
+  if (typeof _origFetch === 'function') {
+    window.fetch = function scwFetchInterceptor(input, init) {
+      return _origFetch.apply(this, arguments).then(function (response) {
+        if (response.status === 401 || response.status === 403) {
+          var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+          if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
+            console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
+            showSessionToast();
+          }
+        }
+        return response;
+      });
+    };
+  }
 })(window.SCW);
