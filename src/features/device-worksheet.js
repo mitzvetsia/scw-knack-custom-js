@@ -50,10 +50,21 @@
   //   (label and product are handled structurally by the toggle zone)
   // detailLayout  – { left: [...], right: [...] } for detail panel columns
   //
+  // ── Layout defaults — views only need to specify properties that differ ──
+  var LAYOUT_DEFAULTS = {
+    productGroupWidth: '300px',    // fixed width or 'flex'
+    productGroupLayout: 'row',     // 'row' | 'column'
+    productEditable: false,        // true = editable-field styling on product td
+    identityWidth: null,           // null = auto, or '366px' etc.
+    labelWidth: '80px',            // label td width
+    detailGrid: '1fr 1fr',        // grid-template-columns for detail sections
+  };
+
   var WORKSHEET_CONFIG = {
     views: [
       {
         viewId: 'view_3512',
+        layout: { detailGrid: '455px 1fr' },
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -84,6 +95,7 @@
       },
       {
         viewId: 'view_3505',
+        layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
@@ -127,23 +139,8 @@
         ]
       },
       {
-        viewId: 'view_3559',
-        fields: {
-          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
-
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
-          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
-          surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
-        },
-        summaryLayout: [],
-        detailLayout: {
-          left:  ['mdfIdf', 'mdfNumber', 'name'],
-          right: ['surveyNotes']
-        }
-      },
-      {
-        viewId: 'view_3577',
+        viewIds: ['view_3559', 'view_3577'],
+        layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
@@ -160,6 +157,7 @@
       },
       {
         viewId: 'view_3575',
+        layout: { /* defaults are fine */ },
         comparisonLayout: true,
         fields: {
           // ── Summary row ──
@@ -190,6 +188,7 @@
       },
       {
         viewId: 'view_3313',
+        layout: { productGroupWidth: '280px', productGroupLayout: 'column', productEditable: true },
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -224,6 +223,7 @@
       },
       {
         viewId: 'view_3332',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
@@ -274,6 +274,7 @@
       },
       {
         viewId: 'view_3586',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         stackedSummary: false,
         fields: {
           // ── Summary row ──
@@ -321,9 +322,41 @@
     ]
   };
 
-  // ── Normalise config: compute derived arrays from field descriptors ──
+  // ── Normalise config ──
+  //  1. Expand viewIds → one entry per viewId (shared fields/layout by reference)
+  //  2. Merge layout defaults so every view has a complete layout object
+  //  3. Compute derived arrays (feeTriggerFields, headerTriggerFields)
+
+  // Step 1: Expand viewIds
+  var expandedViews = [];
   WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
-    // Build feeTriggerFields from descriptors
+    var ids = viewCfg.viewIds || (viewCfg.viewId ? [viewCfg.viewId] : []);
+    ids.forEach(function (id) {
+      // Shallow copy so each entry has its own viewId but shares fields etc.
+      var copy = {};
+      for (var k in viewCfg) { if (viewCfg.hasOwnProperty(k)) copy[k] = viewCfg[k]; }
+      copy.viewId = id;
+      delete copy.viewIds;
+      expandedViews.push(copy);
+    });
+  });
+  WORKSHEET_CONFIG.views = expandedViews;
+
+  // Step 2: Merge layout defaults
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+    var merged = {};
+    for (var dk in LAYOUT_DEFAULTS) {
+      if (LAYOUT_DEFAULTS.hasOwnProperty(dk)) merged[dk] = LAYOUT_DEFAULTS[dk];
+    }
+    var src = viewCfg.layout || {};
+    for (var sk in src) {
+      if (src.hasOwnProperty(sk)) merged[sk] = src[sk];
+    }
+    viewCfg.layout = merged;
+  });
+
+  // Step 3: Compute derived arrays from field descriptors
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
     var feeTriggers = [];
     var headerTriggers = [];
     var f = viewCfg.fields;
@@ -552,15 +585,22 @@ td.${P}-sum-check input[type="checkbox"] {
   gap: 4px;
   overflow: hidden;
 }
-#view_3512 .${P}-product-group {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+/* Product group column layout variant */
+.${P}-product-group--column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
 }
-#view_3505 .${P}-product-group {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
+.${P}-product-group--column > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
+}
+/* Product group flex variant (fills identity width) */
+.${P}-product-group--flex {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 .${P}-product-group > td.${P}-sum-product {
   width: auto !important;
@@ -589,18 +629,6 @@ td.${P}-sum-label-cell:hover {
   max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* view_3559 / view_3577: wider label (no product column, label IS the identity) */
-#view_3559 td.${P}-sum-label-cell,
-#view_3559 td.${P}-sum-label-cell:hover,
-#view_3577 td.${P}-sum-label-cell,
-#view_3577 td.${P}-sum-label-cell:hover {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.3;
 }
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
@@ -883,18 +911,8 @@ tr.scw-synth-divider > td {
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
-/* Narrow the Equipment Details (left) section so Survey Details
-   starts roughly aligned with Labor Description in the summary bar. */
-#view_3512 .${P}-sections {
-  grid-template-columns: 455px 1fr;
-}
-#view_3505 .${P}-sections {
-  grid-template-columns: 555px 1fr;
-}
 @media (max-width: 900px) {
-  .${P}-sections,
-  #view_3512 .${P}-sections,
-  #view_3505 .${P}-sections {
+  .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
@@ -1298,10 +1316,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background: #fef3c7;
 }
 
-/* view_3313: Product styled as an editable field — same treatment as
-   td.sum-field so it blends with the summary bar background */
-#view_3313 td.${P}-sum-product,
-#view_3313 td.${P}-sum-product:hover {
+/* ── Product editable styling (shared class, applied via layout.productEditable) ── */
+td.${P}-sum-product--editable,
+td.${P}-sum-product--editable:hover {
   font-size: 13px;
   font-weight: 500;
   color: #374151;
@@ -1309,44 +1326,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   border-radius: 4px;
   background: rgba(134, 182, 223, 0.1) !important;
   padding: 2px 8px;
-  height: 30px;
+  height: auto;
+  min-height: 30px;
   width: 100%;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
-#view_3313 td.${P}-sum-product.cell-edit:hover,
-#view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+td.${P}-sum-product--editable.cell-edit:hover,
+td.${P}-sum-product--editable.ktlInlineEditableCellsStyle:hover {
   background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
-#view_3313 td.${P}-sum-product.bulkEditSelectSrc {
+td.${P}-sum-product--editable.bulkEditSelectSrc {
   outline-offset: 1px;
   cursor: cell !important;
   background-color: rgb(255, 253, 204) !important;
-}
-/* Product group width for view_3575 (matches view_3512) */
-#view_3575 .${P}-product-group {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
-}
-
-/* ================================================================
-   VIEW 3313 – SOW Build worksheet
-   ================================================================ */
-/* Product group as column layout to align with editable fields */
-#view_3313 .${P}-product-group {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3313 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
 }
 
 
@@ -1398,16 +1393,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 80px;
 }
 
-/* view_3313 detail sections grid */
-#view_3313 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3313 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 900px) {
   .${P}-comp {
     grid-template-columns: 90px 1fr 1fr;
@@ -1438,125 +1423,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   width: 100%;
 }
 
-/* view_3332: Product styled as editable field — same as view_3313 */
-#view_3332 td.${P}-sum-product,
-#view_3332 td.${P}-sum-product:hover {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  border: 1px solid #e5e7eb !important;
-  border-radius: 4px;
-  background: rgba(134, 182, 223, 0.1) !important;
-  padding: 2px 8px;
-  height: auto;
-  min-height: 30px;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.15s, background-color 0.15s;
-}
-#view_3332 td.${P}-sum-product.cell-edit:hover,
-#view_3332 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
-  background-color: rgba(134, 182, 223, 0.18) !important;
-  border-color: #93c5fd !important;
-  cursor: pointer;
-}
-#view_3332 td.${P}-sum-product.bulkEditSelectSrc {
-  outline-offset: 1px;
-  cursor: cell !important;
-  background-color: rgb(255, 253, 204) !important;
-}
-
-/* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
-#view_3332 .${P}-identity {
-  width: 366px;
-  min-width: 366px;
-  max-width: 366px;
-  flex: 0 0 366px;
-}
-/* view_3332 product group — flex to fill identity; shrinks when bucket chit present */
-#view_3332 .${P}-product-group {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3332 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
-}
-
-/* view_3332 detail sections grid */
-#view_3332 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3332 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* view_3586: Product styled as editable field — same as view_3332 */
-#view_3586 td.${P}-sum-product,
-#view_3586 td.${P}-sum-product:hover {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  border: 1px solid #e5e7eb !important;
-  border-radius: 4px;
-  background: rgba(134, 182, 223, 0.1) !important;
-  padding: 2px 8px;
-  height: auto;
-  min-height: 30px;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.15s, background-color 0.15s;
-}
-#view_3586 td.${P}-sum-product.cell-edit:hover,
-#view_3586 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
-  background-color: rgba(134, 182, 223, 0.18) !important;
-  border-color: #93c5fd !important;
-  cursor: pointer;
-}
-#view_3586 td.${P}-sum-product.bulkEditSelectSrc {
-  outline-offset: 1px;
-  cursor: cell !important;
-  background-color: rgb(255, 253, 204) !important;
-}
-
-/* view_3586 identity — fixed width to match view_3332 */
-#view_3586 .${P}-identity {
-  width: 366px;
-  min-width: 366px;
-  max-width: 366px;
-  flex: 0 0 366px;
-}
-/* view_3586 product group — flex to fill identity; shrinks when bucket chit present */
-#view_3586 .${P}-product-group {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3586 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
-}
-
-/* view_3586 detail sections grid */
-#view_3586 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3586 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
-}
 /* view_3586 right-group widths — compact to leave room for SCW Notes fill */
 .${P}-sum-right .${P}-sum-group--retail {
   width: min-content;
@@ -1619,6 +1485,58 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   max-width: none;
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
+
+/* ══════════════════════════════════════════════════════════════════
+   AUTO-GENERATED PER-VIEW LAYOUT RULES
+   Driven by the layout block in each WORKSHEET_CONFIG entry.
+   ══════════════════════════════════════════════════════════════════ */
+${WORKSHEET_CONFIG.views.map(function (v) {
+  var id = v.viewId;
+  var L = v.layout;
+  var rules = [];
+
+  // ── Product group width ──
+  if (L.productGroupWidth && L.productGroupWidth !== 'flex') {
+    var w = L.productGroupWidth;
+    rules.push(
+      '#' + id + ' .' + P + '-product-group {' +
+      ' width: ' + w + '; min-width: ' + w + '; max-width: ' + w + '; }'
+    );
+  }
+
+  // ── Label width (when non-default) ──
+  if (L.labelWidth && L.labelWidth !== LAYOUT_DEFAULTS.labelWidth) {
+    rules.push(
+      '#' + id + ' td.' + P + '-sum-label-cell,' +
+      '#' + id + ' td.' + P + '-sum-label-cell:hover {' +
+      ' width: ' + L.labelWidth + '; min-width: ' + L.labelWidth + '; max-width: ' + L.labelWidth + ';' +
+      ' white-space: normal; word-break: break-word; line-height: 1.3; }'
+    );
+  }
+
+  // ── Identity width ──
+  if (L.identityWidth) {
+    var iw = L.identityWidth;
+    rules.push(
+      '#' + id + ' .' + P + '-identity {' +
+      ' width: ' + iw + '; min-width: ' + iw + '; max-width: ' + iw + '; flex: 0 0 ' + iw + '; }'
+    );
+  }
+
+  // ── Detail grid columns (when non-default) ──
+  if (L.detailGrid && L.detailGrid !== LAYOUT_DEFAULTS.detailGrid) {
+    rules.push(
+      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + L.detailGrid + '; }'
+    );
+    rules.push(
+      '@media (max-width: 900px) { #' + id + ' .' + P + '-sections { grid-template-columns: 1fr; } }'
+    );
+  }
+
+  return rules.length
+    ? '/* ── ' + id + ' (auto-generated) ── */\n' + rules.join('\n')
+    : '';
+}).filter(Boolean).join('\n\n')}
 `;
 
     var style = document.createElement('style');
@@ -3041,6 +2959,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
+        // Apply layout-driven classes
+        var pgLayout = viewCfg.layout || {};
+        if (pgLayout.productGroupLayout === 'column') {
+          productGroup.classList.add(P + '-product-group--column');
+        }
+        if (pgLayout.productGroupWidth === 'flex') {
+          productGroup.classList.add(P + '-product-group--flex');
+        }
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
@@ -3068,6 +2994,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         }
 
         productTd.classList.add(P + '-sum-product');
+        if (pgLayout.productEditable) {
+          productTd.classList.add(P + '-sum-product--editable');
+        }
         productGroup.appendChild(productTd);
         identity.appendChild(productGroup);
       }
