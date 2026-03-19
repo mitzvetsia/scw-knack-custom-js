@@ -391,6 +391,8 @@
     if (!$cell.children('.scw-group-inner').length) {
       $cell.wrapInner('<div class="scw-group-inner"></div>');
     }
+    // Strip Knack's inline padding-left so our CSS rules control it
+    $cell[0] && $cell[0].style.removeProperty('padding-left');
     // Fix colspan="0" — HTML5 treats 0 as 1, breaking full-row span.
     // Recalculate from thead every time since Knack may re-render rows.
     var table = $tr.closest('table')[0];
