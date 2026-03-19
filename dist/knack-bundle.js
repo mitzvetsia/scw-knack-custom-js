@@ -12416,13 +12416,14 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * Extract the build-sow base path from the current URL hash.
+   * Extract the build-sow/build-quote base path from the current URL hash.
    * URL pattern: #team-calendar/project-dashboard/{id}/build-sow/{id}/...
-   * Returns the full base path up to and including build-sow/{id}, or ''.
+   *          or: #team-calendar/project-dashboard/{id}/build-quote/{id}/...
+   * Returns the full base path up to and including build-sow/{id} (or build-quote/{id}), or ''.
    */
   function getBuildSowBasePath() {
     var hash = window.location.hash || '';
-    var match = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-sow\/[a-f0-9]{24})/);
+    var match = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/);
     return match ? match[1] : '';
   }
 
