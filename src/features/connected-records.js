@@ -32,6 +32,17 @@
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
+        itemSlug: 'add-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3588',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item2',
+        editSlug: 'add-photo-to-sow-line-item2',
+        itemSlug: 'add-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       }
@@ -692,9 +703,22 @@
         item.className = 'scw-cr-item';
 
         var linkEl;
-        if (links[i].href) {
+        var itemHref = links[i].href;
+
+        // Rewrite item href when itemSlug is configured
+        if (cfg.itemSlug && links[i].recordId) {
+          if (itemHref) {
+            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → add-accessory-line-item2)
+            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})$/, '/' + cfg.itemSlug + '/$1');
+          } else if (addUrl) {
+            // Construct from addUrl by swapping in the accessory record ID
+            itemHref = addUrl.replace(/[a-f0-9]{24}$/, links[i].recordId);
+          }
+        }
+
+        if (itemHref) {
           linkEl = document.createElement('a');
-          linkEl.href = links[i].href;
+          linkEl.href = itemHref;
         } else {
           linkEl = document.createElement('span');
         }

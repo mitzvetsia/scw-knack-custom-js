@@ -958,11 +958,9 @@ tr.scw-synth-divider > td {
 /* ── Individual section ── */
 .${P}-section {
   padding: 14px 20px 14px 16px;
-  border-right: 1px solid #e5e7eb;
   min-width: 0;
 }
 .${P}-section:last-child {
-  border-right: none;
 }
 
 .${P}-section-title {

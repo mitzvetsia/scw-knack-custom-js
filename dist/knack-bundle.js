@@ -13606,6 +13606,17 @@ $(".kn-navigation-bar").hide();
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
+        itemSlug: 'add-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3588',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item2',
+        editSlug: 'add-photo-to-sow-line-item2',
+        itemSlug: 'add-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       }
@@ -14266,9 +14277,22 @@ $(".kn-navigation-bar").hide();
         item.className = 'scw-cr-item';
 
         var linkEl;
-        if (links[i].href) {
+        var itemHref = links[i].href;
+
+        // Rewrite item href when itemSlug is configured
+        if (cfg.itemSlug && links[i].recordId) {
+          if (itemHref) {
+            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → add-accessory-line-item2)
+            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})$/, '/' + cfg.itemSlug + '/$1');
+          } else if (addUrl) {
+            // Construct from addUrl by swapping in the accessory record ID
+            itemHref = addUrl.replace(/[a-f0-9]{24}$/, links[i].recordId);
+          }
+        }
+
+        if (itemHref) {
           linkEl = document.createElement('a');
-          linkEl.href = links[i].href;
+          linkEl.href = itemHref;
         } else {
           linkEl = document.createElement('span');
         }
@@ -15329,11 +15353,9 @@ tr.scw-synth-divider > td {
 /* ── Individual section ── */
 .${P}-section {
   padding: 14px 20px 14px 16px;
-  border-right: 1px solid #e5e7eb;
   min-width: 0;
 }
 .${P}-section:last-child {
-  border-right: none;
 }
 
 .${P}-section-title {
