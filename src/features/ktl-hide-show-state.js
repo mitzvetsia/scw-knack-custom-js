@@ -89,6 +89,15 @@
   function restoreIfNeeded(viewKey) {
     if (restoredThisRender[viewKey]) return;
 
+    // Skip views managed by ktl-accordion.js — it has its own
+    // persistence and restoring here would fight it (toggling the
+    // button inverts the state ktl-accordion already set).
+    var btn = document.getElementById('hideShow_' + viewKey + '_button');
+    if (btn && btn.closest('.scw-ktl-accordion')) {
+      restoredThisRender[viewKey] = true;
+      return;
+    }
+
     var saved = loadState(viewKey);
     if (!saved) return; // no saved preference — keep KTL default
 
@@ -103,7 +112,7 @@
 
     // Click the button to toggle to the desired state
     restoredThisRender[viewKey] = true;
-    var $btn = $('#hideShow_' + viewKey + '_button');
+    var $btn = $(btn);
     if ($btn.length) {
       $btn[0].click();
     }

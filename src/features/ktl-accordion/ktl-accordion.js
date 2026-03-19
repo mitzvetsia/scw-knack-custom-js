@@ -491,8 +491,8 @@
   var _btnRefs = {};   // viewKey → current button element
 
   // ── Persistent accordion state ──────────────────────────────
-  // Collapsed viewKeys are stored in sessionStorage so state
-  // survives both inline-edit re-renders AND full page refreshes.
+  // Accordion state is stored in localStorage so it survives
+  // browser close, not just page refreshes.
   // The in-memory _savedCollapsed is still used as a fast-path
   // for the coordinated post-edit restore flow.
 
@@ -500,18 +500,27 @@
   var _savedCollapsed = null;  // transient snapshot for post-edit flow
   var _restoreActive = false;  // suppress syncState during restore window
 
-  /** Read persisted collapsed set from sessionStorage. */
+  // Migrate from sessionStorage → localStorage (one-time)
+  try {
+    var legacy = sessionStorage.getItem(STORAGE_KEY);
+    if (legacy) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch (e) { /* ignore */ }
+
+  /** Read persisted state from localStorage. */
   function loadPersistedState() {
     try {
-      var raw = sessionStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(STORAGE_KEY);
       return raw ? JSON.parse(raw) : {};
     } catch (e) { return {}; }
   }
 
-  /** Write collapsed set to sessionStorage. */
-  function persistState(collapsedMap) {
+  /** Write state to localStorage. */
+  function persistState(stateMap) {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(collapsedMap));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateMap));
     } catch (e) { /* quota / unavailable */ }
   }
 
