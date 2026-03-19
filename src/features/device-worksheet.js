@@ -372,7 +372,10 @@ tr[data-scw-worksheet]:hover {
 tr.${WORKSHEET_ROW} > td:not(.bulkEditSelectedRow),
 tr.${WORKSHEET_ROW}:hover > td:not(.bulkEditSelectedRow),
 tr.scw-inline-photo-row > td,
-tr.scw-inline-photo-row:hover > td,
+tr.scw-inline-photo-row:hover > td {
+  background: #fff !important;
+  background-color: #fff !important;
+}
 tr[data-scw-worksheet] > td:not(.bulkEditSelectedRow),
 tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   background: none !important;
@@ -387,7 +390,7 @@ tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
 
 /* ── Photo row — part of the same visual unit ── */
 tr.scw-inline-photo-row > td {
-  padding: 10px 16px 14px 16px !important;
+  padding: 20px 16px 50px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
 }
@@ -2811,9 +2814,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Inherit Knack's text-align setting (e.g. center) so the value
     // AND label honour the column alignment configured in the builder.
+    // The td uses display:inline-flex (text-align is ignored by flex),
+    // so we translate text-align into the flex equivalents.
     var tdAlign = td.style.textAlign || getComputedStyle(td).textAlign;
     if (tdAlign === 'center' || tdAlign === 'right') {
-      group.style.alignItems = 'center';
+      var flexAlign = tdAlign === 'center' ? 'center' : 'flex-end';
+      group.style.alignItems = flexAlign;         // centers label + td within the group column
+      td.style.justifyContent = flexAlign;        // centers content inside the td (which is width:100%)
+      lbl.style.textAlign = tdAlign;              // centers the label text
     }
 
     parent.appendChild(group);
