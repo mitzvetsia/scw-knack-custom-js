@@ -14833,7 +14833,7 @@ td.${P}-sum-check input[type="checkbox"] {
 /* Clickable toggle zone (chevron + identity) — fixed width so labor desc aligns */
 .${P}-toggle-zone {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   align-self: flex-start;
   gap: 6px;
   cursor: pointer;
