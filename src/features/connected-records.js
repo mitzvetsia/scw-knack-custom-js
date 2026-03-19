@@ -32,7 +32,7 @@
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
-        itemSlug: 'add-accessory-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       },
@@ -42,7 +42,7 @@
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item2',
         editSlug: 'add-photo-to-sow-line-item2',
-        itemSlug: 'add-accessory-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       }
