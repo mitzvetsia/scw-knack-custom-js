@@ -14283,11 +14283,16 @@ $(".kn-navigation-bar").hide();
         // Rewrite item href when itemSlug is configured
         if (cfg.itemSlug && links[i].recordId) {
           if (itemHref) {
-            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → add-accessory-line-item2)
-            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})$/, '/' + cfg.itemSlug + '/$1');
+            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → edit-accessory-line-item2)
+            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})\/?$/, '/' + cfg.itemSlug + '/$1');
           } else if (addUrl) {
             // Construct from addUrl by swapping in the accessory record ID
-            itemHref = addUrl.replace(/[a-f0-9]{24}$/, links[i].recordId);
+            itemHref = addUrl.replace(/[a-f0-9]{24}\/?$/, links[i].recordId);
+          }
+          // Fallback: if regex didn't match, construct from current hash path
+          if (cfg.itemSlug && links[i].recordId && itemHref === links[i].href) {
+            var hashBase = (window.location.hash || '').replace(/\/[^\/]+\/[a-f0-9]{24}\/?$/, '');
+            if (hashBase) itemHref = hashBase + '/' + cfg.itemSlug + '/' + links[i].recordId;
           }
         }
 
