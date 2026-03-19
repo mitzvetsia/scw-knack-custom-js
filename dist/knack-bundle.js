@@ -6651,7 +6651,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         font-size: 14px;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 12px 14px !important;
+        padding: 12px 10px !important;
         border-bottom: none;
         box-shadow: none;
       }
