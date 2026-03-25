@@ -397,7 +397,11 @@
         var g = groups[i];
         var cls = g.className;
 
-        if (cls.indexOf('sum-group--cabling') !== -1) { result.hasCabling = true; continue; }
+        if (cls.indexOf('sum-group--cabling') !== -1) {
+          result.hasCabling = true;
+          result.cablingFields = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
+          continue;
+        }
         if (cls.indexOf('sum-group--move') !== -1) {
           var moveTd = g.querySelector('td[data-field-key]');
           result.hasMove = true;
@@ -612,7 +616,7 @@
     rightSpan.className = 'scw-sa-header-right';
 
     if (layout.hasCabling) {
-      rightSpan.appendChild(buildHeaderCell('Cabling', [], theadMap, bulkVisible, viewKey));
+      rightSpan.appendChild(buildHeaderCell('Cabling', layout.cablingFields || [], theadMap, bulkVisible, viewKey));
     }
 
     for (var r = 0; r < layout.right.length; r++) {

@@ -7630,7 +7630,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var g = groups[i];
         var cls = g.className;
 
-        if (cls.indexOf('sum-group--cabling') !== -1) { result.hasCabling = true; continue; }
+        if (cls.indexOf('sum-group--cabling') !== -1) {
+          result.hasCabling = true;
+          result.cablingFields = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
+          continue;
+        }
         if (cls.indexOf('sum-group--move') !== -1) {
           var moveTd = g.querySelector('td[data-field-key]');
           result.hasMove = true;
@@ -7845,7 +7849,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     rightSpan.className = 'scw-sa-header-right';
 
     if (layout.hasCabling) {
-      rightSpan.appendChild(buildHeaderCell('Cabling', [], theadMap, bulkVisible, viewKey));
+      rightSpan.appendChild(buildHeaderCell('Cabling', layout.cablingFields || [], theadMap, bulkVisible, viewKey));
     }
 
     for (var r = 0; r < layout.right.length; r++) {
@@ -17421,6 +17425,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var isMulti = (desc.type === 'multiChip');
         var chipsGroup = document.createElement('span');
         chipsGroup.className = P + '-sum-group' + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+        chipsGroup.setAttribute('data-scw-fields', desc.key);
         var chipsLabel = document.createElement('span');
         chipsLabel.className = P + '-sum-label';
         chipsLabel.textContent = desc.label || name;
@@ -17462,6 +17467,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         td.setAttribute('data-scw-cabling-src', '1');
         var chitWrap = document.createElement('span');
         chitWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
+        chitWrap.setAttribute('data-scw-fields', desc.key);
         var chitLabel = document.createElement('span');
         chitLabel.className = P + '-sum-label';
         chitLabel.innerHTML = '&nbsp;';

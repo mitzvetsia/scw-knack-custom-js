@@ -2896,6 +2896,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var isMulti = (desc.type === 'multiChip');
         var chipsGroup = document.createElement('span');
         chipsGroup.className = P + '-sum-group' + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+        chipsGroup.setAttribute('data-scw-fields', desc.key);
         var chipsLabel = document.createElement('span');
         chipsLabel.className = P + '-sum-label';
         chipsLabel.textContent = desc.label || name;
@@ -2937,6 +2938,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         td.setAttribute('data-scw-cabling-src', '1');
         var chitWrap = document.createElement('span');
         chitWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
+        chitWrap.setAttribute('data-scw-fields', desc.key);
         var chitLabel = document.createElement('span');
         chitLabel.className = P + '-sum-label';
         chitLabel.innerHTML = '&nbsp;';
