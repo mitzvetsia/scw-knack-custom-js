@@ -17610,6 +17610,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var $rows = $(table).find('tbody > tr');
 
     // ── Hoist colCount — same for every row, no need to recompute ──
+    // Must run BEFORE thead reordering so colspan reflects full column count.
     var headerRow = table.querySelector('thead tr');
     var colCount = 1;
     if (headerRow) {
@@ -17617,6 +17618,72 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var hCells = headerRow.children;
       for (var ci = 0; ci < hCells.length; ci++) {
         colCount += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
+      }
+    }
+
+    // ── Reorder & filter <thead> columns to match summary bar layout ──
+    if (headerRow) {
+      // Build desired field-key order from view config:
+      //   [checkbox] [label] [product] [summaryLayout fields...] [move]
+      var desiredFields = [];
+
+      var _labelDesc = fieldDesc(viewCfg, 'label');
+      if (_labelDesc) desiredFields.push(_labelDesc.key);
+
+      var _productDesc = fieldDesc(viewCfg, 'product');
+      if (_productDesc) desiredFields.push(_productDesc.key);
+
+      var _summaryLayout = viewCfg.summaryLayout || [];
+      for (var si = 0; si < _summaryLayout.length; si++) {
+        var _desc = fieldDesc(viewCfg, _summaryLayout[si]);
+        if (_desc && desiredFields.indexOf(_desc.key) === -1) {
+          desiredFields.push(_desc.key);
+        }
+      }
+
+      var _moveDesc = fieldDesc(viewCfg, 'move');
+      if (_moveDesc) desiredFields.push(_moveDesc.key);
+
+      // Index <th> elements by field key
+      var thByField = {};
+      var checkboxTh = null;
+      var allThs = [];
+      for (var ti = headerRow.children.length - 1; ti >= 0; ti--) {
+        allThs.unshift(headerRow.children[ti]);
+      }
+
+      for (var tj = 0; tj < allThs.length; tj++) {
+        var _th = allThs[tj];
+        if (_th.classList.contains('ktlCheckboxHeaderCell')) {
+          checkboxTh = _th;
+          continue;
+        }
+        // Extract field_XXXX from class list (stop at colon for thumb fields)
+        var _cls = _th.className.split(/\s+/);
+        var _fk = null;
+        for (var tc = 0; tc < _cls.length; tc++) {
+          var _c = _cls[tc];
+          if (_c.indexOf('field_') === 0) {
+            _fk = _c.indexOf(':') !== -1 ? _c.substring(0, _c.indexOf(':')) : _c;
+            break;
+          }
+        }
+        if (_fk) thByField[_fk] = _th;
+      }
+
+      // Hide all non-checkbox <th>s, then show + reorder desired ones
+      for (var tk = 0; tk < allThs.length; tk++) {
+        if (allThs[tk] !== checkboxTh) allThs[tk].style.display = 'none';
+      }
+
+      // Append in desired order: checkbox first, then summary fields
+      if (checkboxTh) headerRow.appendChild(checkboxTh);
+      for (var di = 0; di < desiredFields.length; di++) {
+        var _showTh = thByField[desiredFields[di]];
+        if (_showTh) {
+          _showTh.style.display = '';
+          headerRow.appendChild(_showTh);
+        }
       }
     }
 
