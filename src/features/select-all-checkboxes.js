@@ -169,6 +169,7 @@
    * normally manages via its own change handlers:
    *  - bulkEditSelectedRow class on each row's <td> elements
    *  - KTL's "Delete Selected: N" button text
+   *  - Header column bulk-edit checkboxes visibility
    */
   function syncKtlBulkState(viewEl) {
     var rows = viewEl.querySelectorAll('table.kn-table tbody tr');
@@ -188,15 +189,40 @@
       }
     }
 
+    var checkedCount = viewEl.querySelectorAll(CB_SELECTOR + ':checked').length;
+
     var viewKey = viewEl.id;
     var delBtn = document.getElementById('ktl-bulk-delete-selected-' + viewKey);
     if (delBtn) {
-      var checkedCount = viewEl.querySelectorAll(CB_SELECTOR + ':checked').length;
       if (checkedCount > 0) {
         delBtn.textContent = 'Delete Selected: ' + checkedCount;
         delBtn.style.display = '';
       } else {
         delBtn.style.display = 'none';
+      }
+    }
+
+    syncHeaderCboxVisibility(viewEl, checkedCount > 0);
+  }
+
+  /**
+   * Show or hide the KTL bulkEditHeaderCbox checkboxes in <thead>.
+   * KTL normally manages this via its own master-selector handler, but
+   * our code intercepts those events (stopImmediatePropagation). So we
+   * must replicate header checkbox visibility after any selection change.
+   */
+  function syncHeaderCboxVisibility(viewEl, anyChecked) {
+    var hdrSpans = viewEl.querySelectorAll('thead .table-fixed-label');
+    for (var s = 0; s < hdrSpans.length; s++) {
+      var sp = hdrSpans[s];
+      var hcb = sp.querySelector('.bulkEditHeaderCbox');
+      if (!hcb) continue;
+      if (anyChecked) {
+        sp.classList.add('bulkEditTh');
+        sp.style.display = 'inline-flex';
+      } else {
+        sp.classList.remove('bulkEditTh');
+        sp.style.display = '';
       }
     }
   }
@@ -249,12 +275,14 @@
           syncKtlBulkState(el);
         });
 
-        // Sync master state on any row checkbox change
+        // Sync master state + header checkbox visibility on any row checkbox change
         $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
           if (_bulkOp) return;
           var el = document.getElementById(vKey);
           if (!el) return;
           syncCheckbox(master, findCheckboxes(el));
+          var any = el.querySelectorAll(CB_SELECTOR + ':checked').length > 0;
+          syncHeaderCboxVisibility(el, any);
         });
 
         syncCheckbox(master, findCheckboxes(viewEl));

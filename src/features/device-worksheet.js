@@ -3771,26 +3771,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         headerRow.appendChild(_showTh);
       }
 
-      // ── KTL header checkbox visibility sync ──
-      // KTL only shows bulkEditHeaderCbox when the master selector is used.
-      // Ensure they also appear when group accordion or individual row
-      // checkboxes are checked (e.g. MDF group select-all).
-      $(table).off('change.scwTheadCbox').on('change.scwTheadCbox', 'input.ktlCheckbox', function () {
-        var anyChecked = table.querySelector('tbody input.ktlCheckbox:checked');
-        var hdrSpans = headerRow.querySelectorAll('.table-fixed-label');
-        for (var hi = 0; hi < hdrSpans.length; hi++) {
-          var sp = hdrSpans[hi];
-          var cb = sp.querySelector('.bulkEditHeaderCbox');
-          if (!cb) continue;
-          if (anyChecked) {
-            sp.classList.add('bulkEditTh');
-            sp.style.display = 'inline-flex';
-          } else {
-            sp.classList.remove('bulkEditTh');
-            sp.style.display = '';
-          }
-        }
-      });
     }
 
     // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
