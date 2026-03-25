@@ -17623,26 +17623,65 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Reorder & filter <thead> columns to match summary bar layout ──
     if (headerRow) {
-      // Build desired field-key order from view config:
+      // Width mapping from summary-bar groupCls → pixel width
+      var TH_GROUP_WIDTHS = {
+        'sum-group--narrow':   '50px',
+        'sum-group--sub-bid':  '70px',
+        'sum-group--cat':      '70px',
+        'sum-group--vars':     '100px',
+        'sum-group--fee':      '70px',
+        'sum-group--sow':      '100px',
+        'sum-group--mcb':      '80px',
+        'sum-group--bid':      '70px',
+        'sum-group--qty':      '50px',
+        'sum-group--labor':    '70px',
+        'sum-group--ext':      '70px',
+        'sum-group--total':    '70px'
+      };
+
+      var L = viewCfg.layout;
+
+      // Build desired field-key order + widths + labels from view config:
       //   [checkbox] [label] [product] [summaryLayout fields...] [move]
       var desiredFields = [];
+      var thWidths = {};   // field_key → CSS width
+      var thLabels = {};   // field_key → display label
 
       var _labelDesc = fieldDesc(viewCfg, 'label');
-      if (_labelDesc) desiredFields.push(_labelDesc.key);
+      if (_labelDesc) {
+        desiredFields.push(_labelDesc.key);
+        thWidths[_labelDesc.key] = L.labelWidth || '80px';
+      }
 
       var _productDesc = fieldDesc(viewCfg, 'product');
-      if (_productDesc) desiredFields.push(_productDesc.key);
+      if (_productDesc) {
+        desiredFields.push(_productDesc.key);
+        var pgw = L.productGroupWidth;
+        thWidths[_productDesc.key] = (pgw && pgw !== 'flex') ? pgw : '200px';
+      }
 
       var _summaryLayout = viewCfg.summaryLayout || [];
       for (var si = 0; si < _summaryLayout.length; si++) {
-        var _desc = fieldDesc(viewCfg, _summaryLayout[si]);
-        if (_desc && desiredFields.indexOf(_desc.key) === -1) {
-          desiredFields.push(_desc.key);
+        var _name = _summaryLayout[si];
+        var _desc = fieldDesc(viewCfg, _name);
+        if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
+        desiredFields.push(_desc.key);
+
+        // Store label rename
+        if (_desc.label) thLabels[_desc.key] = _desc.label;
+
+        // Store width from groupCls (skip 'fill' group — let it auto-expand)
+        if (_desc.group === 'fill') continue;
+        if (_desc.groupCls && TH_GROUP_WIDTHS[_desc.groupCls]) {
+          thWidths[_desc.key] = TH_GROUP_WIDTHS[_desc.groupCls];
         }
       }
 
       var _moveDesc = fieldDesc(viewCfg, 'move');
-      if (_moveDesc) desiredFields.push(_moveDesc.key);
+      if (_moveDesc) {
+        desiredFields.push(_moveDesc.key);
+        thWidths[_moveDesc.key] = '40px';
+      }
 
       // Index <th> elements by field key
       var thByField = {};
@@ -17679,12 +17718,50 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Append in desired order: checkbox first, then summary fields
       if (checkboxTh) headerRow.appendChild(checkboxTh);
       for (var di = 0; di < desiredFields.length; di++) {
-        var _showTh = thByField[desiredFields[di]];
-        if (_showTh) {
-          _showTh.style.display = '';
-          headerRow.appendChild(_showTh);
+        var _fKey = desiredFields[di];
+        var _showTh = thByField[_fKey];
+        if (!_showTh) continue;
+
+        _showTh.style.display = '';
+
+        // Apply proportional width from summary bar group sizing
+        var _tw = thWidths[_fKey];
+        if (_tw) {
+          _showTh.style.width = _tw;
+          _showTh.style.minWidth = _tw;
         }
+
+        // Rename label to match summary bar display name
+        var _tl = thLabels[_fKey];
+        if (_tl) {
+          var _labelSpan = _showTh.querySelector('.kn-sort > span');
+          if (!_labelSpan) _labelSpan = _showTh.querySelector('.table-fixed-label > span');
+          if (_labelSpan) _labelSpan.textContent = _tl;
+        }
+
+        headerRow.appendChild(_showTh);
       }
+
+      // ── KTL header checkbox visibility sync ──
+      // KTL only shows bulkEditHeaderCbox when the master selector is used.
+      // Ensure they also appear when group accordion or individual row
+      // checkboxes are checked (e.g. MDF group select-all).
+      $(table).off('change.scwTheadCbox').on('change.scwTheadCbox', 'input.ktlCheckbox', function () {
+        var anyChecked = table.querySelector('tbody input.ktlCheckbox:checked');
+        var hdrSpans = headerRow.querySelectorAll('.table-fixed-label');
+        for (var hi = 0; hi < hdrSpans.length; hi++) {
+          var sp = hdrSpans[hi];
+          var cb = sp.querySelector('.bulkEditHeaderCbox');
+          if (!cb) continue;
+          if (anyChecked) {
+            sp.classList.add('bulkEditTh');
+            sp.style.display = 'inline-flex';
+          } else {
+            sp.classList.remove('bulkEditTh');
+            sp.style.display = '';
+          }
+        }
+      });
     }
 
     // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
