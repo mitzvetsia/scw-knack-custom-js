@@ -1580,7 +1580,6 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   padding: 0 !important;
   border: none !important;
   border-bottom: none !important;
-  background: none !important;
   box-shadow: none !important;
   outline: none !important;
 }
