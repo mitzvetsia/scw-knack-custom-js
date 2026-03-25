@@ -7960,12 +7960,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         cbs[k].checked = shouldCheck;
       }
 
-      // Sync KTL's native <thead> master selector
+      // Sync KTL's native <thead> master selector to match.
+      // Don't fire change events — KTL's handlers would re-toggle
+      // checkboxes we already set, leaving rows in the wrong state.
       var nativeMaster = el.querySelector('thead input.masterSelector');
       if (nativeMaster) nativeMaster.checked = shouldCheck;
-
-      // Fire a single change event so KTL updates its bulk-ops UI
-      if (cbs.length) $(cbs[0]).trigger('change');
 
       _bulkOp = false;
       selectAllCb.indeterminate = false;
@@ -8172,9 +8171,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           for (var k = 0; k < targets.length; k++) {
             targets[k].checked = shouldCheck;
           }
-
-          // Fire a single change event so KTL updates its bulk-ops UI
-          $(targets[0]).trigger('change');
 
           _bulkOp = false;
           checkbox.indeterminate = false;
