@@ -311,6 +311,47 @@
     cb.indeterminate = !allChecked && anyChecked;
   }
 
+  /**
+   * After a bulk .checked assignment, sync KTL's visual state that it
+   * normally manages via its own change handlers:
+   *  - bulkEditSelectedRow class on each row's <td> elements
+   *  - KTL's "Delete Selected: N" button text
+   */
+  function syncKtlBulkState(viewEl) {
+    // 1. Sync bulkEditSelectedRow on each data row's <td> cells
+    var rows = viewEl.querySelectorAll('table.kn-table tbody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      // Skip group headers, totals, and our own header row
+      if (row.classList.contains('kn-table-group') ||
+          row.classList.contains('kn-table-totals') ||
+          row.classList.contains('scw-sa-header-row')) continue;
+
+      var cb = row.querySelector(CB_SELECTOR);
+      var tds = row.querySelectorAll('td');
+      for (var t = 0; t < tds.length; t++) {
+        if (cb && cb.checked) {
+          tds[t].classList.add('bulkEditSelectedRow');
+        } else {
+          tds[t].classList.remove('bulkEditSelectedRow');
+        }
+      }
+    }
+
+    // 2. Update KTL's "Delete Selected: N" button
+    var viewKey = viewEl.id;
+    var delBtn = document.getElementById('ktl-bulk-delete-selected-' + viewKey);
+    if (delBtn) {
+      var checkedCount = viewEl.querySelectorAll(CB_SELECTOR + ':checked').length;
+      if (checkedCount > 0) {
+        delBtn.textContent = 'Delete Selected: ' + checkedCount;
+        delBtn.style.display = '';
+      } else {
+        delBtn.style.display = 'none';
+      }
+    }
+  }
+
   // ───────────────────────────────────────────────
   //  Sort helpers (always fresh DOM lookups via viewKey)
   // ───────────────────────────────────────────────
@@ -735,6 +776,7 @@
 
       _bulkOp = false;
       selectAllCb.indeterminate = false;
+      syncKtlBulkState(el);
       syncHeaderBar(el, viewKey);
     });
 
@@ -944,6 +986,8 @@
 
           var vEl = headerRow.closest('[id^="view_"]');
           if (vEl) {
+            syncKtlBulkState(vEl);
+
             // Sync KTL's native master selector state
             var nativeMaster = vEl.querySelector('thead input.masterSelector');
             if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
