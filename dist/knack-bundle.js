@@ -7683,6 +7683,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     var result = { identity: [], fill: null, rightItems: [] };
 
+    // Label cell (e.g. field_1950) — read-only, sortable, not bulk-editable
+    var labelCell = bar.querySelector('.scw-ws-sum-label-cell');
+    if (labelCell) {
+      var labelField = null;
+      var lcCls = labelCell.className.split(/\s+/);
+      for (var lc = 0; lc < lcCls.length; lc++) {
+        if (lcCls[lc].indexOf('field_') === 0) { labelField = lcCls[lc]; break; }
+      }
+      result.identity.push({ text: 'Label', field: labelField });
+    }
+
     var productCell = bar.querySelector('.scw-ws-sum-product');
     if (productCell) result.identity.push({ text: 'Product', field: productCell.getAttribute('data-field-key') || 'field_1949' });
 
