@@ -585,6 +585,17 @@
   // select-all / group-select to avoid N×syncHeaderBar calls.
   var _bulkOp = false;
 
+  // Debounced syncHeaderBar — coalesces rapid checkbox changes into one sync.
+  var _syncTimer = null;
+  function debouncedSyncHeader(viewKey) {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(function () {
+      _syncTimer = null;
+      var el = document.getElementById(viewKey);
+      if (el) syncHeaderBar(el, viewKey);
+    }, 150);
+  }
+
   /**
    * Build and insert the header bar.
    * Inserts as a <tr> inside the <tbody> so the inner flex container shares
@@ -709,9 +720,20 @@
 
       _bulkOp = true;
       var shouldCheck = selectAllCb.checked;
+
+      // Set .checked directly — avoids per-checkbox event handlers
+      // which caused multi-second delays when KTL handlers fired 37×.
       for (var k = 0; k < cbs.length; k++) {
-        if (cbs[k].checked !== shouldCheck) cbs[k].click();
+        cbs[k].checked = shouldCheck;
       }
+
+      // Sync KTL's native <thead> master selector
+      var nativeMaster = el.querySelector('thead input.masterSelector');
+      if (nativeMaster) nativeMaster.checked = shouldCheck;
+
+      // Fire a single change event so KTL updates its bulk-ops UI
+      if (cbs.length) $(cbs[0]).trigger('change');
+
       _bulkOp = false;
       selectAllCb.indeterminate = false;
       syncHeaderBar(el, viewKey);
@@ -724,10 +746,7 @@
       if (!freshEl) return;
       var cbs = findCheckboxes(freshEl);
       syncCheckbox(selectAllCb, cbs);
-      setTimeout(function () {
-        var el = document.getElementById(viewKey);
-        if (el) syncHeaderBar(el, viewKey);
-      }, 150);
+      debouncedSyncHeader(viewKey);
     });
 
     syncCheckbox(selectAllCb, findCheckboxes(viewEl));
@@ -800,10 +819,7 @@
         if (!freshEl) return;
         var cbs = findCheckboxes(freshEl);
         syncCheckbox(masterCb, cbs);
-        setTimeout(function () {
-          var el = document.getElementById(viewKey);
-          if (el) syncHeaderBar(el, viewKey);
-        }, 150);
+        debouncedSyncHeader(viewKey);
       });
     }
   }
@@ -918,14 +934,24 @@
 
           _bulkOp = true;
           var shouldCheck = checkbox.checked;
+
+          // Set .checked directly — avoids per-checkbox event storms.
           for (var k = 0; k < targets.length; k++) {
-            if (targets[k].checked !== shouldCheck) targets[k].click();
+            targets[k].checked = shouldCheck;
           }
+
+          // Fire a single change event so KTL updates its bulk-ops UI
+          $(targets[0]).trigger('change');
+
           _bulkOp = false;
           checkbox.indeterminate = false;
 
           var vEl = headerRow.closest('[id^="view_"]');
           if (vEl) {
+            // Sync KTL's native master selector state
+            var nativeMaster = vEl.querySelector('thead input.masterSelector');
+            if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
+
             var hBar = findHeaderBar(vEl.id);
             if (hBar) {
               var viewCb = hBar.querySelector('.scw-sa-header-check input[type="checkbox"]');
