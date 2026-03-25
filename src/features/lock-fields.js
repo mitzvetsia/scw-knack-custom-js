@@ -113,14 +113,8 @@
     });
   }
 
-  function applyWithRetries(viewCfg, tries = 12) {
-    let i = 0;
-    (function tick() {
-      i++;
-      applyLocksForView(viewCfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // Capture-phase event killer: blocks Knack’s delegated inline-edit before it runs
   function installCaptureBlockerOnce() {
@@ -154,7 +148,11 @@
     const el = $view.find("table.kn-table-table tbody").get(0);
     if (!el) return;
 
-    const obs = new MutationObserver(() => applyLocksForView(viewCfg));
+    let obsTimer = 0;
+    const obs = new MutationObserver(() => {
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(() => { obsTimer = 0; applyLocksForView(viewCfg); }, 150);
+    });
     obs.observe(el, { childList: true, subtree: true });
   }
 
@@ -260,7 +258,7 @@
     $(document)
       .off(`knack-view-render.${viewId}${EVENT_NS}`)
       .on(`knack-view-render.${viewId}${EVENT_NS}`, function () {
-        applyWithRetries(viewCfg);
+        applyLocksForView(viewCfg);
         installObserver(viewCfg);
         bindTriggers(viewCfg);
       });

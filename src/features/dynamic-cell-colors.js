@@ -205,17 +205,7 @@
     });
   }
 
-  function applyWithRetries(viewCfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyColorsForView(viewCfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
-
-  // Re-apply after KTL / Knack tbody mutations
+  // Re-apply after KTL / Knack tbody mutations (debounced)
   function installObserver(viewCfg) {
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
@@ -225,8 +215,13 @@
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var debounceTimer = 0;
     var obs = new MutationObserver(function () {
-      applyColorsForView(viewCfg);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        debounceTimer = 0;
+        applyColorsForView(viewCfg);
+      }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -240,7 +235,7 @@
     $(document)
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
-        applyWithRetries(viewCfg);
+        applyColorsForView(viewCfg);
         installObserver(viewCfg);
       });
   });

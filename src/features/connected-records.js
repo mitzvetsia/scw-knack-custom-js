@@ -26,6 +26,25 @@
         editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3586',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        itemSlug: 'edit-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3588',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item2',
+        editSlug: 'add-photo-to-sow-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
       }
     ]
   };
@@ -149,6 +168,7 @@
         align-items: center;
         margin-left: 10px;
         flex-shrink: 0;
+        padding-top: 5px;
       }
       .scw-cr-hdr-warning svg {
         width: 18px;
@@ -228,7 +248,8 @@
       }
 
       /* Hide parent-connection field on add-accessory form before JS runs */
-      #view_3580 #kn-input-field_2464 {
+      #view_3580 #kn-input-field_2464,
+      #view_3590 #kn-input-field_2464 {
         display: none !important;
       }
     `;
@@ -380,16 +401,9 @@
 
     // Approach 2: Direct scene/view PUT (CORS-safe)
     return new Promise(function (resolve, reject) {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
         type: 'PUT',
-        contentType: 'application/json',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
         data: JSON.stringify(data),
         success: function () { resolve(); },
         error: function (xhr) { reject(new Error('PUT ' + xhr.status)); }
@@ -691,9 +705,27 @@
         item.className = 'scw-cr-item';
 
         var linkEl;
-        if (links[i].href) {
+        var itemHref = links[i].href;
+
+        // Rewrite item href when itemSlug is configured
+        if (cfg.itemSlug && links[i].recordId) {
+          if (itemHref) {
+            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → edit-accessory-line-item2)
+            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})\/?$/, '/' + cfg.itemSlug + '/$1');
+          } else if (addUrl) {
+            // Construct from addUrl by swapping in the accessory record ID
+            itemHref = addUrl.replace(/[a-f0-9]{24}\/?$/, links[i].recordId);
+          }
+          // Fallback: if regex didn't match, construct from current hash path
+          if (cfg.itemSlug && links[i].recordId && itemHref === links[i].href) {
+            var hashBase = (window.location.hash || '').replace(/\/[^\/]+\/[a-f0-9]{24}\/?$/, '');
+            if (hashBase) itemHref = hashBase + '/' + cfg.itemSlug + '/' + links[i].recordId;
+          }
+        }
+
+        if (itemHref) {
           linkEl = document.createElement('a');
-          linkEl.href = links[i].href;
+          linkEl.href = itemHref;
         } else {
           linkEl = document.createElement('span');
         }
@@ -753,33 +785,38 @@
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
 
-  $(document).on('knack-view-render.view_3580', function (event, view, data) {
-    var hash = window.location.hash || '';
-    // URL: #.../add-accessory-line-item/{parentRecordId}
-    var match = hash.match(/add-accessory-line-item\/([a-f0-9]{24})/);
-    if (!match) return;
+  function initAddAccessoryForm(viewId) {
+    $(document).on('knack-view-render.' + viewId, function (event, view, data) {
+      var hash = window.location.hash || '';
+      // URL: #.../add-accessory-line-item/{parentRecordId} or add-accessory-line-item2/...
+      var match = hash.match(/add-accessory-line-item[2]?\/([a-f0-9]{24})/);
+      if (!match) return;
 
-    var parentId = match[1];
+      var parentId = match[1];
 
-    setTimeout(function () {
-      // field_2464 is a Chosen.js connection select — set the <select> value,
-      // update the hidden connection input, and trigger Chosen to refresh.
-      var $select = $('#view_3580-field_2464');
-      var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
+      setTimeout(function () {
+        // field_2464 is a Chosen.js connection select — set the <select> value,
+        // update the hidden connection input, and trigger Chosen to refresh.
+        var $select = $('#' + viewId + '-field_2464');
+        var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
 
-      $select.val(parentId);
-      $select.trigger('chosen:updated');
-      $select.trigger('liszt:updated');
-      $hidden.val(parentId);
-      $select.trigger('change');
-    }, 1);
+        $select.val(parentId);
+        $select.trigger('chosen:updated');
+        $select.trigger('liszt:updated');
+        $hidden.val(parentId);
+        $select.trigger('change');
+      }, 1);
 
-    // On form submit, trigger the scroll/accordion preservation pipeline
-    // so the parent page restores accordion state after Knack re-renders.
-    $('#view_3580 form').off('submit.scwCR').on('submit.scwCR', function () {
-      $(document).trigger('knack-cell-update.scwScrollPreserve');
+      // On form submit, trigger the scroll/accordion preservation pipeline
+      // so the parent page restores accordion state after Knack re-renders.
+      $('#' + viewId + ' form').off('submit.scwCR').on('submit.scwCR', function () {
+        $(document).trigger('knack-cell-update.scwScrollPreserve');
+      });
     });
-  });
+  }
+
+  initAddAccessoryForm('view_3580');
+  initAddAccessoryForm('view_3590');
 
   // ============================================================
   // PUBLIC API

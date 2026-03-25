@@ -48,6 +48,8 @@
       '.scw-sa-header-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
       '}',
 
       /* identity + chevron placeholder — width set dynamically via JS */
@@ -142,11 +144,7 @@
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
-      '  width: 15px !important;',
-      '  height: 15px !important;',
       '  display: inline-block !important;',
-      '  appearance: auto !important;',
-      '  -webkit-appearance: checkbox !important;',
       '  opacity: 1 !important;',
       '  visibility: visible !important;',
       '  position: static !important;',
@@ -155,6 +153,102 @@
       '.scw-sa-header-check input[type="checkbox"],',
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  pointer-events: auto;',
+      '}',
+
+      '/* ── Normalize ALL KTL + SCW checkboxes to fixed 15px ── */',
+      '/* appearance:none + CSS-drawn box guarantees identical size */',
+      '/* regardless of inherited font-size (collapsed vs expanded). */',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"],',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"],',
+      '.scw-sa-header-check input[type="checkbox"],',
+      '.scw-sa-grp-check input[type="checkbox"],',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"] {',
+      '  appearance: none !important;',
+      '  -webkit-appearance: none !important;',
+      '  -moz-appearance: none !important;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
+      '  min-width: 15px !important;',
+      '  min-height: 15px !important;',
+      '  max-width: 15px !important;',
+      '  max-height: 15px !important;',
+      '  flex-shrink: 0 !important;',
+      '  box-sizing: border-box !important;',
+      '  border: 1.5px solid #9ca3af !important;',
+      '  border-radius: 3px !important;',
+      '  background: #fff !important;',
+      '  cursor: pointer;',
+      '  position: relative !important;',
+      '  vertical-align: middle !important;',
+      '  outline: none !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:checked,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:checked,',
+      '.scw-sa-header-check input[type="checkbox"]:checked,',
+      '.scw-sa-grp-check input[type="checkbox"]:checked,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:checked {',
+      '  background: #07467c !important;',
+      '  border-color: #07467c !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:checked::after,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:checked::after,',
+      '.scw-sa-header-check input[type="checkbox"]:checked::after,',
+      '.scw-sa-grp-check input[type="checkbox"]:checked::after,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:checked::after {',
+      '  content: "" !important;',
+      '  position: absolute !important;',
+      '  left: 4px !important;',
+      '  top: 1px !important;',
+      '  width: 5px !important;',
+      '  height: 9px !important;',
+      '  border: solid #fff !important;',
+      '  border-width: 0 2px 2px 0 !important;',
+      '  transform: rotate(45deg) !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:indeterminate,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:indeterminate,',
+      '.scw-sa-header-check input[type="checkbox"]:indeterminate,',
+      '.scw-sa-grp-check input[type="checkbox"]:indeterminate,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:indeterminate {',
+      '  background: #07467c !important;',
+      '  border-color: #07467c !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:indeterminate::after,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:indeterminate::after,',
+      '.scw-sa-header-check input[type="checkbox"]:indeterminate::after,',
+      '.scw-sa-grp-check input[type="checkbox"]:indeterminate::after,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:indeterminate::after {',
+      '  content: "" !important;',
+      '  position: absolute !important;',
+      '  left: 2px !important;',
+      '  top: 5px !important;',
+      '  width: 9px !important;',
+      '  height: 2px !important;',
+      '  background: #fff !important;',
+      '  border: none !important;',
+      '  transform: none !important;',
+      '}',
+
+      /* ── Polish <thead> row — match .scw-sa-header bar look ── */
+      '.kn-table thead th {',
+      '  background: #fafafa;',
+      '  border-bottom: 2px solid #dbdbdb;',
+      '  padding: 8px 10px;',
+      '  font-size: 0.85rem;',
+      '  font-weight: 600;',
+      '  color: #363636;',
+      '  white-space: normal;',
+      '  vertical-align: middle;',
+      '}',
+      '.kn-table thead th .kn-sort {',
+      '  color: #485fc7;',
+      '}',
+      '.kn-table thead th .kn-sort:hover {',
+      '  color: #363636;',
+      '}',
+      '.kn-table thead .ktlCheckboxHeaderCell {',
+      '  text-align: center;',
+      '  vertical-align: middle;',
       '}',
     ].join('\n');
 
@@ -263,16 +357,21 @@
   //  1) View-level header row
   // ───────────────────────────────────────────────
 
-  function readHeaderLayout(viewEl) {
-    // Find a visible summary bar (first may be inside a collapsed group)
-    var allBars = viewEl.querySelectorAll('.scw-ws-summary');
-    var bar = null;
-    for (var bi = 0; bi < allBars.length; bi++) {
-      if (allBars[bi].getBoundingClientRect().width > 0) {
-        bar = allBars[bi];
-        break;
-      }
+  /** Find the first summary bar in a view.
+   *  Prefers a visible bar but falls back to the first one in the DOM
+   *  so that collapsed accordion views still get a header bar built. */
+  function findVisibleSummary(viewEl) {
+    var bars = viewEl.querySelectorAll('.scw-ws-summary');
+    var first = null;
+    for (var i = 0; i < bars.length; i++) {
+      if (!first) first = bars[i];
+      if (bars[i].offsetParent !== null) return bars[i];
     }
+    return first;
+  }
+
+  function readHeaderLayout(viewEl) {
+    var bar = findVisibleSummary(viewEl);
     if (!bar) return null;
 
     var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
@@ -409,48 +508,53 @@
    * to the header bar cells so columns are perfectly aligned.
    */
   function alignHeaderToSummary(bar, viewEl) {
-    // Find a visible summary bar (first one may be in a collapsed group)
-    var summaries = viewEl.querySelectorAll('.scw-ws-summary');
-    var summary = null;
-    for (var si = 0; si < summaries.length; si++) {
-      if (summaries[si].getBoundingClientRect().width > 0) {
-        summary = summaries[si];
-        break;
-      }
-    }
+    var summary = findVisibleSummary(viewEl);
     if (!summary) return;
 
-    // ── Left side: check + toggle zone → header check + toggle ──
+    // ── PHASE 1: READ all widths (single layout calculation) ──
+    var checkWidth = null;
     var sumCheck = summary.querySelector('.scw-ws-sum-check');
     var hdrCheck = bar.querySelector('.scw-sa-header-check');
     if (sumCheck && hdrCheck) {
-      var cw = sumCheck.getBoundingClientRect().width;
-      hdrCheck.style.width = cw + 'px';
-      hdrCheck.style.minWidth = cw + 'px';
-      hdrCheck.style.flex = '0 0 ' + cw + 'px';
+      checkWidth = sumCheck.getBoundingClientRect().width;
     }
 
+    var toggleWidth = null;
     var sumToggle = summary.querySelector('.scw-ws-toggle-zone');
     var hdrToggle = bar.querySelector('.scw-sa-header-toggle');
     if (sumToggle && hdrToggle) {
-      var tw = sumToggle.getBoundingClientRect().width;
-      hdrToggle.style.width = tw + 'px';
-      hdrToggle.style.minWidth = tw + 'px';
-      hdrToggle.style.flex = '0 0 ' + tw + 'px';
+      toggleWidth = sumToggle.getBoundingClientRect().width;
     }
 
-    // ── Right side: match each group width ──
+    var groupWidths = [];
     var sumRight = summary.querySelector('.scw-ws-sum-right');
     var hdrRight = bar.querySelector('.scw-sa-header-right');
+    var hdrCells = null;
     if (sumRight && hdrRight) {
       var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
-      var hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
+      hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
       for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
-        var gw = sumGroups[i].getBoundingClientRect().width;
-        hdrCells[i].style.width = Math.round(gw) + 'px';
-        hdrCells[i].style.minWidth = Math.round(gw) + 'px';
-        hdrCells[i].style.flex = '0 0 ' + Math.round(gw) + 'px';
+        groupWidths.push(Math.round(sumGroups[i].getBoundingClientRect().width));
       }
+    }
+
+    // ── PHASE 2: WRITE all styles (no interleaved reads) ──
+    if (checkWidth !== null) {
+      hdrCheck.style.width = checkWidth + 'px';
+      hdrCheck.style.minWidth = checkWidth + 'px';
+      hdrCheck.style.flex = '0 0 ' + checkWidth + 'px';
+    }
+
+    if (toggleWidth !== null) {
+      hdrToggle.style.width = toggleWidth + 'px';
+      hdrToggle.style.minWidth = toggleWidth + 'px';
+      hdrToggle.style.flex = '0 0 ' + toggleWidth + 'px';
+    }
+
+    for (var j = 0; j < groupWidths.length; j++) {
+      hdrCells[j].style.width = groupWidths[j] + 'px';
+      hdrCells[j].style.minWidth = groupWidths[j] + 'px';
+      hdrCells[j].style.flex = '0 0 ' + groupWidths[j] + 'px';
     }
   }
 
@@ -744,7 +848,9 @@
 
       var td = tr.querySelector('td');
       if (!td) continue;
-      td.insertBefore(checkWrap, td.firstChild);
+      var inner = td.querySelector('.scw-group-inner');
+      var target = inner || td;
+      target.insertBefore(checkWrap, target.firstChild);
 
       (function (checkbox, headerRow) {
         checkbox.addEventListener('click', function (e) {
@@ -809,40 +915,47 @@
     enhanceGroupHeaders();
   }
 
-  $(document)
-    .off('knack-scene-render.any.scwSelectAll')
-    .on('knack-scene-render.any.scwSelectAll', function () {
-      setTimeout(enhance, 350);
-    });
+  // ── Event-driven triggers ──────────────────────────────
+  //
+  //  Previously this module had 7 blind setTimeout schedules (reduced
+  //  to 5 in a prior pass).  Now we use targeted custom events from the
+  //  modules that actually change the DOM, plus a single short debounce
+  //  for non-worksheet views:
+  //
+  //  1. scw-worksheet-ready  — device-worksheet.js dispatches after
+  //     transformView() completes.  Event-driven, no timer.
+  //  2. scw-post-edit-ready  — preserve-scroll-on-refresh.js dispatches
+  //     after its full post-edit restoration sequence (accordions rebuilt,
+  //     scroll restored).  Replaces the old 1200ms knack-cell-update timer.
+  //  3. knack-view-render    — short 100ms debounce for non-worksheet
+  //     views (plain tables with KTL checkboxes).  100ms is enough since
+  //     these views don't go through transformView().
+  //
+  //  Removed (redundant):
+  //  - knack-scene-render: every view in the scene fires knack-view-render
+  //  - document.ready: Knack fires knack-view-render on initial load
+  //  - knack-cell-update: covered by scw-post-edit-ready event
 
+  // 1. Worksheet views — event-driven, no blind timer
+  document.addEventListener('scw-worksheet-ready', function () {
+    requestAnimationFrame(enhance);
+  });
+
+  // 2. Post-inline-edit — event-driven, replaces 1200ms blind timer
+  document.addEventListener('scw-post-edit-ready', function () {
+    requestAnimationFrame(enhance);
+  });
+
+  // 3. Non-worksheet views — short debounce after view render
+  var _viewRenderTimer = null;
   $(document)
     .off('knack-view-render.any.scwSelectAll')
     .on('knack-view-render.any.scwSelectAll', function () {
-      setTimeout(enhance, 350);
-      setTimeout(enhance, 700);
-      setTimeout(enhance, 1500);
+      if (_viewRenderTimer) clearTimeout(_viewRenderTimer);
+      _viewRenderTimer = setTimeout(function () {
+        _viewRenderTimer = null;
+        enhance();
+      }, 100);
     });
-
-  // After inline edits, the post-edit coordinator rebuilds accordions
-  // and device-worksheet summary bars before our enhance() runs.
-  // Schedule a late rebuild to ensure header bars are restored after
-  // all other features have finished their post-edit work.
-  $(document)
-    .off('knack-cell-update.scwSelectAll')
-    .on('knack-cell-update.scwSelectAll', function () {
-      setTimeout(enhance, 1200);
-      setTimeout(enhance, 2000);
-    });
-
-  var debounceTimer = 0;
-  var obs = new MutationObserver(function () {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(enhance, 300);
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
-
-  $(document).ready(function () {
-    setTimeout(enhance, 500);
-  });
 })();
 /*** END SELECT-ALL CHECKBOXES ***/

@@ -25,6 +25,150 @@ window.SCW = window.SCW || {};
     $(document).off(eventName).on(eventName, handler);
   };
 })(window.SCW);
+
+// ── Authenticated Knack AJAX wrapper ─────────────────────────
+// Detects 401/403 "Invalid token" responses and shows a
+// non-intrusive toast prompting the user to log out and back in.
+(function (namespace) {
+  var TOAST_ID = 'scw-session-toast';
+  var RETURN_KEY = 'scw-session-return';
+  var _toastVisible = false;
+
+  /** After login, redirect back to the page the user was on. */
+  function checkReturnRedirect() {
+    var returnHash = sessionStorage.getItem(RETURN_KEY);
+    if (returnHash && window.location.hash !== '#logout') {
+      sessionStorage.removeItem(RETURN_KEY);
+      window.location.hash = returnHash;
+    }
+  }
+  // Run on load — if we're returning from a re-login, restore the page
+  checkReturnRedirect();
+
+  function showSessionToast() {
+    if (_toastVisible) return;
+    _toastVisible = true;
+
+    var el = document.createElement('div');
+    el.id = TOAST_ID;
+    el.innerHTML =
+      '<span>Session expired &mdash; save failed. Please log out and back in.</span>' +
+      '<button id="scw-session-logout">Log out &amp; come back</button>' +
+      '<button id="scw-session-dismiss">&times;</button>';
+
+    var css =
+      '#' + TOAST_ID + '{' +
+        'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:100000;' +
+        'display:flex;align-items:center;gap:12px;' +
+        'background:#b91c1c;color:#fff;padding:12px 20px;border-radius:8px;' +
+        'font:600 14px/1.3 system-ui,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.35);}' +
+      '#scw-session-logout{' +
+        'background:#fff;color:#b91c1c;border:none;border-radius:4px;' +
+        'padding:6px 14px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;}' +
+      '#scw-session-dismiss{' +
+        'background:none;border:none;color:#fff;font-size:18px;cursor:pointer;' +
+        'padding:0 0 0 4px;line-height:1;}';
+
+    var style = document.createElement('style');
+    style.textContent = css;
+    el.prepend(style);
+
+    document.body.appendChild(el);
+
+    document.getElementById('scw-session-logout').addEventListener('click', function () {
+      // Save current page so we can return after re-login
+      sessionStorage.setItem(RETURN_KEY, window.location.hash);
+      window.location.hash = '#logout';
+    });
+    document.getElementById('scw-session-dismiss').addEventListener('click', function () {
+      el.remove();
+      _toastVisible = false;
+    });
+  }
+
+  /**
+   * SCW.knackAjax(options)
+   *
+   * Drop-in wrapper around $.ajax that:
+   *   1. Auto-adds Knack auth headers
+   *   2. Detects 401/403 auth failures and shows a reload toast
+   *   3. Still calls the caller's error/success callbacks
+   *
+   * Options are the same as $.ajax, except:
+   *   - `headers` are merged with the Knack auth headers (caller wins)
+   *   - An extra `error403` callback can be provided (called on auth failures only)
+   */
+  namespace.knackAjax = function knackAjax(opts) {
+    if (typeof Knack === 'undefined') return;
+
+    var callerError = opts.error;
+
+    var defaults = {
+      contentType: 'application/json',
+      headers: {
+        'X-Knack-Application-Id': Knack.application_id,
+        'x-knack-rest-api-key': 'knack',
+        'Authorization': Knack.getUserToken()
+      }
+    };
+
+    // Merge headers — caller overrides win
+    var merged = $.extend(true, {}, defaults, opts);
+
+    merged.error = function (xhr) {
+      if (xhr.status === 401 || xhr.status === 403) {
+        var body = '';
+        try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
+        if (/invalid token|reauthenticate/i.test(body)) {
+          console.warn('[SCW] Auth expired — prompting reload');
+          showSessionToast();
+        }
+      }
+      if (typeof callerError === 'function') callerError.apply(this, arguments);
+    };
+
+    return $.ajax(merged);
+  };
+
+  /**
+   * Build a standard Knack record URL for a view-based PUT/GET.
+   */
+  namespace.knackRecordUrl = function (viewId, recordId) {
+    return Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+           '/views/' + viewId + '/records/' + recordId;
+  };
+
+  // ── Global 401/403 interceptor ──
+  // Catches auth failures from ANY AJAX/fetch call (including KTL bulk ops)
+  // and shows the session-expired toast.
+
+  // 1) jQuery $.ajax errors
+  $(document).ajaxError(function (event, xhr, settings) {
+    if (xhr.status === 401 || xhr.status === 403) {
+      var url = settings.url || '';
+      if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
+        showSessionToast();
+      }
+    }
+  });
+
+  // 2) fetch() errors — KTL uses fetch for bulk delete/write operations
+  var _origFetch = window.fetch;
+  if (typeof _origFetch === 'function') {
+    window.fetch = function scwFetchInterceptor(input, init) {
+      return _origFetch.apply(this, arguments).then(function (response) {
+        if (response.status === 401 || response.status === 403) {
+          var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+          if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
+            console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
+            showSessionToast();
+          }
+        }
+        return response;
+      });
+    };
+  }
+})(window.SCW);
 // ============================================================
 // Preserve scroll position + coordinated post-edit restoration
 // ============================================================
@@ -100,6 +244,25 @@ window.SCW = window.SCW || {};
 
   var STORAGE_KEY = 'scw_scroll_position';
 
+  // ══════════════════════════════════════════════════════════
+  //  Debug instrumentation
+  //  Toggle from console: SCW.scrollPreserve.debug = true
+  //  Shows timestamped lifecycle events so you can see exactly
+  //  what happens during scroll save/restore sequences.
+  // ══════════════════════════════════════════════════════════
+  var _debug = false;
+  var _debugT0 = 0;  // timestamp of the cell-update that started the sequence
+
+  function log(label, data) {
+    if (!_debug) return;
+    var elapsed = _debugT0 ? '+' + (Date.now() - _debugT0) + 'ms' : 't0';
+    if (data !== undefined) {
+      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
+    } else {
+      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
+    }
+  }
+
   // ── How long after the LAST knack-view-render to wait before
   //    considering all views settled.  300ms balances speed with
   //    reliability — Knack's model.fetch() calls go out in parallel
@@ -126,9 +289,11 @@ window.SCW = window.SCW || {};
 
   function save() {
     try {
+      var pos = $(window).scrollTop();
       var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
-      data[getPageKey()] = $(window).scrollTop();
+      data[getPageKey()] = pos;
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      log('save pixel', { pos: pos, key: getPageKey() });
     } catch (e) {
       // sessionStorage may be unavailable in some contexts
     }
@@ -139,7 +304,11 @@ window.SCW = window.SCW || {};
       var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
       var pos = data[getPageKey()];
       if (typeof pos === 'number' && pos > 0) {
+        log('restore pixel', { target: pos, before: $(window).scrollTop(), key: getPageKey() });
         $(window).scrollTop(pos);
+        log('restore pixel done', { actual: $(window).scrollTop(), wanted: pos });
+      } else {
+        log('restore pixel — no saved position', { key: getPageKey() });
       }
     } catch (e) {
       // ignore
@@ -182,6 +351,7 @@ window.SCW = window.SCW || {};
   function saveAnchor() {
     var best = null;
     var bestDist = Infinity;
+    var candidates = [];
 
     $('[id^="view_"]').filter(':visible').each(function () {
       // Only match canonical view IDs (view_1234)
@@ -189,6 +359,7 @@ window.SCW = window.SCW || {};
 
       var rect = this.getBoundingClientRect();
       var dist = Math.abs(rect.top);
+      if (_debug) candidates.push({ id: this.id, top: Math.round(rect.top), dist: Math.round(dist) });
       if (dist < bestDist) {
         bestDist = dist;
         best = {
@@ -204,6 +375,10 @@ window.SCW = window.SCW || {};
       best.pageKey = getPageKey();
     }
     _savedAnchor = best;
+    log('save anchor', best
+      ? { anchor: best.id, topOffset: Math.round(best.topOffset), candidates: candidates.length }
+      : 'no visible views found');
+    if (_debug && candidates.length <= 10) log('  candidates', candidates);
   }
 
   /**
@@ -212,19 +387,40 @@ window.SCW = window.SCW || {};
    * Returns true if the anchor was found and scroll was applied.
    */
   function restoreFromAnchor() {
-    if (!_savedAnchor) return false;
+    if (!_savedAnchor) {
+      log('restore anchor — no saved anchor');
+      return false;
+    }
     var anchor = _savedAnchor;
     _savedAnchor = null;
 
     var el = document.getElementById(anchor.id);
-    if (!el || !$(el).is(':visible')) return false;
+    if (!el || !$(el).is(':visible')) {
+      log('restore anchor FAILED — element not found or hidden', { id: anchor.id });
+      return false;
+    }
 
     var rect = el.getBoundingClientRect();
     var drift = rect.top - anchor.topOffset;
+    var scrollBefore = $(window).scrollTop();
+
+    log('restore anchor', {
+      id: anchor.id,
+      savedOffset: Math.round(anchor.topOffset),
+      currentOffset: Math.round(rect.top),
+      drift: Math.round(drift),
+      scrollBefore: scrollBefore
+    });
 
     // Only adjust if the drift is meaningful (> 5px)
     if (Math.abs(drift) > 5) {
-      $(window).scrollTop($(window).scrollTop() + drift);
+      $(window).scrollTop(scrollBefore + drift);
+      log('restore anchor applied', {
+        scrollAfter: $(window).scrollTop(),
+        wanted: scrollBefore + drift
+      });
+    } else {
+      log('restore anchor — drift < 5px, no adjustment needed');
     }
     return true;
   }
@@ -239,7 +435,11 @@ window.SCW = window.SCW || {};
       var data = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '{}');
       var pos = data[frozenKey];
       if (typeof pos === 'number' && pos > 0) {
+        log('restore pixel (frozen key)', { target: pos, before: $(window).scrollTop(), key: frozenKey });
         $(window).scrollTop(pos);
+        log('restore pixel done', { actual: $(window).scrollTop(), wanted: pos });
+      } else {
+        log('restore pixel (frozen key) — no saved position', { key: frozenKey });
       }
     } catch (e) {
       // ignore
@@ -249,21 +449,40 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════
   //  Non-edit triggers (page load, SPA navigation, unload)
   //  These are simple — no coordination needed.
+  //
+  //  IMPORTANT: document.ready and knack-scene-render can both
+  //  fire on page load.  We debounce them into a single restore
+  //  and clear the saved position after restoring, so a stale
+  //  position can't be restored a second time after the user
+  //  has already scrolled.
   // ══════════════════════════════════════════════════════════
 
   // Save position right before the page unloads (refresh / close)
   window.addEventListener('beforeunload', save);
 
+  var _navRestoreTimer = null;
+
+  /** Schedule a single debounced restore for navigation / page load.
+   *  Clears the saved position after restoring so it can't fire twice. */
+  function scheduleNavRestore() {
+    if (_navRestoreTimer) clearTimeout(_navRestoreTimer);
+    _navRestoreTimer = setTimeout(function () {
+      _navRestoreTimer = null;
+      restore();
+      clear();   // consumed — don't restore this stale position again
+    }, 300);
+  }
+
   // Restore on initial page load (short delay for content layout)
   $(document).ready(function () {
-    setTimeout(restore, 300);
+    scheduleNavRestore();
   });
 
   // Restore after SPA hash-navigation scene renders
   $(document).on('knack-scene-render.any.scwScrollPreserve', function () {
     // Clear pending-edit flag on navigation (stale if user navigated away)
     clearPendingState();
-    setTimeout(restore, 300);
+    scheduleNavRestore();
   });
 
   // ══════════════════════════════════════════════════════════
@@ -289,6 +508,8 @@ window.SCW = window.SCW || {};
   // Fires BEFORE Knack re-renders views, so the scroll position and
   // accordion state in localStorage are both accurate at this moment.
   $(document).on('knack-cell-update.scwScrollPreserve', function () {
+    _debugT0 = Date.now();
+    log('=== CELL UPDATE ===', { scrollTop: $(window).scrollTop(), pageHeight: document.body.scrollHeight });
     save();            // pixel position (for reload / SPA nav fallback)
     saveAnchor();      // contextual anchor (for post-edit restore)
     _pendingEdit = true;
@@ -312,42 +533,50 @@ window.SCW = window.SCW || {};
     _safetyTimer = setTimeout(function () {
       _safetyTimer = null;
       if (_pendingEdit) {
+        log('SAFETY TIMEOUT — no view-render in ' + SAFETY_TIMEOUT_MS + 'ms, forcing restore');
         runPostEditRestore();
       }
     }, SAFETY_TIMEOUT_MS);
   });
 
   // ── SETTLE DETECTION: Debounce view-renders to find the quiet point ──
-  $(document).on('knack-view-render.scwScrollPreserve', function () {
-    if (_pendingEdit) {
-      // Coordinated post-edit flow: reset settle timer on each render.
-      // The restore sequence runs SETTLE_MS after the LAST view-render,
-      // ensuring all async-fetched views have finished.
-      if (_settleTimer) clearTimeout(_settleTimer);
-      _settleTimer = setTimeout(runPostEditRestore, SETTLE_MS);
-    } else {
-      // Normal view-render (not post-edit): simple debounced restore.
-      // 500ms allows device-worksheet + group-collapse independent
-      // timers to finish before we scroll.
-      debouncedRestore(500);
-    }
-  });
+  //
+  // Only the POST-EDIT path listens for view-renders here.
+  // Non-edit view re-renders (KTL refresh, grid-direct-edit, etc.)
+  // must NOT trigger pixel restore — the saved position goes stale
+  // as soon as the user scrolls, and restoring it would yank them
+  // back to a previous position.  Scene-render + document.ready
+  // already cover the navigation / page-load cases.
+  var _viewRenderCount = 0;
+  $(document).on('knack-view-render.scwScrollPreserve', function (e, view) {
+    if (!_pendingEdit) return;  // ignore non-edit view renders
 
-  // Simple debounced restore for non-edit view renders
-  var _restoreTimer = null;
-  function debouncedRestore(delay) {
-    if (_restoreTimer) clearTimeout(_restoreTimer);
-    _restoreTimer = setTimeout(function () {
-      _restoreTimer = null;
-      restore();
-    }, delay);
-  }
+    var viewId = (view && view.key) || 'unknown';
+    _viewRenderCount++;
+    log('view-render #' + _viewRenderCount + ' (pending edit)', {
+      viewId: viewId,
+      resettingSettleTimer: SETTLE_MS + 'ms'
+    });
+    // Coordinated post-edit flow: reset settle timer on each render.
+    // The restore sequence runs SETTLE_MS after the LAST view-render,
+    // ensuring all async-fetched views have finished.
+    if (_settleTimer) clearTimeout(_settleTimer);
+    _settleTimer = setTimeout(runPostEditRestore, SETTLE_MS);
+  });
 
   // ══════════════════════════════════════════════════════════
   //  Post-edit restoration sequence
   // ══════════════════════════════════════════════════════════
 
   function runPostEditRestore() {
+    log('--- runPostEditRestore START ---', {
+      trigger: _settleTimer ? 'settle' : 'safety',
+      viewRenders: _viewRenderCount,
+      pageHeight: document.body.scrollHeight,
+      scrollTop: $(window).scrollTop()
+    });
+    _viewRenderCount = 0;
+
     // Clear timers (we may have been called by either settle or safety)
     if (_settleTimer) { clearTimeout(_settleTimer); _settleTimer = null; }
     if (_safetyTimer) { clearTimeout(_safetyTimer); _safetyTimer = null; }
@@ -356,50 +585,93 @@ window.SCW = window.SCW || {};
     var frozenPageKey = _savedAnchor ? _savedAnchor.pageKey : getPageKey();
 
     // Step 1: Verify DOM readiness — poll until tables have content rows.
-    // Knack's async re-render may not be fully complete even after
-    // knack-view-render fires (e.g., grouped rows added in batches).
+    log('step 1: polling for DOM readiness');
     pollForDOM(function () {
+      log('step 1 done: DOM ready', { pageHeight: document.body.scrollHeight });
 
       // Step 2: Re-enable group-collapse auto-enhancement
-      //         (so MutationObserver works normally going forward)
+      log('step 2: re-enable group-collapse');
       if (window.SCW && window.SCW.groupCollapse) {
         window.SCW.groupCollapse.suppress(false);
       }
 
-      // Step 3: REBUILD GROUPED ACCORDIONS — run group-collapse
-      //         enhancement which reads saved state from localStorage
-      //         and applies collapsed/expanded classes + row visibility.
-      //         This is idempotent — safe if group-collapse already ran.
+      // Step 3: REBUILD GROUPED ACCORDIONS
+      var heightBefore = document.body.scrollHeight;
+      log('step 3: group-collapse enhance', { pageHeight: heightBefore });
       if (window.SCW && window.SCW.groupCollapse) {
         window.SCW.groupCollapse.enhance();
       }
+      var heightAfterGC = document.body.scrollHeight;
+      if (heightAfterGC !== heightBefore) {
+        log('step 3: page height CHANGED by group-collapse', {
+          before: heightBefore, after: heightAfterGC, delta: heightAfterGC - heightBefore
+        });
+      }
 
-      // Step 4: SYNC KTL ACCORDIONS — ensure accordion wrappers
-      //         are re-adopted after view DOM replacement, then
-      //         restore saved collapsed/expanded state.
+      // Step 4: SYNC KTL ACCORDIONS
+      log('step 4: KTL accordion refresh');
       if (window.SCW && window.SCW.ktlAccordion) {
         window.SCW.ktlAccordion.refresh();
         if (window.SCW.ktlAccordion.restoreState) {
           window.SCW.ktlAccordion.restoreState();
         }
       }
+      var heightAfterKTL = document.body.scrollHeight;
+      if (heightAfterKTL !== heightAfterGC) {
+        log('step 4: page height CHANGED by KTL accordion', {
+          before: heightAfterGC, after: heightAfterKTL, delta: heightAfterKTL - heightAfterGC
+        });
+      }
 
-      // Step 5: RESTORE SCROLL POSITION — wait 2 requestAnimationFrame
-      //         cycles so the browser has painted the updated layout
-      //         (expanded/collapsed rows, accordion bodies) before we
-      //         scroll.  This is the minimum reliable wait for layout
-      //         stability without a blind timeout.
+      // Step 5: RESTORE SCROLL POSITION
+      log('step 5: waiting 2 rAF frames for layout');
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
+          var heightAtRestore = document.body.scrollHeight;
+          log('step 5: restoring scroll', {
+            pageHeight: heightAtRestore,
+            scrollBefore: $(window).scrollTop()
+          });
+
           // Primary: anchor-based restore (reliable when layout changes)
           var anchorWorked = restoreFromAnchor();
 
           // Fallback: pixel-based restore using frozen page key
           if (!anchorWorked) {
+            log('anchor failed — falling back to pixel restore');
             restoreWithFrozenKey(frozenPageKey);
           }
 
+          var scrollAfterRestore = $(window).scrollTop();
           _pendingEdit = false;
+
+          // Signal that post-edit restoration is complete
+          document.dispatchEvent(new CustomEvent('scw-post-edit-ready'));
+
+          // Step 6: DRIFT CHECK — detect if something moves the scroll
+          // AFTER we restored it (e.g., a late MutationObserver, KTL
+          // re-render, or browser auto-scroll).  Log after a short delay.
+          if (_debug) {
+            var checkScroll = scrollAfterRestore;
+            setTimeout(function () {
+              var now = $(window).scrollTop();
+              var heightNow = document.body.scrollHeight;
+              if (Math.abs(now - checkScroll) > 3) {
+                log('POST-RESTORE DRIFT DETECTED', {
+                  restoredTo: checkScroll,
+                  nowAt: now,
+                  drift: now - checkScroll,
+                  heightAtRestore: heightAtRestore,
+                  heightNow: heightNow,
+                  heightDelta: heightNow - heightAtRestore
+                });
+              } else {
+                log('=== RESTORE COMPLETE (stable) ===', {
+                  finalScroll: now, pageHeight: heightNow
+                });
+              }
+            }, 500);
+          }
         });
       });
     });
@@ -459,6 +731,21 @@ window.SCW = window.SCW || {};
     restore: restore,
     clear: clear
   };
+
+  // Debug mode — getter/setter on the public API so you can toggle
+  // from the console:  SCW.scrollPreserve.debug = true
+  Object.defineProperty(window.SCW.scrollPreserve, 'debug', {
+    get: function () { return _debug; },
+    set: function (val) {
+      _debug = !!val;
+      if (_debug) {
+        console.log(
+          '%c[scroll] Debug ON — edit any cell to see the full restore timeline.',
+          'color:#1a73e8; font-weight:bold'
+        );
+      }
+    }
+  });
 })();
 // ============================================================
 // Remember KTL hide/show view collapsed / open state
@@ -551,6 +838,15 @@ window.SCW = window.SCW || {};
   function restoreIfNeeded(viewKey) {
     if (restoredThisRender[viewKey]) return;
 
+    // Skip views managed by ktl-accordion.js — it has its own
+    // persistence and restoring here would fight it (toggling the
+    // button inverts the state ktl-accordion already set).
+    var btn = document.getElementById('hideShow_' + viewKey + '_button');
+    if (btn && btn.closest('.scw-ktl-accordion')) {
+      restoredThisRender[viewKey] = true;
+      return;
+    }
+
     var saved = loadState(viewKey);
     if (!saved) return; // no saved preference — keep KTL default
 
@@ -565,7 +861,7 @@ window.SCW = window.SCW || {};
 
     // Click the button to toggle to the desired state
     restoredThisRender[viewKey] = true;
-    var $btn = $('#hideShow_' + viewKey + '_button');
+    var $btn = $(btn);
     if ($btn.length) {
       $btn[0].click();
     }
@@ -595,17 +891,22 @@ window.SCW = window.SCW || {};
     });
 
   // ── MutationObserver: detect KTL button injection ──
+  // Scoped to #knack-dist (Knack's main content area) instead of
+  // document.body to avoid firing on unrelated DOM mutations.
+  // Debounced at 200ms (was rAF ~16ms) since button injection
+  // happens in batches and we only need to run once after they settle.
 
-  var pendingRaf = 0;
+  var obsTimer = 0;
   var observer = new MutationObserver(function () {
-    if (pendingRaf) cancelAnimationFrame(pendingRaf);
-    pendingRaf = requestAnimationFrame(function () {
-      pendingRaf = 0;
+    if (obsTimer) clearTimeout(obsTimer);
+    obsTimer = setTimeout(function () {
+      obsTimer = 0;
       restoreAllVisible();
-    });
+    }, 200);
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
+  var obsRoot = document.getElementById('knack-dist') || document.body;
+  observer.observe(obsRoot, { childList: true, subtree: true });
 
   // ── scene render: reset the "already restored" guard ──
 
@@ -1175,7 +1476,12 @@ window.SCW = window.SCW || {};
       '  box-shadow: 0 2px 12px rgba(0,0,0,.06);',
       '  overflow: hidden;',
       '  margin: 10px 0;',
+      '  width: 100%;',
       '  max-width: 100%;',
+      '}',
+      /* When expanded, allow dropdowns (Chosen.js) to overflow */
+      '.scw-ktl-accordion.is-expanded {',
+      '  overflow: visible;',
       '}',
 
       /* ══════════════════════════════════════════════════
@@ -1364,6 +1670,18 @@ window.SCW = window.SCW || {};
       '  padding: 10px 12px 14px 12px;',
       '  background: #fff !important;',
       '  overflow-x: auto;',
+      '}',
+      /* Let dropdowns overflow the body when accordion is open */
+      '.scw-ktl-accordion.is-expanded > .scw-ktl-accordion__body {',
+      '  overflow: visible;',
+      '}',
+
+      /* Ensure tables stretch to fill the accordion body */
+      '.scw-ktl-accordion__body .kn-table-wrapper {',
+      '  width: 100%;',
+      '}',
+      '.scw-ktl-accordion__body table.kn-table {',
+      '  width: 100%;',
       '}',
 
       /* Legacy accent containers inside the body — targeted instead of
@@ -1575,8 +1893,8 @@ window.SCW = window.SCW || {};
   var _btnRefs = {};   // viewKey → current button element
 
   // ── Persistent accordion state ──────────────────────────────
-  // Collapsed viewKeys are stored in sessionStorage so state
-  // survives both inline-edit re-renders AND full page refreshes.
+  // Accordion state is stored in localStorage so it survives
+  // browser close, not just page refreshes.
   // The in-memory _savedCollapsed is still used as a fast-path
   // for the coordinated post-edit restore flow.
 
@@ -1584,35 +1902,47 @@ window.SCW = window.SCW || {};
   var _savedCollapsed = null;  // transient snapshot for post-edit flow
   var _restoreActive = false;  // suppress syncState during restore window
 
-  /** Read persisted collapsed set from sessionStorage. */
+  // Migrate from sessionStorage → localStorage (one-time)
+  try {
+    var legacy = sessionStorage.getItem(STORAGE_KEY);
+    if (legacy) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch (e) { /* ignore */ }
+
+  /** Read persisted state from localStorage. */
   function loadPersistedState() {
     try {
-      var raw = sessionStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(STORAGE_KEY);
       return raw ? JSON.parse(raw) : {};
     } catch (e) { return {}; }
   }
 
-  /** Write collapsed set to sessionStorage. */
-  function persistState(collapsedMap) {
+  /** Write state to localStorage. */
+  function persistState(stateMap) {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(collapsedMap));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateMap));
     } catch (e) { /* quota / unavailable */ }
   }
 
-  /** Scan current DOM and persist which accordions are collapsed. */
+  /** Scan current DOM and persist accordion states.
+   *  Returns a map of viewKey → true (collapsed) / false (expanded).
+   *  Both states are recorded so applySavedState can distinguish
+   *  "user explicitly left this open" from "never toggled (no entry)". */
   function persistCurrentState() {
-    var collapsed = {};
+    var stateMap = {};
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
       if (!hdr) continue;
       var vk = hdr.getAttribute('data-view-key');
-      if (vk && !wrappers[i].classList.contains('is-expanded')) {
-        collapsed[vk] = true;
+      if (vk) {
+        stateMap[vk] = !wrappers[i].classList.contains('is-expanded');
       }
     }
-    persistState(collapsed);
-    return collapsed;
+    persistState(stateMap);
+    return stateMap;
   }
 
   function snapshotState() {
@@ -1624,6 +1954,7 @@ window.SCW = window.SCW || {};
     // Use in-memory snapshot if available (post-edit flow),
     // otherwise fall back to sessionStorage (page refresh).
     var saved = _savedCollapsed || loadPersistedState();
+    var isPostEdit = !!_savedCollapsed;   // in-memory snapshot = post-edit
     _savedCollapsed = null;
 
     if (!saved) return;
@@ -1633,11 +1964,26 @@ window.SCW = window.SCW || {};
     _restoreActive = true;
 
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
+    var touched = false;
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
       if (!hdr) continue;
       var vk = hdr.getAttribute('data-view-key');
       if (!vk) continue;
+
+      // Only restore views that are EXPLICITLY in the saved map.
+      // Views not in the map keep whatever state KTL set as default
+      // (respects _hsv=1,false / _hsv=1,true).
+      //
+      // For the post-edit flow (in-memory snapshot), the snapshot
+      // captured the full DOM state including defaults, so every
+      // visible accordion has an entry — this guard only matters
+      // for the sessionStorage path (page load / navigation) where
+      // un-toggled views correctly have no entry.
+      if (!(vk in saved)) {
+        log('skipped (no saved entry, keeping KTL default)', vk);
+        continue;
+      }
 
       var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
       var arrow = document.getElementById('hideShow_' + vk + '_arrow');
@@ -1654,6 +2000,7 @@ window.SCW = window.SCW || {};
           arrow.classList.add('ktlUp');
         }
         log('restored collapsed', vk);
+        touched = true;
       } else {
         // This accordion was expanded — force it open.
         // Use explicit 'block' (not '') so KTL's own hidden state
@@ -1668,11 +2015,19 @@ window.SCW = window.SCW || {};
           arrow.classList.add('ktlDown');
         }
         log('restored expanded', vk);
+        touched = true;
       }
     }
 
-    // Keep the guard up long enough for MutationObserver + rAF to settle
-    setTimeout(function () { _restoreActive = false; }, 600);
+    // Keep the guard up long enough for MutationObserver + rAF to settle,
+    // but only if we actually changed something.  Shorter guard (300ms)
+    // avoids blocking ktl-hide-show-state.js from restoring user prefs
+    // stored in localStorage.
+    if (touched) {
+      setTimeout(function () { _restoreActive = false; }, 300);
+    } else {
+      _restoreActive = false;
+    }
   }
 
   function bindHeader(wrap, hdr, btnEl, vKey) {
@@ -6243,6 +6598,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       ${s('.scw-group-collapse-enabled tr.scw-group-header > td')} {
         position: relative;
+      }
+      /* Flex layout lives on an inner wrapper so the TD keeps
+         display:table-cell and respects its colspan. */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header > td > .scw-group-inner')} {
         display: flex;
         align-items: center;
       }
@@ -6266,7 +6625,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         color: #1e293b !important;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
-        padding: 10px 14px !important;
+        padding: 10px 14px 10px 10px !important;
         border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15);
         border-left: 4px solid var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
       }
@@ -6292,7 +6651,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         font-size: 14px;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 12px 14px !important;
+        padding: 12px 10px !important;
         border-bottom: none;
         box-shadow: none;
       }
@@ -6301,7 +6660,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
          Continue the left accent border on the first content row
          so the header and content feel like one unit.
          Also replace the worksheet card's grey border-top with accent. */
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td')} {
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td:first-child')} {
         border-left: 4px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.30);
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) .scw-ws-card')} {
@@ -6467,10 +6826,38 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return $tr.hasClass('kn-group-level-2') ? 2 : 1;
   }
 
+  function ensureInnerWrap($tr) {
+    const $cell = $tr.children('td,th').first();
+    if (!$cell.children('.scw-group-inner').length) {
+      $cell.wrapInner('<div class="scw-group-inner"></div>');
+    }
+    // Strip Knack's inline padding-left so our CSS rules control it
+    $cell[0] && $cell[0].style.removeProperty('padding-left');
+    // Fix colspan="0" — HTML5 treats 0 as 1, breaking full-row span.
+    // Recalculate from thead every time since Knack may re-render rows.
+    var table = $tr.closest('table')[0];
+    if (table) {
+      var headerRow = table.querySelector('thead tr');
+      if (headerRow) {
+        var colCount = 0;
+        var hCells = headerRow.children;
+        for (var i = 0; i < hCells.length; i++) {
+          colCount += parseInt(hCells[i].getAttribute('colspan') || '1', 10);
+        }
+        var cur = parseInt($cell.attr('colspan') || '1', 10);
+        if (colCount > 0 && cur < colCount) {
+          $cell.attr('colspan', colCount);
+        }
+      }
+    }
+  }
+
   function ensureIcon($tr) {
     const $cell = $tr.children('td,th').first();
-    if (!$cell.find('.scw-collapse-icon').length) {
-      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
+    var $inner = $cell.children('.scw-group-inner');
+    var $target = $inner.length ? $inner : $cell;
+    if (!$target.find('.scw-collapse-icon').length) {
+      $target.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
     }
   }
 
@@ -6515,7 +6902,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         html += '<span class="scw-record-count">' + count + '</span>';
       }
       html += '</span>';
-      $cell.append(html);
+      var $inner = $cell.children('.scw-group-inner');
+      ($inner.length ? $inner : $cell).append(html);
     }
   }
 
@@ -6680,6 +7068,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const state = loadState(sceneId, viewId);
 
       $tr.addClass('scw-group-header');
+      ensureInnerWrap($tr);
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
@@ -6725,6 +7114,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         $view.addClass('scw-group-collapse-enabled');
 
         $tr.addClass('scw-group-header');
+        ensureInnerWrap($tr);
         ensureIcon($tr);
 
         const level = getGroupLevel($tr);
@@ -6774,7 +7164,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }, 100);
     });
 
-    obs.observe(document.body, { childList: true, subtree: true });
+    // Scope observer to the scene container instead of document.body.
+    // This avoids firing on DOM mutations in other scenes / unrelated UI.
+    var sceneRoot = document.getElementById('kn-' + sceneId);
+    obs.observe(sceneRoot || document.body, { childList: true, subtree: true });
     observerByScene[sceneId] = obs;
   }
 
@@ -6888,6 +7281,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-sa-header-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
       '}',
 
       /* identity + chevron placeholder — width set dynamically via JS */
@@ -6982,11 +7377,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  margin: 0;',
       '  cursor: pointer;',
-      '  width: 15px !important;',
-      '  height: 15px !important;',
       '  display: inline-block !important;',
-      '  appearance: auto !important;',
-      '  -webkit-appearance: checkbox !important;',
       '  opacity: 1 !important;',
       '  visibility: visible !important;',
       '  position: static !important;',
@@ -6995,6 +7386,102 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-sa-header-check input[type="checkbox"],',
       '.scw-sa-grp-check input[type="checkbox"] {',
       '  pointer-events: auto;',
+      '}',
+
+      '/* ── Normalize ALL KTL + SCW checkboxes to fixed 15px ── */',
+      '/* appearance:none + CSS-drawn box guarantees identical size */',
+      '/* regardless of inherited font-size (collapsed vs expanded). */',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"],',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"],',
+      '.scw-sa-header-check input[type="checkbox"],',
+      '.scw-sa-grp-check input[type="checkbox"],',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"] {',
+      '  appearance: none !important;',
+      '  -webkit-appearance: none !important;',
+      '  -moz-appearance: none !important;',
+      '  width: 15px !important;',
+      '  height: 15px !important;',
+      '  min-width: 15px !important;',
+      '  min-height: 15px !important;',
+      '  max-width: 15px !important;',
+      '  max-height: 15px !important;',
+      '  flex-shrink: 0 !important;',
+      '  box-sizing: border-box !important;',
+      '  border: 1.5px solid #9ca3af !important;',
+      '  border-radius: 3px !important;',
+      '  background: #fff !important;',
+      '  cursor: pointer;',
+      '  position: relative !important;',
+      '  vertical-align: middle !important;',
+      '  outline: none !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:checked,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:checked,',
+      '.scw-sa-header-check input[type="checkbox"]:checked,',
+      '.scw-sa-grp-check input[type="checkbox"]:checked,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:checked {',
+      '  background: #07467c !important;',
+      '  border-color: #07467c !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:checked::after,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:checked::after,',
+      '.scw-sa-header-check input[type="checkbox"]:checked::after,',
+      '.scw-sa-grp-check input[type="checkbox"]:checked::after,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:checked::after {',
+      '  content: "" !important;',
+      '  position: absolute !important;',
+      '  left: 4px !important;',
+      '  top: 1px !important;',
+      '  width: 5px !important;',
+      '  height: 9px !important;',
+      '  border: solid #fff !important;',
+      '  border-width: 0 2px 2px 0 !important;',
+      '  transform: rotate(45deg) !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:indeterminate,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:indeterminate,',
+      '.scw-sa-header-check input[type="checkbox"]:indeterminate,',
+      '.scw-sa-grp-check input[type="checkbox"]:indeterminate,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:indeterminate {',
+      '  background: #07467c !important;',
+      '  border-color: #07467c !important;',
+      '}',
+      '.kn-table thead input.ktlCheckbox[type="checkbox"]:indeterminate::after,',
+      '.kn-table tbody input.ktlCheckbox-row[type="checkbox"]:indeterminate::after,',
+      '.scw-sa-header-check input[type="checkbox"]:indeterminate::after,',
+      '.scw-sa-grp-check input[type="checkbox"]:indeterminate::after,',
+      'tr.kn-table-group.scw-group-header input[type="checkbox"]:indeterminate::after {',
+      '  content: "" !important;',
+      '  position: absolute !important;',
+      '  left: 2px !important;',
+      '  top: 5px !important;',
+      '  width: 9px !important;',
+      '  height: 2px !important;',
+      '  background: #fff !important;',
+      '  border: none !important;',
+      '  transform: none !important;',
+      '}',
+
+      /* ── Polish <thead> row — match .scw-sa-header bar look ── */
+      '.kn-table thead th {',
+      '  background: #fafafa;',
+      '  border-bottom: 2px solid #dbdbdb;',
+      '  padding: 8px 10px;',
+      '  font-size: 0.85rem;',
+      '  font-weight: 600;',
+      '  color: #363636;',
+      '  white-space: normal;',
+      '  vertical-align: middle;',
+      '}',
+      '.kn-table thead th .kn-sort {',
+      '  color: #485fc7;',
+      '}',
+      '.kn-table thead th .kn-sort:hover {',
+      '  color: #363636;',
+      '}',
+      '.kn-table thead .ktlCheckboxHeaderCell {',
+      '  text-align: center;',
+      '  vertical-align: middle;',
       '}',
     ].join('\n');
 
@@ -7103,16 +7590,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   //  1) View-level header row
   // ───────────────────────────────────────────────
 
-  function readHeaderLayout(viewEl) {
-    // Find a visible summary bar (first may be inside a collapsed group)
-    var allBars = viewEl.querySelectorAll('.scw-ws-summary');
-    var bar = null;
-    for (var bi = 0; bi < allBars.length; bi++) {
-      if (allBars[bi].getBoundingClientRect().width > 0) {
-        bar = allBars[bi];
-        break;
-      }
+  /** Find the first summary bar in a view.
+   *  Prefers a visible bar but falls back to the first one in the DOM
+   *  so that collapsed accordion views still get a header bar built. */
+  function findVisibleSummary(viewEl) {
+    var bars = viewEl.querySelectorAll('.scw-ws-summary');
+    var first = null;
+    for (var i = 0; i < bars.length; i++) {
+      if (!first) first = bars[i];
+      if (bars[i].offsetParent !== null) return bars[i];
     }
+    return first;
+  }
+
+  function readHeaderLayout(viewEl) {
+    var bar = findVisibleSummary(viewEl);
     if (!bar) return null;
 
     var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
@@ -7249,48 +7741,53 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * to the header bar cells so columns are perfectly aligned.
    */
   function alignHeaderToSummary(bar, viewEl) {
-    // Find a visible summary bar (first one may be in a collapsed group)
-    var summaries = viewEl.querySelectorAll('.scw-ws-summary');
-    var summary = null;
-    for (var si = 0; si < summaries.length; si++) {
-      if (summaries[si].getBoundingClientRect().width > 0) {
-        summary = summaries[si];
-        break;
-      }
-    }
+    var summary = findVisibleSummary(viewEl);
     if (!summary) return;
 
-    // ── Left side: check + toggle zone → header check + toggle ──
+    // ── PHASE 1: READ all widths (single layout calculation) ──
+    var checkWidth = null;
     var sumCheck = summary.querySelector('.scw-ws-sum-check');
     var hdrCheck = bar.querySelector('.scw-sa-header-check');
     if (sumCheck && hdrCheck) {
-      var cw = sumCheck.getBoundingClientRect().width;
-      hdrCheck.style.width = cw + 'px';
-      hdrCheck.style.minWidth = cw + 'px';
-      hdrCheck.style.flex = '0 0 ' + cw + 'px';
+      checkWidth = sumCheck.getBoundingClientRect().width;
     }
 
+    var toggleWidth = null;
     var sumToggle = summary.querySelector('.scw-ws-toggle-zone');
     var hdrToggle = bar.querySelector('.scw-sa-header-toggle');
     if (sumToggle && hdrToggle) {
-      var tw = sumToggle.getBoundingClientRect().width;
-      hdrToggle.style.width = tw + 'px';
-      hdrToggle.style.minWidth = tw + 'px';
-      hdrToggle.style.flex = '0 0 ' + tw + 'px';
+      toggleWidth = sumToggle.getBoundingClientRect().width;
     }
 
-    // ── Right side: match each group width ──
+    var groupWidths = [];
     var sumRight = summary.querySelector('.scw-ws-sum-right');
     var hdrRight = bar.querySelector('.scw-sa-header-right');
+    var hdrCells = null;
     if (sumRight && hdrRight) {
       var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
-      var hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
+      hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
       for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
-        var gw = sumGroups[i].getBoundingClientRect().width;
-        hdrCells[i].style.width = Math.round(gw) + 'px';
-        hdrCells[i].style.minWidth = Math.round(gw) + 'px';
-        hdrCells[i].style.flex = '0 0 ' + Math.round(gw) + 'px';
+        groupWidths.push(Math.round(sumGroups[i].getBoundingClientRect().width));
       }
+    }
+
+    // ── PHASE 2: WRITE all styles (no interleaved reads) ──
+    if (checkWidth !== null) {
+      hdrCheck.style.width = checkWidth + 'px';
+      hdrCheck.style.minWidth = checkWidth + 'px';
+      hdrCheck.style.flex = '0 0 ' + checkWidth + 'px';
+    }
+
+    if (toggleWidth !== null) {
+      hdrToggle.style.width = toggleWidth + 'px';
+      hdrToggle.style.minWidth = toggleWidth + 'px';
+      hdrToggle.style.flex = '0 0 ' + toggleWidth + 'px';
+    }
+
+    for (var j = 0; j < groupWidths.length; j++) {
+      hdrCells[j].style.width = groupWidths[j] + 'px';
+      hdrCells[j].style.minWidth = groupWidths[j] + 'px';
+      hdrCells[j].style.flex = '0 0 ' + groupWidths[j] + 'px';
     }
   }
 
@@ -7584,7 +8081,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var td = tr.querySelector('td');
       if (!td) continue;
-      td.insertBefore(checkWrap, td.firstChild);
+      var inner = td.querySelector('.scw-group-inner');
+      var target = inner || td;
+      target.insertBefore(checkWrap, target.firstChild);
 
       (function (checkbox, headerRow) {
         checkbox.addEventListener('click', function (e) {
@@ -7649,41 +8148,48 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     enhanceGroupHeaders();
   }
 
-  $(document)
-    .off('knack-scene-render.any.scwSelectAll')
-    .on('knack-scene-render.any.scwSelectAll', function () {
-      setTimeout(enhance, 350);
-    });
+  // ── Event-driven triggers ──────────────────────────────
+  //
+  //  Previously this module had 7 blind setTimeout schedules (reduced
+  //  to 5 in a prior pass).  Now we use targeted custom events from the
+  //  modules that actually change the DOM, plus a single short debounce
+  //  for non-worksheet views:
+  //
+  //  1. scw-worksheet-ready  — device-worksheet.js dispatches after
+  //     transformView() completes.  Event-driven, no timer.
+  //  2. scw-post-edit-ready  — preserve-scroll-on-refresh.js dispatches
+  //     after its full post-edit restoration sequence (accordions rebuilt,
+  //     scroll restored).  Replaces the old 1200ms knack-cell-update timer.
+  //  3. knack-view-render    — short 100ms debounce for non-worksheet
+  //     views (plain tables with KTL checkboxes).  100ms is enough since
+  //     these views don't go through transformView().
+  //
+  //  Removed (redundant):
+  //  - knack-scene-render: every view in the scene fires knack-view-render
+  //  - document.ready: Knack fires knack-view-render on initial load
+  //  - knack-cell-update: covered by scw-post-edit-ready event
 
+  // 1. Worksheet views — event-driven, no blind timer
+  document.addEventListener('scw-worksheet-ready', function () {
+    requestAnimationFrame(enhance);
+  });
+
+  // 2. Post-inline-edit — event-driven, replaces 1200ms blind timer
+  document.addEventListener('scw-post-edit-ready', function () {
+    requestAnimationFrame(enhance);
+  });
+
+  // 3. Non-worksheet views — short debounce after view render
+  var _viewRenderTimer = null;
   $(document)
     .off('knack-view-render.any.scwSelectAll')
     .on('knack-view-render.any.scwSelectAll', function () {
-      setTimeout(enhance, 350);
-      setTimeout(enhance, 700);
-      setTimeout(enhance, 1500);
+      if (_viewRenderTimer) clearTimeout(_viewRenderTimer);
+      _viewRenderTimer = setTimeout(function () {
+        _viewRenderTimer = null;
+        enhance();
+      }, 100);
     });
-
-  // After inline edits, the post-edit coordinator rebuilds accordions
-  // and device-worksheet summary bars before our enhance() runs.
-  // Schedule a late rebuild to ensure header bars are restored after
-  // all other features have finished their post-edit work.
-  $(document)
-    .off('knack-cell-update.scwSelectAll')
-    .on('knack-cell-update.scwSelectAll', function () {
-      setTimeout(enhance, 1200);
-      setTimeout(enhance, 2000);
-    });
-
-  var debounceTimer = 0;
-  var obs = new MutationObserver(function () {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(enhance, 300);
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
-
-  $(document).ready(function () {
-    setTimeout(enhance, 500);
-  });
 })();
 /*** END SELECT-ALL CHECKBOXES ***/
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
@@ -8638,15 +9144,8 @@ $(document).on('knack-view-render.view_3313', function () {
     });
   }
 
-  function applyWithRetries(viewId, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyForView(viewId);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // ============================================================
   // CAPTURE-PHASE EVENT BLOCKER
@@ -8683,8 +9182,10 @@ $(document).on('knack-view-render.view_3313', function () {
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var obsTimer = 0;
     var obs = new MutationObserver(function () {
-      applyForView(viewId);
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(viewId); }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -8700,7 +9201,7 @@ $(document).on('knack-view-render.view_3313', function () {
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
         sortRows(viewId);
-        applyWithRetries(viewId);
+        applyForView(viewId);
         installObserver(viewId);
       });
   });
@@ -8824,6 +9325,48 @@ $(document).on('knack-view-render.view_3313', function () {
         },
         [BUCKET_ASSUMPTIONS]: {
           activeFields: ['field_2020', 'field_2154', 'field_1953'],
+          rowClass: 'scw-row--assumptions',
+        },
+      },
+    },
+    {
+      viewId: 'view_3586',
+      detectField: 'field_2219',
+      sortField: 'field_2218',
+      labelTarget: 'field_1949',
+      labelMode: 'prefix',
+      laborDescField: null,
+      allColumnKeys: [
+        'field_1949', // PRODUCT
+        'field_1957', // Connected Devices
+        'field_1960', // Retail Price
+        'field_2020', // Labor Description
+        'field_1953', // SCW Notes
+        'field_2261', // Cust Disc %
+        'field_2262', // Cust Disc $
+        'field_1964', // Qty
+        'field_2303', // Applied Disc
+        'field_2269', // Line Item Total
+      ],
+      rowLocks: [
+        {
+          detectField: 'field_2230',
+          when: 'yes',
+          lockField: 'field_1964',   // Qty
+        },
+        {
+          detectField: 'field_2231',
+          whenNot: 'yes',
+          lockField: 'field_1957',   // Connected Devices
+        },
+      ],
+      rules: {
+        [BUCKET_OTHER_SERVICES]: {
+          activeFields: ['field_2020', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+          rowClass: 'scw-row--services',
+        },
+        [BUCKET_ASSUMPTIONS]: {
+          activeFields: ['field_2020', 'field_1953'],
           rowClass: 'scw-row--assumptions',
         },
       },
@@ -9126,15 +9669,8 @@ $(document).on('knack-view-render.view_3313', function () {
     });
   }
 
-  function applyWithRetries(cfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyForView(cfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // ============================================================
   // CAPTURE-PHASE EVENT BLOCKER
@@ -9170,8 +9706,10 @@ $(document).on('knack-view-render.view_3313', function () {
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var obsTimer = 0;
     var obs = new MutationObserver(function () {
-      applyForView(cfg);
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(cfg); }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -9187,7 +9725,7 @@ $(document).on('knack-view-render.view_3313', function () {
       .off('knack-view-render.' + cfg.viewId + EVENT_NS)
       .on('knack-view-render.' + cfg.viewId + EVENT_NS, function () {
         sortRows(cfg);
-        applyWithRetries(cfg);
+        applyForView(cfg);
         installObserver(cfg);
       });
   });
@@ -9348,23 +9886,24 @@ enableCheckboxSelectSync({
 
 
 
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
+/***************************** SURVEY / PROJECT FORM: drag + drop View / Location Upload fields *******************/
 
-// Working version + Different message for each situation 🎯
+(function () {
+  'use strict';
 
-$(document).on('knack-view-render.view_3094', function(event, view, data) {
-  console.log('✅ View 3094 loaded');
+  /**
+   * Enhance upload fields in a Knack form view with drag-and-drop
+   * styling and status messages (red = empty, green = uploaded,
+   * orange = pending replacement).
+   */
+  function enhanceUploadFields(uploadFields) {
+    uploadFields.forEach(function (inputFieldId) {
+      var $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
+      var $fileInput = $('#' + inputFieldId);
 
-  const uploadFields = ['field_1808_upload', 'field_1809_upload'];
+      var existingFilename = '';
 
-  uploadFields.forEach(function(inputFieldId) {
-    const $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
-    const $fileInput = $('#' + inputFieldId);
-
-    let existingFilename = '';
-
-    if ($uploadWrapper.length && $fileInput.length) {
-      console.log('🔎 Upload wrapper exists for', inputFieldId);
+      if (!$uploadWrapper.length || !$fileInput.length) return;
 
       // Style wrapper
       $uploadWrapper.css({
@@ -9372,7 +9911,7 @@ $(document).on('knack-view-render.view_3094', function(event, view, data) {
         width: '100%',
         height: '150px',
         minHeight: '150px',
-        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Default RED
+        backgroundColor: 'rgba(255, 0, 0, 0.2)',
         transition: 'background-color 0.5s ease'
       });
 
@@ -9389,86 +9928,67 @@ $(document).on('knack-view-render.view_3094', function(event, view, data) {
 
       // Add overlay (only once)
       if ($uploadWrapper.find('.upload-message').length === 0) {
-        $uploadWrapper.append(`
-          <div class="upload-message" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px dashed #1890ff;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            color: #1890ff;
-            text-align: center;
-            pointer-events: none;
-            z-index: 1;
-          ">
-            📂 Drop your file here or click to upload
-          </div>
-        `);
+        $uploadWrapper.append(
+          '<div class="upload-message" style="' +
+            'position: absolute; top: 0; left: 0; right: 0; bottom: 0;' +
+            'display: flex; align-items: center; justify-content: center;' +
+            'border: 2px dashed #1890ff; border-radius: 8px;' +
+            'font-size: 16px; font-weight: 500; color: #1890ff;' +
+            'text-align: center; pointer-events: none; z-index: 1;">' +
+            'Drop your file here or click to upload' +
+          '</div>'
+        );
       }
 
       function getFilenameFromAsset(assetElement) {
         if (!assetElement) return '';
-        const link = assetElement.querySelector('a');
-        if (link) {
-          return link.innerText.trim();
-        } else {
-          return assetElement.innerText.replace(/remove/i, '').trim();
-        }
+        var link = assetElement.querySelector('a');
+        if (link) return link.innerText.trim();
+        return assetElement.innerText.replace(/remove/i, '').trim();
       }
 
-      function setUploadMessage(currentFilename, newFilename = '', mode = 'normal') {
-        const $message = $uploadWrapper.find('.upload-message');
+      function setUploadMessage(currentFilename, newFilename, mode) {
+        newFilename = newFilename || '';
+        mode = mode || 'normal';
+        var $message = $uploadWrapper.find('.upload-message');
 
         if (mode === 'uploading-new') {
-          // Uploading a file where none existed
-          $message.html(`
-            <div style="padding: 20px;">
-              📂 Please click UPDATE to upload this file:<br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
+          $message.html(
+            '<div style="padding: 20px;">Please click UPDATE to upload this file:<br><strong>' +
+            newFilename + '</strong></div>'
+          );
+          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)');
         } else if (mode === 'uploading-replacement') {
-          // Replacing an existing file
-          $message.html(`
-            <div style="padding: 20px;">
-              ♻️ Click UPDATE to replace <br><strong>${currentFilename}</strong><br> with <br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
+          $message.html(
+            '<div style="padding: 20px;">Click UPDATE to replace <br><strong>' +
+            currentFilename + '</strong><br> with <br><strong>' + newFilename + '</strong></div>'
+          );
+          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)');
         } else if (currentFilename) {
-          // File already uploaded
-          $message.html(`
-            <div style="padding: 20px;">
-              📄 Good Job!
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)'); // GREEN
+          $message.html('<div style="padding: 20px;">Good Job!</div>');
+          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)');
         } else {
-          // Default state (no file)
-          $message.html(`📂 Drop your file here or click to upload`);
-          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)'); // RED
+          $message.html('Drop your file here or click to upload');
+          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)');
         }
       }
 
       function hideAssetCurrent() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        if (assetCurrentNow) {
-          $(assetCurrentNow).hide();
-        }
+        var el = document.getElementById(inputFieldId);
+        if (!el) return;
+        var knInput = el.closest('.kn-input');
+        if (!knInput) return;
+        var asset = knInput.querySelector('.kn-asset-current');
+        if (asset) $(asset).hide();
       }
 
       function checkExistingUpload() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        const filename = getFilenameFromAsset(assetCurrentNow);
-
-        console.log('📦 Existing upload detected for', inputFieldId, ':', filename);
+        var el = document.getElementById(inputFieldId);
+        if (!el) return;
+        var knInput = el.closest('.kn-input');
+        if (!knInput) return;
+        var asset = knInput.querySelector('.kn-asset-current');
+        var filename = getFilenameFromAsset(asset);
 
         if (filename) {
           existingFilename = filename;
@@ -9476,250 +9996,55 @@ $(document).on('knack-view-render.view_3094', function(event, view, data) {
         } else {
           setUploadMessage('');
         }
-
         hideAssetCurrent();
       }
 
       checkExistingUpload();
 
       // MutationObserver for each upload field
-      const observeTarget = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
+      var el = document.getElementById(inputFieldId);
+      var knInput = el ? el.closest('.kn-input') : null;
+      var observeTarget = knInput ? knInput.querySelector('.kn-asset-current') : null;
+
       if (observeTarget) {
-        const observer = new MutationObserver(function(mutationsList, observer) {
-          for (const mutation of mutationsList) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-              console.log('🛰️ Upload updated for', inputFieldId);
+        var observer = new MutationObserver(function () {
+          var asset = knInput.querySelector('.kn-asset-current');
+          var filename = getFilenameFromAsset(asset);
 
-              const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-              const filename = getFilenameFromAsset(assetCurrentNow);
-
-              console.log('🛰️ Found filename:', filename);
-
-              if (filename) {
-                if (existingFilename && filename !== existingFilename) {
-                  // Replacing an existing file
-                  setUploadMessage(existingFilename, filename, 'uploading-replacement');
-                } else if (!existingFilename) {
-                  // Uploading a new file where there was none
-                  setUploadMessage('', filename, 'uploading-new');
-                } else {
-                  // No change
-                  existingFilename = filename;
-                  setUploadMessage(filename);
-                }
-              } else {
-                setUploadMessage('', '', 'empty');
-              }
-
-              hideAssetCurrent();
+          if (filename) {
+            if (existingFilename && filename !== existingFilename) {
+              setUploadMessage(existingFilename, filename, 'uploading-replacement');
+            } else if (!existingFilename) {
+              setUploadMessage('', filename, 'uploading-new');
+            } else {
+              existingFilename = filename;
+              setUploadMessage(filename);
             }
+          } else {
+            setUploadMessage('', '', 'empty');
           }
+          hideAssetCurrent();
         });
 
         observer.observe(observeTarget, { childList: true, subtree: true });
-        console.log('🔭 Observer initialized for', inputFieldId);
-      } else {
-        console.log('🚫 No observer target for', inputFieldId);
       }
+    });
+  }
 
-    } else {
-      console.log('🚫 Upload wrapper or input not found for', inputFieldId);
-    }
+  // ── View configs: viewId → upload field IDs ──
+  var VIEW_CONFIGS = [
+    { viewId: 'view_3094', fields: ['field_1808_upload', 'field_1809_upload'] },
+    { viewId: 'view_3297', fields: ['field_1808_upload', 'field_1809_upload', 'field_1930_upload'] }
+  ];
+
+  VIEW_CONFIGS.forEach(function (cfg) {
+    $(document).on('knack-view-render.' + cfg.viewId, function () {
+      enhanceUploadFields(cfg.fields);
+    });
   });
+})();
 
-});
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
-
-
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: YES WATTBOX SECTION *******************/
-
-// Working version + Different message for each situation 🎯
-
-$(document).on('knack-view-render.view_3297', function(event, view, data) {
-  console.log('✅ View 3297 loaded');
-
-  const uploadFields = ['field_1808_upload', 'field_1809_upload', 'field_1930_upload'];
-
-  uploadFields.forEach(function(inputFieldId) {
-    const $uploadWrapper = $('#' + inputFieldId).parent('.kn-file-upload');
-    const $fileInput = $('#' + inputFieldId);
-
-    let existingFilename = '';
-
-    if ($uploadWrapper.length && $fileInput.length) {
-      console.log('🔎 Upload wrapper exists for', inputFieldId);
-
-      // Style wrapper
-      $uploadWrapper.css({
-        position: 'relative',
-        width: '100%',
-        height: '150px',
-        minHeight: '150px',
-        backgroundColor: 'rgba(255, 0, 0, 0.2)', // Default RED
-        transition: 'background-color 0.5s ease'
-      });
-
-      $fileInput.css({
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        opacity: 0,
-        cursor: 'pointer',
-        zIndex: 2
-      });
-
-      // Add overlay (only once)
-      if ($uploadWrapper.find('.upload-message').length === 0) {
-        $uploadWrapper.append(`
-          <div class="upload-message" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px dashed #1890ff;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 500;
-            color: #1890ff;
-            text-align: center;
-            pointer-events: none;
-            z-index: 1;
-          ">
-            📂 Drop your file here or click to upload
-          </div>
-        `);
-      }
-
-      function getFilenameFromAsset(assetElement) {
-        if (!assetElement) return '';
-        const link = assetElement.querySelector('a');
-        if (link) {
-          return link.innerText.trim();
-        } else {
-          return assetElement.innerText.replace(/remove/i, '').trim();
-        }
-      }
-
-      function setUploadMessage(currentFilename, newFilename = '', mode = 'normal') {
-        const $message = $uploadWrapper.find('.upload-message');
-
-        if (mode === 'uploading-new') {
-          // Uploading a file where none existed
-          $message.html(`
-            <div style="padding: 20px;">
-              📂 Please click UPDATE to upload this file:<br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
-        } else if (mode === 'uploading-replacement') {
-          // Replacing an existing file
-          $message.html(`
-            <div style="padding: 20px;">
-              ♻️ Click UPDATE to replace <br><strong>${currentFilename}</strong><br> with <br><strong>${newFilename}</strong>
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(255, 165, 0, 0.2)'); // ORANGE
-        } else if (currentFilename) {
-          // File already uploaded
-          $message.html(`
-            <div style="padding: 20px;">
-              📄 Good Job!
-            </div>
-          `);
-          $uploadWrapper.css('background-color', 'rgba(0, 128, 0, 0.2)'); // GREEN
-        } else {
-          // Default state (no file)
-          $message.html(`📂 Drop your file here or click to upload`);
-          $uploadWrapper.css('background-color', 'rgba(255, 0, 0, 0.2)'); // RED
-        }
-      }
-
-      function hideAssetCurrent() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        if (assetCurrentNow) {
-          $(assetCurrentNow).hide();
-        }
-      }
-
-      function checkExistingUpload() {
-        const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-        const filename = getFilenameFromAsset(assetCurrentNow);
-
-        console.log('📦 Existing upload detected for', inputFieldId, ':', filename);
-
-        if (filename) {
-          existingFilename = filename;
-          setUploadMessage(existingFilename);
-        } else {
-          setUploadMessage('');
-        }
-
-        hideAssetCurrent();
-      }
-
-      checkExistingUpload();
-
-      // MutationObserver for each upload field
-      const observeTarget = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-      if (observeTarget) {
-        const observer = new MutationObserver(function(mutationsList, observer) {
-          for (const mutation of mutationsList) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-              console.log('🛰️ Upload updated for', inputFieldId);
-
-              const assetCurrentNow = document.querySelector(`#${inputFieldId}`).closest('.kn-input').querySelector('.kn-asset-current');
-              const filename = getFilenameFromAsset(assetCurrentNow);
-
-              console.log('🛰️ Found filename:', filename);
-
-              if (filename) {
-                if (existingFilename && filename !== existingFilename) {
-                  // Replacing an existing file
-                  setUploadMessage(existingFilename, filename, 'uploading-replacement');
-                } else if (!existingFilename) {
-                  // Uploading a new file where there was none
-                  setUploadMessage('', filename, 'uploading-new');
-                } else {
-                  // No change
-                  existingFilename = filename;
-                  setUploadMessage(filename);
-                }
-              } else {
-                setUploadMessage('', '', 'empty');
-              }
-
-              hideAssetCurrent();
-            }
-          }
-        });
-
-        observer.observe(observeTarget, { childList: true, subtree: true });
-        console.log('🔭 Observer initialized for', inputFieldId);
-      } else {
-        console.log('🚫 No observer target for', inputFieldId);
-      }
-
-    } else {
-      console.log('🚫 Upload wrapper or input not found for', inputFieldId);
-    }
-  });
-
-});
-
-
-/***************************** SURVEY / PROJECT FORM: drag + drop VIew / Location UPload fields: NO WATTBOX SECTION *******************/
-
-
+/***************************** /SURVEY / PROJECT FORM: drag + drop Upload fields *******************/
 
 
 // PM REVIEW SYSTEM QUESTIONNAIRE
@@ -9869,7 +10194,6 @@ $(".kn-navigation-bar").hide();
 });
 /**************************************************************************************************
  * FEATURE: McGandy’s Experiment (scene_213) — margin/cost math
- * ⚠ Contains likely bug: document.querySelector('text#field_1365') should probably be input#field_1365
  **************************************************************************************************/
 (function mcgandyExperiment_scene213() {
   SCW.onSceneRender('scene_213', function (event, view, record) {
@@ -9896,7 +10220,7 @@ $(".kn-navigation-bar").hide();
         var survey_cost = $(this).val();
         var subcontractor_cost = document.querySelector('input#field_1364').value;
         var total_cost = Math.abs(Math.abs(survey_cost) + Math.abs(subcontractor_cost));
-        var margin = document.querySelector('text#field_1365').value; // ⚠ likely wrong selector
+        var margin = document.querySelector('input#field_1365').value;
         var marked_up_labor = Math.round(total_cost / (1 - margin));
 
         $('input#field_1366').val(marked_up_labor);
@@ -10948,10 +11272,9 @@ $(".kn-navigation-bar").hide();
     $scopes.forEach(($s) => {
       applyRulesToScope($s, cfg);
 
-      // KTL / Chosen / persistent forms: value can settle a beat later
-      setTimeout(() => applyRulesToScope($s, cfg), 50);
-      setTimeout(() => applyRulesToScope($s, cfg), 250);
-      setTimeout(() => applyRulesToScope($s, cfg), 800);
+      // KTL / Chosen / persistent forms: value can settle a beat later.
+      // Single rAF recheck instead of 3 blind timers (50/250/800ms).
+      requestAnimationFrame(() => applyRulesToScope($s, cfg));
     });
   }
 
@@ -10959,8 +11282,8 @@ $(".kn-navigation-bar").hide();
   // MutationObserver: re-run when KTL rebuilds or moves nodes
   // ============================================================
   function installObservers() {
-    // Single observer for the whole document (cheap enough)
-    const target = document.body;
+    // Scope to #knack-dist (Knack's content area) instead of document.body
+    const target = document.getElementById('knack-dist') || document.body;
     if (!target) return;
 
     // Avoid double-install
@@ -11025,11 +11348,9 @@ $(".kn-navigation-bar").hide();
       setTimeout(() => FORMS.forEach(initEverywhere), 50);
     });
 
-  // Boot
+  // Boot — observer + view-render/scene-render hooks cover re-init.
   installObservers();
   $(function () { FORMS.forEach(initEverywhere); });
-  setTimeout(() => FORMS.forEach(initEverywhere), 250);
-  setTimeout(() => FORMS.forEach(initEverywhere), 1000);
 })();
 ////************* /SCW: FORM BUCKET → FIELD VISIBILITY *************////
 ////*************** DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
@@ -11708,7 +12029,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586', 'view_3588'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -11735,8 +12056,10 @@ $(".kn-navigation-bar").hide();
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
     'view_3332': 'add-photo-to-sow-line-item',
+    'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
-    'view_3577': 'add-photo-to-mdf-idf2'
+    'view_3577': 'add-photo-to-mdf-idf2',
+    'view_3588': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -12104,7 +12427,23 @@ $(".kn-navigation-bar").hide();
       '#view_3332 th.field_2446,',
       '#view_3332 td.field_2446,',
       '#view_3332 th.field_2447,',
-      '#view_3332 td.field_2447 {',
+      '#view_3332 td.field_2447,',
+      '#view_3586 th.field_114,',
+      '#view_3586 td.field_114,',
+      '#view_3586 th.field_2445,',
+      '#view_3586 td.field_2445,',
+      '#view_3586 th.field_2446,',
+      '#view_3586 td.field_2446,',
+      '#view_3586 th.field_2447,',
+      '#view_3586 td.field_2447,',
+      '#view_3588 th.field_114,',
+      '#view_3588 td.field_114,',
+      '#view_3588 th.field_2445,',
+      '#view_3588 td.field_2445,',
+      '#view_3588 th.field_2446,',
+      '#view_3588 td.field_2446,',
+      '#view_3588 th.field_2447,',
+      '#view_3588 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -12141,25 +12480,36 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * Extract the build-sow base path from the current URL hash.
-   * URL pattern: #team-calendar/project-dashboard/{id}/build-sow/{id}/...
-   * Returns the full base path up to and including build-sow/{id}, or ''.
+   * Extract the SOW base path from the current URL hash.
+   * Supported URL patterns:
+   *   #team-calendar/project-dashboard/{id}/build-sow/{id}/...
+   *   #team-calendar/project-dashboard/{id}/build-quote/{id}/...
+   *   #sales-portal/company-details/{id}/scope-of-work-details/{id}/...
    */
   function getBuildSowBasePath() {
     var hash = window.location.hash || '';
-    var match = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-sow\/[a-f0-9]{24})/);
-    return match ? match[1] : '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = hash.match(patterns[i]);
+      if (match) return match[1];
+    }
+    return '';
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3586': true, 'view_3588': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
     if (viewId && SOW_VIEWS[viewId]) {
       var sowBase = getBuildSowBasePath();
       if (!sowBase) return '';
-      return sowBase + '/edit-photo/' + photoRecordId;
+      // sales-portal/scope-of-work-details uses edit-doc-photo2; build-sow/build-quote uses edit-photo
+      var editSlug = sowBase.indexOf('scope-of-work-details') !== -1 ? 'edit-doc-photo2' : 'edit-photo';
+      return sowBase + '/' + editSlug + '/' + photoRecordId;
     }
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';
@@ -12899,13 +13249,14 @@ $(".kn-navigation-bar").hide();
   /**
    * Update a field value via Knack's internal APIs.
    */
-  function saveFieldValue(viewId, recordId, fieldKey, boolValue) {
+  function saveFieldValue(viewId, recordId, fieldKey, boolValue, onDone) {
     var data = {};
     data[fieldKey] = boolValue === 'yes';
 
     var view = Knack.views[viewId];
     if (view && view.model && typeof view.model.updateRecord === 'function') {
       view.model.updateRecord(recordId, data);
+      if (onDone) onDone();
       return;
     }
 
@@ -12922,23 +13273,18 @@ $(".kn-navigation-bar").hide();
         if (typeof model.save === 'function') {
           data.id = recordId;
           model.save(data);
+          if (onDone) onDone();
           return;
         }
       }
     }
 
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function () {
+        if (onDone) onDone();
         if (Knack.views[viewId] && Knack.views[viewId].model &&
             typeof Knack.views[viewId].model.fetch === 'function') {
           Knack.views[viewId].model.fetch();
@@ -12946,6 +13292,7 @@ $(".kn-navigation-bar").hide();
       },
       error: function (xhr) {
         console.warn('[scw-bool-chips] Save failed for ' + recordId, xhr.responseText);
+        if (onDone) onDone();
       }
     });
   }
@@ -13061,8 +13408,6 @@ $(".kn-navigation-bar").hide();
     newChip.classList.add('is-saving');
     chip.parentNode.replaceChild(newChip, chip);
 
-    setTimeout(function () { newChip.classList.remove('is-saving'); }, 400);
-
     // Also update the hidden source cell so re-renders stay in sync
     var $tr = $(td).closest('tr');
     var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
@@ -13070,12 +13415,16 @@ $(".kn-navigation-bar").hide();
       $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
     }
 
-    // Save
+    // Save — remove is-saving (pointer-events: none) only after the
+    // save completes, not on a blind 400ms timer.
     var tr = td.closest('tr');
     var recordId = tr ? getRecordId(tr) : null;
     if (recordId) {
-      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue);
+      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue, function () {
+        newChip.classList.remove('is-saving');
+      });
     } else {
+      newChip.classList.remove('is-saving');
       console.warn('[scw-bool-chips] Could not determine record ID for save');
     }
   }
@@ -13366,6 +13715,25 @@ $(".kn-navigation-bar").hide();
         editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3586',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        itemSlug: 'edit-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3588',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item2',
+        editSlug: 'add-photo-to-sow-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
       }
     ]
   };
@@ -13489,6 +13857,7 @@ $(".kn-navigation-bar").hide();
         align-items: center;
         margin-left: 10px;
         flex-shrink: 0;
+        padding-top: 5px;
       }
       .scw-cr-hdr-warning svg {
         width: 18px;
@@ -13568,7 +13937,8 @@ $(".kn-navigation-bar").hide();
       }
 
       /* Hide parent-connection field on add-accessory form before JS runs */
-      #view_3580 #kn-input-field_2464 {
+      #view_3580 #kn-input-field_2464,
+      #view_3590 #kn-input-field_2464 {
         display: none !important;
       }
     `;
@@ -13720,16 +14090,9 @@ $(".kn-navigation-bar").hide();
 
     // Approach 2: Direct scene/view PUT (CORS-safe)
     return new Promise(function (resolve, reject) {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
         type: 'PUT',
-        contentType: 'application/json',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
         data: JSON.stringify(data),
         success: function () { resolve(); },
         error: function (xhr) { reject(new Error('PUT ' + xhr.status)); }
@@ -14031,9 +14394,27 @@ $(".kn-navigation-bar").hide();
         item.className = 'scw-cr-item';
 
         var linkEl;
-        if (links[i].href) {
+        var itemHref = links[i].href;
+
+        // Rewrite item href when itemSlug is configured
+        if (cfg.itemSlug && links[i].recordId) {
+          if (itemHref) {
+            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → edit-accessory-line-item2)
+            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})\/?$/, '/' + cfg.itemSlug + '/$1');
+          } else if (addUrl) {
+            // Construct from addUrl by swapping in the accessory record ID
+            itemHref = addUrl.replace(/[a-f0-9]{24}\/?$/, links[i].recordId);
+          }
+          // Fallback: if regex didn't match, construct from current hash path
+          if (cfg.itemSlug && links[i].recordId && itemHref === links[i].href) {
+            var hashBase = (window.location.hash || '').replace(/\/[^\/]+\/[a-f0-9]{24}\/?$/, '');
+            if (hashBase) itemHref = hashBase + '/' + cfg.itemSlug + '/' + links[i].recordId;
+          }
+        }
+
+        if (itemHref) {
           linkEl = document.createElement('a');
-          linkEl.href = links[i].href;
+          linkEl.href = itemHref;
         } else {
           linkEl = document.createElement('span');
         }
@@ -14093,33 +14474,38 @@ $(".kn-navigation-bar").hide();
   // grab the parent scope line item ID from the URL hash
   // and set field_2464 (connection back to parent).
 
-  $(document).on('knack-view-render.view_3580', function (event, view, data) {
-    var hash = window.location.hash || '';
-    // URL: #.../add-accessory-line-item/{parentRecordId}
-    var match = hash.match(/add-accessory-line-item\/([a-f0-9]{24})/);
-    if (!match) return;
+  function initAddAccessoryForm(viewId) {
+    $(document).on('knack-view-render.' + viewId, function (event, view, data) {
+      var hash = window.location.hash || '';
+      // URL: #.../add-accessory-line-item/{parentRecordId} or add-accessory-line-item2/...
+      var match = hash.match(/add-accessory-line-item[2]?\/([a-f0-9]{24})/);
+      if (!match) return;
 
-    var parentId = match[1];
+      var parentId = match[1];
 
-    setTimeout(function () {
-      // field_2464 is a Chosen.js connection select — set the <select> value,
-      // update the hidden connection input, and trigger Chosen to refresh.
-      var $select = $('#view_3580-field_2464');
-      var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
+      setTimeout(function () {
+        // field_2464 is a Chosen.js connection select — set the <select> value,
+        // update the hidden connection input, and trigger Chosen to refresh.
+        var $select = $('#' + viewId + '-field_2464');
+        var $hidden = $('#kn-input-field_2464 input.connection[name="field_2464"]');
 
-      $select.val(parentId);
-      $select.trigger('chosen:updated');
-      $select.trigger('liszt:updated');
-      $hidden.val(parentId);
-      $select.trigger('change');
-    }, 1);
+        $select.val(parentId);
+        $select.trigger('chosen:updated');
+        $select.trigger('liszt:updated');
+        $hidden.val(parentId);
+        $select.trigger('change');
+      }, 1);
 
-    // On form submit, trigger the scroll/accordion preservation pipeline
-    // so the parent page restores accordion state after Knack re-renders.
-    $('#view_3580 form').off('submit.scwCR').on('submit.scwCR', function () {
-      $(document).trigger('knack-cell-update.scwScrollPreserve');
+      // On form submit, trigger the scroll/accordion preservation pipeline
+      // so the parent page restores accordion state after Knack re-renders.
+      $('#' + viewId + ' form').off('submit.scwCR').on('submit.scwCR', function () {
+        $(document).trigger('knack-cell-update.scwScrollPreserve');
+      });
     });
-  });
+  }
+
+  initAddAccessoryForm('view_3580');
+  initAddAccessoryForm('view_3590');
 
   // ============================================================
   // PUBLIC API
@@ -14186,10 +14572,21 @@ $(".kn-navigation-bar").hide();
   //   (label and product are handled structurally by the toggle zone)
   // detailLayout  – { left: [...], right: [...] } for detail panel columns
   //
+  // ── Layout defaults — views only need to specify properties that differ ──
+  var LAYOUT_DEFAULTS = {
+    productGroupWidth: '300px',    // fixed width or 'flex'
+    productGroupLayout: 'row',     // 'row' | 'column'
+    productEditable: false,        // true = editable-field styling on product td
+    identityWidth: null,           // null = auto, or '366px' etc.
+    labelWidth: '80px',            // label td width
+    detailGrid: '1fr 1fr',        // grid-template-columns for detail sections
+  };
+
   var WORKSHEET_CONFIG = {
     views: [
       {
         viewId: 'view_3512',
+        layout: { detailGrid: '455px 1fr' },
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -14220,6 +14617,7 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3505',
+        layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
@@ -14263,23 +14661,8 @@ $(".kn-navigation-bar").hide();
         ]
       },
       {
-        viewId: 'view_3559',
-        fields: {
-          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
-
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
-          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
-          surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
-        },
-        summaryLayout: [],
-        detailLayout: {
-          left:  ['mdfIdf', 'mdfNumber', 'name'],
-          right: ['surveyNotes']
-        }
-      },
-      {
-        viewId: 'view_3577',
+        viewIds: ['view_3559', 'view_3577'],
+        layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
@@ -14296,6 +14679,7 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3575',
+        layout: { /* defaults are fine */ },
         comparisonLayout: true,
         fields: {
           // ── Summary row ──
@@ -14326,6 +14710,7 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3313',
+        layout: { productGroupWidth: '280px', productGroupLayout: 'column', productEditable: true },
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -14360,6 +14745,7 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3332',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
@@ -14407,13 +14793,130 @@ $(".kn-navigation-bar").hide();
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
+      },
+      {
+        viewId: 'view_3586',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel ──
+          retailPrice:      { key: 'field_1960', type: 'readOnly' },
+          quantity:         { key: 'field_1964', type: 'directEdit', feeTrigger: true },
+          customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'lineItemTotal'],
+        detailLayout: {
+          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'connectedDevice', 'mountingHardware'],
+          right: ['laborDescription']
+        },
+        bucketField: 'field_2219',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Description of Service',
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
+      },
+      {
+        viewId: 'view_3588',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', detailGrid: '1fr 1fr 1fr' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel – left (pricing) ──
+          retailPrice:      { key: 'field_2150', type: 'readOnly' },
+          quantity:         { key: 'field_1965', type: 'directEdit', feeTrigger: true },
+          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_1960', type: 'readOnly' },
+
+          // ── Detail panel – center (identity) ──
+          dropPrefix:       { key: 'field_2240', type: 'directEdit' },
+          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+
+          // ── Detail panel – right ──
+          dropLength:       { key: 'field_2035', type: 'readOnly' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+        detailLayout: {
+          left:   ['retailPrice', 'quantity', 'discountDlr', 'appliedDiscount', 'total'],
+          center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
+          right:  ['dropLength', 'laborDescription']
+        }
       }
     ]
   };
 
-  // ── Normalise config: compute derived arrays from field descriptors ──
+  // ── Normalise config ──
+  //  1. Expand viewIds → one entry per viewId (shared fields/layout by reference)
+  //  2. Merge layout defaults so every view has a complete layout object
+  //  3. Compute derived arrays (feeTriggerFields, headerTriggerFields)
+
+  // Step 1: Expand viewIds
+  var expandedViews = [];
   WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
-    // Build feeTriggerFields from descriptors
+    var ids = viewCfg.viewIds || (viewCfg.viewId ? [viewCfg.viewId] : []);
+    ids.forEach(function (id) {
+      // Shallow copy so each entry has its own viewId but shares fields etc.
+      var copy = {};
+      for (var k in viewCfg) { if (viewCfg.hasOwnProperty(k)) copy[k] = viewCfg[k]; }
+      copy.viewId = id;
+      delete copy.viewIds;
+      expandedViews.push(copy);
+    });
+  });
+  WORKSHEET_CONFIG.views = expandedViews;
+
+  // Step 2: Merge layout defaults
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+    var merged = {};
+    for (var dk in LAYOUT_DEFAULTS) {
+      if (LAYOUT_DEFAULTS.hasOwnProperty(dk)) merged[dk] = LAYOUT_DEFAULTS[dk];
+    }
+    var src = viewCfg.layout || {};
+    for (var sk in src) {
+      if (src.hasOwnProperty(sk)) merged[sk] = src[sk];
+    }
+    viewCfg.layout = merged;
+  });
+
+  // Step 3: Compute derived arrays from field descriptors
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
     var feeTriggers = [];
     var headerTriggers = [];
     var f = viewCfg.fields;
@@ -14462,7 +14965,10 @@ tr[data-scw-worksheet]:hover {
 tr.${WORKSHEET_ROW} > td:not(.bulkEditSelectedRow),
 tr.${WORKSHEET_ROW}:hover > td:not(.bulkEditSelectedRow),
 tr.scw-inline-photo-row > td,
-tr.scw-inline-photo-row:hover > td,
+tr.scw-inline-photo-row:hover > td {
+  background: #fff !important;
+  background-color: #fff !important;
+}
 tr[data-scw-worksheet] > td:not(.bulkEditSelectedRow),
 tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   background: none !important;
@@ -14477,7 +14983,7 @@ tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
 
 /* ── Photo row — part of the same visual unit ── */
 tr.scw-inline-photo-row > td {
-  padding: 10px 16px 14px 16px !important;
+  padding: 20px 16px 50px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
 }
@@ -14555,23 +15061,25 @@ td.${P}-sum-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
+  align-self: flex-start;
   flex: 0 0 auto;
-  padding: 0 4px !important;
+  padding: 5px 4px 0 4px !important;
   border: none !important;
   background: transparent !important;
   min-width: 20px;
 }
 td.${P}-sum-check input[type="checkbox"] {
-  margin: 0;
+  width: 15px !important;
+  height: 15px !important;
+  margin: 2px 0 0;
   cursor: pointer;
 }
 
 /* Clickable toggle zone (chevron + identity) — fixed width so labor desc aligns */
 .${P}-toggle-zone {
   display: flex;
-  align-items: center;
-  align-self: center;
+  align-items: flex-start;
+  align-self: flex-start;
   gap: 6px;
   cursor: pointer;
   user-select: none;
@@ -14593,6 +15101,7 @@ td.${P}-sum-check input[type="checkbox"] {
   color: #9ca3af;
   transition: transform 200ms ease, color 150ms ease;
   transform: rotate(0deg);
+  padding-top: 5px;
 }
 .${P}-chevron.${P}-collapsed {
   transform: rotate(0deg);
@@ -14600,6 +15109,22 @@ td.${P}-sum-check input[type="checkbox"] {
 .${P}-chevron.${P}-expanded {
   transform: rotate(90deg);
   color: #6b7280;
+}
+
+/* Fixed-width warning slot between chevron and identity — always present */
+.${P}-warn-slot {
+  flex: 0 0 18px;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+.${P}-warn-slot:empty {
+  visibility: hidden;
+}
+.${P}-warn-slot .scw-cr-hdr-warning {
+  margin-left: 0;
 }
 
 /* Label + Product identity block */
@@ -14639,15 +15164,22 @@ td.${P}-sum-check input[type="checkbox"] {
   gap: 4px;
   overflow: hidden;
 }
-#view_3512 .${P}-product-group {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+/* Product group column layout variant */
+.${P}-product-group--column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
 }
-#view_3505 .${P}-product-group {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
+.${P}-product-group--column > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
+}
+/* Product group flex variant (fills identity width) */
+.${P}-product-group--flex {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 .${P}-product-group > td.${P}-sum-product {
   width: auto !important;
@@ -14676,18 +15208,6 @@ td.${P}-sum-label-cell:hover {
   max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* view_3559 / view_3577: wider label (no product column, label IS the identity) */
-#view_3559 td.${P}-sum-label-cell,
-#view_3559 td.${P}-sum-label-cell:hover,
-#view_3577 td.${P}-sum-label-cell,
-#view_3577 td.${P}-sum-label-cell:hover {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.3;
 }
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
@@ -14730,16 +15250,12 @@ td.${P}-sum-field {
   color: #374151;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  background: #fff;
+  background: rgba(134, 182, 223, 0.1);
   white-space: nowrap;
   height: 30px;
   min-width: 40px;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
-}
-td.${P}-sum-field.cell-edit,
-td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgba(134, 182, 223, 0.1);
 }
 td.${P}-sum-field.cell-edit:hover,
 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
@@ -14759,7 +15275,7 @@ td.${P}-sum-field-ro {
   align-items: center;
   position: relative;
   padding: 2px 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
   border: none !important;
@@ -14800,10 +15316,23 @@ td.${P}-sum-field--desc {
   flex-shrink: 0;
 }
 
-/* Labor desc group — fills middle space, pushes right group to far right */
+/* Labor desc group — fills middle space, pushes right group to far right.
+   align-self:stretch makes it match the tallest sibling (e.g. stacked chips). */
 .${P}-sum-group--fill {
   flex: 1 1 auto;
   min-width: 80px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+/* Fill td + textarea stretch to fill the group height */
+.${P}-sum-group--fill td.${P}-sum-direct-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.${P}-sum-group--fill td.${P}-sum-direct-edit .${P}-direct-textarea {
+  flex: 1;
 }
 
 /* Move td sits at the right end */
@@ -14847,45 +15376,48 @@ td.${P}-sum-move {
   align-items: center;
 }
 
-/* ── Cabling toggle chit (boolean, inline in summary bar) ── */
+/* ── Toggle chit (boolean, inline in summary bar) ── */
 .${P}-cabling-chit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  transition: all 0.15s ease;
   flex-shrink: 0;
   height: 100%;
   box-sizing: border-box;
   vertical-align: middle;
 }
 .${P}-cabling-chit.is-yes {
-  background-color: #1a6b3c;
+  background: #059669;
   color: #ffffff;
-  border-color: #145230;
+  border-color: #047857;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
 }
 .${P}-cabling-chit.is-yes:hover {
-  background-color: #145230;
-  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+  background: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 .${P}-cabling-chit.is-no {
-  background-color: #f9fafb;
-  color: #9ca3af;
+  background: #ffffff;
+  color: #6b7280;
   border-color: #d1d5db;
 }
 .${P}-cabling-chit.is-no:hover {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .${P}-cabling-chit.is-saving {
   opacity: 0.6;
@@ -14970,18 +15502,8 @@ tr.scw-synth-divider > td {
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
-/* Narrow the Equipment Details (left) section so Survey Details
-   starts roughly aligned with Labor Description in the summary bar. */
-#view_3512 .${P}-sections {
-  grid-template-columns: 455px 1fr;
-}
-#view_3505 .${P}-sections {
-  grid-template-columns: 555px 1fr;
-}
 @media (max-width: 900px) {
-  .${P}-sections,
-  #view_3512 .${P}-sections,
-  #view_3505 .${P}-sections {
+  .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
@@ -14989,11 +15511,9 @@ tr.scw-synth-divider > td {
 /* ── Individual section ── */
 .${P}-section {
   padding: 14px 20px 14px 16px;
-  border-right: 1px solid #e5e7eb;
   min-width: 0;
 }
 .${P}-section:last-child {
-  border-right: none;
 }
 
 .${P}-section-title {
@@ -15110,7 +15630,7 @@ td.${P}-field-value--notes {
   font-style: italic;
 }
 
-/* ── Radio chips (Mounting Height) ── */
+/* ── Radio chips (Mounting Height / Labor Variables) ── */
 .${P}-radio-chips {
   display: flex;
   flex-wrap: wrap;
@@ -15119,36 +15639,39 @@ td.${P}-field-value--notes {
 }
 .${P}-radio-chip {
   display: inline-block;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.5;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: all 0.15s ease;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #1a6b3c;
+  background: #059669;
   color: #ffffff;
-  border-color: #145230;
+  border-color: #047857;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #145230;
-  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+  background: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 .${P}-radio-chip.is-unselected {
-  background-color: #f9fafb;
-  color: #9ca3af;
+  background: #ffffff;
+  color: #6b7280;
   border-color: #d1d5db;
 }
 .${P}-radio-chip.is-unselected:hover {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .${P}-radio-chip.is-saving {
   opacity: 0.6;
@@ -15206,6 +15729,8 @@ td.${P}-sum-direct-edit {
   width: 100%;
   min-width: 0;
   padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
 }
 td.${P}-sum-direct-edit .${P}-direct-input,
 td.${P}-sum-direct-edit .${P}-direct-textarea {
@@ -15385,10 +15910,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background: #fef3c7;
 }
 
-/* view_3313: Product styled as an editable field — same treatment as
-   td.sum-field so it blends with the summary bar background */
-#view_3313 td.${P}-sum-product,
-#view_3313 td.${P}-sum-product:hover {
+/* ── Product editable styling (shared class, applied via layout.productEditable) ── */
+td.${P}-sum-product--editable,
+td.${P}-sum-product--editable:hover {
   font-size: 13px;
   font-weight: 500;
   color: #374151;
@@ -15396,44 +15920,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   border-radius: 4px;
   background: rgba(134, 182, 223, 0.1) !important;
   padding: 2px 8px;
-  height: 30px;
+  height: auto;
+  min-height: 30px;
   width: 100%;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
-#view_3313 td.${P}-sum-product.cell-edit:hover,
-#view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+td.${P}-sum-product--editable.cell-edit:hover,
+td.${P}-sum-product--editable.ktlInlineEditableCellsStyle:hover {
   background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
-#view_3313 td.${P}-sum-product.bulkEditSelectSrc {
+td.${P}-sum-product--editable.bulkEditSelectSrc {
   outline-offset: 1px;
   cursor: cell !important;
   background-color: rgb(255, 253, 204) !important;
-}
-/* Product group width for view_3575 (matches view_3512) */
-#view_3575 .${P}-product-group {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
-}
-
-/* ================================================================
-   VIEW 3313 – SOW Build worksheet
-   ================================================================ */
-/* Product group as column layout to align with editable fields */
-#view_3313 .${P}-product-group {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3313 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
 }
 
 
@@ -15485,16 +15987,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 80px;
 }
 
-/* view_3313 detail sections grid */
-#view_3313 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3313 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 900px) {
   .${P}-comp {
     grid-template-columns: 90px 1fr 1fr;
@@ -15517,7 +16009,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 /* Read-only total in stacked pair — match Fee value size, centered */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
   padding: 0 4px !important;
@@ -15525,64 +16017,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   width: 100%;
 }
 
-/* view_3332: Product styled as editable field — same as view_3313 */
-#view_3332 td.${P}-sum-product,
-#view_3332 td.${P}-sum-product:hover {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  border: 1px solid #e5e7eb !important;
-  border-radius: 4px;
-  background: rgba(134, 182, 223, 0.1) !important;
-  padding: 2px 8px;
-  height: auto;
-  min-height: 30px;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.15s, background-color 0.15s;
+/* view_3586 right-group widths — compact to leave room for SCW Notes fill */
+.${P}-sum-right .${P}-sum-group--retail {
+  width: min-content;
+  min-width: 60px;
 }
-#view_3332 td.${P}-sum-product.cell-edit:hover,
-#view_3332 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
-  background-color: rgba(134, 182, 223, 0.18) !important;
-  border-color: #93c5fd !important;
-  cursor: pointer;
+.${P}-sum-right .${P}-sum-group--disc-pct {
+  width: 55px;
+  min-width: 55px;
 }
-#view_3332 td.${P}-sum-product.bulkEditSelectSrc {
-  outline-offset: 1px;
-  cursor: cell !important;
-  background-color: rgb(255, 253, 204) !important;
+.${P}-sum-right .${P}-sum-group--disc-dlr {
+  width: 60px;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--applied {
+  width: min-content;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--total {
+  width: 90px;
+  min-width: 90px;
 }
 
-/* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
-#view_3332 .${P}-identity {
-  width: 366px;
-  min-width: 366px;
-  max-width: 366px;
-  flex: 0 0 366px;
+/* ── Non-stacked alignment: push checkbox/chevron/product down by label height ── */
+.${P}-summary:not(.${P}-summary--stacked) td.${P}-sum-check,
+.${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
+  margin-top: 12px;
 }
-/* view_3332 product group — flex to fill identity; shrinks when bucket chit present */
-#view_3332 .${P}-product-group {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3332 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
-}
-
-/* view_3332 detail sections grid */
-#view_3332 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3332 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
+/* Non-stacked fill textarea — stretches to match tallest sibling, grows for extra text */
+.${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
+  min-height: 24px;
+  max-height: none;
 }
 
 /* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
@@ -15614,6 +16079,58 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   max-width: none;
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
+
+/* ══════════════════════════════════════════════════════════════════
+   AUTO-GENERATED PER-VIEW LAYOUT RULES
+   Driven by the layout block in each WORKSHEET_CONFIG entry.
+   ══════════════════════════════════════════════════════════════════ */
+${WORKSHEET_CONFIG.views.map(function (v) {
+  var id = v.viewId;
+  var L = v.layout;
+  var rules = [];
+
+  // ── Product group width ──
+  if (L.productGroupWidth && L.productGroupWidth !== 'flex') {
+    var w = L.productGroupWidth;
+    rules.push(
+      '#' + id + ' .' + P + '-product-group {' +
+      ' width: ' + w + '; min-width: ' + w + '; max-width: ' + w + '; }'
+    );
+  }
+
+  // ── Label width (when non-default) ──
+  if (L.labelWidth && L.labelWidth !== LAYOUT_DEFAULTS.labelWidth) {
+    rules.push(
+      '#' + id + ' td.' + P + '-sum-label-cell,' +
+      '#' + id + ' td.' + P + '-sum-label-cell:hover {' +
+      ' width: ' + L.labelWidth + '; min-width: ' + L.labelWidth + '; max-width: ' + L.labelWidth + ';' +
+      ' white-space: normal; word-break: break-word; line-height: 1.3; }'
+    );
+  }
+
+  // ── Identity width ──
+  if (L.identityWidth) {
+    var iw = L.identityWidth;
+    rules.push(
+      '#' + id + ' .' + P + '-identity {' +
+      ' width: ' + iw + '; min-width: ' + iw + '; max-width: ' + iw + '; flex: 0 0 ' + iw + '; }'
+    );
+  }
+
+  // ── Detail grid columns (when non-default) ──
+  if (L.detailGrid && L.detailGrid !== LAYOUT_DEFAULTS.detailGrid) {
+    rules.push(
+      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + L.detailGrid + '; }'
+    );
+    rules.push(
+      '@media (max-width: 900px) { #' + id + ' .' + P + '-sections { grid-template-columns: 1fr; } }'
+    );
+  }
+
+  return rules.length
+    ? '/* ── ' + id + ' (auto-generated) ── */\n' + rules.join('\n')
+    : '';
+}).filter(Boolean).join('\n\n')}
 `;
 
     var style = document.createElement('style');
@@ -15802,6 +16319,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  may refresh sibling views — not just the one that was edited. */
   function captureAllExpandedStates() {
     WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      // Skip views not in the current DOM — avoids unnecessary
+      // querySelectorAll on views that aren't on this page.
+      if (!document.getElementById(viewCfg.viewId)) return;
       captureExpandedState(viewCfg.viewId);
     });
   }
@@ -16126,6 +16646,43 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }, 600);
   }
 
+  // ============================================================
+  // CONDITIONAL CELL COLOR EVALUATOR (shared by render + save)
+  // ============================================================
+  //
+  // Pure-logic function: given a field key and its text value,
+  // returns the conditional color key ('danger', 'warning') or
+  // null.  Used both at initial render (to set input bg without
+  // getComputedStyle) and after saves (refreshInputConditionalColor).
+  //
+  // Rules mirror dynamic-cell-colors.js for the direct-edit fields
+  // that device-worksheet manages.
+
+  var COND_COLORS_MAP = {
+    danger:  'rgb(248, 215, 218)',
+    warning: 'rgb(255, 243, 205)'
+  };
+
+  var COND_DEFAULT_BG = 'rgba(134, 182, 223, 0.1)';
+
+  function evaluateConditionalColor(fieldKey, rawText) {
+    var cleaned = (rawText || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
+    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
+    if (fieldKey === 'field_2400') {
+      if (isEmpty) return 'danger';
+      if (isZero)  return 'warning';
+    } else if (fieldKey === 'field_2409') {
+      if (isEmpty) return 'danger';
+    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
+      if (isEmpty) return 'warning';
+    } else if (fieldKey === 'field_2399') {
+      if (isZero) return 'warning';
+    }
+    return null;
+  }
+
   /**
    * After a successful save, recalculate the conditional background
    * color (danger/warning) for a direct-edit input based on the
@@ -16138,64 +16695,33 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var fieldKey = input.getAttribute('data-field');
     if (!fieldKey) return;
 
-    // Find the view config that governs this input
-    var viewEl = input.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
-    if (!viewId) return;
-
-    var COLORS_MAP = {
-      danger:  'rgb(248, 215, 218)',
-      warning: 'rgb(255, 243, 205)'
-    };
-
     // Read value from hidden td (detail panel) or input itself (summary bar)
-    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
     var rawText = hiddenTd ? (hiddenTd.textContent || '') : (input.value || '');
-    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
-    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
+    var conditionColor = evaluateConditionalColor(fieldKey, rawText);
+
     // The element to update classes/styles on
     var styleTd = hiddenTd || wrapper;
-
     var dangerCls = 'scw-cell-danger';
     var warningCls = 'scw-cell-warning';
 
-    var conditionMet = false;
-    var conditionColor = null;
-
-    if (fieldKey === 'field_2400') {
-      if (isEmpty) { conditionMet = true; conditionColor = 'danger'; }
-      else if (isZero) { conditionMet = true; conditionColor = 'warning'; }
-    } else if (fieldKey === 'field_2409') {
-      conditionMet = isEmpty;
-      conditionColor = 'danger';
-    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
-      conditionMet = isEmpty;
-      conditionColor = 'warning';
-    } else if (fieldKey === 'field_2399') {
-      conditionMet = isZero;
-      conditionColor = 'warning';
-    }
-
-    // Update td classes (so the condition is reflected in DOM)
     styleTd.classList.remove(dangerCls, warningCls);
-    if (conditionMet && conditionColor === 'danger') {
+    if (conditionColor === 'danger') {
       styleTd.classList.add(dangerCls);
-      styleTd.style.backgroundColor = COLORS_MAP.danger;
-    } else if (conditionMet && conditionColor === 'warning') {
+      styleTd.style.backgroundColor = COND_COLORS_MAP.danger;
+    } else if (conditionColor === 'warning') {
       styleTd.classList.add(warningCls);
-      styleTd.style.backgroundColor = COLORS_MAP.warning;
+      styleTd.style.backgroundColor = COND_COLORS_MAP.warning;
     } else {
       styleTd.style.backgroundColor = '';
     }
 
     // Update the visible input's background
-    if (conditionMet && COLORS_MAP[conditionColor]) {
-      input.style.backgroundColor = COLORS_MAP[conditionColor];
+    if (conditionColor && COND_COLORS_MAP[conditionColor]) {
+      input.style.backgroundColor = COND_COLORS_MAP[conditionColor];
     } else {
-      // Restore the default direct-edit background (light blue tint
-      // from the build step or transparent)
-      input.style.backgroundColor = 'rgba(134, 182, 223, 0.1)';
+      input.style.backgroundColor = COND_DEFAULT_BG;
     }
   }
 
@@ -16304,14 +16830,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
 
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'GET',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'Authorization': Knack.getUserToken()
-      },
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
         console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
@@ -16403,16 +16924,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
         if (feeTrig) refreshViewAfterSave(viewId);
@@ -16558,16 +17072,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
     if (typeof Knack !== 'undefined') {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
         type: 'PUT',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
-        contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
           if (feeTrig) refreshViewAfterSave(viewId);
@@ -16747,8 +17254,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
-    // Capture conditional bg BEFORE we touch the DOM
-    var compBg = window.getComputedStyle(td).backgroundColor;
+    // Compute conditional background color from the field value
+    // instead of reading getComputedStyle on the td.  This avoids
+    // forced style recalculations entirely — the color is derived
+    // from pure logic (field key + text value) using the same rules
+    // as dynamic-cell-colors.js, rather than asking the browser to
+    // resolve the computed style of each td in the document.
+    var condColor = evaluateConditionalColor(fieldKey, currentVal);
 
     // Keep a hidden span with the text value so dynamic-cell-colors
     // (which reads $td.text()) still sees the real content.
@@ -16767,7 +17279,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 4;
+      input.rows = opts.rows || 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -16778,9 +17290,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
     input._scwPrev = currentVal;
 
-    // Propagate conditional background color from td to input
-    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
-      input.style.backgroundColor = compBg;
+    // Apply conditional background color to the input
+    if (condColor && COND_COLORS_MAP[condColor]) {
+      input.style.backgroundColor = COND_COLORS_MAP[condColor];
     }
 
     td.appendChild(input);
@@ -16811,6 +17323,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       injectSummaryDirectEdit(td, opts.fieldKey);
     }
     group.appendChild(td);
+
+    // Inherit Knack's text-align setting (e.g. center) so the value
+    // AND label honour the column alignment configured in the builder.
+    // The td uses display:inline-flex (text-align is ignored by flex),
+    // so we translate text-align into the flex equivalents.
+    var tdAlign = td.style.textAlign || getComputedStyle(td).textAlign;
+    if (tdAlign === 'center' || tdAlign === 'right') {
+      var flexAlign = tdAlign === 'center' ? 'center' : 'flex-end';
+      group.style.alignItems = flexAlign;         // centers label + td within the group column
+      td.style.justifyContent = flexAlign;        // centers content inside the td (which is width:100%)
+      lbl.style.textAlign = tdAlign;              // centers the label text
+    }
+
     parent.appendChild(group);
     return group;
   }
@@ -16847,7 +17372,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           ldGroup.appendChild(ldLabel);
           td.classList.add(P + '-sum-field');
           td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline });
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -16924,7 +17449,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var chit = document.createElement('span');
         chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
         chit.setAttribute('data-field', desc.key);
-        chit.innerHTML = 'Existing<br>Cabling';
+        chit.innerHTML = desc.chitLabel || 'Existing Cabling';
         var chitSpan = td.querySelector('span');
         if (chitSpan) { chitSpan.style.display = 'none'; }
         td.textContent = '';
@@ -16952,7 +17477,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     bar.className = P + '-summary';
 
     // Detect stacked labels early — needed for vertical alignment of all elements
-    var hasStackedFields = layout.some(function (n) {
+    // Views can opt out via stackedSummary: false (alignment handled by CSS margin-top)
+    var hasStackedFields = viewCfg.stackedSummary !== false && layout.some(function (n) {
       var d = fieldDesc(viewCfg, n);
       return d && d.group === 'right' && d.label;
     });
@@ -17003,8 +17529,38 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       toggleZone.appendChild(chevron);
     }
 
+    // Fixed-width warning slot — always present so layout never shifts
+    var warnSlot = document.createElement('span');
+    warnSlot.className = P + '-warn-slot';
+    if (hasStackedFields) {
+      var slotWrap = document.createElement('span');
+      slotWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var slotSpacer = document.createElement('span');
+      slotSpacer.className = P + '-sum-label';
+      slotSpacer.innerHTML = '&nbsp;';
+      slotWrap.appendChild(slotSpacer);
+      slotWrap.appendChild(warnSlot);
+      toggleZone.appendChild(slotWrap);
+    } else {
+      toggleZone.appendChild(warnSlot);
+    }
+
     var identity = document.createElement('span');
     identity.className = P + '-identity';
+
+    // Warning chit — placed before label so it appears at the left of the identity block
+    var warnDesc = fieldDesc(viewCfg, 'warningCount');
+    if (warnDesc) {
+      var warnTd = findCell(tr, warnDesc.key);
+      var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+      if (warnVal > 0) {
+        var warnChit = document.createElement('span');
+        warnChit.className = P + '-warn-chit';
+        warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
+            + Math.round(warnVal);
+        identity.appendChild(warnChit);
+      }
+    }
 
     var labelDesc = fieldDesc(viewCfg, 'label');
     if (labelDesc) {
@@ -17026,6 +17582,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
+        // Apply layout-driven classes
+        var pgLayout = viewCfg.layout || {};
+        if (pgLayout.productGroupLayout === 'column') {
+          productGroup.classList.add(P + '-product-group--column');
+        }
+        if (pgLayout.productGroupWidth === 'flex') {
+          productGroup.classList.add(P + '-product-group--flex');
+        }
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
@@ -17038,21 +17602,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           productGroup.appendChild(prodLabel);
         }
 
-        // Warning chit
-        var warnDesc = fieldDesc(viewCfg, 'warningCount');
-        if (warnDesc) {
-          var warnTd = findCell(tr, warnDesc.key);
-          var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
-          if (warnVal > 0) {
-            var warnChit = document.createElement('span');
-            warnChit.className = P + '-warn-chit';
-            warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
-              + Math.round(warnVal);
-            productGroup.appendChild(warnChit);
-          }
-        }
-
         productTd.classList.add(P + '-sum-product');
+        if (pgLayout.productEditable) {
+          productTd.classList.add(P + '-sum-product--editable');
+        }
         productGroup.appendChild(productTd);
         identity.appendChild(productGroup);
       }
@@ -17156,7 +17709,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     mdfNumber:        '##',
     name:             'Name',
     dropPrefix:       'Drop Prefix',
-    dropNumber:       'Label #'
+    dropNumber:       'Label #',
+    laborDescription: 'Labor\nDesc',
+    retailPrice:      'Retail Price',
+    quantity:         'Qty',
+    customDiscPct:    'Custom\nDisc %',
+    discountDlr:      'Discount $',
+    appliedDiscount:  'Applied\nDiscount',
+    total:            'Total'
   };
 
   /** Render a single field into a detail section based on its descriptor type. */
@@ -17240,7 +17800,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var sections = document.createElement('div');
     sections.className = P + '-sections';
 
-    var sides = ['left', 'right'];
+    var sides = ['left', 'center', 'right'];
     for (var s = 0; s < sides.length; s++) {
       var side = sides[s];
       var fieldNames = layout[side];
@@ -17556,9 +18116,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (detail) card.appendChild(detail);
 
     // ── Accessory mismatch header warning ──
-    // If any connected-records widget flagged a warning, add icon to summary row.
-    // Prefer the label cell (view_3313); when no label cell exists (view_3332),
-    // insert as a standalone element in the identity, before the product group.
+    // If any connected-records widget flagged a warning, place icon in the
+    // fixed-width warn-slot (between chevron and identity) so it never shifts layout.
     var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
     for (var w = 0; w < crWidgets.length; w++) {
       var parentField = crWidgets[w].parentElement;
@@ -17568,32 +18127,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
         warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
 
-        var labelCell = card.querySelector('td.' + P + '-sum-label-cell');
-        if (labelCell) {
-          // view_3313 style: append to label cell
-          labelCell.appendChild(warnIcon);
-        } else {
-          // view_3332 style: insert before product group in identity
-          var identityEl = card.querySelector('.' + P + '-identity');
-          var productGroupEl = card.querySelector('.' + P + '-product-group');
-          var isStacked = card.querySelector('.' + P + '-summary--stacked');
-          var warnNode = warnIcon;
-          if (isStacked) {
-            var warnWrap = document.createElement('span');
-            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-            var warnSpacer = document.createElement('span');
-            warnSpacer.className = P + '-sum-label';
-            warnSpacer.innerHTML = '&nbsp;';
-            warnWrap.appendChild(warnSpacer);
-            warnWrap.appendChild(warnIcon);
-            warnNode = warnWrap;
-          }
-          if (identityEl && productGroupEl) {
-            identityEl.insertBefore(warnNode, productGroupEl);
-          } else if (identityEl) {
-            identityEl.appendChild(warnNode);
-          }
-        }
+        var slot = card.querySelector('.' + P + '-warn-slot');
+        if (slot) slot.appendChild(warnIcon);
         break;
       }
     }
@@ -17623,18 +18158,40 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     var $rows = $(table).find('tbody > tr');
 
+    // ── Hoist colCount — same for every row, no need to recompute ──
+    var headerRow = table.querySelector('thead tr');
+    var colCount = 1;
+    if (headerRow) {
+      colCount = 0;
+      var hCells = headerRow.children;
+      for (var ci = 0; ci < hCells.length; ci++) {
+        colCount += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
+      }
+    }
+
+    // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
+    //
+    // Conditional cell colors (danger/warning) are now computed from
+    // field values using evaluateConditionalColor() instead of reading
+    // getComputedStyle() on each td.  This eliminates ALL forced style
+    // recalculations from the render path — the color is derived from
+    // pure logic (field key + text value), not from the browser's
+    // computed style resolution.
+    //
+    // Bucket and move-field info are also collected here (DOM tree
+    // reads with no layout cost) so Phase 2 can build cards without
+    // any reads from the live document.
+    var eligible = [];
+
     $rows.each(function () {
       var tr = this;
-
       if (tr.classList.contains('kn-table-group')) return;
       if (tr.classList.contains('scw-inline-photo-row')) return;
       if (tr.classList.contains(WORKSHEET_ROW)) return;
-
-      var recordId = getRecordId(tr);
-      if (!recordId) return;
+      if (!getRecordId(tr)) return;
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
-      // Detect bucket and move-field emptiness BEFORE buildWorksheetCard moves tds
+      // Pre-read bucket and move-field info (DOM reads, no layout cost)
       var preBucketRowClass = '';
       if (viewCfg.bucketField && viewCfg.bucketRules) {
         var rowBucketId = readBucketId(tr, viewCfg.bucketField);
@@ -17643,9 +18200,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           preBucketRowClass = rowBucketRule.rowClass;
         }
       }
-      // Determine if this row is under a blank (orphaned) MDF/IDF group header.
-      // Walk backwards through siblings to find the nearest kn-table-group row;
-      // if its label is empty the row has no MDF/IDF assignment.
       var hasNoMove = false;
       if (viewCfg.syntheticBucketGroups) {
         var prev = tr.previousElementSibling;
@@ -17653,11 +18207,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           prev = prev.previousElementSibling;
         }
         if (!prev) {
-          hasNoMove = true; // no group header at all
+          hasNoMove = true;
         } else {
           hasNoMove = getGroupLabelText(prev).length === 0;
         }
       }
+
+      eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
+    });
+
+    // ── PHASE 2: BUILD — construct cards from collected data ──
+    //
+    // buildWorksheetCard reparents <td> elements into the card DOM,
+    // which mutates the source rows.  Conditional colors are computed
+    // from field values (evaluateConditionalColor), not from the
+    // browser's computed style, so these mutations cause zero forced
+    // style recalculations.
+    var pendingInserts = [];
+
+    for (var ri = 0; ri < eligible.length; ri++) {
+      var entry = eligible[ri];
+      var tr = entry.tr;
 
       var card = buildWorksheetCard(tr, viewCfg);
 
@@ -17666,27 +18236,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.id = tr.id;
       tr.removeAttribute('id');
 
-      if (preBucketRowClass) wsTr.classList.add(preBucketRowClass);
-      if (hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
+      if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);
+      if (entry.hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
 
       var wsTd = document.createElement('td');
-
-      var headerRow = table.querySelector('thead tr');
-      var colCount = 1;
-      if (headerRow) {
-        colCount = 0;
-        var cells = headerRow.children;
-        for (var i = 0; i < cells.length; i++) {
-          colCount += parseInt(cells[i].getAttribute('colspan') || '1', 10);
-        }
-      }
       wsTd.setAttribute('colspan', String(colCount));
       wsTd.appendChild(card);
       wsTr.appendChild(wsTd);
 
-      tr.parentNode.insertBefore(wsTr, tr.nextSibling);
       tr.setAttribute(PROCESSED_ATTR, '1');
-    });
+      pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
+    }
+
+    // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
+    //
+    // Batching avoids interleaving writes with the reads that happened
+    // in Phase 1.  The browser can coalesce these mutations into a
+    // single reflow instead of reflowing after each insertion.
+    for (var pi = 0; pi < pendingInserts.length; pi++) {
+      var ins = pendingInserts[pi];
+      ins.sourceTr.parentNode.insertBefore(ins.wsTr, ins.sourceTr.nextSibling);
+    }
 
     // After all rows are processed, hide photo rows for collapsed items
     // and set up the bottom border on the last row of each record group
@@ -17848,6 +18418,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // may have stale formula data.  Re-apply labels from our cache
     // (populated from the PUT response) now that the DOM is stable.
     restoreCachedLabels(viewCfg.viewId);
+
+    // ── NOTIFY DEPENDENT MODULES ──
+    // Dispatch a custom event so modules like select-all-checkboxes can
+    // run exactly once after the worksheet DOM is stable, instead of
+    // relying on blind timers or a body-level MutationObserver.
+    document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
+      detail: { viewId: viewCfg.viewId }
+    }));
   }
 
   // ============================================================
@@ -18105,16 +18683,9 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     }
 
     // Fallback: direct AJAX PUT
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) { if (onSuccess) onSuccess(resp); },
       error: function (xhr) {
@@ -18207,6 +18778,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     if (!rows.length) return;
 
     var pendingResize = [];
+    var cellsEnhanced = 0;
     for (var r = 0; r < rows.length; r++) {
       var tr = rows[r];
       if (!tr.id) continue; // skip non-record rows
@@ -18241,8 +18813,12 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
         td.appendChild(input);
         if (input.tagName === 'TEXTAREA') pendingResize.push(input);
+        cellsEnhanced++;
       }
     }
+
+    // Nothing to do — all cells already enhanced (observer re-fire)
+    if (!cellsEnhanced) return;
 
     // Defer autoResize until after browser layout so scrollHeight is accurate
     if (pendingResize.length) {
@@ -18251,7 +18827,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       });
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + fields.length + ' direct-edit fields');
+    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
   }
 
   // ── MutationObserver for re-render handling ────────────────────
@@ -18564,17 +19140,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     });
   }
 
-  function applyWithRetries(viewCfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyColorsForView(viewCfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
-
-  // Re-apply after KTL / Knack tbody mutations
+  // Re-apply after KTL / Knack tbody mutations (debounced)
   function installObserver(viewCfg) {
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
@@ -18584,8 +19150,13 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var debounceTimer = 0;
     var obs = new MutationObserver(function () {
-      applyColorsForView(viewCfg);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        debounceTimer = 0;
+        applyColorsForView(viewCfg);
+      }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -18599,12 +19170,325 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     $(document)
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
-        applyWithRetries(viewCfg);
+        applyColorsForView(viewCfg);
         installObserver(viewCfg);
       });
   });
 })();
 /***************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
+/*************************** REVENUE TIER PROGRESS BAR *******************************/
+(function () {
+  'use strict';
+
+  var EVENT_NS = '.scwRevTierProgress';
+  var STYLE_ID = 'scw-revenue-tier-progress-css';
+  var VIEW_IDS = ['view_352', 'view_256', 'view_325', 'view_383'];
+
+  /* ── field keys ─────────────────────────────────────── */
+  var FIELD_FLOOR    = 'field_324';   // Floor
+  var FIELD_UPPER    = 'field_325';   // Upper Limit
+  var FIELD_REVENUE  = 'field_415';   // Total Revenue from Schedule
+  var FIELD_NEEDED   = 'field_417';   // Amount needed to unlock tier
+  var FIELD_GRP_SORT = 'field_419';   // Group sort     (desc – highest first)
+  var FIELD_ROW_SORT = 'field_323';   // Row sort       (asc  – lowest first / Sequence)
+
+  /* ── colors ─────────────────────────────────────────── */
+  var COLOR_GREEN   = '#b6dfca';  // green – at/above upper
+  var COLOR_PARTIAL = '#f5d89a';  // warm amber – partial progress
+
+  /* ── helpers ────────────────────────────────────────── */
+  function parseCurrency(text) {
+    if (!text) return NaN;
+    var cleaned = text.replace(/[^0-9.\-]/g, '');
+    return cleaned === '' ? NaN : parseFloat(cleaned);
+  }
+
+  function cellText($td) {
+    return ($td.find('span').first().text() || $td.text()).trim();
+  }
+
+  /* ── inject CSS once ────────────────────────────────── */
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = [
+      '/* Revenue-tier progress bar */',
+      '.scw-rev-tier-cell {',
+      '  position: relative;',
+      '}',
+
+      /* Track — the background "rail" for the progress bar */
+      '.scw-rev-tier-track {',
+      '  position: relative;',
+      '  height: 22px;',
+      '  background: #e9ecef;',
+      '  border-radius: 12px;',
+      '  overflow: hidden;',
+      '  box-shadow: inset 0 1px 2px rgba(0,0,0,.08);',
+      '  min-width: 60px;',
+      '}',
+
+      /* Fill — the colored portion inside the track */
+      '.scw-rev-tier-fill {',
+      '  position: absolute;',
+      '  top: 0; left: 0; bottom: 0;',
+      '  border-radius: 12px;',
+      '  pointer-events: none;',
+      '  transition: width .3s ease;',
+      '  min-width: 0;',
+      '}',
+
+      /* Label text — sits centered over the track */
+      '.scw-rev-tier-label {',
+      '  position: absolute;',
+      '  top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  font-weight: 600;',
+      '  font-size: 11px;',
+      '  white-space: nowrap;',
+      '  color: #333;',
+      '  text-shadow: 0 0 3px rgba(255,255,255,.7);',
+      '  z-index: 1;',
+      '}',
+      '.scw-rev-tier-label svg {',
+      '  vertical-align: -2px;',
+      '  margin-right: 3px;',
+      '}',
+
+      /* "needed to unlock" text — no track, just inline */
+      '.scw-rev-tier-needed {',
+      '  font-weight: 600;',
+      '  font-size: 12px;',
+      '  white-space: nowrap;',
+      '}',
+
+      /* Target badge in accordion group header */
+      '.scw-rev-tier-target {',
+      '  margin-left: auto;',
+      '  color: #355e3b;',
+      '  white-space: nowrap;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
+  var CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+  /* ── helpers: column count for colspan fix ──────────── */
+  function getColCount($table) {
+    var hCells = $table.find('thead th');
+    var n = 0;
+    hCells.each(function () {
+      n += parseInt($(this).attr('colspan') || '1', 10);
+    });
+    return n || hCells.length || 1;
+  }
+
+  /* ── sort groups + rows within groups ───────────────── */
+  function sortGroupRows($table) {
+    var $tbody = $table.find('tbody');
+    var groups = [];
+    var currentGroup = null;
+
+    /* Collect groups and their data rows */
+    $tbody.children('tr').each(function () {
+      var $row = $(this);
+      if ($row.hasClass('kn-table-group')) {
+        currentGroup = { header: $row, rows: [] };
+        groups.push(currentGroup);
+      } else if (currentGroup) {
+        currentGroup.rows.push($row);
+      }
+    });
+
+    if (groups.length === 0) return;
+
+    /* ── 1. Sort rows WITHIN each group by field_323 (Sequence) asc ── */
+    groups.forEach(function (group) {
+      if (group.rows.length < 2) return;
+      group.rows.sort(function (a, b) {
+        var aSeq = parseCurrency(cellText(a.find('td[data-field-key="' + FIELD_ROW_SORT + '"]')));
+        var bSeq = parseCurrency(cellText(b.find('td[data-field-key="' + FIELD_ROW_SORT + '"]')));
+        if (isNaN(aSeq)) aSeq = Infinity;
+        if (isNaN(bSeq)) bSeq = Infinity;
+        return aSeq - bSeq;
+      });
+    });
+
+    /* ── 2. Sort GROUPS by field_419 desc (use max value from rows) ── */
+    groups.sort(function (a, b) {
+      var aMax = -Infinity;
+      var bMax = -Infinity;
+      a.rows.forEach(function ($r) {
+        var v = parseCurrency(cellText($r.find('td[data-field-key="' + FIELD_GRP_SORT + '"]')));
+        if (!isNaN(v) && v > aMax) aMax = v;
+      });
+      b.rows.forEach(function ($r) {
+        var v = parseCurrency(cellText($r.find('td[data-field-key="' + FIELD_GRP_SORT + '"]')));
+        if (!isNaN(v) && v > bMax) bMax = v;
+      });
+      return bMax - aMax;  /* descending */
+    });
+
+    /* ── 3. Re-insert everything in sorted order ── */
+    groups.forEach(function (group) {
+      $tbody.append(group.header);
+      group.rows.forEach(function ($row) {
+        $tbody.append($row);
+      });
+    });
+  }
+
+  /* ── format number as currency ──────────────────────── */
+  function formatCurrency(n) {
+    return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /* ── inject average field_419 into each group header ── */
+  function injectGroupTargets($table) {
+    var $tbody = $table.find('tbody');
+    var currentHeader = null;
+    var rows = [];
+
+    function flush() {
+      if (!currentHeader || !rows.length) return;
+      /* Remove any previously injected badge */
+      currentHeader.find('.scw-rev-tier-target').remove();
+
+      var sum = 0, count = 0;
+      rows.forEach(function ($r) {
+        var v = parseCurrency(cellText($r.find('td[data-field-key="' + FIELD_GRP_SORT + '"]')));
+        if (!isNaN(v)) { sum += v; count++; }
+      });
+      if (count === 0) return;
+      var avg = sum / count;
+      var $inner = currentHeader.find('.scw-group-inner');
+      if (!$inner.length) $inner = currentHeader.find('td').first();
+      $inner.append('<span class="scw-rev-tier-target">Target: ' + formatCurrency(avg) + '</span>');
+    }
+
+    $tbody.children('tr').each(function () {
+      var $row = $(this);
+      if ($row.hasClass('kn-table-group')) {
+        flush();
+        currentHeader = $row;
+        rows = [];
+      } else {
+        rows.push($row);
+      }
+    });
+    flush();
+  }
+
+  /* ── core logic ─────────────────────────────────────── */
+  function applyProgress(viewId) {
+    var $view = $('#' + viewId);
+    if (!$view.length) return;
+
+    var $table = $view.find('table.kn-table').first();
+    var colCount = getColCount($table);
+
+    /* Fix group-header colspan so accordion rows span full width */
+    $table.find('tr.kn-table-group td').each(function () {
+      var $cell = $(this);
+      var cur = parseInt($cell.attr('colspan') || '1', 10);
+      if (cur < colCount) {
+        $cell.attr('colspan', colCount);
+      }
+    });
+
+    /* Sort rows within each accordion group before applying progress bars */
+    sortGroupRows($table);
+
+    /* Inject average target into each group header */
+    injectGroupTargets($table);
+
+    $table.find('tbody tr:not(.kn-table-group)').each(function () {
+      var $row = $(this);
+      var $floorTd   = $row.find('td[data-field-key="' + FIELD_FLOOR   + '"]');
+      var $upperTd   = $row.find('td[data-field-key="' + FIELD_UPPER   + '"]');
+      var $revTd     = $row.find('td[data-field-key="' + FIELD_REVENUE + '"]');
+      var $neededTd  = $row.find('td[data-field-key="' + FIELD_NEEDED  + '"]');
+      if (!$revTd.length) return;
+
+      var floor   = parseCurrency(cellText($floorTd));
+      var upper   = parseCurrency(cellText($upperTd));
+      var revenue = parseCurrency(cellText($revTd));
+
+      if (isNaN(revenue) || isNaN(floor)) return;
+
+      /* Reset */
+      $revTd.addClass('scw-rev-tier-cell');
+      $revTd.find('.scw-rev-tier-track').remove();
+      $revTd.find('.scw-rev-tier-needed').remove();
+      var $span = $revTd.find('span').first();
+      $span.css('display', '');
+      $revTd.css('text-align', '');
+
+      if (revenue < floor) {
+        /* ── below floor → show amount needed to unlock ── */
+        var neededVal = cellText($neededTd);
+        $span.css('display', 'none');
+        $revTd.css('text-align', 'center');
+        $revTd.append('<span class="scw-rev-tier-needed">' + neededVal + ' needed to unlock tier!</span>');
+
+      } else {
+        /* ── at or above floor → show progress bar ── */
+        var pct, labelText, fillColor;
+
+        if (isNaN(upper) || upper <= floor || revenue >= upper) {
+          pct = 100;
+          labelText = CHECK_SVG + '100% Achieved!';
+          fillColor = COLOR_GREEN;
+        } else {
+          pct = ((revenue - floor) / (upper - floor)) * 100;
+          pct = Math.max(0, Math.min(100, pct));
+          labelText = Math.round(pct) + '% Achieved';
+          fillColor = pct >= 100 ? COLOR_GREEN : COLOR_PARTIAL;
+        }
+
+        $span.css('display', 'none');
+        $revTd.css('text-align', 'center');
+
+        var $track = $('<div class="scw-rev-tier-track"></div>');
+        var $fill  = $('<div class="scw-rev-tier-fill"></div>');
+        var $label = $('<span class="scw-rev-tier-label"></span>');
+
+        $fill.css({ width: pct + '%', background: fillColor });
+        $label.html(labelText);
+        $track.append($fill).append($label);
+        $revTd.append($track);
+      }
+    });
+  }
+
+  /* ── bind ────────────────────────────────────────────── */
+  injectStyles();
+
+  VIEW_IDS.forEach(function (viewId) {
+    $(document)
+      .off('knack-view-render.' + viewId + EVENT_NS)
+      .on('knack-view-render.'  + viewId + EVENT_NS, function () {
+        applyProgress(viewId);
+
+        /* Re-apply after Knack DOM mutations (inline edits, etc.) */
+        var el = document.getElementById(viewId);
+        if (!el || $(el).data('scwRevTierObs')) return;
+
+        var timer = 0;
+        var obs = new MutationObserver(function () {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(function () { timer = 0; applyProgress(viewId); }, 150);
+        });
+        obs.observe(el, { childList: true, subtree: true });
+        $(el).data('scwRevTierObs', true);
+      });
+  });
+
+})();
 
 (function () {
   const applyCheckboxGrid = () => {

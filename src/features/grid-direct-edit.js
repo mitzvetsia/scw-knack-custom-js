@@ -165,16 +165,9 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     }
 
     // Fallback: direct AJAX PUT
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) { if (onSuccess) onSuccess(resp); },
       error: function (xhr) {
@@ -267,6 +260,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     if (!rows.length) return;
 
     var pendingResize = [];
+    var cellsEnhanced = 0;
     for (var r = 0; r < rows.length; r++) {
       var tr = rows[r];
       if (!tr.id) continue; // skip non-record rows
@@ -301,8 +295,12 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
         td.appendChild(input);
         if (input.tagName === 'TEXTAREA') pendingResize.push(input);
+        cellsEnhanced++;
       }
     }
+
+    // Nothing to do — all cells already enhanced (observer re-fire)
+    if (!cellsEnhanced) return;
 
     // Defer autoResize until after browser layout so scrollHeight is accurate
     if (pendingResize.length) {
@@ -311,7 +309,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       });
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + fields.length + ' direct-edit fields');
+    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
   }
 
   // ── MutationObserver for re-render handling ────────────────────

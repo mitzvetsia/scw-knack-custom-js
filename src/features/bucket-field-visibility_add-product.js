@@ -262,10 +262,9 @@
     $scopes.forEach(($s) => {
       applyRulesToScope($s, cfg);
 
-      // KTL / Chosen / persistent forms: value can settle a beat later
-      setTimeout(() => applyRulesToScope($s, cfg), 50);
-      setTimeout(() => applyRulesToScope($s, cfg), 250);
-      setTimeout(() => applyRulesToScope($s, cfg), 800);
+      // KTL / Chosen / persistent forms: value can settle a beat later.
+      // Single rAF recheck instead of 3 blind timers (50/250/800ms).
+      requestAnimationFrame(() => applyRulesToScope($s, cfg));
     });
   }
 
@@ -273,8 +272,8 @@
   // MutationObserver: re-run when KTL rebuilds or moves nodes
   // ============================================================
   function installObservers() {
-    // Single observer for the whole document (cheap enough)
-    const target = document.body;
+    // Scope to #knack-dist (Knack's content area) instead of document.body
+    const target = document.getElementById('knack-dist') || document.body;
     if (!target) return;
 
     // Avoid double-install
@@ -339,10 +338,8 @@
       setTimeout(() => FORMS.forEach(initEverywhere), 50);
     });
 
-  // Boot
+  // Boot — observer + view-render/scene-render hooks cover re-init.
   installObservers();
   $(function () { FORMS.forEach(initEverywhere); });
-  setTimeout(() => FORMS.forEach(initEverywhere), 250);
-  setTimeout(() => FORMS.forEach(initEverywhere), 1000);
 })();
 ////************* /SCW: FORM BUCKET → FIELD VISIBILITY *************////

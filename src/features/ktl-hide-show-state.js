@@ -89,6 +89,15 @@
   function restoreIfNeeded(viewKey) {
     if (restoredThisRender[viewKey]) return;
 
+    // Skip views managed by ktl-accordion.js — it has its own
+    // persistence and restoring here would fight it (toggling the
+    // button inverts the state ktl-accordion already set).
+    var btn = document.getElementById('hideShow_' + viewKey + '_button');
+    if (btn && btn.closest('.scw-ktl-accordion')) {
+      restoredThisRender[viewKey] = true;
+      return;
+    }
+
     var saved = loadState(viewKey);
     if (!saved) return; // no saved preference — keep KTL default
 
@@ -103,7 +112,7 @@
 
     // Click the button to toggle to the desired state
     restoredThisRender[viewKey] = true;
-    var $btn = $('#hideShow_' + viewKey + '_button');
+    var $btn = $(btn);
     if ($btn.length) {
       $btn[0].click();
     }
@@ -133,17 +142,22 @@
     });
 
   // ── MutationObserver: detect KTL button injection ──
+  // Scoped to #knack-dist (Knack's main content area) instead of
+  // document.body to avoid firing on unrelated DOM mutations.
+  // Debounced at 200ms (was rAF ~16ms) since button injection
+  // happens in batches and we only need to run once after they settle.
 
-  var pendingRaf = 0;
+  var obsTimer = 0;
   var observer = new MutationObserver(function () {
-    if (pendingRaf) cancelAnimationFrame(pendingRaf);
-    pendingRaf = requestAnimationFrame(function () {
-      pendingRaf = 0;
+    if (obsTimer) clearTimeout(obsTimer);
+    obsTimer = setTimeout(function () {
+      obsTimer = 0;
       restoreAllVisible();
-    });
+    }, 200);
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
+  var obsRoot = document.getElementById('knack-dist') || document.body;
+  observer.observe(obsRoot, { childList: true, subtree: true });
 
   // ── scene render: reset the "already restored" guard ──
 

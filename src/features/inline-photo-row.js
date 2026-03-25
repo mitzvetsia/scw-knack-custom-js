@@ -30,7 +30,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586', 'view_3588'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -57,8 +57,10 @@
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
     'view_3332': 'add-photo-to-sow-line-item',
+    'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
-    'view_3577': 'add-photo-to-mdf-idf2'
+    'view_3577': 'add-photo-to-mdf-idf2',
+    'view_3588': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -426,7 +428,23 @@
       '#view_3332 th.field_2446,',
       '#view_3332 td.field_2446,',
       '#view_3332 th.field_2447,',
-      '#view_3332 td.field_2447 {',
+      '#view_3332 td.field_2447,',
+      '#view_3586 th.field_114,',
+      '#view_3586 td.field_114,',
+      '#view_3586 th.field_2445,',
+      '#view_3586 td.field_2445,',
+      '#view_3586 th.field_2446,',
+      '#view_3586 td.field_2446,',
+      '#view_3586 th.field_2447,',
+      '#view_3586 td.field_2447,',
+      '#view_3588 th.field_114,',
+      '#view_3588 td.field_114,',
+      '#view_3588 th.field_2445,',
+      '#view_3588 td.field_2445,',
+      '#view_3588 th.field_2446,',
+      '#view_3588 td.field_2446,',
+      '#view_3588 th.field_2447,',
+      '#view_3588 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -463,25 +481,36 @@
   }
 
   /**
-   * Extract the build-sow base path from the current URL hash.
-   * URL pattern: #team-calendar/project-dashboard/{id}/build-sow/{id}/...
-   * Returns the full base path up to and including build-sow/{id}, or ''.
+   * Extract the SOW base path from the current URL hash.
+   * Supported URL patterns:
+   *   #team-calendar/project-dashboard/{id}/build-sow/{id}/...
+   *   #team-calendar/project-dashboard/{id}/build-quote/{id}/...
+   *   #sales-portal/company-details/{id}/scope-of-work-details/{id}/...
    */
   function getBuildSowBasePath() {
     var hash = window.location.hash || '';
-    var match = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-sow\/[a-f0-9]{24})/);
-    return match ? match[1] : '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = hash.match(patterns[i]);
+      if (match) return match[1];
+    }
+    return '';
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3586': true, 'view_3588': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
     if (viewId && SOW_VIEWS[viewId]) {
       var sowBase = getBuildSowBasePath();
       if (!sowBase) return '';
-      return sowBase + '/edit-photo/' + photoRecordId;
+      // sales-portal/scope-of-work-details uses edit-doc-photo2; build-sow/build-quote uses edit-photo
+      var editSlug = sowBase.indexOf('scope-of-work-details') !== -1 ? 'edit-doc-photo2' : 'edit-photo';
+      return sowBase + '/' + editSlug + '/' + photoRecordId;
     }
     var surveyId = getSurveyRequestId();
     if (!surveyId) return '';

@@ -1,6 +1,5 @@
 /**************************************************************************************************
  * FEATURE: McGandy’s Experiment (scene_213) — margin/cost math
- * ⚠ Contains likely bug: document.querySelector('text#field_1365') should probably be input#field_1365
  **************************************************************************************************/
 (function mcgandyExperiment_scene213() {
   SCW.onSceneRender('scene_213', function (event, view, record) {
@@ -27,7 +26,7 @@
         var survey_cost = $(this).val();
         var subcontractor_cost = document.querySelector('input#field_1364').value;
         var total_cost = Math.abs(Math.abs(survey_cost) + Math.abs(subcontractor_cost));
-        var margin = document.querySelector('text#field_1365').value; // ⚠ likely wrong selector
+        var margin = document.querySelector('input#field_1365').value;
         var marked_up_labor = Math.round(total_cost / (1 - margin));
 
         $('input#field_1366').val(marked_up_labor);

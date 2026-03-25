@@ -74,7 +74,12 @@
       '  box-shadow: 0 2px 12px rgba(0,0,0,.06);',
       '  overflow: hidden;',
       '  margin: 10px 0;',
+      '  width: 100%;',
       '  max-width: 100%;',
+      '}',
+      /* When expanded, allow dropdowns (Chosen.js) to overflow */
+      '.scw-ktl-accordion.is-expanded {',
+      '  overflow: visible;',
       '}',
 
       /* ══════════════════════════════════════════════════
@@ -263,6 +268,18 @@
       '  padding: 10px 12px 14px 12px;',
       '  background: #fff !important;',
       '  overflow-x: auto;',
+      '}',
+      /* Let dropdowns overflow the body when accordion is open */
+      '.scw-ktl-accordion.is-expanded > .scw-ktl-accordion__body {',
+      '  overflow: visible;',
+      '}',
+
+      /* Ensure tables stretch to fill the accordion body */
+      '.scw-ktl-accordion__body .kn-table-wrapper {',
+      '  width: 100%;',
+      '}',
+      '.scw-ktl-accordion__body table.kn-table {',
+      '  width: 100%;',
       '}',
 
       /* Legacy accent containers inside the body — targeted instead of
@@ -474,8 +491,8 @@
   var _btnRefs = {};   // viewKey → current button element
 
   // ── Persistent accordion state ──────────────────────────────
-  // Collapsed viewKeys are stored in sessionStorage so state
-  // survives both inline-edit re-renders AND full page refreshes.
+  // Accordion state is stored in localStorage so it survives
+  // browser close, not just page refreshes.
   // The in-memory _savedCollapsed is still used as a fast-path
   // for the coordinated post-edit restore flow.
 
@@ -483,35 +500,47 @@
   var _savedCollapsed = null;  // transient snapshot for post-edit flow
   var _restoreActive = false;  // suppress syncState during restore window
 
-  /** Read persisted collapsed set from sessionStorage. */
+  // Migrate from sessionStorage → localStorage (one-time)
+  try {
+    var legacy = sessionStorage.getItem(STORAGE_KEY);
+    if (legacy) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch (e) { /* ignore */ }
+
+  /** Read persisted state from localStorage. */
   function loadPersistedState() {
     try {
-      var raw = sessionStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(STORAGE_KEY);
       return raw ? JSON.parse(raw) : {};
     } catch (e) { return {}; }
   }
 
-  /** Write collapsed set to sessionStorage. */
-  function persistState(collapsedMap) {
+  /** Write state to localStorage. */
+  function persistState(stateMap) {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(collapsedMap));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateMap));
     } catch (e) { /* quota / unavailable */ }
   }
 
-  /** Scan current DOM and persist which accordions are collapsed. */
+  /** Scan current DOM and persist accordion states.
+   *  Returns a map of viewKey → true (collapsed) / false (expanded).
+   *  Both states are recorded so applySavedState can distinguish
+   *  "user explicitly left this open" from "never toggled (no entry)". */
   function persistCurrentState() {
-    var collapsed = {};
+    var stateMap = {};
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
       if (!hdr) continue;
       var vk = hdr.getAttribute('data-view-key');
-      if (vk && !wrappers[i].classList.contains('is-expanded')) {
-        collapsed[vk] = true;
+      if (vk) {
+        stateMap[vk] = !wrappers[i].classList.contains('is-expanded');
       }
     }
-    persistState(collapsed);
-    return collapsed;
+    persistState(stateMap);
+    return stateMap;
   }
 
   function snapshotState() {
@@ -523,6 +552,7 @@
     // Use in-memory snapshot if available (post-edit flow),
     // otherwise fall back to sessionStorage (page refresh).
     var saved = _savedCollapsed || loadPersistedState();
+    var isPostEdit = !!_savedCollapsed;   // in-memory snapshot = post-edit
     _savedCollapsed = null;
 
     if (!saved) return;
@@ -532,11 +562,26 @@
     _restoreActive = true;
 
     var wrappers = document.querySelectorAll('.scw-ktl-accordion');
+    var touched = false;
     for (var i = 0; i < wrappers.length; i++) {
       var hdr = wrappers[i].querySelector('.scw-ktl-accordion__header');
       if (!hdr) continue;
       var vk = hdr.getAttribute('data-view-key');
       if (!vk) continue;
+
+      // Only restore views that are EXPLICITLY in the saved map.
+      // Views not in the map keep whatever state KTL set as default
+      // (respects _hsv=1,false / _hsv=1,true).
+      //
+      // For the post-edit flow (in-memory snapshot), the snapshot
+      // captured the full DOM state including defaults, so every
+      // visible accordion has an entry — this guard only matters
+      // for the sessionStorage path (page load / navigation) where
+      // un-toggled views correctly have no entry.
+      if (!(vk in saved)) {
+        log('skipped (no saved entry, keeping KTL default)', vk);
+        continue;
+      }
 
       var section = document.querySelector('.hideShow_' + vk + '.ktlHideShowSection');
       var arrow = document.getElementById('hideShow_' + vk + '_arrow');
@@ -553,6 +598,7 @@
           arrow.classList.add('ktlUp');
         }
         log('restored collapsed', vk);
+        touched = true;
       } else {
         // This accordion was expanded — force it open.
         // Use explicit 'block' (not '') so KTL's own hidden state
@@ -567,11 +613,19 @@
           arrow.classList.add('ktlDown');
         }
         log('restored expanded', vk);
+        touched = true;
       }
     }
 
-    // Keep the guard up long enough for MutationObserver + rAF to settle
-    setTimeout(function () { _restoreActive = false; }, 600);
+    // Keep the guard up long enough for MutationObserver + rAF to settle,
+    // but only if we actually changed something.  Shorter guard (300ms)
+    // avoids blocking ktl-hide-show-state.js from restoring user prefs
+    // stored in localStorage.
+    if (touched) {
+      setTimeout(function () { _restoreActive = false; }, 300);
+    } else {
+      _restoreActive = false;
+    }
   }
 
   function bindHeader(wrap, hdr, btnEl, vKey) {

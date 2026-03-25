@@ -120,6 +120,48 @@
         },
       },
     },
+    {
+      viewId: 'view_3586',
+      detectField: 'field_2219',
+      sortField: 'field_2218',
+      labelTarget: 'field_1949',
+      labelMode: 'prefix',
+      laborDescField: null,
+      allColumnKeys: [
+        'field_1949', // PRODUCT
+        'field_1957', // Connected Devices
+        'field_1960', // Retail Price
+        'field_2020', // Labor Description
+        'field_1953', // SCW Notes
+        'field_2261', // Cust Disc %
+        'field_2262', // Cust Disc $
+        'field_1964', // Qty
+        'field_2303', // Applied Disc
+        'field_2269', // Line Item Total
+      ],
+      rowLocks: [
+        {
+          detectField: 'field_2230',
+          when: 'yes',
+          lockField: 'field_1964',   // Qty
+        },
+        {
+          detectField: 'field_2231',
+          whenNot: 'yes',
+          lockField: 'field_1957',   // Connected Devices
+        },
+      ],
+      rules: {
+        [BUCKET_OTHER_SERVICES]: {
+          activeFields: ['field_2020', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+          rowClass: 'scw-row--services',
+        },
+        [BUCKET_ASSUMPTIONS]: {
+          activeFields: ['field_2020', 'field_1953'],
+          rowClass: 'scw-row--assumptions',
+        },
+      },
+    },
   ];
 
   // ============================================================
@@ -418,15 +460,8 @@
     });
   }
 
-  function applyWithRetries(cfg, tries) {
-    tries = tries || 12;
-    var i = 0;
-    (function tick() {
-      i++;
-      applyForView(cfg);
-      if (i < tries) setTimeout(tick, 250);
-    })();
-  }
+  // Removed: applyWithRetries (12×250ms polling loop).
+  // The MutationObserver on tbody already re-applies after DOM changes.
 
   // ============================================================
   // CAPTURE-PHASE EVENT BLOCKER
@@ -462,8 +497,10 @@
     var el = $view.find('table.kn-table-table tbody').get(0);
     if (!el) return;
 
+    var obsTimer = 0;
     var obs = new MutationObserver(function () {
-      applyForView(cfg);
+      if (obsTimer) clearTimeout(obsTimer);
+      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(cfg); }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }
@@ -479,7 +516,7 @@
       .off('knack-view-render.' + cfg.viewId + EVENT_NS)
       .on('knack-view-render.' + cfg.viewId + EVENT_NS, function () {
         sortRows(cfg);
-        applyWithRetries(cfg);
+        applyForView(cfg);
         installObserver(cfg);
       });
   });

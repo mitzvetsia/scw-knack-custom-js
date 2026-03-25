@@ -179,13 +179,14 @@
   /**
    * Update a field value via Knack's internal APIs.
    */
-  function saveFieldValue(viewId, recordId, fieldKey, boolValue) {
+  function saveFieldValue(viewId, recordId, fieldKey, boolValue, onDone) {
     var data = {};
     data[fieldKey] = boolValue === 'yes';
 
     var view = Knack.views[viewId];
     if (view && view.model && typeof view.model.updateRecord === 'function') {
       view.model.updateRecord(recordId, data);
+      if (onDone) onDone();
       return;
     }
 
@@ -202,23 +203,18 @@
         if (typeof model.save === 'function') {
           data.id = recordId;
           model.save(data);
+          if (onDone) onDone();
           return;
         }
       }
     }
 
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function () {
+        if (onDone) onDone();
         if (Knack.views[viewId] && Knack.views[viewId].model &&
             typeof Knack.views[viewId].model.fetch === 'function') {
           Knack.views[viewId].model.fetch();
@@ -226,6 +222,7 @@
       },
       error: function (xhr) {
         console.warn('[scw-bool-chips] Save failed for ' + recordId, xhr.responseText);
+        if (onDone) onDone();
       }
     });
   }
@@ -341,8 +338,6 @@
     newChip.classList.add('is-saving');
     chip.parentNode.replaceChild(newChip, chip);
 
-    setTimeout(function () { newChip.classList.remove('is-saving'); }, 400);
-
     // Also update the hidden source cell so re-renders stay in sync
     var $tr = $(td).closest('tr');
     var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
@@ -350,12 +345,16 @@
       $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
     }
 
-    // Save
+    // Save — remove is-saving (pointer-events: none) only after the
+    // save completes, not on a blind 400ms timer.
     var tr = td.closest('tr');
     var recordId = tr ? getRecordId(tr) : null;
     if (recordId) {
-      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue);
+      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue, function () {
+        newChip.classList.remove('is-saving');
+      });
     } else {
+      newChip.classList.remove('is-saving');
       console.warn('[scw-bool-chips] Could not determine record ID for save');
     }
   }

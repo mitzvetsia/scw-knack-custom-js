@@ -158,6 +158,10 @@
 
       ${s('.scw-group-collapse-enabled tr.scw-group-header > td')} {
         position: relative;
+      }
+      /* Flex layout lives on an inner wrapper so the TD keeps
+         display:table-cell and respects its colspan. */
+      ${s('.scw-group-collapse-enabled tr.scw-group-header > td > .scw-group-inner')} {
         display: flex;
         align-items: center;
       }
@@ -181,7 +185,7 @@
         color: #1e293b !important;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
-        padding: 10px 14px !important;
+        padding: 10px 14px 10px 10px !important;
         border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15);
         border-left: 4px solid var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
       }
@@ -207,7 +211,7 @@
         font-size: 14px;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 12px 14px !important;
+        padding: 12px 10px !important;
         border-bottom: none;
         box-shadow: none;
       }
@@ -216,7 +220,7 @@
          Continue the left accent border on the first content row
          so the header and content feel like one unit.
          Also replace the worksheet card's grey border-top with accent. */
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td')} {
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td:first-child')} {
         border-left: 4px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.30);
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) .scw-ws-card')} {
@@ -382,10 +386,38 @@
     return $tr.hasClass('kn-group-level-2') ? 2 : 1;
   }
 
+  function ensureInnerWrap($tr) {
+    const $cell = $tr.children('td,th').first();
+    if (!$cell.children('.scw-group-inner').length) {
+      $cell.wrapInner('<div class="scw-group-inner"></div>');
+    }
+    // Strip Knack's inline padding-left so our CSS rules control it
+    $cell[0] && $cell[0].style.removeProperty('padding-left');
+    // Fix colspan="0" — HTML5 treats 0 as 1, breaking full-row span.
+    // Recalculate from thead every time since Knack may re-render rows.
+    var table = $tr.closest('table')[0];
+    if (table) {
+      var headerRow = table.querySelector('thead tr');
+      if (headerRow) {
+        var colCount = 0;
+        var hCells = headerRow.children;
+        for (var i = 0; i < hCells.length; i++) {
+          colCount += parseInt(hCells[i].getAttribute('colspan') || '1', 10);
+        }
+        var cur = parseInt($cell.attr('colspan') || '1', 10);
+        if (colCount > 0 && cur < colCount) {
+          $cell.attr('colspan', colCount);
+        }
+      }
+    }
+  }
+
   function ensureIcon($tr) {
     const $cell = $tr.children('td,th').first();
-    if (!$cell.find('.scw-collapse-icon').length) {
-      $cell.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
+    var $inner = $cell.children('.scw-group-inner');
+    var $target = $inner.length ? $inner : $cell;
+    if (!$target.find('.scw-collapse-icon').length) {
+      $target.prepend('<span class="scw-collapse-icon" aria-hidden="true">' + CHEVRON_SVG + '</span>');
     }
   }
 
@@ -430,7 +462,8 @@
         html += '<span class="scw-record-count">' + count + '</span>';
       }
       html += '</span>';
-      $cell.append(html);
+      var $inner = $cell.children('.scw-group-inner');
+      ($inner.length ? $inner : $cell).append(html);
     }
   }
 
@@ -595,6 +628,7 @@
       const state = loadState(sceneId, viewId);
 
       $tr.addClass('scw-group-header');
+      ensureInnerWrap($tr);
       ensureIcon($tr);
 
       const level = getGroupLevel($tr);
@@ -640,6 +674,7 @@
         $view.addClass('scw-group-collapse-enabled');
 
         $tr.addClass('scw-group-header');
+        ensureInnerWrap($tr);
         ensureIcon($tr);
 
         const level = getGroupLevel($tr);
@@ -689,7 +724,10 @@
       }, 100);
     });
 
-    obs.observe(document.body, { childList: true, subtree: true });
+    // Scope observer to the scene container instead of document.body.
+    // This avoids firing on DOM mutations in other scenes / unrelated UI.
+    var sceneRoot = document.getElementById('kn-' + sceneId);
+    obs.observe(sceneRoot || document.body, { childList: true, subtree: true });
     observerByScene[sceneId] = obs;
   }
 

@@ -50,10 +50,21 @@
   //   (label and product are handled structurally by the toggle zone)
   // detailLayout  – { left: [...], right: [...] } for detail panel columns
   //
+  // ── Layout defaults — views only need to specify properties that differ ──
+  var LAYOUT_DEFAULTS = {
+    productGroupWidth: '300px',    // fixed width or 'flex'
+    productGroupLayout: 'row',     // 'row' | 'column'
+    productEditable: false,        // true = editable-field styling on product td
+    identityWidth: null,           // null = auto, or '366px' etc.
+    labelWidth: '80px',            // label td width
+    detailGrid: '1fr 1fr',        // grid-template-columns for detail sections
+  };
+
   var WORKSHEET_CONFIG = {
     views: [
       {
         viewId: 'view_3512',
+        layout: { detailGrid: '455px 1fr' },
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -84,6 +95,7 @@
       },
       {
         viewId: 'view_3505',
+        layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
@@ -127,23 +139,8 @@
         ]
       },
       {
-        viewId: 'view_3559',
-        fields: {
-          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
-
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
-          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
-          surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
-        },
-        summaryLayout: [],
-        detailLayout: {
-          left:  ['mdfIdf', 'mdfNumber', 'name'],
-          right: ['surveyNotes']
-        }
-      },
-      {
-        viewId: 'view_3577',
+        viewIds: ['view_3559', 'view_3577'],
+        layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
@@ -160,6 +157,7 @@
       },
       {
         viewId: 'view_3575',
+        layout: { /* defaults are fine */ },
         comparisonLayout: true,
         fields: {
           // ── Summary row ──
@@ -190,6 +188,7 @@
       },
       {
         viewId: 'view_3313',
+        layout: { productGroupWidth: '280px', productGroupLayout: 'column', productEditable: true },
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -224,6 +223,7 @@
       },
       {
         viewId: 'view_3332',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
@@ -271,13 +271,130 @@
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ]
+      },
+      {
+        viewId: 'view_3586',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel ──
+          retailPrice:      { key: 'field_1960', type: 'readOnly' },
+          quantity:         { key: 'field_1964', type: 'directEdit', feeTrigger: true },
+          customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'lineItemTotal'],
+        detailLayout: {
+          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'connectedDevice', 'mountingHardware'],
+          right: ['laborDescription']
+        },
+        bucketField: 'field_2219',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Description of Service',
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
+      },
+      {
+        viewId: 'view_3588',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', detailGrid: '1fr 1fr 1fr' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel – left (pricing) ──
+          retailPrice:      { key: 'field_2150', type: 'readOnly' },
+          quantity:         { key: 'field_1965', type: 'directEdit', feeTrigger: true },
+          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_1960', type: 'readOnly' },
+
+          // ── Detail panel – center (identity) ──
+          dropPrefix:       { key: 'field_2240', type: 'directEdit' },
+          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+
+          // ── Detail panel – right ──
+          dropLength:       { key: 'field_2035', type: 'readOnly' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+        },
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+        detailLayout: {
+          left:   ['retailPrice', 'quantity', 'discountDlr', 'appliedDiscount', 'total'],
+          center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
+          right:  ['dropLength', 'laborDescription']
+        }
       }
     ]
   };
 
-  // ── Normalise config: compute derived arrays from field descriptors ──
+  // ── Normalise config ──
+  //  1. Expand viewIds → one entry per viewId (shared fields/layout by reference)
+  //  2. Merge layout defaults so every view has a complete layout object
+  //  3. Compute derived arrays (feeTriggerFields, headerTriggerFields)
+
+  // Step 1: Expand viewIds
+  var expandedViews = [];
   WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
-    // Build feeTriggerFields from descriptors
+    var ids = viewCfg.viewIds || (viewCfg.viewId ? [viewCfg.viewId] : []);
+    ids.forEach(function (id) {
+      // Shallow copy so each entry has its own viewId but shares fields etc.
+      var copy = {};
+      for (var k in viewCfg) { if (viewCfg.hasOwnProperty(k)) copy[k] = viewCfg[k]; }
+      copy.viewId = id;
+      delete copy.viewIds;
+      expandedViews.push(copy);
+    });
+  });
+  WORKSHEET_CONFIG.views = expandedViews;
+
+  // Step 2: Merge layout defaults
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+    var merged = {};
+    for (var dk in LAYOUT_DEFAULTS) {
+      if (LAYOUT_DEFAULTS.hasOwnProperty(dk)) merged[dk] = LAYOUT_DEFAULTS[dk];
+    }
+    var src = viewCfg.layout || {};
+    for (var sk in src) {
+      if (src.hasOwnProperty(sk)) merged[sk] = src[sk];
+    }
+    viewCfg.layout = merged;
+  });
+
+  // Step 3: Compute derived arrays from field descriptors
+  WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
     var feeTriggers = [];
     var headerTriggers = [];
     var f = viewCfg.fields;
@@ -326,7 +443,10 @@ tr[data-scw-worksheet]:hover {
 tr.${WORKSHEET_ROW} > td:not(.bulkEditSelectedRow),
 tr.${WORKSHEET_ROW}:hover > td:not(.bulkEditSelectedRow),
 tr.scw-inline-photo-row > td,
-tr.scw-inline-photo-row:hover > td,
+tr.scw-inline-photo-row:hover > td {
+  background: #fff !important;
+  background-color: #fff !important;
+}
 tr[data-scw-worksheet] > td:not(.bulkEditSelectedRow),
 tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   background: none !important;
@@ -341,7 +461,7 @@ tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
 
 /* ── Photo row — part of the same visual unit ── */
 tr.scw-inline-photo-row > td {
-  padding: 10px 16px 14px 16px !important;
+  padding: 20px 16px 50px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
 }
@@ -419,23 +539,25 @@ td.${P}-sum-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
+  align-self: flex-start;
   flex: 0 0 auto;
-  padding: 0 4px !important;
+  padding: 5px 4px 0 4px !important;
   border: none !important;
   background: transparent !important;
   min-width: 20px;
 }
 td.${P}-sum-check input[type="checkbox"] {
-  margin: 0;
+  width: 15px !important;
+  height: 15px !important;
+  margin: 2px 0 0;
   cursor: pointer;
 }
 
 /* Clickable toggle zone (chevron + identity) — fixed width so labor desc aligns */
 .${P}-toggle-zone {
   display: flex;
-  align-items: center;
-  align-self: center;
+  align-items: flex-start;
+  align-self: flex-start;
   gap: 6px;
   cursor: pointer;
   user-select: none;
@@ -457,6 +579,7 @@ td.${P}-sum-check input[type="checkbox"] {
   color: #9ca3af;
   transition: transform 200ms ease, color 150ms ease;
   transform: rotate(0deg);
+  padding-top: 5px;
 }
 .${P}-chevron.${P}-collapsed {
   transform: rotate(0deg);
@@ -464,6 +587,22 @@ td.${P}-sum-check input[type="checkbox"] {
 .${P}-chevron.${P}-expanded {
   transform: rotate(90deg);
   color: #6b7280;
+}
+
+/* Fixed-width warning slot between chevron and identity — always present */
+.${P}-warn-slot {
+  flex: 0 0 18px;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+.${P}-warn-slot:empty {
+  visibility: hidden;
+}
+.${P}-warn-slot .scw-cr-hdr-warning {
+  margin-left: 0;
 }
 
 /* Label + Product identity block */
@@ -503,15 +642,22 @@ td.${P}-sum-check input[type="checkbox"] {
   gap: 4px;
   overflow: hidden;
 }
-#view_3512 .${P}-product-group {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
+/* Product group column layout variant */
+.${P}-product-group--column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
 }
-#view_3505 .${P}-product-group {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
+.${P}-product-group--column > td.${P}-sum-product {
+  width: 100% !important;
+  flex: none;
+}
+/* Product group flex variant (fills identity width) */
+.${P}-product-group--flex {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 .${P}-product-group > td.${P}-sum-product {
   width: auto !important;
@@ -540,18 +686,6 @@ td.${P}-sum-label-cell:hover {
   max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* view_3559 / view_3577: wider label (no product column, label IS the identity) */
-#view_3559 td.${P}-sum-label-cell,
-#view_3559 td.${P}-sum-label-cell:hover,
-#view_3577 td.${P}-sum-label-cell,
-#view_3577 td.${P}-sum-label-cell:hover {
-  width: 400px;
-  min-width: 400px;
-  max-width: 400px;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.3;
 }
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
@@ -594,16 +728,12 @@ td.${P}-sum-field {
   color: #374151;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  background: #fff;
+  background: rgba(134, 182, 223, 0.1);
   white-space: nowrap;
   height: 30px;
   min-width: 40px;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
-}
-td.${P}-sum-field.cell-edit,
-td.${P}-sum-field.ktlInlineEditableCellsStyle {
-  background: rgba(134, 182, 223, 0.1);
 }
 td.${P}-sum-field.cell-edit:hover,
 td.${P}-sum-field.ktlInlineEditableCellsStyle:hover {
@@ -623,7 +753,7 @@ td.${P}-sum-field-ro {
   align-items: center;
   position: relative;
   padding: 2px 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
   border: none !important;
@@ -664,10 +794,23 @@ td.${P}-sum-field--desc {
   flex-shrink: 0;
 }
 
-/* Labor desc group — fills middle space, pushes right group to far right */
+/* Labor desc group — fills middle space, pushes right group to far right.
+   align-self:stretch makes it match the tallest sibling (e.g. stacked chips). */
 .${P}-sum-group--fill {
   flex: 1 1 auto;
   min-width: 80px;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+/* Fill td + textarea stretch to fill the group height */
+.${P}-sum-group--fill td.${P}-sum-direct-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.${P}-sum-group--fill td.${P}-sum-direct-edit .${P}-direct-textarea {
+  flex: 1;
 }
 
 /* Move td sits at the right end */
@@ -711,45 +854,48 @@ td.${P}-sum-move {
   align-items: center;
 }
 
-/* ── Cabling toggle chit (boolean, inline in summary bar) ── */
+/* ── Toggle chit (boolean, inline in summary bar) ── */
 .${P}-cabling-chit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  transition: all 0.15s ease;
   flex-shrink: 0;
   height: 100%;
   box-sizing: border-box;
   vertical-align: middle;
 }
 .${P}-cabling-chit.is-yes {
-  background-color: #1a6b3c;
+  background: #059669;
   color: #ffffff;
-  border-color: #145230;
+  border-color: #047857;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
 }
 .${P}-cabling-chit.is-yes:hover {
-  background-color: #145230;
-  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+  background: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 .${P}-cabling-chit.is-no {
-  background-color: #f9fafb;
-  color: #9ca3af;
+  background: #ffffff;
+  color: #6b7280;
   border-color: #d1d5db;
 }
 .${P}-cabling-chit.is-no:hover {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .${P}-cabling-chit.is-saving {
   opacity: 0.6;
@@ -834,18 +980,8 @@ tr.scw-synth-divider > td {
   grid-template-columns: 1fr 1fr;
   gap: 0;
 }
-/* Narrow the Equipment Details (left) section so Survey Details
-   starts roughly aligned with Labor Description in the summary bar. */
-#view_3512 .${P}-sections {
-  grid-template-columns: 455px 1fr;
-}
-#view_3505 .${P}-sections {
-  grid-template-columns: 555px 1fr;
-}
 @media (max-width: 900px) {
-  .${P}-sections,
-  #view_3512 .${P}-sections,
-  #view_3505 .${P}-sections {
+  .${P}-sections {
     grid-template-columns: 1fr;
   }
 }
@@ -853,11 +989,9 @@ tr.scw-synth-divider > td {
 /* ── Individual section ── */
 .${P}-section {
   padding: 14px 20px 14px 16px;
-  border-right: 1px solid #e5e7eb;
   min-width: 0;
 }
 .${P}-section:last-child {
-  border-right: none;
 }
 
 .${P}-section-title {
@@ -974,7 +1108,7 @@ td.${P}-field-value--notes {
   font-style: italic;
 }
 
-/* ── Radio chips (Mounting Height) ── */
+/* ── Radio chips (Mounting Height / Labor Variables) ── */
 .${P}-radio-chips {
   display: flex;
   flex-wrap: wrap;
@@ -983,36 +1117,39 @@ td.${P}-field-value--notes {
 }
 .${P}-radio-chip {
   display: inline-block;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.5;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: all 0.15s ease;
   white-space: nowrap;
   border: 1px solid transparent;
   text-align: center;
 }
 .${P}-radio-chip.is-selected {
-  background-color: #1a6b3c;
+  background: #059669;
   color: #ffffff;
-  border-color: #145230;
+  border-color: #047857;
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2);
 }
 .${P}-radio-chip.is-selected:hover {
-  background-color: #145230;
-  box-shadow: 0 1px 3px rgba(20,82,48,0.25);
+  background: #047857;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3);
 }
 .${P}-radio-chip.is-unselected {
-  background-color: #f9fafb;
-  color: #9ca3af;
+  background: #ffffff;
+  color: #6b7280;
   border-color: #d1d5db;
 }
 .${P}-radio-chip.is-unselected:hover {
-  background-color: #f3f4f6;
-  color: #6b7280;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  background: #f9fafb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .${P}-radio-chip.is-saving {
   opacity: 0.6;
@@ -1070,6 +1207,8 @@ td.${P}-sum-direct-edit {
   width: 100%;
   min-width: 0;
   padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
 }
 td.${P}-sum-direct-edit .${P}-direct-input,
 td.${P}-sum-direct-edit .${P}-direct-textarea {
@@ -1249,10 +1388,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   background: #fef3c7;
 }
 
-/* view_3313: Product styled as an editable field — same treatment as
-   td.sum-field so it blends with the summary bar background */
-#view_3313 td.${P}-sum-product,
-#view_3313 td.${P}-sum-product:hover {
+/* ── Product editable styling (shared class, applied via layout.productEditable) ── */
+td.${P}-sum-product--editable,
+td.${P}-sum-product--editable:hover {
   font-size: 13px;
   font-weight: 500;
   color: #374151;
@@ -1260,44 +1398,22 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   border-radius: 4px;
   background: rgba(134, 182, 223, 0.1) !important;
   padding: 2px 8px;
-  height: 30px;
+  height: auto;
+  min-height: 30px;
   width: 100%;
   box-sizing: border-box;
   transition: border-color 0.15s, background-color 0.15s;
 }
-#view_3313 td.${P}-sum-product.cell-edit:hover,
-#view_3313 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
+td.${P}-sum-product--editable.cell-edit:hover,
+td.${P}-sum-product--editable.ktlInlineEditableCellsStyle:hover {
   background-color: rgba(134, 182, 223, 0.18) !important;
   border-color: #93c5fd !important;
   cursor: pointer;
 }
-#view_3313 td.${P}-sum-product.bulkEditSelectSrc {
+td.${P}-sum-product--editable.bulkEditSelectSrc {
   outline-offset: 1px;
   cursor: cell !important;
   background-color: rgb(255, 253, 204) !important;
-}
-/* Product group width for view_3575 (matches view_3512) */
-#view_3575 .${P}-product-group {
-  width: 300px;
-  min-width: 300px;
-  max-width: 300px;
-}
-
-/* ================================================================
-   VIEW 3313 – SOW Build worksheet
-   ================================================================ */
-/* Product group as column layout to align with editable fields */
-#view_3313 .${P}-product-group {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3313 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
 }
 
 
@@ -1349,16 +1465,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   min-width: 80px;
 }
 
-/* view_3313 detail sections grid */
-#view_3313 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3313 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 900px) {
   .${P}-comp {
     grid-template-columns: 90px 1fr 1fr;
@@ -1381,7 +1487,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 }
 /* Read-only total in stacked pair — match Fee value size, centered */
 .${P}-sum-group--stacked-pair .${P}-sum-field-ro {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #374151;
   padding: 0 4px !important;
@@ -1389,64 +1495,37 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   width: 100%;
 }
 
-/* view_3332: Product styled as editable field — same as view_3313 */
-#view_3332 td.${P}-sum-product,
-#view_3332 td.${P}-sum-product:hover {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  border: 1px solid #e5e7eb !important;
-  border-radius: 4px;
-  background: rgba(134, 182, 223, 0.1) !important;
-  padding: 2px 8px;
-  height: auto;
-  min-height: 30px;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color 0.15s, background-color 0.15s;
+/* view_3586 right-group widths — compact to leave room for SCW Notes fill */
+.${P}-sum-right .${P}-sum-group--retail {
+  width: min-content;
+  min-width: 60px;
 }
-#view_3332 td.${P}-sum-product.cell-edit:hover,
-#view_3332 td.${P}-sum-product.ktlInlineEditableCellsStyle:hover {
-  background-color: rgba(134, 182, 223, 0.18) !important;
-  border-color: #93c5fd !important;
-  cursor: pointer;
+.${P}-sum-right .${P}-sum-group--disc-pct {
+  width: 55px;
+  min-width: 55px;
 }
-#view_3332 td.${P}-sum-product.bulkEditSelectSrc {
-  outline-offset: 1px;
-  cursor: cell !important;
-  background-color: rgb(255, 253, 204) !important;
+.${P}-sum-right .${P}-sum-group--disc-dlr {
+  width: 60px;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--applied {
+  width: min-content;
+  min-width: 60px;
+}
+.${P}-sum-right .${P}-sum-group--total {
+  width: 90px;
+  min-width: 90px;
 }
 
-/* view_3332 identity — fixed width to match view_3313 (label 80 + gap 6 + product 280 = 366) */
-#view_3332 .${P}-identity {
-  width: 366px;
-  min-width: 366px;
-  max-width: 366px;
-  flex: 0 0 366px;
+/* ── Non-stacked alignment: push checkbox/chevron/product down by label height ── */
+.${P}-summary:not(.${P}-summary--stacked) td.${P}-sum-check,
+.${P}-summary:not(.${P}-summary--stacked) .${P}-toggle-zone {
+  margin-top: 12px;
 }
-/* view_3332 product group — flex to fill identity; shrinks when bucket chit present */
-#view_3332 .${P}-product-group {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-#view_3332 .${P}-product-group > td.${P}-sum-product {
-  width: 100% !important;
-  flex: none;
-}
-
-/* view_3332 detail sections grid */
-#view_3332 .${P}-sections {
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 900px) {
-  #view_3332 .${P}-sections {
-    grid-template-columns: 1fr;
-  }
+/* Non-stacked fill textarea — stretches to match tallest sibling, grows for extra text */
+.${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
+  min-height: 24px;
+  max-height: none;
 }
 
 /* ── Bucket chit wrapper (empty label + chit, aligned with field columns) ── */
@@ -1478,6 +1557,58 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
   max-width: none;
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
+
+/* ══════════════════════════════════════════════════════════════════
+   AUTO-GENERATED PER-VIEW LAYOUT RULES
+   Driven by the layout block in each WORKSHEET_CONFIG entry.
+   ══════════════════════════════════════════════════════════════════ */
+${WORKSHEET_CONFIG.views.map(function (v) {
+  var id = v.viewId;
+  var L = v.layout;
+  var rules = [];
+
+  // ── Product group width ──
+  if (L.productGroupWidth && L.productGroupWidth !== 'flex') {
+    var w = L.productGroupWidth;
+    rules.push(
+      '#' + id + ' .' + P + '-product-group {' +
+      ' width: ' + w + '; min-width: ' + w + '; max-width: ' + w + '; }'
+    );
+  }
+
+  // ── Label width (when non-default) ──
+  if (L.labelWidth && L.labelWidth !== LAYOUT_DEFAULTS.labelWidth) {
+    rules.push(
+      '#' + id + ' td.' + P + '-sum-label-cell,' +
+      '#' + id + ' td.' + P + '-sum-label-cell:hover {' +
+      ' width: ' + L.labelWidth + '; min-width: ' + L.labelWidth + '; max-width: ' + L.labelWidth + ';' +
+      ' white-space: normal; word-break: break-word; line-height: 1.3; }'
+    );
+  }
+
+  // ── Identity width ──
+  if (L.identityWidth) {
+    var iw = L.identityWidth;
+    rules.push(
+      '#' + id + ' .' + P + '-identity {' +
+      ' width: ' + iw + '; min-width: ' + iw + '; max-width: ' + iw + '; flex: 0 0 ' + iw + '; }'
+    );
+  }
+
+  // ── Detail grid columns (when non-default) ──
+  if (L.detailGrid && L.detailGrid !== LAYOUT_DEFAULTS.detailGrid) {
+    rules.push(
+      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + L.detailGrid + '; }'
+    );
+    rules.push(
+      '@media (max-width: 900px) { #' + id + ' .' + P + '-sections { grid-template-columns: 1fr; } }'
+    );
+  }
+
+  return rules.length
+    ? '/* ── ' + id + ' (auto-generated) ── */\n' + rules.join('\n')
+    : '';
+}).filter(Boolean).join('\n\n')}
 `;
 
     var style = document.createElement('style');
@@ -1666,6 +1797,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
    *  may refresh sibling views — not just the one that was edited. */
   function captureAllExpandedStates() {
     WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      // Skip views not in the current DOM — avoids unnecessary
+      // querySelectorAll on views that aren't on this page.
+      if (!document.getElementById(viewCfg.viewId)) return;
       captureExpandedState(viewCfg.viewId);
     });
   }
@@ -1990,6 +2124,43 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }, 600);
   }
 
+  // ============================================================
+  // CONDITIONAL CELL COLOR EVALUATOR (shared by render + save)
+  // ============================================================
+  //
+  // Pure-logic function: given a field key and its text value,
+  // returns the conditional color key ('danger', 'warning') or
+  // null.  Used both at initial render (to set input bg without
+  // getComputedStyle) and after saves (refreshInputConditionalColor).
+  //
+  // Rules mirror dynamic-cell-colors.js for the direct-edit fields
+  // that device-worksheet manages.
+
+  var COND_COLORS_MAP = {
+    danger:  'rgb(248, 215, 218)',
+    warning: 'rgb(255, 243, 205)'
+  };
+
+  var COND_DEFAULT_BG = 'rgba(134, 182, 223, 0.1)';
+
+  function evaluateConditionalColor(fieldKey, rawText) {
+    var cleaned = (rawText || '').replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
+    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
+    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
+    if (fieldKey === 'field_2400') {
+      if (isEmpty) return 'danger';
+      if (isZero)  return 'warning';
+    } else if (fieldKey === 'field_2409') {
+      if (isEmpty) return 'danger';
+    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
+      if (isEmpty) return 'warning';
+    } else if (fieldKey === 'field_2399') {
+      if (isZero) return 'warning';
+    }
+    return null;
+  }
+
   /**
    * After a successful save, recalculate the conditional background
    * color (danger/warning) for a direct-edit input based on the
@@ -2002,64 +2173,33 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var fieldKey = input.getAttribute('data-field');
     if (!fieldKey) return;
 
-    // Find the view config that governs this input
-    var viewEl = input.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
-    if (!viewId) return;
-
-    var COLORS_MAP = {
-      danger:  'rgb(248, 215, 218)',
-      warning: 'rgb(255, 243, 205)'
-    };
-
     // Read value from hidden td (detail panel) or input itself (summary bar)
-    var hiddenTd = wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']');
+    var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
     var rawText = hiddenTd ? (hiddenTd.textContent || '') : (input.value || '');
-    var cleaned = rawText.replace(/[\u00a0\u200b\u200c\u200d\ufeff]/g, ' ').trim();
-    var isEmpty = cleaned === '' || cleaned === '-' || cleaned === '\u2014';
-    var isZero = /^[$]?0+(\.0+)?$/.test(cleaned);
+
+    var conditionColor = evaluateConditionalColor(fieldKey, rawText);
+
     // The element to update classes/styles on
     var styleTd = hiddenTd || wrapper;
-
     var dangerCls = 'scw-cell-danger';
     var warningCls = 'scw-cell-warning';
 
-    var conditionMet = false;
-    var conditionColor = null;
-
-    if (fieldKey === 'field_2400') {
-      if (isEmpty) { conditionMet = true; conditionColor = 'danger'; }
-      else if (isZero) { conditionMet = true; conditionColor = 'warning'; }
-    } else if (fieldKey === 'field_2409') {
-      conditionMet = isEmpty;
-      conditionColor = 'danger';
-    } else if (fieldKey === 'field_2415' || fieldKey === 'field_771') {
-      conditionMet = isEmpty;
-      conditionColor = 'warning';
-    } else if (fieldKey === 'field_2399') {
-      conditionMet = isZero;
-      conditionColor = 'warning';
-    }
-
-    // Update td classes (so the condition is reflected in DOM)
     styleTd.classList.remove(dangerCls, warningCls);
-    if (conditionMet && conditionColor === 'danger') {
+    if (conditionColor === 'danger') {
       styleTd.classList.add(dangerCls);
-      styleTd.style.backgroundColor = COLORS_MAP.danger;
-    } else if (conditionMet && conditionColor === 'warning') {
+      styleTd.style.backgroundColor = COND_COLORS_MAP.danger;
+    } else if (conditionColor === 'warning') {
       styleTd.classList.add(warningCls);
-      styleTd.style.backgroundColor = COLORS_MAP.warning;
+      styleTd.style.backgroundColor = COND_COLORS_MAP.warning;
     } else {
       styleTd.style.backgroundColor = '';
     }
 
     // Update the visible input's background
-    if (conditionMet && COLORS_MAP[conditionColor]) {
-      input.style.backgroundColor = COLORS_MAP[conditionColor];
+    if (conditionColor && COND_COLORS_MAP[conditionColor]) {
+      input.style.backgroundColor = COND_COLORS_MAP[conditionColor];
     } else {
-      // Restore the default direct-edit background (light blue tint
-      // from the build step or transparent)
-      input.style.backgroundColor = 'rgba(134, 182, 223, 0.1)';
+      input.style.backgroundColor = COND_DEFAULT_BG;
     }
   }
 
@@ -2168,14 +2308,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
 
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'GET',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'Authorization': Knack.getUserToken()
-      },
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
         console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
@@ -2267,16 +2402,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     }
 
     // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-           '/views/' + viewId + '/records/' + recordId,
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
-      headers: {
-        'X-Knack-Application-Id': Knack.application_id,
-        'x-knack-rest-api-key': 'knack',
-        'Authorization': Knack.getUserToken()
-      },
-      contentType: 'application/json',
       data: JSON.stringify(data),
       success: function (resp) {
         if (feeTrig) refreshViewAfterSave(viewId);
@@ -2422,16 +2550,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
     if (typeof Knack !== 'undefined') {
-      $.ajax({
-        url: Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
-             '/views/' + viewId + '/records/' + recordId,
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
         type: 'PUT',
-        headers: {
-          'X-Knack-Application-Id': Knack.application_id,
-          'x-knack-rest-api-key': 'knack',
-          'Authorization': Knack.getUserToken()
-        },
-        contentType: 'application/json',
         data: JSON.stringify(data),
         success: function (resp) {
           if (feeTrig) refreshViewAfterSave(viewId);
@@ -2611,8 +2732,13 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
-    // Capture conditional bg BEFORE we touch the DOM
-    var compBg = window.getComputedStyle(td).backgroundColor;
+    // Compute conditional background color from the field value
+    // instead of reading getComputedStyle on the td.  This avoids
+    // forced style recalculations entirely — the color is derived
+    // from pure logic (field key + text value) using the same rules
+    // as dynamic-cell-colors.js, rather than asking the browser to
+    // resolve the computed style of each td in the document.
+    var condColor = evaluateConditionalColor(fieldKey, currentVal);
 
     // Keep a hidden span with the text value so dynamic-cell-colors
     // (which reads $td.text()) still sees the real content.
@@ -2631,7 +2757,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       input = document.createElement('textarea');
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
-      input.rows = 4;
+      input.rows = opts.rows || 4;
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -2642,9 +2768,9 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     input.setAttribute(DIRECT_EDIT_ATTR, '1');
     input._scwPrev = currentVal;
 
-    // Propagate conditional background color from td to input
-    if (compBg && compBg !== 'rgba(0, 0, 0, 0)' && compBg !== 'transparent') {
-      input.style.backgroundColor = compBg;
+    // Apply conditional background color to the input
+    if (condColor && COND_COLORS_MAP[condColor]) {
+      input.style.backgroundColor = COND_COLORS_MAP[condColor];
     }
 
     td.appendChild(input);
@@ -2675,6 +2801,19 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       injectSummaryDirectEdit(td, opts.fieldKey);
     }
     group.appendChild(td);
+
+    // Inherit Knack's text-align setting (e.g. center) so the value
+    // AND label honour the column alignment configured in the builder.
+    // The td uses display:inline-flex (text-align is ignored by flex),
+    // so we translate text-align into the flex equivalents.
+    var tdAlign = td.style.textAlign || getComputedStyle(td).textAlign;
+    if (tdAlign === 'center' || tdAlign === 'right') {
+      var flexAlign = tdAlign === 'center' ? 'center' : 'flex-end';
+      group.style.alignItems = flexAlign;         // centers label + td within the group column
+      td.style.justifyContent = flexAlign;        // centers content inside the td (which is width:100%)
+      lbl.style.textAlign = tdAlign;              // centers the label text
+    }
+
     parent.appendChild(group);
     return group;
   }
@@ -2711,7 +2850,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           ldGroup.appendChild(ldLabel);
           td.classList.add(P + '-sum-field');
           td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline });
+          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -2788,7 +2927,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         var chit = document.createElement('span');
         chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
         chit.setAttribute('data-field', desc.key);
-        chit.innerHTML = 'Existing<br>Cabling';
+        chit.innerHTML = desc.chitLabel || 'Existing Cabling';
         var chitSpan = td.querySelector('span');
         if (chitSpan) { chitSpan.style.display = 'none'; }
         td.textContent = '';
@@ -2816,7 +2955,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     bar.className = P + '-summary';
 
     // Detect stacked labels early — needed for vertical alignment of all elements
-    var hasStackedFields = layout.some(function (n) {
+    // Views can opt out via stackedSummary: false (alignment handled by CSS margin-top)
+    var hasStackedFields = viewCfg.stackedSummary !== false && layout.some(function (n) {
       var d = fieldDesc(viewCfg, n);
       return d && d.group === 'right' && d.label;
     });
@@ -2867,8 +3007,38 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       toggleZone.appendChild(chevron);
     }
 
+    // Fixed-width warning slot — always present so layout never shifts
+    var warnSlot = document.createElement('span');
+    warnSlot.className = P + '-warn-slot';
+    if (hasStackedFields) {
+      var slotWrap = document.createElement('span');
+      slotWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var slotSpacer = document.createElement('span');
+      slotSpacer.className = P + '-sum-label';
+      slotSpacer.innerHTML = '&nbsp;';
+      slotWrap.appendChild(slotSpacer);
+      slotWrap.appendChild(warnSlot);
+      toggleZone.appendChild(slotWrap);
+    } else {
+      toggleZone.appendChild(warnSlot);
+    }
+
     var identity = document.createElement('span');
     identity.className = P + '-identity';
+
+    // Warning chit — placed before label so it appears at the left of the identity block
+    var warnDesc = fieldDesc(viewCfg, 'warningCount');
+    if (warnDesc) {
+      var warnTd = findCell(tr, warnDesc.key);
+      var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+      if (warnVal > 0) {
+        var warnChit = document.createElement('span');
+        warnChit.className = P + '-warn-chit';
+        warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
+            + Math.round(warnVal);
+        identity.appendChild(warnChit);
+      }
+    }
 
     var labelDesc = fieldDesc(viewCfg, 'label');
     if (labelDesc) {
@@ -2890,6 +3060,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
         var productGroup = document.createElement('span');
         productGroup.className = P + '-product-group';
+        // Apply layout-driven classes
+        var pgLayout = viewCfg.layout || {};
+        if (pgLayout.productGroupLayout === 'column') {
+          productGroup.classList.add(P + '-product-group--column');
+        }
+        if (pgLayout.productGroupWidth === 'flex') {
+          productGroup.classList.add(P + '-product-group--flex');
+        }
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
@@ -2902,21 +3080,10 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           productGroup.appendChild(prodLabel);
         }
 
-        // Warning chit
-        var warnDesc = fieldDesc(viewCfg, 'warningCount');
-        if (warnDesc) {
-          var warnTd = findCell(tr, warnDesc.key);
-          var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
-          if (warnVal > 0) {
-            var warnChit = document.createElement('span');
-            warnChit.className = P + '-warn-chit';
-            warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
-              + Math.round(warnVal);
-            productGroup.appendChild(warnChit);
-          }
-        }
-
         productTd.classList.add(P + '-sum-product');
+        if (pgLayout.productEditable) {
+          productTd.classList.add(P + '-sum-product--editable');
+        }
         productGroup.appendChild(productTd);
         identity.appendChild(productGroup);
       }
@@ -3020,7 +3187,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     mdfNumber:        '##',
     name:             'Name',
     dropPrefix:       'Drop Prefix',
-    dropNumber:       'Label #'
+    dropNumber:       'Label #',
+    laborDescription: 'Labor\nDesc',
+    retailPrice:      'Retail Price',
+    quantity:         'Qty',
+    customDiscPct:    'Custom\nDisc %',
+    discountDlr:      'Discount $',
+    appliedDiscount:  'Applied\nDiscount',
+    total:            'Total'
   };
 
   /** Render a single field into a detail section based on its descriptor type. */
@@ -3104,7 +3278,7 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     var sections = document.createElement('div');
     sections.className = P + '-sections';
 
-    var sides = ['left', 'right'];
+    var sides = ['left', 'center', 'right'];
     for (var s = 0; s < sides.length; s++) {
       var side = sides[s];
       var fieldNames = layout[side];
@@ -3420,9 +3594,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     if (detail) card.appendChild(detail);
 
     // ── Accessory mismatch header warning ──
-    // If any connected-records widget flagged a warning, add icon to summary row.
-    // Prefer the label cell (view_3313); when no label cell exists (view_3332),
-    // insert as a standalone element in the identity, before the product group.
+    // If any connected-records widget flagged a warning, place icon in the
+    // fixed-width warn-slot (between chevron and identity) so it never shifts layout.
     var crWidgets = card.querySelectorAll('.scw-ws-field > .scw-cr-list');
     for (var w = 0; w < crWidgets.length; w++) {
       var parentField = crWidgets[w].parentElement;
@@ -3432,32 +3605,8 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
         warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
         warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
 
-        var labelCell = card.querySelector('td.' + P + '-sum-label-cell');
-        if (labelCell) {
-          // view_3313 style: append to label cell
-          labelCell.appendChild(warnIcon);
-        } else {
-          // view_3332 style: insert before product group in identity
-          var identityEl = card.querySelector('.' + P + '-identity');
-          var productGroupEl = card.querySelector('.' + P + '-product-group');
-          var isStacked = card.querySelector('.' + P + '-summary--stacked');
-          var warnNode = warnIcon;
-          if (isStacked) {
-            var warnWrap = document.createElement('span');
-            warnWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-            var warnSpacer = document.createElement('span');
-            warnSpacer.className = P + '-sum-label';
-            warnSpacer.innerHTML = '&nbsp;';
-            warnWrap.appendChild(warnSpacer);
-            warnWrap.appendChild(warnIcon);
-            warnNode = warnWrap;
-          }
-          if (identityEl && productGroupEl) {
-            identityEl.insertBefore(warnNode, productGroupEl);
-          } else if (identityEl) {
-            identityEl.appendChild(warnNode);
-          }
-        }
+        var slot = card.querySelector('.' + P + '-warn-slot');
+        if (slot) slot.appendChild(warnIcon);
         break;
       }
     }
@@ -3487,18 +3636,40 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
 
     var $rows = $(table).find('tbody > tr');
 
+    // ── Hoist colCount — same for every row, no need to recompute ──
+    var headerRow = table.querySelector('thead tr');
+    var colCount = 1;
+    if (headerRow) {
+      colCount = 0;
+      var hCells = headerRow.children;
+      for (var ci = 0; ci < hCells.length; ci++) {
+        colCount += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
+      }
+    }
+
+    // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
+    //
+    // Conditional cell colors (danger/warning) are now computed from
+    // field values using evaluateConditionalColor() instead of reading
+    // getComputedStyle() on each td.  This eliminates ALL forced style
+    // recalculations from the render path — the color is derived from
+    // pure logic (field key + text value), not from the browser's
+    // computed style resolution.
+    //
+    // Bucket and move-field info are also collected here (DOM tree
+    // reads with no layout cost) so Phase 2 can build cards without
+    // any reads from the live document.
+    var eligible = [];
+
     $rows.each(function () {
       var tr = this;
-
       if (tr.classList.contains('kn-table-group')) return;
       if (tr.classList.contains('scw-inline-photo-row')) return;
       if (tr.classList.contains(WORKSHEET_ROW)) return;
-
-      var recordId = getRecordId(tr);
-      if (!recordId) return;
+      if (!getRecordId(tr)) return;
       if (tr.getAttribute(PROCESSED_ATTR) === '1') return;
 
-      // Detect bucket and move-field emptiness BEFORE buildWorksheetCard moves tds
+      // Pre-read bucket and move-field info (DOM reads, no layout cost)
       var preBucketRowClass = '';
       if (viewCfg.bucketField && viewCfg.bucketRules) {
         var rowBucketId = readBucketId(tr, viewCfg.bucketField);
@@ -3507,9 +3678,6 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           preBucketRowClass = rowBucketRule.rowClass;
         }
       }
-      // Determine if this row is under a blank (orphaned) MDF/IDF group header.
-      // Walk backwards through siblings to find the nearest kn-table-group row;
-      // if its label is empty the row has no MDF/IDF assignment.
       var hasNoMove = false;
       if (viewCfg.syntheticBucketGroups) {
         var prev = tr.previousElementSibling;
@@ -3517,11 +3685,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
           prev = prev.previousElementSibling;
         }
         if (!prev) {
-          hasNoMove = true; // no group header at all
+          hasNoMove = true;
         } else {
           hasNoMove = getGroupLabelText(prev).length === 0;
         }
       }
+
+      eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
+    });
+
+    // ── PHASE 2: BUILD — construct cards from collected data ──
+    //
+    // buildWorksheetCard reparents <td> elements into the card DOM,
+    // which mutates the source rows.  Conditional colors are computed
+    // from field values (evaluateConditionalColor), not from the
+    // browser's computed style, so these mutations cause zero forced
+    // style recalculations.
+    var pendingInserts = [];
+
+    for (var ri = 0; ri < eligible.length; ri++) {
+      var entry = eligible[ri];
+      var tr = entry.tr;
 
       var card = buildWorksheetCard(tr, viewCfg);
 
@@ -3530,27 +3714,27 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
       wsTr.id = tr.id;
       tr.removeAttribute('id');
 
-      if (preBucketRowClass) wsTr.classList.add(preBucketRowClass);
-      if (hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
+      if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);
+      if (entry.hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
 
       var wsTd = document.createElement('td');
-
-      var headerRow = table.querySelector('thead tr');
-      var colCount = 1;
-      if (headerRow) {
-        colCount = 0;
-        var cells = headerRow.children;
-        for (var i = 0; i < cells.length; i++) {
-          colCount += parseInt(cells[i].getAttribute('colspan') || '1', 10);
-        }
-      }
       wsTd.setAttribute('colspan', String(colCount));
       wsTd.appendChild(card);
       wsTr.appendChild(wsTd);
 
-      tr.parentNode.insertBefore(wsTr, tr.nextSibling);
       tr.setAttribute(PROCESSED_ATTR, '1');
-    });
+      pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
+    }
+
+    // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
+    //
+    // Batching avoids interleaving writes with the reads that happened
+    // in Phase 1.  The browser can coalesce these mutations into a
+    // single reflow instead of reflowing after each insertion.
+    for (var pi = 0; pi < pendingInserts.length; pi++) {
+      var ins = pendingInserts[pi];
+      ins.sourceTr.parentNode.insertBefore(ins.wsTr, ins.sourceTr.nextSibling);
+    }
 
     // After all rows are processed, hide photo rows for collapsed items
     // and set up the bottom border on the last row of each record group
@@ -3712,6 +3896,14 @@ tr.scw-inline-photo-row.${P}-photo-hidden {
     // may have stale formula data.  Re-apply labels from our cache
     // (populated from the PUT response) now that the DOM is stable.
     restoreCachedLabels(viewCfg.viewId);
+
+    // ── NOTIFY DEPENDENT MODULES ──
+    // Dispatch a custom event so modules like select-all-checkboxes can
+    // run exactly once after the worksheet DOM is stable, instead of
+    // relying on blind timers or a body-level MutationObserver.
+    document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
+      detail: { viewId: viewCfg.viewId }
+    }));
   }
 
   // ============================================================
