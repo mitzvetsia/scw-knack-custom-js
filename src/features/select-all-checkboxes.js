@@ -407,7 +407,7 @@
     var bar = findVisibleSummary(viewEl);
     if (!bar) return null;
 
-    var result = { identity: [], fill: null, right: [], hasCabling: false, hasMove: false, hasDelete: false };
+    var result = { identity: [], fill: null, rightItems: [] };
 
     var productCell = bar.querySelector('.scw-ws-sum-product');
     if (productCell) result.identity.push({ text: 'Product', field: productCell.getAttribute('data-field-key') || 'field_1949' });
@@ -422,38 +422,33 @@
       };
     }
 
+    // Walk ALL direct children of .scw-ws-sum-right in DOM order
+    // so the header cells are built in the exact same sequence.
     var rightContainer = bar.querySelector('.scw-ws-sum-right');
     if (rightContainer) {
-      var groups = rightContainer.querySelectorAll('.scw-ws-sum-group');
-      for (var i = 0; i < groups.length; i++) {
-        var g = groups[i];
-        var cls = g.className;
+      var children = rightContainer.children;
+      for (var i = 0; i < children.length; i++) {
+        var g = children[i];
+        var cls = g.className || '';
 
-        if (cls.indexOf('sum-group--cabling') !== -1) {
-          result.hasCabling = true;
-          result.cablingFields = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
-          continue;
-        }
-        if (cls.indexOf('sum-group--move') !== -1) {
+        if (cls.indexOf('sum-delete') !== -1 || g.querySelector('.kn-link-delete')) {
+          result.rightItems.push({ type: 'delete' });
+        } else if (cls.indexOf('sum-group--cabling') !== -1) {
+          var cabFields = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
+          result.rightItems.push({ type: 'cabling', fields: cabFields });
+        } else if (cls.indexOf('sum-group--move') !== -1) {
           var moveTd = g.querySelector('td[data-field-key]');
-          result.hasMove = true;
-          result.moveField = moveTd ? moveTd.getAttribute('data-field-key') : 'field_1946';
-          continue;
+          var moveField = moveTd ? moveTd.getAttribute('data-field-key') : 'field_1946';
+          result.rightItems.push({ type: 'move', fields: [moveField] });
+        } else if (cls.indexOf('sum-group') !== -1) {
+          var lbl = g.querySelector('.scw-ws-sum-label');
+          var text = lbl ? lbl.textContent.trim() : '';
+          if (!text) continue;
+          var fieldKeys = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
+          result.rightItems.push({ type: 'regular', text: text, fields: fieldKeys });
         }
-        if (cls.indexOf('sum-group--delete') !== -1 || g.querySelector('.kn-link-delete')) { result.hasDelete = true; continue; }
-
-        var lbl = g.querySelector('.scw-ws-sum-label');
-        var text = lbl ? lbl.textContent.trim() : '';
-        if (!text) continue;
-
-        var fieldKeys = (g.getAttribute('data-scw-fields') || '').split(/\s+/).filter(function(f) { return f; });
-
-        result.right.push({ text: text, fields: fieldKeys });
       }
     }
-
-    if (!result.hasCabling && bar.querySelector('.scw-ws-cabling-chit')) result.hasCabling = true;
-    if (!result.hasDelete && bar.querySelector('.scw-ws-sum-delete')) result.hasDelete = true;
 
     return result;
   }
@@ -568,31 +563,27 @@
       }
     }
 
-    // Match each right-side group width
+    // Match each right-side child by index.  Both header and summary
+    // now output their children in the same DOM order, so index-based
+    // matching is correct.
     var sumRight = summary.querySelector('.scw-ws-sum-right');
     var hdrRight = bar.querySelector('.scw-sa-header-right');
     if (sumRight && hdrRight) {
-      var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
-      var hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
-      for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
-        var gw = sumGroups[i].getBoundingClientRect().width;
+      var sumKids = sumRight.children;
+      var hdrCells = hdrRight.children;
+      for (var i = 0; i < Math.min(sumKids.length, hdrCells.length); i++) {
+        var gw = sumKids[i].getBoundingClientRect().width;
         if (gw > 0) {
           hdrCells[i].style.width = Math.round(gw) + 'px';
           hdrCells[i].style.minWidth = Math.round(gw) + 'px';
         }
       }
-      // Match delete cell if present
-      var sumDel = sumRight.querySelector('.scw-ws-sum-delete');
-      if (sumDel && hdrCells.length > sumGroups.length) {
-        var dw = sumDel.getBoundingClientRect().width;
-        var delCell = hdrCells[sumGroups.length];
-        if (dw > 0) {
-          delCell.style.width = Math.round(dw) + 'px';
-          delCell.style.minWidth = Math.round(dw) + 'px';
-        }
-      }
     }
   }
+
+  // Bulk-operation flag — suppresses per-checkbox change handler during
+  // select-all / group-select to avoid N×syncHeaderBar calls.
+  var _bulkOp = false;
 
   /**
    * Build and insert the header bar.
@@ -661,27 +652,24 @@
       bar.appendChild(fillCell);
     }
 
-    // ── Right-side labels — mirrors .scw-ws-sum-right ──
+    // ── Right-side items — built in exact summary DOM order ──
     var rightSpan = document.createElement('span');
     rightSpan.className = 'scw-sa-header-right';
 
-    if (layout.hasCabling) {
-      rightSpan.appendChild(buildHeaderCell('Cabling', layout.cablingFields || [], theadMap, bulkVisible, viewKey));
-    }
-
-    for (var r = 0; r < layout.right.length; r++) {
-      var item = layout.right[r];
-      rightSpan.appendChild(buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, viewKey));
-    }
-
-    if (layout.hasMove) {
-      rightSpan.appendChild(buildHeaderCell('Move', layout.moveField ? [layout.moveField] : [], theadMap, bulkVisible, viewKey));
-    }
-    if (layout.hasDelete) {
-      var delCell = document.createElement('span');
-      delCell.className = 'scw-sa-header-cell';
-      delCell.innerHTML = '&nbsp;';
-      rightSpan.appendChild(delCell);
+    for (var r = 0; r < layout.rightItems.length; r++) {
+      var item = layout.rightItems[r];
+      if (item.type === 'delete') {
+        var delCell = document.createElement('span');
+        delCell.className = 'scw-sa-header-cell';
+        delCell.innerHTML = '&nbsp;';
+        rightSpan.appendChild(delCell);
+      } else if (item.type === 'cabling') {
+        rightSpan.appendChild(buildHeaderCell('Cabling', item.fields || [], theadMap, bulkVisible, viewKey));
+      } else if (item.type === 'move') {
+        rightSpan.appendChild(buildHeaderCell('Move', item.fields || [], theadMap, bulkVisible, viewKey));
+      } else {
+        rightSpan.appendChild(buildHeaderCell(item.text, item.fields, theadMap, bulkVisible, viewKey));
+      }
     }
 
     bar.appendChild(rightSpan);
@@ -719,15 +707,19 @@
       var cbs = findCheckboxes(el);
       if (!cbs.length) return;
 
+      _bulkOp = true;
       var shouldCheck = selectAllCb.checked;
       for (var k = 0; k < cbs.length; k++) {
         if (cbs[k].checked !== shouldCheck) cbs[k].click();
       }
+      _bulkOp = false;
       selectAllCb.indeterminate = false;
+      syncHeaderBar(el, viewKey);
     });
 
     // ── Sync state on any checkbox change within view ──
     $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
+      if (_bulkOp) return;
       var freshEl = document.getElementById(viewKey);
       if (!freshEl) return;
       var cbs = findCheckboxes(freshEl);
@@ -803,6 +795,7 @@
       // Re-bind change handler — after inline edits Knack replaces the view
       // element, so the old handler (bound to the destroyed element) is dead.
       $(viewEl).off('change.scwSaHeader').on('change.scwSaHeader', 'input[type="checkbox"]', function () {
+        if (_bulkOp) return;
         var freshEl = document.getElementById(viewKey);
         if (!freshEl) return;
         var cbs = findCheckboxes(freshEl);
@@ -923,10 +916,12 @@
           }
           if (!targets.length) return;
 
+          _bulkOp = true;
           var shouldCheck = checkbox.checked;
           for (var k = 0; k < targets.length; k++) {
             if (targets[k].checked !== shouldCheck) targets[k].click();
           }
+          _bulkOp = false;
           checkbox.indeterminate = false;
 
           var vEl = headerRow.closest('[id^="view_"]');
@@ -942,6 +937,7 @@
         var parentTable = headerRow.closest('table');
         if (parentTable) {
           $(parentTable).off('change.scwSaGrp' + i).on('change.scwSaGrp' + i, 'input[type="checkbox"]', function () {
+            if (_bulkOp) return;
             var groupRows = rowsInGroup(headerRow);
             var targets = [];
             for (var g = 0; g < groupRows.length; g++) {
