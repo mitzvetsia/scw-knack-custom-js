@@ -1566,7 +1566,6 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   padding: 4px 2px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
-  overflow: hidden;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
@@ -4019,8 +4018,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (_theadDesiredFields.length && headerRow) {
       (function (tbl, desiredFields, thByField, spacerTh, vCfg) {
         function applyMeasuredWidths() {
-          var firstBar = tbl.querySelector('.' + P + '-summary');
-          if (!firstBar || firstBar.getBoundingClientRect().width <= 0) return;
+          // Find first *visible* summary bar (collapsed groups have zero width)
+          var allBars = tbl.querySelectorAll('.' + P + '-summary');
+          var firstBar = null;
+          for (var bi = 0; bi < allBars.length; bi++) {
+            if (allBars[bi].getBoundingClientRect().width > 0) { firstBar = allBars[bi]; break; }
+          }
+          if (!firstBar) return;
 
           // Measure spacer: chevron + warn-slot portion of toggle-zone
           var tz = firstBar.querySelector('.' + P + '-toggle-zone');
@@ -4072,8 +4076,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
         // Try synchronously first (works on re-renders when layout is current),
         // fall back to rAF on first load when the browser hasn't reflowed yet.
-        var firstBar = tbl.querySelector('.' + P + '-summary');
-        if (firstBar && firstBar.getBoundingClientRect().width > 0) {
+        var allBars = tbl.querySelectorAll('.' + P + '-summary');
+        var anyVisible = false;
+        for (var bi = 0; bi < allBars.length; bi++) {
+          if (allBars[bi].getBoundingClientRect().width > 0) { anyVisible = true; break; }
+        }
+        if (anyVisible) {
           applyMeasuredWidths();
         } else {
           requestAnimationFrame(applyMeasuredWidths);

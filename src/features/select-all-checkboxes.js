@@ -212,17 +212,22 @@
    * must replicate header checkbox visibility after any selection change.
    */
   function syncHeaderCboxVisibility(viewEl, anyChecked) {
-    var hdrSpans = viewEl.querySelectorAll('thead .table-fixed-label');
-    for (var s = 0; s < hdrSpans.length; s++) {
-      var sp = hdrSpans[s];
-      var hcb = sp.querySelector('.bulkEditHeaderCbox');
-      if (!hcb) continue;
-      if (anyChecked) {
-        sp.classList.add('bulkEditTh');
-        sp.style.display = 'inline-flex';
-      } else {
-        sp.classList.remove('bulkEditTh');
-        sp.style.display = '';
+    var ths = viewEl.querySelectorAll('thead th');
+    for (var t = 0; t < ths.length; t++) {
+      // Skip hidden <th>s (worksheet reorder hides non-summary columns)
+      if (ths[t].style.display === 'none') continue;
+      var hdrSpans = ths[t].querySelectorAll('.table-fixed-label');
+      for (var s = 0; s < hdrSpans.length; s++) {
+        var sp = hdrSpans[s];
+        var hcb = sp.querySelector('.bulkEditHeaderCbox');
+        if (!hcb) continue;
+        if (anyChecked) {
+          sp.classList.add('bulkEditTh');
+          sp.style.display = 'inline-flex';
+        } else {
+          sp.classList.remove('bulkEditTh');
+          sp.style.display = '';
+        }
       }
     }
   }
