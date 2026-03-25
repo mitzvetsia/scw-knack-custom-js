@@ -1579,7 +1579,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   max-width: 50px !important;
   padding: 0 !important;
   border: none !important;
-  background: transparent !important;
+  border-bottom: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 /* Stack bulk-edit checkbox below the label text */
 .${P}-thead-styled th .table-fixed-label.bulkEditTh {
@@ -3686,19 +3689,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Reorder & filter <thead> columns to match summary bar layout ──
     if (headerRow) {
       // Width mapping from summary-bar groupCls → pixel width
+      // Values taken directly from the CSS rules for each group class.
       var TH_GROUP_WIDTHS = {
-        'sum-group--narrow':   '50px',
-        'sum-group--sub-bid':  '70px',
-        'sum-group--cat':      '70px',
-        'sum-group--vars':     '100px',
-        'sum-group--fee':      '70px',
-        'sum-group--sow':      '100px',
-        'sum-group--mcb':      '80px',
-        'sum-group--bid':      '70px',
-        'sum-group--qty':      '50px',
-        'sum-group--labor':    '70px',
-        'sum-group--ext':      '70px',
-        'sum-group--total':    '70px'
+        'sum-group--narrow':   '50px',   // .sum-right .sum-group--narrow { width:50px }
+        'sum-group--sub-bid':  '70px',   // min-content, min-width:70px → use 70px
+        'sum-group--cat':      '70px',   // width:70px
+        'sum-group--vars':     '100px',  // width:100px
+        'sum-group--fee':      '70px',   // min-content, min-width:70px → use 70px
+        'sum-group--sow':      '100px',  // width:100px
+        'sum-group--mcb':      '80px',   // width:80px
+        'sum-group--bid':      '70px',   // width:70px
+        'sum-group--qty':      '50px',   // width:50px
+        'sum-group--labor':    '70px',   // default fit-content
+        'sum-group--ext':      '70px',   // default fit-content
+        'sum-group--total':    '90px',   // width:90px
+        'sum-group--cabling':  '100px'   // no explicit width; sized by chit content
       };
 
       var L = viewCfg.layout;
@@ -3736,6 +3741,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (_desc.group === 'fill') continue;
         if (_desc.groupCls && TH_GROUP_WIDTHS[_desc.groupCls]) {
           thWidths[_desc.key] = TH_GROUP_WIDTHS[_desc.groupCls];
+        } else if (_desc.type === 'toggleChit') {
+          // toggleChit fields render as sum-group--cabling at runtime
+          thWidths[_desc.key] = TH_GROUP_WIDTHS['sum-group--cabling'];
         }
       }
 
