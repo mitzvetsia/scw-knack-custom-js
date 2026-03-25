@@ -15562,8 +15562,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   font-size: 0.7rem !important;
   text-align: center !important;
   vertical-align: middle !important;
-  padding: 4px 3px !important;
+  padding: 4px 2px !important;
   line-height: 1.2;
+  box-sizing: border-box !important;
+  overflow: hidden;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
@@ -15572,10 +15574,8 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   justify-content: center;
 }
 /* Spacer <th> covers chevron + warn-slot width in the summary bar */
+/* Width is set dynamically by measuring the actual toggle-zone */
 .${P}-thead-spacer {
-  width: 50px !important;
-  min-width: 50px !important;
-  max-width: 50px !important;
   padding: 0 !important;
   border: none !important;
   border-bottom: none !important;
@@ -17686,45 +17686,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     // ── Reorder & filter <thead> columns to match summary bar layout ──
-    if (headerRow) {
-      // Width mapping from summary-bar groupCls → pixel width
-      // Values taken directly from the CSS rules for each group class.
-      var TH_GROUP_WIDTHS = {
-        'sum-group--narrow':   '50px',   // .sum-right .sum-group--narrow { width:50px }
-        'sum-group--sub-bid':  '70px',   // min-content, min-width:70px → use 70px
-        'sum-group--cat':      '70px',   // width:70px
-        'sum-group--vars':     '100px',  // width:100px
-        'sum-group--fee':      '70px',   // min-content, min-width:70px → use 70px
-        'sum-group--sow':      '100px',  // width:100px
-        'sum-group--mcb':      '80px',   // width:80px
-        'sum-group--bid':      '70px',   // width:70px
-        'sum-group--qty':      '50px',   // width:50px
-        'sum-group--labor':    '70px',   // default fit-content
-        'sum-group--ext':      '70px',   // default fit-content
-        'sum-group--total':    '90px',   // width:90px
-        'sum-group--cabling':  '100px'   // no explicit width; sized by chit content
-      };
+    // Width application is deferred until after PHASE 3 so we can measure
+    // the actual rendered summary-bar group widths instead of guessing.
+    var _theadThByField = {};   // field_key → th element (for deferred width)
+    var _theadSpacerTh = null;  // spacer th (for deferred toggle-zone width)
+    var _theadDesiredFields = [];
 
+    if (headerRow) {
       var L = viewCfg.layout;
 
-      // Build desired field-key order + widths + labels from view config:
+      // Build desired field-key order + labels from view config:
       //   [checkbox] [label] [product] [summaryLayout fields...] [move]
       var desiredFields = [];
-      var thWidths = {};   // field_key → CSS width
       var thLabels = {};   // field_key → display label
 
       var _labelDesc = fieldDesc(viewCfg, 'label');
-      if (_labelDesc) {
-        desiredFields.push(_labelDesc.key);
-        thWidths[_labelDesc.key] = L.labelWidth || '80px';
-      }
+      if (_labelDesc) desiredFields.push(_labelDesc.key);
 
       var _productDesc = fieldDesc(viewCfg, 'product');
-      if (_productDesc) {
-        desiredFields.push(_productDesc.key);
-        var pgw = L.productGroupWidth;
-        thWidths[_productDesc.key] = (pgw && pgw !== 'flex') ? pgw : '200px';
-      }
+      if (_productDesc) desiredFields.push(_productDesc.key);
 
       var _summaryLayout = viewCfg.summaryLayout || [];
       for (var si = 0; si < _summaryLayout.length; si++) {
@@ -17732,25 +17712,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var _desc = fieldDesc(viewCfg, _name);
         if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
         desiredFields.push(_desc.key);
-
-        // Store label rename
         if (_desc.label) thLabels[_desc.key] = _desc.label;
-
-        // Store width from groupCls (skip 'fill' group — let it auto-expand)
-        if (_desc.group === 'fill') continue;
-        if (_desc.groupCls && TH_GROUP_WIDTHS[_desc.groupCls]) {
-          thWidths[_desc.key] = TH_GROUP_WIDTHS[_desc.groupCls];
-        } else if (_desc.type === 'toggleChit') {
-          // toggleChit fields render as sum-group--cabling at runtime
-          thWidths[_desc.key] = TH_GROUP_WIDTHS['sum-group--cabling'];
-        }
       }
 
       var _moveDesc = fieldDesc(viewCfg, 'move');
-      if (_moveDesc) {
-        desiredFields.push(_moveDesc.key);
-        thWidths[_moveDesc.key] = '40px';
-      }
+      if (_moveDesc) desiredFields.push(_moveDesc.key);
 
       // Index <th> elements by field key
       var thByField = {};
@@ -17766,7 +17732,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           checkboxTh = _th;
           continue;
         }
-        // Extract field_XXXX from class list (stop at colon for thumb fields)
         var _cls = _th.className.split(/\s+/);
         var _fk = null;
         for (var tc = 0; tc < _cls.length; tc++) {
@@ -17784,17 +17749,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (allThs[tk] !== checkboxTh) allThs[tk].style.display = 'none';
       }
 
-      // Mark <thead> for CSS styling (smaller text, centered, stacked checkboxes)
       thead.classList.add(P + '-thead-styled');
 
-      // Append in desired order: checkbox, spacer (chevron+warn), then fields
       if (checkboxTh) headerRow.appendChild(checkboxTh);
 
       // Insert faux spacer <th> to cover toggle-zone width (chevron + warn-slot)
       var spacerTh = document.createElement('th');
       spacerTh.className = P + '-thead-spacer';
       headerRow.appendChild(spacerTh);
-      colCount += 1; // account for spacer in row colspan
+      colCount += 1;
+      _theadSpacerTh = spacerTh;
 
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
@@ -17802,13 +17766,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!_showTh) continue;
 
         _showTh.style.display = '';
-
-        // Apply proportional width from summary bar group sizing
-        var _tw = thWidths[_fKey];
-        if (_tw) {
-          _showTh.style.width = _tw;
-          _showTh.style.minWidth = _tw;
-        }
 
         // Rename label to match summary bar display name
         var _tl = thLabels[_fKey];
@@ -17821,6 +17778,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         headerRow.appendChild(_showTh);
       }
 
+      _theadThByField = thByField;
+      _theadDesiredFields = desiredFields;
     }
 
     // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
@@ -18048,6 +18007,67 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           tbody.insertBefore(makeDivider(), lastInsertedRow.nextSibling);
         } else if (lastInsertedRow) {
           tbody.appendChild(makeDivider());
+        }
+      }
+    }
+
+    // ── MEASURE SUMMARY BAR & APPLY WIDTHS TO <thead> ──
+    // Now that all summary bars are in the DOM we can measure the actual
+    // rendered widths of each group element and apply them to the
+    // matching <th> columns.  This replaces hardcoded width guesses
+    // with pixel-accurate measurements from the browser.
+    if (_theadDesiredFields.length && headerRow) {
+      var firstBar = table.querySelector('.' + P + '-summary');
+      if (firstBar && firstBar.getBoundingClientRect().width > 0) {
+
+        // Measure spacer: chevron + warn-slot portion of toggle-zone
+        // (everything before the identity block starts)
+        var tz = firstBar.querySelector('.' + P + '-toggle-zone');
+        var ident = tz ? tz.querySelector('.' + P + '-identity') : null;
+        if (tz && _theadSpacerTh) {
+          var spacerW;
+          if (ident) {
+            // Spacer = distance from toggle-zone left to identity left
+            spacerW = Math.round(ident.getBoundingClientRect().left - tz.getBoundingClientRect().left);
+          } else {
+            spacerW = Math.round(tz.getBoundingClientRect().width);
+          }
+          _theadSpacerTh.style.width = spacerW + 'px';
+          _theadSpacerTh.style.minWidth = spacerW + 'px';
+          _theadSpacerTh.style.maxWidth = spacerW + 'px';
+        }
+
+        // Measure each element that has data-scw-fields
+        // This covers: product-group (inside identity), plus all sum-right groups
+        var sumGroups = firstBar.querySelectorAll('[data-scw-fields]');
+        var measuredWidths = {};  // field_key → 'NNpx'
+        for (var mg = 0; mg < sumGroups.length; mg++) {
+          var grpEl = sumGroups[mg];
+          var fieldKeys = grpEl.getAttribute('data-scw-fields').split(/\s+/);
+          var grpW = Math.round(grpEl.getBoundingClientRect().width);
+          for (var mk = 0; mk < fieldKeys.length; mk++) {
+            measuredWidths[fieldKeys[mk]] = grpW + 'px';
+          }
+        }
+
+        // Measure label cell width (inside identity, no data-scw-fields attr)
+        var labelCell = ident ? ident.querySelector('.' + P + '-sum-label-cell') : null;
+        if (labelCell) {
+          var _lDesc = fieldDesc(viewCfg, 'label');
+          if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
+        }
+
+        // Apply measured widths to <th> elements
+        for (var mi = 0; mi < _theadDesiredFields.length; mi++) {
+          var fk = _theadDesiredFields[mi];
+          var thEl = _theadThByField[fk];
+          if (!thEl) continue;
+          var mw = measuredWidths[fk];
+          if (mw) {
+            thEl.style.width = mw;
+            thEl.style.minWidth = mw;
+            thEl.style.maxWidth = mw;
+          }
         }
       }
     }
