@@ -7256,19 +7256,27 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (document.getElementById(STYLE_ID)) return;
 
     var css = [
-      /* ── View-level header bar — styled like native Knack <thead> row ── */
-      '.scw-sa-header {',
-      '  display: flex;',
-      '  align-items: stretch;',
-      '  gap: 6px;',
-      '  padding: 6px 12px;',
-      '  background: #fafafa;',
-      '  border-bottom: 1px solid #dbdbdb;',
-      '  min-height: 36px;',
-      '  user-select: none;',
+      /* ── Header row wrapper — sits inside <tbody> as a <tr> ── */
+      'tr.scw-sa-header-row { background: #fafafa; }',
+      'tr.scw-sa-header-row > td {',
+      '  padding: 0 !important;',
+      '  border: none !important;',
+      '  border-bottom: 2px solid #dbdbdb !important;',
       '  position: sticky;',
       '  top: 0;',
       '  z-index: 5;',
+      '  background: #fafafa;',
+      '}',
+
+      /* ── Inner flex bar — mirrors .scw-ws-summary layout exactly ── */
+      '.scw-sa-header {',
+      '  display: flex;',
+      '  align-items: flex-start;',
+      '  gap: 6px;',
+      '  padding: 6px 12px;',
+      '  background: #fafafa;',
+      '  min-height: 36px;',
+      '  user-select: none;',
       '}',
 
       '.scw-sa-header-check {',
@@ -7276,7 +7284,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  padding: 0 4px;',
+      '  padding: 5px 4px 0 4px;',
+      '  min-width: 20px;',
       '}',
       '.scw-sa-header-check input[type="checkbox"] {',
       '  margin: 0;',
@@ -7285,33 +7294,56 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  height: 15px !important;',
       '}',
 
-      /* identity + chevron placeholder — width set dynamically via JS */
+      /* Toggle zone placeholder — mirrors .scw-ws-toggle-zone */
       '.scw-sa-header-toggle {',
       '  display: flex;',
-      '  align-items: center;',
+      '  align-items: flex-start;',
+      '  align-self: flex-start;',
       '  gap: 6px;',
       '  flex: 0 0 auto;',
       '  min-width: 0;',
       '}',
-      '.scw-sa-header-fill {',
-      '  flex: 1 1 auto;',
+      /* Chevron placeholder — same 20px width as .scw-ws-chevron */
+      '.scw-sa-header-chevron-ph {',
+      '  flex: 0 0 auto;',
+      '  width: 20px;',
+      '  height: 20px;',
+      '  padding-top: 5px;',
+      '}',
+      /* Warn-slot placeholder — same 18px as .scw-ws-warn-slot */
+      '.scw-sa-header-warn-ph {',
+      '  flex: 0 0 18px;',
+      '  width: 18px;',
+      '}',
+      /* Identity placeholder — mirrors .scw-ws-identity */
+      '.scw-sa-header-identity {',
+      '  display: flex;',
+      '  align-items: flex-start;',
+      '  gap: 6px;',
+      '  flex: 0 1 auto;',
       '  min-width: 0;',
       '}',
+      '.scw-sa-header-fill {',
+      '  flex: 1 1 auto;',
+      '  min-width: 80px;',
+      '}',
+      /* Right section — mirrors .scw-ws-sum-right */
       '.scw-sa-header-right {',
       '  display: flex;',
-      '  align-items: center;',
+      '  align-items: flex-start;',
       '  gap: 4px;',
       '  margin-left: auto;',
       '  flex-shrink: 0;',
       '}',
 
-      /* Each header label cell */
+      /* Each header label cell — mirrors .scw-ws-sum-group */
       '.scw-sa-header-cell {',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  justify-content: center;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: flex-start;',
+      '  gap: 0;',
+      '  min-width: 0;',
       '  flex-shrink: 0;',
-      '  padding: 0;',
       '}',
 
       /* ── Sort link — styled to match native <a class="kn-sort"> ── */
@@ -7738,160 +7770,88 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   function findHeaderBar(viewKey) {
+    // The header bar <div> lives inside a <tr> wrapper; return the <div>
     return document.querySelector('.scw-sa-header[data-scw-sa-view="' + viewKey + '"]');
   }
 
+  function findHeaderRow(viewKey) {
+    // Return the <tr> wrapper that contains the header bar
+    return document.querySelector('tr.scw-sa-header-row[data-scw-sa-view="' + viewKey + '"]');
+  }
+
   /**
-   * Measure a VISIBLE summary bar in the view and apply matching widths
-   * to the header bar cells so columns are perfectly aligned.
-   *
-   * The summary bar lives inside a <td colspan> which may have its own
-   * padding, so the header's content area can differ from the summary's.
-   * We correct for this by adjusting the header's padding to match the
-   * summary's content edges, then matching individual group widths.
+   * Copy summary-bar group widths onto the corresponding header cells.
+   * Since both live inside <td colspan> in the same table, the flex
+   * containers share identical available width.  We just need to match
+   * the individual group fixed/min widths so they track across viewport
+   * sizes.  The fill section flexes automatically.
    */
-  function alignHeaderToSummary(bar, viewEl) {
+  function syncHeaderWidths(bar, viewEl) {
     var summary = findVisibleSummary(viewEl);
     if (!summary) return;
 
-    // ── PHASE 1: READ all measurements (single layout pass) ──
-    var barRect = bar.getBoundingClientRect();
-    var sumRect = summary.getBoundingClientRect();
-
-    // Skip if summary is hidden (0-width)
-    if (sumRect.width <= 0) return;
-
-    // ── Measure each summary element's absolute X position ──
-    var measurements = {};
-
-    var sumCheck = summary.querySelector('.scw-ws-sum-check');
-    var hdrCheck = bar.querySelector('.scw-sa-header-check');
-    if (sumCheck && hdrCheck) {
-      measurements.check = sumCheck.getBoundingClientRect();
-    }
-
+    // Match the toggle-zone width (checkbox + chevron + warn-slot + identity)
     var sumToggle = summary.querySelector('.scw-ws-toggle-zone');
     var hdrToggle = bar.querySelector('.scw-sa-header-toggle');
     if (sumToggle && hdrToggle) {
-      measurements.toggle = sumToggle.getBoundingClientRect();
+      var tw = sumToggle.getBoundingClientRect().width;
+      if (tw > 0) {
+        hdrToggle.style.width = Math.round(tw) + 'px';
+        hdrToggle.style.minWidth = Math.round(tw) + 'px';
+      }
     }
 
+    // Match each right-side group width
     var sumRight = summary.querySelector('.scw-ws-sum-right');
     var hdrRight = bar.querySelector('.scw-sa-header-right');
-    var hdrCells = null;
-    var groupRects = [];
-    var deleteRect = null;
-
     if (sumRight && hdrRight) {
-      measurements.right = sumRight.getBoundingClientRect();
       var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
-      hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
-      for (var i = 0; i < sumGroups.length; i++) {
-        groupRects.push(sumGroups[i].getBoundingClientRect());
+      var hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
+      for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
+        var gw = sumGroups[i].getBoundingClientRect().width;
+        if (gw > 0) {
+          hdrCells[i].style.width = Math.round(gw) + 'px';
+          hdrCells[i].style.minWidth = Math.round(gw) + 'px';
+        }
       }
-      var sumDelete = sumRight.querySelector('.scw-ws-sum-delete');
-      if (sumDelete) deleteRect = sumDelete.getBoundingClientRect();
-    }
-
-    // ── PHASE 2: WRITE — position header cells at exact summary X coords ──
-
-    // Remove flex gap from header so we control all spacing explicitly
-    bar.style.gap = '0px';
-    // Set header padding so its left edge matches the summary's left edge
-    bar.style.paddingLeft = Math.max(0, Math.round(sumRect.left - barRect.left)) + 'px';
-    bar.style.paddingRight = '0px';
-
-    // Position each section using margin-left to land at the summary's X position.
-    // We track the "cursor" — the current right edge of the last placed element.
-    var cursor = sumRect.left; // starts at summary's left content edge
-
-    if (measurements.check && hdrCheck) {
-      var ml = Math.max(0, Math.round(measurements.check.left - cursor));
-      var w = Math.round(measurements.check.width);
-      hdrCheck.style.flex = '0 0 ' + w + 'px';
-      hdrCheck.style.width = w + 'px';
-      hdrCheck.style.minWidth = w + 'px';
-      hdrCheck.style.marginLeft = ml + 'px';
-      cursor = measurements.check.right;
-    }
-
-    if (measurements.toggle && hdrToggle) {
-      var ml = Math.max(0, Math.round(measurements.toggle.left - cursor));
-      var w = Math.round(measurements.toggle.width);
-      hdrToggle.style.flex = '0 0 ' + w + 'px';
-      hdrToggle.style.width = w + 'px';
-      hdrToggle.style.minWidth = w + 'px';
-      hdrToggle.style.marginLeft = ml + 'px';
-      hdrToggle.style.gap = '0px';
-      cursor = measurements.toggle.right;
-    }
-
-    // Fill section: let it consume space between toggle and right section
-    var hdrFill = bar.querySelector('.scw-sa-header-fill');
-    if (hdrFill && measurements.right) {
-      var fillWidth = Math.max(0, Math.round(measurements.right.left - cursor));
-      hdrFill.style.flex = '0 0 ' + fillWidth + 'px';
-      hdrFill.style.width = fillWidth + 'px';
-      hdrFill.style.minWidth = '0px';
-      hdrFill.style.marginLeft = '0px';
-      cursor = cursor + fillWidth;
-    }
-
-    // Right section: match exact width, remove auto margin
-    if (hdrRight && measurements.right) {
-      var rw = Math.round(measurements.right.width);
-      hdrRight.style.flex = '0 0 ' + rw + 'px';
-      hdrRight.style.width = rw + 'px';
-      hdrRight.style.minWidth = rw + 'px';
-      hdrRight.style.marginLeft = '0px';
-      hdrRight.style.gap = '0px';
-
-      // Position each group cell within the right section
-      var rightLeft = measurements.right.left;
-      var rCursor = rightLeft;
-
-      for (var j = 0; j < Math.min(groupRects.length, hdrCells ? hdrCells.length : 0); j++) {
-        var gml = Math.max(0, Math.round(groupRects[j].left - rCursor));
-        var gw = Math.round(groupRects[j].width);
-        hdrCells[j].style.flex = '0 0 ' + gw + 'px';
-        hdrCells[j].style.width = gw + 'px';
-        hdrCells[j].style.minWidth = gw + 'px';
-        hdrCells[j].style.marginLeft = gml + 'px';
-        rCursor = groupRects[j].right;
-      }
-
-      // Match the delete/trailing cell too
-      if (deleteRect && hdrCells && hdrCells.length > groupRects.length) {
-        var delCell = hdrCells[groupRects.length];
-        var dml = Math.max(0, Math.round(deleteRect.left - rCursor));
-        var dw = Math.round(deleteRect.width);
-        delCell.style.flex = '0 0 ' + dw + 'px';
-        delCell.style.width = dw + 'px';
-        delCell.style.minWidth = dw + 'px';
-        delCell.style.marginLeft = dml + 'px';
+      // Match delete cell if present
+      var sumDel = sumRight.querySelector('.scw-ws-sum-delete');
+      if (sumDel && hdrCells.length > sumGroups.length) {
+        var dw = sumDel.getBoundingClientRect().width;
+        var delCell = hdrCells[sumGroups.length];
+        if (dw > 0) {
+          delCell.style.width = Math.round(dw) + 'px';
+          delCell.style.minWidth = Math.round(dw) + 'px';
+        }
       }
     }
   }
 
   /**
    * Build and insert the header bar.
-   * Inserts OUTSIDE the view (in accordion body) to survive re-renders.
+   * Inserts as a <tr> inside the <tbody> so the inner flex container shares
+   * the same <td colspan> width context as the summary bars — guaranteeing
+   * natural alignment without measurement hacks.
    */
   function buildHeaderBar(viewEl, viewKey) {
     var layout = readHeaderLayout(viewEl);
     if (!layout) return null;
 
-    var existing = findHeaderBar(viewKey);
-    if (existing) existing.remove();
+    // Remove any previous header (both row and legacy div)
+    var existingRow = findHeaderRow(viewKey);
+    if (existingRow) existingRow.remove();
+    var existingBar = findHeaderBar(viewKey);
+    if (existingBar) existingBar.remove();
 
     var theadMap = readTheadCheckboxes(viewEl);
     var bulkVisible = areBulkEditCboxesVisible(viewEl);
 
+    // ── Build the inner flex bar (same layout as .scw-ws-summary) ──
     var bar = document.createElement('div');
     bar.className = 'scw-sa-header';
     bar.setAttribute('data-scw-sa-view', viewKey);
 
-    // ── Select-all checkbox (with KTL classes) ──
+    // ── Select-all checkbox — mirrors summary check cell ──
     var checkWrap = document.createElement('span');
     checkWrap.className = 'scw-sa-header-check';
     var selectAllCb = document.createElement('input');
@@ -7902,24 +7862,39 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     checkWrap.appendChild(selectAllCb);
     bar.appendChild(checkWrap);
 
-    // ── Toggle zone placeholder (mirrors summary toggle-zone width) ──
+    // ── Toggle zone — mirrors .scw-ws-toggle-zone structure ──
     var toggleSpan = document.createElement('span');
     toggleSpan.className = 'scw-sa-header-toggle';
+
+    // Chevron placeholder (same 20px)
+    var chevPh = document.createElement('span');
+    chevPh.className = 'scw-sa-header-chevron-ph';
+    toggleSpan.appendChild(chevPh);
+
+    // Warn-slot placeholder (same 18px)
+    var warnPh = document.createElement('span');
+    warnPh.className = 'scw-sa-header-warn-ph';
+    toggleSpan.appendChild(warnPh);
+
+    // Identity section
+    var identitySpan = document.createElement('span');
+    identitySpan.className = 'scw-sa-header-identity';
     for (var id = 0; id < layout.identity.length; id++) {
       var idItem = layout.identity[id];
       var idCell = buildHeaderCell(idItem.text, idItem.field ? [idItem.field] : [], theadMap, bulkVisible, viewKey);
-      toggleSpan.appendChild(idCell);
+      identitySpan.appendChild(idCell);
     }
+    toggleSpan.appendChild(identitySpan);
     bar.appendChild(toggleSpan);
 
-    // ── Fill label (labor desc) ──
+    // ── Fill label (labor desc) — mirrors .scw-ws-sum-group--fill ──
     if (layout.fill) {
       var fillCell = buildHeaderCell(layout.fill.text, layout.fill.fields, theadMap, bulkVisible, viewKey);
       fillCell.classList.add('scw-sa-header-fill');
       bar.appendChild(fillCell);
     }
 
-    // ── Right-side labels ──
+    // ── Right-side labels — mirrors .scw-ws-sum-right ──
     var rightSpan = document.createElement('span');
     rightSpan.className = 'scw-sa-header-right';
 
@@ -7944,27 +7919,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     bar.appendChild(rightSpan);
 
-    // ── Insert INSIDE the view, after kn-records-nav ──
-    // Primary: place after .kn-records-nav so the bar sits between
-    //          the filters/pagination row and the table content.
-    // Fallback: before .kn-table-wrapper, or before viewEl itself.
-    var inserted = false;
-    var recordsNav = viewEl.querySelector('.kn-records-nav');
-    if (recordsNav) {
-      recordsNav.parentNode.insertBefore(bar, recordsNav.nextSibling);
-      inserted = true;
-    }
-    if (!inserted) {
+    // ── Wrap in <tr><td colspan> for table insertion ──
+    var headerTd = document.createElement('td');
+    headerTd.setAttribute('colspan', '30');
+    headerTd.appendChild(bar);
+
+    var headerRow = document.createElement('tr');
+    headerRow.className = 'scw-sa-header-row';
+    headerRow.setAttribute('data-scw-sa-view', viewKey);
+    headerRow.appendChild(headerTd);
+
+    // ── Insert as first row in <tbody> ──
+    var tbody = viewEl.querySelector('table.kn-table tbody');
+    if (tbody) {
+      tbody.insertBefore(headerRow, tbody.firstChild);
+    } else {
+      // Fallback: insert before .kn-table-wrapper
       var tableWrapper = viewEl.querySelector('.kn-table-wrapper');
       if (tableWrapper) {
         tableWrapper.parentNode.insertBefore(bar, tableWrapper);
-      } else if (viewEl.parentNode) {
-        viewEl.parentNode.insertBefore(bar, viewEl);
       }
     }
 
-    // ── Align columns to summary bar ──
-    alignHeaderToSummary(bar, viewEl);
+    // ── Sync group widths from summary bar ──
+    syncHeaderWidths(bar, viewEl);
 
     // ── Click handler for select-all (fresh DOM lookup) ──
     selectAllCb.addEventListener('click', function (e) {
@@ -7987,8 +7965,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (!freshEl) return;
       var cbs = findCheckboxes(freshEl);
       syncCheckbox(selectAllCb, cbs);
-      // After a row checkbox changes, KTL toggles ktlDisplayNone on native
-      // thead checkboxes (class change). Delay sync so KTL processes first.
       setTimeout(function () {
         var el = document.getElementById(viewKey);
         if (el) syncHeaderBar(el, viewKey);
@@ -8050,8 +8026,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
 
-    // Re-align columns (summary bar may have re-rendered with different widths)
-    alignHeaderToSummary(bar, viewEl);
+    // Re-sync group widths (summary bar may have re-rendered with different widths)
+    syncHeaderWidths(bar, viewEl);
 
     // Sync select-all checkbox + re-bind change handler to (possibly new) viewEl
     var masterCb = bar.querySelector('.scw-sa-header-check input[type="checkbox"]');
