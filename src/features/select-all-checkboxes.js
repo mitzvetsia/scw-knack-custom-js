@@ -88,7 +88,7 @@
       '  gap: 3px;',
       '  font-size: 0.85rem;',
       '  font-weight: 600;',
-      '  color: #485fc7;',
+      '  color: #363636;',
       '  white-space: normal;',
       '  text-align: center;',
       '  cursor: pointer;',
@@ -96,7 +96,7 @@
       '  line-height: 1.15;',
       '}',
       '.scw-sa-sort-link:hover {',
-      '  color: #363636;',
+      '  color: #000;',
       '}',
 
       /* Non-sortable label */
@@ -241,10 +241,11 @@
       '  vertical-align: middle;',
       '}',
       '.kn-table thead th .kn-sort {',
-      '  color: #485fc7;',
+      '  color: #363636;',
+      '  text-decoration: none;',
       '}',
       '.kn-table thead th .kn-sort:hover {',
-      '  color: #363636;',
+      '  color: #000;',
       '}',
       '.kn-table thead .ktlCheckboxHeaderCell {',
       '  text-align: center;',
@@ -539,19 +540,21 @@
     }
 
     // ── PHASE 2: WRITE all styles (no interleaved reads) ──
-    if (checkWidth !== null) {
+    // Skip zero-width measurements — the summary bar may be hidden/collapsed.
+    if (checkWidth !== null && checkWidth > 0) {
       hdrCheck.style.width = checkWidth + 'px';
       hdrCheck.style.minWidth = checkWidth + 'px';
       hdrCheck.style.flex = '0 0 ' + checkWidth + 'px';
     }
 
-    if (toggleWidth !== null) {
+    if (toggleWidth !== null && toggleWidth > 0) {
       hdrToggle.style.width = toggleWidth + 'px';
       hdrToggle.style.minWidth = toggleWidth + 'px';
       hdrToggle.style.flex = '0 0 ' + toggleWidth + 'px';
     }
 
     for (var j = 0; j < groupWidths.length; j++) {
+      if (groupWidths[j] <= 0) continue;
       hdrCells[j].style.width = groupWidths[j] + 'px';
       hdrCells[j].style.minWidth = groupWidths[j] + 'px';
       hdrCells[j].style.flex = '0 0 ' + groupWidths[j] + 'px';
