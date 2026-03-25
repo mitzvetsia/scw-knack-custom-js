@@ -7761,59 +7761,115 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Skip if summary is hidden (0-width)
     if (sumRect.width <= 0) return;
 
-    // Content-area padding correction: align header content edges
-    // to summary content edges. Both default to padding: 6px 12px,
-    // but the summary sits inside a <td> that adds extra inset.
-    var padLeft = Math.max(12, Math.round(sumRect.left - barRect.left + 12));
-    var padRight = Math.max(12, Math.round(barRect.right - sumRect.right + 12));
+    // ── Measure each summary element's absolute X position ──
+    var measurements = {};
 
-    var checkWidth = null;
     var sumCheck = summary.querySelector('.scw-ws-sum-check');
     var hdrCheck = bar.querySelector('.scw-sa-header-check');
     if (sumCheck && hdrCheck) {
-      checkWidth = sumCheck.getBoundingClientRect().width;
+      measurements.check = sumCheck.getBoundingClientRect();
     }
 
-    var toggleWidth = null;
     var sumToggle = summary.querySelector('.scw-ws-toggle-zone');
     var hdrToggle = bar.querySelector('.scw-sa-header-toggle');
     if (sumToggle && hdrToggle) {
-      toggleWidth = sumToggle.getBoundingClientRect().width;
+      measurements.toggle = sumToggle.getBoundingClientRect();
     }
 
-    var groupWidths = [];
     var sumRight = summary.querySelector('.scw-ws-sum-right');
     var hdrRight = bar.querySelector('.scw-sa-header-right');
     var hdrCells = null;
+    var groupRects = [];
+    var deleteRect = null;
+
     if (sumRight && hdrRight) {
+      measurements.right = sumRight.getBoundingClientRect();
       var sumGroups = sumRight.querySelectorAll(':scope > .scw-ws-sum-group');
       hdrCells = hdrRight.querySelectorAll(':scope > .scw-sa-header-cell');
-      for (var i = 0; i < Math.min(sumGroups.length, hdrCells.length); i++) {
-        groupWidths.push(Math.round(sumGroups[i].getBoundingClientRect().width));
+      for (var i = 0; i < sumGroups.length; i++) {
+        groupRects.push(sumGroups[i].getBoundingClientRect());
       }
+      var sumDelete = sumRight.querySelector('.scw-ws-sum-delete');
+      if (sumDelete) deleteRect = sumDelete.getBoundingClientRect();
     }
 
-    // ── PHASE 2: WRITE all styles (no interleaved reads) ──
-    bar.style.paddingLeft = padLeft + 'px';
-    bar.style.paddingRight = padRight + 'px';
+    // ── PHASE 2: WRITE — position header cells at exact summary X coords ──
 
-    if (checkWidth !== null && checkWidth > 0) {
-      hdrCheck.style.width = checkWidth + 'px';
-      hdrCheck.style.minWidth = checkWidth + 'px';
-      hdrCheck.style.flex = '0 0 ' + checkWidth + 'px';
+    // Remove flex gap from header so we control all spacing explicitly
+    bar.style.gap = '0px';
+    // Set header padding so its left edge matches the summary's left edge
+    bar.style.paddingLeft = Math.max(0, Math.round(sumRect.left - barRect.left)) + 'px';
+    bar.style.paddingRight = '0px';
+
+    // Position each section using margin-left to land at the summary's X position.
+    // We track the "cursor" — the current right edge of the last placed element.
+    var cursor = sumRect.left; // starts at summary's left content edge
+
+    if (measurements.check && hdrCheck) {
+      var ml = Math.max(0, Math.round(measurements.check.left - cursor));
+      var w = Math.round(measurements.check.width);
+      hdrCheck.style.flex = '0 0 ' + w + 'px';
+      hdrCheck.style.width = w + 'px';
+      hdrCheck.style.minWidth = w + 'px';
+      hdrCheck.style.marginLeft = ml + 'px';
+      cursor = measurements.check.right;
     }
 
-    if (toggleWidth !== null && toggleWidth > 0) {
-      hdrToggle.style.width = toggleWidth + 'px';
-      hdrToggle.style.minWidth = toggleWidth + 'px';
-      hdrToggle.style.flex = '0 0 ' + toggleWidth + 'px';
+    if (measurements.toggle && hdrToggle) {
+      var ml = Math.max(0, Math.round(measurements.toggle.left - cursor));
+      var w = Math.round(measurements.toggle.width);
+      hdrToggle.style.flex = '0 0 ' + w + 'px';
+      hdrToggle.style.width = w + 'px';
+      hdrToggle.style.minWidth = w + 'px';
+      hdrToggle.style.marginLeft = ml + 'px';
+      hdrToggle.style.gap = '0px';
+      cursor = measurements.toggle.right;
     }
 
-    for (var j = 0; j < groupWidths.length; j++) {
-      if (groupWidths[j] <= 0) continue;
-      hdrCells[j].style.width = groupWidths[j] + 'px';
-      hdrCells[j].style.minWidth = groupWidths[j] + 'px';
-      hdrCells[j].style.flex = '0 0 ' + groupWidths[j] + 'px';
+    // Fill section: let it consume space between toggle and right section
+    var hdrFill = bar.querySelector('.scw-sa-header-fill');
+    if (hdrFill && measurements.right) {
+      var fillWidth = Math.max(0, Math.round(measurements.right.left - cursor));
+      hdrFill.style.flex = '0 0 ' + fillWidth + 'px';
+      hdrFill.style.width = fillWidth + 'px';
+      hdrFill.style.minWidth = '0px';
+      hdrFill.style.marginLeft = '0px';
+      cursor = cursor + fillWidth;
+    }
+
+    // Right section: match exact width, remove auto margin
+    if (hdrRight && measurements.right) {
+      var rw = Math.round(measurements.right.width);
+      hdrRight.style.flex = '0 0 ' + rw + 'px';
+      hdrRight.style.width = rw + 'px';
+      hdrRight.style.minWidth = rw + 'px';
+      hdrRight.style.marginLeft = '0px';
+      hdrRight.style.gap = '0px';
+
+      // Position each group cell within the right section
+      var rightLeft = measurements.right.left;
+      var rCursor = rightLeft;
+
+      for (var j = 0; j < Math.min(groupRects.length, hdrCells ? hdrCells.length : 0); j++) {
+        var gml = Math.max(0, Math.round(groupRects[j].left - rCursor));
+        var gw = Math.round(groupRects[j].width);
+        hdrCells[j].style.flex = '0 0 ' + gw + 'px';
+        hdrCells[j].style.width = gw + 'px';
+        hdrCells[j].style.minWidth = gw + 'px';
+        hdrCells[j].style.marginLeft = gml + 'px';
+        rCursor = groupRects[j].right;
+      }
+
+      // Match the delete/trailing cell too
+      if (deleteRect && hdrCells && hdrCells.length > groupRects.length) {
+        var delCell = hdrCells[groupRects.length];
+        var dml = Math.max(0, Math.round(deleteRect.left - rCursor));
+        var dw = Math.round(deleteRect.width);
+        delCell.style.flex = '0 0 ' + dw + 'px';
+        delCell.style.width = dw + 'px';
+        delCell.style.minWidth = dw + 'px';
+        delCell.style.marginLeft = dml + 'px';
+      }
     }
   }
 
