@@ -511,12 +511,29 @@
   /**
    * Measure a VISIBLE summary bar in the view and apply matching widths
    * to the header bar cells so columns are perfectly aligned.
+   *
+   * The summary bar lives inside a <td colspan> which may have its own
+   * padding, so the header's content area can differ from the summary's.
+   * We correct for this by adjusting the header's padding to match the
+   * summary's content edges, then matching individual group widths.
    */
   function alignHeaderToSummary(bar, viewEl) {
     var summary = findVisibleSummary(viewEl);
     if (!summary) return;
 
-    // ── PHASE 1: READ all widths (single layout calculation) ──
+    // ── PHASE 1: READ all measurements (single layout pass) ──
+    var barRect = bar.getBoundingClientRect();
+    var sumRect = summary.getBoundingClientRect();
+
+    // Skip if summary is hidden (0-width)
+    if (sumRect.width <= 0) return;
+
+    // Content-area padding correction: align header content edges
+    // to summary content edges. Both default to padding: 6px 12px,
+    // but the summary sits inside a <td> that adds extra inset.
+    var padLeft = Math.max(12, Math.round(sumRect.left - barRect.left + 12));
+    var padRight = Math.max(12, Math.round(barRect.right - sumRect.right + 12));
+
     var checkWidth = null;
     var sumCheck = summary.querySelector('.scw-ws-sum-check');
     var hdrCheck = bar.querySelector('.scw-sa-header-check');
@@ -544,7 +561,9 @@
     }
 
     // ── PHASE 2: WRITE all styles (no interleaved reads) ──
-    // Skip zero-width measurements — the summary bar may be hidden/collapsed.
+    bar.style.paddingLeft = padLeft + 'px';
+    bar.style.paddingRight = padRight + 'px';
+
     if (checkWidth !== null && checkWidth > 0) {
       hdrCheck.style.width = checkWidth + 'px';
       hdrCheck.style.minWidth = checkWidth + 'px';
