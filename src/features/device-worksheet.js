@@ -3634,7 +3634,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
 
     var thead = table.querySelector('thead');
-    if (thead) thead.style.display = 'none';
+    if (thead) thead.style.display = '';
 
     var $rows = $(table).find('tbody > tr');
 
