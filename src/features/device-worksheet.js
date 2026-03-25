@@ -1558,6 +1558,39 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
 
+/* ── Worksheet <thead> column styling ── */
+.${P}-thead-styled th {
+  font-size: 0.7rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  padding: 4px 3px !important;
+  line-height: 1.2;
+}
+.${P}-thead-styled th .table-fixed-label {
+  justify-content: center;
+}
+.${P}-thead-styled th .kn-sort {
+  justify-content: center;
+}
+/* Spacer <th> covers chevron + warn-slot width in the summary bar */
+.${P}-thead-spacer {
+  width: 50px !important;
+  min-width: 50px !important;
+  max-width: 50px !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+/* Stack bulk-edit checkbox below the label text */
+.${P}-thead-styled th .table-fixed-label.bulkEditTh {
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 2px;
+}
+.${P}-thead-styled th .bulkEditHeaderCbox {
+  margin: 0 auto;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    AUTO-GENERATED PER-VIEW LAYOUT RULES
    Driven by the layout block in each WORKSHEET_CONFIG entry.
@@ -3744,8 +3777,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (allThs[tk] !== checkboxTh) allThs[tk].style.display = 'none';
       }
 
-      // Append in desired order: checkbox first, then summary fields
+      // Mark <thead> for CSS styling (smaller text, centered, stacked checkboxes)
+      thead.classList.add(P + '-thead-styled');
+
+      // Append in desired order: checkbox, spacer (chevron+warn), then fields
       if (checkboxTh) headerRow.appendChild(checkboxTh);
+
+      // Insert faux spacer <th> to cover toggle-zone width (chevron + warn-slot)
+      var spacerTh = document.createElement('th');
+      spacerTh.className = P + '-thead-spacer';
+      headerRow.appendChild(spacerTh);
+      colCount += 1; // account for spacer in row colspan
+
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
         var _showTh = thByField[_fKey];
