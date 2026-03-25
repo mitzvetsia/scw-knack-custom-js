@@ -4014,62 +4014,71 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── MEASURE SUMMARY BAR & APPLY WIDTHS TO <thead> ──
     // Now that all summary bars are in the DOM we can measure the actual
     // rendered widths of each group element and apply them to the
-    // matching <th> columns.  This replaces hardcoded width guesses
-    // with pixel-accurate measurements from the browser.
+    // matching <th> columns.  Uses requestAnimationFrame so the browser
+    // has completed layout before we read getBoundingClientRect().
     if (_theadDesiredFields.length && headerRow) {
-      var firstBar = table.querySelector('.' + P + '-summary');
-      if (firstBar && firstBar.getBoundingClientRect().width > 0) {
+      (function (tbl, desiredFields, thByField, spacerTh, vCfg) {
+        function applyMeasuredWidths() {
+          var firstBar = tbl.querySelector('.' + P + '-summary');
+          if (!firstBar || firstBar.getBoundingClientRect().width <= 0) return;
 
-        // Measure spacer: chevron + warn-slot portion of toggle-zone
-        // (everything before the identity block starts)
-        var tz = firstBar.querySelector('.' + P + '-toggle-zone');
-        var ident = tz ? tz.querySelector('.' + P + '-identity') : null;
-        if (tz && _theadSpacerTh) {
-          var spacerW;
-          if (ident) {
-            // Spacer = distance from toggle-zone left to identity left
-            spacerW = Math.round(ident.getBoundingClientRect().left - tz.getBoundingClientRect().left);
-          } else {
-            spacerW = Math.round(tz.getBoundingClientRect().width);
+          // Measure spacer: chevron + warn-slot portion of toggle-zone
+          var tz = firstBar.querySelector('.' + P + '-toggle-zone');
+          var ident = tz ? tz.querySelector('.' + P + '-identity') : null;
+          if (tz && spacerTh) {
+            var spacerW;
+            if (ident) {
+              spacerW = Math.round(ident.getBoundingClientRect().left - tz.getBoundingClientRect().left);
+            } else {
+              spacerW = Math.round(tz.getBoundingClientRect().width);
+            }
+            spacerTh.style.width = spacerW + 'px';
+            spacerTh.style.minWidth = spacerW + 'px';
+            spacerTh.style.maxWidth = spacerW + 'px';
           }
-          _theadSpacerTh.style.width = spacerW + 'px';
-          _theadSpacerTh.style.minWidth = spacerW + 'px';
-          _theadSpacerTh.style.maxWidth = spacerW + 'px';
-        }
 
-        // Measure each element that has data-scw-fields
-        // This covers: product-group (inside identity), plus all sum-right groups
-        var sumGroups = firstBar.querySelectorAll('[data-scw-fields]');
-        var measuredWidths = {};  // field_key → 'NNpx'
-        for (var mg = 0; mg < sumGroups.length; mg++) {
-          var grpEl = sumGroups[mg];
-          var fieldKeys = grpEl.getAttribute('data-scw-fields').split(/\s+/);
-          var grpW = Math.round(grpEl.getBoundingClientRect().width);
-          for (var mk = 0; mk < fieldKeys.length; mk++) {
-            measuredWidths[fieldKeys[mk]] = grpW + 'px';
+          // Measure each element that has data-scw-fields
+          var sumGroups = firstBar.querySelectorAll('[data-scw-fields]');
+          var measuredWidths = {};
+          for (var mg = 0; mg < sumGroups.length; mg++) {
+            var grpEl = sumGroups[mg];
+            var fieldKeys = grpEl.getAttribute('data-scw-fields').split(/\s+/);
+            var grpW = Math.round(grpEl.getBoundingClientRect().width);
+            for (var mk = 0; mk < fieldKeys.length; mk++) {
+              measuredWidths[fieldKeys[mk]] = grpW + 'px';
+            }
+          }
+
+          // Measure label cell width (inside identity, no data-scw-fields attr)
+          var labelCell = ident ? ident.querySelector('.' + P + '-sum-label-cell') : null;
+          if (labelCell) {
+            var _lDesc = fieldDesc(vCfg, 'label');
+            if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
+          }
+
+          // Apply measured widths to <th> elements
+          for (var mi = 0; mi < desiredFields.length; mi++) {
+            var fk = desiredFields[mi];
+            var thEl = thByField[fk];
+            if (!thEl) continue;
+            var mw = measuredWidths[fk];
+            if (mw) {
+              thEl.style.width = mw;
+              thEl.style.minWidth = mw;
+              thEl.style.maxWidth = mw;
+            }
           }
         }
 
-        // Measure label cell width (inside identity, no data-scw-fields attr)
-        var labelCell = ident ? ident.querySelector('.' + P + '-sum-label-cell') : null;
-        if (labelCell) {
-          var _lDesc = fieldDesc(viewCfg, 'label');
-          if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
+        // Try synchronously first (works on re-renders when layout is current),
+        // fall back to rAF on first load when the browser hasn't reflowed yet.
+        var firstBar = tbl.querySelector('.' + P + '-summary');
+        if (firstBar && firstBar.getBoundingClientRect().width > 0) {
+          applyMeasuredWidths();
+        } else {
+          requestAnimationFrame(applyMeasuredWidths);
         }
-
-        // Apply measured widths to <th> elements
-        for (var mi = 0; mi < _theadDesiredFields.length; mi++) {
-          var fk = _theadDesiredFields[mi];
-          var thEl = _theadThByField[fk];
-          if (!thEl) continue;
-          var mw = measuredWidths[fk];
-          if (mw) {
-            thEl.style.width = mw;
-            thEl.style.minWidth = mw;
-            thEl.style.maxWidth = mw;
-          }
-        }
-      }
+      })(table, _theadDesiredFields, _theadThByField, _theadSpacerTh, viewCfg);
     }
 
     // ── RESTORE EXPANDED STATE ──
