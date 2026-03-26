@@ -447,6 +447,12 @@
     if (document.getElementById(STYLE_ID)) return;
 
     var css = `
+/* ── Hide raw Knack rows until transformView processes them ── */
+/* Prevents flash of unstyled/duplicate inputs during re-render */
+${WORKSHEET_CONFIG.views.map(function (v) {
+  return '#' + v.viewId + ' tbody > tr:not([${PROCESSED_ATTR}]):not(.${WORKSHEET_ROW}):not(.kn-table-group):not(.scw-inline-photo-row):not(.kn-table-totals) { visibility: hidden; height: 0; overflow: hidden; }';
+}).join('\n')}
+
 /* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
@@ -2873,6 +2879,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *  opts.multiline — use a textarea that wraps and auto-grows. */
   function injectSummaryDirectEdit(td, fieldKey, opts) {
     opts = opts || {};
+    // Guard against duplicate injection
+    if (td.querySelector('[' + DIRECT_EDIT_ATTR + ']')) return;
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
