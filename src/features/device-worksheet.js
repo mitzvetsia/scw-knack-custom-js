@@ -1632,6 +1632,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 /* Bucket chit present — product flexes automatically within fixed identity */
 
 /* ── Worksheet <thead> column styling ── */
+.${P}-thead-styled tr {
+  display: block;
+  overflow: hidden;
+}
 .${P}-thead-styled th {
   float: inline-start;
   font-size: 0.7rem !important;
