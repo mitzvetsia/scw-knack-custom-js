@@ -1673,9 +1673,9 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 /* Widen checkbox header to align over row checkboxes (covers checkbox + chevron area) */
 .${P}-thead-styled .ktlCheckboxHeaderCell {
-  width: 74px !important;
-  min-width: 74px !important;
-  background: transparent !important;
+  width: 48px !important;
+  min-width: 48px !important;
+  background: rgb(7, 70, 124) !important;
   border: none !important;
 }
 /* Stack bulk-edit checkbox below the label text */
