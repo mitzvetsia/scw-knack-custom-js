@@ -1045,15 +1045,18 @@ tr.scw-synth-divider > td {
 td.${P}-field-value {
   display: block;
   padding: 4px 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  background: #fff;
   min-height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left !important;
+  justify-content: flex-start !important;
 }
 
-/* ── Editable hover affordance ── */
+/* ── Editable field affordance (border + background only for editable cells) ── */
 td.${P}-field-value.cell-edit,
 td.${P}-field-value.ktlInlineEditableCellsStyle {
+  border: 1px solid #e5e7eb;
   background: rgba(134, 182, 223, 0.1);
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
