@@ -1637,19 +1637,30 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   font-size: 0.7rem !important;
   text-align: center !important;
   vertical-align: middle !important;
-  padding: 5px !important;
+  padding: 6px 10px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
   white-space: nowrap;
   width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
-  background: #163C6E !important;
+  background: rgb(7, 70, 124) !important;
   color: #fff !important;
+  border: none !important;
+  border-right: 1px solid rgba(255,255,255,0.2) !important;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+}
+.${P}-thead-styled th:last-child {
+  border-right: none !important;
 }
 .${P}-thead-styled th a,
-.${P}-thead-styled th a span {
+.${P}-thead-styled th a span,
+.${P}-thead-styled th span {
   color: #fff !important;
+}
+.${P}-thead-styled th:hover {
+  background: rgb(10, 90, 155) !important;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
