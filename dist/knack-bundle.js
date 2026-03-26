@@ -14527,7 +14527,6 @@ tr.scw-inline-photo-row > td {
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-top: 2px solid #e2e8f0;
   min-width: 0;
   overflow: hidden;
 }
@@ -14566,6 +14565,7 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
   border-radius: 8px;
   border: 1px solid #d1d5db;
+  margin-bottom: 10px;
 }
 /* Remove internal borders when expanded */
 .${P}-card:has(.${P}-open) .${P}-summary {
