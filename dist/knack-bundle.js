@@ -10508,31 +10508,55 @@ $(".kn-navigation-bar").hide();
         console.warn('[scw-refresh] View object not found for ' + TARGET_VIEW);
         return;
       }
-      console.log('[scw-refresh] View object:', Object.keys(v));
 
-      // Try multiple refresh strategies
-      // 1. render() — works for details views
-      if (typeof v.render === 'function') {
-        console.log('[scw-refresh] Calling render()');
-        v.render();
+      // Details view: fetch fresh record via Knack API, then re-render
+      if (v.model && v.model.id) {
+        var objectKey = v.model.view && v.model.view.source && v.model.view.source.object;
+        if (!objectKey) {
+          // Try to get object from the view's scene config
+          var viewMeta = Knack.views[TARGET_VIEW].model && Knack.views[TARGET_VIEW].model.view;
+          objectKey = viewMeta && viewMeta.source && viewMeta.source.object;
+        }
+        console.log('[scw-refresh] Fetching record ' + v.model.id + ' from object ' + objectKey);
+
+        // Use Knack's internal API to re-fetch the record
+        $.ajax({
+          url: Knack.api_url + '/v1/pages/' + SCENE + '/views/' + TARGET_VIEW + '/records/' + v.model.id,
+          type: 'GET',
+          headers: {
+            'X-Knack-Application-Id': Knack.application_id,
+            'x-knack-rest-api-key': 'knack',
+            'Authorization': Knack.getUserToken()
+          },
+          success: function (data) {
+            console.log('[scw-refresh] Got fresh record data, rendering');
+            // Update the view's record and model with fresh data
+            v.record = data;
+            if (v.model && v.model.attributes) {
+              for (var key in data) {
+                if (data.hasOwnProperty(key)) {
+                  v.model.attributes[key] = data[key];
+                }
+              }
+            }
+            if (typeof v.render === 'function') {
+              v.render();
+            }
+          },
+          error: function (xhr) {
+            console.warn('[scw-refresh] API fetch failed', xhr.status, xhr.statusText);
+            // Fallback: just try render
+            if (typeof v.render === 'function') v.render();
+          }
+        });
         return;
       }
-      // 2. model.fetch() — works for table/list views
+
+      // Table/list fallback
       if (v.model && typeof v.model.fetch === 'function') {
         console.log('[scw-refresh] Calling model.fetch()');
         v.model.fetch();
-        return;
       }
-      // 3. Fallback: re-fetch via Knack REST API and replace HTML
-      console.log('[scw-refresh] Trying API fallback');
-      var slug = window.location.hash;
-      $.ajax({
-        url: slug,
-        type: 'GET',
-        success: function () {
-          console.log('[scw-refresh] Page re-navigated');
-        }
-      });
     } catch (e) {
       console.warn('[scw-refresh] Could not refresh ' + TARGET_VIEW, e);
     }
@@ -10540,8 +10564,8 @@ $(".kn-navigation-bar").hide();
 
   function refreshTarget() {
     console.log('[scw-refresh] Scheduling refresh of ' + TARGET_VIEW);
-    setTimeout(doRefresh, 1500);
-    setTimeout(doRefresh, 4000);
+    setTimeout(doRefresh, 2000);
+    setTimeout(doRefresh, 5000);
   }
 
   // --- form submissions (knack-form-submit.viewId) ---
