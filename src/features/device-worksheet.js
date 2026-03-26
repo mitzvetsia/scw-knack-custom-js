@@ -809,7 +809,7 @@ td.${P}-sum-field--desc {
   flex-direction: column;
 }
 .${P}-sum-group--fill td.${P}-sum-direct-edit .${P}-direct-textarea {
-  flex: 1;
+  flex: 1 0 auto;
 }
 
 /* Move td sits at the right end */
