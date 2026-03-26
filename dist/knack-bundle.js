@@ -18039,14 +18039,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       // ── Sync header checkbox visibility with row selections ──
       // KTL's own listeners break when we reorder <th> elements.
-      // Watch for any checkbox change in the table and toggle
+      // Watch for any checkbox change in the entire view and toggle
       // ktlDisplayNone on header bulk-edit checkboxes accordingly.
-      (function (tbl, hRow) {
+      (function (viewEl, hRow) {
         function syncHeaderCboxes() {
-          // Any row-level checkbox checked? (not header, not master)
-          var anyChecked = tbl.querySelector(
-            'tbody input.ktlCheckbox:checked, ' +
-            'thead .masterSelector:checked'
+          // Any selection checkbox checked? (row-level, group-level, or master)
+          var anyChecked = viewEl.querySelector(
+            'input.ktlCheckbox:checked'
           );
           var hCboxes = hRow.querySelectorAll('.bulkEditHeaderCbox');
           for (var ci = 0; ci < hCboxes.length; ci++) {
@@ -18057,8 +18056,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             }
           }
         }
-        $(tbl).off('change.scwBulkSync').on('change.scwBulkSync', 'input.ktlCheckbox', syncHeaderCboxes);
-      })(table, headerRow);
+        $($view).off('change.scwBulkSync').on('change.scwBulkSync', 'input[type="checkbox"]', syncHeaderCboxes);
+      })($view[0], headerRow);
 
     }
 
