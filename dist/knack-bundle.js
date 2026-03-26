@@ -15719,6 +15719,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 .${P}-thead-styled th .kn-sort {
   justify-content: center;
+  margin-top: 5px;
 }
 /* Widen checkbox header to align over row checkboxes (covers checkbox + chevron area) */
 .${P}-thead-styled .ktlCheckboxHeaderCell {
