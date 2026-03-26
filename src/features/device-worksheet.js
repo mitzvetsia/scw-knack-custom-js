@@ -2874,6 +2874,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
+        // Respect Knack's inline-edit setting: if the td lacks cell-edit,
+        // render as read-only instead of injecting an input.
+        var _knackEditable = td && td.classList.contains('cell-edit');
         if (desc.group === 'fill') {
           // Fill group — special layout (fills middle space)
           if (!td) break;
@@ -2884,9 +2887,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           ldLabel.className = P + '-sum-label';
           ldLabel.textContent = desc.label || name;
           ldGroup.appendChild(ldLabel);
-          td.classList.add(P + '-sum-field');
-          td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
+          if (_knackEditable) {
+            td.classList.add(P + '-sum-field');
+            td.classList.add(P + '-sum-field--desc');
+            injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
+          } else {
+            td.classList.add(P + '-sum-field-ro');
+            if (isCellEmpty(td)) td.classList.add(P + '-empty');
+          }
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -2905,8 +2913,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           topLbl.className = P + '-sum-label';
           topLbl.textContent = desc.label || name;
           pairGroup.appendChild(topLbl);
-          td.classList.add(P + '-sum-field');
-          injectSummaryDirectEdit(td, desc.key);
+          if (_knackEditable) {
+            td.classList.add(P + '-sum-field');
+            injectSummaryDirectEdit(td, desc.key);
+          } else {
+            td.classList.add(P + '-sum-field-ro');
+            if (isCellEmpty(td)) td.classList.add(P + '-empty');
+          }
           pairGroup.appendChild(td);
           // Bottom: TTL label + read-only value
           if (pairTd) {
@@ -2920,9 +2933,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
           target.appendChild(pairGroup);
         } else {
-          appendSumGroup(target, desc.label || name, td,
-            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
-              directEdit: true, fieldKey: desc.key });
+          if (_knackEditable) {
+            appendSumGroup(target, desc.label || name, td,
+              { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
+                directEdit: true, fieldKey: desc.key });
+          } else {
+            appendSumGroup(target, desc.label || name, td,
+              { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
+                readOnly: true, fieldKey: desc.key });
+          }
         }
         break;
 
@@ -3247,8 +3266,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
-        var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
-        if (editRow) section.appendChild(editRow);
+        // Respect Knack's inline-edit setting: if the td lacks cell-edit,
+        // render as read-only instead of injecting an input.
+        if (td && !td.classList.contains('cell-edit')) {
+          var roRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
+          if (roRow) section.appendChild(roRow);
+        } else {
+          var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
+          if (editRow) section.appendChild(editRow);
+        }
         break;
 
       case 'singleChip':
