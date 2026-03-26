@@ -15318,7 +15318,7 @@ td.${P}-field-value--notes {
 }
 .${P}-direct-textarea {
   resize: vertical;
-  min-height: 48px;
+  min-height: 28px;
   max-height: 200px;
 }
 
