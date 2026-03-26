@@ -15735,7 +15735,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   gap: 2px;
 }
 .${P}-thead-styled th .bulkEditHeaderCbox {
-  margin: 0 auto;
+  margin: 0 auto !important;
   text-align: center;
 }
 
