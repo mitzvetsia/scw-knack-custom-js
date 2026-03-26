@@ -359,21 +359,21 @@
         stackedSummary: false,
         fields: {
           // ── Summary row ──
-          label:            { key: 'field_1950', type: 'readOnly',   summary: true },
-          product:          { key: 'field_1949', type: 'readOnly',   summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'readOnly',   summary: true, label: 'Notes', group: 'fill' },
-          existingCabling:  { key: 'field_2461', type: 'readOnly',   summary: true },
-          exteriorChit:     { key: 'field_1984', type: 'readOnly',   summary: true },
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior' },
+          laborDescription: { key: 'field_2020', type: 'readOnly',    summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
 
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
-          mountingHardware: { key: 'field_1958', type: 'readOnly' },
-          laborDescription: { key: 'field_2020', type: 'readOnly', skipEmpty: true, notes: true }
+          mountingHardware: { key: 'field_1958', type: 'readOnly' }
         },
-        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit'],
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'laborDescription'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['laborDescription']
+          right: []
         }
       }
     ]
@@ -963,6 +963,10 @@ td.${P}-sum-move {
 }
 .${P}-cabling-chit.is-saving {
   opacity: 0.6;
+  pointer-events: none;
+}
+.${P}-cabling-chit.is-readonly {
+  cursor: default;
   pointer-events: none;
 }
 
@@ -2931,7 +2935,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     switch (desc.type) {
       case 'readOnly':
-        if (desc.readOnlySummary) {
+        if (desc.group === 'fill') {
+          // Fill group — read-only version of the stretchy middle field
+          if (!td) break;
+          var roFillGroup = document.createElement('span');
+          roFillGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
+          roFillGroup.setAttribute('data-scw-fields', desc.key);
+          var roFillLabel = document.createElement('span');
+          roFillLabel.className = P + '-sum-label';
+          roFillLabel.textContent = desc.label || name;
+          roFillGroup.appendChild(roFillLabel);
+          td.classList.add(P + '-sum-field-ro');
+          if (desc.multiline) td.classList.add(P + '-sum-field--desc');
+          if (isCellEmpty(td)) td.classList.add(P + '-empty');
+          roFillGroup.appendChild(td);
+          target.appendChild(roFillGroup);
+        } else if (desc.readOnlySummary) {
           appendSumGroup(target, desc.label || name, td,
             { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, readOnly: true, fieldKey: desc.key });
         } else {
@@ -3048,7 +3067,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
         var isChitYes = (chitVal === 'yes' || chitVal === 'true');
         var chit = document.createElement('span');
-        chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
+        var chitCls = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
+        if (!desc.feeTrigger) chitCls += ' is-readonly';
+        chit.className = chitCls;
         chit.setAttribute('data-field', desc.key);
         chit.innerHTML = desc.chitLabel || 'Existing Cabling';
         var chitSpan = td.querySelector('span');
