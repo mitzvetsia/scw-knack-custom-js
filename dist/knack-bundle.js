@@ -15030,7 +15030,7 @@ tr.scw-synth-divider > td {
 /* ── Sections grid ── */
 .${P}-sections {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
   gap: 0;
 }
 @media (max-width: 900px) {
@@ -15687,8 +15687,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── Detail grid columns (when non-default) ──
   if (L.detailGrid && L.detailGrid !== LAYOUT_DEFAULTS.detailGrid) {
+    // Replace bare "1fr" with "minmax(0,1fr)" so columns can shrink below content width
+    var safeGrid = L.detailGrid.replace(/(?<!\S)1fr(?!\S)/g, 'minmax(0,1fr)');
     rules.push(
-      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + L.detailGrid + '; }'
+      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + safeGrid + '; }'
     );
     rules.push(
       '@media (max-width: 900px) { #' + id + ' .' + P + '-sections { grid-template-columns: 1fr; } }'
