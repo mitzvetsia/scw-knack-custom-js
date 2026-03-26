@@ -14866,7 +14866,7 @@ td.${P}-sum-field-ro {
   display: inline-flex;
   align-items: center;
   position: relative;
-  padding: 2px 8px;
+  padding: 0 8px 2px 8px;
   font-size: 14px;
   font-weight: 600;
   color: #374151;
@@ -15646,7 +15646,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 /* Non-stacked fill textarea — stretches to match tallest sibling, grows for extra text */
 .${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
-  min-height: 24px;
+  min-height: 28px;
   max-height: none;
 }
 
