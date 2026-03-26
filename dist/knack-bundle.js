@@ -11555,7 +11555,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586', 'view_3588'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -11585,7 +11585,8 @@ $(".kn-navigation-bar").hide();
     'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
-    'view_3588': 'add-photo-to-sow-line-item2'
+    'view_3588': 'add-photo-to-sow-line-item2',
+    'view_3596': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -14399,6 +14400,28 @@ $(".kn-navigation-bar").hide();
         detailLayout: {
           left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
           right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
+        }
+      },
+      {
+        viewId: 'view_3596',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',   summary: true },
+          product:          { key: 'field_1958', type: 'readOnly',   summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',   summary: true, label: 'Notes', group: 'fill' },
+          existingCabling:  { key: 'field_2461', type: 'readOnly',   summary: true },
+          exteriorChit:     { key: 'field_1984', type: 'readOnly',   summary: true },
+
+          // ── Detail panel ──
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          laborDescription: { key: 'field_2020', type: 'readOnly', skipEmpty: true, notes: true }
+        },
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit'],
+        detailLayout: {
+          left:  ['connectedDevice'],
+          right: ['laborDescription']
         }
       }
     ]
