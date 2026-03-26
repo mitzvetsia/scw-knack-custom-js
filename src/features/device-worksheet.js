@@ -334,11 +334,10 @@
           move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
           // ── Detail panel – left (pricing) ──
-          retailPrice:      { key: 'field_2150', type: 'readOnly' },
-          quantity:         { key: 'field_1965', type: 'directEdit', feeTrigger: true },
+          retailPrice:      { key: 'field_1960', type: 'readOnly' },
           discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_1960', type: 'readOnly' },
+          total:            { key: 'field_2269', type: 'readOnly' },
 
           // ── Detail panel – center (identity) ──
           dropPrefix:       { key: 'field_2240', type: 'directEdit' },
@@ -352,7 +351,7 @@
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
-          left:   ['retailPrice', 'quantity', 'discountDlr', 'appliedDiscount', 'total'],
+          left:   ['retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
           center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
           right:  ['dropLength', 'laborDescription']
         }
