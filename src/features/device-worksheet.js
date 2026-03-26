@@ -3391,7 +3391,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     retailPrice:      'Retail Price',
     quantity:         'Qty',
     customDiscPct:    'Custom\nDisc %',
-    discountDlr:      'Discount $',
+    discountDlr:      'Line Item Discount %',
     appliedDiscount:  'Applied\nDiscount',
     total:            'Total'
   };
