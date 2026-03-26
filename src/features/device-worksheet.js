@@ -490,13 +490,26 @@ tr.scw-inline-photo-row > td {
   flex-wrap: wrap;
   gap: 6px;
   padding: 6px 12px;
-  background: #f8fafc;
+  background: #fff;
   border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
   min-width: 0;
+  transition: background 0.15s, box-shadow 0.2s;
 }
 .${P}-summary:hover {
   background: #f1f5f9;
+}
+
+/* ── Expanded card: elevated look on summary + detail ── */
+.${P}-card:has(.${P}-open) {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  border-radius: 6px;
+  z-index: 1;
+  position: relative;
+}
+.${P}-card:has(.${P}-open) .${P}-summary {
+  background: #fff;
+  border-bottom-color: #d1d5db;
 }
 
 /* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
