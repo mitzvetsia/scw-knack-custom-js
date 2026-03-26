@@ -1559,6 +1559,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 /* Bucket chit present — product flexes automatically within fixed identity */
 
 /* ── Worksheet <thead> column styling ── */
+/* table-layout:fixed makes the browser honour our th width assignments */
+table.kn-table:has(.${P}-thead-styled) {
+  table-layout: fixed !important;
+}
 .${P}-thead-styled th {
   font-size: 0.7rem !important;
   text-align: center !important;
@@ -1566,6 +1570,8 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   padding: 4px 2px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;

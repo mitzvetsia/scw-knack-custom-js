@@ -7651,6 +7651,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     enhanceGroupHeaders();
   }
 
+  // Global fallback: sync header checkbox visibility on ANY checkbox change
+  // inside a view.  This covers worksheet/accordion views where the
+  // enhanceViews() binding may not have fired yet (timing-dependent on
+  // KTL accordion header availability).
+  $(document).off('change.scwSaCboxGlobal').on('change.scwSaCboxGlobal', 'input[type="checkbox"]', function () {
+    if (_bulkOp) return;
+    var viewEl = this.closest('[id^="view_"]');
+    if (!viewEl) return;
+    var any = viewEl.querySelectorAll(CB_SELECTOR + ':checked').length > 0;
+    syncHeaderCboxVisibility(viewEl, any);
+  });
+
   // 1. Worksheet views — event-driven, no blind timer
   document.addEventListener('scw-worksheet-ready', function () {
     requestAnimationFrame(enhance);
@@ -15565,6 +15577,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 /* Bucket chit present — product flexes automatically within fixed identity */
 
 /* ── Worksheet <thead> column styling ── */
+/* table-layout:fixed makes the browser honour our th width assignments */
+table.kn-table:has(.${P}-thead-styled) {
+  table-layout: fixed !important;
+}
 .${P}-thead-styled th {
   font-size: 0.7rem !important;
   text-align: center !important;
@@ -15572,6 +15588,8 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   padding: 4px 2px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;

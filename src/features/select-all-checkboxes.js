@@ -418,6 +418,18 @@
     enhanceGroupHeaders();
   }
 
+  // Global fallback: sync header checkbox visibility on ANY checkbox change
+  // inside a view.  This covers worksheet/accordion views where the
+  // enhanceViews() binding may not have fired yet (timing-dependent on
+  // KTL accordion header availability).
+  $(document).off('change.scwSaCboxGlobal').on('change.scwSaCboxGlobal', 'input[type="checkbox"]', function () {
+    if (_bulkOp) return;
+    var viewEl = this.closest('[id^="view_"]');
+    if (!viewEl) return;
+    var any = viewEl.querySelectorAll(CB_SELECTOR + ':checked').length > 0;
+    syncHeaderCboxVisibility(viewEl, any);
+  });
+
   // 1. Worksheet views — event-driven, no blind timer
   document.addEventListener('scw-worksheet-ready', function () {
     requestAnimationFrame(enhance);
