@@ -7,25 +7,47 @@
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   var NS = '.scwRefreshTarget';
 
-  function doFetch() {
+  function doRefresh() {
     try {
       var v = Knack.views[TARGET_VIEW];
-      if (v && v.model && typeof v.model.fetch === 'function') {
-        v.model.fetch();
+      if (!v) {
+        console.warn('[scw-refresh] View object not found for ' + TARGET_VIEW);
+        return;
       }
+      console.log('[scw-refresh] View object:', Object.keys(v));
+
+      // Try multiple refresh strategies
+      // 1. render() — works for details views
+      if (typeof v.render === 'function') {
+        console.log('[scw-refresh] Calling render()');
+        v.render();
+        return;
+      }
+      // 2. model.fetch() — works for table/list views
+      if (v.model && typeof v.model.fetch === 'function') {
+        console.log('[scw-refresh] Calling model.fetch()');
+        v.model.fetch();
+        return;
+      }
+      // 3. Fallback: re-fetch via Knack REST API and replace HTML
+      console.log('[scw-refresh] Trying API fallback');
+      var slug = window.location.hash;
+      $.ajax({
+        url: slug,
+        type: 'GET',
+        success: function () {
+          console.log('[scw-refresh] Page re-navigated');
+        }
+      });
     } catch (e) {
       console.warn('[scw-refresh] Could not refresh ' + TARGET_VIEW, e);
     }
   }
 
   function refreshTarget() {
-    console.log('[scw-refresh] Refreshing ' + TARGET_VIEW);
-    // First fetch after a short delay for fast fields
-    setTimeout(doFetch, 1000);
-    // Second fetch after longer delay for calculated/formula fields
-    setTimeout(doFetch, 3000);
-    // Third fetch to catch slow server-side recalculations
-    setTimeout(doFetch, 6000);
+    console.log('[scw-refresh] Scheduling refresh of ' + TARGET_VIEW);
+    setTimeout(doRefresh, 1500);
+    setTimeout(doRefresh, 4000);
   }
 
   // --- form submissions (knack-form-submit.viewId) ---
