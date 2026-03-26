@@ -360,18 +360,19 @@
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',   summary: true },
-          product:          { key: 'field_1958', type: 'readOnly',   summary: true, productStyle: true },
+          product:          { key: 'field_1949', type: 'readOnly',   summary: true, productStyle: true },
           scwNotes:         { key: 'field_1953', type: 'readOnly',   summary: true, label: 'Notes', group: 'fill' },
           existingCabling:  { key: 'field_2461', type: 'readOnly',   summary: true },
           exteriorChit:     { key: 'field_1984', type: 'readOnly',   summary: true },
 
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
           laborDescription: { key: 'field_2020', type: 'readOnly', skipEmpty: true, notes: true }
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit'],
         detailLayout: {
-          left:  ['connectedDevice'],
+          left:  ['connectedDevice', 'mountingHardware'],
           right: ['laborDescription']
         }
       }
