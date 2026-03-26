@@ -521,7 +521,7 @@ tr.scw-inline-photo-row > td {
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 20px 12px 6px;
+  padding: 15px 12px 20px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
