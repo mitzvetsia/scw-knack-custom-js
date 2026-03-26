@@ -14866,7 +14866,7 @@ td.${P}-sum-field-ro {
   display: inline-flex;
   align-items: center;
   position: relative;
-  padding: 0 8px 2px 8px;
+  padding: 2px 8px;
   font-size: 14px;
   font-weight: 600;
   color: #374151;
@@ -16951,6 +16951,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
       input.rows = opts.rows || 4;
+
+      // Auto-grow: resize textarea to fit content
+      function autoGrow() {
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
+      }
+      input.addEventListener('input', autoGrow);
+      // Initial size after append (deferred so layout is ready)
+      requestAnimationFrame(autoGrow);
     } else {
       input = document.createElement('input');
       input.type = 'text';
