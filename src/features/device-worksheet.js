@@ -3941,6 +3941,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!_showTh) continue;
 
         _showTh.style.display = '';
+        _showTh.style.width = '';
+        _showTh.style.minWidth = '';
+        _showTh.style.maxWidth = '';
 
         // Rename label to match summary bar display name
         var _tl = thLabels[_fKey];
