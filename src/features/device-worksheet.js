@@ -3970,7 +3970,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             _fl.style.display = 'inline-flex';
             var _cb = document.createElement('input');
             _cb.type = 'checkbox';
-            _cb.className = 'ktlCheckbox bulkEditHeaderCbox ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
+            _cb.className = 'ktlCheckbox bulkEditHeaderCbox ktlDisplayNone ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
             _cb.setAttribute('aria-label', 'Select column');
             _cb.setAttribute('data-ktl-bulkops', '1');
             _fl.appendChild(_cb);
@@ -3987,6 +3987,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
         headerRow.appendChild(_showTh);
       }
+
+      // ── Sync header checkbox visibility with row selections ──
+      // KTL's own listeners break when we reorder <th> elements.
+      // Watch for any checkbox change in the table and toggle
+      // ktlDisplayNone on header bulk-edit checkboxes accordingly.
+      (function (tbl, hRow) {
+        function syncHeaderCboxes() {
+          // Any row-level checkbox checked? (not header, not master)
+          var anyChecked = tbl.querySelector(
+            'tbody input.ktlCheckbox:checked, ' +
+            'thead .masterSelector:checked'
+          );
+          var hCboxes = hRow.querySelectorAll('.bulkEditHeaderCbox');
+          for (var ci = 0; ci < hCboxes.length; ci++) {
+            if (anyChecked) {
+              hCboxes[ci].classList.remove('ktlDisplayNone');
+            } else {
+              hCboxes[ci].classList.add('ktlDisplayNone');
+            }
+          }
+        }
+        $(tbl).off('change.scwBulkSync').on('change.scwBulkSync', 'input.ktlCheckbox', syncHeaderCboxes);
+      })(table, headerRow);
 
     }
 
