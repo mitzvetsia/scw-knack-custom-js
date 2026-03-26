@@ -1633,21 +1633,20 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 
 /* ── Worksheet <thead> column styling ── */
 .${P}-thead-styled tr {
-  display: block;
-  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
 }
 .${P}-thead-styled th {
-  float: inline-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.7rem !important;
   text-align: center !important;
-  vertical-align: middle !important;
   padding: 6px 10px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
   white-space: nowrap;
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: none !important;
   background: rgb(7, 70, 124) !important;
   color: #fff !important;
   border: none !important;
