@@ -10501,18 +10501,25 @@ $(".kn-navigation-bar").hide();
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   var NS = '.scwRefreshTarget';
 
+  function doFetch() {
+    try {
+      var v = Knack.views[TARGET_VIEW];
+      if (v && v.model && typeof v.model.fetch === 'function') {
+        v.model.fetch();
+      }
+    } catch (e) {
+      console.warn('[scw-refresh] Could not refresh ' + TARGET_VIEW, e);
+    }
+  }
+
   function refreshTarget() {
     console.log('[scw-refresh] Refreshing ' + TARGET_VIEW);
-    setTimeout(function () {
-      try {
-        var v = Knack.views[TARGET_VIEW];
-        if (v && v.model && typeof v.model.fetch === 'function') {
-          v.model.fetch();
-        }
-      } catch (e) {
-        console.warn('[scw-refresh] Could not refresh ' + TARGET_VIEW, e);
-      }
-    }, 500);
+    // First fetch after a short delay for fast fields
+    setTimeout(doFetch, 1000);
+    // Second fetch after longer delay for calculated/formula fields
+    setTimeout(doFetch, 3000);
+    // Third fetch to catch slow server-side recalculations
+    setTimeout(doFetch, 6000);
   }
 
   // --- form submissions (knack-form-submit.viewId) ---
