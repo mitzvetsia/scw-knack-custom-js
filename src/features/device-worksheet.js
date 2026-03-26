@@ -346,14 +346,14 @@
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
 
           // ── Detail panel – right ──
-          quantity:          { key: 'field_1965', type: 'directEdit' },
+          dropLength:       { key: 'field_1965', type: 'directEdit' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
           left:   ['retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
           center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
-          right:  ['quantity', 'laborDescription']
+          right:  ['dropLength', 'laborDescription']
         }
       }
     ]
