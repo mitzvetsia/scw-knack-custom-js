@@ -18010,6 +18010,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         _showTh.style.minWidth = '';
         _showTh.style.maxWidth = '';
 
+        // Inject bulk-edit checkbox into field_1984 (Exterior Mounting)
+        // KTL doesn't add one but it should match field_2461 (Existing Cabling)
+        if (_fKey === 'field_1984') {
+          var _fl = _showTh.querySelector('.table-fixed-label');
+          if (_fl && !_fl.querySelector('.bulkEditHeaderCbox')) {
+            _fl.classList.add('bulkEditTh');
+            _fl.style.display = 'inline-flex';
+            var _cb = document.createElement('input');
+            _cb.type = 'checkbox';
+            _cb.className = 'ktlCheckbox bulkEditHeaderCbox ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
+            _cb.setAttribute('aria-label', 'Select column');
+            _cb.setAttribute('data-ktl-bulkops', '1');
+            _fl.appendChild(_cb);
+          }
+        }
+
         // Rename label to match summary bar display name
         var _tl = thLabels[_fKey];
         if (_tl) {
