@@ -15688,7 +15688,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 .${P}-thead-styled th {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   font-size: 0.7rem !important;
   text-align: center !important;
@@ -15731,7 +15731,6 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-thead-styled th .table-fixed-label.bulkEditTh {
   flex-direction: column !important;
   align-items: center !important;
-  justify-content: flex-end !important;
   gap: 2px;
 }
 .${P}-thead-styled th .bulkEditHeaderCbox {
@@ -18010,19 +18009,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         _showTh.style.width = '';
         _showTh.style.minWidth = '';
         _showTh.style.maxWidth = '';
-
-        // Ensure bulk-edit checkbox exists (some fields like field_1984 lack one)
-        var _fixedLabel = _showTh.querySelector('.table-fixed-label');
-        if (_fixedLabel && !_fixedLabel.querySelector('.bulkEditHeaderCbox')) {
-          _fixedLabel.classList.add('bulkEditTh');
-          _fixedLabel.style.display = 'inline-flex';
-          var _cb = document.createElement('input');
-          _cb.type = 'checkbox';
-          _cb.className = 'ktlCheckbox bulkEditHeaderCbox ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
-          _cb.setAttribute('aria-label', 'Select column');
-          _cb.setAttribute('data-ktl-bulkops', '1');
-          _fixedLabel.appendChild(_cb);
-        }
 
         // Rename label to match summary bar display name
         var _tl = thLabels[_fKey];
