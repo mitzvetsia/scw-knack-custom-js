@@ -14410,16 +14410,16 @@ $(".kn-navigation-bar").hide();
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'Notes', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior' },
           laborDescription: { key: 'field_2020', type: 'readOnly',    summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, label: 'Existing Cabling' },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior', label: 'Exterior' },
 
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' }
         },
-        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'laborDescription'],
+        summaryLayout: ['laborDescription', 'scwNotes', 'existingCabling', 'exteriorChit'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: []
@@ -14569,7 +14569,7 @@ tr.scw-inline-photo-row > td {
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 20px 12px 6px;
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
@@ -15765,6 +15765,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     ? '/* ── ' + id + ' (auto-generated) ── */\n' + rules.join('\n')
     : '';
 }).filter(Boolean).join('\n\n')}
+
+/* ── view_3596: disable clicks on detail links and photo strip ── */
+#view_3596 .${P}-detail a,
+#view_3596 .${P}-photo-wrap a,
+#view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+  pointer-events: none;
+  cursor: default;
+  color: inherit;
+  text-decoration: none;
+}
 `;
 
     var style = document.createElement('style');
