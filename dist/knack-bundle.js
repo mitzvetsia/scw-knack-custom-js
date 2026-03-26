@@ -17663,6 +17663,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (prodK)  snapshots.product = readCellText(findCell(tr, prodK, prodDesc ? prodDesc.columnIndex : undefined));
     }
 
+    // Pre-clone cells whose field key appears in BOTH the summary and
+    // detail layouts.  The summary builder moves the original <td> out of
+    // the <tr>, so the detail builder would find nothing.  Cloned cells
+    // are appended (hidden) to the <tr> so findCell still works for the
+    // detail pass.
+    if (viewCfg.detailLayout && viewCfg.summaryLayout) {
+      var summaryKeys = {};
+      viewCfg.summaryLayout.forEach(function (n) {
+        var d = fieldDesc(viewCfg, n);
+        if (d) summaryKeys[d.key] = true;
+      });
+      var sides = ['left', 'center', 'right'];
+      for (var si = 0; si < sides.length; si++) {
+        var names = (viewCfg.detailLayout[sides[si]] || []);
+        for (var di = 0; di < names.length; di++) {
+          var dd = fieldDesc(viewCfg, names[di]);
+          if (dd && summaryKeys[dd.key]) {
+            var origTd = findCell(tr, dd.key, dd.columnIndex);
+            if (origTd) {
+              var clone = origTd.cloneNode(true);
+              clone.style.display = 'none';
+              tr.appendChild(clone);
+            }
+          }
+        }
+      }
+    }
+
     // Summary bar (always visible)
     var summary = buildSummaryBar(tr, viewCfg);
     card.appendChild(summary);
