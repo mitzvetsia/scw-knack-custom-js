@@ -817,7 +817,7 @@ td.${P}-sum-field-ro {
   display: inline-flex;
   align-items: center;
   position: relative;
-  padding: 2px 8px;
+  padding: 2px 8px !important;
   font-size: 14px;
   font-weight: 600;
   color: #374151;
