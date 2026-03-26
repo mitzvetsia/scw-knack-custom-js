@@ -14397,7 +14397,7 @@ $(".kn-navigation-bar").hide();
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
-          left:   ['retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropPrefix', 'dropNumber'],
+          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
           right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
         }
       }
@@ -14545,27 +14545,34 @@ tr.scw-inline-photo-row > td {
   background: #f1f5f9;
 }
 
-/* ── Expanded card: elevated look spanning header + detail + photo strip ── */
+/* ── Expanded: header + detail + photo strip pop out as one unit ── */
 tr.${WORKSHEET_ROW}:has(.${P}-open) {
   z-index: 1;
   position: relative;
 }
 tr.${WORKSHEET_ROW}:has(.${P}-open) > td {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
-  border-radius: 6px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
+  border-radius: 8px !important;
+  border: 1px solid #d1d5db !important;
 }
-/* When a visible photo row follows, flatten bottom of card, round bottom of photo */
-tr.${WORKSHEET_ROW}:has(.${P}-open) + tr.scw-inline-photo-row:not(.${P}-photo-hidden) > td {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
-  border-radius: 0 0 6px 6px !important;
-}
+/* When a visible photo row follows, merge into one unit */
 tr.${WORKSHEET_ROW}:has(.${P}-open):has(+ tr.scw-inline-photo-row:not(.${P}-photo-hidden)) > td {
-  border-radius: 6px 6px 0 0 !important;
+  border-radius: 8px 8px 0 0 !important;
+  border-bottom: none !important;
 }
-/* Remove border between summary and detail when expanded */
+tr.${WORKSHEET_ROW}:has(.${P}-open) + tr.scw-inline-photo-row:not(.${P}-photo-hidden) > td {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
+  border-radius: 0 0 8px 8px !important;
+  border: 1px solid #d1d5db !important;
+  border-top: none !important;
+}
+/* Remove internal borders when expanded */
 .${P}-card:has(.${P}-open) .${P}-summary {
   background: #fff;
   border-bottom: none;
+}
+.${P}-card:has(.${P}-open) {
+  border-top: none;
 }
 
 /* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
