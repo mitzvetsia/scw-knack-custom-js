@@ -455,11 +455,23 @@ tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   border: none !important;
 }
 
-/* ── Photo row — part of the same visual unit ── */
+/* ── Photo row — original <tr> hidden; content moved into card ── */
+tr.scw-inline-photo-row.${P}-photo-absorbed {
+  display: none !important;
+}
 tr.scw-inline-photo-row > td {
   padding: 20px 16px 50px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
+}
+
+/* ── Photo content moved inside card ── */
+.${P}-photo-wrap {
+  padding: 20px 16px 50px 16px;
+  background: #fff;
+}
+.${P}-photo-wrap.${P}-photo-hidden {
+  display: none;
 }
 
 /* ── Card wrapper ── */
@@ -502,29 +514,25 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   z-index: 1;
   position: relative;
 }
-tr.${WORKSHEET_ROW}:has(.${P}-open) > td {
+.${P}-card:has(.${P}-open) {
   box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
-  border-radius: 8px !important;
-  border: 1px solid #d1d5db !important;
-}
-/* When a visible photo row follows, merge into one unit */
-tr.${WORKSHEET_ROW}:has(.${P}-open):has(+ tr.scw-inline-photo-row:not(.${P}-photo-hidden)) > td {
-  border-radius: 8px 8px 0 0 !important;
-  border-bottom: none !important;
-}
-tr.${WORKSHEET_ROW}:has(.${P}-open) + tr.scw-inline-photo-row:not(.${P}-photo-hidden) > td {
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
-  border-radius: 0 0 8px 8px !important;
-  border: 1px solid #d1d5db !important;
-  border-top: none !important;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
 }
 /* Remove internal borders when expanded */
 .${P}-card:has(.${P}-open) .${P}-summary {
   background: #fff;
   border-bottom: none;
+  border-radius: 8px 8px 0 0;
 }
-.${P}-card:has(.${P}-open) {
-  border-top: none;
+/* Photo wrap gets bottom border-radius when card is expanded */
+.${P}-card:has(.${P}-open) .${P}-photo-wrap:not(.${P}-photo-hidden) {
+  border-radius: 0 0 8px 8px;
+}
+/* If no photo wrap visible, detail gets bottom radius */
+.${P}-card:has(.${P}-open) .${P}-detail:last-child,
+.${P}-card:has(.${P}-open) .${P}-detail:has(+ .${P}-photo-wrap.${P}-photo-hidden) {
+  border-radius: 0 0 8px 8px;
 }
 
 /* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
@@ -1338,7 +1346,7 @@ tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatc
 }
 
 
-/* ── Photo row hidden when detail collapsed ── */
+/* ── Photo row hidden when detail collapsed (legacy fallback) ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
 }
@@ -3641,7 +3649,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chevron.classList.remove(P + '-expanded');
         chevron.classList.add(P + '-collapsed');
       }
-      // Hide the photo row too
+      // Hide the in-card photo wrapper
+      var photoWrap = wsTr.querySelector('.' + P + '-photo-wrap');
+      if (photoWrap) photoWrap.classList.add(P + '-photo-hidden');
+      // Legacy: also hide sibling photo row if not absorbed
       var photoRow = wsTr.nextElementSibling;
       if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
         photoRow.classList.add(P + '-photo-hidden');
@@ -3653,7 +3664,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chevron.classList.remove(P + '-collapsed');
         chevron.classList.add(P + '-expanded');
       }
-      // Show the photo row
+      // Show the in-card photo wrapper
+      var photoWrap2 = wsTr.querySelector('.' + P + '-photo-wrap');
+      if (photoWrap2) photoWrap2.classList.remove(P + '-photo-hidden');
+      // Legacy: also show sibling photo row if not absorbed
       var photoRow2 = wsTr.nextElementSibling;
       if (photoRow2 && photoRow2.classList.contains('scw-inline-photo-row')) {
         photoRow2.classList.remove(P + '-photo-hidden');
@@ -3970,15 +3984,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       ins.sourceTr.parentNode.insertBefore(ins.wsTr, ins.sourceTr.nextSibling);
     }
 
-    // After all rows are processed, hide photo rows for collapsed items
-    // and set up the bottom border on the last row of each record group
+    // After all rows are processed, absorb photo row content into the
+    // card div so header + detail + photos form one shadow-able unit.
     var wsRows = table.querySelectorAll('tr.' + WORKSHEET_ROW);
     for (var j = 0; j < wsRows.length; j++) {
       var ws = wsRows[j];
+      var card = ws.querySelector('.' + P + '-card');
       var photoRow = ws.nextElementSibling;
-      if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
-        // Start collapsed — hide the photo row
-        photoRow.classList.add(P + '-photo-hidden');
+      if (photoRow && photoRow.classList.contains('scw-inline-photo-row') && card) {
+        // Move photo content into the card
+        var photoWrap = document.createElement('div');
+        photoWrap.className = P + '-photo-wrap ' + P + '-photo-hidden';
+        var photoTd = photoRow.querySelector('td');
+        if (photoTd) {
+          while (photoTd.firstChild) {
+            photoWrap.appendChild(photoTd.firstChild);
+          }
+        }
+        card.appendChild(photoWrap);
+        // Mark the original photo <tr> as absorbed so it stays hidden
+        photoRow.classList.add(P + '-photo-absorbed');
       }
     }
 
