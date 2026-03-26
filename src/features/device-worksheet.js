@@ -870,7 +870,7 @@ td.${P}-sum-field--desc {
 }
 /* Fill td + textarea stretch to fill the group height */
 .${P}-sum-group--fill td.${P}-sum-direct-edit {
-  flex: 1;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
 }
