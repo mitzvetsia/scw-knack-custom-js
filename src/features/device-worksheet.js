@@ -357,6 +357,7 @@
         viewId: 'view_3596',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
+        defaultOpen: true,
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -3359,6 +3360,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     switch (desc.type) {
       case 'readOnly':
+        // Strip inline-edit affordance — this field is read-only
+        if (td) td.classList.remove('cell-edit');
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
         if (row) section.appendChild(row);
         break;
@@ -4273,6 +4276,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
     restoreExpandedState(viewCfg.viewId);
+
+    // ── DEFAULT OPEN ──
+    // If the view config sets defaultOpen: true, expand ALL rows that
+    // are still collapsed after restore (first render, not re-render).
+    if (viewCfg.defaultOpen) {
+      var allWsRows = table.querySelectorAll('tr.' + WORKSHEET_ROW);
+      for (var doi = 0; doi < allWsRows.length; doi++) {
+        var dDetail = allWsRows[doi].querySelector('.' + P + '-detail');
+        if (dDetail && !dDetail.classList.contains(P + '-open')) {
+          toggleDetail(allWsRows[doi]);
+        }
+      }
+    }
 
     // ── RE-APPLY GROUP COLLAPSE STATE ──
     // transformView creates new DOM rows that are visible by default.
