@@ -14496,6 +14496,13 @@ $(".kn-navigation-bar").hide();
     if (document.getElementById(STYLE_ID)) return;
 
     var css = `
+/* ── Force worksheet tables to respect container width ── */
+table.kn-table-table:has(tr.${WORKSHEET_ROW}) {
+  table-layout: fixed;
+  width: 100% !important;
+  max-width: 100%;
+}
+
 /* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
@@ -14675,7 +14682,7 @@ td.${P}-sum-check input[type="checkbox"] {
   gap: 6px;
   cursor: pointer;
   user-select: none;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .${P}-toggle-zone:hover .${P}-chevron {
@@ -14912,7 +14919,7 @@ td.${P}-sum-field--desc {
    align-self:stretch makes it match the tallest sibling (e.g. stacked chips). */
 .${P}-sum-group--fill {
   flex: 1 1 0;
-  min-width: 80px;
+  min-width: 0;
   align-self: stretch;
   display: flex;
   flex-direction: column;
@@ -15097,8 +15104,9 @@ tr.scw-synth-divider > td {
   display: grid;
   grid-template-columns: minmax(0,1fr) minmax(0,1fr);
   gap: 0;
+  overflow: hidden;
 }
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   .${P}-sections {
     grid-template-columns: 1fr;
   }
@@ -15746,7 +15754,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var iw = L.identityWidth;
     rules.push(
       '#' + id + ' .' + P + '-identity {' +
-      ' width: ' + iw + '; min-width: ' + iw + '; max-width: ' + iw + '; flex: 0 0 ' + iw + '; }'
+      ' width: ' + iw + '; max-width: ' + iw + '; flex: 0 1 ' + iw + '; min-width: 0; }'
     );
   }
 
@@ -18291,6 +18299,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
           }
 
+          // Build a set of field keys that are fill-group (should not lock width)
+          var fillFieldKeys = {};
+          var _sl = vCfg.summaryLayout || [];
+          for (var fi = 0; fi < _sl.length; fi++) {
+            var _fd = fieldDesc(vCfg, _sl[fi]);
+            if (_fd && _fd.group === 'fill') fillFieldKeys[_fd.key] = true;
+          }
+
           // Apply measured widths to <th> elements
           for (var mi = 0; mi < desiredFields.length; mi++) {
             var fk = desiredFields[mi];
@@ -18299,8 +18315,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             var mw = measuredWidths[fk];
             if (mw) {
               thEl.style.width = mw;
-              thEl.style.minWidth = mw;
-              thEl.style.maxWidth = mw;
+              if (fillFieldKeys[fk]) {
+                // Fill columns should shrink with the viewport — no min/max lock
+                thEl.style.minWidth = '';
+                thEl.style.maxWidth = '';
+              } else {
+                thEl.style.minWidth = mw;
+                thEl.style.maxWidth = mw;
+              }
             }
           }
         }
