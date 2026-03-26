@@ -17668,6 +17668,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // the <tr>, so the detail builder would find nothing.  Cloned cells
     // are appended (hidden) to the <tr> so findCell still works for the
     // detail pass.
+    var _sharedClones = [];
     if (viewCfg.detailLayout && viewCfg.summaryLayout) {
       var summaryKeys = {};
       viewCfg.summaryLayout.forEach(function (n) {
@@ -17684,6 +17685,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             if (origTd) {
               var clone = origTd.cloneNode(true);
               clone.style.display = 'none';
+              _sharedClones.push(clone);
               tr.appendChild(clone);
             }
           }
@@ -17694,6 +17696,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Summary bar (always visible)
     var summary = buildSummaryBar(tr, viewCfg);
     card.appendChild(summary);
+
+    // Un-hide cloned cells so the detail builder can render them normally
+    for (var ci = 0; ci < _sharedClones.length; ci++) {
+      _sharedClones[ci].style.display = '';
+    }
 
     // Detail panel (expandable)
     var detail;
