@@ -500,16 +500,27 @@ tr.scw-inline-photo-row > td {
   background: #f1f5f9;
 }
 
-/* ── Expanded card: elevated look on summary + detail ── */
-.${P}-card:has(.${P}-open) {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
-  border-radius: 6px;
+/* ── Expanded card: elevated look spanning header + detail + photo strip ── */
+tr.${WORKSHEET_ROW}:has(.${P}-open) {
   z-index: 1;
   position: relative;
 }
+tr.${WORKSHEET_ROW}:has(.${P}-open) > td {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  border-radius: 6px !important;
+}
+/* When a visible photo row follows, flatten bottom of card, round bottom of photo */
+tr.${WORKSHEET_ROW}:has(.${P}-open) + tr.scw-inline-photo-row:not(.${P}-photo-hidden) > td {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  border-radius: 0 0 6px 6px !important;
+}
+tr.${WORKSHEET_ROW}:has(.${P}-open):has(+ tr.scw-inline-photo-row:not(.${P}-photo-hidden)) > td {
+  border-radius: 6px 6px 0 0 !important;
+}
+/* Remove border between summary and detail when expanded */
 .${P}-card:has(.${P}-open) .${P}-summary {
   background: #fff;
-  border-bottom-color: #d1d5db;
+  border-bottom: none;
 }
 
 /* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
