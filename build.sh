@@ -40,6 +40,7 @@ cat \
   src/features/set_unified_product_field.js \
   src/features/force-negative-display.js \
   src/features/refresh-on-inline-edit.js \
+  src/features/refresh-view-on-form-submit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/bucket-field-visibility_add-survey-bid-item.js \
   src/features/style-detail-labels.js \
