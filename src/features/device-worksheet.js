@@ -3844,7 +3844,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var table = $view.find('table.kn-table-table, table.kn-table')[0];
     if (!table) return;
 
-    table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
+    table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered', 'can-overflow-x');
+
+    // Also remove can-overflow-x from table wrapper div if present
+    var tableWrapper = table.parentElement;
+    if (tableWrapper) tableWrapper.classList.remove('can-overflow-x');
 
     var thead = table.querySelector('thead');
     if (thead) thead.style.display = '';
@@ -4264,16 +4268,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             var thEl = thByField[fk];
             if (!thEl) continue;
             var mw = measuredWidths[fk];
-            if (mw) {
+            if (fillFieldKeys[fk]) {
+              // Fill columns: no fixed width — let table-layout:fixed distribute
+              thEl.style.width = '';
+              thEl.style.minWidth = '';
+              thEl.style.maxWidth = '';
+            } else if (mw) {
               thEl.style.width = mw;
-              if (fillFieldKeys[fk]) {
-                // Fill columns should shrink with the viewport — no min/max lock
-                thEl.style.minWidth = '';
-                thEl.style.maxWidth = '';
-              } else {
-                thEl.style.minWidth = mw;
-                thEl.style.maxWidth = mw;
-              }
+              thEl.style.minWidth = mw;
+              thEl.style.maxWidth = mw;
             }
           }
         }
