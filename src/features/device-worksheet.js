@@ -447,13 +447,6 @@
     if (document.getElementById(STYLE_ID)) return;
 
     var css = `
-/* ── Force worksheet tables to respect container width ── */
-table.kn-table-table:has(tr.${WORKSHEET_ROW}) {
-  table-layout: fixed;
-  width: 100% !important;
-  max-width: 100%;
-}
-
 /* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
