@@ -1558,6 +1558,40 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
 
+/* ── Worksheet <thead> column styling ── */
+.${P}-thead-styled th {
+  font-size: 0.7rem !important;
+  text-align: center !important;
+  vertical-align: middle !important;
+  padding: 4px 2px !important;
+  line-height: 1.2;
+  box-sizing: border-box !important;
+}
+.${P}-thead-styled th .table-fixed-label {
+  justify-content: center;
+}
+.${P}-thead-styled th .kn-sort {
+  justify-content: center;
+}
+/* Spacer <th> covers chevron + warn-slot width in the summary bar */
+/* Width is set dynamically by measuring the actual toggle-zone */
+.${P}-thead-spacer {
+  padding: 0 !important;
+  border: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+/* Stack bulk-edit checkbox below the label text */
+.${P}-thead-styled th .table-fixed-label.bulkEditTh {
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 2px;
+}
+.${P}-thead-styled th .bulkEditHeaderCbox {
+  margin: 0 auto;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    AUTO-GENERATED PER-VIEW LAYOUT RULES
    Driven by the layout block in each WORKSHEET_CONFIG entry.
@@ -2896,6 +2930,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var isMulti = (desc.type === 'multiChip');
         var chipsGroup = document.createElement('span');
         chipsGroup.className = P + '-sum-group' + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+        chipsGroup.setAttribute('data-scw-fields', desc.key);
         var chipsLabel = document.createElement('span');
         chipsLabel.className = P + '-sum-label';
         chipsLabel.textContent = desc.label || name;
@@ -2937,6 +2972,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         td.setAttribute('data-scw-cabling-src', '1');
         var chitWrap = document.createElement('span');
         chitWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
+        chitWrap.setAttribute('data-scw-fields', desc.key);
         var chitLabel = document.createElement('span');
         chitLabel.className = P + '-sum-label';
         chitLabel.innerHTML = '&nbsp;';
@@ -3632,11 +3668,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
 
     var thead = table.querySelector('thead');
-    if (thead) thead.style.display = 'none';
+    if (thead) thead.style.display = '';
 
     var $rows = $(table).find('tbody > tr');
 
     // ── Hoist colCount — same for every row, no need to recompute ──
+    // Must run BEFORE thead reordering so colspan reflects full column count.
     var headerRow = table.querySelector('thead tr');
     var colCount = 1;
     if (headerRow) {
@@ -3645,6 +3682,103 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       for (var ci = 0; ci < hCells.length; ci++) {
         colCount += parseInt(hCells[ci].getAttribute('colspan') || '1', 10);
       }
+    }
+
+    // ── Reorder & filter <thead> columns to match summary bar layout ──
+    // Width application is deferred until after PHASE 3 so we can measure
+    // the actual rendered summary-bar group widths instead of guessing.
+    var _theadThByField = {};   // field_key → th element (for deferred width)
+    var _theadSpacerTh = null;  // spacer th (for deferred toggle-zone width)
+    var _theadDesiredFields = [];
+
+    if (headerRow) {
+      var L = viewCfg.layout;
+
+      // Build desired field-key order + labels from view config:
+      //   [checkbox] [label] [product] [summaryLayout fields...] [move]
+      var desiredFields = [];
+      var thLabels = {};   // field_key → display label
+
+      var _labelDesc = fieldDesc(viewCfg, 'label');
+      if (_labelDesc) desiredFields.push(_labelDesc.key);
+
+      var _productDesc = fieldDesc(viewCfg, 'product');
+      if (_productDesc) desiredFields.push(_productDesc.key);
+
+      var _summaryLayout = viewCfg.summaryLayout || [];
+      for (var si = 0; si < _summaryLayout.length; si++) {
+        var _name = _summaryLayout[si];
+        var _desc = fieldDesc(viewCfg, _name);
+        if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
+        desiredFields.push(_desc.key);
+        if (_desc.label) thLabels[_desc.key] = _desc.label;
+      }
+
+      var _moveDesc = fieldDesc(viewCfg, 'move');
+      if (_moveDesc) desiredFields.push(_moveDesc.key);
+
+      // Index <th> elements by field key
+      var thByField = {};
+      var checkboxTh = null;
+      var allThs = [];
+      for (var ti = headerRow.children.length - 1; ti >= 0; ti--) {
+        allThs.unshift(headerRow.children[ti]);
+      }
+
+      for (var tj = 0; tj < allThs.length; tj++) {
+        var _th = allThs[tj];
+        if (_th.classList.contains('ktlCheckboxHeaderCell')) {
+          checkboxTh = _th;
+          continue;
+        }
+        var _cls = _th.className.split(/\s+/);
+        var _fk = null;
+        for (var tc = 0; tc < _cls.length; tc++) {
+          var _c = _cls[tc];
+          if (_c.indexOf('field_') === 0) {
+            _fk = _c.indexOf(':') !== -1 ? _c.substring(0, _c.indexOf(':')) : _c;
+            break;
+          }
+        }
+        if (_fk) thByField[_fk] = _th;
+      }
+
+      // Hide all non-checkbox <th>s, then show + reorder desired ones
+      for (var tk = 0; tk < allThs.length; tk++) {
+        if (allThs[tk] !== checkboxTh) allThs[tk].style.display = 'none';
+      }
+
+      thead.classList.add(P + '-thead-styled');
+
+      if (checkboxTh) headerRow.appendChild(checkboxTh);
+
+      // Insert faux spacer <th> to cover toggle-zone width (chevron + warn-slot)
+      var spacerTh = document.createElement('th');
+      spacerTh.className = P + '-thead-spacer';
+      headerRow.appendChild(spacerTh);
+      colCount += 1;
+      _theadSpacerTh = spacerTh;
+
+      for (var di = 0; di < desiredFields.length; di++) {
+        var _fKey = desiredFields[di];
+        var _showTh = thByField[_fKey];
+        if (!_showTh) continue;
+
+        _showTh.style.display = '';
+
+        // Rename label to match summary bar display name
+        var _tl = thLabels[_fKey];
+        if (_tl) {
+          var _labelSpan = _showTh.querySelector('.kn-sort > span');
+          if (!_labelSpan) _labelSpan = _showTh.querySelector('.table-fixed-label > span');
+          if (_labelSpan) _labelSpan.textContent = _tl;
+        }
+
+        headerRow.appendChild(_showTh);
+      }
+
+      _theadThByField = thByField;
+      _theadDesiredFields = desiredFields;
     }
 
     // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
@@ -3874,6 +4008,85 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           tbody.appendChild(makeDivider());
         }
       }
+    }
+
+    // ── MEASURE SUMMARY BAR & APPLY WIDTHS TO <thead> ──
+    // Now that all summary bars are in the DOM we can measure the actual
+    // rendered widths of each group element and apply them to the
+    // matching <th> columns.  Uses requestAnimationFrame so the browser
+    // has completed layout before we read getBoundingClientRect().
+    if (_theadDesiredFields.length && headerRow) {
+      (function (tbl, desiredFields, thByField, spacerTh, vCfg) {
+        function applyMeasuredWidths() {
+          // Find first *visible* summary bar (collapsed groups have zero width)
+          var allBars = tbl.querySelectorAll('.' + P + '-summary');
+          var firstBar = null;
+          for (var bi = 0; bi < allBars.length; bi++) {
+            if (allBars[bi].getBoundingClientRect().width > 0) { firstBar = allBars[bi]; break; }
+          }
+          if (!firstBar) return;
+
+          // Measure spacer: chevron + warn-slot portion of toggle-zone
+          var tz = firstBar.querySelector('.' + P + '-toggle-zone');
+          var ident = tz ? tz.querySelector('.' + P + '-identity') : null;
+          if (tz && spacerTh) {
+            var spacerW;
+            if (ident) {
+              spacerW = Math.round(ident.getBoundingClientRect().left - tz.getBoundingClientRect().left);
+            } else {
+              spacerW = Math.round(tz.getBoundingClientRect().width);
+            }
+            spacerTh.style.width = spacerW + 'px';
+            spacerTh.style.minWidth = spacerW + 'px';
+            spacerTh.style.maxWidth = spacerW + 'px';
+          }
+
+          // Measure each element that has data-scw-fields
+          var sumGroups = firstBar.querySelectorAll('[data-scw-fields]');
+          var measuredWidths = {};
+          for (var mg = 0; mg < sumGroups.length; mg++) {
+            var grpEl = sumGroups[mg];
+            var fieldKeys = grpEl.getAttribute('data-scw-fields').split(/\s+/);
+            var grpW = Math.round(grpEl.getBoundingClientRect().width);
+            for (var mk = 0; mk < fieldKeys.length; mk++) {
+              measuredWidths[fieldKeys[mk]] = grpW + 'px';
+            }
+          }
+
+          // Measure label cell width (inside identity, no data-scw-fields attr)
+          var labelCell = ident ? ident.querySelector('.' + P + '-sum-label-cell') : null;
+          if (labelCell) {
+            var _lDesc = fieldDesc(vCfg, 'label');
+            if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
+          }
+
+          // Apply measured widths to <th> elements
+          for (var mi = 0; mi < desiredFields.length; mi++) {
+            var fk = desiredFields[mi];
+            var thEl = thByField[fk];
+            if (!thEl) continue;
+            var mw = measuredWidths[fk];
+            if (mw) {
+              thEl.style.width = mw;
+              thEl.style.minWidth = mw;
+              thEl.style.maxWidth = mw;
+            }
+          }
+        }
+
+        // Try synchronously first (works on re-renders when layout is current),
+        // fall back to rAF on first load when the browser hasn't reflowed yet.
+        var allBars = tbl.querySelectorAll('.' + P + '-summary');
+        var anyVisible = false;
+        for (var bi = 0; bi < allBars.length; bi++) {
+          if (allBars[bi].getBoundingClientRect().width > 0) { anyVisible = true; break; }
+        }
+        if (anyVisible) {
+          applyMeasuredWidths();
+        } else {
+          requestAnimationFrame(applyMeasuredWidths);
+        }
+      })(table, _theadDesiredFields, _theadThByField, _theadSpacerTh, viewCfg);
     }
 
     // ── RESTORE EXPANDED STATE ──

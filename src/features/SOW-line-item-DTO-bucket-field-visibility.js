@@ -25,6 +25,7 @@
       ['field_2462', 'FLAG_use existing cabling'],
       ['field_2246', 'REL_unified product field'],
       ['field_2187', 'INPUT_DROP: variables'],
+      ['field_2466', 'field_2466'],
     ],
     //networking or headend
     '647953bb54b4e1002931ed97': [
@@ -67,7 +68,7 @@
 
   const ALL_FIELD_KEYS = [
     'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246',
+    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
   ];
 
   function compileRules(human) {
