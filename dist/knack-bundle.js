@@ -14519,6 +14519,8 @@ tr.scw-inline-photo-row > td {
   flex-direction: column;
   background: #fff;
   border-top: 2px solid #e2e8f0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ── Bottom separator between record groups (card + photo row) ── */
@@ -14533,11 +14535,13 @@ tr.scw-inline-photo-row > td {
 .${P}-summary {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 6px 12px;
   background: #f8fafc;
   border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
+  min-width: 0;
 }
 .${P}-summary:hover {
   background: #f1f5f9;
@@ -14547,9 +14551,11 @@ tr.scw-inline-photo-row > td {
 .${P}-sum-right {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 4px;
   margin-left: auto;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 /* Each field group in the right section gets fixed width for vertical alignment */
 .${P}-sum-right .${P}-sum-group {
