@@ -321,7 +321,7 @@
       },
       {
         viewId: 'view_3588',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', detailGrid: '1fr 1fr 1fr' },
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         stackedSummary: false,
         fields: {
           // ── Summary row ──
@@ -333,27 +333,24 @@
           lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
           move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
-          // ── Detail panel – left (pricing) ──
+          // ── Detail panel – left ──
           retailPrice:      { key: 'field_1960', type: 'readOnly' },
           discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
           total:            { key: 'field_2269', type: 'readOnly' },
-
-          // ── Detail panel – center (identity) ──
           dropPrefix:       { key: 'field_2240', type: 'directEdit' },
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
-          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
 
           // ── Detail panel – right ──
-          dropLength:       { key: 'field_1965', type: 'directEdit' },
-          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
-          left:   ['retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
-          center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
-          right:  ['dropLength', 'laborDescription']
+          left:   ['retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropPrefix', 'dropNumber'],
+          right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
         }
       }
     ]
@@ -997,7 +994,7 @@ tr.scw-synth-divider > td {
    ================================================================ */
 .${P}-detail {
   display: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 10px solid #ffffff;
 }
 .${P}-detail.${P}-open {
   display: block;
@@ -3304,6 +3301,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           var roRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
           if (roRow) section.appendChild(roRow);
         } else {
+          if (desc.skipEmpty && (!td || isCellEmpty(td))) break;
           var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
           if (editRow) section.appendChild(editRow);
         }
