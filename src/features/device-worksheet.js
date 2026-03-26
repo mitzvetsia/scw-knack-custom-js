@@ -1671,14 +1671,12 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-thead-styled th .kn-sort {
   justify-content: center;
 }
-/* Spacer <th> covers chevron + warn-slot area in the summary bar */
-.${P}-thead-spacer {
-  width: 50px;
-  padding: 0 !important;
+/* Widen checkbox header to align over row checkboxes (covers checkbox + chevron area) */
+.${P}-thead-styled .ktlCheckboxHeaderCell {
+  width: 74px !important;
+  min-width: 74px !important;
+  background: transparent !important;
   border: none !important;
-  border-bottom: none !important;
-  box-shadow: none !important;
-  outline: none !important;
 }
 /* Stack bulk-edit checkbox below the label text */
 .${P}-thead-styled th .table-fixed-label.bulkEditTh {
@@ -3951,11 +3949,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       if (checkboxTh) headerRow.appendChild(checkboxTh);
 
-      // Insert faux spacer <th> to cover toggle-zone width (chevron + warn-slot)
-      var spacerTh = document.createElement('th');
-      spacerTh.className = P + '-thead-spacer';
-      headerRow.appendChild(spacerTh);
-      colCount += 1;
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
         var _showTh = thByField[_fKey];
