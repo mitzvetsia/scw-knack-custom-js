@@ -1639,6 +1639,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   padding: 4px 2px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
+  white-space: nowrap;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
@@ -1646,9 +1650,9 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-thead-styled th .kn-sort {
   justify-content: center;
 }
-/* Spacer <th> covers chevron + warn-slot width in the summary bar */
-/* Width is set dynamically by measuring the actual toggle-zone */
+/* Spacer <th> covers chevron + warn-slot area in the summary bar */
 .${P}-thead-spacer {
+  width: 50px;
   padding: 0 !important;
   border: none !important;
   border-bottom: none !important;
@@ -3863,9 +3867,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Reorder & filter <thead> columns to match summary bar layout ──
     // Width application is deferred until after PHASE 3 so we can measure
     // the actual rendered summary-bar group widths instead of guessing.
-    var _theadThByField = {};   // field_key → th element (for deferred width)
-    var _theadSpacerTh = null;  // spacer th (for deferred toggle-zone width)
-    var _theadDesiredFields = [];
+    // (thead columns are content-width only — no measured-width lock)
 
     if (headerRow) {
       var L = viewCfg.layout;
@@ -3933,8 +3935,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       spacerTh.className = P + '-thead-spacer';
       headerRow.appendChild(spacerTh);
       colCount += 1;
-      _theadSpacerTh = spacerTh;
-
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
         var _showTh = thByField[_fKey];
@@ -3953,8 +3953,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         headerRow.appendChild(_showTh);
       }
 
-      _theadThByField = thByField;
-      _theadDesiredFields = desiredFields;
     }
 
     // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
@@ -4197,97 +4195,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    // ── MEASURE SUMMARY BAR & APPLY WIDTHS TO <thead> ──
-    // Now that all summary bars are in the DOM we can measure the actual
-    // rendered widths of each group element and apply them to the
-    // matching <th> columns.  Uses requestAnimationFrame so the browser
-    // has completed layout before we read getBoundingClientRect().
-    if (_theadDesiredFields.length && headerRow) {
-      (function (tbl, desiredFields, thByField, spacerTh, vCfg) {
-        function applyMeasuredWidths() {
-          // Find first *visible* summary bar (collapsed groups have zero width)
-          var allBars = tbl.querySelectorAll('.' + P + '-summary');
-          var firstBar = null;
-          for (var bi = 0; bi < allBars.length; bi++) {
-            if (allBars[bi].getBoundingClientRect().width > 0) { firstBar = allBars[bi]; break; }
-          }
-          if (!firstBar) return;
-
-          // Measure spacer: chevron + warn-slot portion of toggle-zone
-          var tz = firstBar.querySelector('.' + P + '-toggle-zone');
-          var ident = tz ? tz.querySelector('.' + P + '-identity') : null;
-          if (tz && spacerTh) {
-            var spacerW;
-            if (ident) {
-              spacerW = Math.round(ident.getBoundingClientRect().left - tz.getBoundingClientRect().left);
-            } else {
-              spacerW = Math.round(tz.getBoundingClientRect().width);
-            }
-            spacerTh.style.width = spacerW + 'px';
-            spacerTh.style.minWidth = spacerW + 'px';
-            spacerTh.style.maxWidth = spacerW + 'px';
-          }
-
-          // Measure each element that has data-scw-fields
-          var sumGroups = firstBar.querySelectorAll('[data-scw-fields]');
-          var measuredWidths = {};
-          for (var mg = 0; mg < sumGroups.length; mg++) {
-            var grpEl = sumGroups[mg];
-            var fieldKeys = grpEl.getAttribute('data-scw-fields').split(/\s+/);
-            var grpW = Math.round(grpEl.getBoundingClientRect().width);
-            for (var mk = 0; mk < fieldKeys.length; mk++) {
-              measuredWidths[fieldKeys[mk]] = grpW + 'px';
-            }
-          }
-
-          // Measure label cell width (inside identity, no data-scw-fields attr)
-          var labelCell = ident ? ident.querySelector('.' + P + '-sum-label-cell') : null;
-          if (labelCell) {
-            var _lDesc = fieldDesc(vCfg, 'label');
-            if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
-          }
-
-          // Build a set of field keys that are fill-group (should not lock width)
-          var fillFieldKeys = {};
-          var _sl = vCfg.summaryLayout || [];
-          for (var fi = 0; fi < _sl.length; fi++) {
-            var _fd = fieldDesc(vCfg, _sl[fi]);
-            if (_fd && _fd.group === 'fill') fillFieldKeys[_fd.key] = true;
-          }
-
-          // Apply measured widths to <th> elements
-          for (var mi = 0; mi < desiredFields.length; mi++) {
-            var fk = desiredFields[mi];
-            var thEl = thByField[fk];
-            if (!thEl) continue;
-            var mw = measuredWidths[fk];
-            if (fillFieldKeys[fk]) {
-              // Fill columns: no fixed width — let table-layout:fixed distribute
-              thEl.style.width = '';
-              thEl.style.minWidth = '';
-              thEl.style.maxWidth = '';
-            } else if (mw) {
-              thEl.style.width = mw;
-              thEl.style.minWidth = mw;
-              thEl.style.maxWidth = mw;
-            }
-          }
-        }
-
-        // Try synchronously first (works on re-renders when layout is current),
-        // fall back to rAF on first load when the browser hasn't reflowed yet.
-        var allBars = tbl.querySelectorAll('.' + P + '-summary');
-        var anyVisible = false;
-        for (var bi = 0; bi < allBars.length; bi++) {
-          if (allBars[bi].getBoundingClientRect().width > 0) { anyVisible = true; break; }
-        }
-        if (anyVisible) {
-          applyMeasuredWidths();
-        } else {
-          requestAnimationFrame(applyMeasuredWidths);
-        }
-      })(table, _theadDesiredFields, _theadThByField, _theadSpacerTh, viewCfg);
-    }
+    // ── THEAD SIZING ──
+    // Let each <th> size to its content naturally (no measured-width lock).
+    // The thead is for sorting/bulk-edit only — it doesn't need to align
+    // pixel-perfectly with the summary bars below.
 
     // ── RESTORE EXPANDED STATE ──
     // Re-expand detail panels that were open before the inline-edit
