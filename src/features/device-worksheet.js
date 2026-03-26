@@ -3951,6 +3951,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
+        if (_fKey === 'field_1946') continue; // hide move/MDF field from sort header
         var _showTh = thByField[_fKey];
         if (!_showTh) continue;
 
