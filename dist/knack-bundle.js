@@ -15571,15 +15571,14 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior' },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, showOnlyIfYes: true },
 
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit'],
+        summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
@@ -18342,6 +18341,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!td) break;
         var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
         var isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        // Skip rendering entirely when showOnlyIfYes and value is not yes
+        if (desc.showOnlyIfYes && !isChitYes) break;
         var chit = document.createElement('span');
         var chitCls = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
         if (!desc.feeTrigger) chitCls += ' is-readonly';
