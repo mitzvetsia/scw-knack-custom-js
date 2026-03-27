@@ -330,13 +330,16 @@
       var inp = viewEl.querySelector('#' + fieldId);
       if (!inp) continue;
 
+      // Save Knack's raw value BEFORE formatting for display
+      var rawKnackVal = inp.value;
+
       // Format the current value for display
-      inp.value = formatForDisplay(inp.value, fmt);
+      inp.value = formatForDisplay(rawKnackVal, fmt);
 
       // On focus: show plain number for editing
       (function (input, format) {
         // Track Knack's raw value so we can always convert correctly
-        input._scwKnackVal = input.value;
+        input._scwKnackVal = rawKnackVal;
 
         $(input).off('focus' + NS).on('focus' + NS, function () {
           // Show whole-number edit value (e.g. "20" not "0.2")
