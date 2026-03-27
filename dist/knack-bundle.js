@@ -15571,15 +15571,15 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, label: 'Existing Cabling', group: 'identity' },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior', label: 'Exterior', group: 'identity' },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior' },
 
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
-        summaryLayout: ['existingCabling', 'exteriorChit', 'laborDescription'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
@@ -16966,23 +16966,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   cursor: default;
   color: inherit;
   text-decoration: none;
-}
-/* ── view_3596: prevent overflow, align summary ── */
-#view_3596 .${P}-card {
-  overflow: hidden;
-  max-width: 100%;
-}
-#view_3596 .${P}-summary {
-  align-items: flex-start;
-}
-#view_3596 .${P}-sum-group--fill {
-  min-width: 0;
-  overflow: hidden;
-}
-#view_3596 .${P}-direct-textarea,
-#view_3596 .${P}-direct-input {
-  width: 100%;
-  box-sizing: border-box;
 }
 `;
 
