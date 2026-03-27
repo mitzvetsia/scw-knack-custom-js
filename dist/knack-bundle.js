@@ -1180,14 +1180,14 @@ window.SCW = window.SCW || {};
           viewId: 'view_3492',
           compactLabel: 'Global Discount %',
           enterToSubmit: true,
-          buttonLabel: 'Update'
+          hideButton: true
         },
         {
           viewId: 'view_3490',
           compactLabel: 'Additional Lump Sum Discount',
           enterToSubmit: 'inputsOnly',
           ctrlEnterToSubmit: true,
-          buttonLabel: 'Update'
+          hideButton: true
         }
       ]
     }
@@ -1266,6 +1266,18 @@ window.SCW = window.SCW || {};
 .${P}-section .kn-submit {
   margin: 6px 0 0 !important;
   padding: 0 !important;
+}
+/* Hidden submit button (still in DOM for programmatic click) */
+.${P}-section.${P}-hide-btn .kn-submit {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0,0,0,0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: -1px !important;
 }
 
 /* ── Restyle native inputs ── */
@@ -1409,6 +1421,11 @@ window.SCW = window.SCW || {};
     // Mark as applied
     viewEl.setAttribute(APPLIED_ATTR, '1');
 
+    // Hide submit button if configured
+    if (formCfg.hideButton) {
+      section.classList.add(P + '-hide-btn');
+    }
+
     // Restyle the submit button label
     if (submitBtn && formCfg.buttonLabel) {
       submitBtn.textContent = formCfg.buttonLabel;
@@ -1417,7 +1434,7 @@ window.SCW = window.SCW || {};
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // Bind Enter-to-submit on inputs
+    // Bind Enter/Tab-to-submit on inputs
     for (var i = 0; i < inputs.length; i++) {
       var input = inputs[i];
       var isTextarea = input.tagName.toLowerCase() === 'textarea';
@@ -1435,13 +1452,13 @@ window.SCW = window.SCW || {};
           })(input, submitBtn);
         }
       } else {
-        // Enter to submit from single-line inputs
+        // Enter or Tab to submit from single-line inputs
         var shouldBind = formCfg.enterToSubmit === true ||
                          formCfg.enterToSubmit === 'inputsOnly';
         if (shouldBind && submitBtn) {
           (function (inp, btn) {
             $(inp).off('keydown' + NS).on('keydown' + NS, function (e) {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
                 btn.click();
               }
