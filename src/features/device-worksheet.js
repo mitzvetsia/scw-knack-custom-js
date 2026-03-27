@@ -357,24 +357,24 @@
         viewId: 'view_3596',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
-        defaultOpen: true,
+        photoAlwaysVisible: true,
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          laborDescription: { key: 'field_2020', type: 'readOnly',    summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          scwNotes:         { key: 'field_1953', type: 'readOnly',    summary: true, label: 'Notes', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, label: 'Existing Cabling' },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior', label: 'Exterior' },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, label: 'Existing Cabling', group: 'identity' },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior', label: 'Exterior', group: 'identity' },
 
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          mountingHardware: { key: 'field_1958', type: 'readOnly' }
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
-        summaryLayout: ['laborDescription', 'scwNotes', 'existingCabling', 'exteriorChit'],
+        summaryLayout: ['existingCabling', 'exteriorChit', 'laborDescription'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: []
+          right: ['scwNotes']
         }
       }
     ]
@@ -3292,6 +3292,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           productTd.classList.add(P + '-sum-product--editable');
         }
         productGroup.appendChild(productTd);
+
+        // Render identity-grouped fields below the product (e.g. chits)
+        for (var ig = 0; ig < layout.length; ig++) {
+          var igDesc = fieldDesc(viewCfg, layout[ig]);
+          if (!igDesc || igDesc.group !== 'identity') continue;
+          var igContainer = document.createElement('span');
+          igContainer.style.cssText = 'display:inline-flex;gap:4px;margin-top:2px;';
+          renderSummaryField(igContainer, tr, layout[ig], igDesc, viewCfg);
+          productGroup.appendChild(igContainer);
+        }
+
         identity.appendChild(productGroup);
       }
     }
@@ -3321,6 +3332,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var desc = fieldDesc(viewCfg, name);
       if (!desc || !desc.summary) continue;
 
+      // Skip identity-grouped fields (rendered inside product group above)
+      if (desc.group === 'identity') continue;
       // Route to the right container based on group
       var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
       renderSummaryField(container, tr, name, desc, viewCfg);
@@ -3757,6 +3770,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var isOpen = detail.classList.contains(P + '-open');
 
+    var keepPhoto = wsTr.hasAttribute('data-scw-photo-always');
+
     if (isOpen) {
       // Collapse
       detail.classList.remove(P + '-open');
@@ -3764,13 +3779,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chevron.classList.remove(P + '-expanded');
         chevron.classList.add(P + '-collapsed');
       }
-      // Hide the in-card photo wrapper
-      var photoWrap = wsTr.querySelector('.' + P + '-photo-wrap');
-      if (photoWrap) photoWrap.classList.add(P + '-photo-hidden');
-      // Legacy: also hide sibling photo row if not absorbed
-      var photoRow = wsTr.nextElementSibling;
-      if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
-        photoRow.classList.add(P + '-photo-hidden');
+      // Hide the in-card photo wrapper (unless photoAlwaysVisible)
+      if (!keepPhoto) {
+        var photoWrap = wsTr.querySelector('.' + P + '-photo-wrap');
+        if (photoWrap) photoWrap.classList.add(P + '-photo-hidden');
+        // Legacy: also hide sibling photo row if not absorbed
+        var photoRow = wsTr.nextElementSibling;
+        if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
+          photoRow.classList.add(P + '-photo-hidden');
+        }
       }
     } else {
       // Expand
@@ -4114,6 +4131,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);
       if (entry.hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
+      if (viewCfg.photoAlwaysVisible) wsTr.setAttribute('data-scw-photo-always', '1');
 
       var wsTd = document.createElement('td');
       wsTd.setAttribute('colspan', String(colCount));
@@ -4144,7 +4162,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (photoRow && photoRow.classList.contains('scw-inline-photo-row') && card) {
         // Move photo content into the card
         var photoWrap = document.createElement('div');
-        photoWrap.className = P + '-photo-wrap ' + P + '-photo-hidden';
+        photoWrap.className = P + '-photo-wrap' + (viewCfg.photoAlwaysVisible ? '' : ' ' + P + '-photo-hidden');
         var photoTd = photoRow.querySelector('td');
         if (photoTd) {
           while (photoTd.firstChild) {
