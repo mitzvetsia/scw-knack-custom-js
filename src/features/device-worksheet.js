@@ -2176,6 +2176,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     valueWrapper.style.background = 'transparent';
 
     var currentVal = readFieldText(td);
+
+    // Percent fields: Knack stores decimal (0.05) — display as whole number (5)
+    if (window.SCW && SCW.pctFormat && SCW.pctFormat.isPercentField(fieldKey)) {
+      var pctNum = parseFloat(currentVal);
+      if (!isNaN(pctNum)) currentVal = String(Math.round(pctNum * 100 * 10000) / 10000);
+    }
+
     var input;
 
     if (opts.notes) {
