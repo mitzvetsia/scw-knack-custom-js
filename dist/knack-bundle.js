@@ -1298,6 +1298,10 @@ window.SCW = window.SCW || {};
     view.appendChild(layout);
   }
 
+  // Expose for external callers (e.g. refresh-view-on-form-submit.js)
+  window.SCW = window.SCW || {};
+  SCW.restructureTotals = restructureTotals;
+
   // ── Bind ──
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender('view_3418', function () {
@@ -11608,6 +11612,10 @@ $(".kn-navigation-bar").hide();
             if (typeof v.render === 'function') {
               v.render();
             }
+            // Rebuild custom totals layout (v.render may not fire knack-view-render)
+            setTimeout(function () {
+              if (window.SCW && SCW.restructureTotals) SCW.restructureTotals();
+            }, 150);
           },
           error: function (xhr) {
             console.warn('[scw-refresh] API fetch failed', xhr.status, xhr.statusText);

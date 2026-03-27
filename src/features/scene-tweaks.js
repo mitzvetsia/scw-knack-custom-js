@@ -222,6 +222,10 @@
     view.appendChild(layout);
   }
 
+  // Expose for external callers (e.g. refresh-view-on-form-submit.js)
+  window.SCW = window.SCW || {};
+  SCW.restructureTotals = restructureTotals;
+
   // ── Bind ──
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender('view_3418', function () {
