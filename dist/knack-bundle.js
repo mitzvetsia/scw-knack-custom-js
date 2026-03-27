@@ -1231,22 +1231,6 @@ window.SCW = window.SCW || {};
       if (!isNaN(num)) input.value = num + '%';
     });
 
-    // Hook into the parent <form> submit so native Knack forms
-    // also get the user→Knack conversion (20 → 0.2) before submit.
-    var form = input.closest('form');
-    if (form && !form._scwPctHooked) {
-      form._scwPctHooked = true;
-      $(form).on('submit' + NS, function () {
-        // Convert all percent inputs in this form before Knack reads them
-        for (var j = 0; j < PERCENT_FIELDS.length; j++) {
-          var inp = form.querySelector('#' + PERCENT_FIELDS[j]);
-          if (!inp) continue;
-          inp._scwSubmitting = true;
-          inp.value = userToKnack(inp.value);
-          $(inp).trigger('change');
-        }
-      });
-    }
   }
 
   /** Scan the page (or a container) for percent field inputs and enhance them. */
@@ -1258,13 +1242,16 @@ window.SCW = window.SCW || {};
     }
   }
 
-  /** Convert percent inputs to Knack values before form submit. */
+  /** Convert percent inputs to Knack values before form submit.
+   *  Guards against double conversion via _scwPctConverted flag. */
   function prepareForSubmit(container) {
     var root = container || document;
     for (var i = 0; i < PERCENT_FIELDS.length; i++) {
       var inp = root.querySelector('#' + PERCENT_FIELDS[i]);
       if (!inp) continue;
+      if (inp._scwPctConverted) continue;  // already converted this cycle
       inp._scwSubmitting = true;
+      inp._scwPctConverted = true;
       inp.value = userToKnack(inp.value);
       $(inp).trigger('change');
     }
@@ -1288,6 +1275,21 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════════
 
   function init() {
+    // Intercept ALL form submits (capture phase — fires before Knack's handlers).
+    // Converts percent inputs from user value (20) to Knack decimal (0.2).
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!form || form.tagName !== 'FORM') return;
+      prepareForSubmit(form);
+      // Clear the converted flag after Knack processes the submit
+      setTimeout(function () {
+        for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+          var inp = form.querySelector('#' + PERCENT_FIELDS[i]);
+          if (inp) inp._scwPctConverted = false;
+        }
+      }, 100);
+    }, true);  // capture phase
+
     // Scan on any scene render
     $(document).on('knack-scene-render.any' + NS, function () {
       setTimeout(scan, 200);
