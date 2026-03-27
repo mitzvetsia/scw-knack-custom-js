@@ -1512,7 +1512,7 @@ window.SCW = window.SCW || {};
           input.value = knackVal;
           $(input).trigger('change');
           // Show formatted display
-          input.value = formatForDisplay(submitVal, format);
+          input.value = formatForDisplay(knackVal, format);
         });
       })(inp, fmt);
     }
