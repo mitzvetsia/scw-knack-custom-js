@@ -200,17 +200,6 @@
   color: #991b1b !important;
 }
 
-/* ── Save-success flash on inputs — must beat background: #fff !important ── */
-.${P}-section input.${P}-saved,
-.${P}-section input.${P}-saved[type="text"],
-.${P}-section input.${P}-saved[type="number"],
-.${P}-section input.${P}-saved[type="email"],
-.${P}-section textarea.${P}-saved {
-  background: #dcfce7 !important;
-  border-color: #4ade80 !important;
-  transition: background 0.3s, border-color 0.3s;
-}
-
 /* Enter hint for textarea forms */
 .${P}-hint {
   font-size: 10px;
@@ -279,13 +268,25 @@
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // On form submit: save scroll, flag for green flash, and tell
-    // buildPanel to delay rebuild so the form stays connected.
+    // On form submit: save scroll, flag for green flash, lock scroll,
+    // and tell buildPanel to delay rebuild so the form stays connected.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
                .on('knack-form-submit.' + formCfg.viewId + NS, function () {
       formCfg._flashOnRender = true;
-      formCfg._scrollY = window.scrollY;
       formCfg._submitAt = Date.now();
+
+      // Lock scroll: temporarily neuter scrollTo / scrollIntoView so
+      // Knack's post-submit re-render can't jump the page.
+      var savedY = window.scrollY;
+      var origScrollTo = window.scrollTo;
+      var origScrollIntoView = Element.prototype.scrollIntoView;
+      window.scrollTo = function () {};
+      Element.prototype.scrollIntoView = function () {};
+      setTimeout(function () {
+        window.scrollTo = origScrollTo;
+        Element.prototype.scrollIntoView = origScrollIntoView;
+        window.scrollTo(0, savedY);
+      }, 2000);
     });
 
     return true;
@@ -387,25 +388,19 @@
         var fViewEl = document.getElementById(fCfg.viewId);
         if (!fViewEl) return;
 
-        // Lock scroll position for ~1s to fight Knack's re-render scrolling
-        var savedY = fCfg._scrollY;
-        if (savedY !== undefined) {
-          delete fCfg._scrollY;
-          window.scrollTo(0, savedY);
-          var lockUntil = Date.now() + 1000;
-          function lockScroll() {
-            window.scrollTo(0, savedY);
-            if (Date.now() < lockUntil) requestAnimationFrame(lockScroll);
-          }
-          requestAnimationFrame(lockScroll);
-        }
-
-        // Flash inputs green
+        // Flash inputs green using inline styles (bypasses all CSS specificity)
         var fInputs = findFormInputs(fViewEl);
         for (var fi2 = 0; fi2 < fInputs.length; fi2++) {
           (function (inp) {
-            inp.classList.add(P + '-saved');
-            setTimeout(function () { inp.classList.remove(P + '-saved'); }, 1500);
+            inp.style.setProperty('background', '#dcfce7', 'important');
+            inp.style.setProperty('border-color', '#4ade80', 'important');
+            inp.style.setProperty('transition', 'background 0.5s, border-color 0.5s', 'important');
+            setTimeout(function () {
+              inp.style.removeProperty('background');
+              inp.style.removeProperty('border-color');
+              // keep transition for the fade-out
+              setTimeout(function () { inp.style.removeProperty('transition'); }, 600);
+            }, 1500);
           })(fInputs[fi2]);
         }
       })(panelCfg.forms[fi]);
