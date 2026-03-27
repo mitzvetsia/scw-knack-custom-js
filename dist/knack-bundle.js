@@ -15135,7 +15135,7 @@ $(".kn-navigation-bar").hide();
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
@@ -15168,7 +15168,7 @@ $(".kn-navigation-bar").hide();
 
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
-          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
@@ -15214,7 +15214,7 @@ $(".kn-navigation-bar").hide();
           customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
@@ -15266,7 +15266,7 @@ $(".kn-navigation-bar").hide();
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
           // ── Detail panel – right ──
-          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
           laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
@@ -15292,7 +15292,7 @@ $(".kn-navigation-bar").hide();
           exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior', label: 'Exterior' },
 
           // ── Detail panel ──
-          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' }
         },
         summaryLayout: ['laborDescription', 'scwNotes', 'existingCabling', 'exteriorChit'],
@@ -18337,6 +18337,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (td) td.classList.remove('cell-edit');
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
         if (row) section.appendChild(row);
+        break;
+
+      case 'nativeEdit':
+        // Preserve Knack's native inline-edit (cell-edit class stays).
+        // Used for connection fields that open Knack's modal picker.
+        var neRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
+        if (neRow) section.appendChild(neRow);
         break;
 
       case 'directEdit':
