@@ -197,6 +197,11 @@
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
 
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Totals';
+    h2.style.cssText = 'font-size:18px;font-weight:700;color:#163C6E;margin:0 0 12px;';
+    layout.appendChild(h2);
+
     // ── EQUIPMENT ──
     layout.appendChild(createSectionHeader('Equipment'));
     if (retail) layout.appendChild(createRow('Retail', retail));

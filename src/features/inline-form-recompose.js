@@ -75,12 +75,12 @@
   flex: 1;
 }
 
-/* ── Module title ── */
+/* ── Module title (h2) ── */
 .${P}-title {
   font-size: 18px;
   font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 20px;
+  color: #163C6E;
+  margin: 0 0 20px;
 }
 
 /* ── Form section ── */
@@ -537,7 +537,7 @@
     panel.id = panelId;
 
     if (panelCfg.moduleTitle) {
-      var title = document.createElement('div');
+      var title = document.createElement('h2');
       title.className = P + '-title';
       title.textContent = panelCfg.moduleTitle;
       panel.appendChild(title);
