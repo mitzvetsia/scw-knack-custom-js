@@ -277,9 +277,13 @@
   // On load, Knack's raw value (e.g. 0.50) is converted once to
   // the user-facing value (50%).
 
-  /** Convert Knack raw value → user-facing display. */
+  /** Convert Knack raw value → user-facing display. Skip if already formatted. */
   function knackToDisplay(raw, fmt) {
-    var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
+    var s = String(raw);
+    // Already formatted — don't double-convert
+    if (fmt === 'percent' && s.indexOf('%') !== -1) return s;
+    if (fmt === 'currency' && s.indexOf('$') !== -1) return s;
+    var num = parseFloat(s.replace(/[$,%\s]/g, ''));
     if (isNaN(num)) return raw;
     if (fmt === 'percent') return Math.round(num * 100 * 10000) / 10000 + '%';
     if (fmt === 'currency') return '$' + num.toFixed(2);
@@ -398,12 +402,6 @@
 
       // Also flash after Knack re-renders (fresh DOM)
       formCfg._flashOnRender = true;
-
-      // Re-format fields after Knack re-renders the form
-      var vid = formCfg.viewId;
-      var flds = formCfg.fields;
-      setTimeout(function () { reformatAfterRender(vid); }, 1000);
-      setTimeout(function () { reformatAfterRender(vid); }, 2000);
 
       // Lock scroll
       var savedY = window.scrollY;
