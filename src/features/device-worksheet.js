@@ -2573,6 +2573,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var fieldKey = input.getAttribute('data-field') || '';
     var newValue = input.value;
 
+    // Percent fields: user types whole number (6), Knack expects decimal (0.06)
+    if (window.SCW && SCW.pctFormat && SCW.pctFormat.isPercentField(fieldKey)) {
+      var pctNum = parseFloat(String(newValue).replace(/[%\s]/g, ''));
+      if (!isNaN(pctNum)) newValue = String(pctNum / 100);
+    }
+
     // Capture previous value: from hidden td (detail panel) or _scwPrev (summary bar)
     var wrapper = input.parentNode;
     var hiddenTd = wrapper ? wrapper.querySelector('td[' + DIRECT_EDIT_ATTR + ']') : null;
