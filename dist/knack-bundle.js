@@ -18511,9 +18511,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // Render identity-grouped fields below the product
         // Text fields (readOnly/directEdit) render as block text;
         // chits collect into a single inline-flex row.
+        // Scan ALL fields (not just summaryLayout) for identity group.
         var idChits = [];
-        for (var ig = 0; ig < layout.length; ig++) {
-          var igDesc = fieldDesc(viewCfg, layout[ig]);
+        var fieldNames = Object.keys(viewCfg.fields);
+        for (var ig = 0; ig < fieldNames.length; ig++) {
+          var igDesc = fieldDesc(viewCfg, fieldNames[ig]);
           if (!igDesc || igDesc.group !== 'identity') continue;
 
           if (igDesc.type === 'toggleChit') {
