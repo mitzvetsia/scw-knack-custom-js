@@ -362,7 +362,7 @@
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          laborDescription: { key: 'field_2020', type: 'readOnly',    summary: true, group: 'identity', multiline: true },
           existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, showOnlyIfYes: true },
 
           // ── Detail panel ──
@@ -370,7 +370,7 @@
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
         },
-        summaryLayout: ['laborDescription', 'existingCabling'],
+        summaryLayout: ['existingCabling'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
@@ -3300,29 +3300,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
         productGroup.appendChild(productTd);
 
-        // Render identity-grouped fields below the product (e.g. chits)
-        // Collect all identity fields into a single row
-        var idFields = [];
+        // Render identity-grouped fields below the product
+        // Text fields (readOnly/directEdit) render as block text;
+        // chits collect into a single inline-flex row.
+        var idChits = [];
         for (var ig = 0; ig < layout.length; ig++) {
           var igDesc = fieldDesc(viewCfg, layout[ig]);
           if (!igDesc || igDesc.group !== 'identity') continue;
-          idFields.push({ name: layout[ig], desc: igDesc });
-        }
-        if (idFields.length) {
-          var idRow = document.createElement('span');
-          idRow.style.cssText = 'display:inline-flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
-          for (var idf = 0; idf < idFields.length; idf++) {
-            // For toggleChit in identity: only render if value is Yes
-            if (idFields[idf].desc.type === 'toggleChit') {
-              var chitTd = findCell(tr, idFields[idf].desc.key, idFields[idf].desc.columnIndex);
-              if (chitTd) {
-                var chitText = (chitTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
-                if (chitText !== 'yes' && chitText !== 'true') continue;
-              } else {
-                continue;
+
+          if (igDesc.type === 'toggleChit') {
+            // Collect chits for the inline row below
+            var chitTd = findCell(tr, igDesc.key, igDesc.columnIndex);
+            if (chitTd) {
+              var chitText = (chitTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+              if (chitText === 'yes' || chitText === 'true') {
+                idChits.push({ name: layout[ig], desc: igDesc });
               }
             }
-            renderSummaryField(idRow, tr, idFields[idf].name, idFields[idf].desc, viewCfg);
+          } else {
+            // Text field — render as a block element directly in productGroup
+            var idTd = findCell(tr, igDesc.key, igDesc.columnIndex);
+            if (idTd && !isCellEmpty(idTd)) {
+              idTd.style.cssText = 'display:block;font-size:13px;font-weight:400;color:#374151;' +
+                'white-space:normal;word-break:break-word;line-height:1.4;margin-top:2px;padding:0;' +
+                'border:none;background:transparent;';
+              productGroup.appendChild(idTd);
+            }
+          }
+        }
+        if (idChits.length) {
+          var idRow = document.createElement('span');
+          idRow.style.cssText = 'display:inline-flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
+          for (var idf = 0; idf < idChits.length; idf++) {
+            renderSummaryField(idRow, tr, idChits[idf].name, idChits[idf].desc, viewCfg);
           }
           if (idRow.childNodes.length) productGroup.appendChild(idRow);
         }
