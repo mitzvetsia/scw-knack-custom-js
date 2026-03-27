@@ -233,7 +233,7 @@
     var discount     = Math.abs(lineDiscount) + Math.abs(hwDiscount) + Math.abs(lumpDiscount);
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
-    var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2203');  // per-row installation fee
+    var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
     var projTotal    = eqSubtotal + installTotal;
 
     var layout = document.createElement('div');
