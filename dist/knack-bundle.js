@@ -1428,58 +1428,36 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════════
   //  FIELD FORMATTING — percent & currency display
   // ══════════════════════════════════════════════════════════════
+  //
+  // Strategy: the input always holds the USER-FACING value.
+  //   percent:  "20" or "20%" (meaning 20 percent)
+  //   currency: "100" or "$100.00"
+  //
+  // Conversion to Knack's internal format (0.2 for 20%) happens
+  // ONLY inside prepareForSubmit, right before btn.click().
+  // On load, Knack's raw value (e.g. 0.50) is converted once to
+  // the user-facing value (50%).
 
-  /**
-   * Format a Knack-stored value for display.
-   *  percent:  Knack stores 0.20 → display "20%"
-   *  currency: 100 → "$100.00"
-   */
-  function formatForDisplay(raw, fmt) {
+  /** Convert Knack raw value → user-facing display. */
+  function knackToDisplay(raw, fmt) {
     var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
     if (isNaN(num)) return raw;
-    if (fmt === 'percent') {
-      // Knack stores as decimal. Multiply by 100 for display.
-      var pct = Math.round(num * 100 * 10000) / 10000;
-      return pct + '%';
-    }
-    if (fmt === 'currency') {
-      return '$' + num.toFixed(2);
-    }
+    if (fmt === 'percent') return Math.round(num * 100 * 10000) / 10000 + '%';
+    if (fmt === 'currency') return '$' + num.toFixed(2);
     return raw;
   }
 
-  /**
-   * Strip formatting to a plain number for editing.
-   *  percent:  Knack value 0.20 → edit as "20"
-   *  currency: "$100.00" → "100"
-   */
-  function formatForEdit(raw, fmt) {
-    var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
-    if (isNaN(num)) return raw;
-    if (fmt === 'percent') {
-      // Knack stores as decimal. Show as whole number for editing.
-      var pct = Math.round(num * 100 * 10000) / 10000;
-      return String(pct);
-    }
+  /** Strip display chrome for editing (20% → 20, $100.00 → 100). */
+  function stripForEdit(displayed) {
+    return String(displayed).replace(/[$,%\s]/g, '');
+  }
+
+  /** Convert user-entered value → Knack raw value at submit time. */
+  function userToKnack(userVal, fmt) {
+    var num = parseFloat(String(userVal).replace(/[$,%\s]/g, ''));
+    if (isNaN(num)) return userVal;
+    if (fmt === 'percent') return String(num / 100);
     return String(num);
-  }
-
-  /**
-   * Convert user-entered display value to what Knack expects.
-   *  percent: user types 20 → Knack wants 0.20
-   *  currency: strip $ → raw number
-   */
-  function formatForSubmit(raw, fmt) {
-    var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
-    if (isNaN(num)) return raw;
-    if (fmt === 'percent') {
-      // Always divide by 100: user types whole number, Knack stores decimal.
-      return String(num / 100);
-    }
-    if (fmt === 'currency') {
-      return String(num);
-    }
-    return raw;
   }
 
   /** Apply format config to inputs inside a form view. */
@@ -1491,37 +1469,28 @@ window.SCW = window.SCW || {};
       var inp = viewEl.querySelector('#' + fieldId);
       if (!inp) continue;
 
-      // Save Knack's raw value BEFORE formatting for display
-      var rawKnackVal = inp.value;
+      // Convert Knack's raw value to user-facing display on load
+      inp.value = knackToDisplay(inp.value, fmt);
 
-      // Format the current value for display
-      inp.value = formatForDisplay(rawKnackVal, fmt);
-
-      // On focus: show plain number for editing
       (function (input, format) {
-        // Track Knack's raw value so we can always convert correctly
-        input._scwKnackVal = rawKnackVal;
-
+        // On focus: strip $ and % so user sees plain number
         $(input).off('focus' + NS).on('focus' + NS, function () {
-          // Show whole-number edit value (e.g. "20" not "0.2")
-          input.value = formatForEdit(input._scwKnackVal, format);
+          input.value = stripForEdit(input.value);
           input.select();
         });
 
-        // On blur: convert back to Knack value, sync model, show display
+        // On blur: re-add display formatting (no conversion — still user value)
         $(input).off('blur' + NS).on('blur' + NS, function () {
-          var knackVal = formatForSubmit(input.value, format);
-          input._scwKnackVal = knackVal;
-          input.value = knackVal;
-          $(input).trigger('change');
-          // Show formatted display
-          input.value = formatForDisplay(knackVal, format);
+          var num = parseFloat(stripForEdit(input.value));
+          if (isNaN(num)) return;
+          if (format === 'percent') input.value = num + '%';
+          if (format === 'currency') input.value = '$' + num.toFixed(2);
         });
       })(inp, fmt);
     }
   }
 
-  /** Convert display values → Knack values before submit, trigger change. */
+  /** Convert user-facing values → Knack values before submit. */
   function prepareForSubmit(viewId) {
     var cfg = VIEW_FIELDS[viewId];
     if (!cfg) return;
@@ -1531,8 +1500,7 @@ window.SCW = window.SCW || {};
       if (!cfg.hasOwnProperty(fieldId)) continue;
       var inp = viewEl.querySelector('#' + fieldId);
       if (!inp) continue;
-      var val = formatForSubmit(inp.value, cfg[fieldId].format);
-      inp.value = val;
+      inp.value = userToKnack(inp.value, cfg[fieldId].format);
       $(inp).trigger('change');
     }
   }
