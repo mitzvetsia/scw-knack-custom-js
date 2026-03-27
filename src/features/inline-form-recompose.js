@@ -269,19 +269,16 @@
   // ══════════════════════════════════════════════════════════════
 
   /**
-   * Format a value for display (blur / load).
-   *  percent:  0.2 → "20%",  10 → "10%" (pass-through if already whole-ish)
+   * Format a Knack-stored value for display.
+   *  percent:  Knack stores 0.20 → display "20%"
    *  currency: 100 → "$100.00"
    */
   function formatForDisplay(raw, fmt) {
     var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
     if (isNaN(num)) return raw;
     if (fmt === 'percent') {
-      // Knack stores as decimal (0.2 = 20%). Display as whole %.
-      // If value <= 1 treat as decimal; otherwise assume user typed whole number.
-      var pct = (num > 0 && num <= 1) ? num * 100 : num;
-      // Clean up floating point: round to 4 decimals
-      pct = Math.round(pct * 10000) / 10000;
+      // Knack stores as decimal. Multiply by 100 for display.
+      var pct = Math.round(num * 100 * 10000) / 10000;
       return pct + '%';
     }
     if (fmt === 'currency') {
@@ -291,16 +288,32 @@
   }
 
   /**
-   * Convert a user-entered value to what Knack expects before submit.
-   *  percent: 20 → 0.2 (user types whole number, Knack wants decimal)
+   * Strip formatting to a plain number for editing.
+   *  percent:  Knack value 0.20 → edit as "20"
+   *  currency: "$100.00" → "100"
+   */
+  function formatForEdit(raw, fmt) {
+    var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
+    if (isNaN(num)) return raw;
+    if (fmt === 'percent') {
+      // Knack stores as decimal. Show as whole number for editing.
+      var pct = Math.round(num * 100 * 10000) / 10000;
+      return String(pct);
+    }
+    return String(num);
+  }
+
+  /**
+   * Convert user-entered display value to what Knack expects.
+   *  percent: user types 20 → Knack wants 0.20
+   *  currency: strip $ → raw number
    */
   function formatForSubmit(raw, fmt) {
     var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
     if (isNaN(num)) return raw;
     if (fmt === 'percent') {
-      // User types 20 meaning 20%. Knack wants 0.2.
-      if (num > 1) num = num / 100;
-      return String(num);
+      // Always divide by 100: user types whole number, Knack stores decimal.
+      return String(num / 100);
     }
     if (fmt === 'currency') {
       return String(num);
@@ -320,30 +333,24 @@
       // Format the current value for display
       inp.value = formatForDisplay(inp.value, fmt);
 
-      // On focus: strip formatting so user sees raw number
+      // On focus: show plain number for editing
       (function (input, format) {
+        // Track Knack's raw value so we can always convert correctly
+        input._scwKnackVal = input.value;
+
         $(input).off('focus' + NS).on('focus' + NS, function () {
-          var num = parseFloat(String(input.value).replace(/[$,%\s]/g, ''));
-          if (!isNaN(num)) {
-            if (format === 'percent') {
-              // Show whole number for editing (20, not 0.2)
-              var pct = (num > 0 && num <= 1) ? num * 100 : num;
-              pct = Math.round(pct * 10000) / 10000;
-              input.value = pct;
-            } else {
-              input.value = num;
-            }
-          }
+          // Show whole-number edit value (e.g. "20" not "0.2")
+          input.value = formatForEdit(input._scwKnackVal, format);
           input.select();
         });
 
-        // On blur: re-format for display and sync Knack's model
+        // On blur: convert back to Knack value, sync model, show display
         $(input).off('blur' + NS).on('blur' + NS, function () {
-          // Convert to Knack's expected value and trigger change
-          var submitVal = formatForSubmit(input.value, format);
-          input.value = submitVal;
+          var knackVal = formatForSubmit(input.value, format);
+          input._scwKnackVal = knackVal;
+          input.value = knackVal;
           $(input).trigger('change');
-          // Then show formatted display
+          // Show formatted display
           input.value = formatForDisplay(submitVal, format);
         });
       })(inp, fmt);
@@ -417,6 +424,12 @@
 
       // Also flash after Knack re-renders (fresh DOM)
       formCfg._flashOnRender = true;
+
+      // Re-format fields after Knack re-renders the form
+      var vid = formCfg.viewId;
+      var flds = formCfg.fields;
+      setTimeout(function () { reformatAfterRender(vid); }, 1000);
+      setTimeout(function () { reformatAfterRender(vid); }, 2000);
 
       // Lock scroll
       var savedY = window.scrollY;
