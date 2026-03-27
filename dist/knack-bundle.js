@@ -1380,8 +1380,7 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════════
 
   var PERCENT_FIELDS = [
-    'field_2276',
-    'field_2261'
+    'field_2276'
   ];
 
   var PCT_SET = {};
