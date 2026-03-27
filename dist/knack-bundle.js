@@ -18249,6 +18249,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
           } else {
             td.classList.add(P + '-sum-field-ro');
+            if (desc.multiline) td.classList.add(P + '-sum-field--desc');
             if (isCellEmpty(td)) td.classList.add(P + '-empty');
           }
           ldGroup.appendChild(td);
