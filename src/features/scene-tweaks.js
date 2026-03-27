@@ -169,13 +169,50 @@
     return div;
   }
 
-  /** Read a field value by its Knack field class (e.g. 'field_2160'). */
-  function fv(view, fieldClass) {
-    var el = view.querySelector('.' + fieldClass + ' .kn-detail-body');
-    return el ? el.textContent.trim() : null;
+  // ── Frontend calculation config ──
+  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];  // grids with equipment line items
+  var RETAIL_FIELD    = 'field_1960';                 // per-row retail price
+  var DISCOUNT_FIELD  = 'field_2303';                 // per-row applied discount
+  var INSTALL_FIELD   = 'field_2028';                 // per-row installation fee
+  var LUMP_DISCOUNT_FIELD = 'field_2290';             // additional lump sum discount (view_3490 form)
+
+  /** Parse a currency / number string into a float. Returns 0 for non-numeric. */
+  function parseNum(text) {
+    if (!text) return 0;
+    var raw = text.replace(/[^0-9.\-]/g, '');
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : 0;
   }
 
-  /** Build the custom grouped totals layout from Knack field data. */
+  /** Sum a Knack field across all data rows in the given grid views. */
+  function sumGridField(viewIds, fieldKey) {
+    var total = 0;
+    for (var v = 0; v < viewIds.length; v++) {
+      var table = document.querySelector('#' + viewIds[v] + ' table.kn-table tbody');
+      if (!table) continue;
+      var cells = table.querySelectorAll('tr[id] td.' + fieldKey);
+      for (var i = 0; i < cells.length; i++) {
+        total += parseNum(cells[i].textContent);
+      }
+    }
+    return total;
+  }
+
+  /** Read the lump sum discount from the view_3490 form input. */
+  function getLumpDiscount() {
+    var input = document.querySelector('#view_3490 #' + LUMP_DISCOUNT_FIELD);
+    if (input) return parseNum(input.value);
+    // Fallback: try the Knack input wrapper
+    var wrapped = document.querySelector('#view_3490 input[name="' + LUMP_DISCOUNT_FIELD + '"]');
+    if (wrapped) return parseNum(wrapped.value);
+    return 0;
+  }
+
+  function formatMoney(n) {
+    return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** Calculate totals from grid DOM and build the custom layout. */
   function restructureTotals() {
     var view = document.getElementById('view_3418');
     if (!view) return;
@@ -184,15 +221,15 @@
     var existing = view.querySelector('.scw-totals-custom');
     if (existing) existing.remove();
 
-    // Read values by field ID (from actual Knack DOM structure)
-    var retail      = fv(view, 'field_2160');  // Equipment Retail
-    var discount    = fv(view, 'field_2299');  // Total Equipment Discount
-    var discountPct = fv(view, 'field_2300');  // Total Discount %
-    var eqTotal     = fv(view, 'field_2298');  // Equipment Total
-    var installTotal = fv(view, 'field_2161'); // Installation Total
-    var projTotal   = fv(view, 'field_2200');  // Project Total
-
-    if (!retail && !discount && !eqTotal && !installTotal && !projTotal) return;
+    // ── Calculate from grid DOM ──
+    var retail       = sumGridField(EQUIPMENT_VIEWS, RETAIL_FIELD);
+    var lineDiscount = sumGridField(EQUIPMENT_VIEWS, DISCOUNT_FIELD);
+    var lumpDiscount = getLumpDiscount();
+    var discount     = Math.abs(lineDiscount) + Math.abs(lumpDiscount);
+    var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
+    var eqSubtotal   = retail - discount;
+    var installTotal = sumGridField(EQUIPMENT_VIEWS, INSTALL_FIELD);
+    var projTotal    = eqSubtotal + installTotal;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
@@ -204,20 +241,20 @@
 
     // ── EQUIPMENT ──
     layout.appendChild(createSectionHeader('Equipment'));
-    if (retail) layout.appendChild(createRow('Retail', retail));
-    if (discount) {
-      var discountDisplay = '- ' + discount;
-      if (discountPct) discountDisplay += ' (' + discountPct + ')';
+    layout.appendChild(createRow('Retail', formatMoney(retail)));
+    if (discount > 0) {
+      var discountDisplay = '- ' + formatMoney(discount);
+      if (discountPct > 0) discountDisplay += ' (' + discountPct.toFixed(1) + '%)';
       layout.appendChild(createRow('Discount', discountDisplay, 'discount'));
     }
-    if (eqTotal) layout.appendChild(createSubtotal('Subtotal', eqTotal));
+    layout.appendChild(createSubtotal('Subtotal', formatMoney(eqSubtotal)));
 
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
-    if (installTotal) layout.appendChild(createSubtotal('Subtotal', installTotal));
+    layout.appendChild(createSubtotal('Subtotal', formatMoney(installTotal)));
 
     // ── PROJECT TOTAL ──
-    if (projTotal) layout.appendChild(createGrandTotal('Project Total', projTotal));
+    layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
 
     view.appendChild(layout);
   }

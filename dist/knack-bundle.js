@@ -1245,13 +1245,50 @@ window.SCW = window.SCW || {};
     return div;
   }
 
-  /** Read a field value by its Knack field class (e.g. 'field_2160'). */
-  function fv(view, fieldClass) {
-    var el = view.querySelector('.' + fieldClass + ' .kn-detail-body');
-    return el ? el.textContent.trim() : null;
+  // ── Frontend calculation config ──
+  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];  // grids with equipment line items
+  var RETAIL_FIELD    = 'field_1960';                 // per-row retail price
+  var DISCOUNT_FIELD  = 'field_2303';                 // per-row applied discount
+  var INSTALL_FIELD   = 'field_2028';                 // per-row installation fee
+  var LUMP_DISCOUNT_FIELD = 'field_2290';             // additional lump sum discount (view_3490 form)
+
+  /** Parse a currency / number string into a float. Returns 0 for non-numeric. */
+  function parseNum(text) {
+    if (!text) return 0;
+    var raw = text.replace(/[^0-9.\-]/g, '');
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : 0;
   }
 
-  /** Build the custom grouped totals layout from Knack field data. */
+  /** Sum a Knack field across all data rows in the given grid views. */
+  function sumGridField(viewIds, fieldKey) {
+    var total = 0;
+    for (var v = 0; v < viewIds.length; v++) {
+      var table = document.querySelector('#' + viewIds[v] + ' table.kn-table tbody');
+      if (!table) continue;
+      var cells = table.querySelectorAll('tr[id] td.' + fieldKey);
+      for (var i = 0; i < cells.length; i++) {
+        total += parseNum(cells[i].textContent);
+      }
+    }
+    return total;
+  }
+
+  /** Read the lump sum discount from the view_3490 form input. */
+  function getLumpDiscount() {
+    var input = document.querySelector('#view_3490 #' + LUMP_DISCOUNT_FIELD);
+    if (input) return parseNum(input.value);
+    // Fallback: try the Knack input wrapper
+    var wrapped = document.querySelector('#view_3490 input[name="' + LUMP_DISCOUNT_FIELD + '"]');
+    if (wrapped) return parseNum(wrapped.value);
+    return 0;
+  }
+
+  function formatMoney(n) {
+    return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** Calculate totals from grid DOM and build the custom layout. */
   function restructureTotals() {
     var view = document.getElementById('view_3418');
     if (!view) return;
@@ -1260,15 +1297,15 @@ window.SCW = window.SCW || {};
     var existing = view.querySelector('.scw-totals-custom');
     if (existing) existing.remove();
 
-    // Read values by field ID (from actual Knack DOM structure)
-    var retail      = fv(view, 'field_2160');  // Equipment Retail
-    var discount    = fv(view, 'field_2299');  // Total Equipment Discount
-    var discountPct = fv(view, 'field_2300');  // Total Discount %
-    var eqTotal     = fv(view, 'field_2298');  // Equipment Total
-    var installTotal = fv(view, 'field_2161'); // Installation Total
-    var projTotal   = fv(view, 'field_2200');  // Project Total
-
-    if (!retail && !discount && !eqTotal && !installTotal && !projTotal) return;
+    // ── Calculate from grid DOM ──
+    var retail       = sumGridField(EQUIPMENT_VIEWS, RETAIL_FIELD);
+    var lineDiscount = sumGridField(EQUIPMENT_VIEWS, DISCOUNT_FIELD);
+    var lumpDiscount = getLumpDiscount();
+    var discount     = Math.abs(lineDiscount) + Math.abs(lumpDiscount);
+    var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
+    var eqSubtotal   = retail - discount;
+    var installTotal = sumGridField(EQUIPMENT_VIEWS, INSTALL_FIELD);
+    var projTotal    = eqSubtotal + installTotal;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
@@ -1280,20 +1317,20 @@ window.SCW = window.SCW || {};
 
     // ── EQUIPMENT ──
     layout.appendChild(createSectionHeader('Equipment'));
-    if (retail) layout.appendChild(createRow('Retail', retail));
-    if (discount) {
-      var discountDisplay = '- ' + discount;
-      if (discountPct) discountDisplay += ' (' + discountPct + ')';
+    layout.appendChild(createRow('Retail', formatMoney(retail)));
+    if (discount > 0) {
+      var discountDisplay = '- ' + formatMoney(discount);
+      if (discountPct > 0) discountDisplay += ' (' + discountPct.toFixed(1) + '%)';
       layout.appendChild(createRow('Discount', discountDisplay, 'discount'));
     }
-    if (eqTotal) layout.appendChild(createSubtotal('Subtotal', eqTotal));
+    layout.appendChild(createSubtotal('Subtotal', formatMoney(eqSubtotal)));
 
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
-    if (installTotal) layout.appendChild(createSubtotal('Subtotal', installTotal));
+    layout.appendChild(createSubtotal('Subtotal', formatMoney(installTotal)));
 
     // ── PROJECT TOTAL ──
-    if (projTotal) layout.appendChild(createGrandTotal('Project Total', projTotal));
+    layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
 
     view.appendChild(layout);
   }
@@ -11562,7 +11599,7 @@ $(".kn-navigation-bar").hide();
     });
   });
 })();
-/*** Refresh view_3418 on scene_1116 after inline edits or form submissions ***/
+/*** Recalculate totals on scene_1116 after inline edits or form submissions ***/
 (function () {
   'use strict';
 
@@ -11571,87 +11608,19 @@ $(".kn-navigation-bar").hide();
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   var NS = '.scwRefreshTarget';
 
-  var AUTH_HEADERS = {
-    'X-Knack-Application-Id': Knack.application_id,
-    'x-knack-rest-api-key': 'knack',
-    'Content-Type': 'application/json'
-  };
-
-  function getAuthHeaders() {
-    var h = {};
-    for (var k in AUTH_HEADERS) h[k] = AUTH_HEADERS[k];
-    h['Authorization'] = Knack.getUserToken();
-    return h;
-  }
-
-  /** Touch the parent record with an empty PUT to force Knack to
-   *  recalculate aggregate / sum / formula fields, then fetch + render. */
-  function doRefresh() {
-    try {
-      var v = Knack.views[TARGET_VIEW];
-      if (!v) return;
-      if (!v.model || !v.model.id) return;
-
-      var recordId = v.model.id;
-      var objectKey = (v.model.view && v.model.view.source && v.model.view.source.object) || '';
-
-      // Step 1 — touch the parent record (empty PUT forces aggregate recalc)
-      var touchUrl = objectKey
-        ? Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId
-        : Knack.api_url + '/v1/pages/' + SCENE + '/views/' + TARGET_VIEW + '/records/' + recordId;
-
-      console.log('[scw-refresh] Touching parent record ' + recordId + ' to force recalc');
-
-      $.ajax({
-        url: touchUrl,
-        type: 'PUT',
-        headers: getAuthHeaders(),
-        data: JSON.stringify({}),
-        complete: function () {
-          // Step 2 — fetch fresh data (whether touch succeeded or not)
-          fetchAndRender(v, recordId);
-        }
-      });
-    } catch (e) {
-      console.warn('[scw-refresh] Could not refresh ' + TARGET_VIEW, e);
-    }
-  }
-
-  /** Fetch fresh record data from the API and re-render view_3418. */
-  function fetchAndRender(v, recordId) {
-    $.ajax({
-      url: Knack.api_url + '/v1/pages/' + SCENE + '/views/' + TARGET_VIEW + '/records/' + recordId,
-      type: 'GET',
-      headers: getAuthHeaders(),
-      success: function (data) {
-        console.log('[scw-refresh] Got fresh record data, rendering');
-        v.record = data;
-        if (v.model && v.model.attributes) {
-          for (var key in data) {
-            if (data.hasOwnProperty(key)) {
-              v.model.attributes[key] = data[key];
-            }
-          }
-        }
-        if (typeof v.render === 'function') v.render();
-        setTimeout(function () {
-          if (window.SCW && SCW.restructureTotals) SCW.restructureTotals();
-        }, 150);
-      },
-      error: function (xhr) {
-        console.warn('[scw-refresh] API fetch failed', xhr.status, xhr.statusText);
-        if (typeof v.render === 'function') v.render();
-        setTimeout(function () {
-          if (window.SCW && SCW.restructureTotals) SCW.restructureTotals();
-        }, 150);
-      }
-    });
-  }
-
+  /** Recalculate totals from grid DOM — no API calls needed. */
   function refreshTarget() {
-    console.log('[scw-refresh] Scheduling refresh of ' + TARGET_VIEW);
-    setTimeout(doRefresh, 2000);
-    setTimeout(doRefresh, 5000);
+    if (!window.SCW || typeof SCW.restructureTotals !== 'function') return;
+    if (!document.getElementById(TARGET_VIEW)) return;
+    console.log('[scw-refresh] Recalculating totals from grid DOM');
+    SCW.restructureTotals();
+  }
+
+  /** Debounced version for rapid-fire events (e.g. multiple cell updates). */
+  var debounceTimer = null;
+  function refreshDebounced() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(refreshTarget, 300);
   }
 
   // --- form submissions (knack-form-submit.viewId) ---
@@ -11659,7 +11628,8 @@ $(".kn-navigation-bar").hide();
     $(document).off('knack-form-submit.' + formViewId + NS)
                .on('knack-form-submit.' + formViewId + NS, function () {
       console.log('[scw-refresh] Form submit detected on ' + formViewId);
-      refreshTarget();
+      // Small delay to let Knack update the form input values after submit
+      setTimeout(refreshTarget, 500);
     });
   });
 
@@ -11668,12 +11638,12 @@ $(".kn-navigation-bar").hide();
     $(document).off('knack-record-create.' + formViewId + NS)
                .on('knack-record-create.' + formViewId + NS, function () {
       console.log('[scw-refresh] Record create detected on ' + formViewId);
-      refreshTarget();
+      setTimeout(refreshTarget, 500);
     });
     $(document).off('knack-record-update.' + formViewId + NS)
                .on('knack-record-update.' + formViewId + NS, function () {
       console.log('[scw-refresh] Record update detected on ' + formViewId);
-      refreshTarget();
+      setTimeout(refreshTarget, 500);
     });
   });
 
@@ -11688,7 +11658,7 @@ $(".kn-navigation-bar").hide();
       $(document).off('knack-cell-update.' + viewId + NS)
                  .on('knack-cell-update.' + viewId + NS, function () {
         console.log('[scw-refresh] Cell update detected on ' + viewId);
-        refreshTarget();
+        refreshDebounced();
       });
     });
   });
@@ -11698,7 +11668,9 @@ $(".kn-navigation-bar").hide();
              .on('scw-record-saved' + NS, function () {
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
       console.log('[scw-refresh] Direct edit save detected');
-      refreshTarget();
+      // Delay to let Knack re-render the grid row with updated values
+      setTimeout(refreshTarget, 1000);
+      setTimeout(refreshTarget, 3000);
     }
   });
 })();
