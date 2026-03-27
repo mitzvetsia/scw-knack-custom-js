@@ -1759,36 +1759,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   color: inherit;
   text-decoration: none;
 }
-/* ── view_3596: contain width so nothing overflows the viewport ── */
-#view_3596 .kn-table-wrapper {
-  overflow: hidden;
-  max-width: 100%;
-}
-#view_3596 table.kn-table-table,
-#view_3596 table.kn-table {
-  table-layout: fixed;
-  width: 100%;
-}
+/* ── view_3596: prevent overflow, align summary ── */
 #view_3596 .${P}-card {
   overflow: hidden;
   max-width: 100%;
-  box-sizing: border-box;
 }
 #view_3596 .${P}-summary {
   align-items: flex-start;
-  flex-wrap: nowrap;
-  overflow: hidden;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-#view_3596 .${P}-toggle-zone {
-  min-width: 0;
-  overflow: hidden;
-  flex-shrink: 1;
-}
-#view_3596 .${P}-identity {
-  min-width: 0;
-  overflow: hidden;
 }
 #view_3596 .${P}-sum-group--fill {
   min-width: 0;
@@ -1798,10 +1775,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-direct-input {
   width: 100%;
   box-sizing: border-box;
-}
-#view_3596 td[colspan] {
-  overflow: hidden;
-  max-width: 0;
 }
 `;
 
