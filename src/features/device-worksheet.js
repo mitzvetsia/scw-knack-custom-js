@@ -367,9 +367,9 @@
           exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, chitLabel: 'Exterior' },
 
           // ── Detail panel ──
-          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
         },
         summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit'],
         detailLayout: {
@@ -1750,6 +1750,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     : '';
 }).filter(Boolean).join('\n\n')}
 
+/* ── view_3596: summary border on top, not bottom ── */
+#view_3596 .${P}-summary {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+}
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
@@ -4190,6 +4195,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         card.appendChild(photoWrap);
         // Mark the original photo <tr> as absorbed so it stays hidden
         photoRow.classList.add(P + '-photo-absorbed');
+
+        // For photoAlwaysVisible views, hide the strip when there
+        // are no actual photo records (only the "+ Add" button).
+        if (viewCfg.photoAlwaysVisible && !photoWrap.querySelector('.scw-inline-photo-card')) {
+          photoWrap.classList.add(P + '-photo-hidden');
+        }
       }
     }
 
