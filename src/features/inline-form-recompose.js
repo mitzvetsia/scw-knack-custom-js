@@ -46,14 +46,9 @@
 /* ── Side-by-side layout ── */
 .${P}-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 16px;
   align-items: stretch;
-}
-@media (max-width: 800px) {
-  .${P}-layout {
-    grid-template-columns: 1fr;
-  }
 }
 .${P}-layout-left {
   display: flex;
