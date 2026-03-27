@@ -14,6 +14,7 @@
     {
       scene: 'scene_1116',
       hostViewId: 'view_3418',         // panel inserted after this view
+      moduleTitle: 'Adjust Pricing',
       forms: [
         {
           viewId: 'view_3492',
@@ -40,22 +41,34 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css = `
-/* ── Inline Form Recompose — compact pricing panel ── */
+/* ── Inline Form Recompose — Adjust Pricing module ── */
 .${P}-panel {
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
-  padding: 16px 20px;
-  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  padding: 14px 18px 12px;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
+/* ── Module eyebrow title ── */
+.${P}-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
 /* ── Form section: each form view moved into the panel ── */
 .${P}-panel .${P}-section {
-  padding: 12px 0;
+  padding: 8px 0;
 }
 .${P}-panel .${P}-section + .${P}-section {
   border-top: 1px solid #f1f5f9;
@@ -67,45 +80,58 @@
   padding-bottom: 0;
 }
 
-/* Section label (injected above the form) */
+/* Section label — control label style */
 .${P}-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+/* ── Setting-row layout: label + input side by side ── */
+.${P}-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.${P}-setting-row .${P}-label {
+  margin-bottom: 0;
+  min-width: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.${P}-setting-row .${P}-input-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: 200px;
 }
 
 /* ── Hide native Knack form chrome ── */
-/* View headers (accordion titles, view titles) */
 .${P}-section .view-header {
   display: none !important;
 }
-/* Form field labels (we show our own compact label) */
 .${P}-section .kn-input > label {
   display: none !important;
 }
-/* Form instructions / help text */
 .${P}-section .kn-instructions,
 .${P}-section .kn-form-group .kn-help-text {
   display: none !important;
 }
-/* Extra form margins/padding */
 .${P}-section .kn-form-group {
   margin: 0 !important;
   padding: 0 !important;
 }
 .${P}-section .kn-input {
-  margin-bottom: 6px !important;
+  margin-bottom: 4px !important;
   padding: 0 !important;
 }
 .${P}-section .kn-input:last-of-type {
   margin-bottom: 0 !important;
 }
-/* Submit wrapper — make it inline */
 .${P}-section .kn-submit {
-  margin: 6px 0 0 !important;
+  margin: 4px 0 0 !important;
   padding: 0 !important;
 }
 /* Hidden submit button (still in DOM for programmatic click) */
@@ -121,65 +147,77 @@
   margin: -1px !important;
 }
 
-/* ── Restyle native inputs ── */
+/* ── Restyle native inputs — compact, setting-like ── */
 .${P}-section input[type="text"],
 .${P}-section input[type="number"],
 .${P}-section input[type="email"],
 .${P}-section select {
-  font-size: 14px !important;
-  padding: 6px 10px !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: 6px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 5px 8px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 5px !important;
   background: transparent !important;
   color: #1e293b !important;
   outline: none !important;
   box-shadow: none !important;
-  transition: background 0.4s, border-color 0.15s;
+  transition: background 0.4s, border-color 0.2s, box-shadow 0.2s;
   height: auto !important;
-  line-height: 1.5 !important;
+  line-height: 1.4 !important;
   width: 100% !important;
   max-width: 100% !important;
+  font-variant-numeric: tabular-nums;
+}
+.${P}-section input[type="text"]:hover,
+.${P}-section input[type="number"]:hover {
+  border-color: #cbd5e1 !important;
 }
 .${P}-section input[type="text"]:focus,
 .${P}-section input[type="number"]:focus {
   border-color: #163C6E !important;
-  box-shadow: 0 0 0 2px rgba(22,60,110,0.12) !important;
+  box-shadow: 0 0 0 2px rgba(22,60,110,0.10) !important;
+  background: #fafbfc !important;
 }
 
 .${P}-section textarea {
   width: 100% !important;
-  font-size: 13px !important;
-  padding: 8px 10px !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: 6px !important;
+  font-size: 12px !important;
+  padding: 6px 8px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 5px !important;
   background: transparent !important;
   color: #1e293b !important;
   outline: none !important;
   box-shadow: none !important;
-  min-height: 60px;
+  min-height: 48px;
   resize: vertical;
-  line-height: 1.5 !important;
+  line-height: 1.4 !important;
   font-family: inherit !important;
+  transition: background 0.4s, border-color 0.2s, box-shadow 0.2s;
+}
+.${P}-section textarea:hover {
+  border-color: #cbd5e1 !important;
 }
 .${P}-section textarea:focus {
   border-color: #163C6E !important;
-  box-shadow: 0 0 0 2px rgba(22,60,110,0.12) !important;
+  box-shadow: 0 0 0 2px rgba(22,60,110,0.10) !important;
+  background: #fafbfc !important;
 }
 
 /* ── Submit button ── */
 .${P}-section .kn-submit button,
 .${P}-section .kn-submit input[type="submit"] {
-  font-size: 12px !important;
+  font-size: 11px !important;
   font-weight: 600 !important;
-  padding: 6px 14px !important;
+  padding: 5px 12px !important;
   background: #163C6E !important;
   color: #fff !important;
   border: none !important;
-  border-radius: 6px !important;
+  border-radius: 5px !important;
   cursor: pointer !important;
   white-space: nowrap;
   transition: background 0.15s;
-  line-height: 1.5 !important;
+  line-height: 1.4 !important;
   height: auto !important;
   width: auto !important;
 }
@@ -194,29 +232,34 @@
 }
 .${P}-section .kn-message.is-danger,
 .${P}-section .kn-message.error {
-  font-size: 12px !important;
-  padding: 6px 12px !important;
-  border-radius: 6px !important;
-  margin: 6px 0 0 !important;
+  font-size: 11px !important;
+  padding: 4px 10px !important;
+  border-radius: 5px !important;
+  margin: 4px 0 0 !important;
   background: #fef2f2 !important;
   border: 1px solid #fca5a5 !important;
   color: #991b1b !important;
 }
 
-/* Enter hint for textarea forms */
+/* Enter hint — only visible on focus within section */
 .${P}-hint {
-  font-size: 10px;
-  color: #94a3b8;
+  font-size: 9px;
+  color: #c1c9d4;
   text-align: right;
   margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.${P}-section:focus-within .${P}-hint {
+  opacity: 1;
 }
 
 /* Sub-label for textarea fields */
 .${P}-sub-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 500;
   color: #94a3b8;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 `;
     var style = document.createElement('style');
@@ -432,6 +475,14 @@
     panel.className = P + '-panel';
     panel.id = panelId;
 
+    // Module title
+    if (panelCfg.moduleTitle) {
+      var title = document.createElement('div');
+      title.className = P + '-title';
+      title.textContent = panelCfg.moduleTitle;
+      panel.appendChild(title);
+    }
+
     var hasContent = false;
     for (var i = 0; i < panelCfg.forms.length; i++) {
       var formCfg = panelCfg.forms[i];
@@ -440,17 +491,24 @@
       var section = document.createElement('div');
       section.className = P + '-section';
 
-      // Add compact label
-      var label = document.createElement('div');
-      label.className = P + '-label';
-      label.textContent = formCfg.compactLabel || '';
-      section.appendChild(label);
-
       // Check for textarea hint
       var hasTextarea = false;
       var viewEl = document.getElementById(formCfg.viewId);
       if (viewEl) {
         hasTextarea = !!viewEl.querySelector('.kn-input textarea');
+      }
+
+      // Add compact label — use setting-row layout for non-textarea fields
+      if (formCfg.compactLabel && !hasTextarea) {
+        var label = document.createElement('div');
+        label.className = P + '-label';
+        label.textContent = formCfg.compactLabel;
+        section.appendChild(label);
+      } else if (formCfg.compactLabel) {
+        var label = document.createElement('div');
+        label.className = P + '-label';
+        label.textContent = formCfg.compactLabel;
+        section.appendChild(label);
       }
 
       // Enhance and move the form into section
@@ -459,7 +517,7 @@
         if (formCfg.enterToSubmit && hasTextarea) {
           var hint = document.createElement('div');
           hint.className = P + '-hint';
-          hint.textContent = 'Enter to submit · Shift+Enter for newline';
+          hint.textContent = 'Enter to submit \u00b7 Shift+Enter for newline';
           section.appendChild(hint);
         }
         panel.appendChild(section);

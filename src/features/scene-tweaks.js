@@ -12,67 +12,70 @@
 /* ── Totals details view (view_3418) — card treatment ── */
 #view_3418 {
   background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
-  padding: 20px 24px 16px;
-  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  padding: 14px 18px 10px;
+  margin-bottom: 4px;
 }
 #view_3418 .view-header {
-  margin-bottom: 14px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid #163C6E;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
 }
 #view_3418 .view-header h2 {
-  font-size: 18px !important;
+  font-size: 11px !important;
   font-weight: 700 !important;
-  color: #163C6E !important;
-  letter-spacing: 0.02em;
+  color: #64748b !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   margin: 0 !important;
 }
 /* Detail field rows */
 #view_3418 .kn-detail.kn-detail-body .kn-detail-body-item {
-  padding: 6px 0;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 4px 0;
+  border-bottom: none;
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
 }
-#view_3418 .kn-detail-body-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-/* Labels */
+/* Labels — quiet, small, secondary */
 #view_3418 .kn-detail-body-item .kn-detail-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  min-width: 160px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  min-width: 180px;
   flex-shrink: 0;
 }
-/* Values */
+/* Values — clear, readable */
 #view_3418 .kn-detail-body-item .kn-detail-body {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #1e293b;
+  font-variant-numeric: tabular-nums;
 }
 /* Project Total — hero treatment (last row) */
 #view_3418 .kn-detail-body-item:last-child {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 2px solid #163C6E;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #cbd5e1;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 #view_3418 .kn-detail-body-item:last-child .kn-detail-label {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   color: #163C6E;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 #view_3418 .kn-detail-body-item:last-child .kn-detail-body {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
   color: #163C6E;
+  letter-spacing: -0.01em;
 }
 
 /* view_3492 / view_3490 form styling now handled by inline-form-recompose.js */
