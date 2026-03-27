@@ -16,14 +16,12 @@
       hostViewId: 'view_3418',         // panel inserted beside/after this view
       moduleTitle: 'Adjust Pricing',
       layout: 'side-by-side',          // grid: totals left, controls right
-      heroTotal: true,                 // extract last detail row as hero card
       forms: [
         {
           viewId: 'view_3492',
           compactLabel: 'Global Discount %',
           enterToSubmit: true,
-          hideButton: true,
-          percentSuffix: true           // show "%" badge on input
+          hideButton: true
         },
         {
           viewId: 'view_3490',
@@ -50,7 +48,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 @media (max-width: 800px) {
   .${P}-layout {
@@ -60,29 +58,13 @@
 .${P}-layout-left {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
-
-/* ── Project Total hero card ── */
-.${P}-hero {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-  padding: 16px 24px;
+.${P}-layout-left > * {
+  flex: 1;
 }
-.${P}-hero-label {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 2px;
-}
-.${P}-hero-value {
-  font-size: 28px;
-  font-weight: 800;
-  color: #163C6E;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+.${P}-layout-right {
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Pricing panel (right column) ── */
@@ -95,6 +77,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  flex: 1;
 }
 
 /* ── Module title ── */
@@ -125,32 +108,6 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 8px;
-}
-
-/* ── Percent suffix input group ── */
-.${P}-suffix-wrap {
-  display: flex;
-  align-items: stretch;
-}
-.${P}-suffix-wrap input {
-  border-top-right-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  border-right: none !important;
-  flex: 1;
-  min-width: 0;
-}
-.${P}-suffix {
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  background: #f1f5f9;
-  border: 1px solid #d1d5db;
-  border-left: none;
-  border-radius: 0 6px 6px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-  flex-shrink: 0;
 }
 
 /* ── Textarea group (label + textarea in shared border) ── */
@@ -448,52 +405,6 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  HERO TOTAL — extract last detail row into standalone card
-  // ══════════════════════════════════════════════════════════════
-
-  function updateHeroTotal(panelCfg, leftCol) {
-    var hostView = document.getElementById(panelCfg.hostViewId);
-    if (!hostView) return;
-
-    var heroId = P + '-hero-' + panelCfg.scene;
-    var items = hostView.querySelectorAll('.kn-detail-body-item');
-    if (!items.length) return;
-
-    var lastItem = items[items.length - 1];
-    var labelEl = lastItem.querySelector('.kn-detail-label');
-    var valueEl = lastItem.querySelector('.kn-detail-body');
-    if (!labelEl || !valueEl) return;
-
-    var labelText = labelEl.textContent.trim();
-    var valueText = valueEl.textContent.trim();
-
-    // Hide the last row in the original view
-    lastItem.style.display = 'none';
-
-    var hero = document.getElementById(heroId);
-    if (hero) {
-      hero.querySelector('.' + P + '-hero-label').textContent = labelText;
-      hero.querySelector('.' + P + '-hero-value').textContent = valueText;
-    } else {
-      hero = document.createElement('div');
-      hero.id = heroId;
-      hero.className = P + '-hero';
-
-      var hLabel = document.createElement('div');
-      hLabel.className = P + '-hero-label';
-      hLabel.textContent = labelText;
-
-      var hValue = document.createElement('div');
-      hValue.className = P + '-hero-value';
-      hValue.textContent = valueText;
-
-      hero.appendChild(hLabel);
-      hero.appendChild(hValue);
-      leftCol.appendChild(hero);
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════
   //  CORE — enhance one form view in-place, move into panel
   // ══════════════════════════════════════════════════════════════
 
@@ -521,22 +432,6 @@
 
     // Apply currency formatting
     applyCurrencyFormatting(viewEl, formCfg.fields);
-
-    // Inject percent suffix badge
-    if (formCfg.percentSuffix) {
-      var pctInput = viewEl.querySelector('.kn-input input[type="text"], .kn-input input[type="number"]');
-      if (pctInput && !pctInput.getAttribute('data-scw-pct-suffix')) {
-        pctInput.setAttribute('data-scw-pct-suffix', '1');
-        var suffixWrap = document.createElement('div');
-        suffixWrap.className = P + '-suffix-wrap';
-        pctInput.parentNode.insertBefore(suffixWrap, pctInput);
-        suffixWrap.appendChild(pctInput);
-        var suffixEl = document.createElement('span');
-        suffixEl.className = P + '-suffix';
-        suffixEl.textContent = '%';
-        suffixWrap.appendChild(suffixEl);
-      }
-    }
 
     // Wrap textarea with floating label
     if (formCfg.textareaLabel) {
@@ -628,11 +523,7 @@
           break;
         }
       }
-      if (allApplied) {
-        // Still update hero total in case hostView re-rendered
-        if (panelCfg.heroTotal && cols) updateHeroTotal(panelCfg, cols.left);
-        return;
-      }
+      if (allApplied) return;
       // A form was re-rendered — rebuild the panel
       var insertRef = cols ? cols.right : hostView.parentNode;
       for (var r = 0; r < panelCfg.forms.length; r++) {
@@ -685,8 +576,8 @@
           var hint = document.createElement('div');
           hint.className = P + '-hint';
           hint.textContent = hasTextarea
-            ? 'Press Enter to apply \u00b7 Shift+Enter for newline'
-            : 'Press Enter to apply';
+            ? 'press tab or enter to apply \u00b7 shift+enter for newline'
+            : 'press tab or enter to apply';
           section.appendChild(hint);
         }
         panel.appendChild(section);
@@ -701,11 +592,6 @@
       cols.right.appendChild(panel);
     } else {
       hostView.insertAdjacentElement('afterend', panel);
-    }
-
-    // Extract hero total
-    if (panelCfg.heroTotal && cols) {
-      updateHeroTotal(panelCfg, cols.left);
     }
 
     // Flash green on forms that just submitted
@@ -782,20 +668,6 @@
         })(panelCfg), NS);
       }
 
-      // Bind on host view render (to update hero total)
-      SCW.onViewRender(panelCfg.hostViewId, (function (cfg) {
-        return function () {
-          setTimeout(function () {
-            if (cfg.heroTotal && cfg.layout === 'side-by-side') {
-              var layoutEl = document.getElementById(P + '-layout-' + cfg.scene);
-              if (layoutEl) {
-                var leftCol = layoutEl.querySelector('.' + P + '-layout-left');
-                if (leftCol) updateHeroTotal(cfg, leftCol);
-              }
-            }
-          }, 150);
-        };
-      })(panelCfg), NS);
     }
   }
 

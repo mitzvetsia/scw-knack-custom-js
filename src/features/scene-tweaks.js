@@ -1,10 +1,13 @@
 /*** Per-scene visual tweaks — organized by scene ID ***/
 (function () {
   'use strict';
-  var STYLE_ID = 'scw-scene-tweaks-css';
-  if (document.getElementById(STYLE_ID)) return;
 
-  var css = `
+  // ══════════════════════════════════════════════════════════════
+  //  CSS
+  // ══════════════════════════════════════════════════════════════
+  var STYLE_ID = 'scw-scene-tweaks-css';
+  if (!document.getElementById(STYLE_ID)) {
+    var css = `
 /* ══════════════════════════════════════════════════════════════
    SCENE 1116 — Sales Edit Proposal
    ══════════════════════════════════════════════════════════════ */
@@ -69,7 +72,7 @@
   padding: 10px 16px;
   font-variant-numeric: tabular-nums;
 }
-/* Project Total row — bold emphasis (last row before hero extraction) */
+/* Project Total row — bold emphasis */
 #view_3418 .kn-detail-body-item:last-child .kn-detail-label {
   font-weight: 700;
 }
@@ -79,11 +82,48 @@
   color: #1e293b;
 }
 
+/* ── field_2299 (Total Equipment Discount) — green italic with dash prefix ── */
+#view_3418 .field_2299 {
+  color: #16a34a !important;
+  font-style: italic;
+}
+
 /* view_3492 / view_3490 form styling now handled by inline-form-recompose.js */
 `;
 
-  var style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = css;
-  document.head.appendChild(style);
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  JS — format field_2299 discount value with "-" prefix
+  // ══════════════════════════════════════════════════════════════
+  var NS = '.scwSceneTweaks';
+  var FMT_ATTR = 'data-scw-discount-fmt';
+
+  function formatDiscountField() {
+    var view = document.getElementById('view_3418');
+    if (!view) return;
+    var el = view.querySelector('.field_2299');
+    if (!el || el.getAttribute(FMT_ATTR)) return;
+    el.setAttribute(FMT_ATTR, '1');
+    var text = el.textContent.trim();
+    if (text && text.charAt(0) !== '-') {
+      el.textContent = '- ' + text;
+    }
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender('view_3418', function () {
+      setTimeout(formatDiscountField, 100);
+    }, NS);
+    // Also run now
+    setTimeout(formatDiscountField, 200);
+  } else {
+    $(document).ready(function () {
+      setTimeout(formatDiscountField, 200);
+    });
+  }
 })();
