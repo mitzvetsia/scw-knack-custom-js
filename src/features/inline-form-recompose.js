@@ -403,6 +403,12 @@
       // Also flash after Knack re-renders (fresh DOM)
       formCfg._flashOnRender = true;
 
+      // Re-format fields after Knack re-renders with raw values
+      // knackToDisplay guards against double-conversion (skips if already has %/$)
+      var vid = formCfg.viewId;
+      setTimeout(function () { reformatAfterRender(vid); }, 1200);
+      setTimeout(function () { reformatAfterRender(vid); }, 2500);
+
       // Lock scroll
       var savedY = window.scrollY;
       var origScrollTo = window.scrollTo;
