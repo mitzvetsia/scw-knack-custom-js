@@ -171,28 +171,35 @@
 
   // ── Frontend calculation config ──
   var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];  // grids with equipment line items
-  var RETAIL_FIELD    = 'field_1960';                 // per-row retail price
-  var DISCOUNT_FIELD  = 'field_2303';                 // per-row applied discount
-  var INSTALL_FIELD   = 'field_2028';                 // per-row installation fee
   var LUMP_DISCOUNT_FIELD = 'field_2290';             // additional lump sum discount (view_3490 form)
 
-  /** Parse a currency / number string into a float. Returns 0 for non-numeric. */
-  function parseNum(text) {
-    if (!text) return 0;
-    var raw = text.replace(/[^0-9.\-]/g, '');
+  /** Parse a raw Knack field value to a number. Handles strings, numbers, and _raw values. */
+  function parseNum(val) {
+    if (typeof val === 'number') return isFinite(val) ? val : 0;
+    if (!val) return 0;
+    var raw = String(val).replace(/[^0-9.\-]/g, '');
     var n = parseFloat(raw);
     return isFinite(n) ? n : 0;
   }
 
-  /** Sum a Knack field across all data rows in the given grid views. */
-  function sumGridField(viewIds, fieldKey) {
+  /** Sum a field across all records in Knack's model data for the given views. */
+  function sumModelField(viewIds, fieldKey) {
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
-      var table = document.querySelector('#' + viewIds[v] + ' table.kn-table tbody');
-      if (!table) continue;
-      var cells = table.querySelectorAll('tr[id] td.' + fieldKey);
-      for (var i = 0; i < cells.length; i++) {
-        total += parseNum(cells[i].textContent);
+      var viewObj = Knack.views[viewIds[v]];
+      if (!viewObj || !viewObj.model || !viewObj.model.data) continue;
+      var records = viewObj.model.data.models || viewObj.model.data;
+      if (!records) continue;
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i];
+        var attrs = rec.attributes || rec;
+        // Prefer _raw numeric value, fall back to formatted string
+        var rawVal = attrs[fieldKey + '_raw'];
+        if (rawVal !== undefined && rawVal !== null) {
+          total += parseNum(rawVal);
+        } else {
+          total += parseNum(attrs[fieldKey]);
+        }
       }
     }
     return total;
@@ -202,7 +209,6 @@
   function getLumpDiscount() {
     var input = document.querySelector('#view_3490 #' + LUMP_DISCOUNT_FIELD);
     if (input) return parseNum(input.value);
-    // Fallback: try the Knack input wrapper
     var wrapped = document.querySelector('#view_3490 input[name="' + LUMP_DISCOUNT_FIELD + '"]');
     if (wrapped) return parseNum(wrapped.value);
     return 0;
@@ -212,7 +218,7 @@
     return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  /** Calculate totals from grid DOM and build the custom layout. */
+  /** Calculate totals from Knack model data and build the custom layout. */
   function restructureTotals() {
     var view = document.getElementById('view_3418');
     if (!view) return;
@@ -221,14 +227,14 @@
     var existing = view.querySelector('.scw-totals-custom');
     if (existing) existing.remove();
 
-    // ── Calculate from grid DOM ──
-    var retail       = sumGridField(EQUIPMENT_VIEWS, RETAIL_FIELD);
-    var lineDiscount = sumGridField(EQUIPMENT_VIEWS, DISCOUNT_FIELD);
+    // ── Calculate from Knack model data ──
+    var retail       = sumModelField(EQUIPMENT_VIEWS, 'field_1960');  // per-row retail price
+    var lineDiscount = sumModelField(EQUIPMENT_VIEWS, 'field_2303');  // per-row applied discount
     var lumpDiscount = getLumpDiscount();
     var discount     = Math.abs(lineDiscount) + Math.abs(lumpDiscount);
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
-    var installTotal = sumGridField(EQUIPMENT_VIEWS, INSTALL_FIELD);
+    var installTotal = sumModelField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
     var projTotal    = eqSubtotal + installTotal;
 
     var layout = document.createElement('div');
