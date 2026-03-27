@@ -46,6 +46,9 @@
 .scw-totals-section-hdr:first-child {
   padding-top: 0;
 }
+.scw-totals-section-hdr + .scw-totals-subtotal {
+  border-top: none;
+}
 .scw-totals-row {
   display: flex;
   justify-content: space-between;
