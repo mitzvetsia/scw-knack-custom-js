@@ -266,14 +266,23 @@
   SCW.restructureTotals = restructureTotals;
 
   // ── Bind ──
+  // Debounced wrapper so we only run once after all views finish rendering
+  var _totalsTimer = null;
+  function debouncedTotals() {
+    clearTimeout(_totalsTimer);
+    _totalsTimer = setTimeout(restructureTotals, 300);
+  }
+
   if (window.SCW && SCW.onViewRender) {
-    SCW.onViewRender('view_3418', function () {
-      setTimeout(restructureTotals, 100);
-    }, NS);
-    setTimeout(restructureTotals, 200);
+    // Trigger after the totals container renders
+    SCW.onViewRender('view_3418', debouncedTotals, NS);
+    // Trigger after each equipment grid renders (these contain the actual data cells)
+    for (var ev = 0; ev < EQUIPMENT_VIEWS.length; ev++) {
+      SCW.onViewRender(EQUIPMENT_VIEWS[ev], debouncedTotals, NS);
+    }
   } else {
     $(document).ready(function () {
-      setTimeout(restructureTotals, 200);
+      setTimeout(restructureTotals, 1000);
     });
   }
 })();
