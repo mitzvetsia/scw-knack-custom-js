@@ -1374,13 +1374,15 @@ window.SCW = window.SCW || {};
 
   var NS = '.scwPctFmt';
   var APPLIED_ATTR = 'data-scw-pct';
+  var SUBMIT_BOUND = 'data-scw-pct-submit';
 
   // ══════════════════════════════════════════════════════════════
   //  CONFIG — field IDs that are percent fields (Knack stores decimal)
   // ══════════════════════════════════════════════════════════════
 
   var PERCENT_FIELDS = [
-    'field_2276'
+    'field_2276',
+    'field_2261'
   ];
 
   var PCT_SET = {};
@@ -1392,33 +1394,27 @@ window.SCW = window.SCW || {};
   //  CONVERSION HELPERS
   // ══════════════════════════════════════════════════════════════
 
-  /** Knack raw (0.20) → display whole number ("20"). Skips if already formatted. */
+  /** Knack raw (0.05) → display whole number ("5"). */
   function knackToDisplay(raw) {
-    var s = String(raw);
-    if (s.indexOf('%') !== -1) return s.replace(/[%\s]/g, '');
-    var num = parseFloat(s.replace(/[,%\s]/g, ''));
+    var s = String(raw).replace(/[%\s]/g, '');
+    var num = parseFloat(s);
     if (isNaN(num)) return raw;
     return String(Math.round(num * 100 * 10000) / 10000);
-  }
-
-  /** Strip display chrome for editing ("20%" → "20"). */
-  function stripForEdit(displayed) {
-    return String(displayed).replace(/[%\s]/g, '');
   }
 
   // ══════════════════════════════════════════════════════════════
   //  STRATEGY
   // ══════════════════════════════════════════════════════════════
   //
-  // Knack reads form values from its INTERNAL MODEL, not the DOM.
-  // The `change` event syncs DOM → model. So:
+  // Knack reads the DOM input value on form submit (not its model).
+  // So we must keep the input value as something Knack accepts as
+  // a valid number, and swap to the decimal right before submit.
   //
-  //   On load:  Knack raw 0.20 → display "20"
-  //   On focus: show "20" for editing
-  //   On blur:  1) set value to 0.20 (decimal)
-  //             2) trigger change → syncs Knack model to 0.20
-  //             3) set value to "20" (valid number — no % suffix)
-  //   On submit: Knack validates input as numeric, reads model for save.
+  //   On load:   Knack raw 0.05 → display "5" in input
+  //   Editing:   user types "5" (plain number, no conversion)
+  //   On submit: capture-phase handler converts "5" → "0.05",
+  //              Knack reads "0.05", saves it as 5%
+  //   After re-render: 0.05 → display "5" again
 
   function enhanceInput(input) {
     if (input.getAttribute(APPLIED_ATTR)) return;
@@ -1426,27 +1422,25 @@ window.SCW = window.SCW || {};
     if (input.closest && input.closest('.kn-table-table')) return;
     input.setAttribute(APPLIED_ATTR, '1');
 
-    // Convert Knack's raw value to display on load
+    // Convert Knack's raw decimal to whole number for display
     input.value = knackToDisplay(input.value);
 
-    // On focus: strip % so user sees plain number
-    $(input).off('focus' + NS).on('focus' + NS, function () {
-      input.value = stripForEdit(input.value);
-      input.select();
-    });
-
-    // On blur: sync Knack model with decimal, then show whole number
-    $(input).off('blur' + NS).on('blur' + NS, function () {
-      if (input._scwSubmitting) { input._scwSubmitting = false; return; }
-      var num = parseFloat(stripForEdit(input.value));
-      if (isNaN(num)) return;
-      var knackVal = num / 100;
-      // 1) Set decimal value and sync Knack's internal model
-      input.value = knackVal;
-      $(input).trigger('change');
-      // 2) Show whole number (no % suffix — avoids Knack numeric validation rejection)
-      input.value = num;
-    });
+    // Bind submit interceptor on the parent form (once per form)
+    var form = input.closest('form');
+    if (form && !form.getAttribute(SUBMIT_BOUND)) {
+      form.setAttribute(SUBMIT_BOUND, '1');
+      form.addEventListener('submit', function () {
+        // Convert all percent inputs in this form to decimals before Knack reads them
+        for (var j = 0; j < PERCENT_FIELDS.length; j++) {
+          var inp = form.querySelector('#' + PERCENT_FIELDS[j]);
+          if (!inp) continue;
+          var num = parseFloat(String(inp.value).replace(/[%\s]/g, ''));
+          if (!isNaN(num)) {
+            inp.value = String(num / 100);
+          }
+        }
+      }, true);  // capture phase — runs before Knack's handler
+    }
   }
 
   /** Scan the page (or a container) for percent field inputs and enhance them. */
@@ -1460,19 +1454,17 @@ window.SCW = window.SCW || {};
 
   /** Convert percent inputs to Knack values before submit.
    *  Only needed for programmatic submits (e.g. inline-form-recompose)
-   *  where the button click bypasses the normal blur → change flow. */
+   *  where the button click bypasses the normal submit flow. */
   function prepareForSubmit(container) {
     var root = container || document;
     for (var i = 0; i < PERCENT_FIELDS.length; i++) {
       var inp = root.querySelector('#' + PERCENT_FIELDS[i]);
       if (!inp) continue;
       if (inp._scwPctConverted) continue;
-      inp._scwSubmitting = true;
       inp._scwPctConverted = true;
-      var num = parseFloat(stripForEdit(inp.value));
+      var num = parseFloat(String(inp.value).replace(/[%\s]/g, ''));
       if (!isNaN(num)) {
         inp.value = String(num / 100);
-        $(inp).trigger('change');
       }
       // Clear flag after a tick
       (function (el) {
