@@ -93,9 +93,6 @@
   border-top: 2px solid #163C6E;
   margin-top: 8px;
 }
-.scw-totals-section-header + .scw-totals-subtotal {
-  border-top: none;
-}
 .scw-totals-grand-label {
   font-size: 13px;
   font-weight: 700;
