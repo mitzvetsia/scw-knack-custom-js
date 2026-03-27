@@ -1480,7 +1480,9 @@ window.SCW = window.SCW || {};
         });
 
         // On blur: re-add display formatting (no conversion — still user value)
+        // Skip if we're in the middle of a submit (prepareForSubmit already set the value)
         $(input).off('blur' + NS).on('blur' + NS, function () {
+          if (input._scwSubmitting) { input._scwSubmitting = false; return; }
           var num = parseFloat(stripForEdit(input.value));
           if (isNaN(num)) return;
           if (format === 'percent') input.value = num + '%';
@@ -1500,6 +1502,7 @@ window.SCW = window.SCW || {};
       if (!cfg.hasOwnProperty(fieldId)) continue;
       var inp = viewEl.querySelector('#' + fieldId);
       if (!inp) continue;
+      inp._scwSubmitting = true;  // tell blur handler to skip
       inp.value = userToKnack(inp.value, cfg[fieldId].format);
       $(inp).trigger('change');
     }
