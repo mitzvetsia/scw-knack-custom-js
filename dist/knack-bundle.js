@@ -16962,21 +16962,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   border-bottom: none;
   border-top: 1px solid #e5e7eb;
 }
-/* ── view_3596: hide "Description of Work" column header ── */
-#view_3596 th.field_2020 {
-  display: none !important;
-}
-/* ── view_3596: indent detail sections + photo wrap ── */
-#view_3596 .${P}-sections {
-  padding-left: 70px;
-}
-#view_3596 .${P}-photo-wrap {
-  padding-left: 70px;
-}
-/* ── view_3596: hide "Photos" label ── */
-#view_3596 .scw-inline-photo-label {
-  display: none;
-}
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
