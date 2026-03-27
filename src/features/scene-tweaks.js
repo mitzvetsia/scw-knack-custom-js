@@ -21,11 +21,11 @@
   padding: 20px 24px 16px;
   margin-bottom: 0;
 }
+/* Hide original Knack detail content — replaced by custom layout */
 #view_3418 .view-header {
   display: none !important;
 }
-/* Hide original detail body — replaced by custom layout */
-#view_3418 .kn-detail.kn-detail-body {
+#view_3418 .kn-details-column {
   display: none !important;
 }
 
@@ -120,7 +120,6 @@
   // ══════════════════════════════════════════════════════════════
   var NS = '.scwSceneTweaks';
 
-  /** Create a section header element. */
   function createSectionHeader(text) {
     var div = document.createElement('div');
     div.className = 'scw-totals-section-hdr';
@@ -128,7 +127,6 @@
     return div;
   }
 
-  /** Create a label + value row. */
   function createRow(label, value, modifier) {
     var div = document.createElement('div');
     div.className = 'scw-totals-row' + (modifier ? ' is-' + modifier : '');
@@ -143,7 +141,6 @@
     return div;
   }
 
-  /** Create a subtotal row. */
   function createSubtotal(label, value) {
     var div = document.createElement('div');
     div.className = 'scw-totals-subtotal';
@@ -158,7 +155,6 @@
     return div;
   }
 
-  /** Create the grand total row. */
   function createGrandTotal(label, value) {
     var div = document.createElement('div');
     div.className = 'scw-totals-grand';
@@ -173,70 +169,49 @@
     return div;
   }
 
-  /** Read Knack detail items into a label→value map. */
-  function readFieldMap(view) {
-    var map = {};
-    var items = view.querySelectorAll('.kn-detail-body-item');
-    for (var i = 0; i < items.length; i++) {
-      var labelEl = items[i].querySelector('.kn-detail-label');
-      var valueEl = items[i].querySelector('.kn-detail-body');
-      if (labelEl && valueEl) {
-        map[labelEl.textContent.trim()] = valueEl.textContent.trim();
-      }
-    }
-    return map;
+  /** Read a field value by its Knack field class (e.g. 'field_2160'). */
+  function fv(view, fieldClass) {
+    var el = view.querySelector('.' + fieldClass + ' .kn-detail-body');
+    return el ? el.textContent.trim() : null;
   }
 
-  /** Look up a value by partial label match. */
-  function val(map, label) {
-    if (map[label]) return map[label];
-    var lc = label.toLowerCase();
-    for (var key in map) {
-      if (key.toLowerCase().indexOf(lc) !== -1) return map[key];
-    }
-    return null;
-  }
-
-  /** Build the custom grouped totals layout. */
+  /** Build the custom grouped totals layout from Knack field data. */
   function restructureTotals() {
     var view = document.getElementById('view_3418');
     if (!view) return;
 
-    // Remove previous custom layout if rebuilding
+    // Remove previous custom layout if rebuilding after re-render
     var existing = view.querySelector('.scw-totals-custom');
     if (existing) existing.remove();
 
-    var fields = readFieldMap(view);
-    if (!Object.keys(fields).length) return;
+    // Read values by field ID (from actual Knack DOM structure)
+    var retail      = fv(view, 'field_2160');  // Equipment Retail
+    var discount    = fv(view, 'field_2299');  // Total Equipment Discount
+    var discountPct = fv(view, 'field_2300');  // Total Discount %
+    var eqTotal     = fv(view, 'field_2298');  // Equipment Total
+    var installTotal = fv(view, 'field_2161'); // Installation Total
+    var projTotal   = fv(view, 'field_2200');  // Project Total
+
+    if (!retail && !discount && !eqTotal && !installTotal && !projTotal) return;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
 
     // ── EQUIPMENT ──
     layout.appendChild(createSectionHeader('Equipment'));
-
-    var retail = val(fields, 'Equipment Retail');
     if (retail) layout.appendChild(createRow('Retail', retail));
-
-    var discount = val(fields, 'Total Equipment Discount');
-    var discountPct = val(fields, 'Total Discount %') || val(fields, 'Discount %');
     if (discount) {
       var discountDisplay = '- ' + discount;
       if (discountPct) discountDisplay += ' (' + discountPct + ')';
       layout.appendChild(createRow('Discount', discountDisplay, 'discount'));
     }
-
-    var eqTotal = val(fields, 'Equipment Total');
     if (eqTotal) layout.appendChild(createSubtotal('Subtotal', eqTotal));
 
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
-
-    var installTotal = val(fields, 'Installation Total') || val(fields, 'Installation');
     if (installTotal) layout.appendChild(createSubtotal('Subtotal', installTotal));
 
     // ── PROJECT TOTAL ──
-    var projTotal = val(fields, 'Project Total');
     if (projTotal) layout.appendChild(createGrandTotal('Project Total', projTotal));
 
     view.appendChild(layout);
