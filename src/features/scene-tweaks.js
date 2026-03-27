@@ -170,8 +170,10 @@
   }
 
   // ── Frontend calculation config ──
-  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];  // grids with equipment line items
-  var LUMP_DISCOUNT_FIELD = 'field_2290';             // additional lump sum discount (view_3490 form)
+  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];   // device line-item grids
+  var HARDWARE_VIEWS  = ['view_3604'];                 // mounting hardware grid
+  var ALL_VIEWS       = EQUIPMENT_VIEWS.concat(HARDWARE_VIEWS);
+  var LUMP_DISCOUNT_FIELD = 'field_2290';              // additional lump sum discount (view_3490 form)
 
   /** Parse a currency / number string into a float. Returns 0 for non-numeric. */
   function parseNum(text) {
@@ -223,11 +225,12 @@
     var existing = view.querySelector('.scw-totals-custom');
     if (existing) existing.remove();
 
-    // ── Calculate from Knack model data ──
-    var retail       = sumViewField(EQUIPMENT_VIEWS, 'field_1960');  // per-row retail price
-    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // per-row applied discount
+    // ── Calculate from DOM cells ──
+    var retail       = sumViewField(ALL_VIEWS, 'field_1960');        // retail price (devices + hardware)
+    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount
+    var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2267');   // hardware effective discount
     var lumpDiscount = getLumpDiscount();
-    var discount     = Math.abs(lineDiscount) + Math.abs(lumpDiscount);
+    var discount     = Math.abs(lineDiscount) + Math.abs(hwDiscount) + Math.abs(lumpDiscount);
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
     var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
@@ -276,9 +279,9 @@
   if (window.SCW && SCW.onViewRender) {
     // Trigger after the totals container renders
     SCW.onViewRender('view_3418', debouncedTotals, NS);
-    // Trigger after each equipment grid renders (these contain the actual data cells)
-    for (var ev = 0; ev < EQUIPMENT_VIEWS.length; ev++) {
-      SCW.onViewRender(EQUIPMENT_VIEWS[ev], debouncedTotals, NS);
+    // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
+    for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
+      SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
     }
   } else {
     $(document).ready(function () {
