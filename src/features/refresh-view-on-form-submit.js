@@ -97,7 +97,7 @@
     });
   });
 
-  // --- inline edits on any view in the scene ---
+  // --- inline edits on any view in the scene (standard Knack cell-update) ---
   $(document).on('knack-scene-render.' + SCENE, function () {
     var views = [];
     $('[id^="view_"]').each(function () {
@@ -111,5 +111,15 @@
         refreshTarget();
       });
     });
+  });
+
+  // --- device-worksheet direct edits (AJAX PUT / model.updateRecord) ---
+  $(document).off('scw-record-saved' + NS)
+             .on('scw-record-saved' + NS, function () {
+    // Only refresh if view_3418 exists on the current page
+    if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
+      console.log('[scw-refresh] Direct edit save detected');
+      refreshTarget();
+    }
   });
 })();

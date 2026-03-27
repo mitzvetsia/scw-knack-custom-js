@@ -2546,6 +2546,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var view = Knack.views[viewId];
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
+        $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(null);
         return;
       }
@@ -2558,6 +2559,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       data: JSON.stringify(data),
       success: function (resp) {
         if (feeTrig) refreshViewAfterSave(viewId);
+        $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {

@@ -11657,7 +11657,7 @@ $(".kn-navigation-bar").hide();
     });
   });
 
-  // --- inline edits on any view in the scene ---
+  // --- inline edits on any view in the scene (standard Knack cell-update) ---
   $(document).on('knack-scene-render.' + SCENE, function () {
     var views = [];
     $('[id^="view_"]').each(function () {
@@ -11671,6 +11671,16 @@ $(".kn-navigation-bar").hide();
         refreshTarget();
       });
     });
+  });
+
+  // --- device-worksheet direct edits (AJAX PUT / model.updateRecord) ---
+  $(document).off('scw-record-saved' + NS)
+             .on('scw-record-saved' + NS, function () {
+    // Only refresh if view_3418 exists on the current page
+    if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
+      console.log('[scw-refresh] Direct edit save detected');
+      refreshTarget();
+    }
   });
 })();
 ////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL rebuild-proof) *************////
@@ -17734,6 +17744,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var view = Knack.views[viewId];
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
+        $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(null);
         return;
       }
@@ -17746,6 +17757,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       data: JSON.stringify(data),
       success: function (resp) {
         if (feeTrig) refreshViewAfterSave(viewId);
+        $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
