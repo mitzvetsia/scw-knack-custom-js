@@ -24,8 +24,7 @@
         {
           viewId: 'view_3490',
           compactLabel: 'Additional Lump Sum Discount',
-          enterToSubmit: 'inputsOnly',
-          ctrlEnterToSubmit: true,
+          enterToSubmit: true,
           hideButton: true
         }
       ]
@@ -186,26 +185,30 @@
   background: rgb(7, 70, 124) !important;
 }
 
-/* ── Success / error messages ── */
-.${P}-section .kn-message {
+/* ── Hide native success/error messages — we flash the input instead ── */
+.${P}-section .kn-message.success {
+  display: none !important;
+}
+.${P}-section .kn-message.is-danger,
+.${P}-section .kn-message.error {
   font-size: 12px !important;
   padding: 6px 12px !important;
   border-radius: 6px !important;
   margin: 6px 0 0 !important;
-}
-.${P}-section .kn-message.success {
-  background: #0d9466 !important;
-  border: none !important;
-  color: #fff !important;
-}
-.${P}-section .kn-message.is-danger,
-.${P}-section .kn-message.error {
   background: #fef2f2 !important;
   border: 1px solid #fca5a5 !important;
   color: #991b1b !important;
 }
 
-/* Ctrl+Enter hint for textarea forms */
+/* ── Save-success flash on inputs ── */
+.${P}-section input.${P}-saved,
+.${P}-section textarea.${P}-saved {
+  background-color: #dcfce7 !important;
+  border-color: #4ade80 !important;
+  transition: background-color 0.3s, border-color 0.3s;
+}
+
+/* Enter hint for textarea forms */
 .${P}-hint {
   font-size: 10px;
   color: #94a3b8;
@@ -273,39 +276,38 @@
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // Bind Enter/Tab-to-submit on inputs
-    for (var i = 0; i < inputs.length; i++) {
-      var input = inputs[i];
-      var isTextarea = input.tagName.toLowerCase() === 'textarea';
-
-      if (isTextarea) {
-        // Ctrl/Cmd+Enter to submit from textarea
-        if (formCfg.ctrlEnterToSubmit && submitBtn) {
-          (function (ta, btn) {
-            $(ta).off('keydown' + NS).on('keydown' + NS, function (e) {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                btn.click();
-              }
-            });
-          })(input, submitBtn);
-        }
-      } else {
-        // Enter or Tab to submit from single-line inputs
-        var shouldBind = formCfg.enterToSubmit === true ||
-                         formCfg.enterToSubmit === 'inputsOnly';
-        if (shouldBind && submitBtn) {
-          (function (inp, btn) {
-            $(inp).off('keydown' + NS).on('keydown' + NS, function (e) {
-              if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                btn.click();
-              }
-            });
-          })(input, submitBtn);
-        }
+    // Bind Enter/Tab-to-submit on all inputs (including textareas)
+    if (formCfg.enterToSubmit && submitBtn) {
+      for (var i = 0; i < inputs.length; i++) {
+        (function (inp, btn) {
+          var isTextarea = inp.tagName.toLowerCase() === 'textarea';
+          $(inp).off('keydown' + NS).on('keydown' + NS, function (e) {
+            if (e.key === 'Enter') {
+              // Shift+Enter in textarea inserts newline
+              if (isTextarea && e.shiftKey) return;
+              e.preventDefault();
+              btn.click();
+            }
+            if (e.key === 'Tab' && !isTextarea) {
+              e.preventDefault();
+              btn.click();
+            }
+          });
+        })(inputs[i], submitBtn);
       }
     }
+
+    // Flash inputs green on successful form submit
+    $(document).off('knack-form-submit.' + formCfg.viewId + NS)
+               .on('knack-form-submit.' + formCfg.viewId + NS, function () {
+      var freshInputs = findFormInputs(viewEl);
+      for (var j = 0; j < freshInputs.length; j++) {
+        (function (inp) {
+          inp.classList.add(P + '-saved');
+          setTimeout(function () { inp.classList.remove(P + '-saved'); }, 1500);
+        })(freshInputs[j]);
+      }
+    });
 
     return true;
   }
@@ -362,7 +364,7 @@
       label.textContent = formCfg.compactLabel || '';
       section.appendChild(label);
 
-      // Add Ctrl+Enter hint for textarea forms
+      // Check for textarea hint
       var hasTextarea = false;
       var viewEl = document.getElementById(formCfg.viewId);
       if (viewEl) {
@@ -372,10 +374,10 @@
       // Enhance and move the form into section
       if (enhanceForm(section, formCfg)) {
         // Add hint after the form if it has a textarea
-        if (formCfg.ctrlEnterToSubmit && hasTextarea) {
+        if (formCfg.enterToSubmit && hasTextarea) {
           var hint = document.createElement('div');
           hint.className = P + '-hint';
-          hint.textContent = 'Ctrl+Enter to submit';
+          hint.textContent = 'Enter to submit · Shift+Enter for newline';
           section.appendChild(hint);
         }
         panel.appendChild(section);
