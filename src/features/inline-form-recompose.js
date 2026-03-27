@@ -13,14 +13,17 @@
   var PANELS = [
     {
       scene: 'scene_1116',
-      hostViewId: 'view_3418',         // panel inserted after this view
+      hostViewId: 'view_3418',         // panel inserted beside/after this view
       moduleTitle: 'Adjust Pricing',
+      layout: 'side-by-side',          // grid: totals left, controls right
+      heroTotal: true,                 // extract last detail row as hero card
       forms: [
         {
           viewId: 'view_3492',
           compactLabel: 'Global Discount %',
           enterToSubmit: true,
-          hideButton: true
+          hideButton: true,
+          percentSuffix: true           // show "%" badge on input
         },
         {
           viewId: 'view_3490',
@@ -28,84 +31,155 @@
           enterToSubmit: true,
           hideButton: true,
           fields: {
-            field_2290: { format: 'currency' }  // display with $ prefix
-          }
+            field_2290: { format: 'currency' }
+          },
+          textareaLabel: 'Discount Note / Reason'
         }
       ]
     }
   ];
 
   // ══════════════════════════════════════════════════════════════
-  //  CSS — compact panel + per-form chrome hiding
+  //  CSS
   // ══════════════════════════════════════════════════════════════
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css = `
-/* ── Inline Form Recompose — Adjust Pricing module ── */
-.${P}-panel {
+/* ── Side-by-side layout ── */
+.${P}-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .${P}-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.${P}-layout-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Project Total hero card ── */
+.${P}-hero {
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  padding: 14px 18px 12px;
-  margin-top: 4px;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  padding: 16px 24px;
+}
+.${P}-hero-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 2px;
+}
+.${P}-hero-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #163C6E;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Pricing panel (right column) ── */
+.${P}-panel {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  padding: 20px 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-/* ── Module eyebrow title ── */
+/* ── Module title ── */
 .${P}-title {
-  font-size: 11px;
+  font-size: 18px;
   font-weight: 700;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #e5e7eb;
+  color: #1e293b;
+  margin-bottom: 20px;
 }
 
-/* ── Form section: each form view moved into the panel ── */
+/* ── Form section ── */
 .${P}-panel .${P}-section {
-  padding: 8px 0;
+  padding: 0 0 16px;
 }
 .${P}-panel .${P}-section + .${P}-section {
-  border-top: 1px solid #f1f5f9;
-}
-.${P}-panel .${P}-section:first-child {
-  padding-top: 0;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
 }
 .${P}-panel .${P}-section:last-child {
   padding-bottom: 0;
 }
 
-/* Section label — control label style */
+/* Section label — uppercase control label */
 .${P}-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
-/* ── Setting-row layout: label + input side by side ── */
-.${P}-setting-row {
+/* ── Percent suffix input group ── */
+.${P}-suffix-wrap {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: stretch;
 }
-.${P}-setting-row .${P}-label {
-  margin-bottom: 0;
-  min-width: 0;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.${P}-setting-row .${P}-input-wrap {
+.${P}-suffix-wrap input {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
   flex: 1;
   min-width: 0;
-  max-width: 200px;
+}
+.${P}-suffix {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: #f1f5f9;
+  border: 1px solid #d1d5db;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* ── Textarea group (label + textarea in shared border) ── */
+.${P}-ta-group {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.${P}-ta-group:focus-within {
+  border-color: #163C6E;
+  box-shadow: 0 0 0 2px rgba(22,60,110,0.10);
+}
+.${P}-ta-label {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 8px 10px 0;
+  font-style: italic;
+}
+.${P}-ta-group textarea {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.${P}-ta-group textarea:focus {
+  box-shadow: none !important;
+  border: none !important;
 }
 
 /* ── Hide native Knack form chrome ── */
@@ -147,17 +221,17 @@
   margin: -1px !important;
 }
 
-/* ── Restyle native inputs — compact, setting-like ── */
+/* ── Restyle native inputs ── */
 .${P}-section input[type="text"],
 .${P}-section input[type="number"],
 .${P}-section input[type="email"],
 .${P}-section select {
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  padding: 5px 8px !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 5px !important;
-  background: transparent !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  padding: 8px 12px !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  background: #fff !important;
   color: #1e293b !important;
   outline: none !important;
   box-shadow: none !important;
@@ -170,50 +244,48 @@
 }
 .${P}-section input[type="text"]:hover,
 .${P}-section input[type="number"]:hover {
-  border-color: #cbd5e1 !important;
+  border-color: #9ca3af !important;
 }
 .${P}-section input[type="text"]:focus,
 .${P}-section input[type="number"]:focus {
   border-color: #163C6E !important;
   box-shadow: 0 0 0 2px rgba(22,60,110,0.10) !important;
-  background: #fafbfc !important;
 }
 
 .${P}-section textarea {
   width: 100% !important;
-  font-size: 12px !important;
-  padding: 6px 8px !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 5px !important;
-  background: transparent !important;
+  font-size: 14px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  background: #fff !important;
   color: #1e293b !important;
   outline: none !important;
   box-shadow: none !important;
   min-height: 48px;
   resize: vertical;
-  line-height: 1.4 !important;
+  line-height: 1.5 !important;
   font-family: inherit !important;
   transition: background 0.4s, border-color 0.2s, box-shadow 0.2s;
 }
 .${P}-section textarea:hover {
-  border-color: #cbd5e1 !important;
+  border-color: #9ca3af !important;
 }
 .${P}-section textarea:focus {
   border-color: #163C6E !important;
   box-shadow: 0 0 0 2px rgba(22,60,110,0.10) !important;
-  background: #fafbfc !important;
 }
 
 /* ── Submit button ── */
 .${P}-section .kn-submit button,
 .${P}-section .kn-submit input[type="submit"] {
-  font-size: 11px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
-  padding: 5px 12px !important;
+  padding: 6px 14px !important;
   background: #163C6E !important;
   color: #fff !important;
   border: none !important;
-  border-radius: 5px !important;
+  border-radius: 6px !important;
   cursor: pointer !important;
   white-space: nowrap;
   transition: background 0.15s;
@@ -226,40 +298,26 @@
   background: rgb(7, 70, 124) !important;
 }
 
-/* ── Hide native success/confirmation — we flash the input instead ── */
+/* ── Hide native success/confirmation ── */
 .${P}-section .kn-form-confirmation {
   display: none !important;
 }
 .${P}-section .kn-message.is-danger,
 .${P}-section .kn-message.error {
-  font-size: 11px !important;
-  padding: 4px 10px !important;
-  border-radius: 5px !important;
-  margin: 4px 0 0 !important;
+  font-size: 12px !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  margin: 6px 0 0 !important;
   background: #fef2f2 !important;
   border: 1px solid #fca5a5 !important;
   color: #991b1b !important;
 }
 
-/* Enter hint — only visible on focus within section */
+/* ── Hint text ── */
 .${P}-hint {
-  font-size: 9px;
-  color: #c1c9d4;
-  text-align: right;
-  margin-top: 2px;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-.${P}-section:focus-within .${P}-hint {
-  opacity: 1;
-}
-
-/* Sub-label for textarea fields */
-.${P}-sub-label {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 12px;
   color: #94a3b8;
-  margin-bottom: 3px;
+  margin-top: 6px;
 }
 `;
     var style = document.createElement('style');
@@ -272,12 +330,10 @@
   //  HELPERS
   // ══════════════════════════════════════════════════════════════
 
-  /** Find the native submit button inside a Knack form view. */
   function findSubmitBtn(viewEl) {
     return viewEl.querySelector('.kn-submit button[type="submit"], .kn-submit input[type="submit"]');
   }
 
-  /** Find all user-facing inputs/textareas in a form view. */
   function findFormInputs(viewEl) {
     return viewEl.querySelectorAll(
       '.kn-input input[type="text"], .kn-input input[type="number"], ' +
@@ -285,7 +341,6 @@
     );
   }
 
-  /** Flash all user-facing inputs green inside a view (inline styles). */
   function flashInputs(viewId) {
     var el = document.getElementById(viewId);
     if (!el) return;
@@ -308,7 +363,6 @@
   //  FIELD FORMATTING — currency display (percent handled by SCW.pctFormat)
   // ══════════════════════════════════════════════════════════════
 
-  /** Apply currency format config to inputs inside a form view. */
   function applyCurrencyFormatting(viewEl, fieldsCfg) {
     if (!fieldsCfg) return;
     for (var fieldId in fieldsCfg) {
@@ -318,7 +372,6 @@
       if (!inp || inp.getAttribute('data-scw-cur')) continue;
       inp.setAttribute('data-scw-cur', '1');
 
-      // Format on load
       var num = parseFloat(String(inp.value).replace(/[$,\s]/g, ''));
       if (!isNaN(num)) inp.value = '$' + num.toFixed(2);
 
@@ -336,7 +389,6 @@
     }
   }
 
-  /** Prepare currency fields for submit (strip $). */
   function prepareCurrencyForSubmit(viewId) {
     var cfg = VIEW_FIELDS[viewId];
     if (!cfg) return;
@@ -355,6 +407,93 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  //  LAYOUT — side-by-side wrapper
+  // ══════════════════════════════════════════════════════════════
+
+  function ensureLayout(panelCfg) {
+    var layoutId = P + '-layout-' + panelCfg.scene;
+    var layout = document.getElementById(layoutId);
+    var hostView = document.getElementById(panelCfg.hostViewId);
+    if (!hostView) return null;
+
+    if (layout) {
+      // Verify hostView is still inside our layout
+      if (hostView.closest('#' + layoutId)) {
+        return {
+          layout: layout,
+          left: layout.querySelector('.' + P + '-layout-left'),
+          right: layout.querySelector('.' + P + '-layout-right')
+        };
+      }
+      // hostView was recreated outside layout — tear down and rebuild
+      layout.remove();
+    }
+
+    layout = document.createElement('div');
+    layout.id = layoutId;
+    layout.className = P + '-layout';
+
+    var left = document.createElement('div');
+    left.className = P + '-layout-left';
+
+    var right = document.createElement('div');
+    right.className = P + '-layout-right';
+
+    hostView.parentNode.insertBefore(layout, hostView);
+    left.appendChild(hostView);
+    layout.appendChild(left);
+    layout.appendChild(right);
+
+    return { layout: layout, left: left, right: right };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  HERO TOTAL — extract last detail row into standalone card
+  // ══════════════════════════════════════════════════════════════
+
+  function updateHeroTotal(panelCfg, leftCol) {
+    var hostView = document.getElementById(panelCfg.hostViewId);
+    if (!hostView) return;
+
+    var heroId = P + '-hero-' + panelCfg.scene;
+    var items = hostView.querySelectorAll('.kn-detail-body-item');
+    if (!items.length) return;
+
+    var lastItem = items[items.length - 1];
+    var labelEl = lastItem.querySelector('.kn-detail-label');
+    var valueEl = lastItem.querySelector('.kn-detail-body');
+    if (!labelEl || !valueEl) return;
+
+    var labelText = labelEl.textContent.trim();
+    var valueText = valueEl.textContent.trim();
+
+    // Hide the last row in the original view
+    lastItem.style.display = 'none';
+
+    var hero = document.getElementById(heroId);
+    if (hero) {
+      hero.querySelector('.' + P + '-hero-label').textContent = labelText;
+      hero.querySelector('.' + P + '-hero-value').textContent = valueText;
+    } else {
+      hero = document.createElement('div');
+      hero.id = heroId;
+      hero.className = P + '-hero';
+
+      var hLabel = document.createElement('div');
+      hLabel.className = P + '-hero-label';
+      hLabel.textContent = labelText;
+
+      var hValue = document.createElement('div');
+      hValue.className = P + '-hero-value';
+      hValue.textContent = valueText;
+
+      hero.appendChild(hLabel);
+      hero.appendChild(hValue);
+      leftCol.appendChild(hero);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
   //  CORE — enhance one form view in-place, move into panel
   // ══════════════════════════════════════════════════════════════
 
@@ -367,15 +506,12 @@
     var inputs = findFormInputs(viewEl);
     if (!inputs.length) return false;
 
-    // Mark as applied
     viewEl.setAttribute(APPLIED_ATTR, '1');
 
-    // Hide submit button if configured
     if (formCfg.hideButton) {
       section.classList.add(P + '-hide-btn');
     }
 
-    // Restyle the submit button label
     if (submitBtn && formCfg.buttonLabel) {
       submitBtn.textContent = formCfg.buttonLabel;
     }
@@ -383,18 +519,47 @@
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // Apply currency formatting (percent handled globally by SCW.pctFormat)
+    // Apply currency formatting
     applyCurrencyFormatting(viewEl, formCfg.fields);
 
-    // On form submit: flash inputs green immediately, lock scroll.
+    // Inject percent suffix badge
+    if (formCfg.percentSuffix) {
+      var pctInput = viewEl.querySelector('.kn-input input[type="text"], .kn-input input[type="number"]');
+      if (pctInput && !pctInput.getAttribute('data-scw-pct-suffix')) {
+        pctInput.setAttribute('data-scw-pct-suffix', '1');
+        var suffixWrap = document.createElement('div');
+        suffixWrap.className = P + '-suffix-wrap';
+        pctInput.parentNode.insertBefore(suffixWrap, pctInput);
+        suffixWrap.appendChild(pctInput);
+        var suffixEl = document.createElement('span');
+        suffixEl.className = P + '-suffix';
+        suffixEl.textContent = '%';
+        suffixWrap.appendChild(suffixEl);
+      }
+    }
+
+    // Wrap textarea with floating label
+    if (formCfg.textareaLabel) {
+      var ta = viewEl.querySelector('.kn-input textarea');
+      if (ta && !ta.getAttribute('data-scw-ta-wrapped')) {
+        ta.setAttribute('data-scw-ta-wrapped', '1');
+        var taGroup = document.createElement('div');
+        taGroup.className = P + '-ta-group';
+        var taLabelEl = document.createElement('div');
+        taLabelEl.className = P + '-ta-label';
+        taLabelEl.textContent = formCfg.textareaLabel;
+        ta.parentNode.insertBefore(taGroup, ta);
+        taGroup.appendChild(taLabelEl);
+        taGroup.appendChild(ta);
+      }
+    }
+
+    // On form submit: flash inputs green, lock scroll
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
                .on('knack-form-submit.' + formCfg.viewId + NS, function () {
       formCfg._submitAt = Date.now();
 
-      // Flash inputs green RIGHT NOW (before Knack re-renders)
       flashInputs(formCfg.viewId);
-
-      // Also flash after Knack re-renders (fresh DOM)
       formCfg._flashOnRender = true;
 
       // Re-format after Knack re-renders with raw values
@@ -432,8 +597,7 @@
   // ══════════════════════════════════════════════════════════════
 
   function buildPanel(panelCfg) {
-    // If a form just submitted, delay rebuild so the <form> stays connected
-    // and Knack can finish its AJAX cycle without "form not connected" errors.
+    // Delay rebuild if a form just submitted
     for (var d = 0; d < panelCfg.forms.length; d++) {
       var fc = panelCfg.forms[d];
       if (fc._submitAt && (Date.now() - fc._submitAt) < 800) {
@@ -444,6 +608,13 @@
 
     var hostView = document.getElementById(panelCfg.hostViewId);
     if (!hostView) return;
+
+    // Set up side-by-side layout if configured
+    var cols = null;
+    if (panelCfg.layout === 'side-by-side') {
+      cols = ensureLayout(panelCfg);
+      if (!cols) return;
+    }
 
     // Check if panel already exists and all forms are intact
     var panelId = P + '-' + panelCfg.scene;
@@ -457,13 +628,17 @@
           break;
         }
       }
-      if (allApplied) return;
+      if (allApplied) {
+        // Still update hero total in case hostView re-rendered
+        if (panelCfg.heroTotal && cols) updateHeroTotal(panelCfg, cols.left);
+        return;
+      }
       // A form was re-rendered — rebuild the panel
-      // Move form views back to their original parent before removing panel
+      var insertRef = cols ? cols.right : hostView.parentNode;
       for (var r = 0; r < panelCfg.forms.length; r++) {
         var fv = document.getElementById(panelCfg.forms[r].viewId);
         if (fv && fv.parentElement && fv.parentElement.closest('.' + P + '-panel')) {
-          hostView.parentNode.insertBefore(fv, existingPanel);
+          insertRef.insertBefore(fv, existingPanel);
           fv.removeAttribute(APPLIED_ATTR);
         }
       }
@@ -475,7 +650,6 @@
     panel.className = P + '-panel';
     panel.id = panelId;
 
-    // Module title
     if (panelCfg.moduleTitle) {
       var title = document.createElement('div');
       title.className = P + '-title';
@@ -487,37 +661,32 @@
     for (var i = 0; i < panelCfg.forms.length; i++) {
       var formCfg = panelCfg.forms[i];
 
-      // Create a section wrapper
       var section = document.createElement('div');
       section.className = P + '-section';
 
-      // Check for textarea hint
+      // Check for textarea
       var hasTextarea = false;
       var viewEl = document.getElementById(formCfg.viewId);
       if (viewEl) {
         hasTextarea = !!viewEl.querySelector('.kn-input textarea');
       }
 
-      // Add compact label — use setting-row layout for non-textarea fields
-      if (formCfg.compactLabel && !hasTextarea) {
-        var label = document.createElement('div');
-        label.className = P + '-label';
-        label.textContent = formCfg.compactLabel;
-        section.appendChild(label);
-      } else if (formCfg.compactLabel) {
+      // Add compact label
+      if (formCfg.compactLabel) {
         var label = document.createElement('div');
         label.className = P + '-label';
         label.textContent = formCfg.compactLabel;
         section.appendChild(label);
       }
 
-      // Enhance and move the form into section
       if (enhanceForm(section, formCfg)) {
-        // Add hint after the form if it has a textarea
-        if (formCfg.enterToSubmit && hasTextarea) {
+        // Add hint text
+        if (formCfg.enterToSubmit) {
           var hint = document.createElement('div');
           hint.className = P + '-hint';
-          hint.textContent = 'Enter to submit \u00b7 Shift+Enter for newline';
+          hint.textContent = hasTextarea
+            ? 'Press Enter to apply \u00b7 Shift+Enter for newline'
+            : 'Press Enter to apply';
           section.appendChild(hint);
         }
         panel.appendChild(section);
@@ -527,10 +696,19 @@
 
     if (!hasContent) return;
 
-    // Insert after host view
-    hostView.insertAdjacentElement('afterend', panel);
+    // Insert panel
+    if (cols) {
+      cols.right.appendChild(panel);
+    } else {
+      hostView.insertAdjacentElement('afterend', panel);
+    }
 
-    // After rebuild, flash green on any forms that just submitted
+    // Extract hero total
+    if (panelCfg.heroTotal && cols) {
+      updateHeroTotal(panelCfg, cols.left);
+    }
+
+    // Flash green on forms that just submitted
     for (var fi = 0; fi < panelCfg.forms.length; fi++) {
       if (panelCfg.forms[fi]._flashOnRender) {
         panelCfg.forms[fi]._flashOnRender = false;
@@ -543,9 +721,8 @@
   //  INIT
   // ══════════════════════════════════════════════════════════════
 
-  // Build lookups for the document-level handler
   var ENTER_SUBMIT_VIEWS = {};
-  var VIEW_FIELDS = {};  // viewId → { fieldId: { format: '...' } }
+  var VIEW_FIELDS = {};
   for (var pi = 0; pi < PANELS.length; pi++) {
     for (var fi2 = 0; fi2 < PANELS[pi].forms.length; fi2++) {
       var fc = PANELS[pi].forms[fi2];
@@ -554,8 +731,7 @@
     }
   }
 
-  // Document-level keydown (capture phase) — survives Knack re-renders.
-  // Finds the closest form view wrapper and clicks its submit button.
+  // Document-level keydown (capture phase) — survives Knack re-renders
   document.addEventListener('keydown', function (e) {
     var tag = e.target.tagName.toLowerCase();
     if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return;
@@ -565,9 +741,8 @@
     var isTab = (e.key === 'Tab' || e.keyCode === 9);
 
     if (!isEnter && !isTab) return;
-    if (isTextarea && isEnter && e.shiftKey) return; // Shift+Enter = newline
+    if (isTextarea && isEnter && e.shiftKey) return;
 
-    // Walk up to find a view wrapper that's in our config
     var el = e.target;
     while (el && el !== document.body) {
       if (el.id && ENTER_SUBMIT_VIEWS[el.id]) {
@@ -575,7 +750,6 @@
         if (btn) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          // Convert formatted values to Knack values before submit
           prepareCurrencyForSubmit(el.id);
           if (SCW.pctFormat) SCW.pctFormat.prepareForSubmit(el);
           flashInputs(el.id);
@@ -593,14 +767,13 @@
     for (var p = 0; p < PANELS.length; p++) {
       var panelCfg = PANELS[p];
 
-      // Bind on scene render
       SCW.onSceneRender(panelCfg.scene, (function (cfg) {
         return function () {
           setTimeout(function () { buildPanel(cfg); }, 150);
         };
       })(panelCfg), NS);
 
-      // Bind on each form's view render (re-render after submit)
+      // Bind on each form's view render
       for (var f = 0; f < panelCfg.forms.length; f++) {
         SCW.onViewRender(panelCfg.forms[f].viewId, (function (cfg) {
           return function () {
@@ -608,6 +781,21 @@
           };
         })(panelCfg), NS);
       }
+
+      // Bind on host view render (to update hero total)
+      SCW.onViewRender(panelCfg.hostViewId, (function (cfg) {
+        return function () {
+          setTimeout(function () {
+            if (cfg.heroTotal && cfg.layout === 'side-by-side') {
+              var layoutEl = document.getElementById(P + '-layout-' + cfg.scene);
+              if (layoutEl) {
+                var leftCol = layoutEl.querySelector('.' + P + '-layout-left');
+                if (leftCol) updateHeroTotal(cfg, leftCol);
+              }
+            }
+          }, 150);
+        };
+      })(panelCfg), NS);
     }
   }
 
