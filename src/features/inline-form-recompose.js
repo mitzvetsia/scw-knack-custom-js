@@ -19,13 +19,19 @@
           viewId: 'view_3492',
           compactLabel: 'Global Discount %',
           enterToSubmit: true,
-          hideButton: true
+          hideButton: true,
+          fields: {
+            field_2276: { format: 'percent' }   // store as decimal, display as XX%
+          }
         },
         {
           viewId: 'view_3490',
           compactLabel: 'Additional Lump Sum Discount',
           enterToSubmit: true,
-          hideButton: true
+          hideButton: true,
+          fields: {
+            field_2290: { format: 'currency' }  // display with $ prefix
+          }
         }
       ]
     }
@@ -259,6 +265,117 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  //  FIELD FORMATTING — percent & currency display
+  // ══════════════════════════════════════════════════════════════
+
+  /**
+   * Format a value for display (blur / load).
+   *  percent:  0.2 → "20%",  10 → "10%" (pass-through if already whole-ish)
+   *  currency: 100 → "$100.00"
+   */
+  function formatForDisplay(raw, fmt) {
+    var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
+    if (isNaN(num)) return raw;
+    if (fmt === 'percent') {
+      // Knack stores as decimal (0.2 = 20%). Display as whole %.
+      // If value <= 1 treat as decimal; otherwise assume user typed whole number.
+      var pct = (num > 0 && num <= 1) ? num * 100 : num;
+      // Clean up floating point: round to 4 decimals
+      pct = Math.round(pct * 10000) / 10000;
+      return pct + '%';
+    }
+    if (fmt === 'currency') {
+      return '$' + num.toFixed(2);
+    }
+    return raw;
+  }
+
+  /**
+   * Convert a user-entered value to what Knack expects before submit.
+   *  percent: 20 → 0.2 (user types whole number, Knack wants decimal)
+   */
+  function formatForSubmit(raw, fmt) {
+    var num = parseFloat(String(raw).replace(/[$,%\s]/g, ''));
+    if (isNaN(num)) return raw;
+    if (fmt === 'percent') {
+      // User types 20 meaning 20%. Knack wants 0.2.
+      if (num > 1) num = num / 100;
+      return String(num);
+    }
+    if (fmt === 'currency') {
+      return String(num);
+    }
+    return raw;
+  }
+
+  /** Apply format config to inputs inside a form view. */
+  function applyFieldFormatting(viewEl, fieldsCfg) {
+    if (!fieldsCfg) return;
+    for (var fieldId in fieldsCfg) {
+      if (!fieldsCfg.hasOwnProperty(fieldId)) continue;
+      var fmt = fieldsCfg[fieldId].format;
+      var inp = viewEl.querySelector('#' + fieldId);
+      if (!inp) continue;
+
+      // Format the current value for display
+      inp.value = formatForDisplay(inp.value, fmt);
+
+      // On focus: strip formatting so user sees raw number
+      (function (input, format) {
+        $(input).off('focus' + NS).on('focus' + NS, function () {
+          var num = parseFloat(String(input.value).replace(/[$,%\s]/g, ''));
+          if (!isNaN(num)) {
+            if (format === 'percent') {
+              // Show whole number for editing (20, not 0.2)
+              var pct = (num > 0 && num <= 1) ? num * 100 : num;
+              pct = Math.round(pct * 10000) / 10000;
+              input.value = pct;
+            } else {
+              input.value = num;
+            }
+          }
+          input.select();
+        });
+
+        // On blur: re-format for display and sync Knack's model
+        $(input).off('blur' + NS).on('blur' + NS, function () {
+          // Convert to Knack's expected value and trigger change
+          var submitVal = formatForSubmit(input.value, format);
+          input.value = submitVal;
+          $(input).trigger('change');
+          // Then show formatted display
+          input.value = formatForDisplay(submitVal, format);
+        });
+      })(inp, fmt);
+    }
+  }
+
+  /** Convert display values → Knack values before submit, trigger change. */
+  function prepareForSubmit(viewId) {
+    var cfg = VIEW_FIELDS[viewId];
+    if (!cfg) return;
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+    for (var fieldId in cfg) {
+      if (!cfg.hasOwnProperty(fieldId)) continue;
+      var inp = viewEl.querySelector('#' + fieldId);
+      if (!inp) continue;
+      var val = formatForSubmit(inp.value, cfg[fieldId].format);
+      inp.value = val;
+      $(inp).trigger('change');
+    }
+  }
+
+  /** Re-format display values after Knack re-renders a form view. */
+  function reformatAfterRender(viewId) {
+    var cfg = VIEW_FIELDS[viewId];
+    if (!cfg) return;
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+    applyFieldFormatting(viewEl, cfg);
+  }
+
+  // ══════════════════════════════════════════════════════════════
   //  CORE — enhance one form view in-place, move into panel
   // ══════════════════════════════════════════════════════════════
 
@@ -286,6 +403,9 @@
 
     // Move the entire view element into our section
     section.appendChild(viewEl);
+
+    // Apply field formatting (percent, currency display)
+    applyFieldFormatting(viewEl, formCfg.fields);
 
     // On form submit: flash inputs green immediately, lock scroll.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
@@ -415,12 +535,14 @@
   //  INIT
   // ══════════════════════════════════════════════════════════════
 
-  // Build lookup of enterToSubmit view IDs for the document-level handler
+  // Build lookups for the document-level handler
   var ENTER_SUBMIT_VIEWS = {};
+  var VIEW_FIELDS = {};  // viewId → { fieldId: { format: '...' } }
   for (var pi = 0; pi < PANELS.length; pi++) {
     for (var fi2 = 0; fi2 < PANELS[pi].forms.length; fi2++) {
       var fc = PANELS[pi].forms[fi2];
       if (fc.enterToSubmit) ENTER_SUBMIT_VIEWS[fc.viewId] = true;
+      if (fc.fields) VIEW_FIELDS[fc.viewId] = fc.fields;
     }
   }
 
@@ -445,6 +567,8 @@
         if (btn) {
           e.preventDefault();
           e.stopImmediatePropagation();
+          // Convert formatted values to Knack values before submit
+          prepareForSubmit(el.id);
           flashInputs(el.id);
           btn.click();
         }
