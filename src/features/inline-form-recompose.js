@@ -19,10 +19,7 @@
           viewId: 'view_3492',
           compactLabel: 'Global Discount %',
           enterToSubmit: true,
-          hideButton: true,
-          fields: {
-            field_2276: { format: 'percent' }   // store as decimal, display as XX%
-          }
+          hideButton: true
         },
         {
           viewId: 'view_3490',
@@ -265,99 +262,53 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  FIELD FORMATTING — percent & currency display
+  //  FIELD FORMATTING — currency display (percent handled by SCW.pctFormat)
   // ══════════════════════════════════════════════════════════════
-  //
-  // Strategy: the input always holds the USER-FACING value.
-  //   percent:  "20" or "20%" (meaning 20 percent)
-  //   currency: "100" or "$100.00"
-  //
-  // Conversion to Knack's internal format (0.2 for 20%) happens
-  // ONLY inside prepareForSubmit, right before btn.click().
-  // On load, Knack's raw value (e.g. 0.50) is converted once to
-  // the user-facing value (50%).
 
-  /** Convert Knack raw value → user-facing display. Skip if already formatted. */
-  function knackToDisplay(raw, fmt) {
-    var s = String(raw);
-    // Already formatted — don't double-convert
-    if (fmt === 'percent' && s.indexOf('%') !== -1) return s;
-    if (fmt === 'currency' && s.indexOf('$') !== -1) return s;
-    var num = parseFloat(s.replace(/[$,%\s]/g, ''));
-    if (isNaN(num)) return raw;
-    if (fmt === 'percent') return Math.round(num * 100 * 10000) / 10000 + '%';
-    if (fmt === 'currency') return '$' + num.toFixed(2);
-    return raw;
-  }
-
-  /** Strip display chrome for editing (20% → 20, $100.00 → 100). */
-  function stripForEdit(displayed) {
-    return String(displayed).replace(/[$,%\s]/g, '');
-  }
-
-  /** Convert user-entered value → Knack raw value at submit time. */
-  function userToKnack(userVal, fmt) {
-    var num = parseFloat(String(userVal).replace(/[$,%\s]/g, ''));
-    if (isNaN(num)) return userVal;
-    if (fmt === 'percent') return String(num / 100);
-    return String(num);
-  }
-
-  /** Apply format config to inputs inside a form view. */
-  function applyFieldFormatting(viewEl, fieldsCfg) {
+  /** Apply currency format config to inputs inside a form view. */
+  function applyCurrencyFormatting(viewEl, fieldsCfg) {
     if (!fieldsCfg) return;
     for (var fieldId in fieldsCfg) {
       if (!fieldsCfg.hasOwnProperty(fieldId)) continue;
-      var fmt = fieldsCfg[fieldId].format;
+      if (fieldsCfg[fieldId].format !== 'currency') continue;
       var inp = viewEl.querySelector('#' + fieldId);
-      if (!inp) continue;
+      if (!inp || inp.getAttribute('data-scw-cur')) continue;
+      inp.setAttribute('data-scw-cur', '1');
 
-      // Convert Knack's raw value to user-facing display on load
-      inp.value = knackToDisplay(inp.value, fmt);
+      // Format on load
+      var num = parseFloat(String(inp.value).replace(/[$,\s]/g, ''));
+      if (!isNaN(num)) inp.value = '$' + num.toFixed(2);
 
-      (function (input, format) {
-        // On focus: strip $ and % so user sees plain number
+      (function (input) {
         $(input).off('focus' + NS).on('focus' + NS, function () {
-          input.value = stripForEdit(input.value);
+          input.value = String(input.value).replace(/[$,\s]/g, '');
           input.select();
         });
-
-        // On blur: re-add display formatting (no conversion — still user value)
-        // Skip if we're in the middle of a submit (prepareForSubmit already set the value)
         $(input).off('blur' + NS).on('blur' + NS, function () {
           if (input._scwSubmitting) { input._scwSubmitting = false; return; }
-          var num = parseFloat(stripForEdit(input.value));
-          if (isNaN(num)) return;
-          if (format === 'percent') input.value = num + '%';
-          if (format === 'currency') input.value = '$' + num.toFixed(2);
+          var n = parseFloat(String(input.value).replace(/[$,\s]/g, ''));
+          if (!isNaN(n)) input.value = '$' + n.toFixed(2);
         });
-      })(inp, fmt);
+      })(inp);
     }
   }
 
-  /** Convert user-facing values → Knack values before submit. */
-  function prepareForSubmit(viewId) {
+  /** Prepare currency fields for submit (strip $). */
+  function prepareCurrencyForSubmit(viewId) {
     var cfg = VIEW_FIELDS[viewId];
     if (!cfg) return;
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
     for (var fieldId in cfg) {
       if (!cfg.hasOwnProperty(fieldId)) continue;
+      if (cfg[fieldId].format !== 'currency') continue;
       var inp = viewEl.querySelector('#' + fieldId);
       if (!inp) continue;
-      inp._scwSubmitting = true;  // tell blur handler to skip
-      inp.value = userToKnack(inp.value, cfg[fieldId].format);
+      inp._scwSubmitting = true;
+      var n = parseFloat(String(inp.value).replace(/[$,\s]/g, ''));
+      if (!isNaN(n)) inp.value = String(n);
       $(inp).trigger('change');
     }
-  }
-
-  /** Re-format display values after Knack re-renders a form view. */
-  function reformatAfterRender(viewId) {
-    var cfg = VIEW_FIELDS[viewId];
-    if (!cfg) return;
-    var viewEl = document.getElementById(viewId);
-    if (!viewEl) return;
-    applyFieldFormatting(viewEl, cfg);
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -389,8 +340,8 @@
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // Apply field formatting (percent, currency display)
-    applyFieldFormatting(viewEl, formCfg.fields);
+    // Apply currency formatting (percent handled globally by SCW.pctFormat)
+    applyCurrencyFormatting(viewEl, formCfg.fields);
 
     // On form submit: flash inputs green immediately, lock scroll.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
@@ -403,11 +354,19 @@
       // Also flash after Knack re-renders (fresh DOM)
       formCfg._flashOnRender = true;
 
-      // Re-format fields after Knack re-renders with raw values
-      // knackToDisplay guards against double-conversion (skips if already has %/$)
+      // Re-format after Knack re-renders with raw values
       var vid = formCfg.viewId;
-      setTimeout(function () { reformatAfterRender(vid); }, 1200);
-      setTimeout(function () { reformatAfterRender(vid); }, 2500);
+      var fCfg = formCfg.fields;
+      setTimeout(function () {
+        var v = document.getElementById(vid);
+        if (v) applyCurrencyFormatting(v, fCfg);
+        if (SCW.pctFormat) SCW.pctFormat.reformatAfterRender(v);
+      }, 1200);
+      setTimeout(function () {
+        var v = document.getElementById(vid);
+        if (v) applyCurrencyFormatting(v, fCfg);
+        if (SCW.pctFormat) SCW.pctFormat.reformatAfterRender(v);
+      }, 2500);
 
       // Lock scroll
       var savedY = window.scrollY;
@@ -559,7 +518,8 @@
           e.preventDefault();
           e.stopImmediatePropagation();
           // Convert formatted values to Knack values before submit
-          prepareForSubmit(el.id);
+          prepareCurrencyForSubmit(el.id);
+          if (SCW.pctFormat) SCW.pctFormat.prepareForSubmit(el);
           flashInputs(el.id);
           btn.click();
         }
