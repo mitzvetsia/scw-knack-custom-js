@@ -15356,20 +15356,37 @@ $(".kn-navigation-bar").hide();
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577', 'view_3602'],
+        viewIds: ['view_3559', 'view_3577'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
           mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
-          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
+          name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
         },
         summaryLayout: [],
         detailLayout: {
           left:  ['mdfIdf', 'mdfNumber', 'name'],
           right: ['surveyNotes']
+        }
+      },
+      {
+        viewId: 'view_3602',
+        layout: { labelWidth: '400px' },
+        fields: {
+          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
+
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
+          notes:            { key: 'field_1643', type: 'directEdit', notes: true }
+        },
+        summaryLayout: [],
+        detailLayout: {
+          left:  ['mdfIdf', 'mdfNumber', 'name'],
+          right: ['notes']
         }
       },
       {
