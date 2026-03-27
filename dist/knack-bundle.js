@@ -1264,12 +1264,16 @@ window.SCW = window.SCW || {};
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
       var container = document.getElementById(viewIds[v]);
-      if (!container) continue;
+      if (!container) { console.log('[scw-totals] container not found:', viewIds[v]); continue; }
       var cells = container.querySelectorAll('td[data-field-key="' + fieldKey + '"]');
+      console.log('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
       for (var i = 0; i < cells.length; i++) {
-        total += parseNum(cells[i].textContent);
+        var val = parseNum(cells[i].textContent);
+        console.log('  [' + i + ']', cells[i].textContent.trim(), '→', val);
+        total += val;
       }
     }
+    console.log('[scw-totals] SUM', fieldKey, '=', total);
     return total;
   }
 
