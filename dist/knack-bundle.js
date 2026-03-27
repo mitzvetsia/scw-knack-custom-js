@@ -1224,12 +1224,29 @@ window.SCW = window.SCW || {};
     });
 
     // On blur: re-add % (no conversion — still user value)
-    // Skip during submit (flag set by prepareForSubmit)
+    // Skip during submit (flag set by prepareForSubmit or native submit hook)
     $(input).off('blur' + NS).on('blur' + NS, function () {
       if (input._scwSubmitting) { input._scwSubmitting = false; return; }
       var num = parseFloat(stripForEdit(input.value));
       if (!isNaN(num)) input.value = num + '%';
     });
+
+    // Hook into the parent <form> submit so native Knack forms
+    // also get the user→Knack conversion (20 → 0.2) before submit.
+    var form = input.closest('form');
+    if (form && !form._scwPctHooked) {
+      form._scwPctHooked = true;
+      $(form).on('submit' + NS, function () {
+        // Convert all percent inputs in this form before Knack reads them
+        for (var j = 0; j < PERCENT_FIELDS.length; j++) {
+          var inp = form.querySelector('#' + PERCENT_FIELDS[j]);
+          if (!inp) continue;
+          inp._scwSubmitting = true;
+          inp.value = userToKnack(inp.value);
+          $(inp).trigger('change');
+        }
+      });
+    }
   }
 
   /** Scan the page (or a container) for percent field inputs and enhance them. */
