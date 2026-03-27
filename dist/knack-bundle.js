@@ -16967,6 +16967,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   color: inherit;
   text-decoration: none;
 }
+/* ── view_3596: prevent overflow, align summary ── */
+#view_3596 .${P}-card {
+  overflow: hidden;
+  max-width: 100%;
+}
+#view_3596 .${P}-summary {
+  align-items: flex-start;
+}
+#view_3596 .${P}-sum-group--fill {
+  min-width: 0;
+  overflow: hidden;
+}
+#view_3596 .${P}-direct-textarea,
+#view_3596 .${P}-direct-input {
+  width: 100%;
+  box-sizing: border-box;
+}
 `;
 
     var style = document.createElement('style');
@@ -18502,13 +18519,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         productGroup.appendChild(productTd);
 
         // Render identity-grouped fields below the product (e.g. chits)
+        // Collect all identity fields into a single row
+        var idFields = [];
         for (var ig = 0; ig < layout.length; ig++) {
           var igDesc = fieldDesc(viewCfg, layout[ig]);
           if (!igDesc || igDesc.group !== 'identity') continue;
-          var igContainer = document.createElement('span');
-          igContainer.style.cssText = 'display:inline-flex;gap:4px;margin-top:2px;';
-          renderSummaryField(igContainer, tr, layout[ig], igDesc, viewCfg);
-          productGroup.appendChild(igContainer);
+          idFields.push({ name: layout[ig], desc: igDesc });
+        }
+        if (idFields.length) {
+          var idRow = document.createElement('span');
+          idRow.style.cssText = 'display:inline-flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
+          for (var idf = 0; idf < idFields.length; idf++) {
+            // For toggleChit in identity: only render if value is Yes
+            if (idFields[idf].desc.type === 'toggleChit') {
+              var chitTd = findCell(tr, idFields[idf].desc.key, idFields[idf].desc.columnIndex);
+              if (chitTd) {
+                var chitText = (chitTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+                if (chitText !== 'yes' && chitText !== 'true') continue;
+              } else {
+                continue;
+              }
+            }
+            renderSummaryField(idRow, tr, idFields[idf].name, idFields[idf].desc, viewCfg);
+          }
+          if (idRow.childNodes.length) productGroup.appendChild(idRow);
         }
 
         identity.appendChild(productGroup);
