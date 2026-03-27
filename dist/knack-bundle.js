@@ -19375,9 +19375,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var pi = 0; pi < pendingInserts.length; pi++) {
       var ins = pendingInserts[pi];
       ins.sourceTr.parentNode.insertBefore(ins.wsTr, ins.sourceTr.nextSibling);
-      // Force-hide source row via inline !important so external scripts
-      // (KTL, Knack) that set display:table-row cannot override it.
-      ins.sourceTr.style.setProperty('display', 'none', 'important');
     }
 
     // After all rows are processed, absorb photo row content into the
@@ -19400,7 +19397,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         card.appendChild(photoWrap);
         // Mark the original photo <tr> as absorbed so it stays hidden
         photoRow.classList.add(P + '-photo-absorbed');
-        photoRow.style.setProperty('display', 'none', 'important');
       }
     }
 
