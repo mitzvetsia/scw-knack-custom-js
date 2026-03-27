@@ -15361,7 +15361,7 @@ $(".kn-navigation-bar").hide();
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
           mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
@@ -15378,7 +15378,7 @@ $(".kn-navigation-bar").hide();
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
           mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           notes:            { key: 'field_1643', type: 'directEdit', notes: true }
@@ -16468,6 +16468,29 @@ td.${P}-field-value--notes {
   pointer-events: none;
 }
 
+/* ── Segmented toggle (either/or style) ── */
+.${P}-radio-chips.${P}-segmented {
+  gap: 0;
+  flex-wrap: nowrap;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip {
+  border-radius: 0;
+  border-right-width: 0;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip:last-child {
+  border-radius: 0 6px 6px 0;
+  border-right-width: 1px;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip.is-unselected {
+  border-color: #d1d5db;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip.is-selected + .${P}-radio-chip.is-unselected {
+  border-left-color: #047857;
+}
+
 /* ── Direct-edit inputs (type-and-save text fields) ── */
 .${P}-direct-input,
 .${P}-direct-textarea {
@@ -17355,7 +17378,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /** Build a field row that uses radio chips instead of the raw cell. */
-  function buildRadioChipRow(label, td, fKey, options, multi) {
+  function buildRadioChipRow(label, td, fKey, options, multi, opts) {
     if (td && td.classList.contains(GRAYED_CLASS)) return null;
 
     var row = document.createElement('div');
@@ -17373,6 +17396,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     valueWrapper.style.background = 'transparent';
 
     var chips = buildRadioChips(td, fKey, options, multi);
+    if (opts && opts.segmented) chips.classList.add(P + '-segmented');
     valueWrapper.appendChild(chips);
 
     // Keep the original td hidden so Knack's data binding stays alive
@@ -18359,6 +18383,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           td.appendChild(chipHidden);
         }
         var chips = buildRadioChips(td, desc.key, desc.options || [], isMulti);
+        if (desc.segmented) chips.classList.add(P + '-segmented');
         chips.classList.add(P + '-sum-chips');
         td.textContent = '';
         if (chipSpan) td.appendChild(chipSpan);
@@ -18728,7 +18753,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       case 'singleChip':
       case 'multiChip':
-        var chipRow = buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip');
+        var chipRow = buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip', { segmented: !!desc.segmented });
         if (chipRow) section.appendChild(chipRow);
         break;
 
