@@ -185,8 +185,8 @@
   background: rgb(7, 70, 124) !important;
 }
 
-/* ── Hide native success/error messages — we flash the input instead ── */
-.${P}-section .kn-message.success {
+/* ── Hide native success/confirmation — we flash the input instead ── */
+.${P}-section .kn-form-confirmation {
   display: none !important;
 }
 .${P}-section .kn-message.is-danger,
@@ -239,6 +239,25 @@
     );
   }
 
+  /** Flash all user-facing inputs green inside a view (inline styles). */
+  function flashInputs(viewId) {
+    var el = document.getElementById(viewId);
+    if (!el) return;
+    var inputs = findFormInputs(el);
+    for (var i = 0; i < inputs.length; i++) {
+      (function (inp) {
+        inp.style.setProperty('background', '#dcfce7', 'important');
+        inp.style.setProperty('border-color', '#4ade80', 'important');
+        inp.style.setProperty('transition', 'background 0.5s, border-color 0.5s', 'important');
+        setTimeout(function () {
+          inp.style.removeProperty('background');
+          inp.style.removeProperty('border-color');
+          setTimeout(function () { inp.style.removeProperty('transition'); }, 600);
+        }, 1500);
+      })(inputs[i]);
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════
   //  CORE — enhance one form view in-place, move into panel
   // ══════════════════════════════════════════════════════════════
@@ -268,15 +287,18 @@
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // On form submit: save scroll, flag for green flash, lock scroll,
-    // and tell buildPanel to delay rebuild so the form stays connected.
+    // On form submit: flash inputs green immediately, lock scroll.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
                .on('knack-form-submit.' + formCfg.viewId + NS, function () {
-      formCfg._flashOnRender = true;
       formCfg._submitAt = Date.now();
 
-      // Lock scroll: temporarily neuter scrollTo / scrollIntoView so
-      // Knack's post-submit re-render can't jump the page.
+      // Flash inputs green RIGHT NOW (before Knack re-renders)
+      flashInputs(formCfg.viewId);
+
+      // Also flash after Knack re-renders (fresh DOM)
+      formCfg._flashOnRender = true;
+
+      // Lock scroll
       var savedY = window.scrollY;
       var origScrollTo = window.scrollTo;
       var origScrollIntoView = Element.prototype.scrollIntoView;
@@ -382,28 +404,10 @@
 
     // After rebuild, flash green on any forms that just submitted
     for (var fi = 0; fi < panelCfg.forms.length; fi++) {
-      (function (fCfg) {
-        if (!fCfg._flashOnRender) return;
-        fCfg._flashOnRender = false;
-        var fViewEl = document.getElementById(fCfg.viewId);
-        if (!fViewEl) return;
-
-        // Flash inputs green using inline styles (bypasses all CSS specificity)
-        var fInputs = findFormInputs(fViewEl);
-        for (var fi2 = 0; fi2 < fInputs.length; fi2++) {
-          (function (inp) {
-            inp.style.setProperty('background', '#dcfce7', 'important');
-            inp.style.setProperty('border-color', '#4ade80', 'important');
-            inp.style.setProperty('transition', 'background 0.5s, border-color 0.5s', 'important');
-            setTimeout(function () {
-              inp.style.removeProperty('background');
-              inp.style.removeProperty('border-color');
-              // keep transition for the fade-out
-              setTimeout(function () { inp.style.removeProperty('transition'); }, 600);
-            }, 1500);
-          })(fInputs[fi2]);
-        }
-      })(panelCfg.forms[fi]);
+      if (panelCfg.forms[fi]._flashOnRender) {
+        panelCfg.forms[fi]._flashOnRender = false;
+        flashInputs(panelCfg.forms[fi].viewId);
+      }
     }
   }
 
@@ -427,15 +431,12 @@
     if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return;
     var isTextarea = (tag === 'textarea');
 
-    var doSubmit = false;
-    if (e.key === 'Enter') {
-      if (isTextarea && e.shiftKey) return; // Shift+Enter = newline
-      doSubmit = true;
-    }
-    if (e.key === 'Tab' && !isTextarea) {
-      doSubmit = true;
-    }
-    if (!doSubmit) return;
+    var isEnter = (e.key === 'Enter' || e.keyCode === 13);
+    var isTab = (e.key === 'Tab' || e.keyCode === 9);
+
+    if (!isEnter && !isTab) return;
+    if (isTextarea && isEnter && e.shiftKey) return; // Shift+Enter = newline
+    if (isTextarea && isTab) return; // Tab in textarea keeps default behavior
 
     // Walk up to find a view wrapper that's in our config
     var el = e.target;
@@ -444,7 +445,7 @@
         var btn = findSubmitBtn(el);
         if (btn) {
           e.preventDefault();
-          e.stopPropagation();
+          e.stopImmediatePropagation();
           btn.click();
         }
         return;
