@@ -1393,13 +1393,13 @@ window.SCW = window.SCW || {};
   //  CONVERSION HELPERS
   // ══════════════════════════════════════════════════════════════
 
-  /** Knack raw (0.20) → display ("20%"). Skips if already has %. */
+  /** Knack raw (0.20) → display whole number ("20"). Skips if already formatted. */
   function knackToDisplay(raw) {
     var s = String(raw);
-    if (s.indexOf('%') !== -1) return s;
+    if (s.indexOf('%') !== -1) return s.replace(/[%\s]/g, '');
     var num = parseFloat(s.replace(/[,%\s]/g, ''));
     if (isNaN(num)) return raw;
-    return Math.round(num * 100 * 10000) / 10000 + '%';
+    return String(Math.round(num * 100 * 10000) / 10000);
   }
 
   /** Strip display chrome for editing ("20%" → "20"). */
@@ -1414,12 +1414,12 @@ window.SCW = window.SCW || {};
   // Knack reads form values from its INTERNAL MODEL, not the DOM.
   // The `change` event syncs DOM → model. So:
   //
-  //   On load:  Knack raw 0.20 → display "20%"
-  //   On focus: strip to "20" for editing
+  //   On load:  Knack raw 0.20 → display "20"
+  //   On focus: show "20" for editing
   //   On blur:  1) set value to 0.20 (decimal)
   //             2) trigger change → syncs Knack model to 0.20
-  //             3) set value to "20%" (display only — model stays 0.20)
-  //   On submit: Knack reads 0.20 from its model. No interception needed.
+  //             3) set value to "20" (valid number — no % suffix)
+  //   On submit: Knack validates input as numeric, reads model for save.
 
   function enhanceInput(input) {
     if (input.getAttribute(APPLIED_ATTR)) return;
@@ -1436,7 +1436,7 @@ window.SCW = window.SCW || {};
       input.select();
     });
 
-    // On blur: sync Knack model with decimal, then show display
+    // On blur: sync Knack model with decimal, then show whole number
     $(input).off('blur' + NS).on('blur' + NS, function () {
       if (input._scwSubmitting) { input._scwSubmitting = false; return; }
       var num = parseFloat(stripForEdit(input.value));
@@ -1445,8 +1445,8 @@ window.SCW = window.SCW || {};
       // 1) Set decimal value and sync Knack's internal model
       input.value = knackVal;
       $(input).trigger('change');
-      // 2) Set display value (DOM only — model already has decimal)
-      input.value = num + '%';
+      // 2) Show whole number (no % suffix — avoids Knack numeric validation rejection)
+      input.value = num;
     });
   }
 
