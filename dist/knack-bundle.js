@@ -1402,18 +1402,14 @@ window.SCW = window.SCW || {};
 
   /** Flash all user-facing inputs green inside a view (inline styles). */
   function flashInputs(viewId) {
-    console.log('[scw-ifc] flashInputs called for', viewId);
     var el = document.getElementById(viewId);
-    if (!el) { console.log('[scw-ifc] view element not found'); return; }
+    if (!el) return;
     var inputs = findFormInputs(el);
-    console.log('[scw-ifc] found', inputs.length, 'inputs to flash');
     for (var i = 0; i < inputs.length; i++) {
       (function (inp) {
-        console.log('[scw-ifc] flashing', inp.tagName, inp.id, inp.className);
         inp.style.setProperty('background', '#dcfce7', 'important');
         inp.style.setProperty('border-color', '#4ade80', 'important');
         inp.style.setProperty('transition', 'background 0.5s, border-color 0.5s', 'important');
-        console.log('[scw-ifc] inline bg after set:', inp.style.background);
         setTimeout(function () {
           inp.style.removeProperty('background');
           inp.style.removeProperty('border-color');
@@ -1591,7 +1587,6 @@ window.SCW = window.SCW || {};
 
   // Document-level keydown (capture phase) — survives Knack re-renders.
   // Finds the closest form view wrapper and clicks its submit button.
-  console.log('[scw-ifc] Registering keydown capture handler. ENTER_SUBMIT_VIEWS:', JSON.stringify(ENTER_SUBMIT_VIEWS));
   document.addEventListener('keydown', function (e) {
     var tag = e.target.tagName.toLowerCase();
     if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return;
@@ -1601,31 +1596,23 @@ window.SCW = window.SCW || {};
     var isTab = (e.key === 'Tab' || e.keyCode === 9);
 
     if (!isEnter && !isTab) return;
-    console.log('[scw-ifc] keydown caught:', e.key, 'on', tag, e.target.id, '| isEnter:', isEnter, '| isTab:', isTab);
-
     if (isTextarea && isEnter && e.shiftKey) return; // Shift+Enter = newline
 
     // Walk up to find a view wrapper that's in our config
     var el = e.target;
-    var found = false;
     while (el && el !== document.body) {
       if (el.id && ENTER_SUBMIT_VIEWS[el.id]) {
-        found = true;
         var btn = findSubmitBtn(el);
-        console.log('[scw-ifc] found view', el.id, '| btn:', !!btn, btn && btn.textContent);
         if (btn) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          // Flash green immediately (before Knack re-renders DOM)
           flashInputs(el.id);
           btn.click();
-          console.log('[scw-ifc] btn.click() called');
         }
         return;
       }
       el = el.parentElement;
     }
-    if (!found) console.log('[scw-ifc] no matching view found walking up from', e.target.id);
   }, true);
 
   function init() {
