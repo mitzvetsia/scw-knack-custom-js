@@ -17719,28 +17719,40 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * Fetch the record via the VIEW-level API and apply the label.
    * Uses the same-origin view URL to avoid CORS issues.
    */
-  function fetchAndApplyLabel(viewId, recordId) {
+  function fetchAndApplyLabel(viewId, recordId, saveResp) {
     var cfg = viewCfgFor(viewId);
     if (!cfg || !fieldKey(cfg, 'label')) return;
     if (typeof Knack === 'undefined') return;
 
-    console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
-
-    SCW.knackAjax({
-      url: SCW.knackRecordUrl(viewId, recordId),
-      type: 'GET',
-      success: function (resp) {
-        var txt = extractLabelFromResponse(viewId, resp);
-        console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
-        if (txt) {
-          _labelCache[recordId] = txt;
-          applyLabelText(viewId, recordId, txt);
-        }
-      },
-      error: function (xhr) {
-        console.warn('[scw-ws-header] View GET failed for ' + recordId, xhr.status);
+    // Try the save response first — Knack often returns the recalculated formula
+    if (saveResp) {
+      var immediate = extractLabelFromResponse(viewId, saveResp);
+      if (immediate) {
+        console.log('[scw-ws-header] Label from save response for ' + recordId + ': "' + immediate + '"');
+        _labelCache[recordId] = immediate;
+        applyLabelText(viewId, recordId, immediate);
       }
-    });
+    }
+
+    // Also fetch after a short delay to catch formula recalculations
+    setTimeout(function () {
+      console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
+        type: 'GET',
+        success: function (resp) {
+          var txt = extractLabelFromResponse(viewId, resp);
+          console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
+          if (txt) {
+            _labelCache[recordId] = txt;
+            applyLabelText(viewId, recordId, txt);
+          }
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-header] View GET failed for ' + recordId, xhr.status);
+        }
+      });
+    }, 1500);
   }
 
   /** Patch the label td text for a single record in the DOM. */
@@ -17886,10 +17898,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
-        function () {
+        function (resp) {
           showInputSuccess(input);
           if (isHeaderTrigger(viewId, fieldKey)) {
-            fetchAndApplyLabel(viewId, recordId);
+            fetchAndApplyLabel(viewId, recordId, resp);
           }
         },
         function (msg) { showInputError(input, msg, previousValue); }
@@ -18061,9 +18073,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var viewEl = chip.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
-      saveRadioValue(viewId, recordId, fk, saveValue, function () {
+      saveRadioValue(viewId, recordId, fk, saveValue, function (resp) {
         if (isHeaderTrigger(viewId, fk)) {
-          fetchAndApplyLabel(viewId, recordId);
+          fetchAndApplyLabel(viewId, recordId, resp);
         }
       });
     }
