@@ -12714,7 +12714,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -12744,6 +12744,7 @@ $(".kn-navigation-bar").hide();
     'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
+    'view_3602': 'add-photo-to-mdf-idf2',
     'view_3588': 'add-photo-to-sow-line-item2',
     'view_3596': 'add-photo-to-sow-line-item2'
   };
@@ -13098,6 +13099,14 @@ $(".kn-navigation-bar").hide();
       '#view_3577 td.field_2446,',
       '#view_3577 th.field_2447,',
       '#view_3577 td.field_2447,',
+      '#view_3602 th.field_114,',
+      '#view_3602 td.field_114,',
+      '#view_3602 th.field_2445,',
+      '#view_3602 td.field_2445,',
+      '#view_3602 th.field_2446,',
+      '#view_3602 td.field_2446,',
+      '#view_3602 th.field_2447,',
+      '#view_3602 td.field_2447,',
       '#view_3313 th.field_114,',
       '#view_3313 td.field_114,',
       '#view_3313 th.field_2445,',
@@ -13186,7 +13195,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3586': true, 'view_3588': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -15347,7 +15356,7 @@ $(".kn-navigation-bar").hide();
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577'],
+        viewIds: ['view_3559', 'view_3577', 'view_3602'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
