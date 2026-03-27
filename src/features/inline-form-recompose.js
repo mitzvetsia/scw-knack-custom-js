@@ -127,11 +127,11 @@
   padding: 6px 10px !important;
   border: 1px solid #d1d5db !important;
   border-radius: 6px !important;
-  background: #fff !important;
+  background: transparent !important;
   color: #1e293b !important;
   outline: none !important;
   box-shadow: none !important;
-  transition: border-color 0.15s;
+  transition: background 0.4s, border-color 0.15s;
   height: auto !important;
   line-height: 1.5 !important;
   width: 100% !important;
@@ -149,7 +149,7 @@
   padding: 8px 10px !important;
   border: 1px solid #d1d5db !important;
   border-radius: 6px !important;
-  background: #fff !important;
+  background: transparent !important;
   color: #1e293b !important;
   outline: none !important;
   box-shadow: none !important;
@@ -279,31 +279,6 @@
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // Bind Enter/Tab-to-submit using native capture so we beat Knack's handlers
-    if (formCfg.enterToSubmit && submitBtn) {
-      viewEl.addEventListener('keydown', function (e) {
-        var tag = e.target.tagName.toLowerCase();
-        var isInput = (tag === 'input' || tag === 'textarea' || tag === 'select');
-        if (!isInput) return;
-        var isTextarea = (tag === 'textarea');
-
-        if (e.key === 'Enter') {
-          if (isTextarea && e.shiftKey) return; // Shift+Enter = newline
-          e.preventDefault();
-          e.stopPropagation();
-          submitBtn.click();
-        }
-        if (e.key === 'Tab' && !isTextarea) {
-          e.preventDefault();
-          e.stopPropagation();
-          submitBtn.click();
-        }
-      }, true); // capture phase
-    }
-
-    // Prevent Knack's default page-scroll / view re-render after submit.
-    // We intercept the native <form> submit to stay in place, then flash
-    // green on the inputs once we get the knack-form-submit event.
     // On form submit: save scroll, flag for green flash, and tell
     // buildPanel to delay rebuild so the form stays connected.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
@@ -412,16 +387,17 @@
         var fViewEl = document.getElementById(fCfg.viewId);
         if (!fViewEl) return;
 
-        // Restore scroll position repeatedly to fight Knack's re-renders
+        // Lock scroll position for ~1s to fight Knack's re-render scrolling
         var savedY = fCfg._scrollY;
         if (savedY !== undefined) {
           delete fCfg._scrollY;
           window.scrollTo(0, savedY);
-          // Knack may scroll again after us, so keep restoring
-          var scrollTries = [0, 50, 150, 300, 600];
-          scrollTries.forEach(function (delay) {
-            setTimeout(function () { window.scrollTo(0, savedY); }, delay);
-          });
+          var lockUntil = Date.now() + 1000;
+          function lockScroll() {
+            window.scrollTo(0, savedY);
+            if (Date.now() < lockUntil) requestAnimationFrame(lockScroll);
+          }
+          requestAnimationFrame(lockScroll);
         }
 
         // Flash inputs green
@@ -439,6 +415,48 @@
   // ══════════════════════════════════════════════════════════════
   //  INIT
   // ══════════════════════════════════════════════════════════════
+
+  // Build lookup of enterToSubmit view IDs for the document-level handler
+  var ENTER_SUBMIT_VIEWS = {};
+  for (var pi = 0; pi < PANELS.length; pi++) {
+    for (var fi2 = 0; fi2 < PANELS[pi].forms.length; fi2++) {
+      var fc = PANELS[pi].forms[fi2];
+      if (fc.enterToSubmit) ENTER_SUBMIT_VIEWS[fc.viewId] = true;
+    }
+  }
+
+  // Document-level keydown (capture phase) — survives Knack re-renders.
+  // Finds the closest form view wrapper and clicks its submit button.
+  document.addEventListener('keydown', function (e) {
+    var tag = e.target.tagName.toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return;
+    var isTextarea = (tag === 'textarea');
+
+    var doSubmit = false;
+    if (e.key === 'Enter') {
+      if (isTextarea && e.shiftKey) return; // Shift+Enter = newline
+      doSubmit = true;
+    }
+    if (e.key === 'Tab' && !isTextarea) {
+      doSubmit = true;
+    }
+    if (!doSubmit) return;
+
+    // Walk up to find a view wrapper that's in our config
+    var el = e.target;
+    while (el && el !== document.body) {
+      if (el.id && ENTER_SUBMIT_VIEWS[el.id]) {
+        var btn = findSubmitBtn(el);
+        if (btn) {
+          e.preventDefault();
+          e.stopPropagation();
+          btn.click();
+        }
+        return;
+      }
+      el = el.parentElement;
+    }
+  }, true);
 
   function init() {
     injectStyles();
