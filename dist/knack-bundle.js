@@ -1416,6 +1416,17 @@ window.SCW = window.SCW || {};
   //              Knack reads "0.05", saves it as 5%
   //   After re-render: 0.05 → display "5" again
 
+  function convertFormPctInputs(form) {
+    for (var j = 0; j < PERCENT_FIELDS.length; j++) {
+      var inp = form.querySelector('#' + PERCENT_FIELDS[j]);
+      if (!inp) continue;
+      var num = parseFloat(String(inp.value).replace(/[%\s]/g, ''));
+      if (!isNaN(num)) {
+        inp.value = String(num / 100);
+      }
+    }
+  }
+
   function enhanceInput(input) {
     if (input.getAttribute(APPLIED_ATTR)) return;
     // Only enhance form inputs — skip inline grid edits (inside table cells)
@@ -1424,24 +1435,22 @@ window.SCW = window.SCW || {};
 
     // Convert Knack's raw decimal to whole number for display
     input.value = knackToDisplay(input.value);
-
-    // Bind submit interceptor on the parent form (once per form)
-    var form = input.closest('form');
-    if (form && !form.getAttribute(SUBMIT_BOUND)) {
-      form.setAttribute(SUBMIT_BOUND, '1');
-      form.addEventListener('submit', function () {
-        // Convert all percent inputs in this form to decimals before Knack reads them
-        for (var j = 0; j < PERCENT_FIELDS.length; j++) {
-          var inp = form.querySelector('#' + PERCENT_FIELDS[j]);
-          if (!inp) continue;
-          var num = parseFloat(String(inp.value).replace(/[%\s]/g, ''));
-          if (!isNaN(num)) {
-            inp.value = String(num / 100);
-          }
-        }
-      }, true);  // capture phase — runs before Knack's handler
-    }
   }
+
+  // Global capture-phase click interceptor on submit buttons.
+  // Fires before Knack's jQuery click handler reads the input values.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.kn-submit button[type="submit"]');
+    if (!btn) return;
+    var form = btn.closest('form');
+    if (!form) return;
+    // Only convert if this form has percent inputs
+    var hasPct = false;
+    for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+      if (form.querySelector('#' + PERCENT_FIELDS[i])) { hasPct = true; break; }
+    }
+    if (hasPct) convertFormPctInputs(form);
+  }, true);  // capture phase
 
   /** Scan the page (or a container) for percent field inputs and enhance them. */
   function scan(container) {
