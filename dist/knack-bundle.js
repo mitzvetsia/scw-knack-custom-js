@@ -1437,37 +1437,38 @@ window.SCW = window.SCW || {};
     // Move the entire view element into our section
     section.appendChild(viewEl);
 
-    // Bind Enter/Tab-to-submit on all inputs (including textareas)
+    // Bind Enter/Tab-to-submit using native capture so we beat Knack's handlers
     if (formCfg.enterToSubmit && submitBtn) {
-      for (var i = 0; i < inputs.length; i++) {
-        (function (inp, btn) {
-          var isTextarea = inp.tagName.toLowerCase() === 'textarea';
-          $(inp).off('keydown' + NS).on('keydown' + NS, function (e) {
-            if (e.key === 'Enter') {
-              // Shift+Enter in textarea inserts newline
-              if (isTextarea && e.shiftKey) return;
-              e.preventDefault();
-              btn.click();
-            }
-            if (e.key === 'Tab' && !isTextarea) {
-              e.preventDefault();
-              btn.click();
-            }
-          });
-        })(inputs[i], submitBtn);
-      }
+      viewEl.addEventListener('keydown', function (e) {
+        var tag = e.target.tagName.toLowerCase();
+        var isInput = (tag === 'input' || tag === 'textarea' || tag === 'select');
+        if (!isInput) return;
+        var isTextarea = (tag === 'textarea');
+
+        if (e.key === 'Enter') {
+          if (isTextarea && e.shiftKey) return; // Shift+Enter = newline
+          e.preventDefault();
+          e.stopPropagation();
+          submitBtn.click();
+        }
+        if (e.key === 'Tab' && !isTextarea) {
+          e.preventDefault();
+          e.stopPropagation();
+          submitBtn.click();
+        }
+      }, true); // capture phase
     }
 
-    // Flash inputs green on successful form submit
+    // Prevent Knack's default page-scroll / view re-render after submit.
+    // We intercept the native <form> submit to stay in place, then flash
+    // green on the inputs once we get the knack-form-submit event.
+    // Flash inputs green on successful form submit.
+    // Knack re-renders the view after submit, destroying DOM, so we
+    // store state on formCfg and handle it in buildPanel after rebuild.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
                .on('knack-form-submit.' + formCfg.viewId + NS, function () {
-      var freshInputs = findFormInputs(viewEl);
-      for (var j = 0; j < freshInputs.length; j++) {
-        (function (inp) {
-          inp.classList.add(P + '-saved');
-          setTimeout(function () { inp.classList.remove(P + '-saved'); }, 1500);
-        })(freshInputs[j]);
-      }
+      formCfg._flashOnRender = true;
+      formCfg._scrollY = window.scrollY;
     });
 
     return true;
@@ -1550,6 +1551,31 @@ window.SCW = window.SCW || {};
 
     // Insert after host view
     hostView.insertAdjacentElement('afterend', panel);
+
+    // After rebuild, flash green on any forms that just submitted
+    for (var fi = 0; fi < panelCfg.forms.length; fi++) {
+      (function (fCfg) {
+        if (!fCfg._flashOnRender) return;
+        fCfg._flashOnRender = false;
+        var fViewEl = document.getElementById(fCfg.viewId);
+        if (!fViewEl) return;
+
+        // Restore scroll position (prevent Knack's re-render from jumping)
+        if (fCfg._scrollY !== undefined) {
+          window.scrollTo(0, fCfg._scrollY);
+          delete fCfg._scrollY;
+        }
+
+        // Flash inputs green
+        var fInputs = findFormInputs(fViewEl);
+        for (var fi2 = 0; fi2 < fInputs.length; fi2++) {
+          (function (inp) {
+            inp.classList.add(P + '-saved');
+            setTimeout(function () { inp.classList.remove(P + '-saved'); }, 1500);
+          })(fInputs[fi2]);
+        }
+      })(panelCfg.forms[fi]);
+    }
   }
 
   // ══════════════════════════════════════════════════════════════
