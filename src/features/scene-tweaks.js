@@ -75,30 +75,7 @@
   color: #163C6E;
 }
 
-/* ── Global Discount % form (view_3492) ── */
-#view_3492 {
-  margin-bottom: 12px;
-}
-#view_3492 .kn-submit button {
-  background: #163C6E !important;
-  border: none !important;
-  border-radius: 6px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.02em;
-  transition: background 0.15s;
-}
-#view_3492 .kn-submit button:hover {
-  background: rgb(7, 70, 124) !important;
-}
-/* Success message — cleaner look */
-#view_3492 .kn-message.success {
-  background: #0d9466 !important;
-  border: none !important;
-  border-radius: 6px !important;
-  color: #fff !important;
-  font-weight: 500;
-  padding: 10px 16px;
-}
+/* view_3492 / view_3490 form styling now handled by inline-form-recompose.js */
 `;
 
   var style = document.createElement('style');

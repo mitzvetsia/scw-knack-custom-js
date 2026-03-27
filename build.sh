@@ -10,6 +10,7 @@ cat \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
   src/features/scene-tweaks.js \
+  src/features/inline-form-recompose.js \
   src/features/inline-edit-checkbox-layout.js \
   src/features/extract-hsv-color.js \
   src/features/ktl-accordion/ktl-accordion.js \
