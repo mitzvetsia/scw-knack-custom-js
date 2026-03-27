@@ -11571,69 +11571,81 @@ $(".kn-navigation-bar").hide();
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   var NS = '.scwRefreshTarget';
 
+  var AUTH_HEADERS = {
+    'X-Knack-Application-Id': Knack.application_id,
+    'x-knack-rest-api-key': 'knack',
+    'Content-Type': 'application/json'
+  };
+
+  function getAuthHeaders() {
+    var h = {};
+    for (var k in AUTH_HEADERS) h[k] = AUTH_HEADERS[k];
+    h['Authorization'] = Knack.getUserToken();
+    return h;
+  }
+
+  /** Touch the parent record with an empty PUT to force Knack to
+   *  recalculate aggregate / sum / formula fields, then fetch + render. */
   function doRefresh() {
     try {
       var v = Knack.views[TARGET_VIEW];
-      if (!v) {
-        console.warn('[scw-refresh] View object not found for ' + TARGET_VIEW);
-        return;
-      }
+      if (!v) return;
+      if (!v.model || !v.model.id) return;
 
-      // Details view: fetch fresh record via Knack API, then re-render
-      if (v.model && v.model.id) {
-        var objectKey = v.model.view && v.model.view.source && v.model.view.source.object;
-        if (!objectKey) {
-          // Try to get object from the view's scene config
-          var viewMeta = Knack.views[TARGET_VIEW].model && Knack.views[TARGET_VIEW].model.view;
-          objectKey = viewMeta && viewMeta.source && viewMeta.source.object;
+      var recordId = v.model.id;
+      var objectKey = (v.model.view && v.model.view.source && v.model.view.source.object) || '';
+
+      // Step 1 — touch the parent record (empty PUT forces aggregate recalc)
+      var touchUrl = objectKey
+        ? Knack.api_url + '/v1/objects/' + objectKey + '/records/' + recordId
+        : Knack.api_url + '/v1/pages/' + SCENE + '/views/' + TARGET_VIEW + '/records/' + recordId;
+
+      console.log('[scw-refresh] Touching parent record ' + recordId + ' to force recalc');
+
+      $.ajax({
+        url: touchUrl,
+        type: 'PUT',
+        headers: getAuthHeaders(),
+        data: JSON.stringify({}),
+        complete: function () {
+          // Step 2 — fetch fresh data (whether touch succeeded or not)
+          fetchAndRender(v, recordId);
         }
-        console.log('[scw-refresh] Fetching record ' + v.model.id + ' from object ' + objectKey);
-
-        // Use Knack's internal API to re-fetch the record
-        $.ajax({
-          url: Knack.api_url + '/v1/pages/' + SCENE + '/views/' + TARGET_VIEW + '/records/' + v.model.id,
-          type: 'GET',
-          headers: {
-            'X-Knack-Application-Id': Knack.application_id,
-            'x-knack-rest-api-key': 'knack',
-            'Authorization': Knack.getUserToken()
-          },
-          success: function (data) {
-            console.log('[scw-refresh] Got fresh record data, rendering');
-            // Update the view's record and model with fresh data
-            v.record = data;
-            if (v.model && v.model.attributes) {
-              for (var key in data) {
-                if (data.hasOwnProperty(key)) {
-                  v.model.attributes[key] = data[key];
-                }
-              }
-            }
-            if (typeof v.render === 'function') {
-              v.render();
-            }
-            // Rebuild custom totals layout (v.render may not fire knack-view-render)
-            setTimeout(function () {
-              if (window.SCW && SCW.restructureTotals) SCW.restructureTotals();
-            }, 150);
-          },
-          error: function (xhr) {
-            console.warn('[scw-refresh] API fetch failed', xhr.status, xhr.statusText);
-            // Fallback: just try render
-            if (typeof v.render === 'function') v.render();
-          }
-        });
-        return;
-      }
-
-      // Table/list fallback
-      if (v.model && typeof v.model.fetch === 'function') {
-        console.log('[scw-refresh] Calling model.fetch()');
-        v.model.fetch();
-      }
+      });
     } catch (e) {
       console.warn('[scw-refresh] Could not refresh ' + TARGET_VIEW, e);
     }
+  }
+
+  /** Fetch fresh record data from the API and re-render view_3418. */
+  function fetchAndRender(v, recordId) {
+    $.ajax({
+      url: Knack.api_url + '/v1/pages/' + SCENE + '/views/' + TARGET_VIEW + '/records/' + recordId,
+      type: 'GET',
+      headers: getAuthHeaders(),
+      success: function (data) {
+        console.log('[scw-refresh] Got fresh record data, rendering');
+        v.record = data;
+        if (v.model && v.model.attributes) {
+          for (var key in data) {
+            if (data.hasOwnProperty(key)) {
+              v.model.attributes[key] = data[key];
+            }
+          }
+        }
+        if (typeof v.render === 'function') v.render();
+        setTimeout(function () {
+          if (window.SCW && SCW.restructureTotals) SCW.restructureTotals();
+        }, 150);
+      },
+      error: function (xhr) {
+        console.warn('[scw-refresh] API fetch failed', xhr.status, xhr.statusText);
+        if (typeof v.render === 'function') v.render();
+        setTimeout(function () {
+          if (window.SCW && SCW.restructureTotals) SCW.restructureTotals();
+        }, 150);
+      }
+    });
   }
 
   function refreshTarget() {
@@ -11684,7 +11696,6 @@ $(".kn-navigation-bar").hide();
   // --- device-worksheet direct edits (AJAX PUT / model.updateRecord) ---
   $(document).off('scw-record-saved' + NS)
              .on('scw-record-saved' + NS, function () {
-    // Only refresh if view_3418 exists on the current page
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
       console.log('[scw-refresh] Direct edit save detected');
       refreshTarget();
