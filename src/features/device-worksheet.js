@@ -496,7 +496,7 @@ tr.scw-inline-photo-row > td {
 
 /* ── Photo content moved inside card ── */
 .${P}-photo-wrap {
-  padding: 20px 16px 50px 16px;
+  padding: 20px 16px 50px 70px;
   background: #fff;
 }
 .${P}-photo-wrap.${P}-photo-hidden {
@@ -1063,7 +1063,7 @@ tr.scw-synth-divider > td {
 
 /* ── Individual section ── */
 .${P}-section {
-  padding: 14px 20px 14px 16px;
+  padding: 14px 20px 14px 70px;
   min-width: 0;
 }
 .${P}-section:last-child {
@@ -1753,6 +1753,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-summary {
   border-bottom: none;
   border-top: 1px solid #e5e7eb;
+}
+#view_3596 .${P}-sum-group--fill .${P}-sum-label {
+  display: none;
+}
+#view_3596 .scw-inline-photo-label {
+  display: none;
 }
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
