@@ -1423,6 +1423,8 @@ window.SCW = window.SCW || {};
 
   function enhanceInput(input) {
     if (input.getAttribute(APPLIED_ATTR)) return;
+    // Only enhance form inputs — skip inline grid edits (inside table cells)
+    if (input.closest && input.closest('.kn-table-table')) return;
     input.setAttribute(APPLIED_ATTR, '1');
 
     // Convert Knack's raw value to display on load
@@ -17382,13 +17384,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     valueWrapper.style.background = 'transparent';
 
     var currentVal = readFieldText(td);
-
-    // Percent fields: Knack stores decimal (0.05) — display as whole number (5)
-    if (window.SCW && SCW.pctFormat && SCW.pctFormat.isPercentField(fieldKey)) {
-      var pctNum = parseFloat(currentVal);
-      if (!isNaN(pctNum)) currentVal = String(Math.round(pctNum * 100 * 10000) / 10000);
-    }
-
     var input;
 
     if (opts.notes) {

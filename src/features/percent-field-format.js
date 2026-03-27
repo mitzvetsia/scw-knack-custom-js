@@ -53,6 +53,8 @@
 
   function enhanceInput(input) {
     if (input.getAttribute(APPLIED_ATTR)) return;
+    // Only enhance form inputs — skip inline grid edits (inside table cells)
+    if (input.closest && input.closest('.kn-table-table')) return;
     input.setAttribute(APPLIED_ATTR, '1');
 
     // Convert Knack's raw value to display on load
