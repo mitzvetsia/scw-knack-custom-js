@@ -19029,8 +19029,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chevron.classList.remove(P + '-expanded');
         chevron.classList.add(P + '-collapsed');
       }
-      // Hide the in-card photo wrapper (unless photoAlwaysVisible)
-      if (!keepPhoto) {
+      // Hide the in-card photo wrapper on collapse.
+      // For photoAlwaysVisible views, only keep it visible if there are
+      // actual uploaded images (not just required placeholders / "+ Add").
+      var hasRealPhotos = false;
+      if (keepPhoto) {
+        var pw = wsTr.querySelector('.' + P + '-photo-wrap');
+        hasRealPhotos = pw && pw.querySelector('.scw-inline-photo-card[data-photo-has-image="true"]');
+      }
+      if (!keepPhoto || !hasRealPhotos) {
         var photoWrap = wsTr.querySelector('.' + P + '-photo-wrap');
         if (photoWrap) photoWrap.classList.add(P + '-photo-hidden');
         // Legacy: also hide sibling photo row if not absorbed
@@ -19424,8 +19431,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         photoRow.classList.add(P + '-photo-absorbed');
 
         // For photoAlwaysVisible views, hide the strip when there
-        // are no actual photo records (only the "+ Add" button).
-        if (viewCfg.photoAlwaysVisible && !photoWrap.querySelector('.scw-inline-photo-card')) {
+        // are no actual uploaded photos (only placeholders / "+ Add" button).
+        if (viewCfg.photoAlwaysVisible && !photoWrap.querySelector('.scw-inline-photo-card[data-photo-has-image="true"]')) {
           photoWrap.classList.add(P + '-photo-hidden');
         }
       }
