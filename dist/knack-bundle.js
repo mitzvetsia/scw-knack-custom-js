@@ -1361,12 +1361,15 @@ window.SCW = window.SCW || {};
   color: #991b1b !important;
 }
 
-/* ── Save-success flash on inputs ── */
+/* ── Save-success flash on inputs — must beat background: #fff !important ── */
 .${P}-section input.${P}-saved,
+.${P}-section input.${P}-saved[type="text"],
+.${P}-section input.${P}-saved[type="number"],
+.${P}-section input.${P}-saved[type="email"],
 .${P}-section textarea.${P}-saved {
-  background-color: #dcfce7 !important;
+  background: #dcfce7 !important;
   border-color: #4ade80 !important;
-  transition: background-color 0.3s, border-color 0.3s;
+  transition: background 0.3s, border-color 0.3s;
 }
 
 /* Enter hint for textarea forms */
@@ -1462,13 +1465,13 @@ window.SCW = window.SCW || {};
     // Prevent Knack's default page-scroll / view re-render after submit.
     // We intercept the native <form> submit to stay in place, then flash
     // green on the inputs once we get the knack-form-submit event.
-    // Flash inputs green on successful form submit.
-    // Knack re-renders the view after submit, destroying DOM, so we
-    // store state on formCfg and handle it in buildPanel after rebuild.
+    // On form submit: save scroll, flag for green flash, and tell
+    // buildPanel to delay rebuild so the form stays connected.
     $(document).off('knack-form-submit.' + formCfg.viewId + NS)
                .on('knack-form-submit.' + formCfg.viewId + NS, function () {
       formCfg._flashOnRender = true;
       formCfg._scrollY = window.scrollY;
+      formCfg._submitAt = Date.now();
     });
 
     return true;
@@ -1479,6 +1482,16 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════════
 
   function buildPanel(panelCfg) {
+    // If a form just submitted, delay rebuild so the <form> stays connected
+    // and Knack can finish its AJAX cycle without "form not connected" errors.
+    for (var d = 0; d < panelCfg.forms.length; d++) {
+      var fc = panelCfg.forms[d];
+      if (fc._submitAt && (Date.now() - fc._submitAt) < 800) {
+        setTimeout(function () { buildPanel(panelCfg); }, 800);
+        return;
+      }
+    }
+
     var hostView = document.getElementById(panelCfg.hostViewId);
     if (!hostView) return;
 
@@ -1560,10 +1573,16 @@ window.SCW = window.SCW || {};
         var fViewEl = document.getElementById(fCfg.viewId);
         if (!fViewEl) return;
 
-        // Restore scroll position (prevent Knack's re-render from jumping)
-        if (fCfg._scrollY !== undefined) {
-          window.scrollTo(0, fCfg._scrollY);
+        // Restore scroll position repeatedly to fight Knack's re-renders
+        var savedY = fCfg._scrollY;
+        if (savedY !== undefined) {
           delete fCfg._scrollY;
+          window.scrollTo(0, savedY);
+          // Knack may scroll again after us, so keep restoring
+          var scrollTries = [0, 50, 150, 300, 600];
+          scrollTries.forEach(function (delay) {
+            setTimeout(function () { window.scrollTo(0, savedY); }, delay);
+          });
         }
 
         // Flash inputs green
