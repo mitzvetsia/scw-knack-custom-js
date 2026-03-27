@@ -362,7 +362,7 @@
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          laborDescription: { key: 'field_2020', type: 'readOnly',    summary: true, group: 'identity', multiline: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, showOnlyIfYes: true },
 
           // ── Detail panel ──
@@ -370,7 +370,7 @@
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
           scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
         },
-        summaryLayout: ['existingCabling'],
+        summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
