@@ -436,7 +436,6 @@
 
     if (!isEnter && !isTab) return;
     if (isTextarea && isEnter && e.shiftKey) return; // Shift+Enter = newline
-    if (isTextarea && isTab) return; // Tab in textarea keeps default behavior
 
     // Walk up to find a view wrapper that's in our config
     var el = e.target;
@@ -446,6 +445,8 @@
         if (btn) {
           e.preventDefault();
           e.stopImmediatePropagation();
+          // Flash green immediately (before Knack re-renders DOM)
+          flashInputs(el.id);
           btn.click();
         }
         return;
