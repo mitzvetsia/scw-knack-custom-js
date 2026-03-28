@@ -19503,13 +19503,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var SYNTH_ACCENT_RGB = '91,155,213';
 
       // Remove empty native Knack group headers (blank MDF/IDF value)
-      // and any orphaned photo rows directly beneath them.
+      // and any orphaned photo rows directly beneath them — but ONLY if
+      // every worksheet row under the header belongs to a synthetic bucket.
+      // Regular line items without a MDF/IDF must keep their group header.
       var nativeGroups = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1');
+      var bucketClasses = {};
+      for (var bi = 0; bi < buckets.length; bi++) {
+        bucketClasses[buckets[bi].cls] = true;
+      }
       for (var gi = 0; gi < nativeGroups.length; gi++) {
         var grp = nativeGroups[gi];
         if (grp.classList.contains('scw-synthetic-group')) continue;
         var labelText = getGroupLabelText(grp);
         if (labelText.length === 0) {
+          // Check if any worksheet rows under this header are NOT in a bucket
+          var hasNonBucketRows = false;
+          var checkSib = grp.nextElementSibling;
+          while (checkSib && !checkSib.classList.contains('kn-table-group')) {
+            if (checkSib.classList.contains(WORKSHEET_ROW)) {
+              var isBucket = false;
+              for (var bk in bucketClasses) {
+                if (checkSib.classList.contains(bk)) { isBucket = true; break; }
+              }
+              if (!isBucket) { hasNonBucketRows = true; break; }
+            }
+            checkSib = checkSib.nextElementSibling;
+          }
+          if (hasNonBucketRows) {
+            // Keep the header but label it "Unassigned"
+            var grpTd = grp.querySelector('td');
+            if (grpTd) grpTd.textContent = 'Unassigned';
+            continue;
+          }
           // Remove orphaned photo rows that follow this empty header
           var sib = grp.nextElementSibling;
           while (sib && !sib.classList.contains('kn-table-group') &&
