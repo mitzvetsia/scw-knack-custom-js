@@ -17229,10 +17229,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
         if (productHidden && rule.summarySwapField) {
-          // Hide the entire identity block — the swap fill group will
+          // Collapse identity contents — the swap fill group will
           // span the full width and carry the bucket label.
-          identity.style.display = 'none';
-          var sep = identity.parentElement && identity.parentElement.querySelector('.' + P + '-sum-sep');
+          // Keep identity in the DOM (width: 0) so the warn-slot
+          // placeholder beside it is not disrupted.
+          identity.style.cssText = 'width: 0; min-width: 0; max-width: 0; flex: 0 0 0px; overflow: hidden;';
+          var sep = identity.querySelector('.' + P + '-sum-sep');
           if (sep) sep.style.display = 'none';
         } else {
           var chitGroup = document.createElement('span');
