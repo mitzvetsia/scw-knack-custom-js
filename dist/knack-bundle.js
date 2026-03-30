@@ -16993,6 +16993,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 /* When product is hidden, chit fills the identity width */
 .${P}-bucket-chit--wide {
   max-width: none;
+  width: 100%;
   font-size: 12px;
   margin-left: 10px;
   margin-top: 5px;
