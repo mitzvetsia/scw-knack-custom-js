@@ -1674,9 +1674,12 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   flex-shrink: 0;
   min-width: 40px;
 }
-/* When product is empty, let chit fill up to full width */
+/* When product is hidden, chit fills the identity width */
 .${P}-bucket-chit--wide {
   max-width: none;
+  font-size: 12px;
+  margin-left: 10px;
+  margin-top: 5px;
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
 
