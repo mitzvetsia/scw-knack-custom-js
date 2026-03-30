@@ -274,13 +274,15 @@
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
             label: 'SERVICE',
-            descLabel: 'Description of Service',
+            descLabel: 'Service',
+            hideProduct: true,
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
+            hideFields: ['field_1949', 'field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
+            hideProduct: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -1912,21 +1914,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var productDesc = viewCfg.fields && viewCfg.fields.product;
       var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
-        if (productHidden && rule.summarySwapField) {
-          // Hide identity — the swap fill group will span the full
-          // width and carry the bucket label.
+        if (productHidden && (rule.summarySwapField || rule.hideProduct)) {
+          // Hide identity — the fill group spans full width and
+          // carries the bucket label via descLabel.
           identity.style.display = 'none';
-        } else {
+        } else if (!productHidden) {
+          // Product visible — inject teal pill chit beside it
           var chitGroup = document.createElement('span');
           chitGroup.className = P + '-bucket-chit-group';
           chitGroup.style.visibility = 'visible';
-
-          if (!productHidden) {
-            var chitLabel = document.createElement('span');
-            chitLabel.className = P + '-sum-label';
-            chitLabel.innerHTML = '&nbsp;';
-            chitGroup.appendChild(chitLabel);
-          }
+          var chitLabel = document.createElement('span');
+          chitLabel.className = P + '-sum-label';
+          chitLabel.innerHTML = '&nbsp;';
+          chitGroup.appendChild(chitLabel);
 
           var chitEl = document.createElement('span');
           chitEl.className = P + '-bucket-chit';
@@ -1934,14 +1934,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           chitGroup.appendChild(chitEl);
 
           identity.insertBefore(chitGroup, identity.firstChild);
-
-          if (productHidden) {
-            var sep2 = identity.querySelector('.' + P + '-sum-sep');
-            if (sep2) sep2.style.display = 'none';
-            var prodGroup = identity.querySelector('.' + P + '-product-group');
-            if (prodGroup) prodGroup.style.display = 'none';
-            chitGroup.style.flex = '1 1 auto';
-          }
         }
       }
     }
