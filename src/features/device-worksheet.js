@@ -4271,6 +4271,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // FIRST in the table (before MDF/IDF groups).
     if (viewCfg.syntheticBucketGroups && viewCfg.syntheticBucketGroups.length) {
       var tbody = table.querySelector('tbody');
+
+      // Clean up any synthetic groups / dividers from a previous render
+      // (model.fetch re-renders the view but our injected rows may survive)
+      var staleGroups = tbody.querySelectorAll('tr.scw-synthetic-group, tr.scw-synth-divider');
+      for (var si = 0; si < staleGroups.length; si++) staleGroups[si].remove();
+
       var colSpan = 1;
       var hdr = table.querySelector('thead tr');
       if (hdr) {
