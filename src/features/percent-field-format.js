@@ -1,6 +1,8 @@
 /*** Percent Field Format — global % field handling ***/
+/*** TEMPORARILY DISABLED — revisit later ***/
 (function () {
   'use strict';
+  return; // ← disabled: all percent field manipulation paused
 
   var NS = '.scwPctFmt';
   var APPLIED_ATTR = 'data-scw-pct';
