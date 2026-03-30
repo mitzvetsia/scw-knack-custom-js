@@ -319,15 +319,19 @@
         bucketField: 'field_2219',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1953'],
             label: 'SERVICE',
-            descLabel: 'Description of Service',
+            summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
+            summarySwapReadOnly: true,
+            hideDetail: true,                     // suppress detail sections, keep photos only
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+            hideFields: ['field_1949', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
             label: 'ASSUMPTION',
-            descLabel: 'Assumption',
+            summarySwapField: 'field_2020',
+            summarySwapReadOnly: true,
+            hideDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -1948,6 +1952,49 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var ldGroup = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
         if (ldGroup) ldGroup.textContent = rule.descLabel;
       }
+    }
+
+    // ── Swap summary field with another field (read-only) ──
+    // e.g. replace scwNotes (field_1953) with laborDescription (field_2020)
+    if (rule.summarySwapField) {
+      // Find the swap source td anywhere in the card (usually in detail panel)
+      var swapTd = card.querySelector('td[data-field-key="' + rule.summarySwapField + '"]');
+      var swapText = '';
+      if (swapTd) {
+        var swapSpan = swapTd.querySelector('span[class^="col-"]');
+        swapText = (swapSpan || swapTd).textContent.replace(/^\s+|\s+$/g, '').replace(/\u00a0/g, '');
+      }
+      // Find the hidden summary group for the field being replaced
+      // (it was hidden above via hideFields — un-hide it and replace content)
+      var hiddenGroups = card.querySelectorAll('[data-scw-fields]');
+      for (var hg = 0; hg < hiddenGroups.length; hg++) {
+        var hgFields = hiddenGroups[hg].getAttribute('data-scw-fields').split(' ');
+        for (var hf = 0; hf < hgFields.length; hf++) {
+          if (hideSet.has(hgFields[hf]) && hiddenGroups[hg].classList.contains(P + '-sum-group--fill')) {
+            // Un-hide and replace with swap field content
+            hiddenGroups[hg].style.visibility = '';
+            hiddenGroups[hg].setAttribute('data-scw-fields', rule.summarySwapField);
+            // Remove old label + td, build fresh read-only content
+            hiddenGroups[hg].innerHTML = '';
+            var swLabel = document.createElement('span');
+            swLabel.className = P + '-sum-label';
+            swLabel.textContent = rule.descLabel || '';
+            hiddenGroups[hg].appendChild(swLabel);
+            var swVal = document.createElement('span');
+            swVal.className = P + '-sum-field-ro ' + P + '-sum-field--desc ' + P + '-sum-direct-edit';
+            swVal.style.cssText = 'white-space: pre-wrap; cursor: default;';
+            swVal.textContent = swapText || '\u00a0';
+            hiddenGroups[hg].appendChild(swVal);
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Hide detail sections (keep photo wraps only) ──
+    if (rule.hideDetail) {
+      var detSections = card.querySelector('.' + P + '-sections');
+      if (detSections) detSections.style.display = 'none';
     }
   }
 
