@@ -8,7 +8,7 @@
   // Source grid views whose data feeds the totals panel
   var SOURCE_VIEWS = ['view_3586', 'view_3588', 'view_3604'];
   var NS = '.scwRefreshTarget';
-  var SPINNER_CLS = 'scw-totals-refreshing';
+  var OVERLAY_ID = 'scw-totals-refresh-overlay';
 
   // ── Loading overlay on view_3418 ──
   var OVERLAY_STYLE_ID = 'scw-totals-refresh-css';
@@ -17,12 +17,10 @@
     var s = document.createElement('style');
     s.id = OVERLAY_STYLE_ID;
     s.textContent = [
-      '#' + TARGET_VIEW + '.' + SPINNER_CLS + ' { position: relative; pointer-events: none; }',
-      '#' + TARGET_VIEW + '.' + SPINNER_CLS + '::after {',
-      '  content: "Refreshing…";',
-      '  position: absolute; inset: 0;',
+      '#' + OVERLAY_ID + ' {',
+      '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
       '  display: flex; align-items: center; justify-content: center;',
-      '  background: rgba(255,255,255,.75);',
+      '  background: rgba(255,255,255,.78);',
       '  color: #555; font-size: 13px; font-weight: 500; letter-spacing: .3px;',
       '  border-radius: 8px; z-index: 5;',
       '}'
@@ -33,12 +31,22 @@
   function showRefreshing() {
     injectOverlayStyle();
     var el = document.getElementById(TARGET_VIEW);
-    if (el) el.classList.add(SPINNER_CLS);
+    if (!el) return;
+    // Ensure positioned parent for the overlay
+    if (getComputedStyle(el).position === 'static') {
+      el.style.position = 'relative';
+    }
+    // Don't add a duplicate
+    if (document.getElementById(OVERLAY_ID)) return;
+    var overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.textContent = 'Refreshing\u2026';
+    el.appendChild(overlay);
   }
 
   function hideRefreshing() {
-    var el = document.getElementById(TARGET_VIEW);
-    if (el) el.classList.remove(SPINNER_CLS);
+    var overlay = document.getElementById(OVERLAY_ID);
+    if (overlay) overlay.remove();
   }
 
   /**
@@ -48,8 +56,6 @@
    */
   function refreshSourceGrids() {
     if (typeof Knack === 'undefined') return;
-
-    showRefreshing();
 
     var pending = 0;
     var fetched = false;
@@ -77,9 +83,51 @@
       hideRefreshing();
     }
 
-    // Safety timeout — clear spinner after 10s no matter what
+    // Safety timeout — clear overlay after 10s no matter what
     setTimeout(hideRefreshing, 10000);
   }
+
+  // ── Immediate submit-button click interception (capture phase) ──
+  // knack-form-submit fires AFTER the AJAX round-trip completes.
+  // We intercept the actual button click so the overlay appears instantly.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('button[type="submit"]');
+    if (!btn) return;
+    var form = btn.closest('form');
+    if (!form) return;
+    var isTargetForm = false;
+    for (var i = 0; i < FORM_VIEWS.length; i++) {
+      if (form.closest('#' + FORM_VIEWS[i])) { isTargetForm = true; break; }
+    }
+    if (isTargetForm) {
+      console.log('[scw-refresh] Submit button clicked — showing overlay');
+      showRefreshing();
+    }
+  }, true); // capture phase — fires before Knack's handler
+
+  // --- form submissions (knack-form-submit.viewId) ---
+  // By the time this fires, the save is done — refresh the source grids.
+  FORM_VIEWS.forEach(function (formViewId) {
+    $(document).off('knack-form-submit.' + formViewId + NS)
+               .on('knack-form-submit.' + formViewId + NS, function () {
+      console.log('[scw-refresh] Form submit detected on ' + formViewId);
+      refreshSourceGrids();
+    });
+  });
+
+  // --- record create / update on form views ---
+  FORM_VIEWS.forEach(function (formViewId) {
+    $(document).off('knack-record-create.' + formViewId + NS)
+               .on('knack-record-create.' + formViewId + NS, function () {
+      console.log('[scw-refresh] Record create detected on ' + formViewId);
+      refreshSourceGrids();
+    });
+    $(document).off('knack-record-update.' + formViewId + NS)
+               .on('knack-record-update.' + formViewId + NS, function () {
+      console.log('[scw-refresh] Record update detected on ' + formViewId);
+      refreshSourceGrids();
+    });
+  });
 
   /** Recalculate totals from current DOM (for cell updates / direct edits). */
   function recalcTotals() {
@@ -94,33 +142,6 @@
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(recalcTotals, 300);
   }
-
-  // --- form submissions (knack-form-submit.viewId) ---
-  // These change server data, so we must re-fetch the source grids.
-  FORM_VIEWS.forEach(function (formViewId) {
-    $(document).off('knack-form-submit.' + formViewId + NS)
-               .on('knack-form-submit.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Form submit detected on ' + formViewId);
-      showRefreshing();
-      setTimeout(refreshSourceGrids, 500);
-    });
-  });
-
-  // --- record create / update on form views ---
-  FORM_VIEWS.forEach(function (formViewId) {
-    $(document).off('knack-record-create.' + formViewId + NS)
-               .on('knack-record-create.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record create detected on ' + formViewId);
-      showRefreshing();
-      setTimeout(refreshSourceGrids, 500);
-    });
-    $(document).off('knack-record-update.' + formViewId + NS)
-               .on('knack-record-update.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record update detected on ' + formViewId);
-      showRefreshing();
-      setTimeout(refreshSourceGrids, 500);
-    });
-  });
 
   // --- inline edits on any view in the scene (standard Knack cell-update) ---
   // Cell updates change DOM in-place, so recalc from DOM is sufficient.
