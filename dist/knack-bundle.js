@@ -11629,19 +11629,40 @@ $(".kn-navigation-bar").hide();
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   var NS = '.scwRefreshTarget';
 
-  /** Recalculate totals from grid DOM — no API calls needed. */
-  function refreshTarget() {
-    if (!window.SCW || typeof SCW.restructureTotals !== 'function') return;
-    if (!document.getElementById(TARGET_VIEW)) return;
-    console.log('[scw-refresh] Recalculating totals from grid DOM');
-    SCW.restructureTotals();
+  /**
+   * Refresh the target view by re-fetching data from Knack.
+   * Falls back to DOM-based recalculation if the view model isn't available.
+   */
+  function refreshView() {
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[TARGET_VIEW];
+    if (view && view.model && typeof view.model.fetch === 'function') {
+      var el = document.getElementById(TARGET_VIEW);
+      if (el) {
+        el.style.minHeight = el.offsetHeight + 'px';
+        el.style.opacity = '0.45';
+        el.style.transition = 'opacity .15s';
+        $(document).one('knack-view-render.' + TARGET_VIEW + '.scwRefreshFade', function () {
+          el.style.opacity = '1';
+          setTimeout(function () { el.style.minHeight = ''; el.style.transition = ''; }, 200);
+        });
+      }
+      console.log('[scw-refresh] Refreshing ' + TARGET_VIEW + ' via model.fetch()');
+      view.model.fetch();
+    } else {
+      // Fallback: recalculate from DOM
+      console.log('[scw-refresh] Recalculating totals from grid DOM (fallback)');
+      if (window.SCW && typeof SCW.restructureTotals === 'function') {
+        SCW.restructureTotals();
+      }
+    }
   }
 
   /** Debounced version for rapid-fire events (e.g. multiple cell updates). */
   var debounceTimer = null;
   function refreshDebounced() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(refreshTarget, 300);
+    debounceTimer = setTimeout(refreshView, 300);
   }
 
   // --- form submissions (knack-form-submit.viewId) ---
@@ -11649,8 +11670,7 @@ $(".kn-navigation-bar").hide();
     $(document).off('knack-form-submit.' + formViewId + NS)
                .on('knack-form-submit.' + formViewId + NS, function () {
       console.log('[scw-refresh] Form submit detected on ' + formViewId);
-      // Small delay to let Knack update the form input values after submit
-      setTimeout(refreshTarget, 500);
+      setTimeout(refreshView, 500);
     });
   });
 
@@ -11659,12 +11679,12 @@ $(".kn-navigation-bar").hide();
     $(document).off('knack-record-create.' + formViewId + NS)
                .on('knack-record-create.' + formViewId + NS, function () {
       console.log('[scw-refresh] Record create detected on ' + formViewId);
-      setTimeout(refreshTarget, 500);
+      setTimeout(refreshView, 500);
     });
     $(document).off('knack-record-update.' + formViewId + NS)
                .on('knack-record-update.' + formViewId + NS, function () {
       console.log('[scw-refresh] Record update detected on ' + formViewId);
-      setTimeout(refreshTarget, 500);
+      setTimeout(refreshView, 500);
     });
   });
 
@@ -11689,9 +11709,8 @@ $(".kn-navigation-bar").hide();
              .on('scw-record-saved' + NS, function () {
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
       console.log('[scw-refresh] Direct edit save detected');
-      // Delay to let Knack re-render the grid row with updated values
-      setTimeout(refreshTarget, 1000);
-      setTimeout(refreshTarget, 3000);
+      setTimeout(refreshView, 1000);
+      setTimeout(refreshView, 3000);
     }
   });
 })();
