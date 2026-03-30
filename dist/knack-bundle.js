@@ -16990,13 +16990,14 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   flex-shrink: 0;
   min-width: 40px;
 }
-/* When product is hidden, chit fills the identity width */
-.${P}-bucket-chit--wide {
-  max-width: none;
-  width: 100%;
-  font-size: 12px;
+/* Plain bold label used in place of chit when product is hidden */
+.${P}-bucket-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
   margin-left: 10px;
   margin-top: 5px;
+  white-space: nowrap;
 }
 /* Bucket chit present — product flexes automatically within fixed identity */
 
@@ -17248,14 +17249,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           chitGroup.appendChild(chitLabel);
         }
 
-        var chitEl = document.createElement('span');
-        chitEl.className = P + '-bucket-chit';
-        chitEl.textContent = rule.label;
-
         if (productHidden) {
-          chitEl.classList.add(P + '-bucket-chit--wide');
+          // Plain bold text instead of pill chit
+          var bucketText = document.createElement('span');
+          bucketText.className = P + '-bucket-label';
+          bucketText.textContent = rule.label.charAt(0).toUpperCase() + rule.label.slice(1).toLowerCase();
+          chitGroup.appendChild(bucketText);
+        } else {
+          var chitEl = document.createElement('span');
+          chitEl.className = P + '-bucket-chit';
+          chitEl.textContent = rule.label;
+          chitGroup.appendChild(chitEl);
         }
-        chitGroup.appendChild(chitEl);
 
         // Insert as first child of identity (before separator + product-group)
         identity.insertBefore(chitGroup, identity.firstChild);
