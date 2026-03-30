@@ -16990,15 +16990,6 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   flex-shrink: 0;
   min-width: 40px;
 }
-/* Plain bold label used in place of chit when product is hidden */
-.${P}-bucket-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: #1f2937;
-  margin-left: 10px;
-  margin-top: 5px;
-  white-space: nowrap;
-}
 /* Bucket chit present — product flexes automatically within fixed identity */
 
 /* ── Worksheet <thead> column styling ── */
@@ -17237,43 +17228,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var productDesc = viewCfg.fields && viewCfg.fields.product;
       var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
-        var chitGroup = document.createElement('span');
-        chitGroup.className = P + '-bucket-chit-group';
-        chitGroup.style.visibility = 'visible';
-
-        if (!productHidden) {
-          // Wrap in a group with empty label so chit aligns with labor desc input
-          var chitLabel = document.createElement('span');
-          chitLabel.className = P + '-sum-label';
-          chitLabel.innerHTML = '&nbsp;';
-          chitGroup.appendChild(chitLabel);
-        }
-
-        if (productHidden) {
-          // Plain bold text instead of pill chit
-          var bucketText = document.createElement('span');
-          bucketText.className = P + '-bucket-label';
-          bucketText.textContent = rule.label.charAt(0).toUpperCase() + rule.label.slice(1).toLowerCase();
-          chitGroup.appendChild(bucketText);
+        if (productHidden && rule.summarySwapField) {
+          // Hide the entire identity block — the swap fill group will
+          // span the full width and carry the bucket label.
+          identity.style.display = 'none';
+          var sep = identity.parentElement && identity.parentElement.querySelector('.' + P + '-sum-sep');
+          if (sep) sep.style.display = 'none';
         } else {
+          var chitGroup = document.createElement('span');
+          chitGroup.className = P + '-bucket-chit-group';
+          chitGroup.style.visibility = 'visible';
+
+          if (!productHidden) {
+            var chitLabel = document.createElement('span');
+            chitLabel.className = P + '-sum-label';
+            chitLabel.innerHTML = '&nbsp;';
+            chitGroup.appendChild(chitLabel);
+          }
+
           var chitEl = document.createElement('span');
           chitEl.className = P + '-bucket-chit';
           chitEl.textContent = rule.label;
           chitGroup.appendChild(chitEl);
-        }
 
-        // Insert as first child of identity (before separator + product-group)
-        identity.insertBefore(chitGroup, identity.firstChild);
+          identity.insertBefore(chitGroup, identity.firstChild);
 
-        if (productHidden) {
-          // Hide separator dot
-          var sep = identity.querySelector('.' + P + '-sum-sep');
-          if (sep) sep.style.display = 'none';
-          // Fully collapse product group so chit fills the width
-          var prodGroup = identity.querySelector('.' + P + '-product-group');
-          if (prodGroup) prodGroup.style.display = 'none';
-          // Let chit group stretch to fill identity
-          chitGroup.style.flex = '1 1 auto';
+          if (productHidden) {
+            var sep2 = identity.querySelector('.' + P + '-sum-sep');
+            if (sep2) sep2.style.display = 'none';
+            var prodGroup = identity.querySelector('.' + P + '-product-group');
+            if (prodGroup) prodGroup.style.display = 'none';
+            chitGroup.style.flex = '1 1 auto';
+          }
         }
       }
     }
@@ -17309,9 +17295,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             hiddenGroups[hg].setAttribute('data-scw-fields', rule.summarySwapField);
             // Remove old label + td, build fresh read-only content
             hiddenGroups[hg].innerHTML = '';
+            var swLabelText = rule.label
+              ? rule.label.charAt(0).toUpperCase() + rule.label.slice(1).toLowerCase()
+              : '\u00a0';
             var swLabel = document.createElement('span');
             swLabel.className = P + '-sum-label';
-            swLabel.innerHTML = '&nbsp;';
+            swLabel.textContent = swLabelText;
             hiddenGroups[hg].appendChild(swLabel);
             var swVal = document.createElement('span');
             swVal.className = P + '-sum-field-ro ' + P + '-sum-field--desc ' + P + '-sum-direct-edit';
