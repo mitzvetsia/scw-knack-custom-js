@@ -19503,39 +19503,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var SYNTH_ACCENT_RGB = '91,155,213';
 
       // Remove empty native Knack group headers (blank MDF/IDF value)
-      // and any orphaned photo rows directly beneath them — but ONLY if
-      // every worksheet row under the header belongs to a synthetic bucket.
-      // Regular line items without a MDF/IDF must keep their group header.
+      // and any orphaned non-worksheet rows directly beneath them.
+      // Bucket rows (services/assumptions) and non-bucket rows alike
+      // are left in place — the synthetic builder will relocate bucket
+      // rows, and a later pass creates an "Unassigned" group for the rest.
       var nativeGroups = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1');
-      var bucketClasses = {};
-      for (var bi = 0; bi < buckets.length; bi++) {
-        bucketClasses[buckets[bi].cls] = true;
-      }
       for (var gi = 0; gi < nativeGroups.length; gi++) {
         var grp = nativeGroups[gi];
         if (grp.classList.contains('scw-synthetic-group')) continue;
         var labelText = getGroupLabelText(grp);
         if (labelText.length === 0) {
-          // Check if any worksheet rows under this header are NOT in a bucket
-          var hasNonBucketRows = false;
-          var checkSib = grp.nextElementSibling;
-          while (checkSib && !checkSib.classList.contains('kn-table-group')) {
-            if (checkSib.classList.contains(WORKSHEET_ROW)) {
-              var isBucket = false;
-              for (var bk in bucketClasses) {
-                if (checkSib.classList.contains(bk)) { isBucket = true; break; }
-              }
-              if (!isBucket) { hasNonBucketRows = true; break; }
-            }
-            checkSib = checkSib.nextElementSibling;
-          }
-          if (hasNonBucketRows) {
-            // Keep the header but label it "Unassigned"
-            var grpTd = grp.querySelector('td');
-            if (grpTd) grpTd.textContent = 'Unassigned';
-            continue;
-          }
-          // Remove orphaned photo rows that follow this empty header
           var sib = grp.nextElementSibling;
           while (sib && !sib.classList.contains('kn-table-group') &&
                  !sib.classList.contains(WORKSHEET_ROW)) {
@@ -19623,6 +19600,62 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
         lastInsertedRow = insertRef;
       });
+
+      // Collect orphaned non-bucket rows (regular line items with no
+      // MDF/IDF) and place them under an "Unassigned" group header.
+      var bucketClasses = {};
+      for (var bi = 0; bi < buckets.length; bi++) {
+        bucketClasses[buckets[bi].cls] = true;
+      }
+      var orphanCandidates = tbody.querySelectorAll(
+        'tr.' + WORKSHEET_ROW + '[data-scw-no-move="1"]'
+      );
+      var orphanRows = [];
+      for (var oi = 0; oi < orphanCandidates.length; oi++) {
+        var oRow = orphanCandidates[oi];
+        var isBucketRow = false;
+        for (var bk in bucketClasses) {
+          if (oRow.classList.contains(bk)) { isBucketRow = true; break; }
+        }
+        if (!isBucketRow) orphanRows.push(oRow);
+      }
+      if (orphanRows.length) {
+        anySyntheticBuilt = true;
+
+        // Build "Unassigned" group header
+        var unassignedTr = document.createElement('tr');
+        unassignedTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group';
+        unassignedTr.style.cssText = '--scw-grp-accent: ' + SYNTH_ACCENT +
+          '; --scw-grp-accent-rgb: ' + SYNTH_ACCENT_RGB + ';';
+        var unassignedTd = document.createElement('td');
+        unassignedTd.setAttribute('colspan', String(colSpan));
+        unassignedTd.textContent = 'Unassigned';
+        unassignedTr.appendChild(unassignedTd);
+
+        // Insert at top of tbody (before other synthetic groups)
+        tbody.insertBefore(unassignedTr, tbody.firstChild);
+
+        // Move orphan rows (and their associated orig/photo rows) under the header
+        var oInsertRef = unassignedTr;
+        for (var oj = 0; oj < orphanRows.length; oj++) {
+          var oWs = orphanRows[oj];
+          var oOrig = oWs.previousElementSibling;
+          if (oOrig && oOrig.getAttribute(PROCESSED_ATTR) === '1') {
+            oInsertRef.parentNode.insertBefore(oOrig, oInsertRef.nextSibling);
+            oInsertRef = oOrig;
+          }
+          oInsertRef.parentNode.insertBefore(oWs, oInsertRef.nextSibling);
+          oInsertRef = oWs;
+          var oNxt = oWs.nextElementSibling;
+          while (oNxt && oNxt.classList.contains('scw-inline-photo-row')) {
+            var oPhoto = oNxt;
+            oNxt = oNxt.nextElementSibling;
+            oInsertRef.parentNode.insertBefore(oPhoto, oInsertRef.nextSibling);
+            oInsertRef = oPhoto;
+          }
+        }
+        lastInsertedRow = oInsertRef;
+      }
 
       // Insert gray divider bars around the synthetic section
       if (anySyntheticBuilt) {
