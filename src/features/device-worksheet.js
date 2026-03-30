@@ -1846,6 +1846,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return text.length === 0 && !td.querySelector('img');
   }
 
+  /** Check if a td is editable via Knack's native cell-edit OR KTL's inline-edit class. */
+  function isCellEditable(td) {
+    return td && (td.classList.contains('cell-edit') || td.classList.contains('ktlInlineEditableCellsStyle'));
+  }
+
   function getRecordId(tr) {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
@@ -3158,9 +3163,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
-        // Respect Knack's inline-edit setting: if the td lacks cell-edit,
-        // render as read-only instead of injecting an input.
-        var _knackEditable = td && td.classList.contains('cell-edit');
+        // Respect Knack/KTL inline-edit setting: if the td lacks cell-edit
+        // or ktlInlineEditableCellsStyle, render as read-only.
+        var _knackEditable = isCellEditable(td);
         if (desc.group === 'fill') {
           // Fill group — special layout (fills middle space)
           if (!td) break;
@@ -3607,9 +3612,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
-        // Respect Knack's inline-edit setting: if the td lacks cell-edit,
-        // render as read-only instead of injecting an input.
-        if (td && !td.classList.contains('cell-edit')) {
+        // Respect Knack/KTL inline-edit setting: if the td lacks cell-edit
+        // or ktlInlineEditableCellsStyle, render as read-only.
+        if (td && !isCellEditable(td)) {
           var roRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
           if (roRow) section.appendChild(roRow);
         } else {
