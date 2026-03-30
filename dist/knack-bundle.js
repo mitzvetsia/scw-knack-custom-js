@@ -17229,23 +17229,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Inject bucket chit to the left of product ──
     if (rule.label) {
       var identity = card.querySelector('.' + P + '-identity');
+      var productDesc = viewCfg.fields && viewCfg.fields.product;
+      var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
-        // Wrap in a group with empty label so chit aligns with labor desc input
         var chitGroup = document.createElement('span');
         chitGroup.className = P + '-bucket-chit-group';
         chitGroup.style.visibility = 'visible';
-        var chitLabel = document.createElement('span');
-        chitLabel.className = P + '-sum-label';
-        chitLabel.innerHTML = '&nbsp;';
-        chitGroup.appendChild(chitLabel);
+
+        if (!productHidden) {
+          // Wrap in a group with empty label so chit aligns with labor desc input
+          var chitLabel = document.createElement('span');
+          chitLabel.className = P + '-sum-label';
+          chitLabel.innerHTML = '&nbsp;';
+          chitGroup.appendChild(chitLabel);
+        }
 
         var chitEl = document.createElement('span');
         chitEl.className = P + '-bucket-chit';
         chitEl.textContent = rule.label;
 
-        // If product is hidden/empty, allow chit to grow wider
-        var productDesc = viewCfg.fields && viewCfg.fields.product;
-        if (productDesc && hideSet.has(productDesc.key)) {
+        if (productHidden) {
           chitEl.classList.add(P + '-bucket-chit--wide');
         }
         chitGroup.appendChild(chitEl);
@@ -17253,10 +17256,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // Insert as first child of identity (before separator + product-group)
         identity.insertBefore(chitGroup, identity.firstChild);
 
-        // Hide separator dot when product is hidden
-        if (productDesc && hideSet.has(productDesc.key)) {
+        if (productHidden) {
+          // Hide separator dot
           var sep = identity.querySelector('.' + P + '-sum-sep');
           if (sep) sep.style.display = 'none';
+          // Fully collapse product group so chit fills the width
+          var prodGroup = identity.querySelector('.' + P + '-product-group');
+          if (prodGroup) prodGroup.style.display = 'none';
+          // Let chit group stretch to fill identity
+          chitGroup.style.flex = '1 1 auto';
         }
       }
     }
@@ -17294,7 +17302,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             hiddenGroups[hg].innerHTML = '';
             var swLabel = document.createElement('span');
             swLabel.className = P + '-sum-label';
-            swLabel.textContent = rule.descLabel || '';
+            swLabel.innerHTML = '&nbsp;';
             hiddenGroups[hg].appendChild(swLabel);
             var swVal = document.createElement('span');
             swVal.className = P + '-sum-field-ro ' + P + '-sum-field--desc ' + P + '-sum-direct-edit';
