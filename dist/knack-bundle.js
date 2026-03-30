@@ -15592,6 +15592,7 @@ $(".kn-navigation-bar").hide();
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
+            hideDetailFields: ['field_1958'],
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
@@ -15599,6 +15600,8 @@ $(".kn-navigation-bar").hide();
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
+            hideDetailFields: ['field_1958'],
+            showProductInDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -17307,6 +17310,52 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (rule.hideDetail) {
       var detSections = card.querySelector('.' + P + '-sections');
       if (detSections) detSections.style.display = 'none';
+    }
+
+    // ── Hide specific fields from the detail panel ──
+    if (rule.hideDetailFields && rule.hideDetailFields.length) {
+      var detailEl = card.querySelector('.' + P + '-detail');
+      if (detailEl) {
+        for (var hdf = 0; hdf < rule.hideDetailFields.length; hdf++) {
+          var hdfKey = rule.hideDetailFields[hdf];
+          // Detail fields are wrapped in .scw-ws-field divs containing a td
+          var hdfTd = detailEl.querySelector('td[data-field-key="' + hdfKey + '"]');
+          if (hdfTd) {
+            var hdfField = hdfTd.closest('.' + P + '-field');
+            if (hdfField) hdfField.style.display = 'none';
+          }
+        }
+      }
+    }
+
+    // ── Show product field in detail panel (for Assumptions) ──
+    if (rule.showProductInDetail) {
+      var pDesc = viewCfg.fields && viewCfg.fields.product;
+      if (pDesc) {
+        var pTd = card.querySelector('td[data-field-key="' + pDesc.key + '"]');
+        var pText = '';
+        if (pTd) {
+          var pSpan = pTd.querySelector('span[class^="col-"]');
+          pText = (pSpan || pTd).textContent.replace(/^\s+|\s+$/g, '').replace(/\u00a0/g, '');
+        }
+        if (pText) {
+          var detSect = card.querySelector('.' + P + '-sections > .' + P + '-section');
+          if (detSect) {
+            var pField = document.createElement('div');
+            pField.className = P + '-field';
+            var pLabel = document.createElement('div');
+            pLabel.className = P + '-field-label';
+            pLabel.textContent = 'Product';
+            pField.appendChild(pLabel);
+            var pVal = document.createElement('div');
+            pVal.className = P + '-field-value';
+            pVal.style.cssText = 'white-space: normal; word-break: break-word;';
+            pVal.textContent = pText;
+            pField.appendChild(pVal);
+            detSect.insertBefore(pField, detSect.firstChild);
+          }
+        }
+      }
     }
   }
 
