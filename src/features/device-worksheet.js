@@ -3660,7 +3660,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           var qtyCell = findCell(tr, viewCfg.qtyBadgeField);
           if (qtyCell) {
             var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
-            if (qtyVal >= 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
           }
         }
 
