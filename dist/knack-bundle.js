@@ -15751,7 +15751,8 @@ $(".kn-navigation-bar").hide();
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
             label: 'SERVICE',
-            descLabel: '\u00a0',
+            descLabel: 'Service',
+            descLabelWhenSynthetic: '\u00a0',
             hideProduct: true,
             hideDetail: true,
             rowClass: 'scw-row--services',
@@ -15759,7 +15760,8 @@ $(".kn-navigation-bar").hide();
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_1949'],
             label: 'ASSUMPTION',
-            descLabel: '\u00a0',
+            descLabel: 'Assumption',
+            descLabelWhenSynthetic: '\u00a0',
             hideProduct: true,
             hideDetail: true,
             rowClass: 'scw-row--assumptions',
@@ -19805,6 +19807,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var tr = entry.tr;
 
       var card = buildWorksheetCard(tr, viewCfg);
+
+      // Override descLabel for synthetic-group rows (no MDF/IDF assigned)
+      if (entry.hasNoMove && entry.bucketCls && viewCfg.bucketRules) {
+        var rules = viewCfg.bucketRules;
+        for (var bk in rules) {
+          if (rules.hasOwnProperty(bk) && rules[bk].rowClass === entry.bucketCls && rules[bk].descLabelWhenSynthetic) {
+            var ldDesc = viewCfg.fields && viewCfg.fields.laborDescription;
+            if (ldDesc) {
+              var ldLabel = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
+              if (ldLabel) ldLabel.textContent = rules[bk].descLabelWhenSynthetic;
+            }
+            break;
+          }
+        }
+      }
 
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
