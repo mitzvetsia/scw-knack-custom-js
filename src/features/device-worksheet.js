@@ -4512,7 +4512,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (viewCfg.bucketOverride && viewCfg.bucketField) {
         var rowBucket = readBucketId(tr, viewCfg.bucketField);
         var keep = viewCfg.bucketOverride.keepBuckets || [];
-        if (keep.indexOf(rowBucket) === -1) {
+        if (rowBucket && keep.indexOf(rowBucket) === -1) {
           // Build a shallow copy with overridden fields/layouts
           effectiveCfg = {};
           for (var ck in viewCfg) {
