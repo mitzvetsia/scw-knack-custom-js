@@ -278,6 +278,12 @@
           _bulkOp = false;
           master.indeterminate = false;
           syncKtlBulkState(el);
+
+          // Notify KTL — same as group handler: fire change on each
+          // row checkbox so KTL's internal bulk-edit state updates.
+          for (var j = 0; j < cbs.length; j++) {
+            cbs[j].dispatchEvent(new Event('change', { bubbles: true }));
+          }
         });
 
         // Sync master state + header checkbox visibility on any row checkbox change
@@ -380,6 +386,14 @@
             syncKtlBulkState(vEl);
             var nativeMaster = vEl.querySelector('thead input.masterSelector');
             if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
+          }
+
+          // Notify KTL that selection changed — KTL tracks selected rows
+          // internally via change handlers that our stopImmediatePropagation
+          // blocked.  Fire change on each target so KTL's bulk-edit column
+          // targeting works.
+          for (var n = 0; n < targets.length; n++) {
+            targets[n].dispatchEvent(new Event('change', { bubbles: true }));
           }
         });
 
