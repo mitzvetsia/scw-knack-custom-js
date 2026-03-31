@@ -12813,7 +12813,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596', 'view_3608'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -12845,7 +12845,8 @@ $(".kn-navigation-bar").hide();
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
     'view_3588': 'add-photo-to-sow-line-item2',
-    'view_3596': 'add-photo-to-sow-line-item2'
+    'view_3596': 'add-photo-to-sow-line-item2',
+    'view_3608': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -15720,8 +15721,30 @@ $(".kn-navigation-bar").hide();
         },
         summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
-          left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes']
+          left:  ['connectedDevice', 'scwNotes'],
+          right: ['mountingHardware']
+        }
+      },
+      {
+        viewId: 'view_3608',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true },
+
+          // ── Detail panel ──
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+        },
+        summaryLayout: ['laborDescription', 'connectedDevice'],
+        detailLayout: {
+          left:  ['scwNotes'],
+          right: ['mountingHardware']
         }
       }
     ]
@@ -17132,6 +17155,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
 #view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+  pointer-events: none;
+  cursor: default;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── view_3608: summary border on top, not bottom ── */
+#view_3608 .${P}-summary {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+}
+#view_3608 .${P}-sum-group--fill .${P}-sum-label {
+  display: none;
+}
+#view_3608 .scw-inline-photo-label {
+  display: none;
+}
+/* ── view_3608: disable clicks on detail links and photo strip ── */
+#view_3608 .${P}-detail a,
+#view_3608 .${P}-photo-wrap a,
+#view_3608 .${P}-photo-wrap .scw-inline-photo-card {
   pointer-events: none;
   cursor: default;
   color: inherit;
