@@ -894,7 +894,7 @@ td.${P}-sum-field--desc {
    align-self:stretch makes it match the tallest sibling (e.g. stacked chips). */
 .${P}-sum-group--fill {
   flex: 1 1 0;
-  min-width: 0;
+  min-width: 150px;
   align-self: stretch;
   display: flex;
   flex-direction: column;
