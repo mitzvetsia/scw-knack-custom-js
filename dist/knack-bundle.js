@@ -15588,17 +15588,20 @@ $(".kn-navigation-bar").hide();
         bucketField: 'field_2219',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: [],
+            hideFields: ['field_1949'],
             label: 'SERVICE',
             descLabel: 'Service',
+            hideProduct: true,
             hideDetailFields: ['field_1958'],
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
+            hideFields: ['field_1949', 'field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
+            hideProduct: true,
             hideDetailFields: ['field_1958'],
+            showProductInDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -15637,7 +15640,7 @@ $(".kn-navigation-bar").hide();
         bucketField: 'field_2219',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1953'],
+            hideFields: ['field_1949', 'field_1953'],
             label: 'SERVICE',
             summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
             summarySwapReadOnly: true,
@@ -15645,7 +15648,7 @@ $(".kn-navigation-bar").hide();
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+            hideFields: ['field_1949', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
             label: 'ASSUMPTION',
             summarySwapField: 'field_2020',
             summarySwapReadOnly: true,
