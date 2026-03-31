@@ -17287,14 +17287,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
-/* ── view_3596: qty badge after product name ── */
-#view_3596 td.${P}-sum-product[data-scw-qty]::after {
-  content: attr(data-scw-qty);
-  margin-left: 6px;
+/* ── qty badge (far-right chit) ── */
+.${P}-qty-badge {
+  display: inline-block;
   font-size: 11px;
   font-weight: 600;
   color: #555;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 7px;
   white-space: nowrap;
+  line-height: 1.4;
 }
 
 /* ── view_3596: disable clicks on detail links and photo strip ── */
@@ -19029,12 +19033,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           productTd.classList.add(P + '-sum-product--editable');
         }
 
-        // view_3596: show "(qty: ##)" after product name
+        // view_3596: qty badge — rendered in rightGroup below
+        var qtyBadgeVal = 0;
         if (viewCfg.qtyBadgeField) {
           var qtyCell = findCell(tr, viewCfg.qtyBadgeField);
           if (qtyCell) {
-            var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
-            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+            qtyBadgeVal = parseInt((qtyCell.textContent || '').trim(), 10) || 0;
           }
         }
 
@@ -19113,6 +19117,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Route to the right container based on group
       var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
       renderSummaryField(container, tr, name, desc, viewCfg);
+    }
+
+    // ── Qty badge (far right, before move/delete) ──
+    if (qtyBadgeVal > 1) {
+      var qtyBadge = document.createElement('span');
+      qtyBadge.className = P + '-sum-group ' + P + '-sum-group--qty';
+      var qtyLabel = document.createElement('span');
+      qtyLabel.className = P + '-sum-label';
+      qtyLabel.innerHTML = '&nbsp;';
+      var qtyChit = document.createElement('span');
+      qtyChit.className = P + '-qty-badge';
+      qtyChit.textContent = 'qty: ' + qtyBadgeVal;
+      qtyBadge.appendChild(qtyLabel);
+      qtyBadge.appendChild(qtyChit);
+      rightGroup.appendChild(qtyBadge);
     }
 
     // ── Move icon (structural — always last before delete) ──
