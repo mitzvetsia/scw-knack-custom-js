@@ -1913,26 +1913,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
-/* ── qty badge (far-right chit, matches cabling chit sizing) ── */
-.${P}-qty-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  border: 1px solid #1e5a8a;
-  text-align: center;
-  flex-shrink: 0;
-  height: 100%;
-  box-sizing: border-box;
-  background: #e0edfa;
-  color: #1e3a5f;
-}
 
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
@@ -3754,17 +3734,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Qty badge (far right, before move/delete) ──
     if (qtyBadgeVal > 1) {
-      var qtyBadge = document.createElement('span');
-      qtyBadge.className = P + '-sum-group ' + P + '-sum-group--qty';
+      var qtyGroup = document.createElement('span');
+      qtyGroup.className = P + '-sum-group ' + P + '-sum-group--qty';
       var qtyLabel = document.createElement('span');
       qtyLabel.className = P + '-sum-label';
       qtyLabel.textContent = 'Quantity';
-      var qtyChit = document.createElement('span');
-      qtyChit.className = P + '-qty-badge';
-      qtyChit.textContent = qtyBadgeVal;
-      qtyBadge.appendChild(qtyLabel);
-      qtyBadge.appendChild(qtyChit);
-      rightGroup.appendChild(qtyBadge);
+      qtyGroup.appendChild(qtyLabel);
+      var qtyVal = document.createElement('span');
+      qtyVal.className = P + '-sum-field-ro';
+      qtyVal.textContent = qtyBadgeVal;
+      qtyGroup.appendChild(qtyVal);
+      rightGroup.appendChild(qtyGroup);
     }
 
     // ── Move icon (structural — always last before delete) ──
