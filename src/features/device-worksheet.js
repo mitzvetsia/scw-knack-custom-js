@@ -435,7 +435,7 @@
           keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
           fields: {
             product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: '\u00a0', group: 'fill', multiline: true },
             connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
             mountingHardware: { key: 'field_1958', type: 'readOnly' },
             scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
