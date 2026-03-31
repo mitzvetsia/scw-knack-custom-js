@@ -239,7 +239,7 @@
         }
       },
       {
-        viewId: 'view_3332',
+        viewIds: ['view_3610'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
@@ -390,6 +390,8 @@
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
         photoAlwaysVisible: true,
+        qtyBadgeField: 'field_1964',
+        bucketField: 'field_2219',
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -404,9 +406,96 @@
         },
         summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
-          left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes']
+          left:  ['connectedDevice', 'scwNotes'],
+          right: ['mountingHardware']
+        },
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1949'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ],
+        // When bucket is NOT cameras/readers, use view_3608-style config
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: '\u00a0', group: 'fill', multiline: true },
+            connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+            mountingHardware: { key: 'field_1958', type: 'readOnly' },
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+          },
+          summaryLayout: ['laborDescription', 'connectedDevice'],
+          detailLayout: {
+            left:  ['scwNotes'],
+            right: ['mountingHardware']
+          }
         }
+      },
+      {
+        viewId: 'view_3608',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+
+          // ── Detail panel ──
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+        },
+        summaryLayout: ['laborDescription', 'connectedDevice'],
+        detailLayout: {
+          left:  ['scwNotes'],
+          right: ['mountingHardware']
+        },
+        bucketField: 'field_2219',
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Service',
+            descLabelWhenSynthetic: '\u00a0',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1949'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            descLabelWhenSynthetic: '\u00a0',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
       }
     ]
   };
@@ -1809,13 +1898,69 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
 }
+#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
+}
+#view_3596 .${P}-bucket-override .${P}-identity {
+  gap: 0;
+}
+#view_3596 .${P}-bucket-override .${P}-sum-sep {
+  display: none !important;
+}
+#view_3596 .${P}-bucket-override td.${P}-sum-field-ro {
+  padding-left: 0 !important;
+}
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
+/* ── view_3596: qty badge after product name ── */
+#view_3596 td.${P}-sum-product[data-scw-qty]::after {
+  content: attr(data-scw-qty);
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
 #view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+  pointer-events: none;
+  cursor: default;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── view_3608: summary border on top, not bottom ── */
+#view_3608 .${P}-summary {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+}
+#view_3608 .${P}-sum-group--fill .${P}-sum-label {
+  display: none;
+}
+#view_3608 .${P}-identity {
+  gap: 0;
+}
+#view_3608 .${P}-sum-sep {
+  display: none !important;
+}
+#view_3608 td.${P}-sum-field-ro {
+  padding-left: 0 !important;
+}
+#view_3608 .scw-row--assumptions .${P}-sum-group--fill .${P}-sum-label,
+#view_3608 .scw-row--services .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
+}
+#view_3608 .scw-inline-photo-label {
+  display: none;
+}
+/* ── view_3608: disable clicks on detail links and photo strip ── */
+#view_3608 .${P}-detail a,
+#view_3608 .${P}-photo-wrap a,
+#view_3608 .${P}-photo-wrap .scw-inline-photo-card {
   pointer-events: none;
   cursor: default;
   color: inherit;
@@ -3496,7 +3641,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // Only needed when there's no label-cell (view_3332); when there IS a
+        // Only needed when there's no label-cell; when there IS a
         // label-cell (view_3313) the identity wrapper handles alignment.
         if (hasStackedFields && !labelDesc) {
           var prodLabel = document.createElement('span');
@@ -3509,6 +3654,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (pgLayout.productEditable) {
           productTd.classList.add(P + '-sum-product--editable');
         }
+
+        // view_3596: show "(qty: ##)" after product name when qty > 1
+        if (viewCfg.qtyBadgeField) {
+          var qtyCell = tr.querySelector('td.' + viewCfg.qtyBadgeField);
+          if (qtyCell) {
+            var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
+            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+          }
+        }
+
         productGroup.appendChild(productTd);
 
         // Render identity-grouped fields below the product
@@ -4166,6 +4321,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Apply conditional field hiding (e.g. hide totals when qty=1) ──
     applyConditionalHide(card, tr, viewCfg);
 
+    // ── Apply showWhenFieldIsYes visibility ──
+    var fNames = Object.keys(viewCfg.fields);
+    for (var swi = 0; swi < fNames.length; swi++) {
+      var swDesc = viewCfg.fields[fNames[swi]];
+      if (!swDesc.showWhenFieldIsYes) continue;
+      var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
+                 || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
+      var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
+      if (guardVal !== 'yes' && guardVal !== 'true') {
+        var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+        if (targetGroup) targetGroup.style.display = 'none';
+      }
+    }
+
     return card;
   }
 
@@ -4379,6 +4548,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
+    // ── Sort eligible rows by field_2218 (ascending), then field_1960 (descending) ──
+    eligible.sort(function (a, b) {
+      var tdA = a.tr.querySelector('td.field_2218');
+      var tdB = b.tr.querySelector('td.field_2218');
+      var vA = tdA ? parseFloat((tdA.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
+      var vB = tdB ? parseFloat((tdB.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
+      if (isNaN(vA)) vA = Infinity;
+      if (isNaN(vB)) vB = Infinity;
+      if (vA !== vB) return vA - vB;
+
+      // Tiebreaker: field_1960 descending (highest first)
+      var pA = a.tr.querySelector('td.field_1960');
+      var pB = b.tr.querySelector('td.field_1960');
+      var pVA = pA ? parseFloat((pA.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
+      var pVB = pB ? parseFloat((pB.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
+      if (isNaN(pVA)) pVA = -Infinity;
+      if (isNaN(pVB)) pVB = -Infinity;
+      return pVB - pVA;
+    });
+
     // ── PHASE 2: BUILD — construct cards from collected data ──
     //
     // buildWorksheetCard reparents <td> elements into the card DOM,
@@ -4392,7 +4581,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var entry = eligible[ri];
       var tr = entry.tr;
 
-      var card = buildWorksheetCard(tr, viewCfg);
+      // Per-row bucket override: swap fields/layouts when row's bucket
+      // doesn't match the keepBuckets whitelist (e.g. cameras/readers).
+      var effectiveCfg = viewCfg;
+      if (viewCfg.bucketOverride && viewCfg.bucketField) {
+        var rowBucket = readBucketId(tr, viewCfg.bucketField);
+        var keep = viewCfg.bucketOverride.keepBuckets || [];
+        if (rowBucket && keep.indexOf(rowBucket) === -1) {
+          // Build a shallow copy with overridden fields/layouts
+          effectiveCfg = {};
+          for (var ck in viewCfg) {
+            if (viewCfg.hasOwnProperty(ck)) effectiveCfg[ck] = viewCfg[ck];
+          }
+          effectiveCfg.fields = viewCfg.bucketOverride.fields;
+          effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
+          effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+        }
+      }
+      var card = buildWorksheetCard(tr, effectiveCfg);
+      if (effectiveCfg !== viewCfg) {
+        card.classList.add(P + '-bucket-override');
+      }
+
+      // Override descLabel for synthetic-group rows (no MDF/IDF assigned)
+      if (entry.hasNoMove && entry.bucketCls && viewCfg.bucketRules) {
+        var rules = viewCfg.bucketRules;
+        for (var bk in rules) {
+          if (rules.hasOwnProperty(bk) && rules[bk].rowClass === entry.bucketCls && rules[bk].descLabelWhenSynthetic) {
+            var ldDesc = viewCfg.fields && viewCfg.fields.laborDescription;
+            if (ldDesc) {
+              var ldLabel = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
+              if (ldLabel) ldLabel.textContent = rules[bk].descLabelWhenSynthetic;
+            }
+            break;
+          }
+        }
+      }
 
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
@@ -4410,6 +4634,57 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       tr.setAttribute(PROCESSED_ATTR, '1');
       pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
+    }
+
+    // ── Reorder source <tr> elements by field_2218 sort value ──
+    // Sort within each group section so group headers stay in place.
+    if (pendingInserts.length > 1) {
+      // Tag each insert with its group header ref before any DOM changes
+      for (var gi = 0; gi < pendingInserts.length; gi++) {
+        var src = pendingInserts[gi].sourceTr;
+        var hdr = src.previousElementSibling;
+        while (hdr && !hdr.classList.contains('kn-table-group')) {
+          hdr = hdr.previousElementSibling;
+        }
+        pendingInserts[gi]._groupHdr = hdr || null; // null = no group (flat view)
+        // Capture trailing photo row before detach
+        var nxt = src.nextElementSibling;
+        if (nxt && nxt.classList.contains('scw-inline-photo-row')) {
+          pendingInserts[gi]._photoRow = nxt;
+        }
+      }
+
+      // Detach all source rows (and their photo rows) from the DOM
+      for (var di = 0; di < pendingInserts.length; di++) {
+        if (pendingInserts[di]._photoRow) pendingInserts[di]._photoRow.parentNode.removeChild(pendingInserts[di]._photoRow);
+        pendingInserts[di].sourceTr.parentNode.removeChild(pendingInserts[di].sourceTr);
+      }
+
+      // Re-insert in sorted order, grouped by their original group header.
+      // For each insert, append after its group header (or at end of tbody for flat views).
+      // Since pendingInserts is already sorted by field_2218 and we process in order,
+      // rows within each group section end up in the correct sorted position.
+      var _tbody = table.querySelector('tbody');
+      for (var ri2 = 0; ri2 < pendingInserts.length; ri2++) {
+        var _ins = pendingInserts[ri2];
+        var _hdr = _ins._groupHdr;
+        // Find the last data row already reinserted under this group header
+        // (or the header itself) and insert after it.
+        var insertAfter = _hdr || null;
+        if (insertAfter) {
+          var _sib = insertAfter.nextElementSibling;
+          while (_sib && !_sib.classList.contains('kn-table-group')) {
+            insertAfter = _sib;
+            _sib = _sib.nextElementSibling;
+          }
+          insertAfter.parentNode.insertBefore(_ins.sourceTr, insertAfter.nextSibling);
+        } else {
+          _tbody.appendChild(_ins.sourceTr);
+        }
+        if (_ins._photoRow) {
+          _ins.sourceTr.parentNode.insertBefore(_ins._photoRow, _ins.sourceTr.nextSibling);
+        }
+      }
     }
 
     // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
@@ -4554,9 +4829,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           });
         }
 
-        // Insert the group header at the very top of tbody
-        var firstChild = tbody.firstChild;
-        tbody.insertBefore(groupTr, firstChild);
+        // Insert the group header at top or bottom of tbody
+        if (viewCfg.syntheticGroupsPosition === 'bottom') {
+          tbody.appendChild(groupTr);
+        } else {
+          var firstChild = tbody.firstChild;
+          tbody.insertBefore(groupTr, firstChild);
+        }
 
         // Insert each row set right after the group header (in order)
         var insertRef = groupTr;
@@ -4652,6 +4931,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Re-expand detail panels that were open before the inline-edit
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
+    // Clear stale localStorage for views that no longer default open
+    // (prevents previously-expanded-all state from persisting)
+    if (!viewCfg.defaultOpen && !_expandedState[viewCfg.viewId]) {
+      try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
+    }
+
     restoreExpandedState(viewCfg.viewId);
 
     // ── DEFAULT OPEN ──

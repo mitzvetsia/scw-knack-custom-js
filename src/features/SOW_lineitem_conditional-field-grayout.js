@@ -1,13 +1,13 @@
 /***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /**
- * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3332 — SOW)
+ * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3610 — SOW)
  *
  * Per-view configs drive bucket detection, column grayout, row locks,
  * and bucket-label injection.
  *
  *  view_3456: grays ALL cells for Services/Assumptions; replaces product
  *             cell content with "SERVICE — <labor desc>" via ::after.
- *  view_3332: selective grayout; preserves product cell; prefixes
+ *  view_3610: selective grayout; preserves product cell; prefixes
  *             "ASSUMPTION" / "SERVICE" label above product via ::before.
  *
  * Approach: capture-phase event blocker, MutationObserver, retried
@@ -75,13 +75,12 @@
       },
     },
     {
-      viewId: 'view_3332',
+      viewId: 'view_3610',
       detectField: 'field_2219',
       sortField: 'field_2218',
       labelTarget: 'field_1949',
-      // 'prefix' = keep product visible, show label above via ::before
       labelMode: 'prefix',
-      laborDescField: null,         // no labor desc concat for prefix mode
+      laborDescField: null,
       allColumnKeys: [
         'field_2020', // Labor Description
         'field_2154', // SOW
@@ -232,7 +231,7 @@
         white-space: nowrap;
       }
 
-      /* view_3332 label injection is handled by device-worksheet bucketRules */
+      /* view_3610 label injection is handled by device-worksheet bucketRules */
     `;
 
     const style = document.createElement('style');
@@ -310,7 +309,7 @@
 
   function applyRowLocks($tr, cfg) {
     (cfg.rowLocks || []).forEach(function (lock) {
-      var $detect = $tr.find('td.' + lock.detectField);
+      var $detect = $tr.find('td.' + lock.detectField).first();
       if (!$detect.length) return;
       var val = readBool($detect);
       var shouldLock = false;
@@ -381,7 +380,7 @@
           $target.first().attr('data-scw-bucket-label', combined);
         }
       } else if (cfg.labelMode === 'prefix') {
-        // view_3332: show label above product text via ::before, product stays visible
+        // prefix mode: show label above product text via ::before, product stays visible
         if ($target.length) {
           $target.first().attr('data-scw-bucket-label', label);
         }

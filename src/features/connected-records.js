@@ -19,11 +19,11 @@
         parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
       },
       {
-        parentViewId: 'view_3332',
+        parentViewId: 'view_3610',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
-        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
+        editSlug: 'edit-scope-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       },
@@ -284,10 +284,7 @@
    *   2) Bare <span data-kn="connection-value"> (no anchor wrapper)
    * Returns [{text, href, recordId}].
    */
-  function readConnectionLinks(tr, fieldKey) {
-    var td = tr.querySelector('td.' + fieldKey);
-    if (!td) return [];
-
+  function readLinksFromTd(td) {
     var links = [];
 
     // Format 1: anchor-wrapped connection links
@@ -324,12 +321,48 @@
     return links;
   }
 
+  function readConnectionLinks(tr, fieldKey) {
+    // When duplicate columns exist for the same field key, querySelector
+    // returns the first (possibly empty) td.  Try all matching tds and
+    // return the first set that contains actual connection data.
+    var tds = tr.querySelectorAll('td.' + fieldKey);
+    if (!tds.length) return [];
+
+    for (var t = 0; t < tds.length; t++) {
+      var links = readLinksFromTd(tds[t]);
+      if (links.length) return links;
+    }
+    // No td had links — return empty from the first td (preserves old behavior)
+    return [];
+  }
+
   /**
-   * Find the add-accessory-line-item URL from the row's link columns.
-   * If no explicit add link exists, derive one by swapping editSlug → addSlug
-   * in an existing edit link (for views that lack a dedicated add action column).
+   * Build the base path for SOW/quote pages from the current hash.
+   * Mirrors inline-photo-row.js getBuildSowBasePath().
    */
-  function findAddUrl(tr, slug, editSlug) {
+  function getBuildSowBasePath() {
+    var hash = window.location.hash || '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      /(proposals\/scope-of-work\/[a-f0-9]{24})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = hash.match(patterns[i]);
+      if (match) return match[1];
+    }
+    return '';
+  }
+
+  /**
+   * Build the add-accessory URL for a parent record.
+   *
+   * Primary: search action column links in the row (preserves ?ref= params).
+   * Fallback: derive from an edit link by replacing editSlug with addSlug.
+   * Last resort: construct from hash base path + addSlug + recordId.
+   */
+  function findAddUrl(tr, slug, editSlug, recordId) {
+    // Primary: search action column links in the row
     var anchors = tr.querySelectorAll('td.kn-table-link a');
     for (var i = 0; i < anchors.length; i++) {
       var href = anchors[i].getAttribute('href') || '';
@@ -344,6 +377,12 @@
           return editHref.replace(editSlug, slug);
         }
       }
+    }
+
+    // Last resort: build from hash base path (for views without action column links)
+    if (recordId) {
+      var basePath = getBuildSowBasePath();
+      if (basePath) return '#' + basePath + '/' + slug + '/' + recordId;
     }
 
     return '';
@@ -683,7 +722,7 @@
 
     // Read links from DOM
     var links = readConnectionLinks(tr, fieldKey);
-    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug);
+    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug, recordId);
 
     console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
       return { text: l.text, recordId: l.recordId, href: l.href };

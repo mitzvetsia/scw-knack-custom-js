@@ -7596,7 +7596,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3610'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -7604,7 +7604,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3325: { L1bg: '#124E85' },
     view_3331: { L1bg: '#124E85' },
     view_3475: { L1bg: '#5F6B7A' },
-
+    view_3596: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -8187,8 +8187,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
 
       // On first encounter this session, clear stale localStorage for
-      // below-threshold views so the "default open" behaviour takes effect.
-      if (belowThreshold && !thresholdCleared.has(viewId)) {
+      // below-threshold or defaultOpen views so the "default open" behaviour takes effect.
+      var viewOverrides = VIEW_OVERRIDES[viewId];
+      var viewDefaultOpen = viewOverrides && viewOverrides.defaultOpen;
+      if ((belowThreshold || viewDefaultOpen) && !thresholdCleared.has(viewId)) {
         thresholdCleared.add(viewId);
         try { localStorage.removeItem(storageKey(sceneId, viewId)); } catch (e) {}
       }
@@ -8213,7 +8215,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ensureBadges($tr, viewId);
 
       const key = buildKey($tr, level);
-      const shouldCollapse = key in state ? !!state[key] : (belowThreshold ? false : COLLAPSED_BY_DEFAULT);
+      var viewOverrides = VIEW_OVERRIDES[viewId];
+      var viewDefaultOpen = viewOverrides && viewOverrides.defaultOpen;
+      const shouldCollapse = key in state ? !!state[key] : ((belowThreshold || viewDefaultOpen) ? false : COLLAPSED_BY_DEFAULT);
 
       setCollapsed($tr, shouldCollapse);
     });
@@ -9821,14 +9825,14 @@ $(document).on('knack-view-render.view_3313', function () {
 /***************************** /CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /**
- * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3332 — SOW)
+ * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3610 — SOW)
  *
  * Per-view configs drive bucket detection, column grayout, row locks,
  * and bucket-label injection.
  *
  *  view_3456: grays ALL cells for Services/Assumptions; replaces product
  *             cell content with "SERVICE — <labor desc>" via ::after.
- *  view_3332: selective grayout; preserves product cell; prefixes
+ *  view_3610: selective grayout; preserves product cell; prefixes
  *             "ASSUMPTION" / "SERVICE" label above product via ::before.
  *
  * Approach: capture-phase event blocker, MutationObserver, retried
@@ -9896,13 +9900,12 @@ $(document).on('knack-view-render.view_3313', function () {
       },
     },
     {
-      viewId: 'view_3332',
+      viewId: 'view_3610',
       detectField: 'field_2219',
       sortField: 'field_2218',
       labelTarget: 'field_1949',
-      // 'prefix' = keep product visible, show label above via ::before
       labelMode: 'prefix',
-      laborDescField: null,         // no labor desc concat for prefix mode
+      laborDescField: null,
       allColumnKeys: [
         'field_2020', // Labor Description
         'field_2154', // SOW
@@ -10053,7 +10056,7 @@ $(document).on('knack-view-render.view_3313', function () {
         white-space: nowrap;
       }
 
-      /* view_3332 label injection is handled by device-worksheet bucketRules */
+      /* view_3610 label injection is handled by device-worksheet bucketRules */
     `;
 
     const style = document.createElement('style');
@@ -10131,7 +10134,7 @@ $(document).on('knack-view-render.view_3313', function () {
 
   function applyRowLocks($tr, cfg) {
     (cfg.rowLocks || []).forEach(function (lock) {
-      var $detect = $tr.find('td.' + lock.detectField);
+      var $detect = $tr.find('td.' + lock.detectField).first();
       if (!$detect.length) return;
       var val = readBool($detect);
       var shouldLock = false;
@@ -10202,7 +10205,7 @@ $(document).on('knack-view-render.view_3313', function () {
           $target.first().attr('data-scw-bucket-label', combined);
         }
       } else if (cfg.labelMode === 'prefix') {
-        // view_3332: show label above product text via ::before, product stays visible
+        // prefix mode: show label above product text via ::before, product stays visible
         if ($target.length) {
           $target.first().attr('data-scw-bucket-label', label);
         }
@@ -12813,7 +12816,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3588', 'view_3596', 'view_3608', 'view_3610'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -12839,13 +12842,14 @@ $(".kn-navigation-bar").hide();
   // View-specific add-photo URL path segments
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
-    'view_3332': 'add-photo-to-sow-line-item',
+    'view_3610': 'add-photo-to-sow-line-item',
     'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
     'view_3588': 'add-photo-to-sow-line-item2',
-    'view_3596': 'add-photo-to-sow-line-item2'
+    'view_3596': 'add-photo-to-sow-line-item2',
+    'view_3608': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -13214,14 +13218,14 @@ $(".kn-navigation-bar").hide();
       '#view_3313 td.field_2446,',
       '#view_3313 th.field_2447,',
       '#view_3313 td.field_2447,',
-      '#view_3332 th.field_114,',
-      '#view_3332 td.field_114,',
-      '#view_3332 th.field_2445,',
-      '#view_3332 td.field_2445,',
-      '#view_3332 th.field_2446,',
-      '#view_3332 td.field_2446,',
-      '#view_3332 th.field_2447,',
-      '#view_3332 td.field_2447,',
+      '#view_3610 th.field_114,',
+      '#view_3610 td.field_114,',
+      '#view_3610 th.field_2445,',
+      '#view_3610 td.field_2445,',
+      '#view_3610 th.field_2446,',
+      '#view_3610 td.field_2446,',
+      '#view_3610 th.field_2447,',
+      '#view_3610 td.field_2447,',
       '#view_3586 th.field_114,',
       '#view_3586 td.field_114,',
       '#view_3586 th.field_2445,',
@@ -13294,7 +13298,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -14502,11 +14506,11 @@ $(".kn-navigation-bar").hide();
         parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
       },
       {
-        parentViewId: 'view_3332',
+        parentViewId: 'view_3610',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
-        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
+        editSlug: 'edit-scope-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       },
@@ -14767,10 +14771,7 @@ $(".kn-navigation-bar").hide();
    *   2) Bare <span data-kn="connection-value"> (no anchor wrapper)
    * Returns [{text, href, recordId}].
    */
-  function readConnectionLinks(tr, fieldKey) {
-    var td = tr.querySelector('td.' + fieldKey);
-    if (!td) return [];
-
+  function readLinksFromTd(td) {
     var links = [];
 
     // Format 1: anchor-wrapped connection links
@@ -14807,12 +14808,48 @@ $(".kn-navigation-bar").hide();
     return links;
   }
 
+  function readConnectionLinks(tr, fieldKey) {
+    // When duplicate columns exist for the same field key, querySelector
+    // returns the first (possibly empty) td.  Try all matching tds and
+    // return the first set that contains actual connection data.
+    var tds = tr.querySelectorAll('td.' + fieldKey);
+    if (!tds.length) return [];
+
+    for (var t = 0; t < tds.length; t++) {
+      var links = readLinksFromTd(tds[t]);
+      if (links.length) return links;
+    }
+    // No td had links — return empty from the first td (preserves old behavior)
+    return [];
+  }
+
   /**
-   * Find the add-accessory-line-item URL from the row's link columns.
-   * If no explicit add link exists, derive one by swapping editSlug → addSlug
-   * in an existing edit link (for views that lack a dedicated add action column).
+   * Build the base path for SOW/quote pages from the current hash.
+   * Mirrors inline-photo-row.js getBuildSowBasePath().
    */
-  function findAddUrl(tr, slug, editSlug) {
+  function getBuildSowBasePath() {
+    var hash = window.location.hash || '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      /(proposals\/scope-of-work\/[a-f0-9]{24})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = hash.match(patterns[i]);
+      if (match) return match[1];
+    }
+    return '';
+  }
+
+  /**
+   * Build the add-accessory URL for a parent record.
+   *
+   * Primary: search action column links in the row (preserves ?ref= params).
+   * Fallback: derive from an edit link by replacing editSlug with addSlug.
+   * Last resort: construct from hash base path + addSlug + recordId.
+   */
+  function findAddUrl(tr, slug, editSlug, recordId) {
+    // Primary: search action column links in the row
     var anchors = tr.querySelectorAll('td.kn-table-link a');
     for (var i = 0; i < anchors.length; i++) {
       var href = anchors[i].getAttribute('href') || '';
@@ -14827,6 +14864,12 @@ $(".kn-navigation-bar").hide();
           return editHref.replace(editSlug, slug);
         }
       }
+    }
+
+    // Last resort: build from hash base path (for views without action column links)
+    if (recordId) {
+      var basePath = getBuildSowBasePath();
+      if (basePath) return '#' + basePath + '/' + slug + '/' + recordId;
     }
 
     return '';
@@ -15166,7 +15209,7 @@ $(".kn-navigation-bar").hide();
 
     // Read links from DOM
     var links = readConnectionLinks(tr, fieldKey);
-    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug);
+    var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug, recordId);
 
     console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
       return { text: l.text, recordId: l.recordId, href: l.href };
@@ -15555,7 +15598,7 @@ $(".kn-navigation-bar").hide();
         }
       },
       {
-        viewId: 'view_3332',
+        viewIds: ['view_3610'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
@@ -15706,6 +15749,8 @@ $(".kn-navigation-bar").hide();
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
         photoAlwaysVisible: true,
+        qtyBadgeField: 'field_1964',
+        bucketField: 'field_2219',
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -15720,9 +15765,96 @@ $(".kn-navigation-bar").hide();
         },
         summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
-          left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes']
+          left:  ['connectedDevice', 'scwNotes'],
+          right: ['mountingHardware']
+        },
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1949'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ],
+        // When bucket is NOT cameras/readers, use view_3608-style config
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: '\u00a0', group: 'fill', multiline: true },
+            connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+            mountingHardware: { key: 'field_1958', type: 'readOnly' },
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+          },
+          summaryLayout: ['laborDescription', 'connectedDevice'],
+          detailLayout: {
+            left:  ['scwNotes'],
+            right: ['mountingHardware']
+          }
         }
+      },
+      {
+        viewId: 'view_3608',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+
+          // ── Detail panel ──
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+        },
+        summaryLayout: ['laborDescription', 'connectedDevice'],
+        detailLayout: {
+          left:  ['scwNotes'],
+          right: ['mountingHardware']
+        },
+        bucketField: 'field_2219',
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Service',
+            descLabelWhenSynthetic: '\u00a0',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1949'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            descLabelWhenSynthetic: '\u00a0',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
       }
     ]
   };
@@ -17125,13 +17257,69 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
 }
+#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
+}
+#view_3596 .${P}-bucket-override .${P}-identity {
+  gap: 0;
+}
+#view_3596 .${P}-bucket-override .${P}-sum-sep {
+  display: none !important;
+}
+#view_3596 .${P}-bucket-override td.${P}-sum-field-ro {
+  padding-left: 0 !important;
+}
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
+/* ── view_3596: qty badge after product name ── */
+#view_3596 td.${P}-sum-product[data-scw-qty]::after {
+  content: attr(data-scw-qty);
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
 #view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+  pointer-events: none;
+  cursor: default;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── view_3608: summary border on top, not bottom ── */
+#view_3608 .${P}-summary {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+}
+#view_3608 .${P}-sum-group--fill .${P}-sum-label {
+  display: none;
+}
+#view_3608 .${P}-identity {
+  gap: 0;
+}
+#view_3608 .${P}-sum-sep {
+  display: none !important;
+}
+#view_3608 td.${P}-sum-field-ro {
+  padding-left: 0 !important;
+}
+#view_3608 .scw-row--assumptions .${P}-sum-group--fill .${P}-sum-label,
+#view_3608 .scw-row--services .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
+}
+#view_3608 .scw-inline-photo-label {
+  display: none;
+}
+/* ── view_3608: disable clicks on detail links and photo strip ── */
+#view_3608 .${P}-detail a,
+#view_3608 .${P}-photo-wrap a,
+#view_3608 .${P}-photo-wrap .scw-inline-photo-card {
   pointer-events: none;
   cursor: default;
   color: inherit;
@@ -18812,7 +19000,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // Only needed when there's no label-cell (view_3332); when there IS a
+        // Only needed when there's no label-cell; when there IS a
         // label-cell (view_3313) the identity wrapper handles alignment.
         if (hasStackedFields && !labelDesc) {
           var prodLabel = document.createElement('span');
@@ -18825,6 +19013,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (pgLayout.productEditable) {
           productTd.classList.add(P + '-sum-product--editable');
         }
+
+        // view_3596: show "(qty: ##)" after product name when qty > 1
+        if (viewCfg.qtyBadgeField) {
+          var qtyCell = tr.querySelector('td.' + viewCfg.qtyBadgeField);
+          if (qtyCell) {
+            var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
+            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+          }
+        }
+
         productGroup.appendChild(productTd);
 
         // Render identity-grouped fields below the product
@@ -19482,6 +19680,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Apply conditional field hiding (e.g. hide totals when qty=1) ──
     applyConditionalHide(card, tr, viewCfg);
 
+    // ── Apply showWhenFieldIsYes visibility ──
+    var fNames = Object.keys(viewCfg.fields);
+    for (var swi = 0; swi < fNames.length; swi++) {
+      var swDesc = viewCfg.fields[fNames[swi]];
+      if (!swDesc.showWhenFieldIsYes) continue;
+      var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
+                 || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
+      var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
+      if (guardVal !== 'yes' && guardVal !== 'true') {
+        var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+        if (targetGroup) targetGroup.style.display = 'none';
+      }
+    }
+
     return card;
   }
 
@@ -19695,6 +19907,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
+    // ── Sort eligible rows by field_2218 (ascending), then field_1960 (descending) ──
+    eligible.sort(function (a, b) {
+      var tdA = a.tr.querySelector('td.field_2218');
+      var tdB = b.tr.querySelector('td.field_2218');
+      var vA = tdA ? parseFloat((tdA.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
+      var vB = tdB ? parseFloat((tdB.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
+      if (isNaN(vA)) vA = Infinity;
+      if (isNaN(vB)) vB = Infinity;
+      if (vA !== vB) return vA - vB;
+
+      // Tiebreaker: field_1960 descending (highest first)
+      var pA = a.tr.querySelector('td.field_1960');
+      var pB = b.tr.querySelector('td.field_1960');
+      var pVA = pA ? parseFloat((pA.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
+      var pVB = pB ? parseFloat((pB.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
+      if (isNaN(pVA)) pVA = -Infinity;
+      if (isNaN(pVB)) pVB = -Infinity;
+      return pVB - pVA;
+    });
+
     // ── PHASE 2: BUILD — construct cards from collected data ──
     //
     // buildWorksheetCard reparents <td> elements into the card DOM,
@@ -19708,7 +19940,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var entry = eligible[ri];
       var tr = entry.tr;
 
-      var card = buildWorksheetCard(tr, viewCfg);
+      // Per-row bucket override: swap fields/layouts when row's bucket
+      // doesn't match the keepBuckets whitelist (e.g. cameras/readers).
+      var effectiveCfg = viewCfg;
+      if (viewCfg.bucketOverride && viewCfg.bucketField) {
+        var rowBucket = readBucketId(tr, viewCfg.bucketField);
+        var keep = viewCfg.bucketOverride.keepBuckets || [];
+        if (rowBucket && keep.indexOf(rowBucket) === -1) {
+          // Build a shallow copy with overridden fields/layouts
+          effectiveCfg = {};
+          for (var ck in viewCfg) {
+            if (viewCfg.hasOwnProperty(ck)) effectiveCfg[ck] = viewCfg[ck];
+          }
+          effectiveCfg.fields = viewCfg.bucketOverride.fields;
+          effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
+          effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+        }
+      }
+      var card = buildWorksheetCard(tr, effectiveCfg);
+      if (effectiveCfg !== viewCfg) {
+        card.classList.add(P + '-bucket-override');
+      }
+
+      // Override descLabel for synthetic-group rows (no MDF/IDF assigned)
+      if (entry.hasNoMove && entry.bucketCls && viewCfg.bucketRules) {
+        var rules = viewCfg.bucketRules;
+        for (var bk in rules) {
+          if (rules.hasOwnProperty(bk) && rules[bk].rowClass === entry.bucketCls && rules[bk].descLabelWhenSynthetic) {
+            var ldDesc = viewCfg.fields && viewCfg.fields.laborDescription;
+            if (ldDesc) {
+              var ldLabel = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
+              if (ldLabel) ldLabel.textContent = rules[bk].descLabelWhenSynthetic;
+            }
+            break;
+          }
+        }
+      }
 
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
@@ -19726,6 +19993,57 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       tr.setAttribute(PROCESSED_ATTR, '1');
       pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
+    }
+
+    // ── Reorder source <tr> elements by field_2218 sort value ──
+    // Sort within each group section so group headers stay in place.
+    if (pendingInserts.length > 1) {
+      // Tag each insert with its group header ref before any DOM changes
+      for (var gi = 0; gi < pendingInserts.length; gi++) {
+        var src = pendingInserts[gi].sourceTr;
+        var hdr = src.previousElementSibling;
+        while (hdr && !hdr.classList.contains('kn-table-group')) {
+          hdr = hdr.previousElementSibling;
+        }
+        pendingInserts[gi]._groupHdr = hdr || null; // null = no group (flat view)
+        // Capture trailing photo row before detach
+        var nxt = src.nextElementSibling;
+        if (nxt && nxt.classList.contains('scw-inline-photo-row')) {
+          pendingInserts[gi]._photoRow = nxt;
+        }
+      }
+
+      // Detach all source rows (and their photo rows) from the DOM
+      for (var di = 0; di < pendingInserts.length; di++) {
+        if (pendingInserts[di]._photoRow) pendingInserts[di]._photoRow.parentNode.removeChild(pendingInserts[di]._photoRow);
+        pendingInserts[di].sourceTr.parentNode.removeChild(pendingInserts[di].sourceTr);
+      }
+
+      // Re-insert in sorted order, grouped by their original group header.
+      // For each insert, append after its group header (or at end of tbody for flat views).
+      // Since pendingInserts is already sorted by field_2218 and we process in order,
+      // rows within each group section end up in the correct sorted position.
+      var _tbody = table.querySelector('tbody');
+      for (var ri2 = 0; ri2 < pendingInserts.length; ri2++) {
+        var _ins = pendingInserts[ri2];
+        var _hdr = _ins._groupHdr;
+        // Find the last data row already reinserted under this group header
+        // (or the header itself) and insert after it.
+        var insertAfter = _hdr || null;
+        if (insertAfter) {
+          var _sib = insertAfter.nextElementSibling;
+          while (_sib && !_sib.classList.contains('kn-table-group')) {
+            insertAfter = _sib;
+            _sib = _sib.nextElementSibling;
+          }
+          insertAfter.parentNode.insertBefore(_ins.sourceTr, insertAfter.nextSibling);
+        } else {
+          _tbody.appendChild(_ins.sourceTr);
+        }
+        if (_ins._photoRow) {
+          _ins.sourceTr.parentNode.insertBefore(_ins._photoRow, _ins.sourceTr.nextSibling);
+        }
+      }
     }
 
     // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
@@ -19870,9 +20188,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           });
         }
 
-        // Insert the group header at the very top of tbody
-        var firstChild = tbody.firstChild;
-        tbody.insertBefore(groupTr, firstChild);
+        // Insert the group header at top or bottom of tbody
+        if (viewCfg.syntheticGroupsPosition === 'bottom') {
+          tbody.appendChild(groupTr);
+        } else {
+          var firstChild = tbody.firstChild;
+          tbody.insertBefore(groupTr, firstChild);
+        }
 
         // Insert each row set right after the group header (in order)
         var insertRef = groupTr;
@@ -19968,6 +20290,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Re-expand detail panels that were open before the inline-edit
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
+    // Clear stale localStorage for views that no longer default open
+    // (prevents previously-expanded-all state from persisting)
+    if (!viewCfg.defaultOpen && !_expandedState[viewCfg.viewId]) {
+      try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
+    }
+
     restoreExpandedState(viewCfg.viewId);
 
     // ── DEFAULT OPEN ──

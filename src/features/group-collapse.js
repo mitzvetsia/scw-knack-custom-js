@@ -28,7 +28,7 @@
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3610'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -36,7 +36,7 @@
     view_3325: { L1bg: '#124E85' },
     view_3331: { L1bg: '#124E85' },
     view_3475: { L1bg: '#5F6B7A' },
-
+    view_3596: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -619,8 +619,10 @@
       const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
 
       // On first encounter this session, clear stale localStorage for
-      // below-threshold views so the "default open" behaviour takes effect.
-      if (belowThreshold && !thresholdCleared.has(viewId)) {
+      // below-threshold or defaultOpen views so the "default open" behaviour takes effect.
+      var viewOverrides = VIEW_OVERRIDES[viewId];
+      var viewDefaultOpen = viewOverrides && viewOverrides.defaultOpen;
+      if ((belowThreshold || viewDefaultOpen) && !thresholdCleared.has(viewId)) {
         thresholdCleared.add(viewId);
         try { localStorage.removeItem(storageKey(sceneId, viewId)); } catch (e) {}
       }
@@ -645,7 +647,9 @@
       ensureBadges($tr, viewId);
 
       const key = buildKey($tr, level);
-      const shouldCollapse = key in state ? !!state[key] : (belowThreshold ? false : COLLAPSED_BY_DEFAULT);
+      var viewOverrides = VIEW_OVERRIDES[viewId];
+      var viewDefaultOpen = viewOverrides && viewOverrides.defaultOpen;
+      const shouldCollapse = key in state ? !!state[key] : ((belowThreshold || viewDefaultOpen) ? false : COLLAPSED_BY_DEFAULT);
 
       setCollapsed($tr, shouldCollapse);
     });

@@ -15,18 +15,18 @@
   // ============================================================
   const VIEWS = [
     {
-      viewId: "view_3332",
+      viewId: "view_3610",
       rules: [
         {
-          detectFieldKey: "field_2230",      // qty limit boolean
+          detectFieldKey: "field_2230",
           when: "yes",
-          lockFieldKeys: ["field_1964"],     // lock qty
+          lockFieldKeys: ["field_1964"],
           message: "Qty locked (must be 1)"
         },
         {
-          detectFieldKey: "field_2231",      // <-- was field_2232; field_2231 exists in your DOM
+          detectFieldKey: "field_2231",
           when: "no",
-          lockFieldKeys: ["field_1957"],     // lock map connections field
+          lockFieldKeys: ["field_1957"],
           message: "This field is locked until map connections = Yes"
         }
       ]
