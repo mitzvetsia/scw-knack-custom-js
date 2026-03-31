@@ -3729,17 +3729,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Qty badge (far right, before move/delete) ──
     if (qtyBadgeVal > 1) {
-      var qtyGroup = document.createElement('span');
-      qtyGroup.className = P + '-sum-group ' + P + '-sum-group--qty';
-      var qtyLabel = document.createElement('span');
-      qtyLabel.className = P + '-sum-label';
-      qtyLabel.textContent = 'Quantity';
-      qtyGroup.appendChild(qtyLabel);
-      var qtyVal = document.createElement('td');
-      qtyVal.className = P + '-sum-field-ro';
-      qtyVal.textContent = qtyBadgeVal;
-      qtyGroup.appendChild(qtyVal);
-      rightGroup.appendChild(qtyGroup);
+      var qtyTd = document.createElement('td');
+      qtyTd.className = P + '-sum-field';
+      qtyTd.textContent = qtyBadgeVal;
+      qtyTd.style.justifyContent = 'center';
+      var qtyGrp = document.createElement('span');
+      qtyGrp.className = P + '-sum-group';
+      qtyGrp.style.alignItems = 'center';
+      var qtyLbl = document.createElement('span');
+      qtyLbl.className = P + '-sum-label';
+      qtyLbl.textContent = 'Quantity';
+      qtyLbl.style.textAlign = 'center';
+      qtyGrp.appendChild(qtyLbl);
+      qtyGrp.appendChild(qtyTd);
+      rightGroup.appendChild(qtyGrp);
     }
 
     // ── Move icon (structural — always last before delete) ──
