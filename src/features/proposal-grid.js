@@ -41,7 +41,6 @@
           l3BlankLabelField: 'field_2208',
         },
       },
-      /* TEMP DISABLED — view_3341
       view_3341: {
         showProjectTotals: true,
         keys: {
@@ -58,7 +57,6 @@
           l3BlankLabelField: 'field_2208',
         },
       },
-      */
       view_3371: {
         showProjectTotals: false,
         keys: {
@@ -77,7 +75,7 @@
       },
     },
 
-    styleSceneIds: [/* 'scene_1096' TEMP DISABLED */],
+    styleSceneIds: ['scene_1096'],
 
     features: {
       l2Sort: { enabled: true, missingSortGoesLast: true },
