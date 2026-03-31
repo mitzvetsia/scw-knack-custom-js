@@ -15729,7 +15729,6 @@ $(".kn-navigation-bar").hide();
         bucketOverride: {
           keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
           fields: {
-            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
             product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
             laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
             connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
