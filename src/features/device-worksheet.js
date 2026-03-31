@@ -4528,7 +4528,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
-    // ── Sort eligible rows by field_2218 (numeric, ascending) ──
+    // ── Sort eligible rows by field_2218 (ascending), then field_1960 (descending) ──
     eligible.sort(function (a, b) {
       var tdA = a.tr.querySelector('td.field_2218');
       var tdB = b.tr.querySelector('td.field_2218');
@@ -4536,7 +4536,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var vB = tdB ? parseFloat((tdB.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
       if (isNaN(vA)) vA = Infinity;
       if (isNaN(vB)) vB = Infinity;
-      return vA - vB;
+      if (vA !== vB) return vA - vB;
+
+      // Tiebreaker: field_1960 descending (highest first)
+      var pA = a.tr.querySelector('td.field_1960');
+      var pB = b.tr.querySelector('td.field_1960');
+      var pVA = pA ? parseFloat((pA.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
+      var pVB = pB ? parseFloat((pB.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
+      if (isNaN(pVA)) pVA = -Infinity;
+      if (isNaN(pVB)) pVB = -Infinity;
+      return pVB - pVA;
     });
 
     // ── PHASE 2: BUILD — construct cards from collected data ──
