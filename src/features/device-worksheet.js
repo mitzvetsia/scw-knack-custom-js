@@ -246,7 +246,7 @@
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, alwaysEditable: true },
           subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
                               stackWith: 'subBidTotal' },
           subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'TOTAL' },
@@ -1853,6 +1853,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return text.length === 0 && !td.querySelector('img');
   }
 
+  /** Check if a td is editable via Knack or KTL inline-edit classes. */
+  function isCellEditable(td) {
+    if (!td) return false;
+    return td.classList.contains('cell-edit') || td.classList.contains('ktlInlineEditableCellsStyle');
+  }
+
   /** Check if a td has been explicitly locked/grayed by conditional modules. */
   function isCellLocked(td) {
     if (!td) return false;
@@ -3229,9 +3235,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
-        // directEdit fields are editable by default — only render as
-        // read-only when explicitly locked/grayed by conditional modules.
-        var _knackEditable = td && !isCellLocked(td);
+        // Editable if Knack/KTL has cell-edit on the td, or if the field
+        // is flagged alwaysEditable (and not locked by conditional modules).
+        var _knackEditable = isCellEditable(td)
+          || (desc.alwaysEditable && td && !isCellLocked(td));
         if (desc.group === 'fill') {
           // Fill group — special layout (fills middle space)
           if (!td) break;
@@ -3689,9 +3696,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
-        // directEdit fields are editable by default — only render as
-        // read-only when explicitly locked/grayed by conditional modules.
-        if (td && isCellLocked(td)) {
+        // Editable if Knack/KTL has cell-edit on the td, or if the field
+        // is flagged alwaysEditable (and not locked by conditional modules).
+        var _detailEditable = isCellEditable(td)
+          || (desc.alwaysEditable && td && !isCellLocked(td));
+        if (!_detailEditable) {
           var roRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
           if (roRow) section.appendChild(roRow);
         } else {
