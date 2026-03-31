@@ -390,6 +390,7 @@
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
         photoAlwaysVisible: true,
+        qtyBadgeField: 'field_1964',
         bucketField: 'field_2219',
         fields: {
           // ── Summary row ──
@@ -1912,6 +1913,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
+/* ── view_3596: qty badge after product name ── */
+#view_3596 td.${P}-sum-product[data-scw-qty]::after {
+  content: attr(data-scw-qty);
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+
 /* ── view_3596: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
@@ -3643,6 +3654,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (pgLayout.productEditable) {
           productTd.classList.add(P + '-sum-product--editable');
         }
+
+        // view_3596: show "(qty: ##)" after product name when qty > 1
+        if (viewCfg.qtyBadgeField) {
+          var qtyCell = tr.querySelector('td.' + viewCfg.qtyBadgeField);
+          if (qtyCell) {
+            var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
+            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+          }
+        }
+
         productGroup.appendChild(productTd);
 
         // Render identity-grouped fields below the product
