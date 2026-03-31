@@ -15587,9 +15587,8 @@ $(".kn-navigation-bar").hide();
         },
         conditionalHide: [
           {
-            detectField: 'field_2230',
-            when: 'yes',
-            hideFields: ['field_2150', 'field_1997', 'field_2146']
+            whenLocked: 'field_1964',
+            hideFields: ['field_1964', 'field_2150', 'field_1997', 'field_2146']
           }
         ],
         bucketField: 'field_2219',
@@ -17374,30 +17373,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Apply conditional field hiding based on per-row detect field values.
-   * Hides summary groups whose data-scw-fields match any field in the rule.
+   * Apply conditional field hiding based on whether a trigger field is locked.
+   * When the lock/grayout modules have grayed or locked the trigger field,
+   * hide summary groups whose data-scw-fields match any field in hideFields.
    */
   function applyConditionalHide(card, tr, viewCfg) {
     if (!viewCfg.conditionalHide) return;
 
     viewCfg.conditionalHide.forEach(function (rule) {
-      var detectTd = tr.querySelector('td.' + rule.detectField);
-      if (!detectTd) return;
+      // Look for the trigger field td — it may be in the card (moved by
+      // buildWorksheetCard) or still in the original tr.
+      var triggerTd = card.querySelector('td[data-field-key="' + rule.whenLocked + '"]')
+                   || card.querySelector('td.' + rule.whenLocked)
+                   || tr.querySelector('td.' + rule.whenLocked);
+      if (!triggerTd) return;
 
-      // Read boolean value from the cell
-      var chk = detectTd.querySelector('input[type="checkbox"]');
-      var val;
-      if (chk) {
-        val = chk.checked ? 'yes' : 'no';
-      } else if (detectTd.querySelector('.kn-icon-yes, .fa-check, .fa-thumbs-up')) {
-        val = 'yes';
-      } else if (detectTd.querySelector('.kn-icon-no, .fa-times, .fa-thumbs-down')) {
-        val = 'no';
-      } else {
-        val = (detectTd.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase();
-      }
-
-      if (val !== (rule.when || '').toLowerCase()) return;
+      var locked = triggerTd.classList.contains('scw-cond-grayed')
+                || triggerTd.classList.contains('scw-cell-locked');
+      if (!locked) return;
 
       var hideSet = new Set(rule.hideFields || []);
       var groups = card.querySelectorAll('[data-scw-fields]');
