@@ -1873,6 +1873,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
 }
+#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
+}
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
@@ -4524,6 +4527,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
       var card = buildWorksheetCard(tr, effectiveCfg);
+      if (effectiveCfg !== viewCfg) {
+        card.classList.add(P + '-bucket-override');
+      }
 
       // Override descLabel for synthetic-group rows (no MDF/IDF assigned)
       if (entry.hasNoMove && entry.bucketCls && viewCfg.bucketRules) {
