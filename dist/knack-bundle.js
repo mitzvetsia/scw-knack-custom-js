@@ -15725,6 +15725,28 @@ $(".kn-navigation-bar").hide();
           left:  ['connectedDevice', 'scwNotes'],
           right: ['mountingHardware']
         },
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_1949'],
+            label: 'SERVICE',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_1949'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ],
         // When bucket is NOT cameras/readers, use view_3608-style config
         bucketOverride: {
           keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
