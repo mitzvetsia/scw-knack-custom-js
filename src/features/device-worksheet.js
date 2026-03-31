@@ -1924,9 +1924,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
         if (productHidden && (rule.summarySwapField || rule.hideProduct)) {
-          // Hide identity contents but keep its layout space so the
-          // fill group and right-side fields stay aligned with other rows.
-          identity.style.visibility = 'hidden';
+          // Hide identity — the fill group spans full width and
+          // carries the bucket label via descLabel.
+          identity.style.display = 'none';
         } else if (!productHidden) {
           // Product visible — inject teal pill chit beside it
           var chitGroup = document.createElement('span');
