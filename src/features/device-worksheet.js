@@ -417,7 +417,7 @@
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
           connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices' },
 
           // ── Detail panel ──
