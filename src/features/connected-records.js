@@ -293,10 +293,7 @@
    *   2) Bare <span data-kn="connection-value"> (no anchor wrapper)
    * Returns [{text, href, recordId}].
    */
-  function readConnectionLinks(tr, fieldKey) {
-    var td = tr.querySelector('td.' + fieldKey);
-    if (!td) return [];
-
+  function readLinksFromTd(td) {
     var links = [];
 
     // Format 1: anchor-wrapped connection links
@@ -331,6 +328,21 @@
       }
     }
     return links;
+  }
+
+  function readConnectionLinks(tr, fieldKey) {
+    // When duplicate columns exist for the same field key, querySelector
+    // returns the first (possibly empty) td.  Try all matching tds and
+    // return the first set that contains actual connection data.
+    var tds = tr.querySelectorAll('td.' + fieldKey);
+    if (!tds.length) return [];
+
+    for (var t = 0; t < tds.length; t++) {
+      var links = readLinksFromTd(tds[t]);
+      if (links.length) return links;
+    }
+    // No td had links — return empty from the first td (preserves old behavior)
+    return [];
   }
 
   /**
