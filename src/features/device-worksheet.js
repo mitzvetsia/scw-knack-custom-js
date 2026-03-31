@@ -1674,7 +1674,14 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   min-width: 110px;
   align-items: center;
 }
-.${P}-sum-group--qty-badge td.${P}-sum-field {
+.${P}-sum-group--qty-badge td.${P}-sum-field-ro {
+  justify-content: center;
+}
+/* Center Connected Devices text */
+.${P}-sum-group[data-scw-fields="field_1957"] {
+  align-items: center;
+}
+.${P}-sum-group[data-scw-fields="field_1957"] td {
   justify-content: center;
 }
 /* SOW field grows in height to show multiple connection values */
@@ -3738,7 +3745,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (qtyBadgeVal > 1) {
       var qtyTd = document.createElement('td');
       qtyTd.textContent = qtyBadgeVal;
-      appendSumGroup(rightGroup, 'Quantity', qtyTd, { readOnly: false, cls: P + '-sum-group--qty-badge' });
+      appendSumGroup(rightGroup, 'Quantity', qtyTd, { readOnly: true, cls: P + '-sum-group--qty-badge' });
     }
 
     // ── Move icon (structural — always last before delete) ──
