@@ -5301,6 +5301,88 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // FEATURE: Synthesize missing L4 group headers
+  // ============================================================
+  // Knack sometimes fails to emit L4 group headers, leaving data
+  // rows orphaned (hidden by CSS with no header to display their
+  // field_2019 content). This function detects orphan data rows
+  // within each L3 block and creates synthetic L4 headers so the
+  // rest of the pipeline can process them normally.
+
+  function synthesizeMissingL4Headers(ctx) {
+    const $tbody = ctx.$tbody;
+    const l3Headers = $tbody[0].querySelectorAll('tr.kn-table-group.kn-group-level-3');
+    if (!l3Headers.length) return;
+
+    for (let i = 0; i < l3Headers.length; i++) {
+      const l3El = l3Headers[i];
+      let current = l3El.nextElementSibling;
+      let currentL4 = null;
+      const orphanRuns = [];  // groups of consecutive orphan data rows
+      let currentRun = null;
+
+      while (current) {
+        if (current.classList.contains('kn-table-group')) {
+          const m = current.className.match(/kn-group-level-(\d+)/);
+          const lvl = m ? parseInt(m[1], 10) : null;
+          if (lvl !== null && lvl <= 3) break; // end of L3 block
+          if (lvl === 4) {
+            currentL4 = current;
+            currentRun = null;
+          }
+        } else if (current.id && current.tagName === 'TR') {
+          // Data row — check if it's covered by an L4 header
+          if (!currentL4) {
+            if (!currentRun) {
+              currentRun = { rows: [] };
+              orphanRuns.push(currentRun);
+            }
+            currentRun.rows.push(current);
+          }
+        }
+        current = current.nextElementSibling;
+      }
+
+      if (!orphanRuns.length) continue;
+
+      // For each orphan run, group consecutive rows by field_2019 value
+      // so rows with the same description share one synthetic L4 header.
+      const field2019Key = ctx.keys.field2019;
+
+      for (const run of orphanRuns) {
+        const groups = [];
+        let lastKey = null;
+        let lastGroup = null;
+
+        for (const row of run.rows) {
+          const cell = row.querySelector('td.' + field2019Key);
+          const key = cell ? norm(cell.textContent || '') : '';
+
+          if (key === lastKey && lastGroup) {
+            lastGroup.rows.push(row);
+          } else {
+            lastGroup = { key: key, rows: [row] };
+            groups.push(lastGroup);
+            lastKey = key;
+          }
+        }
+
+        for (const group of groups) {
+          const tr = document.createElement('tr');
+          tr.className = 'kn-table-group kn-group-level-4 scw-synthetic-l4';
+          const td = document.createElement('td');
+          td.setAttribute('colspan', '100');
+          // Leave the label empty — injectField2019IntoLevel4Header will
+          // populate it from the data row's field_2019 content.
+          td.textContent = '';
+          tr.appendChild(td);
+          group.rows[0].parentNode.insertBefore(tr, group.rows[0]);
+        }
+      }
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -5328,12 +5410,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ]);
 
     $tbody.find('tr.scw-level-total-row').remove();
+    // Remove synthetic L4 headers from previous runs so they're rebuilt fresh
+    $tbody.find('tr.scw-synthetic-l4').remove();
     $tbody
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
     reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
+
+    // Synthesize missing L4 headers before the main pipeline processes groups
+    synthesizeMissingL4Headers(ctx);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
