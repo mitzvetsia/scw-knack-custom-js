@@ -3655,12 +3655,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           productTd.classList.add(P + '-sum-product--editable');
         }
 
-        // view_3596: show "(qty: ##)" after product name when qty > 1
+        // view_3596: show "(qty: ##)" after product name
         if (viewCfg.qtyBadgeField) {
-          var qtyCell = tr.querySelector('td.' + viewCfg.qtyBadgeField);
+          var qtyCell = findCell(tr, viewCfg.qtyBadgeField);
           if (qtyCell) {
             var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
-            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+            if (qtyVal >= 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
           }
         }
 
