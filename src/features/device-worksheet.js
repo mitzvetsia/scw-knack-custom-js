@@ -103,7 +103,7 @@
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, hideWhenReadOnly: true },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Extended', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -246,7 +246,7 @@
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, hideWhenReadOnly: true },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
                               stackWith: 'subBidTotal' },
           subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'TOTAL' },
@@ -269,6 +269,13 @@
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
         },
+        conditionalHide: [
+          {
+            detectField: 'field_2230',
+            when: 'yes',
+            hideFields: ['field_2150', 'field_1997', 'field_2146']
+          }
+        ],
         bucketField: 'field_2219',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
@@ -2050,6 +2057,46 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
+  /**
+   * Apply conditional field hiding based on per-row detect field values.
+   * Hides summary groups whose data-scw-fields match any field in the rule.
+   */
+  function applyConditionalHide(card, tr, viewCfg) {
+    if (!viewCfg.conditionalHide) return;
+
+    viewCfg.conditionalHide.forEach(function (rule) {
+      var detectTd = tr.querySelector('td.' + rule.detectField);
+      if (!detectTd) return;
+
+      // Read boolean value from the cell
+      var chk = detectTd.querySelector('input[type="checkbox"]');
+      var val;
+      if (chk) {
+        val = chk.checked ? 'yes' : 'no';
+      } else if (detectTd.querySelector('.kn-icon-yes, .fa-check, .fa-thumbs-up')) {
+        val = 'yes';
+      } else if (detectTd.querySelector('.kn-icon-no, .fa-times, .fa-thumbs-down')) {
+        val = 'no';
+      } else {
+        val = (detectTd.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase();
+      }
+
+      if (val !== (rule.when || '').toLowerCase()) return;
+
+      var hideSet = new Set(rule.hideFields || []);
+      var groups = card.querySelectorAll('[data-scw-fields]');
+      for (var i = 0; i < groups.length; i++) {
+        var fields = groups[i].getAttribute('data-scw-fields').split(' ');
+        for (var j = 0; j < fields.length; j++) {
+          if (hideSet.has(fields[j])) {
+            groups[i].style.display = 'none';
+            break;
+          }
+        }
+      }
+    });
+  }
+
   // ============================================================
   // EXPANDED STATE PERSISTENCE (across inline-edit re-renders)
   // ============================================================
@@ -3230,7 +3277,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
                 directEdit: true, fieldKey: desc.key });
           } else {
-            if (desc.hideWhenReadOnly) break;
             appendSumGroup(target, desc.label || name, td,
               { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
                 readOnly: true, fieldKey: desc.key });
@@ -4079,6 +4125,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Apply bucket-based field hiding + label injection ──
     applyBucketRules(card, tr, viewCfg);
+
+    // ── Apply conditional field hiding (e.g. hide totals when qty=1) ──
+    applyConditionalHide(card, tr, viewCfg);
 
     return card;
   }
