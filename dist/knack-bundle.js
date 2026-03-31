@@ -15707,6 +15707,7 @@ $(".kn-navigation-bar").hide();
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
         photoAlwaysVisible: true,
+        bucketField: 'field_2219',
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -15723,6 +15724,23 @@ $(".kn-navigation-bar").hide();
         detailLayout: {
           left:  ['connectedDevice', 'scwNotes'],
           right: ['mountingHardware']
+        },
+        // When bucket is NOT cameras/readers, use view_3608-style config
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+            connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+            mountingHardware: { key: 'field_1958', type: 'readOnly' },
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+          },
+          summaryLayout: ['laborDescription', 'connectedDevice'],
+          detailLayout: {
+            left:  ['scwNotes'],
+            right: ['mountingHardware']
+          }
         }
       },
       {
@@ -19806,7 +19824,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var entry = eligible[ri];
       var tr = entry.tr;
 
-      var card = buildWorksheetCard(tr, viewCfg);
+      // Per-row bucket override: swap fields/layouts when row's bucket
+      // doesn't match the keepBuckets whitelist (e.g. cameras/readers).
+      var effectiveCfg = viewCfg;
+      if (viewCfg.bucketOverride && viewCfg.bucketField) {
+        var rowBucket = readBucketId(tr, viewCfg.bucketField);
+        var keep = viewCfg.bucketOverride.keepBuckets || [];
+        if (keep.indexOf(rowBucket) === -1) {
+          // Build a shallow copy with overridden fields/layouts
+          effectiveCfg = {};
+          for (var ck in viewCfg) {
+            if (viewCfg.hasOwnProperty(ck)) effectiveCfg[ck] = viewCfg[ck];
+          }
+          effectiveCfg.fields = viewCfg.bucketOverride.fields;
+          effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
+          effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+        }
+      }
+      var card = buildWorksheetCard(tr, effectiveCfg);
 
       // Override descLabel for synthetic-group rows (no MDF/IDF assigned)
       if (entry.hasNoMove && entry.bucketCls && viewCfg.bucketRules) {
