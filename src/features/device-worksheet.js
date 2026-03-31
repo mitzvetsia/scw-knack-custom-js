@@ -4436,6 +4436,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
+    // ── Sort eligible rows by field_2218 (numeric, ascending) ──
+    eligible.sort(function (a, b) {
+      var tdA = a.tr.querySelector('td.field_2218');
+      var tdB = b.tr.querySelector('td.field_2218');
+      var vA = tdA ? parseFloat((tdA.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
+      var vB = tdB ? parseFloat((tdB.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
+      if (isNaN(vA)) vA = Infinity;
+      if (isNaN(vB)) vB = Infinity;
+      return vA - vB;
+    });
+
     // ── PHASE 2: BUILD — construct cards from collected data ──
     //
     // buildWorksheetCard reparents <td> elements into the card DOM,
@@ -4467,6 +4478,57 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       tr.setAttribute(PROCESSED_ATTR, '1');
       pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
+    }
+
+    // ── Reorder source <tr> elements by field_2218 sort value ──
+    // Sort within each group section so group headers stay in place.
+    if (pendingInserts.length > 1) {
+      // Tag each insert with its group header ref before any DOM changes
+      for (var gi = 0; gi < pendingInserts.length; gi++) {
+        var src = pendingInserts[gi].sourceTr;
+        var hdr = src.previousElementSibling;
+        while (hdr && !hdr.classList.contains('kn-table-group')) {
+          hdr = hdr.previousElementSibling;
+        }
+        pendingInserts[gi]._groupHdr = hdr || null; // null = no group (flat view)
+        // Capture trailing photo row before detach
+        var nxt = src.nextElementSibling;
+        if (nxt && nxt.classList.contains('scw-inline-photo-row')) {
+          pendingInserts[gi]._photoRow = nxt;
+        }
+      }
+
+      // Detach all source rows (and their photo rows) from the DOM
+      for (var di = 0; di < pendingInserts.length; di++) {
+        if (pendingInserts[di]._photoRow) pendingInserts[di]._photoRow.parentNode.removeChild(pendingInserts[di]._photoRow);
+        pendingInserts[di].sourceTr.parentNode.removeChild(pendingInserts[di].sourceTr);
+      }
+
+      // Re-insert in sorted order, grouped by their original group header.
+      // For each insert, append after its group header (or at end of tbody for flat views).
+      // Since pendingInserts is already sorted by field_2218 and we process in order,
+      // rows within each group section end up in the correct sorted position.
+      var _tbody = table.querySelector('tbody');
+      for (var ri2 = 0; ri2 < pendingInserts.length; ri2++) {
+        var _ins = pendingInserts[ri2];
+        var _hdr = _ins._groupHdr;
+        // Find the last data row already reinserted under this group header
+        // (or the header itself) and insert after it.
+        var insertAfter = _hdr || null;
+        if (insertAfter) {
+          var _sib = insertAfter.nextElementSibling;
+          while (_sib && !_sib.classList.contains('kn-table-group')) {
+            insertAfter = _sib;
+            _sib = _sib.nextElementSibling;
+          }
+          insertAfter.parentNode.insertBefore(_ins.sourceTr, insertAfter.nextSibling);
+        } else {
+          _tbody.appendChild(_ins.sourceTr);
+        }
+        if (_ins._photoRow) {
+          _ins.sourceTr.parentNode.insertBefore(_ins._photoRow, _ins.sourceTr.nextSibling);
+        }
+      }
     }
 
     // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
