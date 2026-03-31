@@ -121,6 +121,51 @@
       },
     },
     {
+      viewId: 'view_3610',
+      detectField: 'field_2219',
+      sortField: 'field_2218',
+      labelTarget: 'field_1949',
+      labelMode: 'prefix',
+      laborDescField: null,
+      allColumnKeys: [
+        'field_2020', // Labor Description
+        'field_2154', // SOW
+        'field_1964', // Qty
+        'field_2150', // Sub Bid
+        'field_2151', // Sub Bid Total
+        'field_1973', // +Hrs
+        'field_1997', // Hrs Ttl
+        'field_1974', // +Mat
+        'field_2146', // Mat Ttl
+        'field_2028', // Install Fee
+        'field_1953', // SCW Notes
+        'field_1957', // Connected Devices
+        'field_2207', // Mounting Hardware
+      ],
+      rowLocks: [
+        {
+          detectField: 'field_2230',
+          when: 'yes',
+          lockField: 'field_1964',   // Qty
+        },
+        {
+          detectField: 'field_2231',
+          whenNot: 'yes',
+          lockField: 'field_1957',   // Connected Devices
+        },
+      ],
+      rules: {
+        [BUCKET_OTHER_SERVICES]: {
+          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028', 'field_1953'],
+          rowClass: 'scw-row--services',
+        },
+        [BUCKET_ASSUMPTIONS]: {
+          activeFields: ['field_2020', 'field_2154', 'field_1953'],
+          rowClass: 'scw-row--assumptions',
+        },
+      },
+    },
+    {
       viewId: 'view_3586',
       detectField: 'field_2219',
       sortField: 'field_2218',
