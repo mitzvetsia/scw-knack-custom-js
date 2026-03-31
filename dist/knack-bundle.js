@@ -15735,7 +15735,7 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
-          connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices' },
+          connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
 
           // ── Detail panel ──
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
@@ -19525,6 +19525,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Apply conditional field hiding (e.g. hide totals when qty=1) ──
     applyConditionalHide(card, tr, viewCfg);
+
+    // ── Apply showWhenFieldIsYes visibility ──
+    var fNames = Object.keys(viewCfg.fields);
+    for (var swi = 0; swi < fNames.length; swi++) {
+      var swDesc = viewCfg.fields[fNames[swi]];
+      if (!swDesc.showWhenFieldIsYes) continue;
+      var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
+                 || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
+      var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
+      if (guardVal !== 'yes' && guardVal !== 'true') {
+        var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+        if (targetGroup) targetGroup.style.display = 'none';
+      }
+    }
 
     return card;
   }
