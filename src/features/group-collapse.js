@@ -619,8 +619,10 @@
       const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
 
       // On first encounter this session, clear stale localStorage for
-      // below-threshold views so the "default open" behaviour takes effect.
-      if (belowThreshold && !thresholdCleared.has(viewId)) {
+      // below-threshold or defaultOpen views so the "default open" behaviour takes effect.
+      var viewOverrides = VIEW_OVERRIDES[viewId];
+      var viewDefaultOpen = viewOverrides && viewOverrides.defaultOpen;
+      if ((belowThreshold || viewDefaultOpen) && !thresholdCleared.has(viewId)) {
         thresholdCleared.add(viewId);
         try { localStorage.removeItem(storageKey(sceneId, viewId)); } catch (e) {}
       }
