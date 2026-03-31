@@ -441,6 +441,14 @@
       '#view_3332 td.field_2446,',
       '#view_3332 th.field_2447,',
       '#view_3332 td.field_2447,',
+      '#view_3610 th.field_114,',
+      '#view_3610 td.field_114,',
+      '#view_3610 th.field_2445,',
+      '#view_3610 td.field_2445,',
+      '#view_3610 th.field_2446,',
+      '#view_3610 td.field_2446,',
+      '#view_3610 th.field_2447,',
+      '#view_3610 td.field_2447,',
       '#view_3586 th.field_114,',
       '#view_3586 td.field_114,',
       '#view_3586 th.field_2445,',
@@ -513,7 +521,7 @@
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {

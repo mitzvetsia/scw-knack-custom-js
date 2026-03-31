@@ -7596,7 +7596,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332', 'view_3610'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -13271,6 +13271,14 @@ $(".kn-navigation-bar").hide();
       '#view_3332 td.field_2446,',
       '#view_3332 th.field_2447,',
       '#view_3332 td.field_2447,',
+      '#view_3610 th.field_114,',
+      '#view_3610 td.field_114,',
+      '#view_3610 th.field_2445,',
+      '#view_3610 td.field_2445,',
+      '#view_3610 th.field_2446,',
+      '#view_3610 td.field_2446,',
+      '#view_3610 th.field_2447,',
+      '#view_3610 td.field_2447,',
       '#view_3586 th.field_114,',
       '#view_3586 td.field_114,',
       '#view_3586 th.field_2445,',
@@ -13343,7 +13351,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -14556,6 +14564,15 @@ $(".kn-navigation-bar").hide();
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
         editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
+        parentViewId: 'view_3610',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       },

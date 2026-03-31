@@ -28,6 +28,15 @@
         parentConnectionField: 'field_2464'
       },
       {
+        parentViewId: 'view_3610',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
         parentViewId: 'view_3586',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
