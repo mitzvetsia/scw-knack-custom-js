@@ -17044,6 +17044,13 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   min-width: 100px;
   flex-shrink: 0;
 }
+.${P}-sum-right .${P}-sum-group--qty-badge {
+  min-width: 110px;
+  align-items: center;
+}
+.${P}-sum-group--qty-badge td.${P}-sum-field {
+  justify-content: center;
+}
 /* SOW field grows in height to show multiple connection values */
 .${P}-sum-group--sow td.${P}-sum-field {
   height: auto;
@@ -19104,19 +19111,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Qty badge (far right, before move/delete) ──
     if (qtyBadgeVal > 1) {
       var qtyTd = document.createElement('td');
-      qtyTd.className = P + '-sum-field';
       qtyTd.textContent = qtyBadgeVal;
-      qtyTd.style.justifyContent = 'center';
-      var qtyGrp = document.createElement('span');
-      qtyGrp.className = P + '-sum-group';
-      qtyGrp.style.alignItems = 'center';
-      var qtyLbl = document.createElement('span');
-      qtyLbl.className = P + '-sum-label';
-      qtyLbl.textContent = 'Quantity';
-      qtyLbl.style.textAlign = 'center';
-      qtyGrp.appendChild(qtyLbl);
-      qtyGrp.appendChild(qtyTd);
-      rightGroup.appendChild(qtyGrp);
+      appendSumGroup(rightGroup, 'Quantity', qtyTd, { readOnly: false, cls: P + '-sum-group--qty-badge' });
     }
 
     // ── Move icon (structural — always last before delete) ──
