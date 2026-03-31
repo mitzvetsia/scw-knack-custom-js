@@ -3609,6 +3609,7 @@ window.SCW = window.SCW || {};
           l3BlankLabelField: 'field_2208',
         },
       },
+      /* TEMP DISABLED — view_3341
       view_3341: {
         showProjectTotals: true,
         keys: {
@@ -3625,6 +3626,7 @@ window.SCW = window.SCW || {};
           l3BlankLabelField: 'field_2208',
         },
       },
+      */
       view_3371: {
         showProjectTotals: false,
         keys: {
@@ -3643,7 +3645,7 @@ window.SCW = window.SCW || {};
       },
     },
 
-    styleSceneIds: ['scene_1096'],
+    styleSceneIds: [/* 'scene_1096' TEMP DISABLED */],
 
     features: {
       l2Sort: { enabled: true, missingSortGoesLast: true },
@@ -9402,7 +9404,7 @@ $(document).on('knack-view-render.view_3313', function () {
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341','view_3550'];
+  const VIEW_IDS = ['view_3301', /* 'view_3341', TEMP DISABLED */ 'view_3550'];
   const LIMIT_VALUE = '1000';
   const EVENT_NS = '.scwLimit1000';
 
@@ -12371,7 +12373,7 @@ $(".kn-navigation-bar").hide();
  * ──────────────────────────────────────────────────────────────────── */
 (function styleDetailLabels() {
   var SCENE_IDS = [
-    'scene_1096',
+    /* 'scene_1096', TEMP DISABLED */
   ];
 
   var CSS_ID = 'scw-detail-label-css';

@@ -4,7 +4,7 @@
  * ──────────────────────────────────────────────────────────────────── */
 (function styleDetailLabels() {
   var SCENE_IDS = [
-    'scene_1096',
+    /* 'scene_1096', TEMP DISABLED */
   ];
 
   var CSS_ID = 'scw-detail-label-css';
