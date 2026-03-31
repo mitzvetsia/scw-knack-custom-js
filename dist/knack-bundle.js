@@ -17223,6 +17223,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3596 .${P}-bucket-override .${P}-sum-sep {
   display: none !important;
 }
+#view_3596 .${P}-bucket-override td.${P}-sum-field-ro {
+  padding-left: 0 !important;
+}
 #view_3596 .scw-inline-photo-label {
   display: none;
 }
@@ -17249,6 +17252,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }
 #view_3608 .${P}-sum-sep {
   display: none !important;
+}
+#view_3608 td.${P}-sum-field-ro {
+  padding-left: 0 !important;
 }
 #view_3608 .scw-row--assumptions .${P}-sum-group--fill .${P}-sum-label,
 #view_3608 .scw-row--services .${P}-sum-group--fill .${P}-sum-label {
