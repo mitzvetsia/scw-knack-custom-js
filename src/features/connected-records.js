@@ -19,15 +19,6 @@
         parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
       },
       {
-        parentViewId: 'view_3332',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item',
-        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
-      },
-      {
         parentViewId: 'view_3610',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',

@@ -7596,7 +7596,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3332', 'view_3610'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3610'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -9823,14 +9823,14 @@ $(document).on('knack-view-render.view_3313', function () {
 /***************************** /CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /**
- * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3332 — SOW)
+ * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3610 — SOW)
  *
  * Per-view configs drive bucket detection, column grayout, row locks,
  * and bucket-label injection.
  *
  *  view_3456: grays ALL cells for Services/Assumptions; replaces product
  *             cell content with "SERVICE — <labor desc>" via ::after.
- *  view_3332: selective grayout; preserves product cell; prefixes
+ *  view_3610: selective grayout; preserves product cell; prefixes
  *             "ASSUMPTION" / "SERVICE" label above product via ::before.
  *
  * Approach: capture-phase event blocker, MutationObserver, retried
@@ -9893,52 +9893,6 @@ $(document).on('knack-view-render.view_3313', function () {
         },
         [BUCKET_ASSUMPTIONS]: {
           activeFields: [],
-          rowClass: 'scw-row--assumptions',
-        },
-      },
-    },
-    {
-      viewId: 'view_3332',
-      detectField: 'field_2219',
-      sortField: 'field_2218',
-      labelTarget: 'field_1949',
-      // 'prefix' = keep product visible, show label above via ::before
-      labelMode: 'prefix',
-      laborDescField: null,         // no labor desc concat for prefix mode
-      allColumnKeys: [
-        'field_2020', // Labor Description
-        'field_2154', // SOW
-        'field_1964', // Qty
-        'field_2150', // Sub Bid
-        'field_2151', // Sub Bid Total
-        'field_1973', // +Hrs
-        'field_1997', // Hrs Ttl
-        'field_1974', // +Mat
-        'field_2146', // Mat Ttl
-        'field_2028', // Install Fee
-        'field_1953', // SCW Notes
-        'field_1957', // Connected Devices
-        'field_2207', // Mounting Hardware
-      ],
-      rowLocks: [
-        {
-          detectField: 'field_2230',
-          when: 'yes',
-          lockField: 'field_1964',   // Qty
-        },
-        {
-          detectField: 'field_2231',
-          whenNot: 'yes',
-          lockField: 'field_1957',   // Connected Devices
-        },
-      ],
-      rules: {
-        [BUCKET_OTHER_SERVICES]: {
-          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028', 'field_1953'],
-          rowClass: 'scw-row--services',
-        },
-        [BUCKET_ASSUMPTIONS]: {
-          activeFields: ['field_2020', 'field_2154', 'field_1953'],
           rowClass: 'scw-row--assumptions',
         },
       },
@@ -10100,7 +10054,7 @@ $(document).on('knack-view-render.view_3313', function () {
         white-space: nowrap;
       }
 
-      /* view_3332 label injection is handled by device-worksheet bucketRules */
+      /* view_3610 label injection is handled by device-worksheet bucketRules */
     `;
 
     const style = document.createElement('style');
@@ -10249,7 +10203,7 @@ $(document).on('knack-view-render.view_3313', function () {
           $target.first().attr('data-scw-bucket-label', combined);
         }
       } else if (cfg.labelMode === 'prefix') {
-        // view_3332: show label above product text via ::before, product stays visible
+        // prefix mode: show label above product text via ::before, product stays visible
         if ($target.length) {
           $target.first().attr('data-scw-bucket-label', label);
         }
@@ -12860,7 +12814,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596', 'view_3608', 'view_3610'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3588', 'view_3596', 'view_3608', 'view_3610'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -12886,7 +12840,6 @@ $(".kn-navigation-bar").hide();
   // View-specific add-photo URL path segments
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
-    'view_3332': 'add-photo-to-sow-line-item',
     'view_3610': 'add-photo-to-sow-line-item',
     'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
@@ -13263,14 +13216,6 @@ $(".kn-navigation-bar").hide();
       '#view_3313 td.field_2446,',
       '#view_3313 th.field_2447,',
       '#view_3313 td.field_2447,',
-      '#view_3332 th.field_114,',
-      '#view_3332 td.field_114,',
-      '#view_3332 th.field_2445,',
-      '#view_3332 td.field_2445,',
-      '#view_3332 th.field_2446,',
-      '#view_3332 td.field_2446,',
-      '#view_3332 th.field_2447,',
-      '#view_3332 td.field_2447,',
       '#view_3610 th.field_114,',
       '#view_3610 td.field_114,',
       '#view_3610 th.field_2445,',
@@ -13351,7 +13296,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -14559,15 +14504,6 @@ $(".kn-navigation-bar").hide();
         parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
       },
       {
-        parentViewId: 'view_3332',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item',
-        editSlug: 'edit-scope-line-item2',   // fallback: derive add URL by replacing this slug
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
-      },
-      {
         parentViewId: 'view_3610',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
@@ -15660,7 +15596,7 @@ $(".kn-navigation-bar").hide();
         }
       },
       {
-        viewIds: ['view_3332', 'view_3610'],
+        viewIds: ['view_3610'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
@@ -19051,7 +18987,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // Only needed when there's no label-cell (view_3332); when there IS a
+        // Only needed when there's no label-cell; when there IS a
         // label-cell (view_3313) the identity wrapper handles alignment.
         if (hasStackedFields && !labelDesc) {
           var prodLabel = document.createElement('span');

@@ -1,13 +1,13 @@
 /***************************** CONDITIONAL ROW GRAYOUT BY BUCKET TYPE *******************************/
 /**
- * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3332 — SOW)
+ * SCW / Knack: Row-based conditional cell grayout (view_3456, view_3610 — SOW)
  *
  * Per-view configs drive bucket detection, column grayout, row locks,
  * and bucket-label injection.
  *
  *  view_3456: grays ALL cells for Services/Assumptions; replaces product
  *             cell content with "SERVICE — <labor desc>" via ::after.
- *  view_3332: selective grayout; preserves product cell; prefixes
+ *  view_3610: selective grayout; preserves product cell; prefixes
  *             "ASSUMPTION" / "SERVICE" label above product via ::before.
  *
  * Approach: capture-phase event blocker, MutationObserver, retried
@@ -70,52 +70,6 @@
         },
         [BUCKET_ASSUMPTIONS]: {
           activeFields: [],
-          rowClass: 'scw-row--assumptions',
-        },
-      },
-    },
-    {
-      viewId: 'view_3332',
-      detectField: 'field_2219',
-      sortField: 'field_2218',
-      labelTarget: 'field_1949',
-      // 'prefix' = keep product visible, show label above via ::before
-      labelMode: 'prefix',
-      laborDescField: null,         // no labor desc concat for prefix mode
-      allColumnKeys: [
-        'field_2020', // Labor Description
-        'field_2154', // SOW
-        'field_1964', // Qty
-        'field_2150', // Sub Bid
-        'field_2151', // Sub Bid Total
-        'field_1973', // +Hrs
-        'field_1997', // Hrs Ttl
-        'field_1974', // +Mat
-        'field_2146', // Mat Ttl
-        'field_2028', // Install Fee
-        'field_1953', // SCW Notes
-        'field_1957', // Connected Devices
-        'field_2207', // Mounting Hardware
-      ],
-      rowLocks: [
-        {
-          detectField: 'field_2230',
-          when: 'yes',
-          lockField: 'field_1964',   // Qty
-        },
-        {
-          detectField: 'field_2231',
-          whenNot: 'yes',
-          lockField: 'field_1957',   // Connected Devices
-        },
-      ],
-      rules: {
-        [BUCKET_OTHER_SERVICES]: {
-          activeFields: ['field_2020', 'field_2154', 'field_2150', 'field_2151', 'field_1964', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028', 'field_1953'],
-          rowClass: 'scw-row--services',
-        },
-        [BUCKET_ASSUMPTIONS]: {
-          activeFields: ['field_2020', 'field_2154', 'field_1953'],
           rowClass: 'scw-row--assumptions',
         },
       },
@@ -277,7 +231,7 @@
         white-space: nowrap;
       }
 
-      /* view_3332 label injection is handled by device-worksheet bucketRules */
+      /* view_3610 label injection is handled by device-worksheet bucketRules */
     `;
 
     const style = document.createElement('style');
@@ -426,7 +380,7 @@
           $target.first().attr('data-scw-bucket-label', combined);
         }
       } else if (cfg.labelMode === 'prefix') {
-        // view_3332: show label above product text via ::before, product stays visible
+        // prefix mode: show label above product text via ::before, product stays visible
         if ($target.length) {
           $target.first().attr('data-scw-bucket-label', label);
         }

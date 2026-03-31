@@ -239,7 +239,7 @@
         }
       },
       {
-        viewIds: ['view_3332', 'view_3610'],
+        viewIds: ['view_3610'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
@@ -3630,7 +3630,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         productGroup.setAttribute('data-scw-fields', productDesc.key);
 
         // Empty label so product aligns vertically with editable field values
-        // Only needed when there's no label-cell (view_3332); when there IS a
+        // Only needed when there's no label-cell; when there IS a
         // label-cell (view_3313) the identity wrapper handles alignment.
         if (hasStackedFields && !labelDesc) {
           var prodLabel = document.createElement('span');
