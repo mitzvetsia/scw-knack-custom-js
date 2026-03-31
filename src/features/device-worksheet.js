@@ -932,9 +932,9 @@ td.${P}-sum-move {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
+  align-self: flex-start;
   flex-shrink: 0;
-  padding: 0 4px;
+  padding: 5px 4px 0 4px;
   border: none !important;
   background: transparent !important;
 }
@@ -3613,7 +3613,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      rightGroup.appendChild(deleteWrap);
+      if (hasStackedFields) {
+        var delCol = document.createElement('span');
+        delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+        var delSpacer = document.createElement('span');
+        delSpacer.className = P + '-sum-label';
+        delSpacer.innerHTML = '&nbsp;';
+        delCol.appendChild(delSpacer);
+        delCol.appendChild(deleteWrap);
+        rightGroup.appendChild(delCol);
+      } else {
+        rightGroup.appendChild(deleteWrap);
+      }
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
