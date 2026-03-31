@@ -712,11 +712,6 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   word-break: break-word;
   line-height: 1.3;
 }
-/* Qty group narrower */
-.${P}-sum-right .${P}-sum-group--qty {
-  width: 50px;
-  min-width: 50px;
-}
 /* Fields inside right groups stretch to fill their group */
 .${P}-sum-right td.${P}-sum-field,
 .${P}-sum-right td.${P}-sum-field-ro {
