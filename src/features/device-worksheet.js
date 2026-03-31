@@ -103,7 +103,7 @@
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, hideWhenReadOnly: true },
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Extended', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -232,7 +232,7 @@
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
-                         'laborCategory', 'laborVariables', 'sow', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+                         'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes']
@@ -246,7 +246,7 @@
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, hideWhenReadOnly: true },
           subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
                               stackWith: 'subBidTotal' },
           subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'TOTAL' },
@@ -264,7 +264,7 @@
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
-        summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+        summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
@@ -3230,6 +3230,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
                 directEdit: true, fieldKey: desc.key });
           } else {
+            if (desc.hideWhenReadOnly) break;
             appendSumGroup(target, desc.label || name, td,
               { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
                 readOnly: true, fieldKey: desc.key });
