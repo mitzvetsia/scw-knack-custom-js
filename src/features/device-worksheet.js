@@ -272,7 +272,7 @@
         conditionalHide: [
           {
             whenLocked: 'field_1964',
-            hideFields: ['field_1964', 'field_2150', 'field_1997', 'field_2146']
+            hideFields: ['field_2150', 'field_1997', 'field_2146']
           }
         ],
         bucketField: 'field_2219',
