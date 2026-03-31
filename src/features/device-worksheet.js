@@ -272,7 +272,7 @@
         conditionalHide: [
           {
             whenLocked: 'field_1964',
-            hideFields: ['field_2150', 'field_1997', 'field_2146']
+            hideFields: ['field_2151', 'field_1997', 'field_2146']
           }
         ],
         bucketField: 'field_2219',
@@ -2076,6 +2076,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var locked = triggerTd.classList.contains('scw-cond-grayed')
                 || triggerTd.classList.contains('scw-cell-locked');
       if (!locked) return;
+
+      // Hide the trigger field's label (e.g. "Qty" label when qty is locked)
+      var triggerGroup = triggerTd.closest('[data-scw-fields]');
+      if (triggerGroup) {
+        var triggerLabel = triggerGroup.querySelector('.' + P + '-sum-label');
+        if (triggerLabel) triggerLabel.style.display = 'none';
+      }
 
       var hideSet = new Set(rule.hideFields || []);
 
