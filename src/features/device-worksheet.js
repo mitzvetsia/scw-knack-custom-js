@@ -444,6 +444,7 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
+            hideProductKeepSpace: true,
             hideDetail: true,
             rowClass: 'scw-row--assumptions',
           },
@@ -2003,9 +2004,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
         if (productHidden && (rule.summarySwapField || rule.hideProduct)) {
-          // Hide identity — the fill group spans full width and
-          // carries the bucket label via descLabel.
-          identity.style.display = 'none';
+          if (rule.hideProductKeepSpace) {
+            // Keep identity space but clear content
+            identity.style.visibility = 'hidden';
+          } else {
+            // Hide identity — the fill group spans full width and
+            // carries the bucket label via descLabel.
+            identity.style.display = 'none';
+          }
         } else if (!productHidden) {
           // Product visible — inject teal pill chit beside it
           var chitGroup = document.createElement('span');
