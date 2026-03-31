@@ -366,17 +366,12 @@
   /**
    * Build the add-accessory URL for a parent record.
    *
-   * Primary: construct from hash base path + addSlug + recordId.
-   * Fallback: search action column links in the row (legacy approach).
+   * Primary: search action column links in the row (preserves ?ref= params).
+   * Fallback: derive from an edit link by replacing editSlug with addSlug.
+   * Last resort: construct from hash base path + addSlug + recordId.
    */
   function findAddUrl(tr, slug, editSlug, recordId) {
-    // Primary: build from hash base path (same approach as inline-photo-row.js)
-    if (recordId) {
-      var basePath = getBuildSowBasePath();
-      if (basePath) return '#' + basePath + '/' + slug + '/' + recordId;
-    }
-
-    // Fallback: search action column links in the row
+    // Primary: search action column links in the row
     var anchors = tr.querySelectorAll('td.kn-table-link a');
     for (var i = 0; i < anchors.length; i++) {
       var href = anchors[i].getAttribute('href') || '';
@@ -391,6 +386,12 @@
           return editHref.replace(editSlug, slug);
         }
       }
+    }
+
+    // Last resort: build from hash base path (for views without action column links)
+    if (recordId) {
+      var basePath = getBuildSowBasePath();
+      if (basePath) return '#' + basePath + '/' + slug + '/' + recordId;
     }
 
     return '';
