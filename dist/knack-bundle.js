@@ -15751,7 +15751,7 @@ $(".kn-navigation-bar").hide();
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
             label: 'SERVICE',
-            descLabel: 'Service',
+            descLabel: '\u00a0',
             hideProduct: true,
             hideDetail: true,
             rowClass: 'scw-row--services',
@@ -17192,7 +17192,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3608 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
 }
-#view_3608 .scw-row--assumptions .${P}-sum-group--fill .${P}-sum-label {
+#view_3608 .scw-row--assumptions .${P}-sum-group--fill .${P}-sum-label,
+#view_3608 .scw-row--services .${P}-sum-group--fill .${P}-sum-label {
   display: block;
 }
 #view_3608 .scw-inline-photo-label {
