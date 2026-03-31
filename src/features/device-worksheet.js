@@ -4910,6 +4910,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Re-expand detail panels that were open before the inline-edit
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
+    // Clear stale localStorage for views that no longer default open
+    // (prevents previously-expanded-all state from persisting)
+    if (!viewCfg.defaultOpen && !_expandedState[viewCfg.viewId]) {
+      try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
+    }
+
     restoreExpandedState(viewCfg.viewId);
 
     // ── DEFAULT OPEN ──
