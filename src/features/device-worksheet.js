@@ -442,7 +442,7 @@
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_1949'],
             label: 'ASSUMPTION',
-            descLabel: 'Assumption',
+            descLabel: '\u00a0',
             hideProduct: true,
             hideDetail: true,
             rowClass: 'scw-row--assumptions',
@@ -1874,6 +1874,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }
 #view_3608 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
+}
+#view_3608 .scw-row--assumptions .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
 }
 #view_3608 .scw-inline-photo-label {
   display: none;
