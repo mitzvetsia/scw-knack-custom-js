@@ -17375,7 +17375,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /**
    * Apply conditional field hiding based on whether a trigger field is locked.
    * When the lock/grayout modules have grayed or locked the trigger field,
-   * hide summary groups whose data-scw-fields match any field in hideFields.
+   * hide individual field tds (and their associated labels in stacked pairs).
+   * If every field in a group is hidden, hides the entire group.
    */
   function applyConditionalHide(card, tr, viewCfg) {
     if (!viewCfg.conditionalHide) return;
@@ -17393,16 +17394,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!locked) return;
 
       var hideSet = new Set(rule.hideFields || []);
-      var groups = card.querySelectorAll('[data-scw-fields]');
-      for (var i = 0; i < groups.length; i++) {
-        var fields = groups[i].getAttribute('data-scw-fields').split(' ');
-        for (var j = 0; j < fields.length; j++) {
-          if (hideSet.has(fields[j])) {
-            groups[i].style.display = 'none';
-            break;
+
+      // Find each target td by data-field-key and hide it.
+      // In stacked pairs, also hide the preceding TOTAL label.
+      hideSet.forEach(function (fieldKey) {
+        var td = card.querySelector('td[data-field-key="' + fieldKey + '"]');
+        if (!td) return;
+
+        var group = td.closest('[data-scw-fields]');
+        if (!group) return;
+
+        var groupFields = group.getAttribute('data-scw-fields').split(' ');
+        var allHidden = groupFields.every(function (f) { return hideSet.has(f); });
+
+        if (allHidden) {
+          // Every field in this group is hidden — hide the whole group
+          group.style.display = 'none';
+        } else {
+          // Hide just this td. If it's a TOTAL in a stacked pair, also
+          // hide the preceding TTL label.
+          td.style.display = 'none';
+          var prev = td.previousElementSibling;
+          if (prev && prev.classList.contains(P + '-sum-label--ttl')) {
+            prev.style.display = 'none';
           }
         }
-      }
+      });
     });
   }
 
