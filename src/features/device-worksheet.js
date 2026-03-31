@@ -239,7 +239,7 @@
         }
       },
       {
-        viewId: 'view_3332',
+        viewIds: ['view_3332', 'view_3610'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
