@@ -9,6 +9,9 @@ cat \
   src/features/preserve-scroll-on-refresh.js \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
+  src/features/scene-tweaks.js \
+  src/features/percent-field-format.js \
+  src/features/inline-form-recompose.js \
   src/features/inline-edit-checkbox-layout.js \
   src/features/extract-hsv-color.js \
   src/features/ktl-accordion/ktl-accordion.js \
@@ -40,6 +43,7 @@ cat \
   src/features/set_unified_product_field.js \
   src/features/force-negative-display.js \
   src/features/refresh-on-inline-edit.js \
+  src/features/refresh-view-on-form-submit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/bucket-field-visibility_add-survey-bid-item.js \
   src/features/style-detail-labels.js \

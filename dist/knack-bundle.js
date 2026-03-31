@@ -1074,6 +1074,1134 @@ window.SCW = window.SCW || {};
   document.head.appendChild(style);
 })();
 /*************  Global Style Overrides  **************************/
+/*** Per-scene visual tweaks — organized by scene ID ***/
+(function () {
+  'use strict';
+
+  // ══════════════════════════════════════════════════════════════
+  //  CSS
+  // ══════════════════════════════════════════════════════════════
+  var STYLE_ID = 'scw-scene-tweaks-css';
+  if (!document.getElementById(STYLE_ID)) {
+    var css = `
+/* ══════════════════════════════════════════════════════════════
+   SCENE 1116 — Sales Edit Proposal
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Totals details view (view_3418) — card ── */
+#view_3418 {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  padding: 20px 24px 16px;
+  margin-bottom: 0;
+}
+/* Hide original Knack detail content — replaced by custom layout */
+#view_3418 .view-header {
+  display: none !important;
+}
+#view_3418 .kn-details-column {
+  display: none !important;
+}
+
+/* ── Custom totals layout ── */
+.scw-totals-custom {
+  font-variant-numeric: tabular-nums;
+}
+.scw-totals-section-hdr {
+  font-size: 12px;
+  font-weight: 700;
+  color: #163C6E;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 14px 0 4px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 2px;
+}
+.scw-totals-section-hdr:first-child {
+  padding-top: 0;
+}
+.scw-totals-section-hdr + .scw-totals-subtotal {
+  border-top: none;
+}
+.scw-totals-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 12px;
+  font-size: 14px;
+}
+.scw-totals-row-label {
+  color: #64748b;
+  font-weight: 500;
+}
+.scw-totals-row-value {
+  font-weight: 500;
+  color: #1e293b;
+}
+.scw-totals-row.is-discount .scw-totals-row-value {
+  color: #16a34a;
+  font-style: italic;
+}
+.scw-totals-subtotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 12px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 2px;
+}
+.scw-totals-subtotal-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.scw-totals-subtotal-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.scw-totals-grand {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 12px 4px;
+  border-top: 2px solid #163C6E;
+  margin-top: 8px;
+}
+.scw-totals-grand-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #163C6E;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.scw-totals-grand-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #163C6E;
+}
+
+/* view_3492 / view_3490 form styling handled by inline-form-recompose.js */
+`;
+
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  JS — restructure view_3418 into grouped financial summary
+  // ══════════════════════════════════════════════════════════════
+  var NS = '.scwSceneTweaks';
+
+  function createSectionHeader(text) {
+    var div = document.createElement('div');
+    div.className = 'scw-totals-section-hdr';
+    div.textContent = text;
+    return div;
+  }
+
+  function createRow(label, value, modifier) {
+    var div = document.createElement('div');
+    div.className = 'scw-totals-row' + (modifier ? ' is-' + modifier : '');
+    var lbl = document.createElement('span');
+    lbl.className = 'scw-totals-row-label';
+    lbl.textContent = label;
+    var val = document.createElement('span');
+    val.className = 'scw-totals-row-value';
+    val.textContent = value;
+    div.appendChild(lbl);
+    div.appendChild(val);
+    return div;
+  }
+
+  function createSubtotal(label, value) {
+    var div = document.createElement('div');
+    div.className = 'scw-totals-subtotal';
+    var lbl = document.createElement('span');
+    lbl.className = 'scw-totals-subtotal-label';
+    lbl.textContent = label;
+    var val = document.createElement('span');
+    val.className = 'scw-totals-subtotal-value';
+    val.textContent = value;
+    div.appendChild(lbl);
+    div.appendChild(val);
+    return div;
+  }
+
+  function createGrandTotal(label, value) {
+    var div = document.createElement('div');
+    div.className = 'scw-totals-grand';
+    var lbl = document.createElement('span');
+    lbl.className = 'scw-totals-grand-label';
+    lbl.textContent = label;
+    var val = document.createElement('span');
+    val.className = 'scw-totals-grand-value';
+    val.textContent = value;
+    div.appendChild(lbl);
+    div.appendChild(val);
+    return div;
+  }
+
+  // ── Frontend calculation config ──
+  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];   // device line-item grids
+  var HARDWARE_VIEWS  = ['view_3604'];                 // mounting hardware grid
+  var ALL_VIEWS       = EQUIPMENT_VIEWS.concat(HARDWARE_VIEWS);
+  var LUMP_DISCOUNT_FIELD = 'field_2290';              // additional lump sum discount (view_3490 form)
+
+  /** Parse a currency / number string into a float. Returns 0 for non-numeric. */
+  function parseNum(text) {
+    if (!text) return 0;
+    var raw = String(text).replace(/[^0-9.\-]/g, '');
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : 0;
+  }
+
+  /** Sum a field across all td cells with data-field-key in the given views.
+   *  Device-worksheet moves td elements from original rows into card panels,
+   *  but each cell appears exactly once per record in the DOM tree. */
+  function sumViewField(viewIds, fieldKey) {
+    var total = 0;
+    for (var v = 0; v < viewIds.length; v++) {
+      var container = document.getElementById(viewIds[v]);
+      if (!container) { console.log('[scw-totals] container not found:', viewIds[v]); continue; }
+      var cells = container.querySelectorAll('td[data-field-key="' + fieldKey + '"]');
+      console.log('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
+      for (var i = 0; i < cells.length; i++) {
+        var val = parseNum(cells[i].textContent);
+        console.log('  [' + i + ']', cells[i].textContent.trim(), '→', val);
+        total += val;
+      }
+    }
+    console.log('[scw-totals] SUM', fieldKey, '=', total);
+    return total;
+  }
+
+  /** Read the lump sum discount from the view_3490 form input. */
+  function getLumpDiscount() {
+    var input = document.querySelector('#view_3490 #' + LUMP_DISCOUNT_FIELD);
+    if (input) return parseNum(input.value);
+    var wrapped = document.querySelector('#view_3490 input[name="' + LUMP_DISCOUNT_FIELD + '"]');
+    if (wrapped) return parseNum(wrapped.value);
+    return 0;
+  }
+
+  function formatMoney(n) {
+    return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** Calculate totals from Knack model data and build the custom layout. */
+  function restructureTotals() {
+    var view = document.getElementById('view_3418');
+    if (!view) return;
+
+    // Remove previous custom layout if rebuilding after re-render
+    var existing = view.querySelector('.scw-totals-custom');
+    if (existing) existing.remove();
+
+    // ── Calculate from DOM cells ──
+    var retail       = sumViewField(ALL_VIEWS, 'field_1960');        // retail price (devices + hardware)
+    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount
+    var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2267');   // hardware effective discount
+    var lumpDiscount = getLumpDiscount();
+    var discount     = Math.abs(lineDiscount) + Math.abs(hwDiscount) + Math.abs(lumpDiscount);
+    var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
+    var eqSubtotal   = retail - discount;
+    var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
+    var projTotal    = eqSubtotal + installTotal;
+
+    var layout = document.createElement('div');
+    layout.className = 'scw-totals-custom';
+
+    var h2 = document.createElement('h2');
+    h2.textContent = 'Totals';
+    h2.style.cssText = 'font-size:18px;font-weight:700;color:#163C6E;margin:0 0 12px;';
+    layout.appendChild(h2);
+
+    // ── EQUIPMENT ──
+    layout.appendChild(createSectionHeader('Equipment'));
+    layout.appendChild(createRow('Retail', formatMoney(retail)));
+    if (discount > 0) {
+      var discountDisplay = '- ' + formatMoney(discount);
+      if (discountPct > 0) discountDisplay += ' (' + discountPct.toFixed(1) + '%)';
+      layout.appendChild(createRow('Discount', discountDisplay, 'discount'));
+    }
+    layout.appendChild(createSubtotal('Subtotal', formatMoney(eqSubtotal)));
+
+    // ── INSTALLATION ──
+    layout.appendChild(createSectionHeader('Installation'));
+    layout.appendChild(createSubtotal('Subtotal', formatMoney(installTotal)));
+
+    // ── PROJECT TOTAL ──
+    layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
+
+    view.appendChild(layout);
+  }
+
+  // Expose for external callers (e.g. refresh-view-on-form-submit.js)
+  window.SCW = window.SCW || {};
+  SCW.restructureTotals = restructureTotals;
+
+  // ── Bind ──
+  // Debounced wrapper so we only run once after all views finish rendering
+  var _totalsTimer = null;
+  function debouncedTotals() {
+    clearTimeout(_totalsTimer);
+    _totalsTimer = setTimeout(restructureTotals, 300);
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    // Trigger after the totals container renders
+    SCW.onViewRender('view_3418', debouncedTotals, NS);
+    // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
+    for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
+      SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
+    }
+  } else {
+    $(document).ready(function () {
+      setTimeout(restructureTotals, 1000);
+    });
+  }
+})();
+/*** Percent Field Format — global % field handling ***/
+/*** TEMPORARILY DISABLED — revisit later ***/
+(function () {
+  'use strict';
+  return; // ← disabled: all percent field manipulation paused
+
+  var NS = '.scwPctFmt';
+  var APPLIED_ATTR = 'data-scw-pct';
+  var SUBMIT_BOUND = 'data-scw-pct-submit';
+
+  // ══════════════════════════════════════════════════════════════
+  //  CONFIG — field IDs that are percent fields (Knack stores decimal)
+  // ══════════════════════════════════════════════════════════════
+
+  var PERCENT_FIELDS = [
+    'field_2276',
+    'field_2261'
+  ];
+
+  var PCT_SET = {};
+  for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+    PCT_SET[PERCENT_FIELDS[i]] = true;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  CONVERSION HELPERS
+  // ══════════════════════════════════════════════════════════════
+
+  /** Knack raw (0.05) → display whole number ("5"). */
+  function knackToDisplay(raw) {
+    var s = String(raw).replace(/[%\s]/g, '');
+    var num = parseFloat(s);
+    if (isNaN(num)) return raw;
+    return String(Math.round(num * 100 * 10000) / 10000);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  STRATEGY
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Knack reads the DOM input value on form submit (not its model).
+  // So we must keep the input value as something Knack accepts as
+  // a valid number, and swap to the decimal right before submit.
+  //
+  //   On load:   Knack raw 0.05 → display "5" in input
+  //   Editing:   user types "5" (plain number, no conversion)
+  //   On submit: capture-phase handler converts "5" → "0.05",
+  //              Knack reads "0.05", saves it as 5%
+  //   After re-render: 0.05 → display "5" again
+
+  function convertFormPctInputs(form) {
+    for (var j = 0; j < PERCENT_FIELDS.length; j++) {
+      var inp = form.querySelector('#' + PERCENT_FIELDS[j]);
+      if (!inp) continue;
+      var num = parseFloat(String(inp.value).replace(/[%\s]/g, ''));
+      if (!isNaN(num)) {
+        inp.value = String(num / 100);
+      }
+    }
+  }
+
+  function enhanceInput(input) {
+    if (input.getAttribute(APPLIED_ATTR)) return;
+    // Only enhance form inputs — skip inline grid edits (inside table cells)
+    if (input.closest && input.closest('.kn-table-table')) return;
+    input.setAttribute(APPLIED_ATTR, '1');
+
+    // Convert Knack's raw decimal to whole number for display
+    input.value = knackToDisplay(input.value);
+  }
+
+  // Global capture-phase click interceptor on submit buttons.
+  // Fires before Knack's jQuery click handler reads the input values.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.kn-submit button[type="submit"]');
+    if (!btn) return;
+    var form = btn.closest('form');
+    if (!form) return;
+    // Only convert if this form has percent inputs
+    var hasPct = false;
+    for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+      if (form.querySelector('#' + PERCENT_FIELDS[i])) { hasPct = true; break; }
+    }
+    if (hasPct) convertFormPctInputs(form);
+  }, true);  // capture phase
+
+  /** Scan the page (or a container) for percent field inputs and enhance them. */
+  function scan(container) {
+    var root = container || document;
+    for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+      var inp = root.querySelector('#' + PERCENT_FIELDS[i]);
+      if (inp) enhanceInput(inp);
+    }
+  }
+
+  /** Convert percent inputs to Knack values before submit.
+   *  Only needed for programmatic submits (e.g. inline-form-recompose)
+   *  where the button click bypasses the normal submit flow. */
+  function prepareForSubmit(container) {
+    var root = container || document;
+    for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+      var inp = root.querySelector('#' + PERCENT_FIELDS[i]);
+      if (!inp) continue;
+      if (inp._scwPctConverted) continue;
+      inp._scwPctConverted = true;
+      var num = parseFloat(String(inp.value).replace(/[%\s]/g, ''));
+      if (!isNaN(num)) {
+        inp.value = String(num / 100);
+      }
+      // Clear flag after a tick
+      (function (el) {
+        setTimeout(function () { el._scwPctConverted = false; }, 100);
+      })(inp);
+    }
+  }
+
+  /** Re-scan and format after a view re-renders (Knack resets to raw values). */
+  function reformatAfterRender(container) {
+    var root = container || document;
+    for (var i = 0; i < PERCENT_FIELDS.length; i++) {
+      var inp = root.querySelector('#' + PERCENT_FIELDS[i]);
+      if (inp) {
+        inp.removeAttribute(APPLIED_ATTR);
+        enhanceInput(inp);
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  INIT
+  // ══════════════════════════════════════════════════════════════
+
+  function init() {
+    // Scan on any scene render
+    $(document).on('knack-scene-render.any' + NS, function () {
+      setTimeout(scan, 200);
+    });
+
+    // Also scan now in case scenes are already rendered
+    scan();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  PUBLIC API
+  // ══════════════════════════════════════════════════════════════
+
+  window.SCW = window.SCW || {};
+  SCW.pctFormat = {
+    isPercentField: function (fieldId) { return !!PCT_SET[fieldId]; },
+    prepareForSubmit: prepareForSubmit,
+    reformatAfterRender: reformatAfterRender,
+    scan: scan
+  };
+
+  if (window.SCW && SCW.onSceneRender) {
+    init();
+  } else {
+    $(document).ready(init);
+  }
+})();
+/*** Inline Form Recompose — restyle native Knack forms into a compact panel ***/
+(function () {
+  'use strict';
+
+  var P = 'scw-ifc';          // prefix for CSS classes
+  var NS = '.scwInlineForm';   // event namespace
+  var STYLE_ID = P + '-css';
+  var APPLIED_ATTR = 'data-' + P;
+
+  // ══════════════════════════════════════════════════════════════
+  //  CONFIG — each entry describes one compact panel
+  // ══════════════════════════════════════════════════════════════
+  var PANELS = [
+    {
+      scene: 'scene_1116',
+      hostViewId: 'view_3418',         // panel inserted beside/after this view
+      moduleTitle: 'Adjust Pricing',
+      layout: 'side-by-side',          // grid: totals left, controls right
+      forms: [
+        {
+          viewId: 'view_3492',
+          compactLabel: 'Global Discount %',
+          enterToSubmit: true,
+          hideButton: true
+        },
+        {
+          viewId: 'view_3490',
+          compactLabel: 'Additional Lump Sum Discount',
+          enterToSubmit: true,
+          hideButton: true,
+          fields: {
+            field_2290: { format: 'currency' }
+          },
+          textareaLabel: 'Discount Note / Reason'
+        }
+      ]
+    }
+  ];
+
+  // ══════════════════════════════════════════════════════════════
+  //  CSS
+  // ══════════════════════════════════════════════════════════════
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css = `
+/* ── Side-by-side layout ── */
+.${P}-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.${P}-layout-left {
+  display: flex;
+  flex-direction: column;
+}
+.${P}-layout-left > * {
+  flex: 1;
+}
+.${P}-layout-right {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Pricing panel (right column) ── */
+.${P}-panel {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  padding: 20px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+}
+
+/* ── Module title (h2) ── */
+.${P}-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #163C6E;
+  margin: 0 0 20px;
+}
+
+/* ── Form section ── */
+.${P}-panel .${P}-section {
+  padding: 0 0 16px;
+}
+.${P}-panel .${P}-section + .${P}-section {
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+.${P}-panel .${P}-section:last-child {
+  padding-bottom: 0;
+}
+
+/* Section label — uppercase control label */
+.${P}-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+/* ── Textarea group (label + textarea in shared border) ── */
+.${P}-ta-group {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-top: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.${P}-ta-group:focus-within {
+  border-color: #163C6E;
+  box-shadow: 0 0 0 2px rgba(22,60,110,0.10);
+}
+.${P}-ta-label {
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 8px 10px 0;
+  font-style: italic;
+}
+.${P}-ta-group textarea {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.${P}-ta-group textarea:focus {
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* ── Hide native Knack form chrome ── */
+.${P}-section .view-header {
+  display: none !important;
+}
+.${P}-section .kn-input > label {
+  display: none !important;
+}
+.${P}-section .kn-instructions,
+.${P}-section .kn-form-group .kn-help-text {
+  display: none !important;
+}
+.${P}-section .kn-form-group {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.${P}-section .kn-input {
+  margin-bottom: 4px !important;
+  padding: 0 !important;
+}
+.${P}-section .kn-input:last-of-type {
+  margin-bottom: 0 !important;
+}
+.${P}-section .kn-submit {
+  margin: 4px 0 0 !important;
+  padding: 0 !important;
+}
+/* Hidden submit button (still in DOM for programmatic click) */
+.${P}-section.${P}-hide-btn .kn-submit {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0,0,0,0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: -1px !important;
+}
+
+/* ── Restyle native inputs ── */
+.${P}-section input[type="text"],
+.${P}-section input[type="number"],
+.${P}-section input[type="email"],
+.${P}-section select {
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  padding: 8px 12px !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+  color: #1e293b !important;
+  outline: none !important;
+  box-shadow: none !important;
+  transition: background 0.4s, border-color 0.2s, box-shadow 0.2s;
+  height: auto !important;
+  line-height: 1.4 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  font-variant-numeric: tabular-nums;
+}
+.${P}-section input[type="text"]:hover,
+.${P}-section input[type="number"]:hover {
+  border-color: #9ca3af !important;
+}
+.${P}-section input[type="text"]:focus,
+.${P}-section input[type="number"]:focus {
+  border-color: #163C6E !important;
+  box-shadow: 0 0 0 2px rgba(22,60,110,0.10) !important;
+}
+
+.${P}-section textarea {
+  width: 100% !important;
+  font-size: 14px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+  color: #1e293b !important;
+  outline: none !important;
+  box-shadow: none !important;
+  min-height: 48px;
+  resize: vertical;
+  line-height: 1.5 !important;
+  font-family: inherit !important;
+  transition: background 0.4s, border-color 0.2s, box-shadow 0.2s;
+}
+.${P}-section textarea:hover {
+  border-color: #9ca3af !important;
+}
+.${P}-section textarea:focus {
+  border-color: #163C6E !important;
+  box-shadow: 0 0 0 2px rgba(22,60,110,0.10) !important;
+}
+
+/* ── Submit button ── */
+.${P}-section .kn-submit button,
+.${P}-section .kn-submit input[type="submit"] {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 6px 14px !important;
+  background: #163C6E !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  white-space: nowrap;
+  transition: background 0.15s;
+  line-height: 1.4 !important;
+  height: auto !important;
+  width: auto !important;
+}
+.${P}-section .kn-submit button:hover,
+.${P}-section .kn-submit input[type="submit"]:hover {
+  background: rgb(7, 70, 124) !important;
+}
+
+/* ── Hide native success/confirmation ── */
+.${P}-section .kn-form-confirmation {
+  display: none !important;
+}
+.${P}-section .kn-message.is-danger,
+.${P}-section .kn-message.error {
+  font-size: 12px !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  margin: 6px 0 0 !important;
+  background: #fef2f2 !important;
+  border: 1px solid #fca5a5 !important;
+  color: #991b1b !important;
+}
+
+/* ── Hint text ── */
+.${P}-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 6px;
+}
+`;
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  HELPERS
+  // ══════════════════════════════════════════════════════════════
+
+  function findSubmitBtn(viewEl) {
+    return viewEl.querySelector('.kn-submit button[type="submit"], .kn-submit input[type="submit"]');
+  }
+
+  function findFormInputs(viewEl) {
+    return viewEl.querySelectorAll(
+      '.kn-input input[type="text"], .kn-input input[type="number"], ' +
+      '.kn-input input[type="email"], .kn-input textarea, .kn-input select'
+    );
+  }
+
+  function flashInputs(viewId) {
+    var el = document.getElementById(viewId);
+    if (!el) return;
+    var inputs = findFormInputs(el);
+    for (var i = 0; i < inputs.length; i++) {
+      (function (inp) {
+        inp.style.setProperty('background', '#dcfce7', 'important');
+        inp.style.setProperty('border-color', '#4ade80', 'important');
+        inp.style.setProperty('transition', 'background 0.5s, border-color 0.5s', 'important');
+        setTimeout(function () {
+          inp.style.removeProperty('background');
+          inp.style.removeProperty('border-color');
+          setTimeout(function () { inp.style.removeProperty('transition'); }, 600);
+        }, 1500);
+      })(inputs[i]);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  FIELD FORMATTING — currency display (percent handled by SCW.pctFormat)
+  // ══════════════════════════════════════════════════════════════
+
+  function applyCurrencyFormatting(viewEl, fieldsCfg) {
+    if (!fieldsCfg) return;
+    for (var fieldId in fieldsCfg) {
+      if (!fieldsCfg.hasOwnProperty(fieldId)) continue;
+      if (fieldsCfg[fieldId].format !== 'currency') continue;
+      var inp = viewEl.querySelector('#' + fieldId);
+      if (!inp || inp.getAttribute('data-scw-cur')) continue;
+      inp.setAttribute('data-scw-cur', '1');
+
+      var num = parseFloat(String(inp.value).replace(/[$,\s]/g, ''));
+      if (!isNaN(num)) inp.value = '$' + num.toFixed(2);
+
+      (function (input) {
+        $(input).off('focus' + NS).on('focus' + NS, function () {
+          input.value = String(input.value).replace(/[$,\s]/g, '');
+          input.select();
+        });
+        $(input).off('blur' + NS).on('blur' + NS, function () {
+          if (input._scwSubmitting) { input._scwSubmitting = false; return; }
+          var n = parseFloat(String(input.value).replace(/[$,\s]/g, ''));
+          if (!isNaN(n)) input.value = '$' + n.toFixed(2);
+        });
+      })(inp);
+    }
+  }
+
+  function prepareCurrencyForSubmit(viewId) {
+    var cfg = VIEW_FIELDS[viewId];
+    if (!cfg) return;
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+    for (var fieldId in cfg) {
+      if (!cfg.hasOwnProperty(fieldId)) continue;
+      if (cfg[fieldId].format !== 'currency') continue;
+      var inp = viewEl.querySelector('#' + fieldId);
+      if (!inp) continue;
+      inp._scwSubmitting = true;
+      var n = parseFloat(String(inp.value).replace(/[$,\s]/g, ''));
+      if (!isNaN(n)) inp.value = String(n);
+      $(inp).trigger('change');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  LAYOUT — side-by-side wrapper
+  // ══════════════════════════════════════════════════════════════
+
+  function ensureLayout(panelCfg) {
+    var layoutId = P + '-layout-' + panelCfg.scene;
+    var layout = document.getElementById(layoutId);
+    var hostView = document.getElementById(panelCfg.hostViewId);
+    if (!hostView) return null;
+
+    if (layout) {
+      // Verify hostView is still inside our layout
+      if (hostView.closest('#' + layoutId)) {
+        return {
+          layout: layout,
+          left: layout.querySelector('.' + P + '-layout-left'),
+          right: layout.querySelector('.' + P + '-layout-right')
+        };
+      }
+      // hostView was recreated outside layout — tear down and rebuild
+      layout.remove();
+    }
+
+    layout = document.createElement('div');
+    layout.id = layoutId;
+    layout.className = P + '-layout';
+
+    var left = document.createElement('div');
+    left.className = P + '-layout-left';
+
+    var right = document.createElement('div');
+    right.className = P + '-layout-right';
+
+    hostView.parentNode.insertBefore(layout, hostView);
+    left.appendChild(hostView);
+    layout.appendChild(left);
+    layout.appendChild(right);
+
+    return { layout: layout, left: left, right: right };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  CORE — enhance one form view in-place, move into panel
+  // ══════════════════════════════════════════════════════════════
+
+  function enhanceForm(section, formCfg) {
+    var viewEl = document.getElementById(formCfg.viewId);
+    if (!viewEl) return false;
+    if (viewEl.getAttribute(APPLIED_ATTR) === '1') return false;
+
+    var submitBtn = findSubmitBtn(viewEl);
+    var inputs = findFormInputs(viewEl);
+    if (!inputs.length) return false;
+
+    viewEl.setAttribute(APPLIED_ATTR, '1');
+
+    if (formCfg.hideButton) {
+      section.classList.add(P + '-hide-btn');
+    }
+
+    if (submitBtn && formCfg.buttonLabel) {
+      submitBtn.textContent = formCfg.buttonLabel;
+    }
+
+    // Move the entire view element into our section
+    section.appendChild(viewEl);
+
+    // Apply currency formatting
+    applyCurrencyFormatting(viewEl, formCfg.fields);
+
+    // Wrap textarea with floating label
+    if (formCfg.textareaLabel) {
+      var ta = viewEl.querySelector('.kn-input textarea');
+      if (ta && !ta.getAttribute('data-scw-ta-wrapped')) {
+        ta.setAttribute('data-scw-ta-wrapped', '1');
+        var taGroup = document.createElement('div');
+        taGroup.className = P + '-ta-group';
+        var taLabelEl = document.createElement('div');
+        taLabelEl.className = P + '-ta-label';
+        taLabelEl.textContent = formCfg.textareaLabel;
+        ta.parentNode.insertBefore(taGroup, ta);
+        taGroup.appendChild(taLabelEl);
+        taGroup.appendChild(ta);
+      }
+    }
+
+    // On form submit: flash inputs green, lock scroll
+    $(document).off('knack-form-submit.' + formCfg.viewId + NS)
+               .on('knack-form-submit.' + formCfg.viewId + NS, function () {
+      formCfg._submitAt = Date.now();
+
+      flashInputs(formCfg.viewId);
+      formCfg._flashOnRender = true;
+
+      // Re-format after Knack re-renders with raw values
+      var vid = formCfg.viewId;
+      var fCfg = formCfg.fields;
+      setTimeout(function () {
+        var v = document.getElementById(vid);
+        if (v) applyCurrencyFormatting(v, fCfg);
+        if (SCW.pctFormat) SCW.pctFormat.reformatAfterRender(v);
+      }, 1200);
+      setTimeout(function () {
+        var v = document.getElementById(vid);
+        if (v) applyCurrencyFormatting(v, fCfg);
+        if (SCW.pctFormat) SCW.pctFormat.reformatAfterRender(v);
+      }, 2500);
+
+      // Lock scroll
+      var savedY = window.scrollY;
+      var origScrollTo = window.scrollTo;
+      var origScrollIntoView = Element.prototype.scrollIntoView;
+      window.scrollTo = function () {};
+      Element.prototype.scrollIntoView = function () {};
+      setTimeout(function () {
+        window.scrollTo = origScrollTo;
+        Element.prototype.scrollIntoView = origScrollIntoView;
+        window.scrollTo(0, savedY);
+      }, 2000);
+    });
+
+    return true;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  PANEL BUILDER
+  // ══════════════════════════════════════════════════════════════
+
+  function buildPanel(panelCfg) {
+    // Delay rebuild if a form just submitted
+    for (var d = 0; d < panelCfg.forms.length; d++) {
+      var fc = panelCfg.forms[d];
+      if (fc._submitAt && (Date.now() - fc._submitAt) < 800) {
+        setTimeout(function () { buildPanel(panelCfg); }, 800);
+        return;
+      }
+    }
+
+    var hostView = document.getElementById(panelCfg.hostViewId);
+    if (!hostView) return;
+
+    // Set up side-by-side layout if configured
+    var cols = null;
+    if (panelCfg.layout === 'side-by-side') {
+      cols = ensureLayout(panelCfg);
+      if (!cols) return;
+    }
+
+    // Check if panel already exists and all forms are intact
+    var panelId = P + '-' + panelCfg.scene;
+    var existingPanel = document.getElementById(panelId);
+    if (existingPanel) {
+      var allApplied = true;
+      for (var c = 0; c < panelCfg.forms.length; c++) {
+        var fvEl = document.getElementById(panelCfg.forms[c].viewId);
+        if (fvEl && fvEl.getAttribute(APPLIED_ATTR) !== '1') {
+          allApplied = false;
+          break;
+        }
+      }
+      if (allApplied) return;
+      // A form was re-rendered — rebuild the panel
+      var insertRef = cols ? cols.right : hostView.parentNode;
+      for (var r = 0; r < panelCfg.forms.length; r++) {
+        var fv = document.getElementById(panelCfg.forms[r].viewId);
+        if (fv && fv.parentElement && fv.parentElement.closest('.' + P + '-panel')) {
+          insertRef.insertBefore(fv, existingPanel);
+          fv.removeAttribute(APPLIED_ATTR);
+        }
+      }
+      existingPanel.remove();
+    }
+
+    // Build the panel
+    var panel = document.createElement('div');
+    panel.className = P + '-panel';
+    panel.id = panelId;
+
+    if (panelCfg.moduleTitle) {
+      var title = document.createElement('h2');
+      title.className = P + '-title';
+      title.textContent = panelCfg.moduleTitle;
+      panel.appendChild(title);
+    }
+
+    var hasContent = false;
+    for (var i = 0; i < panelCfg.forms.length; i++) {
+      var formCfg = panelCfg.forms[i];
+
+      var section = document.createElement('div');
+      section.className = P + '-section';
+
+      // Check for textarea
+      var hasTextarea = false;
+      var viewEl = document.getElementById(formCfg.viewId);
+      if (viewEl) {
+        hasTextarea = !!viewEl.querySelector('.kn-input textarea');
+      }
+
+      // Add compact label
+      if (formCfg.compactLabel) {
+        var label = document.createElement('div');
+        label.className = P + '-label';
+        label.textContent = formCfg.compactLabel;
+        section.appendChild(label);
+      }
+
+      if (enhanceForm(section, formCfg)) {
+        // Add hint text
+        if (formCfg.enterToSubmit) {
+          var hint = document.createElement('div');
+          hint.className = P + '-hint';
+          hint.textContent = hasTextarea
+            ? 'press tab or enter to apply \u00b7 shift+enter for newline'
+            : 'press tab or enter to apply';
+          section.appendChild(hint);
+        }
+        panel.appendChild(section);
+        hasContent = true;
+      }
+    }
+
+    if (!hasContent) return;
+
+    // Insert panel
+    if (cols) {
+      cols.right.appendChild(panel);
+    } else {
+      hostView.insertAdjacentElement('afterend', panel);
+    }
+
+    // Flash green on forms that just submitted
+    for (var fi = 0; fi < panelCfg.forms.length; fi++) {
+      if (panelCfg.forms[fi]._flashOnRender) {
+        panelCfg.forms[fi]._flashOnRender = false;
+        flashInputs(panelCfg.forms[fi].viewId);
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  INIT
+  // ══════════════════════════════════════════════════════════════
+
+  var ENTER_SUBMIT_VIEWS = {};
+  var VIEW_FIELDS = {};
+  for (var pi = 0; pi < PANELS.length; pi++) {
+    for (var fi2 = 0; fi2 < PANELS[pi].forms.length; fi2++) {
+      var fc = PANELS[pi].forms[fi2];
+      if (fc.enterToSubmit) ENTER_SUBMIT_VIEWS[fc.viewId] = true;
+      if (fc.fields) VIEW_FIELDS[fc.viewId] = fc.fields;
+    }
+  }
+
+  // Document-level keydown (capture phase) — survives Knack re-renders
+  document.addEventListener('keydown', function (e) {
+    var tag = e.target.tagName.toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return;
+    var isTextarea = (tag === 'textarea');
+
+    var isEnter = (e.key === 'Enter' || e.keyCode === 13);
+    var isTab = (e.key === 'Tab' || e.keyCode === 9);
+
+    if (!isEnter && !isTab) return;
+    if (isTextarea && isEnter && e.shiftKey) return;
+
+    var el = e.target;
+    while (el && el !== document.body) {
+      if (el.id && ENTER_SUBMIT_VIEWS[el.id]) {
+        var btn = findSubmitBtn(el);
+        if (btn) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          prepareCurrencyForSubmit(el.id);
+          if (SCW.pctFormat) SCW.pctFormat.prepareForSubmit(el);
+          flashInputs(el.id);
+          btn.click();
+        }
+        return;
+      }
+      el = el.parentElement;
+    }
+  }, true);
+
+  function init() {
+    injectStyles();
+
+    for (var p = 0; p < PANELS.length; p++) {
+      var panelCfg = PANELS[p];
+
+      SCW.onSceneRender(panelCfg.scene, (function (cfg) {
+        return function () {
+          setTimeout(function () { buildPanel(cfg); }, 150);
+        };
+      })(panelCfg), NS);
+
+      // Bind on each form's view render
+      for (var f = 0; f < panelCfg.forms.length; f++) {
+        SCW.onViewRender(panelCfg.forms[f].viewId, (function (cfg) {
+          return function () {
+            setTimeout(function () { buildPanel(cfg); }, 150);
+          };
+        })(panelCfg), NS);
+      }
+
+    }
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    init();
+  } else {
+    $(document).ready(init);
+  }
+})();
 // ============================================================
 // Inline-edit checkbox layout improvements
 // ============================================================
@@ -10492,6 +11620,178 @@ $(".kn-navigation-bar").hide();
     });
   });
 })();
+/*** Recalculate totals on scene_1116 after inline edits or form submissions ***/
+(function () {
+  'use strict';
+
+  var SCENE = 'scene_1116';
+  var TARGET_VIEW = 'view_3418';
+  var FORM_VIEWS = ['view_3492', 'view_3490'];
+  // Source grid views whose data feeds the totals panel
+  var SOURCE_VIEWS = ['view_3586', 'view_3588', 'view_3604'];
+  var NS = '.scwRefreshTarget';
+  var OVERLAY_ID = 'scw-totals-refresh-overlay';
+
+  // ── Loading overlay on view_3418 ──
+  var OVERLAY_STYLE_ID = 'scw-totals-refresh-css';
+  function injectOverlayStyle() {
+    if (document.getElementById(OVERLAY_STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = OVERLAY_STYLE_ID;
+    s.textContent = [
+      '#' + OVERLAY_ID + ' {',
+      '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  background: rgba(255,255,255,.78);',
+      '  color: #555; font-size: 13px; font-weight: 500; letter-spacing: .3px;',
+      '  border-radius: 8px; z-index: 5;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showRefreshing() {
+    injectOverlayStyle();
+    var el = document.getElementById(TARGET_VIEW);
+    if (!el) return;
+    // Ensure positioned parent for the overlay
+    if (getComputedStyle(el).position === 'static') {
+      el.style.position = 'relative';
+    }
+    // Don't add a duplicate
+    if (document.getElementById(OVERLAY_ID)) return;
+    var overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.textContent = 'Refreshing\u2026';
+    el.appendChild(overlay);
+  }
+
+  function hideRefreshing() {
+    var overlay = document.getElementById(OVERLAY_ID);
+    if (overlay) overlay.remove();
+  }
+
+  /**
+   * Refresh the source grid views so their DOM updates with fresh data.
+   * scene-tweaks.js already binds onViewRender for these grids → restructureTotals,
+   * so totals recalculate automatically once the grids re-render.
+   */
+  function refreshSourceGrids() {
+    if (typeof Knack === 'undefined') return;
+
+    var pending = 0;
+    var fetched = false;
+
+    SOURCE_VIEWS.forEach(function (viewId) {
+      var view = Knack.views && Knack.views[viewId];
+      if (view && view.model && typeof view.model.fetch === 'function') {
+        pending++;
+        fetched = true;
+        $(document).one('knack-view-render.' + viewId + NS + 'Grid', function () {
+          pending--;
+          if (pending <= 0) hideRefreshing();
+        });
+        console.log('[scw-refresh] Fetching source grid ' + viewId);
+        view.model.fetch();
+      }
+    });
+
+    if (!fetched) {
+      // Fallback: just recalculate from current DOM
+      console.log('[scw-refresh] No source grids available, recalculating from DOM');
+      if (window.SCW && typeof SCW.restructureTotals === 'function') {
+        SCW.restructureTotals();
+      }
+      hideRefreshing();
+    }
+
+    // Safety timeout — clear overlay after 10s no matter what
+    setTimeout(hideRefreshing, 10000);
+  }
+
+  // ── Immediate submit-button click interception (capture phase) ──
+  // knack-form-submit fires AFTER the AJAX round-trip completes.
+  // We intercept the actual button click so the overlay appears instantly.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('button[type="submit"]');
+    if (!btn) return;
+    var form = btn.closest('form');
+    if (!form) return;
+    var isTargetForm = false;
+    for (var i = 0; i < FORM_VIEWS.length; i++) {
+      if (form.closest('#' + FORM_VIEWS[i])) { isTargetForm = true; break; }
+    }
+    if (isTargetForm) {
+      console.log('[scw-refresh] Submit button clicked — showing overlay');
+      showRefreshing();
+    }
+  }, true); // capture phase — fires before Knack's handler
+
+  // --- form submissions (knack-form-submit.viewId) ---
+  // By the time this fires, the save is done — refresh the source grids.
+  FORM_VIEWS.forEach(function (formViewId) {
+    $(document).off('knack-form-submit.' + formViewId + NS)
+               .on('knack-form-submit.' + formViewId + NS, function () {
+      console.log('[scw-refresh] Form submit detected on ' + formViewId);
+      refreshSourceGrids();
+    });
+  });
+
+  // --- record create / update on form views ---
+  FORM_VIEWS.forEach(function (formViewId) {
+    $(document).off('knack-record-create.' + formViewId + NS)
+               .on('knack-record-create.' + formViewId + NS, function () {
+      console.log('[scw-refresh] Record create detected on ' + formViewId);
+      refreshSourceGrids();
+    });
+    $(document).off('knack-record-update.' + formViewId + NS)
+               .on('knack-record-update.' + formViewId + NS, function () {
+      console.log('[scw-refresh] Record update detected on ' + formViewId);
+      refreshSourceGrids();
+    });
+  });
+
+  /** Recalculate totals from current DOM (for cell updates / direct edits). */
+  function recalcTotals() {
+    if (window.SCW && typeof SCW.restructureTotals === 'function') {
+      SCW.restructureTotals();
+    }
+  }
+
+  /** Debounced version for rapid-fire events (e.g. multiple cell updates). */
+  var debounceTimer = null;
+  function recalcDebounced() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(recalcTotals, 300);
+  }
+
+  // --- inline edits on any view in the scene (standard Knack cell-update) ---
+  // Cell updates change DOM in-place, so recalc from DOM is sufficient.
+  $(document).on('knack-scene-render.' + SCENE, function () {
+    var views = [];
+    $('[id^="view_"]').each(function () {
+      if (/^view_\d+$/.test(this.id)) views.push(this.id);
+    });
+
+    views.forEach(function (viewId) {
+      $(document).off('knack-cell-update.' + viewId + NS)
+                 .on('knack-cell-update.' + viewId + NS, function () {
+        console.log('[scw-refresh] Cell update detected on ' + viewId);
+        recalcDebounced();
+      });
+    });
+  });
+
+  // --- device-worksheet direct edits (AJAX PUT / model.updateRecord) ---
+  $(document).off('scw-record-saved' + NS)
+             .on('scw-record-saved' + NS, function () {
+    if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
+      console.log('[scw-refresh] Direct edit save detected');
+      setTimeout(recalcTotals, 1000);
+      setTimeout(recalcTotals, 3000);
+    }
+  });
+})();
 ////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL rebuild-proof) *************////
 (function () {
   'use strict';
@@ -11513,7 +12813,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3313', 'view_3332', 'view_3586', 'view_3588'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3332', 'view_3586', 'view_3588', 'view_3596'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -11543,7 +12843,9 @@ $(".kn-navigation-bar").hide();
     'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
-    'view_3588': 'add-photo-to-sow-line-item2'
+    'view_3602': 'add-photo-to-mdf-idf2',
+    'view_3588': 'add-photo-to-sow-line-item2',
+    'view_3596': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
@@ -11896,6 +13198,14 @@ $(".kn-navigation-bar").hide();
       '#view_3577 td.field_2446,',
       '#view_3577 th.field_2447,',
       '#view_3577 td.field_2447,',
+      '#view_3602 th.field_114,',
+      '#view_3602 td.field_114,',
+      '#view_3602 th.field_2445,',
+      '#view_3602 td.field_2445,',
+      '#view_3602 th.field_2446,',
+      '#view_3602 td.field_2446,',
+      '#view_3602 th.field_2447,',
+      '#view_3602 td.field_2447,',
       '#view_3313 th.field_114,',
       '#view_3313 td.field_114,',
       '#view_3313 th.field_2445,',
@@ -11984,7 +13294,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3586': true, 'view_3588': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3332': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -14150,15 +15460,32 @@ $(".kn-navigation-bar").hide();
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
-          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], headerTrigger: true },
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
           mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
-          name:             { key: 'field_1943', type: 'directEdit', notes: true, headerTrigger: true },
+          name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
         },
         summaryLayout: [],
         detailLayout: {
           left:  ['mdfIdf', 'mdfNumber', 'name'],
           right: ['surveyNotes']
+        }
+      },
+      {
+        viewId: 'view_3602',
+        layout: { labelWidth: '400px' },
+        fields: {
+          label:            { key: 'field_1642', type: 'readOnly',   summary: true },
+
+          mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
+          notes:            { key: 'field_1643', type: 'directEdit', notes: true }
+        },
+        summaryLayout: [],
+        detailLayout: {
+          left:  ['mdfIdf', 'mdfNumber', 'name'],
+          right: ['notes']
         }
       },
       {
@@ -14217,11 +15544,11 @@ $(".kn-navigation-bar").hide();
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
-                         'laborCategory', 'laborVariables', 'sow', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+                         'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes']
@@ -14235,7 +15562,7 @@ $(".kn-navigation-bar").hide();
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+          quantity:         { key: 'field_1964', type: 'directEdit',  summary: true, label: 'Qty',  group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, alwaysEditable: true },
           subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true,
                               stackWith: 'subBidTotal' },
           subBidTotal:      { key: 'field_2151', type: 'readOnly',    label: 'TOTAL' },
@@ -14250,26 +15577,37 @@ $(".kn-navigation-bar").hide();
 
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
-          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
-        summaryLayout: ['laborDescription', 'sow', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee'],
+        summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes']
         },
+        conditionalHide: [
+          {
+            whenLocked: 'field_1964',
+            hideFields: ['field_2151', 'field_1997', 'field_2146']
+          }
+        ],
         bucketField: 'field_2219',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
             label: 'SERVICE',
-            descLabel: 'Description of Service',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetailFields: ['field_1958'],
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
+            hideFields: ['field_1949', 'field_1964', 'field_2150', 'field_2151', 'field_1973', 'field_1997', 'field_1974', 'field_2146', 'field_2028'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetailFields: ['field_1958'],
+            showProductInDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -14296,7 +15634,7 @@ $(".kn-navigation-bar").hide();
           customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          connectedDevice:  { key: 'field_1957', type: 'readOnly' },
+          connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
@@ -14308,15 +15646,19 @@ $(".kn-navigation-bar").hide();
         bucketField: 'field_2219',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1953'],
             label: 'SERVICE',
-            descLabel: 'Description of Service',
+            summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
+            summarySwapReadOnly: true,
+            hideDetail: true,                     // suppress detail sections, keep photos only
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
+            hideFields: ['field_1949', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
             label: 'ASSUMPTION',
-            descLabel: 'Assumption',
+            summarySwapField: 'field_2020',
+            summarySwapReadOnly: true,
+            hideDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -14327,7 +15669,7 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3588',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', detailGrid: '1fr 1fr 1fr' },
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         stackedSummary: false,
         fields: {
           // ── Summary row ──
@@ -14339,28 +15681,47 @@ $(".kn-navigation-bar").hide();
           lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
           move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
-          // ── Detail panel – left (pricing) ──
-          retailPrice:      { key: 'field_2150', type: 'readOnly' },
-          quantity:         { key: 'field_1965', type: 'directEdit', feeTrigger: true },
+          // ── Detail panel – left ──
+          retailPrice:      { key: 'field_1960', type: 'readOnly' },
           discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_1960', type: 'readOnly' },
-
-          // ── Detail panel – center (identity) ──
+          total:            { key: 'field_2269', type: 'readOnly' },
           dropPrefix:       { key: 'field_2240', type: 'directEdit' },
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
-          connectedDevice:  { key: 'field_2197', type: 'directEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
 
           // ── Detail panel – right ──
-          dropLength:       { key: 'field_2035', type: 'readOnly' },
-          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
-          left:   ['retailPrice', 'quantity', 'discountDlr', 'appliedDiscount', 'total'],
-          center: ['dropPrefix', 'dropNumber', 'connectedDevice', 'mountingHardware'],
-          right:  ['dropLength', 'laborDescription']
+          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
+          right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
+        }
+      },
+      {
+        viewId: 'view_3596',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, showOnlyIfYes: true },
+
+          // ── Detail panel ──
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+        },
+        summaryLayout: ['laborDescription', 'existingCabling'],
+        detailLayout: {
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['scwNotes']
         }
       }
     ]
@@ -14433,6 +15794,12 @@ $(".kn-navigation-bar").hide();
     if (document.getElementById(STYLE_ID)) return;
 
     var css = `
+/* ── Hide raw Knack rows until transformView processes them ── */
+/* Prevents flash of unstyled/duplicate inputs during re-render */
+${WORKSHEET_CONFIG.views.map(function (v) {
+  return '#' + v.viewId + ' tbody > tr:not([${PROCESSED_ATTR}]):not(.${WORKSHEET_ROW}):not(.kn-table-group):not(.scw-inline-photo-row):not(.kn-table-totals) { visibility: hidden; height: 0; overflow: hidden; }';
+}).join('\n')}
+
 /* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
@@ -14465,11 +15832,23 @@ tr[data-scw-worksheet]:hover > td:not(.bulkEditSelectedRow) {
   border: none !important;
 }
 
-/* ── Photo row — part of the same visual unit ── */
+/* ── Photo row — original <tr> hidden; content moved into card ── */
+tr.scw-inline-photo-row.${P}-photo-absorbed {
+  display: none !important;
+}
 tr.scw-inline-photo-row > td {
   padding: 20px 16px 50px 16px !important;
   border: none !important;
   border-bottom: 2px solid #e2e8f0 !important;
+}
+
+/* ── Photo content moved inside card ── */
+.${P}-photo-wrap {
+  padding: 20px 16px 50px 70px;
+  background: #fff;
+}
+.${P}-photo-wrap.${P}-photo-hidden {
+  display: none;
 }
 
 /* ── Card wrapper ── */
@@ -14477,7 +15856,8 @@ tr.scw-inline-photo-row > td {
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-top: 2px solid #e2e8f0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* ── Bottom separator between record groups (card + photo row) ── */
@@ -14492,23 +15872,55 @@ tr.scw-inline-photo-row > td {
 .${P}-summary {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 6px 12px;
-  background: #f8fafc;
+  padding: 15px 12px 20px;
+  background: #fff;
   border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
+  min-width: 0;
+  transition: background 0.15s, box-shadow 0.2s;
 }
 .${P}-summary:hover {
   background: #f1f5f9;
+}
+
+/* ── Expanded: header + detail + photo strip pop out as one unit ── */
+tr.${WORKSHEET_ROW}:has(.${P}-open) {
+  z-index: 1;
+  position: relative;
+}
+.${P}-card:has(.${P}-open) {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  margin-bottom: 10px;
+}
+/* Remove internal borders when expanded */
+.${P}-card:has(.${P}-open) .${P}-summary {
+  background: #fff;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+/* Photo wrap gets bottom border-radius when card is expanded */
+.${P}-card:has(.${P}-open) .${P}-photo-wrap:not(.${P}-photo-hidden) {
+  border-radius: 0 0 8px 8px;
+}
+/* If no photo wrap visible, detail gets bottom radius */
+.${P}-card:has(.${P}-open) .${P}-detail:last-child,
+.${P}-card:has(.${P}-open) .${P}-detail:has(+ .${P}-photo-wrap.${P}-photo-hidden) {
+  border-radius: 0 0 8px 8px;
 }
 
 /* Right-aligned group: bid, labor, qty, ext, move pushed to far right */
 .${P}-sum-right {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   gap: 4px;
   margin-left: auto;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 /* Each field group in the right section gets fixed width for vertical alignment */
 .${P}-sum-right .${P}-sum-group {
@@ -14567,7 +15979,7 @@ td.${P}-sum-check input[type="checkbox"] {
   gap: 6px;
   cursor: pointer;
   user-select: none;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .${P}-toggle-zone:hover .${P}-chevron {
@@ -14758,7 +16170,7 @@ td.${P}-sum-field-ro {
   display: inline-flex;
   align-items: center;
   position: relative;
-  padding: 2px 8px;
+  padding: 2px 8px !important;
   font-size: 14px;
   font-weight: 600;
   color: #374151;
@@ -14803,20 +16215,21 @@ td.${P}-sum-field--desc {
 /* Labor desc group — fills middle space, pushes right group to far right.
    align-self:stretch makes it match the tallest sibling (e.g. stacked chips). */
 .${P}-sum-group--fill {
-  flex: 1 1 auto;
-  min-width: 80px;
+  flex: 1 1 0;
+  min-width: 150px;
   align-self: stretch;
   display: flex;
   flex-direction: column;
+  margin-left: 10px;
 }
 /* Fill td + textarea stretch to fill the group height */
 .${P}-sum-group--fill td.${P}-sum-direct-edit {
-  flex: 1;
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
 }
 .${P}-sum-group--fill td.${P}-sum-direct-edit .${P}-direct-textarea {
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 /* Move td sits at the right end */
@@ -14835,9 +16248,9 @@ td.${P}-sum-move {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
+  align-self: flex-start;
   flex-shrink: 0;
-  padding: 0 4px;
+  padding: 5px 4px 0 4px;
   border: none !important;
   background: transparent !important;
 }
@@ -14907,6 +16320,10 @@ td.${P}-sum-move {
   opacity: 0.6;
   pointer-events: none;
 }
+.${P}-cabling-chit.is-readonly {
+  cursor: default;
+  pointer-events: none;
+}
 
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
 td.${P}-sum-chip-host {
@@ -14974,7 +16391,7 @@ tr.scw-synth-divider > td {
    ================================================================ */
 .${P}-detail {
   display: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 10px solid #ffffff;
 }
 .${P}-detail.${P}-open {
   display: block;
@@ -14983,10 +16400,11 @@ tr.scw-synth-divider > td {
 /* ── Sections grid ── */
 .${P}-sections {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
   gap: 0;
+  overflow: hidden;
 }
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   .${P}-sections {
     grid-template-columns: 1fr;
   }
@@ -14994,7 +16412,7 @@ tr.scw-synth-divider > td {
 
 /* ── Individual section ── */
 .${P}-section {
-  padding: 14px 20px 14px 16px;
+  padding: 14px 20px 14px 70px;
   min-width: 0;
 }
 .${P}-section:last-child {
@@ -15052,15 +16470,18 @@ tr.scw-synth-divider > td {
 td.${P}-field-value {
   display: block;
   padding: 4px 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  background: #fff;
   min-height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left !important;
+  justify-content: flex-start !important;
 }
 
-/* ── Editable hover affordance ── */
+/* ── Editable field affordance (border + background only for editable cells) ── */
 td.${P}-field-value.cell-edit,
 td.${P}-field-value.ktlInlineEditableCellsStyle {
+  border: 1px solid #e5e7eb;
   background: rgba(134, 182, 223, 0.1);
   cursor: pointer;
   transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
@@ -15162,6 +16583,29 @@ td.${P}-field-value--notes {
   pointer-events: none;
 }
 
+/* ── Segmented toggle (either/or style) ── */
+.${P}-radio-chips.${P}-segmented {
+  gap: 0;
+  flex-wrap: nowrap;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip {
+  border-radius: 0;
+  border-right-width: 0;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip:last-child {
+  border-radius: 0 6px 6px 0;
+  border-right-width: 1px;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip.is-unselected {
+  border-color: #d1d5db;
+}
+.${P}-radio-chips.${P}-segmented .${P}-radio-chip.is-selected + .${P}-radio-chip.is-unselected {
+  border-left-color: #047857;
+}
+
 /* ── Direct-edit inputs (type-and-save text fields) ── */
 .${P}-direct-input,
 .${P}-direct-textarea {
@@ -15202,7 +16646,7 @@ td.${P}-field-value--notes {
 }
 .${P}-direct-textarea {
   resize: vertical;
-  min-height: 48px;
+  min-height: 28px;
   max-height: 200px;
 }
 
@@ -15308,7 +16752,7 @@ tr.${WORKSHEET_ROW}:has(td.bulkEditSelectedRow) .${P}-comp-row.${P}-comp-mismatc
 }
 
 
-/* ── Photo row hidden when detail collapsed ── */
+/* ── Photo row hidden when detail collapsed (legacy fallback) ── */
 tr.scw-inline-photo-row.${P}-photo-hidden {
   display: none !important;
 }
@@ -15530,7 +16974,7 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 /* Non-stacked fill textarea — stretches to match tallest sibling, grows for extra text */
 .${P}-summary:not(.${P}-summary--stacked) .${P}-sum-group--fill .${P}-direct-textarea {
-  min-height: 24px;
+  min-height: 28px;
   max-height: none;
 }
 
@@ -15558,35 +17002,55 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   flex-shrink: 0;
   min-width: 40px;
 }
-/* When product is empty, let chit fill up to full width */
-.${P}-bucket-chit--wide {
-  max-width: none;
-}
 /* Bucket chit present — product flexes automatically within fixed identity */
 
 /* ── Worksheet <thead> column styling ── */
+.${P}-thead-styled tr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
 .${P}-thead-styled th {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.7rem !important;
   text-align: center !important;
-  vertical-align: middle !important;
-  padding: 4px 2px !important;
+  padding: 6px 10px !important;
   line-height: 1.2;
   box-sizing: border-box !important;
+  white-space: nowrap;
+  background: rgb(7, 70, 124) !important;
+  color: #fff !important;
+  border: none !important;
+  border-right: 1px solid rgba(255,255,255,0.2) !important;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+}
+.${P}-thead-styled th:last-child {
+  border-right: none !important;
+}
+.${P}-thead-styled th a,
+.${P}-thead-styled th a span,
+.${P}-thead-styled th span {
+  color: #fff !important;
+}
+.${P}-thead-styled th:hover {
+  background: rgb(10, 90, 155) !important;
 }
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
 }
 .${P}-thead-styled th .kn-sort {
   justify-content: center;
+  margin-top: 5px;
 }
-/* Spacer <th> covers chevron + warn-slot width in the summary bar */
-/* Width is set dynamically by measuring the actual toggle-zone */
-.${P}-thead-spacer {
-  padding: 0 !important;
+/* Widen checkbox header to align over row checkboxes (covers checkbox + chevron area) */
+.${P}-thead-styled .ktlCheckboxHeaderCell {
+  width: 48px !important;
+  min-width: 48px !important;
+  background: rgb(7, 70, 124) !important;
   border: none !important;
-  border-bottom: none !important;
-  box-shadow: none !important;
-  outline: none !important;
 }
 /* Stack bulk-edit checkbox below the label text */
 .${P}-thead-styled th .table-fixed-label.bulkEditTh {
@@ -15595,7 +17059,8 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   gap: 2px;
 }
 .${P}-thead-styled th .bulkEditHeaderCbox {
-  margin: 0 auto;
+  margin: 0 auto !important;
+  text-align: center;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -15631,14 +17096,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var iw = L.identityWidth;
     rules.push(
       '#' + id + ' .' + P + '-identity {' +
-      ' width: ' + iw + '; min-width: ' + iw + '; max-width: ' + iw + '; flex: 0 0 ' + iw + '; }'
+      ' width: ' + iw + '; max-width: ' + iw + '; flex: 0 1 ' + iw + '; min-width: 0; }'
     );
   }
 
   // ── Detail grid columns (when non-default) ──
   if (L.detailGrid && L.detailGrid !== LAYOUT_DEFAULTS.detailGrid) {
+    // Replace bare "1fr" with "minmax(0,1fr)" so columns can shrink below content width
+    var safeGrid = L.detailGrid.replace(/(?<!\S)1fr(?!\S)/g, 'minmax(0,1fr)');
     rules.push(
-      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + L.detailGrid + '; }'
+      '#' + id + ' .' + P + '-sections { grid-template-columns: ' + safeGrid + '; }'
     );
     rules.push(
       '@media (max-width: 900px) { #' + id + ' .' + P + '-sections { grid-template-columns: 1fr; } }'
@@ -15649,6 +17116,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     ? '/* ── ' + id + ' (auto-generated) ── */\n' + rules.join('\n')
     : '';
 }).filter(Boolean).join('\n\n')}
+
+/* ── view_3596: summary border on top, not bottom ── */
+#view_3596 .${P}-summary {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+}
+#view_3596 .${P}-sum-group--fill .${P}-sum-label {
+  display: none;
+}
+#view_3596 .scw-inline-photo-label {
+  display: none;
+}
+/* ── view_3596: disable clicks on detail links and photo strip ── */
+#view_3596 .${P}-detail a,
+#view_3596 .${P}-photo-wrap a,
+#view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+  pointer-events: none;
+  cursor: default;
+  color: inherit;
+  text-decoration: none;
+}
 `;
 
     var style = document.createElement('style');
@@ -15679,6 +17167,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!td) return true;
     var text = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim();
     return text.length === 0 && !td.querySelector('img');
+  }
+
+  /** Check if a td is editable via Knack or KTL inline-edit classes. */
+  function isCellEditable(td) {
+    if (!td) return false;
+    return td.classList.contains('cell-edit') || td.classList.contains('ktlInlineEditableCellsStyle');
+  }
+
+  /** Check if a td has been explicitly locked/grayed by conditional modules. */
+  function isCellLocked(td) {
+    if (!td) return false;
+    return td.classList.contains('scw-cond-grayed') || td.classList.contains('scw-cell-locked');
   }
 
   function getRecordId(tr) {
@@ -15749,34 +17249,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Inject bucket chit to the left of product ──
     if (rule.label) {
       var identity = card.querySelector('.' + P + '-identity');
+      var productDesc = viewCfg.fields && viewCfg.fields.product;
+      var productHidden = productDesc && hideSet.has(productDesc.key);
       if (identity) {
-        // Wrap in a group with empty label so chit aligns with labor desc input
-        var chitGroup = document.createElement('span');
-        chitGroup.className = P + '-bucket-chit-group';
-        chitGroup.style.visibility = 'visible';
-        var chitLabel = document.createElement('span');
-        chitLabel.className = P + '-sum-label';
-        chitLabel.innerHTML = '&nbsp;';
-        chitGroup.appendChild(chitLabel);
+        if (productHidden && (rule.summarySwapField || rule.hideProduct)) {
+          // Hide identity — the fill group spans full width and
+          // carries the bucket label via descLabel.
+          identity.style.display = 'none';
+        } else if (!productHidden) {
+          // Product visible — inject teal pill chit beside it
+          var chitGroup = document.createElement('span');
+          chitGroup.className = P + '-bucket-chit-group';
+          chitGroup.style.visibility = 'visible';
+          var chitLabel = document.createElement('span');
+          chitLabel.className = P + '-sum-label';
+          chitLabel.innerHTML = '&nbsp;';
+          chitGroup.appendChild(chitLabel);
 
-        var chitEl = document.createElement('span');
-        chitEl.className = P + '-bucket-chit';
-        chitEl.textContent = rule.label;
+          var chitEl = document.createElement('span');
+          chitEl.className = P + '-bucket-chit';
+          chitEl.textContent = rule.label;
+          chitGroup.appendChild(chitEl);
 
-        // If product is hidden/empty, allow chit to grow wider
-        var productDesc = viewCfg.fields && viewCfg.fields.product;
-        if (productDesc && hideSet.has(productDesc.key)) {
-          chitEl.classList.add(P + '-bucket-chit--wide');
-        }
-        chitGroup.appendChild(chitEl);
-
-        // Insert as first child of identity (before separator + product-group)
-        identity.insertBefore(chitGroup, identity.firstChild);
-
-        // Hide separator dot when product is hidden
-        if (productDesc && hideSet.has(productDesc.key)) {
-          var sep = identity.querySelector('.' + P + '-sum-sep');
-          if (sep) sep.style.display = 'none';
+          identity.insertBefore(chitGroup, identity.firstChild);
         }
       }
     }
@@ -15789,6 +17284,156 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (ldGroup) ldGroup.textContent = rule.descLabel;
       }
     }
+
+    // ── Swap summary field with another field (read-only) ──
+    // e.g. replace scwNotes (field_1953) with laborDescription (field_2020)
+    if (rule.summarySwapField) {
+      // Find the swap source td anywhere in the card (usually in detail panel)
+      var swapTd = card.querySelector('td[data-field-key="' + rule.summarySwapField + '"]');
+      var swapText = '';
+      if (swapTd) {
+        var swapSpan = swapTd.querySelector('span[class^="col-"]');
+        swapText = (swapSpan || swapTd).textContent.replace(/^\s+|\s+$/g, '').replace(/\u00a0/g, '');
+      }
+      // Find the hidden summary group for the field being replaced
+      // (it was hidden above via hideFields — un-hide it and replace content)
+      var hiddenGroups = card.querySelectorAll('[data-scw-fields]');
+      for (var hg = 0; hg < hiddenGroups.length; hg++) {
+        var hgFields = hiddenGroups[hg].getAttribute('data-scw-fields').split(' ');
+        for (var hf = 0; hf < hgFields.length; hf++) {
+          if (hideSet.has(hgFields[hf]) && hiddenGroups[hg].classList.contains(P + '-sum-group--fill')) {
+            // Un-hide and replace with swap field content
+            hiddenGroups[hg].style.visibility = '';
+            hiddenGroups[hg].setAttribute('data-scw-fields', rule.summarySwapField);
+            // Remove old label + td, build fresh read-only content
+            hiddenGroups[hg].innerHTML = '';
+            var swLabelText = rule.label
+              ? rule.label.charAt(0).toUpperCase() + rule.label.slice(1).toLowerCase()
+              : '\u00a0';
+            var swLabel = document.createElement('span');
+            swLabel.className = P + '-sum-label';
+            swLabel.textContent = swLabelText;
+            hiddenGroups[hg].appendChild(swLabel);
+            var swVal = document.createElement('span');
+            swVal.className = P + '-sum-field-ro ' + P + '-sum-field--desc ' + P + '-sum-direct-edit';
+            swVal.style.cssText = 'white-space: pre-wrap; cursor: default;';
+            swVal.textContent = swapText || '\u00a0';
+            hiddenGroups[hg].appendChild(swVal);
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Hide detail sections (keep photo wraps only) ──
+    if (rule.hideDetail) {
+      var detSections = card.querySelector('.' + P + '-sections');
+      if (detSections) detSections.style.display = 'none';
+    }
+
+    // ── Hide specific fields from the detail panel ──
+    if (rule.hideDetailFields && rule.hideDetailFields.length) {
+      var detailEl = card.querySelector('.' + P + '-detail');
+      if (detailEl) {
+        for (var hdf = 0; hdf < rule.hideDetailFields.length; hdf++) {
+          var hdfKey = rule.hideDetailFields[hdf];
+          // Detail fields are wrapped in .scw-ws-field divs containing a td
+          var hdfTd = detailEl.querySelector('td[data-field-key="' + hdfKey + '"]');
+          if (hdfTd) {
+            var hdfField = hdfTd.closest('.' + P + '-field');
+            if (hdfField) hdfField.style.display = 'none';
+          }
+        }
+      }
+    }
+
+    // ── Show product field in detail panel (for Assumptions) ──
+    if (rule.showProductInDetail) {
+      var pDesc = viewCfg.fields && viewCfg.fields.product;
+      if (pDesc) {
+        var pTd = card.querySelector('td[data-field-key="' + pDesc.key + '"]');
+        var pText = '';
+        if (pTd) {
+          var pSpan = pTd.querySelector('span[class^="col-"]');
+          pText = (pSpan || pTd).textContent.replace(/^\s+|\s+$/g, '').replace(/\u00a0/g, '');
+        }
+        if (pText) {
+          var detSect = card.querySelector('.' + P + '-sections > .' + P + '-section');
+          if (detSect) {
+            var pField = document.createElement('div');
+            pField.className = P + '-field';
+            var pLabel = document.createElement('div');
+            pLabel.className = P + '-field-label';
+            pLabel.textContent = 'Product';
+            pField.appendChild(pLabel);
+            var pVal = document.createElement('div');
+            pVal.className = P + '-field-value';
+            pVal.style.cssText = 'white-space: normal; word-break: break-word;';
+            pVal.textContent = pText;
+            pField.appendChild(pVal);
+            detSect.insertBefore(pField, detSect.firstChild);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Apply conditional field hiding based on whether a trigger field is locked.
+   * When the lock/grayout modules have grayed or locked the trigger field,
+   * hide individual field tds (and their associated labels in stacked pairs).
+   * If every field in a group is hidden, hides the entire group.
+   */
+  function applyConditionalHide(card, tr, viewCfg) {
+    if (!viewCfg.conditionalHide) return;
+
+    viewCfg.conditionalHide.forEach(function (rule) {
+      // Look for the trigger field td — it may be in the card (moved by
+      // buildWorksheetCard) or still in the original tr.
+      var triggerTd = card.querySelector('td[data-field-key="' + rule.whenLocked + '"]')
+                   || card.querySelector('td.' + rule.whenLocked)
+                   || tr.querySelector('td.' + rule.whenLocked);
+      if (!triggerTd) return;
+
+      var locked = triggerTd.classList.contains('scw-cond-grayed')
+                || triggerTd.classList.contains('scw-cell-locked');
+      if (!locked) return;
+
+      // Hide the trigger field's label (e.g. "Qty" label when qty is locked)
+      var triggerGroup = triggerTd.closest('[data-scw-fields]');
+      if (triggerGroup) {
+        var triggerLabel = triggerGroup.querySelector('.' + P + '-sum-label');
+        if (triggerLabel) triggerLabel.style.display = 'none';
+      }
+
+      var hideSet = new Set(rule.hideFields || []);
+
+      // Find each target td by data-field-key and hide it.
+      // In stacked pairs, also hide the preceding TOTAL label.
+      hideSet.forEach(function (fieldKey) {
+        var td = card.querySelector('td[data-field-key="' + fieldKey + '"]');
+        if (!td) return;
+
+        var group = td.closest('[data-scw-fields]');
+        if (!group) return;
+
+        var groupFields = group.getAttribute('data-scw-fields').split(' ');
+        var allHidden = groupFields.every(function (f) { return hideSet.has(f); });
+
+        if (allHidden) {
+          // Every field in this group is hidden — hide the whole group
+          group.style.display = 'none';
+        } else {
+          // Hide just this td. If it's a TOTAL in a stacked pair, also
+          // hide the preceding TTL label.
+          td.style.display = 'none';
+          var prev = td.previousElementSibling;
+          if (prev && prev.classList.contains(P + '-sum-label--ttl')) {
+            prev.style.display = 'none';
+          }
+        }
+      });
+    });
   }
 
   // ============================================================
@@ -16001,7 +17646,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /** Build a field row that uses radio chips instead of the raw cell. */
-  function buildRadioChipRow(label, td, fKey, options, multi) {
+  function buildRadioChipRow(label, td, fKey, options, multi, opts) {
     if (td && td.classList.contains(GRAYED_CLASS)) return null;
 
     var row = document.createElement('div');
@@ -16019,6 +17664,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     valueWrapper.style.background = 'transparent';
 
     var chips = buildRadioChips(td, fKey, options, multi);
+    if (opts && opts.segmented) chips.classList.add(P + '-segmented');
     valueWrapper.appendChild(chips);
 
     // Keep the original td hidden so Knack's data binding stays alive
@@ -16436,6 +18082,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var view = Knack.views[viewId];
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recordId, data);
+        $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(null);
         return;
       }
@@ -16447,7 +18094,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       type: 'PUT',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) refreshViewAfterSave(viewId);
+        if (feeTrig || trigger) refreshViewAfterSave(viewId);
+        $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -16462,6 +18110,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function handleDirectEditSave(input) {
     var fieldKey = input.getAttribute('data-field') || '';
     var newValue = input.value;
+
+    // Percent fields: user types whole number (6), Knack expects decimal (0.06)
+    if (window.SCW && SCW.pctFormat && SCW.pctFormat.isPercentField(fieldKey)) {
+      var pctNum = parseFloat(String(newValue).replace(/[%\s]/g, ''));
+      if (!isNaN(pctNum)) newValue = String(pctNum / 100);
+    }
 
     // Capture previous value: from hidden td (detail panel) or _scwPrev (summary bar)
     var wrapper = input.parentNode;
@@ -16502,9 +18156,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
         function () {
           showInputSuccess(input);
-          if (isHeaderTrigger(viewId, fieldKey)) {
-            fetchAndApplyLabel(viewId, recordId);
-          }
         },
         function (msg) { showInputError(input, msg, previousValue); }
       );
@@ -16595,7 +18246,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         type: 'PUT',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig) refreshViewAfterSave(viewId);
+          if (feeTrig || trigger) refreshViewAfterSave(viewId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
@@ -16675,11 +18326,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var viewEl = chip.closest('[id^="view_"]');
     var viewId = viewEl ? viewEl.id : null;
     if (recordId && viewId) {
-      saveRadioValue(viewId, recordId, fk, saveValue, function () {
-        if (isHeaderTrigger(viewId, fk)) {
-          fetchAndApplyLabel(viewId, recordId);
-        }
-      });
+      saveRadioValue(viewId, recordId, fk, saveValue);
     }
   }, true);
 
@@ -16769,6 +18416,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *  opts.multiline — use a textarea that wraps and auto-grows. */
   function injectSummaryDirectEdit(td, fieldKey, opts) {
     opts = opts || {};
+    // Guard against duplicate injection
+    if (td.querySelector('[' + DIRECT_EDIT_ATTR + ']')) return;
     var currentVal = readFieldText(td);
     td.classList.add(P + '-sum-direct-edit');
 
@@ -16798,6 +18447,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       input.className = DIRECT_TEXTAREA_CLASS;
       input.value = currentVal;
       input.rows = opts.rows || 4;
+
+      // Auto-grow: resize textarea to fit content
+      function autoGrow() {
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
+      }
+      input.addEventListener('input', autoGrow);
+      // Initial size after append (deferred so layout is ready)
+      requestAnimationFrame(autoGrow);
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -16868,7 +18526,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     switch (desc.type) {
       case 'readOnly':
-        if (desc.readOnlySummary) {
+        if (desc.group === 'fill') {
+          // Fill group — read-only version of the stretchy middle field
+          if (!td) break;
+          var roFillGroup = document.createElement('span');
+          roFillGroup.className = P + '-sum-group ' + P + '-sum-group--fill';
+          roFillGroup.setAttribute('data-scw-fields', desc.key);
+          var roFillLabel = document.createElement('span');
+          roFillLabel.className = P + '-sum-label';
+          roFillLabel.textContent = desc.label || name;
+          roFillGroup.appendChild(roFillLabel);
+          td.classList.add(P + '-sum-field-ro');
+          if (desc.multiline) td.classList.add(P + '-sum-field--desc');
+          if (isCellEmpty(td)) td.classList.add(P + '-empty');
+          roFillGroup.appendChild(td);
+          target.appendChild(roFillGroup);
+        } else if (desc.readOnlySummary) {
           appendSumGroup(target, desc.label || name, td,
             { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined, readOnly: true, fieldKey: desc.key });
         } else {
@@ -16878,6 +18551,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'directEdit':
+        // Editable if Knack/KTL has cell-edit on the td, or if the field
+        // is flagged alwaysEditable (and not locked by conditional modules).
+        var _knackEditable = isCellEditable(td)
+          || (desc.alwaysEditable && td && !isCellLocked(td));
         if (desc.group === 'fill') {
           // Fill group — special layout (fills middle space)
           if (!td) break;
@@ -16888,9 +18565,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           ldLabel.className = P + '-sum-label';
           ldLabel.textContent = desc.label || name;
           ldGroup.appendChild(ldLabel);
-          td.classList.add(P + '-sum-field');
-          td.classList.add(P + '-sum-field--desc');
-          injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
+          if (_knackEditable) {
+            td.classList.add(P + '-sum-field');
+            td.classList.add(P + '-sum-field--desc');
+            injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
+          } else {
+            td.classList.add(P + '-sum-field-ro');
+            if (desc.multiline) td.classList.add(P + '-sum-field--desc');
+            if (isCellEmpty(td)) td.classList.add(P + '-empty');
+          }
           ldGroup.appendChild(td);
           target.appendChild(ldGroup);
         } else if (desc.stackWith && viewCfg) {
@@ -16909,8 +18592,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           topLbl.className = P + '-sum-label';
           topLbl.textContent = desc.label || name;
           pairGroup.appendChild(topLbl);
-          td.classList.add(P + '-sum-field');
-          injectSummaryDirectEdit(td, desc.key);
+          if (_knackEditable) {
+            td.classList.add(P + '-sum-field');
+            injectSummaryDirectEdit(td, desc.key);
+          } else {
+            td.classList.add(P + '-sum-field-ro');
+            if (isCellEmpty(td)) td.classList.add(P + '-empty');
+          }
           pairGroup.appendChild(td);
           // Bottom: TTL label + read-only value
           if (pairTd) {
@@ -16924,9 +18612,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
           target.appendChild(pairGroup);
         } else {
-          appendSumGroup(target, desc.label || name, td,
-            { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
-              directEdit: true, fieldKey: desc.key });
+          if (_knackEditable) {
+            appendSumGroup(target, desc.label || name, td,
+              { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
+                directEdit: true, fieldKey: desc.key });
+          } else {
+            appendSumGroup(target, desc.label || name, td,
+              { cls: desc.groupCls ? (P + '-' + desc.groupCls) : undefined,
+                readOnly: true, fieldKey: desc.key });
+          }
         }
         break;
 
@@ -16951,6 +18645,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           td.appendChild(chipHidden);
         }
         var chips = buildRadioChips(td, desc.key, desc.options || [], isMulti);
+        if (desc.segmented) chips.classList.add(P + '-segmented');
         chips.classList.add(P + '-sum-chips');
         td.textContent = '';
         if (chipSpan) td.appendChild(chipSpan);
@@ -16965,8 +18660,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!td) break;
         var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
         var isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        // Skip rendering entirely when showOnlyIfYes and value is not yes
+        if (desc.showOnlyIfYes && !isChitYes) break;
         var chit = document.createElement('span');
-        chit.className = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
+        var chitCls = P + '-cabling-chit ' + (isChitYes ? 'is-yes' : 'is-no');
+        if (!desc.feeTrigger) chitCls += ' is-readonly';
+        chit.className = chitCls;
         chit.setAttribute('data-field', desc.key);
         chit.innerHTML = desc.chitLabel || 'Existing Cabling';
         var chitSpan = td.querySelector('span');
@@ -17127,6 +18826,46 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           productTd.classList.add(P + '-sum-product--editable');
         }
         productGroup.appendChild(productTd);
+
+        // Render identity-grouped fields below the product
+        // Text fields (readOnly/directEdit) render as block text;
+        // chits collect into a single inline-flex row.
+        // Scan ALL fields (not just summaryLayout) for identity group.
+        var idChits = [];
+        var fieldNames = Object.keys(viewCfg.fields);
+        for (var ig = 0; ig < fieldNames.length; ig++) {
+          var igDesc = fieldDesc(viewCfg, fieldNames[ig]);
+          if (!igDesc || igDesc.group !== 'identity') continue;
+
+          if (igDesc.type === 'toggleChit') {
+            // Collect chits for the inline row below
+            var chitTd = findCell(tr, igDesc.key, igDesc.columnIndex);
+            if (chitTd) {
+              var chitText = (chitTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+              if (chitText === 'yes' || chitText === 'true') {
+                idChits.push({ name: layout[ig], desc: igDesc });
+              }
+            }
+          } else {
+            // Text field — render as a block element directly in productGroup
+            var idTd = findCell(tr, igDesc.key, igDesc.columnIndex);
+            if (idTd && !isCellEmpty(idTd)) {
+              idTd.style.cssText = 'display:block;font-size:13px;font-weight:400;color:#374151;' +
+                'white-space:normal;word-break:break-word;line-height:1.4;margin-top:2px;padding:0;' +
+                'border:none;background:transparent;';
+              productGroup.appendChild(idTd);
+            }
+          }
+        }
+        if (idChits.length) {
+          var idRow = document.createElement('span');
+          idRow.style.cssText = 'display:inline-flex;gap:4px;margin-top:4px;flex-wrap:wrap;';
+          for (var idf = 0; idf < idChits.length; idf++) {
+            renderSummaryField(idRow, tr, idChits[idf].name, idChits[idf].desc, viewCfg);
+          }
+          if (idRow.childNodes.length) productGroup.appendChild(idRow);
+        }
+
         identity.appendChild(productGroup);
       }
     }
@@ -17156,6 +18895,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var desc = fieldDesc(viewCfg, name);
       if (!desc || !desc.summary) continue;
 
+      // Skip identity-grouped fields (rendered inside product group above)
+      if (desc.group === 'identity') continue;
       // Route to the right container based on group
       var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
       renderSummaryField(container, tr, name, desc, viewCfg);
@@ -17195,7 +18936,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      rightGroup.appendChild(deleteWrap);
+      if (hasStackedFields) {
+        var delCol = document.createElement('span');
+        delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+        var delSpacer = document.createElement('span');
+        delSpacer.className = P + '-sum-label';
+        delSpacer.innerHTML = '&nbsp;';
+        delCol.appendChild(delSpacer);
+        delCol.appendChild(deleteWrap);
+        rightGroup.appendChild(delCol);
+      } else {
+        rightGroup.appendChild(deleteWrap);
+      }
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
@@ -17234,7 +18986,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     retailPrice:      'Retail Price',
     quantity:         'Qty',
     customDiscPct:    'Custom\nDisc %',
-    discountDlr:      'Discount $',
+    discountDlr:      'Line Item Discount %',
     appliedDiscount:  'Applied\nDiscount',
     total:            'Total'
   };
@@ -17246,18 +18998,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     switch (desc.type) {
       case 'readOnly':
+        // Strip inline-edit affordance — this field is read-only
+        if (td) td.classList.remove('cell-edit');
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
         if (row) section.appendChild(row);
         break;
 
+      case 'nativeEdit':
+        // Preserve Knack's native inline-edit (cell-edit class stays).
+        // Used for connection fields that open Knack's modal picker.
+        var neRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
+        if (neRow) section.appendChild(neRow);
+        break;
+
       case 'directEdit':
-        var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
-        if (editRow) section.appendChild(editRow);
+        // Editable if Knack/KTL has cell-edit on the td, or if the field
+        // is flagged alwaysEditable (and not locked by conditional modules).
+        var _detailEditable = isCellEditable(td)
+          || (desc.alwaysEditable && td && !isCellLocked(td));
+        if (!_detailEditable) {
+          var roRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
+          if (roRow) section.appendChild(roRow);
+        } else {
+          if (desc.skipEmpty && (!td || isCellEmpty(td))) break;
+          var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
+          if (editRow) section.appendChild(editRow);
+        }
         break;
 
       case 'singleChip':
       case 'multiChip':
-        var chipRow = buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip');
+        var chipRow = buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip', { segmented: !!desc.segmented });
         if (chipRow) section.appendChild(chipRow);
         break;
 
@@ -17575,6 +19346,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var isOpen = detail.classList.contains(P + '-open');
 
+    var keepPhoto = wsTr.hasAttribute('data-scw-photo-always');
+
     if (isOpen) {
       // Collapse
       detail.classList.remove(P + '-open');
@@ -17582,10 +19355,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chevron.classList.remove(P + '-expanded');
         chevron.classList.add(P + '-collapsed');
       }
-      // Hide the photo row too
-      var photoRow = wsTr.nextElementSibling;
-      if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
-        photoRow.classList.add(P + '-photo-hidden');
+      // Hide the in-card photo wrapper on collapse.
+      // For photoAlwaysVisible views, only keep it visible if there are
+      // actual uploaded images (not just required placeholders / "+ Add").
+      var hasRealPhotos = false;
+      if (keepPhoto) {
+        var pw = wsTr.querySelector('.' + P + '-photo-wrap');
+        hasRealPhotos = pw && pw.querySelector('.scw-inline-photo-card[data-photo-has-image="true"]');
+      }
+      if (!keepPhoto || !hasRealPhotos) {
+        var photoWrap = wsTr.querySelector('.' + P + '-photo-wrap');
+        if (photoWrap) photoWrap.classList.add(P + '-photo-hidden');
+        // Legacy: also hide sibling photo row if not absorbed
+        var photoRow = wsTr.nextElementSibling;
+        if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
+          photoRow.classList.add(P + '-photo-hidden');
+        }
       }
     } else {
       // Expand
@@ -17594,7 +19379,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chevron.classList.remove(P + '-collapsed');
         chevron.classList.add(P + '-expanded');
       }
-      // Show the photo row
+      // Show the in-card photo wrapper
+      var photoWrap2 = wsTr.querySelector('.' + P + '-photo-wrap');
+      if (photoWrap2) photoWrap2.classList.remove(P + '-photo-hidden');
+      // Legacy: also show sibling photo row if not absorbed
       var photoRow2 = wsTr.nextElementSibling;
       if (photoRow2 && photoRow2.classList.contains('scw-inline-photo-row')) {
         photoRow2.classList.remove(P + '-photo-hidden');
@@ -17622,9 +19410,44 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (prodK)  snapshots.product = readCellText(findCell(tr, prodK, prodDesc ? prodDesc.columnIndex : undefined));
     }
 
+    // Pre-clone cells whose field key appears in BOTH the summary and
+    // detail layouts.  The summary builder moves the original <td> out of
+    // the <tr>, so the detail builder would find nothing.  Cloned cells
+    // are appended (hidden) to the <tr> so findCell still works for the
+    // detail pass.
+    var _sharedClones = [];
+    if (viewCfg.detailLayout && viewCfg.summaryLayout) {
+      var summaryKeys = {};
+      viewCfg.summaryLayout.forEach(function (n) {
+        var d = fieldDesc(viewCfg, n);
+        if (d) summaryKeys[d.key] = true;
+      });
+      var sides = ['left', 'center', 'right'];
+      for (var si = 0; si < sides.length; si++) {
+        var names = (viewCfg.detailLayout[sides[si]] || []);
+        for (var di = 0; di < names.length; di++) {
+          var dd = fieldDesc(viewCfg, names[di]);
+          if (dd && summaryKeys[dd.key]) {
+            var origTd = findCell(tr, dd.key, dd.columnIndex);
+            if (origTd) {
+              var clone = origTd.cloneNode(true);
+              clone.style.display = 'none';
+              _sharedClones.push(clone);
+              tr.appendChild(clone);
+            }
+          }
+        }
+      }
+    }
+
     // Summary bar (always visible)
     var summary = buildSummaryBar(tr, viewCfg);
     card.appendChild(summary);
+
+    // Un-hide cloned cells so the detail builder can render them normally
+    for (var ci = 0; ci < _sharedClones.length; ci++) {
+      _sharedClones[ci].style.display = '';
+    }
 
     // Detail panel (expandable)
     var detail;
@@ -17656,6 +19479,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Apply bucket-based field hiding + label injection ──
     applyBucketRules(card, tr, viewCfg);
 
+    // ── Apply conditional field hiding (e.g. hide totals when qty=1) ──
+    applyConditionalHide(card, tr, viewCfg);
+
     return card;
   }
 
@@ -17671,7 +19497,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var table = $view.find('table.kn-table-table, table.kn-table')[0];
     if (!table) return;
 
-    table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered');
+    table.classList.remove('is-striped', 'ktlTable--rowHover', 'is-bordered', 'can-overflow-x');
+
+    // Also remove can-overflow-x from table wrapper div if present
+    var tableWrapper = table.parentElement;
+    if (tableWrapper) tableWrapper.classList.remove('can-overflow-x');
 
     var thead = table.querySelector('thead');
     if (thead) thead.style.display = '';
@@ -17693,9 +19523,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Reorder & filter <thead> columns to match summary bar layout ──
     // Width application is deferred until after PHASE 3 so we can measure
     // the actual rendered summary-bar group widths instead of guessing.
-    var _theadThByField = {};   // field_key → th element (for deferred width)
-    var _theadSpacerTh = null;  // spacer th (for deferred toggle-zone width)
-    var _theadDesiredFields = [];
+    // (thead columns are content-width only — no measured-width lock)
 
     if (headerRow) {
       var L = viewCfg.layout;
@@ -17758,19 +19586,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       if (checkboxTh) headerRow.appendChild(checkboxTh);
 
-      // Insert faux spacer <th> to cover toggle-zone width (chevron + warn-slot)
-      var spacerTh = document.createElement('th');
-      spacerTh.className = P + '-thead-spacer';
-      headerRow.appendChild(spacerTh);
-      colCount += 1;
-      _theadSpacerTh = spacerTh;
-
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
+        if (_fKey === 'field_1946') continue; // hide move/MDF field from sort header
         var _showTh = thByField[_fKey];
         if (!_showTh) continue;
 
         _showTh.style.display = '';
+        _showTh.style.width = '';
+        _showTh.style.minWidth = '';
+        _showTh.style.maxWidth = '';
+
+        // Inject bulk-edit checkbox into field_1984 (Exterior Mounting)
+        // KTL doesn't add one but it should match field_2461 (Existing Cabling)
+        if (_fKey === 'field_1984') {
+          var _fl = _showTh.querySelector('.table-fixed-label');
+          if (_fl && !_fl.querySelector('.bulkEditHeaderCbox')) {
+            _fl.classList.add('bulkEditTh');
+            _fl.style.display = 'inline-flex';
+            var _cb = document.createElement('input');
+            _cb.type = 'checkbox';
+            _cb.className = 'ktlCheckbox bulkEditHeaderCbox ktlDisplayNone ktlCheckbox-header ktlCheckbox-table ktlCheckbox-bulkops bulkEditCb';
+            _cb.setAttribute('aria-label', 'Select column');
+            _cb.setAttribute('data-ktl-bulkops', '1');
+            _fl.appendChild(_cb);
+          }
+        }
 
         // Rename label to match summary bar display name
         var _tl = thLabels[_fKey];
@@ -17783,8 +19624,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         headerRow.appendChild(_showTh);
       }
 
-      _theadThByField = thByField;
-      _theadDesiredFields = desiredFields;
+      // ── Sync header checkbox visibility with row selections ──
+      // KTL's own listeners break when we reorder <th> elements.
+      // Watch for any checkbox change in the entire view and toggle
+      // ktlDisplayNone on header bulk-edit checkboxes accordingly.
+      (function (viewEl, hRow) {
+        function syncHeaderCboxes() {
+          // Any selection checkbox checked? (row-level, group-level, or master)
+          var anyChecked = viewEl.querySelector(
+            'input.ktlCheckbox:checked'
+          );
+          var hCboxes = hRow.querySelectorAll('.bulkEditHeaderCbox');
+          for (var ci = 0; ci < hCboxes.length; ci++) {
+            if (anyChecked) {
+              hCboxes[ci].classList.remove('ktlDisplayNone');
+            } else {
+              hCboxes[ci].classList.add('ktlDisplayNone');
+            }
+          }
+        }
+        $($view).off('change.scwBulkSync').on('change.scwBulkSync', 'input[type="checkbox"]', syncHeaderCboxes);
+      })($view[0], headerRow);
+
     }
 
     // ── PHASE 1: READ — filter eligible rows, collect DOM-read data ──
@@ -17856,6 +19717,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);
       if (entry.hasNoMove) wsTr.setAttribute('data-scw-no-move', '1');
+      if (viewCfg.photoAlwaysVisible) wsTr.setAttribute('data-scw-photo-always', '1');
 
       var wsTd = document.createElement('td');
       wsTd.setAttribute('colspan', String(colCount));
@@ -17876,15 +19738,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       ins.sourceTr.parentNode.insertBefore(ins.wsTr, ins.sourceTr.nextSibling);
     }
 
-    // After all rows are processed, hide photo rows for collapsed items
-    // and set up the bottom border on the last row of each record group
+    // After all rows are processed, absorb photo row content into the
+    // card div so header + detail + photos form one shadow-able unit.
     var wsRows = table.querySelectorAll('tr.' + WORKSHEET_ROW);
     for (var j = 0; j < wsRows.length; j++) {
       var ws = wsRows[j];
+      var card = ws.querySelector('.' + P + '-card');
       var photoRow = ws.nextElementSibling;
-      if (photoRow && photoRow.classList.contains('scw-inline-photo-row')) {
-        // Start collapsed — hide the photo row
-        photoRow.classList.add(P + '-photo-hidden');
+      if (photoRow && photoRow.classList.contains('scw-inline-photo-row') && card) {
+        // Move photo content into the card
+        var photoWrap = document.createElement('div');
+        photoWrap.className = P + '-photo-wrap' + (viewCfg.photoAlwaysVisible ? '' : ' ' + P + '-photo-hidden');
+        var photoTd = photoRow.querySelector('td');
+        if (photoTd) {
+          while (photoTd.firstChild) {
+            photoWrap.appendChild(photoTd.firstChild);
+          }
+        }
+        card.appendChild(photoWrap);
+        // Mark the original photo <tr> as absorbed so it stays hidden
+        photoRow.classList.add(P + '-photo-absorbed');
+
+        // For photoAlwaysVisible views, hide the strip when there
+        // are no actual uploaded photos (only placeholders / "+ Add" button).
+        if (viewCfg.photoAlwaysVisible && !photoWrap.querySelector('.scw-inline-photo-card[data-photo-has-image="true"]')) {
+          photoWrap.classList.add(P + '-photo-hidden');
+        }
       }
     }
 
@@ -17894,6 +19773,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // FIRST in the table (before MDF/IDF groups).
     if (viewCfg.syntheticBucketGroups && viewCfg.syntheticBucketGroups.length) {
       var tbody = table.querySelector('tbody');
+
+      // Clean up any synthetic groups / dividers from a previous render
+      // (model.fetch re-renders the view but our injected rows may survive)
+      var staleGroups = tbody.querySelectorAll('tr.scw-synthetic-group, tr.scw-synth-divider');
+      for (var si = 0; si < staleGroups.length; si++) staleGroups[si].remove();
+
       var colSpan = 1;
       var hdr = table.querySelector('thead tr');
       if (hdr) {
@@ -17909,14 +19794,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var SYNTH_ACCENT_RGB = '91,155,213';
 
       // Remove empty native Knack group headers (blank MDF/IDF value)
-      // and any orphaned photo rows directly beneath them.
+      // and any orphaned non-worksheet rows directly beneath them.
+      // Bucket rows (services/assumptions) and non-bucket rows alike
+      // are left in place — the synthetic builder will relocate bucket
+      // rows, and a later pass creates an "Unassigned" group for the rest.
       var nativeGroups = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1');
       for (var gi = 0; gi < nativeGroups.length; gi++) {
         var grp = nativeGroups[gi];
         if (grp.classList.contains('scw-synthetic-group')) continue;
         var labelText = getGroupLabelText(grp);
         if (labelText.length === 0) {
-          // Remove orphaned photo rows that follow this empty header
           var sib = grp.nextElementSibling;
           while (sib && !sib.classList.contains('kn-table-group') &&
                  !sib.classList.contains(WORKSHEET_ROW)) {
@@ -18005,6 +19892,62 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         lastInsertedRow = insertRef;
       });
 
+      // Collect orphaned non-bucket rows (regular line items with no
+      // MDF/IDF) and place them under an "Unassigned" group header.
+      var bucketClasses = {};
+      for (var bi = 0; bi < buckets.length; bi++) {
+        bucketClasses[buckets[bi].cls] = true;
+      }
+      var orphanCandidates = tbody.querySelectorAll(
+        'tr.' + WORKSHEET_ROW + '[data-scw-no-move="1"]'
+      );
+      var orphanRows = [];
+      for (var oi = 0; oi < orphanCandidates.length; oi++) {
+        var oRow = orphanCandidates[oi];
+        var isBucketRow = false;
+        for (var bk in bucketClasses) {
+          if (oRow.classList.contains(bk)) { isBucketRow = true; break; }
+        }
+        if (!isBucketRow) orphanRows.push(oRow);
+      }
+      if (orphanRows.length) {
+        anySyntheticBuilt = true;
+
+        // Build "Unassigned" group header
+        var unassignedTr = document.createElement('tr');
+        unassignedTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group';
+        unassignedTr.style.cssText = '--scw-grp-accent: ' + SYNTH_ACCENT +
+          '; --scw-grp-accent-rgb: ' + SYNTH_ACCENT_RGB + ';';
+        var unassignedTd = document.createElement('td');
+        unassignedTd.setAttribute('colspan', String(colSpan));
+        unassignedTd.textContent = 'Unassigned';
+        unassignedTr.appendChild(unassignedTd);
+
+        // Insert at top of tbody (before other synthetic groups)
+        tbody.insertBefore(unassignedTr, tbody.firstChild);
+
+        // Move orphan rows (and their associated orig/photo rows) under the header
+        var oInsertRef = unassignedTr;
+        for (var oj = 0; oj < orphanRows.length; oj++) {
+          var oWs = orphanRows[oj];
+          var oOrig = oWs.previousElementSibling;
+          if (oOrig && oOrig.getAttribute(PROCESSED_ATTR) === '1') {
+            oInsertRef.parentNode.insertBefore(oOrig, oInsertRef.nextSibling);
+            oInsertRef = oOrig;
+          }
+          oInsertRef.parentNode.insertBefore(oWs, oInsertRef.nextSibling);
+          oInsertRef = oWs;
+          var oNxt = oWs.nextElementSibling;
+          while (oNxt && oNxt.classList.contains('scw-inline-photo-row')) {
+            var oPhoto = oNxt;
+            oNxt = oNxt.nextElementSibling;
+            oInsertRef.parentNode.insertBefore(oPhoto, oInsertRef.nextSibling);
+            oInsertRef = oPhoto;
+          }
+        }
+        lastInsertedRow = oInsertRef;
+      }
+
       // Insert gray divider bars around the synthetic section
       if (anySyntheticBuilt) {
         // Bottom divider: after the last synthetic group's rows
@@ -18016,90 +19959,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    // ── MEASURE SUMMARY BAR & APPLY WIDTHS TO <thead> ──
-    // Now that all summary bars are in the DOM we can measure the actual
-    // rendered widths of each group element and apply them to the
-    // matching <th> columns.  Uses requestAnimationFrame so the browser
-    // has completed layout before we read getBoundingClientRect().
-    if (_theadDesiredFields.length && headerRow) {
-      (function (tbl, desiredFields, thByField, spacerTh, vCfg) {
-        function applyMeasuredWidths() {
-          // Find first *visible* summary bar (collapsed groups have zero width)
-          var allBars = tbl.querySelectorAll('.' + P + '-summary');
-          var firstBar = null;
-          for (var bi = 0; bi < allBars.length; bi++) {
-            if (allBars[bi].getBoundingClientRect().width > 0) { firstBar = allBars[bi]; break; }
-          }
-          if (!firstBar) return;
-
-          // Measure spacer: chevron + warn-slot portion of toggle-zone
-          var tz = firstBar.querySelector('.' + P + '-toggle-zone');
-          var ident = tz ? tz.querySelector('.' + P + '-identity') : null;
-          if (tz && spacerTh) {
-            var spacerW;
-            if (ident) {
-              spacerW = Math.round(ident.getBoundingClientRect().left - tz.getBoundingClientRect().left);
-            } else {
-              spacerW = Math.round(tz.getBoundingClientRect().width);
-            }
-            spacerTh.style.width = spacerW + 'px';
-            spacerTh.style.minWidth = spacerW + 'px';
-            spacerTh.style.maxWidth = spacerW + 'px';
-          }
-
-          // Measure each element that has data-scw-fields
-          var sumGroups = firstBar.querySelectorAll('[data-scw-fields]');
-          var measuredWidths = {};
-          for (var mg = 0; mg < sumGroups.length; mg++) {
-            var grpEl = sumGroups[mg];
-            var fieldKeys = grpEl.getAttribute('data-scw-fields').split(/\s+/);
-            var grpW = Math.round(grpEl.getBoundingClientRect().width);
-            for (var mk = 0; mk < fieldKeys.length; mk++) {
-              measuredWidths[fieldKeys[mk]] = grpW + 'px';
-            }
-          }
-
-          // Measure label cell width (inside identity, no data-scw-fields attr)
-          var labelCell = ident ? ident.querySelector('.' + P + '-sum-label-cell') : null;
-          if (labelCell) {
-            var _lDesc = fieldDesc(vCfg, 'label');
-            if (_lDesc) measuredWidths[_lDesc.key] = Math.round(labelCell.getBoundingClientRect().width) + 'px';
-          }
-
-          // Apply measured widths to <th> elements
-          for (var mi = 0; mi < desiredFields.length; mi++) {
-            var fk = desiredFields[mi];
-            var thEl = thByField[fk];
-            if (!thEl) continue;
-            var mw = measuredWidths[fk];
-            if (mw) {
-              thEl.style.width = mw;
-              thEl.style.minWidth = mw;
-              thEl.style.maxWidth = mw;
-            }
-          }
-        }
-
-        // Try synchronously first (works on re-renders when layout is current),
-        // fall back to rAF on first load when the browser hasn't reflowed yet.
-        var allBars = tbl.querySelectorAll('.' + P + '-summary');
-        var anyVisible = false;
-        for (var bi = 0; bi < allBars.length; bi++) {
-          if (allBars[bi].getBoundingClientRect().width > 0) { anyVisible = true; break; }
-        }
-        if (anyVisible) {
-          applyMeasuredWidths();
-        } else {
-          requestAnimationFrame(applyMeasuredWidths);
-        }
-      })(table, _theadDesiredFields, _theadThByField, _theadSpacerTh, viewCfg);
-    }
+    // ── THEAD SIZING ──
+    // Let each <th> size to its content naturally (no measured-width lock).
+    // The thead is for sorting/bulk-edit only — it doesn't need to align
+    // pixel-perfectly with the summary bars below.
 
     // ── RESTORE EXPANDED STATE ──
     // Re-expand detail panels that were open before the inline-edit
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
     restoreExpandedState(viewCfg.viewId);
+
+    // ── DEFAULT OPEN ──
+    // If the view config sets defaultOpen: true, expand ALL rows that
+    // are still collapsed after restore (first render, not re-render).
+    if (viewCfg.defaultOpen) {
+      var allWsRows = table.querySelectorAll('tr.' + WORKSHEET_ROW);
+      for (var doi = 0; doi < allWsRows.length; doi++) {
+        var dDetail = allWsRows[doi].querySelector('.' + P + '-detail');
+        if (dDetail && !dDetail.classList.contains(P + '-open')) {
+          toggleDetail(allWsRows[doi]);
+        }
+      }
+    }
 
     // ── RE-APPLY GROUP COLLAPSE STATE ──
     // transformView creates new DOM rows that are visible by default.
