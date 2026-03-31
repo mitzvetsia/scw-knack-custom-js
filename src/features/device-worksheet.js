@@ -3735,7 +3735,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       qtyLabel.className = P + '-sum-label';
       qtyLabel.textContent = 'Quantity';
       qtyGroup.appendChild(qtyLabel);
-      var qtyVal = document.createElement('span');
+      var qtyVal = document.createElement('td');
       qtyVal.className = P + '-sum-field-ro';
       qtyVal.textContent = qtyBadgeVal;
       qtyGroup.appendChild(qtyVal);
