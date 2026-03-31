@@ -355,7 +355,7 @@
 
   function applyRowLocks($tr, cfg) {
     (cfg.rowLocks || []).forEach(function (lock) {
-      var $detect = $tr.find('td.' + lock.detectField);
+      var $detect = $tr.find('td.' + lock.detectField).first();
       if (!$detect.length) return;
       var val = readBool($detect);
       var shouldLock = false;
