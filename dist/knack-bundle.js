@@ -15725,6 +15725,7 @@ $(".kn-navigation-bar").hide();
           left:  ['connectedDevice', 'scwNotes'],
           right: ['mountingHardware']
         },
+        syntheticGroupsPosition: 'bottom',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
@@ -15786,6 +15787,7 @@ $(".kn-navigation-bar").hide();
           right: ['mountingHardware']
         },
         bucketField: 'field_2219',
+        syntheticGroupsPosition: 'bottom',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
@@ -20096,9 +20098,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           });
         }
 
-        // Insert the group header at the very top of tbody
-        var firstChild = tbody.firstChild;
-        tbody.insertBefore(groupTr, firstChild);
+        // Insert the group header at top or bottom of tbody
+        if (viewCfg.syntheticGroupsPosition === 'bottom') {
+          tbody.appendChild(groupTr);
+        } else {
+          var firstChild = tbody.firstChild;
+          tbody.insertBefore(groupTr, firstChild);
+        }
 
         // Insert each row set right after the group header (in order)
         var insertRef = groupTr;
