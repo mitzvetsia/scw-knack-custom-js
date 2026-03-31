@@ -898,6 +898,7 @@ td.${P}-sum-field--desc {
   align-self: stretch;
   display: flex;
   flex-direction: column;
+  margin-left: 10px;
 }
 /* Fill td + textarea stretch to fill the group height */
 .${P}-sum-group--fill td.${P}-sum-direct-edit {
