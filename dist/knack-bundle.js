@@ -7604,7 +7604,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3325: { L1bg: '#124E85' },
     view_3331: { L1bg: '#124E85' },
     view_3475: { L1bg: '#5F6B7A' },
-
+    view_3596: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -8213,7 +8213,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ensureBadges($tr, viewId);
 
       const key = buildKey($tr, level);
-      const shouldCollapse = key in state ? !!state[key] : (belowThreshold ? false : COLLAPSED_BY_DEFAULT);
+      var viewOverrides = VIEW_OVERRIDES[viewId];
+      var viewDefaultOpen = viewOverrides && viewOverrides.defaultOpen;
+      const shouldCollapse = key in state ? !!state[key] : ((belowThreshold || viewDefaultOpen) ? false : COLLAPSED_BY_DEFAULT);
 
       setCollapsed($tr, shouldCollapse);
     });
@@ -15707,6 +15709,7 @@ $(".kn-navigation-bar").hide();
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
         photoAlwaysVisible: true,
+        defaultOpen: true,
         bucketField: 'field_2219',
         fields: {
           // ── Summary row ──

@@ -390,6 +390,7 @@
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
         photoAlwaysVisible: true,
+        defaultOpen: true,
         bucketField: 'field_2219',
         fields: {
           // ── Summary row ──
