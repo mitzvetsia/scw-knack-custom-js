@@ -3647,6 +3647,7 @@ window.SCW = window.SCW || {};
 
     features: {
       l2Sort: { enabled: true, missingSortGoesLast: true },
+      l3Sort: { enabled: true, fieldKey: 'field_2203', descending: true, missingSortGoesLast: true },
       hideL3WhenBlank: { enabled: true },
 
       hideBlankL4Headers: {
@@ -4697,6 +4698,136 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
+  // FEATURE: L3 group reorder — within each L2 section by cost
+  // ============================================================
+
+  function getSortValueForL3Block(fieldKey, l3HeaderEl, stopEl) {
+    let cur = l3HeaderEl.nextElementSibling;
+    let total = 0;
+    let found = false;
+
+    while (cur && cur !== stopEl) {
+      if (cur.id && cur.tagName === 'TR') {
+        const cell = cur.querySelector('td.' + fieldKey);
+        if (cell) {
+          const num = parseFloat((cell.textContent || '').replace(/[^\d.-]/g, ''));
+          if (Number.isFinite(num)) { total += num; found = true; }
+        }
+      }
+
+      if (cur.classList?.contains('kn-table-group')) {
+        const m = cur.className.match(/kn-group-level-(\d+)/);
+        const lvl = m ? parseInt(m[1], 10) : null;
+        if (lvl !== null && lvl <= 3) break;
+      }
+      cur = cur.nextElementSibling;
+    }
+
+    return found ? total : null;
+  }
+
+  function reorderLevel3GroupsBySortField(ctx, $tbody, runId) {
+    const opt = ctx.features.l3Sort;
+    if (!opt?.enabled) return;
+
+    const tbody = $tbody?.[0];
+    if (!tbody) return;
+
+    const stampKey = 'scwL3ReorderStamp';
+    if (tbody.dataset[stampKey] === String(runId)) return;
+    tbody.dataset[stampKey] = String(runId);
+
+    const fieldKey = opt.fieldKey;
+    const desc = opt.descending === true;
+    const missing = opt.missingSortGoesLast ? (desc ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY) : 0;
+
+    const l2Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-2'));
+    if (!l2Headers.length) return;
+
+    for (let i = 0; i < l2Headers.length; i++) {
+      const l2El = l2Headers[i];
+
+      // Find the boundary: next L2 or next L1
+      const nextBoundary = (function () {
+        let n = l2El.nextElementSibling;
+        while (n) {
+          if (n.classList.contains('kn-table-group')) {
+            const m = n.className.match(/kn-group-level-(\d+)/);
+            const lvl = m ? parseInt(m[1], 10) : null;
+            if (lvl !== null && lvl <= 2) return n;
+          }
+          n = n.nextElementSibling;
+        }
+        return null;
+      })();
+
+      // Collect all nodes in this L2 section
+      const sectionNodes = [];
+      let cur = l2El.nextElementSibling;
+      while (cur && cur !== nextBoundary) {
+        sectionNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+      if (!sectionNodes.length) continue;
+
+      const l3Headers = sectionNodes.filter(
+        (n) => n.classList && n.classList.contains('kn-table-group') && n.classList.contains('kn-group-level-3')
+      );
+      if (l3Headers.length < 2) continue;
+
+      const firstL3 = l3Headers[0];
+
+      // Nodes between L2 header and first L3 (prefix)
+      const prefixNodes = [];
+      cur = l2El.nextElementSibling;
+      while (cur && cur !== nextBoundary && cur !== firstL3) {
+        prefixNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+
+      const blocks = l3Headers.map((l3El, idx) => {
+        const nextL3El = idx + 1 < l3Headers.length ? l3Headers[idx + 1] : null;
+
+        const nodes = [];
+        let n = l3El;
+        while (n && n !== nextBoundary && n !== nextL3El) {
+          nodes.push(n);
+          n = n.nextElementSibling;
+        }
+
+        const sortVal = getSortValueForL3Block(fieldKey, l3El, nextL3El || nextBoundary);
+        return { idx, sortVal, nodes };
+      });
+
+      const lastBlock = blocks[blocks.length - 1];
+      const lastBlockLastNode = lastBlock.nodes[lastBlock.nodes.length - 1];
+
+      // Nodes after last L3 block (suffix — e.g. subtotal rows)
+      const suffixNodes = [];
+      cur = lastBlockLastNode ? lastBlockLastNode.nextElementSibling : null;
+      while (cur && cur !== nextBoundary) {
+        suffixNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+
+      blocks.sort((a, b) => {
+        const av = a.sortVal !== null ? a.sortVal : missing;
+        const bv = b.sortVal !== null ? b.sortVal : missing;
+        if (av !== bv) return desc ? (bv - av) : (av - bv);
+        return a.idx - b.idx;
+      });
+
+      const frag = document.createDocumentFragment();
+      for (const n of prefixNodes) frag.appendChild(n);
+      for (const block of blocks) for (const n of block.nodes) frag.appendChild(n);
+      for (const n of suffixNodes) frag.appendChild(n);
+
+      if (nextBoundary) tbody.insertBefore(frag, nextBoundary);
+      else tbody.appendChild(frag);
+    }
+  }
+
+  // ============================================================
   // FEATURE: Camera list builder
   // ============================================================
 
@@ -5418,6 +5549,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
+    reorderLevel3GroupsBySortField(ctx, $tbody, runId);
 
     // Synthesize missing L4 headers before the main pipeline processes groups
     synthesizeMissingL4Headers(ctx);
