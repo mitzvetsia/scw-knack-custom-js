@@ -125,11 +125,15 @@
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: [],
             label: 'SERVICE',
+            descLabel: 'Service',
+            hideProduct: true,
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
             hideFields: ['field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
             rowClass: 'scw-row--assumptions',
           },
         },
