@@ -712,11 +712,6 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   word-break: break-word;
   line-height: 1.3;
 }
-/* Qty group narrower */
-.${P}-sum-right .${P}-sum-group--qty {
-  width: 50px;
-  min-width: 50px;
-}
 /* Fields inside right groups stretch to fill their group */
 .${P}-sum-right td.${P}-sum-field,
 .${P}-sum-right td.${P}-sum-field-ro {
@@ -1675,6 +1670,20 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   min-width: 100px;
   flex-shrink: 0;
 }
+.${P}-sum-right .${P}-sum-group--qty-badge {
+  min-width: 110px;
+  align-items: center;
+}
+.${P}-sum-group--qty-badge td.${P}-sum-field-ro {
+  justify-content: center;
+}
+/* Center Connected Devices text */
+.${P}-sum-group[data-scw-fields="field_1957"] {
+  align-items: center;
+}
+.${P}-sum-group[data-scw-fields="field_1957"] td {
+  justify-content: center;
+}
 /* SOW field grows in height to show multiple connection values */
 .${P}-sum-group--sow td.${P}-sum-field {
   height: auto;
@@ -1912,15 +1921,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }
 #view_3596 .scw-inline-photo-label {
   display: none;
-}
-/* ── view_3596: qty badge after product name ── */
-#view_3596 td.${P}-sum-product[data-scw-qty]::after {
-  content: attr(data-scw-qty);
-  margin-left: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #555;
-  white-space: nowrap;
 }
 
 /* ── view_3596: disable clicks on detail links and photo strip ── */
@@ -3655,12 +3655,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           productTd.classList.add(P + '-sum-product--editable');
         }
 
-        // view_3596: show "(qty: ##)" after product name when qty > 1
+        // view_3596: qty badge — rendered in rightGroup below
+        var qtyBadgeVal = 0;
         if (viewCfg.qtyBadgeField) {
-          var qtyCell = tr.querySelector('td.' + viewCfg.qtyBadgeField);
+          var qtyCell = findCell(tr, viewCfg.qtyBadgeField);
           if (qtyCell) {
-            var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
-            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+            qtyBadgeVal = parseInt((qtyCell.textContent || '').trim(), 10) || 0;
           }
         }
 
@@ -3739,6 +3739,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Route to the right container based on group
       var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
       renderSummaryField(container, tr, name, desc, viewCfg);
+    }
+
+    // ── Qty badge (far right, before move/delete) ──
+    if (qtyBadgeVal > 1) {
+      var qtyTd = document.createElement('td');
+      qtyTd.textContent = qtyBadgeVal;
+      appendSumGroup(rightGroup, 'Quantity', qtyTd, { readOnly: true, cls: P + '-sum-group--qty-badge' });
     }
 
     // ── Move icon (structural — always last before delete) ──

@@ -3647,6 +3647,7 @@ window.SCW = window.SCW || {};
 
     features: {
       l2Sort: { enabled: true, missingSortGoesLast: true },
+      l3Sort: { enabled: true, fieldKey: 'field_2203', descending: true, missingSortGoesLast: true },
       hideL3WhenBlank: { enabled: true },
 
       hideBlankL4Headers: {
@@ -4697,6 +4698,136 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
   }
 
   // ============================================================
+  // FEATURE: L3 group reorder — within each L2 section by cost
+  // ============================================================
+
+  function getSortValueForL3Block(fieldKey, l3HeaderEl, stopEl) {
+    let cur = l3HeaderEl.nextElementSibling;
+    let total = 0;
+    let found = false;
+
+    while (cur && cur !== stopEl) {
+      if (cur.id && cur.tagName === 'TR') {
+        const cell = cur.querySelector('td.' + fieldKey);
+        if (cell) {
+          const num = parseFloat((cell.textContent || '').replace(/[^\d.-]/g, ''));
+          if (Number.isFinite(num)) { total += num; found = true; }
+        }
+      }
+
+      if (cur.classList?.contains('kn-table-group')) {
+        const m = cur.className.match(/kn-group-level-(\d+)/);
+        const lvl = m ? parseInt(m[1], 10) : null;
+        if (lvl !== null && lvl <= 3) break;
+      }
+      cur = cur.nextElementSibling;
+    }
+
+    return found ? total : null;
+  }
+
+  function reorderLevel3GroupsBySortField(ctx, $tbody, runId) {
+    const opt = ctx.features.l3Sort;
+    if (!opt?.enabled) return;
+
+    const tbody = $tbody?.[0];
+    if (!tbody) return;
+
+    const stampKey = 'scwL3ReorderStamp';
+    if (tbody.dataset[stampKey] === String(runId)) return;
+    tbody.dataset[stampKey] = String(runId);
+
+    const fieldKey = opt.fieldKey;
+    const desc = opt.descending === true;
+    const missing = opt.missingSortGoesLast ? (desc ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY) : 0;
+
+    const l2Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-2'));
+    if (!l2Headers.length) return;
+
+    for (let i = 0; i < l2Headers.length; i++) {
+      const l2El = l2Headers[i];
+
+      // Find the boundary: next L2 or next L1
+      const nextBoundary = (function () {
+        let n = l2El.nextElementSibling;
+        while (n) {
+          if (n.classList.contains('kn-table-group')) {
+            const m = n.className.match(/kn-group-level-(\d+)/);
+            const lvl = m ? parseInt(m[1], 10) : null;
+            if (lvl !== null && lvl <= 2) return n;
+          }
+          n = n.nextElementSibling;
+        }
+        return null;
+      })();
+
+      // Collect all nodes in this L2 section
+      const sectionNodes = [];
+      let cur = l2El.nextElementSibling;
+      while (cur && cur !== nextBoundary) {
+        sectionNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+      if (!sectionNodes.length) continue;
+
+      const l3Headers = sectionNodes.filter(
+        (n) => n.classList && n.classList.contains('kn-table-group') && n.classList.contains('kn-group-level-3')
+      );
+      if (l3Headers.length < 2) continue;
+
+      const firstL3 = l3Headers[0];
+
+      // Nodes between L2 header and first L3 (prefix)
+      const prefixNodes = [];
+      cur = l2El.nextElementSibling;
+      while (cur && cur !== nextBoundary && cur !== firstL3) {
+        prefixNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+
+      const blocks = l3Headers.map((l3El, idx) => {
+        const nextL3El = idx + 1 < l3Headers.length ? l3Headers[idx + 1] : null;
+
+        const nodes = [];
+        let n = l3El;
+        while (n && n !== nextBoundary && n !== nextL3El) {
+          nodes.push(n);
+          n = n.nextElementSibling;
+        }
+
+        const sortVal = getSortValueForL3Block(fieldKey, l3El, nextL3El || nextBoundary);
+        return { idx, sortVal, nodes };
+      });
+
+      const lastBlock = blocks[blocks.length - 1];
+      const lastBlockLastNode = lastBlock.nodes[lastBlock.nodes.length - 1];
+
+      // Nodes after last L3 block (suffix — e.g. subtotal rows)
+      const suffixNodes = [];
+      cur = lastBlockLastNode ? lastBlockLastNode.nextElementSibling : null;
+      while (cur && cur !== nextBoundary) {
+        suffixNodes.push(cur);
+        cur = cur.nextElementSibling;
+      }
+
+      blocks.sort((a, b) => {
+        const av = a.sortVal !== null ? a.sortVal : missing;
+        const bv = b.sortVal !== null ? b.sortVal : missing;
+        if (av !== bv) return desc ? (bv - av) : (av - bv);
+        return a.idx - b.idx;
+      });
+
+      const frag = document.createDocumentFragment();
+      for (const n of prefixNodes) frag.appendChild(n);
+      for (const block of blocks) for (const n of block.nodes) frag.appendChild(n);
+      for (const n of suffixNodes) frag.appendChild(n);
+
+      if (nextBoundary) tbody.insertBefore(frag, nextBoundary);
+      else tbody.appendChild(frag);
+    }
+  }
+
+  // ============================================================
   // FEATURE: Camera list builder
   // ============================================================
 
@@ -5301,6 +5432,88 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // FEATURE: Synthesize missing L4 group headers
+  // ============================================================
+  // Knack sometimes fails to emit L4 group headers, leaving data
+  // rows orphaned (hidden by CSS with no header to display their
+  // field_2019 content). This function detects orphan data rows
+  // within each L3 block and creates synthetic L4 headers so the
+  // rest of the pipeline can process them normally.
+
+  function synthesizeMissingL4Headers(ctx) {
+    const $tbody = ctx.$tbody;
+    const l3Headers = $tbody[0].querySelectorAll('tr.kn-table-group.kn-group-level-3');
+    if (!l3Headers.length) return;
+
+    for (let i = 0; i < l3Headers.length; i++) {
+      const l3El = l3Headers[i];
+      let current = l3El.nextElementSibling;
+      let currentL4 = null;
+      const orphanRuns = [];  // groups of consecutive orphan data rows
+      let currentRun = null;
+
+      while (current) {
+        if (current.classList.contains('kn-table-group')) {
+          const m = current.className.match(/kn-group-level-(\d+)/);
+          const lvl = m ? parseInt(m[1], 10) : null;
+          if (lvl !== null && lvl <= 3) break; // end of L3 block
+          if (lvl === 4) {
+            currentL4 = current;
+            currentRun = null;
+          }
+        } else if (current.id && current.tagName === 'TR') {
+          // Data row — check if it's covered by an L4 header
+          if (!currentL4) {
+            if (!currentRun) {
+              currentRun = { rows: [] };
+              orphanRuns.push(currentRun);
+            }
+            currentRun.rows.push(current);
+          }
+        }
+        current = current.nextElementSibling;
+      }
+
+      if (!orphanRuns.length) continue;
+
+      // For each orphan run, group consecutive rows by field_2019 value
+      // so rows with the same description share one synthetic L4 header.
+      const field2019Key = ctx.keys.field2019;
+
+      for (const run of orphanRuns) {
+        const groups = [];
+        let lastKey = null;
+        let lastGroup = null;
+
+        for (const row of run.rows) {
+          const cell = row.querySelector('td.' + field2019Key);
+          const key = cell ? norm(cell.textContent || '') : '';
+
+          if (key === lastKey && lastGroup) {
+            lastGroup.rows.push(row);
+          } else {
+            lastGroup = { key: key, rows: [row] };
+            groups.push(lastGroup);
+            lastKey = key;
+          }
+        }
+
+        for (const group of groups) {
+          const tr = document.createElement('tr');
+          tr.className = 'kn-table-group kn-group-level-4 scw-synthetic-l4';
+          const td = document.createElement('td');
+          td.setAttribute('colspan', '100');
+          // Leave the label empty — injectField2019IntoLevel4Header will
+          // populate it from the data row's field_2019 content.
+          td.textContent = '';
+          tr.appendChild(td);
+          group.rows[0].parentNode.insertBefore(tr, group.rows[0]);
+        }
+      }
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -5328,12 +5541,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ]);
 
     $tbody.find('tr.scw-level-total-row').remove();
+    // Remove synthetic L4 headers from previous runs so they're rebuilt fresh
+    $tbody.find('tr.scw-synthetic-l4').remove();
     $tbody
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
 
     reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
+    reorderLevel3GroupsBySortField(ctx, $tbody, runId);
+
+    // Synthesize missing L4 headers before the main pipeline processes groups
+    synthesizeMissingL4Headers(ctx);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
@@ -12862,7 +13081,7 @@ $(".kn-navigation-bar").hide();
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
     'view_3588': 'add-photo-to-sow-line-item2',
-    'view_3596': 'add-photo-to-sow-line-item2',
+    'view_3596': 'add-photo-to-sow-line-item3',
     'view_3608': 'add-photo-to-sow-line-item2'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
@@ -13302,7 +13521,8 @@ $(".kn-navigation-bar").hide();
     var hash = window.location.hash || '';
     var patterns = [
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
     for (var i = 0; i < patterns.length; i++) {
       var match = hash.match(patterns[i]);
@@ -13312,7 +13532,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true, 'view_3596': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -16085,11 +16305,6 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   word-break: break-word;
   line-height: 1.3;
 }
-/* Qty group narrower */
-.${P}-sum-right .${P}-sum-group--qty {
-  width: 50px;
-  min-width: 50px;
-}
 /* Fields inside right groups stretch to fill their group */
 .${P}-sum-right td.${P}-sum-field,
 .${P}-sum-right td.${P}-sum-field-ro {
@@ -17048,6 +17263,20 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   min-width: 100px;
   flex-shrink: 0;
 }
+.${P}-sum-right .${P}-sum-group--qty-badge {
+  min-width: 110px;
+  align-items: center;
+}
+.${P}-sum-group--qty-badge td.${P}-sum-field-ro {
+  justify-content: center;
+}
+/* Center Connected Devices text */
+.${P}-sum-group[data-scw-fields="field_1957"] {
+  align-items: center;
+}
+.${P}-sum-group[data-scw-fields="field_1957"] td {
+  justify-content: center;
+}
 /* SOW field grows in height to show multiple connection values */
 .${P}-sum-group--sow td.${P}-sum-field {
   height: auto;
@@ -17285,15 +17514,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }
 #view_3596 .scw-inline-photo-label {
   display: none;
-}
-/* ── view_3596: qty badge after product name ── */
-#view_3596 td.${P}-sum-product[data-scw-qty]::after {
-  content: attr(data-scw-qty);
-  margin-left: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #555;
-  white-space: nowrap;
 }
 
 /* ── view_3596: disable clicks on detail links and photo strip ── */
@@ -19028,12 +19248,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           productTd.classList.add(P + '-sum-product--editable');
         }
 
-        // view_3596: show "(qty: ##)" after product name when qty > 1
+        // view_3596: qty badge — rendered in rightGroup below
+        var qtyBadgeVal = 0;
         if (viewCfg.qtyBadgeField) {
-          var qtyCell = tr.querySelector('td.' + viewCfg.qtyBadgeField);
+          var qtyCell = findCell(tr, viewCfg.qtyBadgeField);
           if (qtyCell) {
-            var qtyVal = parseInt((qtyCell.textContent || '').trim(), 10);
-            if (qtyVal > 1) productTd.setAttribute('data-scw-qty', '(qty: ' + qtyVal + ')');
+            qtyBadgeVal = parseInt((qtyCell.textContent || '').trim(), 10) || 0;
           }
         }
 
@@ -19112,6 +19332,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Route to the right container based on group
       var container = (desc.group === 'fill' || desc.group === 'pre') ? bar : rightGroup;
       renderSummaryField(container, tr, name, desc, viewCfg);
+    }
+
+    // ── Qty badge (far right, before move/delete) ──
+    if (qtyBadgeVal > 1) {
+      var qtyTd = document.createElement('td');
+      qtyTd.textContent = qtyBadgeVal;
+      appendSumGroup(rightGroup, 'Quantity', qtyTd, { readOnly: true, cls: P + '-sum-group--qty-badge' });
     }
 
     // ── Move icon (structural — always last before delete) ──
