@@ -7815,7 +7815,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3610'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
