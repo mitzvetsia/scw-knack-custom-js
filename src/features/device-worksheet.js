@@ -115,7 +115,7 @@
           existingCabling:  { key: 'field_2370', type: 'readOnly' },
           plenum:           { key: 'field_2371', type: 'readOnly' }
         },
-        summaryLayout: ['laborDescription', 'labor', 'extended', 'quantity', 'bid'],
+        summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'surveyNotes']
@@ -1648,6 +1648,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 
 /* Per-group width overrides (scoped under .sum-right for specificity) */
+.${P}-sum-right .${P}-sum-group--qty {
+  width: min-content;
+  min-width: 36px;
+}
 .${P}-sum-right .${P}-sum-group--narrow {
   width: 50px;
   min-width: 50px;
