@@ -17669,7 +17669,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var fields = groups[i].getAttribute('data-scw-fields').split(' ');
         for (var j = 0; j < fields.length; j++) {
           if (hideSet.has(fields[j])) {
-            groups[i].style.visibility = 'hidden';
+            groups[i].style.display = 'none';
             break;
           }
         }
@@ -17733,7 +17733,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var hf = 0; hf < hgFields.length; hf++) {
           if (hideSet.has(hgFields[hf]) && hiddenGroups[hg].classList.contains(P + '-sum-group--fill')) {
             // Un-hide and replace with swap field content
-            hiddenGroups[hg].style.visibility = '';
+            hiddenGroups[hg].style.display = '';
             hiddenGroups[hg].setAttribute('data-scw-fields', rule.summarySwapField);
             // Remove old label + td, build fresh read-only content
             hiddenGroups[hg].innerHTML = '';
