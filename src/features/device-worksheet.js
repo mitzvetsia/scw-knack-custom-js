@@ -115,7 +115,7 @@
           existingCabling:  { key: 'field_2370', type: 'readOnly' },
           plenum:           { key: 'field_2371', type: 'readOnly' }
         },
-        summaryLayout: ['laborDescription', 'bid', 'labor', 'quantity', 'extended'],
+        summaryLayout: ['laborDescription', 'labor', 'quantity', 'extended', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'surveyNotes']
