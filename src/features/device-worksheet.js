@@ -65,7 +65,7 @@
       {
         viewId: 'view_3512',
         layout: { detailGrid: '455px 1fr' },
-        hideDeleteWhenViewHasRows: 'view_3512',
+        hideDeleteWhenFieldNotBlank: 'field_2324',
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -97,7 +97,7 @@
       {
         viewId: 'view_3505',
         layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
-        hideDeleteWhenViewHasRows: 'view_3512',
+        hideDeleteWhenFieldNotBlank: 'field_2324',
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
@@ -5040,28 +5040,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ============================================================
 
   /**
-   * For views with hideDeleteWhenViewHasRows, show/hide all delete
-   * links based on whether the guard view currently has data rows.
-   * Called after any worksheet view transforms so timing is safe.
+   * For views with hideDeleteWhenFieldNotBlank, hide the delete link
+   * on each row where the specified field is not blank.
+   * Called after any worksheet view transforms.
    */
   function syncDeleteVisibility() {
     WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
-      if (!viewCfg.hideDeleteWhenViewHasRows) return;
+      if (!viewCfg.hideDeleteWhenFieldNotBlank) return;
       var $view = $('#' + viewCfg.viewId);
       if (!$view.length) return;
 
-      var guardView = document.getElementById(viewCfg.hideDeleteWhenViewHasRows);
-      var hasRows = false;
-      if (guardView) {
-        var rows = guardView.querySelectorAll(
-          'table tbody > tr:not(.kn-table-group):not(.kn-table-totals):not(.scw-inline-photo-row)'
-        );
-        hasRows = rows.length > 0;
-      }
-
-      var deletes = $view[0].querySelectorAll('.' + P + '-sum-delete');
-      for (var i = 0; i < deletes.length; i++) {
-        deletes[i].style.display = hasRows ? 'none' : '';
+      var fieldKey = viewCfg.hideDeleteWhenFieldNotBlank;
+      var cards = $view[0].querySelectorAll('.' + P + '-card');
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var tr = card.closest('tr');
+        var td = tr
+          ? (tr.querySelector('td.' + fieldKey) || tr.querySelector('td[data-field-key="' + fieldKey + '"]'))
+          : null;
+        // Also check inside the card itself (td may have been moved)
+        if (!td) td = card.querySelector('td.' + fieldKey) || card.querySelector('td[data-field-key="' + fieldKey + '"]');
+        var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
+        var del = card.querySelector('.' + P + '-sum-delete');
+        if (del) {
+          del.style.display = val ? 'none' : '';
+        }
       }
     });
   }
