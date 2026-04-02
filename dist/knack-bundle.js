@@ -15669,7 +15669,7 @@ $(".kn-navigation-bar").hide();
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
-          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 6, skipEmpty: true },
+          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 6 },
           connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
@@ -15700,7 +15700,7 @@ $(".kn-navigation-bar").hide();
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
-          mounting:         { key: 'field_2463', type: 'readOnly',   skipEmpty: true },
+          mounting:         { key: 'field_2463', type: 'readOnly' },
           connections:      { key: 'field_2380', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
