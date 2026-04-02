@@ -65,6 +65,7 @@
       {
         viewId: 'view_3512',
         layout: { detailGrid: '455px 1fr' },
+        hideDeleteWhenViewHasRows: 'view_3512',
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -96,6 +97,7 @@
       {
         viewId: 'view_3505',
         layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
+        hideDeleteWhenViewHasRows: 'view_3512',
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
@@ -3803,8 +3805,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var deleteLink = tr.querySelector('a.kn-link-delete');
     if (deleteLink) {
       var deleteTd = deleteLink.closest('td');
+
+      // Hide delete when a sibling view has data rows
+      var hideDelete = false;
+      if (viewCfg.hideDeleteWhenViewHasRows) {
+        var guardView = document.getElementById(viewCfg.hideDeleteWhenViewHasRows);
+        if (guardView) {
+          var guardRows = guardView.querySelectorAll('table tbody > tr:not(.kn-table-group):not(.kn-table-totals):not(.scw-inline-photo-row)');
+          if (guardRows.length > 0) hideDelete = true;
+        }
+      }
+
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
+      if (hideDelete) deleteWrap.style.display = 'none';
       deleteWrap.appendChild(deleteLink);
       if (hasStackedFields) {
         var delCol = document.createElement('span');
