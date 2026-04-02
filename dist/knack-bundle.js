@@ -19399,19 +19399,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (deleteLink) {
       var deleteTd = deleteLink.closest('td');
 
-      // Hide delete when a sibling view has data rows
-      var hideDelete = false;
-      if (viewCfg.hideDeleteWhenViewHasRows) {
-        var guardView = document.getElementById(viewCfg.hideDeleteWhenViewHasRows);
-        if (guardView) {
-          var guardRows = guardView.querySelectorAll('table tbody > tr:not(.kn-table-group):not(.kn-table-totals):not(.scw-inline-photo-row)');
-          if (guardRows.length > 0) hideDelete = true;
-        }
-      }
-
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
-      if (hideDelete) deleteWrap.style.display = 'none';
       deleteWrap.appendChild(deleteLink);
       if (hasStackedFields) {
         var delCol = document.createElement('span');
@@ -20640,6 +20629,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   });
 
   // ============================================================
+  // HIDE-DELETE SYNC (cross-view)
+  // ============================================================
+
+  /**
+   * For views with hideDeleteWhenViewHasRows, show/hide all delete
+   * links based on whether the guard view currently has data rows.
+   * Called after any worksheet view transforms so timing is safe.
+   */
+  function syncDeleteVisibility() {
+    WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      if (!viewCfg.hideDeleteWhenViewHasRows) return;
+      var $view = $('#' + viewCfg.viewId);
+      if (!$view.length) return;
+
+      var guardView = document.getElementById(viewCfg.hideDeleteWhenViewHasRows);
+      var hasRows = false;
+      if (guardView) {
+        var rows = guardView.querySelectorAll(
+          'table tbody > tr:not(.kn-table-group):not(.kn-table-totals):not(.scw-inline-photo-row)'
+        );
+        hasRows = rows.length > 0;
+      }
+
+      var deletes = $view[0].querySelectorAll('.' + P + '-sum-delete');
+      for (var i = 0; i < deletes.length; i++) {
+        deletes[i].style.display = hasRows ? 'none' : '';
+      }
+    });
+  }
+
+  // ============================================================
   // INIT
   // ============================================================
 
@@ -20652,7 +20672,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
-          setTimeout(function () { transformView(viewCfg); }, 150);
+          setTimeout(function () { transformView(viewCfg); syncDeleteVisibility(); }, 150);
         });
 
       $(document)
