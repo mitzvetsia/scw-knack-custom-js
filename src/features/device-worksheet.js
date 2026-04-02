@@ -1653,8 +1653,8 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   min-width: 36px;
 }
 .${P}-sum-right .${P}-sum-group--labor {
-  width: 55px;
-  min-width: 55px;
+  width: 75px;
+  min-width: 75px;
 }
 .${P}-sum-right .${P}-sum-group--ext {
   width: min-content;
