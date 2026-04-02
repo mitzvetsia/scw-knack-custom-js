@@ -107,7 +107,7 @@
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
-          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 5, skipEmpty: true },
+          mounting:         { key: 'field_2463', type: 'readOnly',   skipEmpty: true },
           connections:      { key: 'field_2380', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
@@ -1651,6 +1651,10 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-sum-right .${P}-sum-group--qty {
   width: min-content;
   min-width: 36px;
+}
+/* Hide Qty label when its cell is grayed out (locked) */
+.${P}-sum-group--qty:has(td.scw-cond-grayed) > .${P}-sum-label {
+  visibility: hidden;
 }
 .${P}-sum-right .${P}-sum-group--labor {
   width: 75px;
