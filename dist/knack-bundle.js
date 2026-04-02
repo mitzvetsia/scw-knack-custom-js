@@ -15658,7 +15658,7 @@ $(".kn-navigation-bar").hide();
       {
         viewId: 'view_3512',
         layout: { detailGrid: '455px 1fr' },
-        hideDeleteWhenFieldNotBlank: 'field_2324',
+        hideDeleteWhenFieldNotBlank: 'field_2404',
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -15690,7 +15690,7 @@ $(".kn-navigation-bar").hide();
       {
         viewId: 'view_3505',
         layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
-        hideDeleteWhenFieldNotBlank: 'field_2324',
+        hideDeleteWhenFieldNotBlank: 'field_2404',
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
