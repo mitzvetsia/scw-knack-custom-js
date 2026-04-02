@@ -5055,10 +5055,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       for (var i = 0; i < cards.length; i++) {
         var card = cards[i];
         var tr = card.closest('tr');
-        var td = tr
-          ? (tr.querySelector('td.' + fieldKey) || tr.querySelector('td[data-field-key="' + fieldKey + '"]'))
-          : null;
-        // Also check inside the card itself (td may have been moved)
+        var td = null;
+        // The field td lives in the original Knack data row (previousElementSibling of scw-ws-row)
+        if (tr) {
+          var dataTr = tr.previousElementSibling;
+          if (dataTr) {
+            td = dataTr.querySelector('td.' + fieldKey) || dataTr.querySelector('td[data-field-key="' + fieldKey + '"]');
+          }
+          if (!td) td = tr.querySelector('td.' + fieldKey) || tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+        }
         if (!td) td = card.querySelector('td.' + fieldKey) || card.querySelector('td[data-field-key="' + fieldKey + '"]');
         var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
         var del = card.querySelector('.' + P + '-sum-delete');
