@@ -3869,7 +3869,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     switch (desc.type) {
       case 'readOnly':
         // Strip inline-edit affordance — this field is read-only
-        if (td) td.classList.remove('cell-edit');
+        if (td) {
+          td.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+        }
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
         if (row) section.appendChild(row);
         break;
