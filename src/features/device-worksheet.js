@@ -151,7 +151,7 @@
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           notes:            { key: 'field_1643', type: 'directEdit' }
