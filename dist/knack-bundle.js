@@ -17246,8 +17246,8 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   min-width: 36px;
 }
 .${P}-sum-right .${P}-sum-group--labor {
-  width: min-content;
-  min-width: 36px;
+  width: 55px;
+  min-width: 55px;
 }
 .${P}-sum-right .${P}-sum-group--ext {
   width: min-content;
