@@ -15697,7 +15697,7 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
           quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--narrow', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 5, skipEmpty: true },
@@ -17242,6 +17242,14 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 
 /* Per-group width overrides (scoped under .sum-right for specificity) */
 .${P}-sum-right .${P}-sum-group--qty {
+  width: min-content;
+  min-width: 36px;
+}
+.${P}-sum-right .${P}-sum-group--labor {
+  width: min-content;
+  min-width: 36px;
+}
+.${P}-sum-right .${P}-sum-group--ext {
   width: min-content;
   min-width: 36px;
 }
