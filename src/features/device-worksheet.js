@@ -2934,6 +2934,53 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
+  /** Sync Knack's internal Backbone model with saved data so KTL bulk
+   *  edit (and any other code reading from the model) sees correct values.
+   *  Tries multiple paths since Knack's internal structure varies. */
+  function syncKnackModel(viewId, recordId, resp, fieldKey, value) {
+    try {
+      var view = Knack.views[viewId];
+      if (!view || !view.model) return;
+      var m = view.model;
+
+      // Try Backbone Collection .get() — works if view.model IS the collection
+      var record = typeof m.get === 'function' ? m.get(recordId) : null;
+      // Try view.model.data as a Collection
+      if (!record && m.data && typeof m.data.get === 'function') {
+        record = m.data.get(recordId);
+      }
+      // Fallback: walk .models array on view.model or view.model.data
+      if (!record) {
+        var arr = m.models || (m.data && m.data.models) || [];
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && arr[i].id === recordId) { record = arr[i]; break; }
+        }
+      }
+
+      if (!record) return;
+
+      // Merge the full API response into the model attributes so all
+      // field formats (_raw, display, formatted) are up-to-date.
+      if (resp && typeof resp === 'object') {
+        var attrs = record.attributes || record;
+        var keys = Object.keys(resp);
+        for (var k = 0; k < keys.length; k++) {
+          var rk = keys[k];
+          // Skip non-field metadata
+          if (rk === 'id' || rk === 'type') continue;
+          attrs[rk] = resp[rk];
+        }
+      } else {
+        // No response object — at least set the raw value
+        var attrs2 = record.attributes || record;
+        attrs2[fieldKey] = value;
+        attrs2[fieldKey + '_raw'] = value;
+      }
+    } catch (ex) {
+      // Silently ignore — model sync is best-effort
+    }
+  }
+
   /** Save a direct-edit field value.
    *  For header-trigger fields, always uses AJAX PUT so we can read
    *  the recalculated formula from the response.  For other fields,
@@ -2966,22 +3013,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
-        // Sync Knack's internal model so KTL bulk edit reads correct values
-        try {
-          var view = Knack.views[viewId];
-          if (view && view.model && view.model.data && view.model.data.models) {
-            var models = view.model.data.models;
-            for (var mi = 0; mi < models.length; mi++) {
-              if (models[mi].id === recordId && models[mi].attributes) {
-                models[mi].attributes[fieldKey] = value;
-                if (resp && resp[fieldKey + '_raw'] != null) {
-                  models[mi].attributes[fieldKey + '_raw'] = resp[fieldKey + '_raw'];
-                }
-                break;
-              }
-            }
-          }
-        } catch (ex) { /* ignore model sync errors */ }
+        // Sync Knack's internal model so KTL bulk edit reads correct values.
+        // Merge the full API response into the Backbone model so every
+        // field format (_raw, display, etc.) matches what Knack expects.
+        syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
@@ -3026,20 +3061,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Update hidden span (summary bar) so dynamic-cell-colors sees new value
     var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
     if (hiddenSpan) hiddenSpan.textContent = newValue;
-
-    // Update original Knack data row td so KTL bulk edit reads correct value
-    var wsTrEarly = input.closest('tr.' + WORKSHEET_ROW);
-    if (wsTrEarly) {
-      var dataTr = wsTrEarly.previousElementSibling;
-      if (dataTr) {
-        var origTd = dataTr.querySelector('td.' + fieldKey) || dataTr.querySelector('td[data-field-key="' + fieldKey + '"]');
-        if (origTd) {
-          var origSpan = origTd.querySelector('span');
-          if (origSpan) origSpan.textContent = newValue;
-          else origTd.textContent = newValue;
-        }
-      }
-    }
 
     // Visual feedback — start saving
     input.classList.remove('is-error');
@@ -3149,6 +3170,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         success: function (resp) {
           if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
           if (trigger) fetchAndApplyLabel(viewId, recordId);
+          syncKnackModel(viewId, recordId, resp, fieldKey, value);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
