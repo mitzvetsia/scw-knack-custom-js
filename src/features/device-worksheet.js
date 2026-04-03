@@ -3323,11 +3323,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Auto-grow: resize textarea to fit content
       function autoGrow() {
         input.style.height = 'auto';
-        input.style.height = input.scrollHeight + 'px';
+        var sh = input.scrollHeight;
+        input.style.height = sh > 0 ? (sh + 'px') : '';
       }
       input.addEventListener('input', autoGrow);
-      // Initial size after append (deferred so layout is ready)
+      // Initial size — use multiple deferred calls because the first
+      // requestAnimationFrame may fire before the browser has finished
+      // laying out the container (scrollHeight returns 0 in that case).
       requestAnimationFrame(autoGrow);
+      setTimeout(autoGrow, 50);
+      setTimeout(autoGrow, 200);
     } else {
       input = document.createElement('input');
       input.type = 'text';
