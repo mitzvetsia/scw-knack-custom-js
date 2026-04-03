@@ -17082,6 +17082,7 @@ td.${P}-field-value--notes {
   resize: vertical;
   min-height: 28px;
   max-height: 200px;
+  overflow: hidden;
 }
 
 /* ── Summary bar inline direct-edit inputs ── */
@@ -17109,9 +17110,11 @@ td.${P}-sum-direct-edit .${P}-direct-input {
 td.${P}-sum-direct-edit .${P}-direct-textarea {
   resize: vertical;
   min-height: 28px;
+  max-height: none;
   line-height: 1.3;
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow: hidden;
 }
 td.${P}-sum-direct-edit .${P}-direct-error {
   position: absolute;
