@@ -338,9 +338,18 @@
     newChip.classList.add('is-saving');
     chip.parentNode.replaceChild(newChip, chip);
 
-    // Also update the hidden source cell so re-renders stay in sync
+    // Also update the hidden source cell so re-renders stay in sync.
+    // In the worksheet context the chip host td is inside the card row
+    // (tr.scw-ws-row), but the hidden field tds are in the ORIGINAL
+    // data row (previousElementSibling).  Search both rows.
     var $tr = $(td).closest('tr');
     var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
+    if (!$srcTd.length) {
+      var prevTr = $tr[0] && $tr[0].previousElementSibling;
+      if (prevTr) {
+        $srcTd = $(prevTr).find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+      }
+    }
     if ($srcTd.length) {
       $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
     }
