@@ -66,6 +66,7 @@
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2210', 'INPUT_service description'],
       ['field_2432', 'INPUT_survey notes'],
+      ['field_2248', 'INPUT_assumptions'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
