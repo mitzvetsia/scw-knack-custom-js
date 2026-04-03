@@ -2566,7 +2566,7 @@ window.SCW = window.SCW || {};
   var ENHANCED   = 'data-scw-ktl-accordion';
   var OPT_OUT    = 'data-scw-no-accordion';
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
-  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true };
+  var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true, scene_1149: true };
 
   // Views where the record count pill is hidden (set to true to hide)
   var HIDE_COUNT = {};
