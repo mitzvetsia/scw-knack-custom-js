@@ -11456,7 +11456,7 @@ $(".kn-navigation-bar").hide();
   const EVENT_NS = ".scwUnifiedProducts";
   const CONFIG = {
     SCENES: [], // e.g. ['scene_123'] or leave [] for all scenes
-    VIEWS: ["view_3329","view_3544","view_3451","view_3619"],
+    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627"],
 
     // parent product fields
     PARENTS: ["field_2193", "field_2194", "field_2195"],
@@ -12381,7 +12381,7 @@ $(".kn-navigation-bar").hide();
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3544', 'view_3619']; // add more views
+  const VIEW_IDS = ['view_3544', 'view_3619', 'view_3627']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css-survey-bid';

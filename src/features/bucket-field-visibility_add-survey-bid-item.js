@@ -6,7 +6,7 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3544', 'view_3619']; // add more views
+  const VIEW_IDS = ['view_3544', 'view_3619', 'view_3627']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css-survey-bid';
