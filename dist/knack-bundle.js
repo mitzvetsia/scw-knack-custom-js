@@ -14349,7 +14349,8 @@ $(".kn-navigation-bar").hide();
    */
   function saveFieldValue(viewId, recordId, fieldKey, boolValue, onDone) {
     var data = {};
-    data[fieldKey] = boolValue === 'yes';
+    // Knack Yes/No fields expect string "Yes"/"No", not boolean true/false
+    data[fieldKey] = boolValue === 'yes' ? 'Yes' : 'No';
 
     var view = Knack.views[viewId];
     if (view && view.model && typeof view.model.updateRecord === 'function') {
