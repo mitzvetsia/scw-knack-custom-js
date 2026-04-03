@@ -7832,6 +7832,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     'view_3301',
     'view_3341',
     'view_3371',
+    'view_3550',
   ]);
 
   // ======================
