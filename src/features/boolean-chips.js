@@ -173,7 +173,19 @@
   function getRecordId(tr) {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
-    return match ? match[0] : null;
+    if (match) return match[0];
+
+    // In the worksheet context the chip lives in a card row (tr.scw-ws-row)
+    // which doesn't carry the record ID. Walk backwards to find the
+    // original Knack data row whose id contains the record hash.
+    var prev = tr.previousElementSibling;
+    while (prev) {
+      var prevId = prev.id || '';
+      var prevMatch = prevId.match(/[0-9a-f]{24}/i);
+      if (prevMatch) return prevMatch[0];
+      prev = prev.previousElementSibling;
+    }
+    return null;
   }
 
   /**
@@ -184,42 +196,19 @@
     // Knack Yes/No fields expect string "Yes"/"No", not boolean true/false
     data[fieldKey] = boolValue === 'yes' ? 'Yes' : 'No';
 
-    var view = Knack.views[viewId];
-    if (view && view.model && typeof view.model.updateRecord === 'function') {
-      view.model.updateRecord(recordId, data);
-      if (onDone) onDone();
-      return;
-    }
-
-    if (typeof Knack !== 'undefined' && Knack.models) {
-      var modelKey = Object.keys(Knack.models).find(function (key) {
-        var m = Knack.models[key];
-        return m && m.data && m.data.find && m.data.find(function (r) {
-          return r.id === recordId;
-        });
-      });
-
-      if (modelKey) {
-        var model = Knack.models[modelKey];
-        if (typeof model.save === 'function') {
-          data.id = recordId;
-          model.save(data);
-          if (onDone) onDone();
-          return;
-        }
-      }
-    }
-
+    // Always use direct AJAX PUT — model.updateRecord silently fails
+    // in the worksheet context where rows are restructured.
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
       data: JSON.stringify(data),
-      success: function () {
-        if (onDone) onDone();
-        if (Knack.views[viewId] && Knack.views[viewId].model &&
-            typeof Knack.views[viewId].model.fetch === 'function') {
-          Knack.views[viewId].model.fetch();
+      success: function (resp) {
+        // Sync the changed field into Knack's Backbone model so
+        // subsequent re-renders don't revert the value.
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(viewId, recordId, resp, fieldKey, data[fieldKey]);
         }
+        if (onDone) onDone();
       },
       error: function (xhr) {
         console.warn('[scw-bool-chips] Save failed for ' + recordId, xhr.responseText);

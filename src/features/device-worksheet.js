@@ -5192,6 +5192,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── Expose API for coordination with post-edit restore ──
   window.SCW = window.SCW || {};
+  window.SCW.syncKnackModel = syncKnackModel;
   window.SCW.deviceWorksheet = {
     /** Capture expanded panel state for all worksheet views. */
     captureState: captureAllExpandedStates,
