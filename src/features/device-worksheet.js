@@ -2966,6 +2966,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
+        // Sync Knack's internal model so KTL bulk edit reads correct values
+        try {
+          var view = Knack.views[viewId];
+          if (view && view.model && view.model.data && view.model.data.models) {
+            var models = view.model.data.models;
+            for (var mi = 0; mi < models.length; mi++) {
+              if (models[mi].id === recordId && models[mi].attributes) {
+                models[mi].attributes[fieldKey] = value;
+                if (resp && resp[fieldKey + '_raw'] != null) {
+                  models[mi].attributes[fieldKey + '_raw'] = resp[fieldKey + '_raw'];
+                }
+                break;
+              }
+            }
+          }
+        } catch (ex) { /* ignore model sync errors */ }
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
@@ -3010,6 +3026,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Update hidden span (summary bar) so dynamic-cell-colors sees new value
     var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
     if (hiddenSpan) hiddenSpan.textContent = newValue;
+
+    // Update original Knack data row td so KTL bulk edit reads correct value
+    var wsTrEarly = input.closest('tr.' + WORKSHEET_ROW);
+    if (wsTrEarly) {
+      var dataTr = wsTrEarly.previousElementSibling;
+      if (dataTr) {
+        var origTd = dataTr.querySelector('td.' + fieldKey) || dataTr.querySelector('td[data-field-key="' + fieldKey + '"]');
+        if (origTd) {
+          var origSpan = origTd.querySelector('span');
+          if (origSpan) origSpan.textContent = newValue;
+          else origTd.textContent = newValue;
+        }
+      }
+    }
 
     // Visual feedback — start saving
     input.classList.remove('is-error');
