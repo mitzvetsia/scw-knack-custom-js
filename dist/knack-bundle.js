@@ -10744,6 +10744,21 @@ enableCheckboxSelectSync({
   selectFieldId: 'field_2180'
 });
 
+enableCheckboxSelectSync({
+  viewId: 'view_3544',
+  selectFieldId: 'field_2250'
+});
+
+enableCheckboxSelectSync({
+  viewId: 'view_3619',
+  selectFieldId: 'field_2250'
+});
+
+enableCheckboxSelectSync({
+  viewId: 'view_3627',
+  selectFieldId: 'field_2250'
+});
+
 /*
 
 
