@@ -136,6 +136,11 @@
       padding-top: 50px;
       width: 100% !important;
     }
+
+    /* Hide KTL bulk-ops controls on scene 1140 */
+    #kn-scene_1140 .ktlAddonsDiv {
+      display: none !important;
+    }
   `;
 
   const style = document.createElement('style');
