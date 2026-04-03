@@ -2790,38 +2790,53 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /** After a fee-trigger save, patch the Fee cell from the API response
    *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
   /**
-   * After a feeTrigger save, refresh the view so Knack re-renders
-   * with updated calculated / related values.
-   * Holds the view's height and fades opacity to avoid a jarring flash.
+   * After a feeTrigger save, patch calculated/readOnly cells in-place
+   * from the PUT response instead of doing a full view refresh.
+   * This avoids the gray-out / opacity fade that blocks back-to-back edits.
    */
-  function refreshViewAfterSave(viewId) {
-    if (typeof Knack === 'undefined') return;
-    setTimeout(function () {
-      try {
-        var view = Knack.views[viewId];
-        if (!view || !view.model || typeof view.model.fetch !== 'function') return;
+  function patchCalculatedCells(viewId, recordId, resp) {
+    if (!resp) return;
+    var cfg = viewCfgFor(viewId);
+    if (!cfg) return;
 
-        var el = document.getElementById(viewId);
-        if (el) {
-          // Lock height + fade so the DOM doesn't collapse during fetch
-          el.style.minHeight = el.offsetHeight + 'px';
-          el.style.opacity = '0.45';
-          el.style.transition = 'opacity .15s';
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
 
-          // Restore on next render of this view
-          $(document).one('knack-view-render.' + viewId + '.scwRefreshFade', function () {
-            el.style.opacity = '1';
-            // Release min-height after the fade-in completes
-            setTimeout(function () { el.style.minHeight = ''; el.style.transition = ''; }, 200);
-          });
-        }
+    // Find the worksheet card for this record
+    var cards = viewEl.querySelectorAll('.' + P + '-card');
+    var card = null;
+    for (var ci = 0; ci < cards.length; ci++) {
+      var row = cards[ci].closest('tr');
+      if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+    }
+    if (!card) return;
 
-        console.log('[scw-ws] Refreshing view ' + viewId + ' after fee-trigger save');
-        view.model.fetch();
-      } catch (e) {
-        console.warn('[scw-ws] Could not refresh ' + viewId, e);
+    // Patch each readOnly summary field that has a value in the response
+    var f = cfg.fields;
+    Object.keys(f).forEach(function (name) {
+      var desc = f[name];
+      if (desc.type !== 'readOnly' || !desc.summary) return;
+      var fk = desc.key;
+      // Try _raw first (Knack's formatted value), then plain
+      var raw = resp[fk + '_raw'];
+      var val = raw != null ? raw : resp[fk];
+      if (val == null) return;
+      // Strip HTML tags if present
+      var txt = (typeof val === 'string') ? val.replace(/<[^>]*>/g, '').trim() : String(val);
+
+      // Find the td inside the card (summary bar)
+      var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+      if (!td) return;
+      // Update the span inside the td (Knack's value wrapper) or the td itself
+      var span = td.querySelector('span[class^="col-"]');
+      if (span) {
+        span.textContent = txt;
+      } else {
+        td.textContent = txt;
       }
-    }, 750);
+    });
+
+    console.log('[scw-ws] Patched calculated cells for ' + recordId + ' in ' + viewId);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -2946,7 +2961,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       type: 'PUT',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig || trigger) refreshViewAfterSave(viewId);
+        if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+        if (trigger) fetchAndApplyLabel(viewId, recordId);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
@@ -3098,7 +3114,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         type: 'PUT',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig || trigger) refreshViewAfterSave(viewId);
+          if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+          if (trigger) fetchAndApplyLabel(viewId, recordId);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
