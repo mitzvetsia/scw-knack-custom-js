@@ -2934,48 +2934,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
-  /** Sync Knack's internal Backbone model with saved data so KTL bulk
-   *  edit (and any other code reading from the model) sees correct values.
-   *  Tries multiple paths since Knack's internal structure varies. */
+  /** Sync a single field value into Knack's internal Backbone model so
+   *  KTL bulk edit (and any other code reading from the model) sees the
+   *  correct value after an AJAX PUT save.
+   *
+   *  IMPORTANT: only update the ONE field that changed. Merging the full
+   *  API response would write HTML-formatted display values into model
+   *  attributes, corrupting subsequent model.updateRecord calls. */
   function syncKnackModel(viewId, recordId, resp, fieldKey, value) {
     try {
       var view = Knack.views[viewId];
       if (!view || !view.model) return;
       var m = view.model;
 
-      // Try Backbone Collection .get() — works if view.model IS the collection
+      // Find the Backbone record — try multiple paths
       var record = typeof m.get === 'function' ? m.get(recordId) : null;
-      // Try view.model.data as a Collection
       if (!record && m.data && typeof m.data.get === 'function') {
         record = m.data.get(recordId);
       }
-      // Fallback: walk .models array on view.model or view.model.data
       if (!record) {
         var arr = m.models || (m.data && m.data.models) || [];
         for (var i = 0; i < arr.length; i++) {
           if (arr[i] && arr[i].id === recordId) { record = arr[i]; break; }
         }
       }
-
       if (!record) return;
 
-      // Merge the full API response into the model attributes so all
-      // field formats (_raw, display, formatted) are up-to-date.
-      if (resp && typeof resp === 'object') {
-        var attrs = record.attributes || record;
-        var keys = Object.keys(resp);
-        for (var k = 0; k < keys.length; k++) {
-          var rk = keys[k];
-          // Skip non-field metadata
-          if (rk === 'id' || rk === 'type') continue;
-          attrs[rk] = resp[rk];
-        }
-      } else {
-        // No response object — at least set the raw value
-        var attrs2 = record.attributes || record;
-        attrs2[fieldKey] = value;
-        attrs2[fieldKey + '_raw'] = value;
-      }
+      var attrs = record.attributes || record;
+
+      // Use _raw value from the response (clean server format) when available,
+      // otherwise fall back to the value we sent.
+      var rawVal = (resp && resp[fieldKey + '_raw'] != null) ? resp[fieldKey + '_raw'] : value;
+      attrs[fieldKey] = rawVal;
+      attrs[fieldKey + '_raw'] = rawVal;
     } catch (ex) {
       // Silently ignore — model sync is best-effort
     }
