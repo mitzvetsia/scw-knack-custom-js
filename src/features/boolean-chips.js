@@ -25,21 +25,20 @@
         viewId: 'view_3512',
         // All chips render stacked inside the Exterior column
         hostFieldKey: 'field_2372',
-        // These columns get hidden (header + cells)
-        hideFieldKeys: ['field_2370', 'field_2371'],
+        // These columns get hidden (header + cells);
+        // field_2370 handled by device-worksheet (toggleChit in header)
+        hideFieldKeys: ['field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       },
       {
         viewId: 'view_3505',
         hostFieldKey: 'field_2372',
-        hideFieldKeys: ['field_2370', 'field_2371'],
+        hideFieldKeys: ['field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       }
@@ -173,7 +172,19 @@
   function getRecordId(tr) {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
-    return match ? match[0] : null;
+    if (match) return match[0];
+
+    // In the worksheet context the chip lives in a card row (tr.scw-ws-row)
+    // which doesn't carry the record ID. Walk backwards to find the
+    // original Knack data row whose id contains the record hash.
+    var prev = tr.previousElementSibling;
+    while (prev) {
+      var prevId = prev.id || '';
+      var prevMatch = prevId.match(/[0-9a-f]{24}/i);
+      if (prevMatch) return prevMatch[0];
+      prev = prev.previousElementSibling;
+    }
+    return null;
   }
 
   /**
@@ -181,44 +192,22 @@
    */
   function saveFieldValue(viewId, recordId, fieldKey, boolValue, onDone) {
     var data = {};
-    data[fieldKey] = boolValue === 'yes';
+    // Knack Yes/No fields expect string "Yes"/"No", not boolean true/false
+    data[fieldKey] = boolValue === 'yes' ? 'Yes' : 'No';
 
-    var view = Knack.views[viewId];
-    if (view && view.model && typeof view.model.updateRecord === 'function') {
-      view.model.updateRecord(recordId, data);
-      if (onDone) onDone();
-      return;
-    }
-
-    if (typeof Knack !== 'undefined' && Knack.models) {
-      var modelKey = Object.keys(Knack.models).find(function (key) {
-        var m = Knack.models[key];
-        return m && m.data && m.data.find && m.data.find(function (r) {
-          return r.id === recordId;
-        });
-      });
-
-      if (modelKey) {
-        var model = Knack.models[modelKey];
-        if (typeof model.save === 'function') {
-          data.id = recordId;
-          model.save(data);
-          if (onDone) onDone();
-          return;
-        }
-      }
-    }
-
+    // Always use direct AJAX PUT — model.updateRecord silently fails
+    // in the worksheet context where rows are restructured.
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
       data: JSON.stringify(data),
-      success: function () {
-        if (onDone) onDone();
-        if (Knack.views[viewId] && Knack.views[viewId].model &&
-            typeof Knack.views[viewId].model.fetch === 'function') {
-          Knack.views[viewId].model.fetch();
+      success: function (resp) {
+        // Sync the changed field into Knack's Backbone model so
+        // subsequent re-renders don't revert the value.
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(viewId, recordId, resp, fieldKey, data[fieldKey]);
         }
+        if (onDone) onDone();
       },
       error: function (xhr) {
         console.warn('[scw-bool-chips] Save failed for ' + recordId, xhr.responseText);
@@ -338,9 +327,18 @@
     newChip.classList.add('is-saving');
     chip.parentNode.replaceChild(newChip, chip);
 
-    // Also update the hidden source cell so re-renders stay in sync
+    // Also update the hidden source cell so re-renders stay in sync.
+    // In the worksheet context the chip host td is inside the card row
+    // (tr.scw-ws-row), but the hidden field tds are in the ORIGINAL
+    // data row (previousElementSibling).  Search both rows.
     var $tr = $(td).closest('tr');
     var $srcTd = $tr.find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]').not(td);
+    if (!$srcTd.length) {
+      var prevTr = $tr[0] && $tr[0].previousElementSibling;
+      if (prevTr) {
+        $srcTd = $(prevTr).find('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+      }
+    }
     if ($srcTd.length) {
       $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
     }

@@ -65,6 +65,7 @@
       {
         viewId: 'view_3512',
         layout: { detailGrid: '455px 1fr' },
+        hideDeleteWhenFieldNotBlank: 'field_2404',
         fields: {
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
@@ -72,22 +73,22 @@
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 4 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
-          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 6, skipEmpty: true },
+          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 6 },
           connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          existingCabling:  { key: 'field_2370', type: 'readOnly' },
           plenum:           { key: 'field_2371', type: 'readOnly' },
           mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'bid', 'labor'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -96,26 +97,27 @@
       {
         viewId: 'view_3505',
         layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
+        hideDeleteWhenFieldNotBlank: 'field_2404',
         fields: {
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
-          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
-          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Extended', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+          existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
-          mounting:         { key: 'field_2463', type: 'readOnly',   columnIndex: 5, skipEmpty: true },
+          mounting:         { key: 'field_2463', type: 'readOnly' },
           connections:      { key: 'field_2380', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          existingCabling:  { key: 'field_2370', type: 'readOnly' },
           plenum:           { key: 'field_2371', type: 'readOnly' }
         },
-        summaryLayout: ['laborDescription', 'bid', 'labor', 'quantity', 'extended'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'quantity', 'labor', 'extended', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'surveyNotes']
@@ -123,13 +125,17 @@
         bucketField: 'field_2366',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: [],
+            hideFields: ['field_2379'],
             label: 'SERVICE',
+            descLabel: 'Service',
+            hideProduct: true,
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2400', 'field_2399', 'field_2401'],
+            hideFields: ['field_2379', 'field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -139,20 +145,21 @@
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577'],
+        viewIds: ['view_3559', 'view_3577', 'view_3617'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
-          surveyNotes:      { key: 'field_2457', type: 'directEdit', notes: true }
+          surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
+          notes:            { key: 'field_1643', type: 'directEdit' }
         },
-        summaryLayout: [],
+        summaryLayout: ['surveyNotes'],
         detailLayout: {
           left:  ['mdfIdf', 'mdfNumber', 'name'],
-          right: ['surveyNotes']
+          right: ['notes']
         }
       },
       {
@@ -575,6 +582,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
 /* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
+  display: none !important;
+}
+
+/* ── Hide Existing Cabling column header (moved to summary bar as toggleChit) ── */
+#view_3512 th.field_2370,
+#view_3505 th.field_2370 {
   display: none !important;
 }
 
@@ -1416,6 +1429,7 @@ td.${P}-field-value--notes {
   resize: vertical;
   min-height: 28px;
   max-height: 200px;
+  overflow: hidden;
 }
 
 /* ── Summary bar inline direct-edit inputs ── */
@@ -1443,9 +1457,11 @@ td.${P}-sum-direct-edit .${P}-direct-input {
 td.${P}-sum-direct-edit .${P}-direct-textarea {
   resize: vertical;
   min-height: 28px;
+  max-height: none;
   line-height: 1.3;
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow: hidden;
 }
 td.${P}-sum-direct-edit .${P}-direct-error {
   position: absolute;
@@ -1644,6 +1660,22 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 }
 
 /* Per-group width overrides (scoped under .sum-right for specificity) */
+.${P}-sum-right .${P}-sum-group--qty {
+  width: min-content;
+  min-width: 36px;
+}
+/* Hide Qty label when its cell is grayed out (locked) */
+.${P}-sum-group--qty:has(td.scw-cond-grayed) > .${P}-sum-label {
+  visibility: hidden;
+}
+.${P}-sum-right .${P}-sum-group--labor {
+  width: 75px;
+  min-width: 75px;
+}
+.${P}-sum-right .${P}-sum-group--ext {
+  width: min-content;
+  min-width: 36px;
+}
 .${P}-sum-right .${P}-sum-group--narrow {
   width: 50px;
   min-width: 50px;
@@ -2068,7 +2100,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var fields = groups[i].getAttribute('data-scw-fields').split(' ');
         for (var j = 0; j < fields.length; j++) {
           if (hideSet.has(fields[j])) {
-            groups[i].style.visibility = 'hidden';
+            groups[i].style.display = 'none';
             break;
           }
         }
@@ -2132,7 +2164,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var hf = 0; hf < hgFields.length; hf++) {
           if (hideSet.has(hgFields[hf]) && hiddenGroups[hg].classList.contains(P + '-sum-group--fill')) {
             // Un-hide and replace with swap field content
-            hiddenGroups[hg].style.visibility = '';
+            hiddenGroups[hg].style.display = '';
             hiddenGroups[hg].setAttribute('data-scw-fields', rule.summarySwapField);
             // Remove old label + td, build fresh read-only content
             hiddenGroups[hg].innerHTML = '';
@@ -2767,38 +2799,53 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /** After a fee-trigger save, patch the Fee cell from the API response
    *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
   /**
-   * After a feeTrigger save, refresh the view so Knack re-renders
-   * with updated calculated / related values.
-   * Holds the view's height and fades opacity to avoid a jarring flash.
+   * After a feeTrigger save, patch calculated/readOnly cells in-place
+   * from the PUT response instead of doing a full view refresh.
+   * This avoids the gray-out / opacity fade that blocks back-to-back edits.
    */
-  function refreshViewAfterSave(viewId) {
-    if (typeof Knack === 'undefined') return;
-    setTimeout(function () {
-      try {
-        var view = Knack.views[viewId];
-        if (!view || !view.model || typeof view.model.fetch !== 'function') return;
+  function patchCalculatedCells(viewId, recordId, resp) {
+    if (!resp) return;
+    var cfg = viewCfgFor(viewId);
+    if (!cfg) return;
 
-        var el = document.getElementById(viewId);
-        if (el) {
-          // Lock height + fade so the DOM doesn't collapse during fetch
-          el.style.minHeight = el.offsetHeight + 'px';
-          el.style.opacity = '0.45';
-          el.style.transition = 'opacity .15s';
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
 
-          // Restore on next render of this view
-          $(document).one('knack-view-render.' + viewId + '.scwRefreshFade', function () {
-            el.style.opacity = '1';
-            // Release min-height after the fade-in completes
-            setTimeout(function () { el.style.minHeight = ''; el.style.transition = ''; }, 200);
-          });
-        }
+    // Find the worksheet card for this record
+    var cards = viewEl.querySelectorAll('.' + P + '-card');
+    var card = null;
+    for (var ci = 0; ci < cards.length; ci++) {
+      var row = cards[ci].closest('tr');
+      if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+    }
+    if (!card) return;
 
-        console.log('[scw-ws] Refreshing view ' + viewId + ' after fee-trigger save');
-        view.model.fetch();
-      } catch (e) {
-        console.warn('[scw-ws] Could not refresh ' + viewId, e);
+    // Patch each readOnly summary field that has a value in the response
+    var f = cfg.fields;
+    Object.keys(f).forEach(function (name) {
+      var desc = f[name];
+      if (desc.type !== 'readOnly' || !desc.summary) return;
+      var fk = desc.key;
+      // Try _raw first (Knack's formatted value), then plain
+      var raw = resp[fk + '_raw'];
+      var val = raw != null ? raw : resp[fk];
+      if (val == null) return;
+      // Strip HTML tags if present
+      var txt = (typeof val === 'string') ? val.replace(/<[^>]*>/g, '').trim() : String(val);
+
+      // Find the td inside the card (summary bar)
+      var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+      if (!td) return;
+      // Update the span inside the td (Knack's value wrapper) or the td itself
+      var span = td.querySelector('span[class^="col-"]');
+      if (span) {
+        span.textContent = txt;
+      } else {
+        td.textContent = txt;
       }
-    }, 750);
+    });
+
+    console.log('[scw-ws] Patched calculated cells for ' + recordId + ' in ' + viewId);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -2893,6 +2940,44 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
+  /** Sync a single field value into Knack's internal Backbone model so
+   *  KTL bulk edit (and any other code reading from the model) sees the
+   *  correct value after an AJAX PUT save.
+   *
+   *  IMPORTANT: only update the ONE field that changed. Merging the full
+   *  API response would write HTML-formatted display values into model
+   *  attributes, corrupting subsequent model.updateRecord calls. */
+  function syncKnackModel(viewId, recordId, resp, fieldKey, value) {
+    try {
+      var view = Knack.views[viewId];
+      if (!view || !view.model) return;
+      var m = view.model;
+
+      // Find the Backbone record — try multiple paths
+      var record = typeof m.get === 'function' ? m.get(recordId) : null;
+      if (!record && m.data && typeof m.data.get === 'function') {
+        record = m.data.get(recordId);
+      }
+      if (!record) {
+        var arr = m.models || (m.data && m.data.models) || [];
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && arr[i].id === recordId) { record = arr[i]; break; }
+        }
+      }
+      if (!record) return;
+
+      var attrs = record.attributes || record;
+
+      // Use _raw value from the response (clean server format) when available,
+      // otherwise fall back to the value we sent.
+      var rawVal = (resp && resp[fieldKey + '_raw'] != null) ? resp[fieldKey + '_raw'] : value;
+      attrs[fieldKey] = rawVal;
+      attrs[fieldKey + '_raw'] = rawVal;
+    } catch (ex) {
+      // Silently ignore — model sync is best-effort
+    }
+  }
+
   /** Save a direct-edit field value.
    *  For header-trigger fields, always uses AJAX PUT so we can read
    *  the recalculated formula from the response.  For other fields,
@@ -2923,7 +3008,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       type: 'PUT',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig || trigger) refreshViewAfterSave(viewId);
+        if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+        if (trigger) fetchAndApplyLabel(viewId, recordId);
+        // Sync Knack's internal model so KTL bulk edit reads correct values.
+        // Merge the full API response into the Backbone model so every
+        // field format (_raw, display, etc.) matches what Knack expects.
+        syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
       },
@@ -3075,7 +3165,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         type: 'PUT',
         data: JSON.stringify(data),
         success: function (resp) {
-          if (feeTrig || trigger) refreshViewAfterSave(viewId);
+          if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+          if (trigger) fetchAndApplyLabel(viewId, recordId);
+          syncKnackModel(viewId, recordId, resp, fieldKey, value);
           if (onSuccess) onSuccess(resp);
         },
         error: function (xhr) {
@@ -3280,11 +3372,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Auto-grow: resize textarea to fit content
       function autoGrow() {
         input.style.height = 'auto';
-        input.style.height = input.scrollHeight + 'px';
+        var sh = input.scrollHeight;
+        input.style.height = sh > 0 ? (sh + 'px') : '';
       }
       input.addEventListener('input', autoGrow);
-      // Initial size after append (deferred so layout is ready)
+      // Initial size — use multiple deferred calls because the first
+      // requestAnimationFrame may fire before the browser has finished
+      // laying out the container (scrollHeight returns 0 in that case).
       requestAnimationFrame(autoGrow);
+      setTimeout(autoGrow, 50);
+      setTimeout(autoGrow, 200);
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -3596,18 +3693,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var identity = document.createElement('span');
     identity.className = P + '-identity';
 
-    // Warning chit — placed before label so it appears at the left of the identity block
+    // Warning chit — always reserve space so layout stays consistent;
+    // hidden (visibility:hidden) when count is 0.
     var warnDesc = fieldDesc(viewCfg, 'warningCount');
     if (warnDesc) {
       var warnTd = findCell(tr, warnDesc.key);
       var warnVal = warnTd ? parseFloat((warnTd.textContent || '').replace(/[^0-9.-]/g, '')) : 0;
+      var warnChit = document.createElement('span');
+      warnChit.className = P + '-warn-chit';
       if (warnVal > 0) {
-        var warnChit = document.createElement('span');
-        warnChit.className = P + '-warn-chit';
         warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
             + Math.round(warnVal);
-        identity.appendChild(warnChit);
+      } else {
+        warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>0';
+        warnChit.style.visibility = 'hidden';
       }
+      identity.appendChild(warnChit);
     }
 
     var labelDesc = fieldDesc(viewCfg, 'label');
@@ -3779,6 +3880,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var deleteLink = tr.querySelector('a.kn-link-delete');
     if (deleteLink) {
       var deleteTd = deleteLink.closest('td');
+
       var deleteWrap = document.createElement('span');
       deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
@@ -3845,7 +3947,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     switch (desc.type) {
       case 'readOnly':
         // Strip inline-edit affordance — this field is read-only
-        if (td) td.classList.remove('cell-edit');
+        if (td) {
+          td.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+        }
         var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
         if (row) section.appendChild(row);
         break;
@@ -5007,6 +5111,45 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   });
 
   // ============================================================
+  // HIDE-DELETE SYNC (cross-view)
+  // ============================================================
+
+  /**
+   * For views with hideDeleteWhenFieldNotBlank, hide the delete link
+   * on each row where the specified field is not blank.
+   * Called after any worksheet view transforms.
+   */
+  function syncDeleteVisibility() {
+    WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
+      if (!viewCfg.hideDeleteWhenFieldNotBlank) return;
+      var $view = $('#' + viewCfg.viewId);
+      if (!$view.length) return;
+
+      var fieldKey = viewCfg.hideDeleteWhenFieldNotBlank;
+      var cards = $view[0].querySelectorAll('.' + P + '-card');
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var tr = card.closest('tr');
+        var td = null;
+        // The field td lives in the original Knack data row (previousElementSibling of scw-ws-row)
+        if (tr) {
+          var dataTr = tr.previousElementSibling;
+          if (dataTr) {
+            td = dataTr.querySelector('td.' + fieldKey) || dataTr.querySelector('td[data-field-key="' + fieldKey + '"]');
+          }
+          if (!td) td = tr.querySelector('td.' + fieldKey) || tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+        }
+        if (!td) td = card.querySelector('td.' + fieldKey) || card.querySelector('td[data-field-key="' + fieldKey + '"]');
+        var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
+        var del = card.querySelector('.' + P + '-sum-delete');
+        if (del) {
+          del.style.display = val ? 'none' : '';
+        }
+      }
+    });
+  }
+
+  // ============================================================
   // INIT
   // ============================================================
 
@@ -5019,7 +5162,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
-          setTimeout(function () { transformView(viewCfg); }, 150);
+          setTimeout(function () { transformView(viewCfg); syncDeleteVisibility(); }, 150);
         });
 
       $(document)
@@ -5055,6 +5198,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── Expose API for coordination with post-edit restore ──
   window.SCW = window.SCW || {};
+  window.SCW.syncKnackModel = syncKnackModel;
   window.SCW.deviceWorksheet = {
     /** Capture expanded panel state for all worksheet views. */
     captureState: captureAllExpandedStates,

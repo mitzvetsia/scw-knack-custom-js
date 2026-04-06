@@ -6,10 +6,16 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3544']; // add more views
+  const VIEW_IDS = ['view_3544', 'view_3619', 'view_3627']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css-survey-bid';
+
+  // Assumptions bucket: field_2210 only visible when field_2248 = "Custom Assumption"
+  const ASSUMPTIONS_BUCKET_ID = '697b7a023a31502ec68b3303';
+  const CUSTOM_ASSUMPTION_RECORD = '69ce7098172caa5786d3767d';
+  const ASSUMPTION_TYPE_FIELD = 'field_2248';
+  const ASSUMPTION_DESC_FIELD = 'field_2210';
 
   // Readable mapping
   const BUCKET_RULES_HUMAN = {
@@ -64,8 +70,8 @@
       ['field_2181', 'REL_project'],
       ['field_2427', 'REL_bid'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
-      ['field_2210', 'INPUT_service description'],
       ['field_2432', 'INPUT_survey notes'],
+      ['field_2248', 'INPUT_assumptions'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
@@ -158,6 +164,12 @@
     return (($sel.val() || '') + '').trim();
   }
 
+  function getFieldValue($scope, viewId, fieldKey) {
+    let $sel = $scope.find('#' + viewId + '-' + fieldKey);
+    if (!$sel.length) $sel = $scope.find('select[name="' + fieldKey + '"]');
+    return (($sel.val() || '') + '').trim();
+  }
+
   function applyRules($scope, viewId) {
     const bucketValue = getBucketValue($scope, viewId);
 
@@ -165,6 +177,16 @@
     if (!bucketValue) return;
 
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+
+    // Assumptions bucket: show field_2210 only when field_2248 = Custom Assumption
+    if (bucketValue === ASSUMPTIONS_BUCKET_ID) {
+      var typeVal = getFieldValue($scope, viewId, ASSUMPTION_TYPE_FIELD);
+      if (typeVal === CUSTOM_ASSUMPTION_RECORD) {
+        showField($scope, ASSUMPTION_DESC_FIELD);
+      } else {
+        hideField($scope, ASSUMPTION_DESC_FIELD);
+      }
+    }
   }
 
   // ======================
@@ -179,6 +201,19 @@
         const $bucketWrap = $(this).closest('.kn-input');
         const $scope = $bucketWrap.closest('form, .kn-form, .kn-view').length
           ? $bucketWrap.closest('form, .kn-form, .kn-view')
+          : $('#' + viewId);
+
+        applyRules($scope, viewId);
+      });
+
+    // Re-evaluate when assumption type field changes
+    const typeSel = `#${viewId} select[name="${ASSUMPTION_TYPE_FIELD}"], #${viewId} #${viewId}-${ASSUMPTION_TYPE_FIELD}`;
+
+    $(document)
+      .off('change' + EVENT_NS + '-type', typeSel)
+      .on('change' + EVENT_NS + '-type', typeSel, function () {
+        const $scope = $(this).closest('form, .kn-form, .kn-view').length
+          ? $(this).closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
 
         applyRules($scope, viewId);
