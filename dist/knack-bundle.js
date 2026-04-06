@@ -6441,8 +6441,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // ── Open PDF in new tab ──
 
-  function openPdfPreview(payload) {
-    var htmlStr = buildPdfHtml(payload);
+  function openPdfPreview(htmlStr) {
     var win = window.open('', '_blank');
     if (!win) {
       alert('Popup blocked — please allow popups for this site and try again.');
@@ -6503,9 +6502,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         alert('No proposal data found on this page.');
         return;
       }
+      // Build the HTML once, use it for both preview and webhook
+      var htmlStr = buildPdfHtml(payload);
       // Open print-ready PDF preview
-      openPdfPreview(payload);
-      // Also fire webhook in background
+      openPdfPreview(htmlStr);
+      // Fire webhook with data + rendered HTML
+      payload.html = htmlStr;
       sendToWebhook(payload);
     });
 
