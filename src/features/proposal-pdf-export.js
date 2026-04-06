@@ -585,11 +585,11 @@
 
   function getPdfCss() {
     return [
-      '@page { size: letter; margin: 0.6in 0.75in; }',
+      '@page { size: letter; margin: 0.42in 0.53in; }',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
-      'body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 20px; }',
+      'body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
       '',
       '/* ── View Title ── */',
       '.view-title {',
@@ -621,7 +621,7 @@
       '.richtext-content hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }',
       '',
       '/* ── L1 Section ── */',
-      '.l1-section { margin-bottom: 12px; page-break-inside: avoid; }',
+      '.l1-section { margin-bottom: 12px; }',
       '.l1-header {',
       '  font-size: 18px; font-weight: 200; color: #07467c;',
       '  padding: 20px 0 6px 0; border-bottom: 3px solid #07467c;',
