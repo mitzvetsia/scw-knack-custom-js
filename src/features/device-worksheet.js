@@ -4709,6 +4709,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
         }
       }
+      // ── Lock all fields if field_2551 = Yes (row is finalized) ──
+      var lockTd = tr.querySelector('td.field_2551');
+      var isLocked = lockTd && /yes/i.test((lockTd.textContent || '').trim());
+      if (isLocked) {
+        var allTds = tr.querySelectorAll('td');
+        for (var lk = 0; lk < allTds.length; lk++) {
+          allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+        }
+      }
+
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (effectiveCfg !== viewCfg) {
         card.classList.add(P + '-bucket-override');
