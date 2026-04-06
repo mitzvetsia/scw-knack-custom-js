@@ -25,21 +25,20 @@
         viewId: 'view_3512',
         // All chips render stacked inside the Exterior column
         hostFieldKey: 'field_2372',
-        // These columns get hidden (header + cells)
-        hideFieldKeys: ['field_2370', 'field_2371'],
+        // These columns get hidden (header + cells);
+        // field_2370 handled by device-worksheet (toggleChit in header)
+        hideFieldKeys: ['field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       },
       {
         viewId: 'view_3505',
         hostFieldKey: 'field_2372',
-        hideFieldKeys: ['field_2370', 'field_2371'],
+        hideFieldKeys: ['field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       }

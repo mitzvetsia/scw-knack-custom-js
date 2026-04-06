@@ -14199,21 +14199,20 @@ $(".kn-navigation-bar").hide();
         viewId: 'view_3512',
         // All chips render stacked inside the Exterior column
         hostFieldKey: 'field_2372',
-        // These columns get hidden (header + cells)
-        hideFieldKeys: ['field_2370', 'field_2371'],
+        // These columns get hidden (header + cells);
+        // field_2370 handled by device-worksheet (toggleChit in header)
+        hideFieldKeys: ['field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       },
       {
         viewId: 'view_3505',
         hostFieldKey: 'field_2372',
-        hideFieldKeys: ['field_2370', 'field_2371'],
+        hideFieldKeys: ['field_2371'],
         fields: [
           { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Existing Cabling', fieldKey: 'field_2370' },
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       }
@@ -15737,6 +15736,7 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 4 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -15746,13 +15746,12 @@ $(".kn-navigation-bar").hide();
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          existingCabling:  { key: 'field_2370', type: 'readOnly' },
           plenum:           { key: 'field_2371', type: 'readOnly' },
           mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'bid', 'labor'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -15768,6 +15767,7 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+          existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
           quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
@@ -15778,10 +15778,9 @@ $(".kn-navigation-bar").hide();
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          existingCabling:  { key: 'field_2370', type: 'readOnly' },
           plenum:           { key: 'field_2371', type: 'readOnly' }
         },
-        summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'quantity', 'labor', 'extended', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'surveyNotes']
@@ -16246,6 +16245,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
 /* ── Hide the original data row (cells moved out, shell stays) ── */
 tr[${PROCESSED_ATTR}="1"] {
+  display: none !important;
+}
+
+/* ── Hide Existing Cabling column header (moved to summary bar as toggleChit) ── */
+#view_3512 th.field_2370,
+#view_3505 th.field_2370 {
   display: none !important;
 }
 
