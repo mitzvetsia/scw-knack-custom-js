@@ -18570,6 +18570,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   color: inherit;
   text-decoration: none;
 }
+
+/* ── Locked row (field_2551 = Yes) — disable all interactive widgets ── */
+.${P}-card.${P}-locked .${P}-sum-field input,
+.${P}-card.${P}-locked .${P}-sum-field textarea,
+.${P}-card.${P}-locked .${P}-detail-field input,
+.${P}-card.${P}-locked .${P}-detail-field textarea {
+  pointer-events: none;
+  opacity: 0.6;
+  background: #f5f5f5;
+}
+.${P}-card.${P}-locked .${P}-radio-chips,
+.${P}-card.${P}-locked .${P}-cabling-chit,
+.${P}-card.${P}-locked .${P}-chip-stack {
+  pointer-events: none;
+  opacity: 0.6;
+}
 `;
 
     var style = document.createElement('style');
@@ -21288,10 +21304,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var allTds = tr.querySelectorAll('td');
         for (var lk = 0; lk < allTds.length; lk++) {
           allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+          allTds[lk].classList.add('scw-cell-locked');
         }
       }
 
       var card = buildWorksheetCard(tr, effectiveCfg);
+      if (isLocked) {
+        card.classList.add(P + '-locked');
+      }
       if (effectiveCfg !== viewCfg) {
         card.classList.add(P + '-bucket-override');
       }
