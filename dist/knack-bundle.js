@@ -9058,6 +9058,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css';
 
+  // Assumptions bucket: field_2210 only visible when field_2248 includes "Custom Assumption"
+  const ASSUMPTIONS_BUCKET_ID = '697b7a023a31502ec68b3303';
+  const CUSTOM_ASSUMPTION_RECORD = '69ce7098172caa5786d3767d';
+  const ASSUMPTION_TYPE_FIELD = 'field_2248';
+  const ASSUMPTION_DESC_FIELD = 'field_2210';
+  const CUSTOM_ASSUMPTION_LABEL = 'detail custom assumption:';
+
   // Readable mapping
   const BUCKET_RULES_HUMAN = {
     //cameras or readers
@@ -9196,6 +9203,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return (($sel.val() || '') + '').trim();
   }
 
+  function getFieldValues($scope, viewId, fieldKey) {
+    var $sel = $scope.find('#' + viewId + '-' + fieldKey);
+    if (!$sel.length) $sel = $scope.find('select[name="' + fieldKey + '"]');
+    var val = $sel.val();
+    if (Array.isArray(val)) return val;
+    return val ? [val] : [];
+  }
+
   function applyRules($scope, viewId) {
     const bucketValue = getBucketValue($scope, viewId);
 
@@ -9203,6 +9218,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!bucketValue) return;
 
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+
+    // Assumptions bucket: show field_2210 + rename label when field_2248 includes Custom Assumption
+    if (bucketValue === ASSUMPTIONS_BUCKET_ID) {
+      var typeVals = getFieldValues($scope, viewId, ASSUMPTION_TYPE_FIELD);
+      if (typeVals.indexOf(CUSTOM_ASSUMPTION_RECORD) !== -1) {
+        showField($scope, ASSUMPTION_DESC_FIELD);
+        var $descWrap = $wrapForKeyWithinScope($scope, ASSUMPTION_DESC_FIELD);
+        var $label = $descWrap.find('label:first');
+        if ($label.length && $label.text().trim() !== CUSTOM_ASSUMPTION_LABEL) {
+          $label.text(CUSTOM_ASSUMPTION_LABEL);
+        }
+      } else {
+        hideField($scope, ASSUMPTION_DESC_FIELD);
+      }
+    }
   }
 
   // ======================
@@ -9219,6 +9249,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           ? $bucketWrap.closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
 
+        applyRules($scope, viewId);
+      });
+
+    // Re-evaluate when assumption type field changes (multi-select)
+    const typeSel = `#${viewId} select[name="${ASSUMPTION_TYPE_FIELD}"], #${viewId} #${viewId}-${ASSUMPTION_TYPE_FIELD}`;
+    $(document)
+      .off('change' + EVENT_NS + '-type', typeSel)
+      .on('change' + EVENT_NS + '-type', typeSel, function () {
+        const $scope = $(this).closest('form, .kn-form, .kn-view').length
+          ? $(this).closest('form, .kn-form, .kn-view')
+          : $('#' + viewId);
         applyRules($scope, viewId);
       });
   }
