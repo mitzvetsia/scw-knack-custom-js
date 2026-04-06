@@ -15,7 +15,23 @@
   const CUSTOM_ASSUMPTION_RECORD = '69ce7098172caa5786d3767d';
 
   const EVENT_NS = '.scwCustomAssumption3303';
+  const CSS_ID = 'scw-custom-assumption-3303-css';
   const CUSTOM_LABEL = 'detail custom assumption:';
+
+  // ======================
+  // CSS: hide field_2210 by default in view_3303
+  // ======================
+  function injectCssOnce() {
+    if (document.getElementById(CSS_ID)) return;
+    var style = document.createElement('style');
+    style.id = CSS_ID;
+    style.textContent =
+      '#' + VIEW_ID + ' #kn-input-' + ASSUMPTION_DESC_FIELD + ' { display: none !important; }\n' +
+      '#' + VIEW_ID + ' #kn-input-' + ASSUMPTION_DESC_FIELD + '.scw-show-field { display: block !important; }';
+    document.head.appendChild(style);
+  }
+
+  injectCssOnce();
 
   // ======================
   // DOM helpers
@@ -42,14 +58,14 @@
     if (!$descWrap.length) return;
 
     if (bucketVal === ASSUMPTIONS_BUCKET_ID && typeVal === CUSTOM_ASSUMPTION_RECORD) {
-      $descWrap.show();
+      $descWrap.addClass('scw-show-field');
       // Rename the label
       var $label = $descWrap.find('label:first');
       if ($label.length && $label.text().trim() !== CUSTOM_LABEL) {
         $label.text(CUSTOM_LABEL);
       }
     } else {
-      $descWrap.hide();
+      $descWrap.removeClass('scw-show-field');
     }
   }
 
@@ -75,12 +91,25 @@
         if (!$scope.length) $scope = $('#' + VIEW_ID);
         applyConditional($scope);
       });
+
+    // Chosen dropdown click handler — re-evaluate after selection settles
+    var chosenSel = '#' + VIEW_ID + ' #' + VIEW_ID + '_' + ASSUMPTION_TYPE_FIELD + '_chzn';
+    $(document)
+      .off('click' + EVENT_NS + '-chosen', chosenSel + ', ' + chosenSel + ' *')
+      .on('click' + EVENT_NS + '-chosen', chosenSel + ', ' + chosenSel + ' *', function () {
+        setTimeout(function () {
+          var $scope = $('#' + VIEW_ID);
+          applyConditional($scope);
+        }, 0);
+      });
   }
 
   function initView() {
     bindChanges();
     var $view = $('#' + VIEW_ID);
     applyConditional($view);
+    // Re-check after Chosen/KTL settles
+    requestAnimationFrame(function () { applyConditional($view); });
   }
 
   $(document)
