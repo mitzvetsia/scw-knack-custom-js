@@ -6270,19 +6270,51 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function sendToWebhook(data, $btn) {
     $btn.prop('disabled', true).text('Sending…');
 
+    var jsonStr = JSON.stringify(data);
+    console.log('[SCW PDF Export] payload size:', jsonStr.length, 'bytes');
+    console.log('[SCW PDF Export] payload:', data);
+
     $.ajax({
       url: WEBHOOK_URL,
       type: 'POST',
       contentType: 'application/json',
-      data: JSON.stringify(data),
-      success: function () {
+      data: jsonStr,
+      crossDomain: true,
+      success: function (resp, status, xhr) {
+        console.log('[SCW PDF Export] success:', status, resp);
         $btn.text('Sent ✓').css('background', '#28a745');
         setTimeout(function () {
           $btn.prop('disabled', false).text('Generate PDF').css('background', '');
         }, 3000);
       },
-      error: function (xhr) {
-        console.error('[SCW PDF Export] webhook error:', xhr.status, xhr.responseText);
+      error: function (xhr, status, err) {
+        console.error('[SCW PDF Export] webhook error:', status, err, 'HTTP', xhr.status, xhr.responseText);
+        // If CORS blocked, xhr.status is 0 — try fallback with no preflight
+        if (xhr.status === 0) {
+          console.log('[SCW PDF Export] Retrying with text/plain to avoid CORS preflight…');
+          $.ajax({
+            url: WEBHOOK_URL,
+            type: 'POST',
+            contentType: 'text/plain',
+            data: jsonStr,
+            crossDomain: true,
+            success: function () {
+              console.log('[SCW PDF Export] fallback success');
+              $btn.text('Sent ✓').css('background', '#28a745');
+              setTimeout(function () {
+                $btn.prop('disabled', false).text('Generate PDF').css('background', '');
+              }, 3000);
+            },
+            error: function (xhr2, status2, err2) {
+              console.error('[SCW PDF Export] fallback also failed:', status2, err2);
+              $btn.text('Error — retry?').css('background', '#dc3545');
+              setTimeout(function () {
+                $btn.prop('disabled', false).text('Generate PDF').css('background', '');
+              }, 4000);
+            },
+          });
+          return;
+        }
         $btn.text('Error — retry?').css('background', '#dc3545');
         setTimeout(function () {
           $btn.prop('disabled', false).text('Generate PDF').css('background', '');
@@ -6322,8 +6354,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
 
     $btn.on('click', function () {
+      console.log('[SCW PDF Export] Button clicked — scraping views:', VIEW_IDS);
       var payload = scrapeAllViews();
+      console.log('[SCW PDF Export] Scraped', payload.views.length, 'views, sections:', payload.views.map(function (v) { return v.viewId + ':' + v.sections.length; }));
       if (!payload.views.length) {
+        console.warn('[SCW PDF Export] No data found. Views in DOM:', VIEW_IDS.map(function (id) { return id + '=' + !!document.getElementById(id); }));
         alert('No proposal data found on this page.');
         return;
       }
