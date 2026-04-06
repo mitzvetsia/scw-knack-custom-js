@@ -4739,6 +4739,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
         card.classList.add(P + '-locked');
+        // Block Knack's native inline-edit popup modals on locked rows
+        card.addEventListener('click', function (e) {
+          var td = e.target.closest('td');
+          if (td) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        }, true); // capturing phase — fires before Knack's handlers
       }
       if (effectiveCfg !== viewCfg) {
         card.classList.add(P + '-bucket-override');
