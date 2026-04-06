@@ -1,28 +1,33 @@
-/*** PROPOSAL PDF EXPORT — scene_1096 ***/
+/*** SCW PDF EXPORT — Multi-Scene Template ***/
 (function () {
   'use strict';
 
-  var SCENE_ID = 'scene_1096';
   var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
-  var BUTTON_ID = 'scw-proposal-pdf-btn';
 
-  // Views to skip (Knack internal UI, hidden data sources)
-  var SKIP_VIEWS = { view_3342: true };
+  // ══════════════════════════════════════════════════════════════
+  // SCENE CONFIGS — add new scenes here
+  // ══════════════════════════════════════════════════════════════
 
-  var KEYS = {
-    qty: 'field_1964',
-    labor: 'field_2028',
-    hardware: 'field_2201',
-    cost: 'field_2203',
-    discount: 'field_2267',
-    lineItemDiscount: 'field_2303',
-    description: 'field_2019',
-    prefix: 'field_2240',
-    number: 'field_1951',
-    connectedDevices: 'field_1957',
-  };
+  var SCENES = [
+    {
+      sceneId: 'scene_1096',
+      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: true },
+      skipViews: { view_3342: true },
+      hideEmptyGrids: ['view_3371', 'view_3343'],
+      gridKeys: { qty: 'field_1964', cost: 'field_2203' },
+    },
+    {
+      sceneId: 'scene_1149',
+      trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
+      skipViews: { view_3679: true },
+      hideEmptyGrids: [],
+      gridKeys: { qty: 'field_2399', cost: 'field_2401' },
+    },
+  ];
 
-  // ── Helpers ──
+  // ══════════════════════════════════════════════════════════════
+  // HELPERS
+  // ══════════════════════════════════════════════════════════════
 
   function norm(s) {
     return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
@@ -62,21 +67,15 @@
   }
 
   function isKnackFilterOrButton(viewId) {
-    // Knack generates filter/button sub-elements with IDs like view_XXXX_filters, view_XXXX-filterDivId, etc.
     return /_filters$|-filter|_filterBtn$|-filterBtn$|-filterDivId$/.test(viewId);
   }
 
   function detectViewType(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return null;
-
-    // Check for grid/table view
     if (root.querySelector('.kn-table tbody')) return 'grid';
-    // Check for detail view (field list)
     if (root.querySelector('.kn-detail-body') || root.classList.contains('kn-detail') || root.querySelector('.field-list')) return 'detail';
-    // Check for rich text view
     if (root.classList.contains('kn-rich_text') || root.querySelector('.kn-rich-text-content')) return 'richtext';
-
     return 'unknown';
   }
 
@@ -89,7 +88,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // SCRAPER: Detail views (label/value field pairs)
+  // SCRAPER: Detail views
   // ══════════════════════════════════════════════════════════════
 
   function scrapeDetailView(viewId) {
@@ -99,16 +98,11 @@
     var title = getViewTitle(viewId);
     var fields = [];
 
-    // Strategy: find all field containers (div.field_XXXX or div.kn-detail)
-    // This captures both labeled fields (.kn-detail with label+value) and
-    // label-none fields (.kn-label-none with value only, e.g. H1/H2 headings)
-
-    // 1) Standard labeled fields: .kn-detail with .kn-detail-label + .kn-detail-body
+    // 1) Standard labeled fields
     var detailItems = root.querySelectorAll('.kn-detail');
     for (var i = 0; i < detailItems.length; i++) {
       var item = detailItems[i];
       if (item.id === viewId) continue;
-      // Skip if this is a label-none field (handled below)
       if (item.classList.contains('kn-label-none')) continue;
 
       var labelEl = item.querySelector('.kn-detail-label');
@@ -124,8 +118,7 @@
       fields.push({ label: label, value: value, valueHtml: valueHtml });
     }
 
-    // 2) Label-none fields: .kn-label-none > .kn-detail-body (no label, just value)
-    //    These are typically headings (H1, H2) or standalone text values
+    // 2) Label-none fields (headings, standalone values)
     var labelNoneItems = root.querySelectorAll('.kn-label-none');
     for (var j = 0; j < labelNoneItems.length; j++) {
       var lnItem = labelNoneItems[j];
@@ -155,7 +148,6 @@
 
     var title = getViewTitle(viewId);
 
-    // Get the rich text content — try multiple selectors
     var contentEl = root.querySelector('.kn-rich-text-content') || root.querySelector('.view-body') || root;
     var contentHtml = '';
     var text = '';
@@ -164,17 +156,16 @@
       text = norm(contentEl.textContent);
     }
 
-    // Accept views with HTML content even if text is empty (e.g. images, <hr>)
     if (!contentHtml && !title) return null;
 
     return { viewId: viewId, type: 'richtext', title: title, contentHtml: contentHtml, contentText: text };
   }
 
   // ══════════════════════════════════════════════════════════════
-  // SCRAPER: Grid views (the existing proposal grid scraper)
+  // SCRAPER: Grid views (parameterized by keys)
   // ══════════════════════════════════════════════════════════════
 
-  function scrapeGridView(viewId) {
+  function scrapeGridView(viewId, keys) {
     var root = document.getElementById(viewId);
     if (!root) return null;
 
@@ -231,8 +222,8 @@
         if (!isVisibleRow(tr)) continue;
 
         var l3Label = groupLabelText(tr);
-        var l3Qty = parseMoney(norm((tr.querySelector('td.' + KEYS.qty) || {}).textContent || ''));
-        var l3Cost = norm((tr.querySelector('td.' + KEYS.cost) || {}).textContent || '');
+        var l3Qty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+        var l3Cost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
 
         var connDevSpan = tr.querySelector('.scw-l3-connected-devices');
         var connDevices = [];
@@ -266,8 +257,8 @@
         var cameraList = '';
         if (camB) cameraList = norm(camB.textContent).replace(/^\(/, '').replace(/\)$/, '');
 
-        var l4Qty = parseMoney(norm((tr.querySelector('td.' + KEYS.qty) || {}).textContent || ''));
-        var l4Cost = norm((tr.querySelector('td.' + KEYS.cost) || {}).textContent || '');
+        var l4Qty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+        var l4Cost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
 
         var lineItem = {
           level: 4, label: l4Label, description: description,
@@ -287,8 +278,8 @@
 
       if (tr.classList.contains('scw-subtotal--level-2')) {
         var l2FooterLabel = norm(tr.getAttribute('data-scw-group-label') || '');
-        var l2FooterQty = parseMoney(norm((tr.querySelector('td.' + KEYS.qty) || {}).textContent || ''));
-        var l2FooterCost = norm((tr.querySelector('td.' + KEYS.cost) || {}).textContent || '');
+        var l2FooterQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+        var l2FooterCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
 
         if (currentL2) {
           currentL2.footer = { label: l2FooterLabel, qty: l2FooterQty, cost: l2FooterCost };
@@ -345,37 +336,32 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // SCRAPE ALL VIEWS on scene
+  // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
-  function scrapeAllViews() {
-    var result = { views: [] };
+  function scrapeAllViews(cfg) {
+    var result = { views: [], sceneId: cfg.sceneId };
 
-    var sceneEl = document.getElementById('kn-' + SCENE_ID);
-    // Get direct child views only (avoid nested filter elements)
-    // Knack scene structure: #kn-scene_XXXX > .kn-scene > columns > .kn-view (views)
+    var sceneEl = document.getElementById('kn-' + cfg.sceneId);
     var allViewEls = sceneEl ? sceneEl.querySelectorAll('[id^="view_"]') : [];
 
     for (var i = 0; i < allViewEls.length; i++) {
       var viewId = allViewEls[i].id;
 
-      // Skip filter/button UI elements
       if (isKnackFilterOrButton(viewId)) continue;
-      // Skip explicitly excluded views
-      if (SKIP_VIEWS[viewId]) continue;
+      if (cfg.skipViews[viewId]) continue;
 
       var viewType = detectViewType(viewId);
-      console.log('[SCW PDF Export]', viewId, '→ type:', viewType, 'title:', getViewTitle(viewId));
+      console.log('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
 
       var data = null;
 
       if (viewType === 'grid') {
-        // Skip grid views with no data rows (e.g. empty view_3371)
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ grid has no data rows, skipping');
+          console.log('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
-        data = scrapeGridView(viewId);
+        data = scrapeGridView(viewId, cfg.gridKeys);
       } else if (viewType === 'detail') {
         data = scrapeDetailView(viewId);
       } else if (viewType === 'richtext') {
@@ -385,7 +371,6 @@
       if (data) result.views.push(data);
     }
 
-    // Extract project totals from the first grid view that has them
     for (var j = 0; j < result.views.length; j++) {
       if (result.views[j].projectTotals) {
         result.projectTotals = result.views[j].projectTotals;
@@ -409,7 +394,6 @@
       for (var i = 0; i < view.fields.length; i++) {
         var f = view.fields[i];
         if (f.labelNone) {
-          // Label-none fields: render the raw HTML (preserves H1, H2, etc.)
           html.push('<div class="detail-label-none">' + f.valueHtml + '</div>');
         } else {
           if (!hasLabeled) {
@@ -539,7 +523,6 @@
     html.push('</style>');
     html.push('</head><body>');
 
-    // ── Render ALL views in DOM order ──
     for (var v = 0; v < payload.views.length; v++) {
       var view = payload.views[v];
 
@@ -552,7 +535,6 @@
       }
     }
 
-    // ── Project Totals ──
     var pt = payload.projectTotals;
     if (!pt) {
       for (var j = 0; j < payload.views.length; j++) {
@@ -707,7 +689,9 @@
     ].join('\n');
   }
 
-  // ── Open PDF in new tab ──
+  // ══════════════════════════════════════════════════════════════
+  // SHARED ACTIONS
+  // ══════════════════════════════════════════════════════════════
 
   function openPdfPreview(htmlStr) {
     var win = window.open('', '_blank');
@@ -720,8 +704,6 @@
     setTimeout(function () { win.print(); }, 600);
   }
 
-  // ── Send to webhook ──
-
   function sendToWebhook(data) {
     var jsonStr = JSON.stringify(data);
     $.ajax({
@@ -733,70 +715,141 @@
     });
   }
 
-  // ── Hide empty grid views on the page ──
+  function runExport(cfg, extra) {
+    var payload = scrapeAllViews(cfg);
+    if (!payload.views.length) {
+      console.log('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
+      return;
+    }
+    if (extra) {
+      for (var k in extra) { if (extra.hasOwnProperty(k)) payload[k] = extra[k]; }
+    }
+    var htmlStr = buildPdfHtml(payload);
+    payload.html = htmlStr;
+    sendToWebhook(payload);
 
-  function hideEmptyGridViews() {
-    var el3371 = document.getElementById('view_3371');
-    if (el3371 && !viewHasDataRows('view_3371')) el3371.style.display = 'none';
-    var el3343 = document.getElementById('view_3343');
-    if (el3343 && !viewHasDataRows('view_3343')) el3343.style.display = 'none';
+    if (cfg.trigger.openPreview) {
+      openPdfPreview(htmlStr);
+    }
   }
 
-  // ── Button injection ──
+  // ══════════════════════════════════════════════════════════════
+  // HIDE EMPTY GRID VIEWS
+  // ══════════════════════════════════════════════════════════════
 
-  function injectButton() {
-    if (document.getElementById(BUTTON_ID)) return;
+  function hideEmptyGridViews(viewIds) {
+    for (var i = 0; i < viewIds.length; i++) {
+      var el = document.getElementById(viewIds[i]);
+      if (el && !viewHasDataRows(viewIds[i])) el.style.display = 'none';
+    }
+  }
 
-    var sceneEl = document.getElementById('kn-' + SCENE_ID);
-    if (!sceneEl) return;
+  // ══════════════════════════════════════════════════════════════
+  // TRIGGER: Button injection
+  // ══════════════════════════════════════════════════════════════
 
-    var $btn = $('<button></button>')
-      .attr('id', BUTTON_ID)
-      .text('Generate PDF')
-      .css({
-        position: 'fixed',
-        bottom: '24px',
-        right: '24px',
-        zIndex: 9999,
-        padding: '12px 24px',
-        fontSize: '15px',
-        fontWeight: 700,
-        color: '#fff',
-        background: '#07467c',
-        border: 'none',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        boxShadow: '0 2px 8px rgba(0,0,0,.25)',
-      });
+  function setupButtonTrigger(cfg) {
+    var btnId = cfg.trigger.buttonId;
 
-    $btn.on('mouseenter', function () { $(this).css('opacity', 0.9); });
-    $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
+    $(document).on('knack-scene-render.' + cfg.sceneId, function () {
+      setTimeout(function () {
+        hideEmptyGridViews(cfg.hideEmptyGrids);
 
-    $btn.on('click', function () {
-      var payload = scrapeAllViews();
-      if (!payload.views.length) {
-        alert('No proposal data found on this page.');
-        return;
-      }
-      var htmlStr = buildPdfHtml(payload);
-      openPdfPreview(htmlStr);
-      payload.html = htmlStr;
-      sendToWebhook(payload);
+        if (document.getElementById(btnId)) return;
+
+        var sceneEl = document.getElementById('kn-' + cfg.sceneId);
+        if (!sceneEl) return;
+
+        var $btn = $('<button></button>')
+          .attr('id', btnId)
+          .text('Generate PDF')
+          .css({
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 9999,
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: 700,
+            color: '#fff',
+            background: '#07467c',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+          });
+
+        $btn.on('mouseenter', function () { $(this).css('opacity', 0.9); });
+        $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
+
+        $btn.on('click', function () {
+          var payload = scrapeAllViews(cfg);
+          if (!payload.views.length) {
+            alert('No data found on this page.');
+            return;
+          }
+          var htmlStr = buildPdfHtml(payload);
+          openPdfPreview(htmlStr);
+          payload.html = htmlStr;
+          sendToWebhook(payload);
+        });
+
+        $(sceneEl).append($btn);
+      }, 1500);
     });
 
-    $(sceneEl).append($btn);
+    // Re-hide empty grids on view re-render
+    if (cfg.hideEmptyGrids.length) {
+      var hideEvents = cfg.hideEmptyGrids.map(function (v) { return 'knack-view-render.' + v; }).join(' ');
+      $(document).on(hideEvents, function () {
+        setTimeout(function () { hideEmptyGridViews(cfg.hideEmptyGrids); }, 500);
+      });
+    }
   }
 
-  // ── Bind to scene render ──
+  // ══════════════════════════════════════════════════════════════
+  // TRIGGER: Form submit
+  // ══════════════════════════════════════════════════════════════
 
-  $(document).on('knack-scene-render.' + SCENE_ID, function () {
-    setTimeout(function () {
-      hideEmptyGridViews();
-      injectButton();
-    }, 1500);
-  });
+  function setupFormSubmitTrigger(cfg) {
+    var formViewId = cfg.trigger.formViewId;
+    var ns = '.scwPdfExport' + cfg.sceneId;
 
-  $(document).on('knack-view-render.view_3371 knack-view-render.view_3343', function () {
-    setTimeout(hideEmptyGridViews, 500);
-  });
+    $(document).on('knack-view-render.' + formViewId, function () {
+      var $form = $('#' + formViewId + ' form');
+      $form.off('submit' + ns).on('submit' + ns, function () {
+        var extra = {};
+
+        // Extract record ID from the form
+        if (cfg.trigger.recordIdInput) {
+          var $idInput = $('#' + formViewId + ' input[name="' + cfg.trigger.recordIdInput + '"]');
+          if ($idInput.length) extra.recordId = $idInput.val();
+        }
+
+        console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
+        runExport(cfg, extra);
+      });
+    });
+
+    // Also hide empty grids on scene render
+    if (cfg.hideEmptyGrids.length) {
+      $(document).on('knack-scene-render.' + cfg.sceneId, function () {
+        setTimeout(function () { hideEmptyGridViews(cfg.hideEmptyGrids); }, 1500);
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // INIT — wire up all scenes
+  // ══════════════════════════════════════════════════════════════
+
+  for (var i = 0; i < SCENES.length; i++) {
+    var cfg = SCENES[i];
+
+    if (cfg.trigger.type === 'button') {
+      setupButtonTrigger(cfg);
+    } else if (cfg.trigger.type === 'formSubmit') {
+      setupFormSubmitTrigger(cfg);
+    }
+  }
 })();
