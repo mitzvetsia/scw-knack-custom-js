@@ -47,6 +47,29 @@
     return tr.style.display !== 'none' && !tr.classList.contains('scw-hide-level3-header') && !tr.classList.contains('scw-hide-level4-header');
   }
 
+  // ── Check if a view has actual data rows ──
+
+  function viewHasDataRows(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return false;
+    var tbody = root.querySelector('.kn-table tbody');
+    if (!tbody) return false;
+    // tr[id] = actual Knack data rows (not group headers or injected rows)
+    return tbody.querySelectorAll('tr[id]').length > 0;
+  }
+
+  // ── Get the view title from the DOM ──
+
+  function getViewTitle(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return '';
+    var h2 = root.querySelector('.view-header h2');
+    if (h2) return norm(h2.textContent);
+    var h1 = root.querySelector('.view-header h1');
+    if (h1) return norm(h1.textContent);
+    return '';
+  }
+
   // ── DOM scraper ──
 
   function scrapeView(viewId) {
@@ -59,6 +82,7 @@
     var rows = Array.from(tbody.children);
     if (!rows.length) return null;
 
+    var title = getViewTitle(viewId);
     var sections = [];
     var currentL1 = null;
     var currentL2 = null;
@@ -162,8 +186,6 @@
         };
 
         if (!currentL3 && currentL2) {
-          // No visible L3 (e.g. Services with hideLevel3Summary) — create a
-          // synthetic product to hold these orphan L4 line items.
           currentL3 = {
             level: 3, label: '', qty: l4Qty, cost: l4Cost,
             connectedDevices: [], isMountingHardware: false, lineItems: [],
@@ -233,13 +255,18 @@
       }
     }
 
-    return { viewId: viewId, sections: sections, projectTotals: projectTotals };
+    return { viewId: viewId, title: title, sections: sections, projectTotals: projectTotals };
   }
 
   function scrapeAllViews() {
     var result = { views: [] };
     for (var i = 0; i < VIEW_IDS.length; i++) {
-      var data = scrapeView(VIEW_IDS[i]);
+      var viewId = VIEW_IDS[i];
+
+      // Skip view_3371 entirely if it has no data rows
+      if (viewId === 'view_3371' && !viewHasDataRows(viewId)) continue;
+
+      var data = scrapeView(viewId);
       if (data && data.sections.length) result.views.push(data);
     }
     for (var j = 0; j < result.views.length; j++) {
@@ -252,42 +279,23 @@
   // HTML PDF RENDERER — builds a print-ready page from JSON
   // ══════════════════════════════════════════════════════════════
 
-  function buildPdfHtml(payload) {
-    var view = payload.views[0];
-    if (!view) return '';
-
-    var html = [];
-
-    html.push('<!DOCTYPE html>');
-    html.push('<html><head><meta charset="utf-8">');
-    html.push('<title>Proposal</title>');
-    html.push('<style>');
-    html.push(getPdfCss());
-    html.push('</style>');
-    html.push('</head><body>');
-
-    // ── Render each L1 section ──
+  function renderViewSections(view, html) {
     for (var s = 0; s < view.sections.length; s++) {
       var section = view.sections[s];
 
-      // Skip empty placeholder sections (blank promoted L1 with no content)
       if (section.promoted && !section.label && !section.buckets.length) continue;
-      // Skip sections with no real content (only empty buckets, no footer)
       if (!section.footer && !hasSectionContent(section)) continue;
 
       html.push('<div class="l1-section">');
 
-      // L1 header
       if (section.label) {
         html.push('<div class="l1-header">' + esc(section.label) + '</div>');
       }
 
-      // Render each L2 bucket
       for (var b = 0; b < section.buckets.length; b++) {
         var bucket = section.buckets[b];
         if (!bucket.products.length && !bucket.footer) continue;
 
-        // Skip promoted L2 headers (label already shown as L1)
         if (!bucket.isPromoted) {
           html.push('<div class="l2-header">' + esc(bucket.label) + '</div>');
         }
@@ -301,7 +309,6 @@
             var prod = bucket.products[p];
             var prodClass = prod.isMountingHardware ? ' class="mounting"' : '';
 
-            // Only render L3 product row if it has a label (skip synthetic/hidden L3s)
             if (prod.label) {
               html.push('<tr class="l3-row">');
               html.push('<td' + prodClass + '>' + esc(prod.label));
@@ -314,7 +321,6 @@
               html.push('</tr>');
             }
 
-            // L4 line items — render as top-level rows when L3 has no label
             var l4Class = prod.label ? 'l4-row' : 'l3-row';
             var l4TdClass = prod.label ? 'l4-desc' : '';
             for (var li = 0; li < prod.lineItems.length; li++) {
@@ -329,7 +335,6 @@
 
           html.push('</tbody>');
 
-          // L2 footer
           if (bucket.footer) {
             html.push('<tfoot>');
             html.push('<tr class="l2-footer">');
@@ -344,7 +349,6 @@
         }
       }
 
-      // L1 footer
       if (section.footer && section.footer.lines.length) {
         html.push('<div class="l1-footer">');
         html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
@@ -358,11 +362,45 @@
         html.push('</div>');
       }
 
-      html.push('</div>'); // .l1-section
+      html.push('</div>');
+    }
+  }
+
+  function buildPdfHtml(payload) {
+    if (!payload.views.length) return '';
+
+    var html = [];
+
+    html.push('<!DOCTYPE html>');
+    html.push('<html><head><meta charset="utf-8">');
+    html.push('<title>Proposal</title>');
+    html.push('<style>');
+    html.push(getPdfCss());
+    html.push('</style>');
+    html.push('</head><body>');
+
+    // ── Render ALL views ──
+    for (var v = 0; v < payload.views.length; v++) {
+      var view = payload.views[v];
+
+      // View title / separator between views
+      if (view.title) {
+        html.push('<div class="view-title">' + esc(view.title) + '</div>');
+      } else if (v > 0) {
+        // No title but not the first view — add a separator
+        html.push('<hr class="view-separator" />');
+      }
+
+      renderViewSections(view, html);
     }
 
-    // ── Project Totals ──
-    var pt = payload.projectTotals || view.projectTotals;
+    // ── Project Totals (use payload-level, then fall back to first view with them) ──
+    var pt = payload.projectTotals;
+    if (!pt) {
+      for (var j = 0; j < payload.views.length; j++) {
+        if (payload.views[j].projectTotals) { pt = payload.views[j].projectTotals; break; }
+      }
+    }
     if (pt && pt.lines.length) {
       html.push('<div class="project-totals">');
       html.push('<div class="pt-title">' + esc(pt.title) + '</div>');
@@ -394,6 +432,15 @@
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
       'body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 20px; }',
+      '',
+      '/* ── View Title ── */',
+      '.view-title {',
+      '  font-size: 24px; font-weight: 800; color: #07467c;',
+      '  margin: 30px 0 10px 0; padding-bottom: 6px;',
+      '  border-bottom: 4px solid #07467c;',
+      '}',
+      '.view-title:first-child { margin-top: 0; }',
+      '.view-separator { border: none; border-top: 2px solid #ccc; margin: 30px 0; }',
       '',
       '/* ── L1 Section ── */',
       '.l1-section { margin-bottom: 12px; page-break-inside: avoid; }',
@@ -492,7 +539,6 @@
     }
     win.document.write(htmlStr);
     win.document.close();
-    // Auto-trigger print dialog after a brief render delay
     setTimeout(function () { win.print(); }, 600);
   }
 
@@ -507,6 +553,15 @@
       data: jsonStr,
       crossDomain: true,
     });
+  }
+
+  // ── Hide view_3371 from the page if it has no data rows ──
+
+  function hideEmptyView3371() {
+    if (!viewHasDataRows('view_3371')) {
+      var el = document.getElementById('view_3371');
+      if (el) el.style.display = 'none';
+    }
   }
 
   // ── Button injection ──
@@ -545,11 +600,8 @@
         alert('No proposal data found on this page.');
         return;
       }
-      // Build the HTML once, use it for both preview and webhook
       var htmlStr = buildPdfHtml(payload);
-      // Open print-ready PDF preview
       openPdfPreview(htmlStr);
-      // Fire webhook with data + rendered HTML
       payload.html = htmlStr;
       sendToWebhook(payload);
     });
@@ -560,6 +612,14 @@
   // ── Bind to scene render ──
 
   $(document).on('knack-scene-render.' + SCENE_ID, function () {
-    setTimeout(injectButton, 1500);
+    setTimeout(function () {
+      hideEmptyView3371();
+      injectButton();
+    }, 1500);
+  });
+
+  // Also hide view_3371 when it renders individually (in case it renders after scene)
+  $(document).on('knack-view-render.view_3371', function () {
+    setTimeout(hideEmptyView3371, 500);
   });
 })();
