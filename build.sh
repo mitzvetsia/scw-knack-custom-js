@@ -46,7 +46,6 @@ cat \
   src/features/refresh-view-on-form-submit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/bucket-field-visibility_add-survey-bid-item.js \
-  src/features/custom-assumption-conditional_view_3303.js \
   src/features/style-detail-labels.js \
   src/features/gtm-inject.js \
   src/features/jotform-embed-sow-photos.js \
