@@ -99,12 +99,17 @@
     var title = getViewTitle(viewId);
     var fields = [];
 
-    // Knack detail views: .kn-detail contains .kn-detail-label + .kn-detail-body
+    // Strategy: find all field containers (div.field_XXXX or div.kn-detail)
+    // This captures both labeled fields (.kn-detail with label+value) and
+    // label-none fields (.kn-label-none with value only, e.g. H1/H2 headings)
+
+    // 1) Standard labeled fields: .kn-detail with .kn-detail-label + .kn-detail-body
     var detailItems = root.querySelectorAll('.kn-detail');
     for (var i = 0; i < detailItems.length; i++) {
       var item = detailItems[i];
-      // Skip the outer container that wraps everything
       if (item.id === viewId) continue;
+      // Skip if this is a label-none field (handled below)
+      if (item.classList.contains('kn-label-none')) continue;
 
       var labelEl = item.querySelector('.kn-detail-label');
       var valueEl = item.querySelector('.kn-detail-body');
@@ -114,10 +119,25 @@
       var value = norm(valueEl.textContent);
       var valueHtml = valueEl.innerHTML || '';
 
-      // Skip empty fields
       if (!value || value === '-' || value === '—') continue;
 
       fields.push({ label: label, value: value, valueHtml: valueHtml });
+    }
+
+    // 2) Label-none fields: .kn-label-none > .kn-detail-body (no label, just value)
+    //    These are typically headings (H1, H2) or standalone text values
+    var labelNoneItems = root.querySelectorAll('.kn-label-none');
+    for (var j = 0; j < labelNoneItems.length; j++) {
+      var lnItem = labelNoneItems[j];
+      var lnBody = lnItem.querySelector('.kn-detail-body');
+      if (!lnBody) continue;
+
+      var lnText = norm(lnBody.textContent);
+      var lnHtml = lnBody.innerHTML || '';
+
+      if (!lnText) continue;
+
+      fields.push({ label: '', value: lnText, valueHtml: lnHtml, labelNone: true });
     }
 
     if (!fields.length && !title) return null;
@@ -135,18 +155,19 @@
 
     var title = getViewTitle(viewId);
 
-    // Get the rich text content
-    var contentEl = root.querySelector('.kn-rich-text-content') || root.querySelector('.view-body');
-    var html = '';
+    // Get the rich text content — try multiple selectors
+    var contentEl = root.querySelector('.kn-rich-text-content') || root.querySelector('.view-body') || root;
+    var contentHtml = '';
     var text = '';
     if (contentEl) {
-      html = contentEl.innerHTML || '';
+      contentHtml = contentEl.innerHTML || '';
       text = norm(contentEl.textContent);
     }
 
-    if (!text && !title) return null;
+    // Accept views with HTML content even if text is empty (e.g. images, <hr>)
+    if (!contentHtml && !title) return null;
 
-    return { viewId: viewId, type: 'richtext', title: title, contentHtml: html, contentText: text };
+    return { viewId: viewId, type: 'richtext', title: title, contentHtml: contentHtml, contentText: text };
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -384,15 +405,24 @@
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
     if (view.fields.length) {
-      html.push('<table class="detail-table">');
+      var hasLabeled = false;
       for (var i = 0; i < view.fields.length; i++) {
         var f = view.fields[i];
-        html.push('<tr>');
-        html.push('<td class="detail-label">' + esc(f.label) + '</td>');
-        html.push('<td class="detail-value">' + esc(f.value) + '</td>');
-        html.push('</tr>');
+        if (f.labelNone) {
+          // Label-none fields: render the raw HTML (preserves H1, H2, etc.)
+          html.push('<div class="detail-label-none">' + f.valueHtml + '</div>');
+        } else {
+          if (!hasLabeled) {
+            html.push('<table class="detail-table">');
+            hasLabeled = true;
+          }
+          html.push('<tr>');
+          html.push('<td class="detail-label">' + esc(f.label) + '</td>');
+          html.push('<td class="detail-value">' + esc(f.value) + '</td>');
+          html.push('</tr>');
+        }
       }
-      html.push('</table>');
+      if (hasLabeled) html.push('</table>');
     }
   }
 
@@ -400,7 +430,7 @@
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
-    if (view.contentText) {
+    if (view.contentHtml) {
       html.push('<div class="richtext-content">' + view.contentHtml + '</div>');
     }
   }
@@ -578,9 +608,17 @@
       '}',
       '.detail-value { padding: 5px 0; color: #333; font-size: 11px; }',
       '',
+      '/* ── Detail Label-None (headings, standalone values) ── */',
+      '.detail-label-none { margin-bottom: 4px; color: #07467c; }',
+      '.detail-label-none h1 { font-size: 22px; font-weight: 700; margin: 0 0 2px 0; color: #07467c; }',
+      '.detail-label-none h2 { font-size: 16px; font-weight: 400; margin: 0 0 2px 0; color: #07467c; }',
+      '.detail-label-none span { color: #07467c; }',
+      '',
       '/* ── Rich Text View ── */',
       '.richtext-content { margin-bottom: 16px; line-height: 1.5; color: #333; font-size: 11px; }',
       '.richtext-content p { margin: 0 0 6px 0; }',
+      '.richtext-content img { max-width: 100%; height: auto; }',
+      '.richtext-content hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }',
       '',
       '/* ── L1 Section ── */',
       '.l1-section { margin-bottom: 12px; page-break-inside: avoid; }',
