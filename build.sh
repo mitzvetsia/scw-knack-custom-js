@@ -23,6 +23,7 @@ cat \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
+  src/features/proposal-pdf-export.js \
   src/features/bid-items-grid.js \
   src/features/group-collapse.js \
   src/features/select-all-checkboxes.js \
