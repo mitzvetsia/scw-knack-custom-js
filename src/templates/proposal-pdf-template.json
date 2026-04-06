@@ -1,0 +1,362 @@
+{
+  "$schema": "proposal-pdf-template-schema",
+  "version": "1.0.0",
+  "description": "PDF template schema mirroring the SCW proposal grid (proposal-grid.js) hierarchical structure. Levels: L1 (sections) > L2 (buckets) > L3 (products) > L4 (line items). All monetary values are formatted as '$X,XXX.XX'.",
+
+  "proposal": {
+    "title": "Proposal Title",
+    "sections": [
+      {
+        "_comment": "Level 1 — top-level section (e.g. MDF, IDF, Building A)",
+        "level": 1,
+        "label": "Section Name",
+        "showColumnHeaders": true,
+        "columnHeaders": {
+          "qty": "Qty",
+          "cost": "Cost"
+        },
+        "buckets": [
+          {
+            "_comment": "Level 2 — bucket within a section (e.g. Cameras & Cabling, Services, Assumptions)",
+            "level": 2,
+            "label": "Cameras & Cabling",
+            "contextKey": "drop",
+            "styling": {
+              "background": "",
+              "textColor": "",
+              "cssClass": ""
+            },
+            "options": {
+              "hideLevel3Summary": false,
+              "hideQtyCostColumns": false,
+              "hideFooter": false,
+              "labelRewrite": null
+            },
+            "products": [
+              {
+                "_comment": "Level 3 — product line (e.g. a camera model). Sorted by cost descending.",
+                "level": 3,
+                "label": "Product Name",
+                "qty": 4,
+                "cost": "$1,200.00",
+                "connectedDevices": ["Device A", "Device B"],
+                "isMountingHardware": false,
+                "lineItems": [
+                  {
+                    "_comment": "Level 4 — individual line item / install description. For 'drop' context, camera prefixes are concatenated into the label.",
+                    "level": 4,
+                    "label": "Install description text",
+                    "description": "Rich text from field_2019 (bold and line breaks preserved)",
+                    "qty": 2,
+                    "cost": "$600.00",
+                    "cameraList": "CAM01, CAM02",
+                    "hidden": false
+                  },
+                  {
+                    "level": 4,
+                    "label": "",
+                    "description": "Another line item with <b>bold</b> formatting",
+                    "qty": 2,
+                    "cost": "$600.00",
+                    "cameraList": "",
+                    "hidden": false
+                  }
+                ]
+              },
+              {
+                "level": 3,
+                "label": "Mounting Hardware Product",
+                "qty": 4,
+                "cost": "$200.00",
+                "connectedDevices": [],
+                "isMountingHardware": true,
+                "lineItems": []
+              }
+            ],
+            "footer": {
+              "label": "Cameras & Cabling",
+              "qty": 8,
+              "cost": "$1,400.00"
+            }
+          },
+          {
+            "level": 2,
+            "label": "NVRs, Switches, and Networking",
+            "contextKey": "headend",
+            "styling": {
+              "background": "",
+              "textColor": "",
+              "cssClass": ""
+            },
+            "options": {
+              "hideLevel3Summary": false,
+              "hideQtyCostColumns": false,
+              "hideFooter": false,
+              "labelRewrite": "NVRs, Switches, and Networking"
+            },
+            "products": [
+              {
+                "level": 3,
+                "label": "NVR Model",
+                "qty": 1,
+                "cost": "$3,500.00",
+                "connectedDevices": [],
+                "isMountingHardware": false,
+                "lineItems": [
+                  {
+                    "level": 4,
+                    "label": "NVR installation and configuration",
+                    "description": "Installation and configuration of NVR",
+                    "qty": 1,
+                    "cost": "$500.00",
+                    "cameraList": "",
+                    "hidden": false
+                  }
+                ]
+              }
+            ],
+            "footer": {
+              "label": "NVRs, Switches, and Networking",
+              "qty": 1,
+              "cost": "$4,000.00"
+            }
+          },
+          {
+            "level": 2,
+            "label": "Services",
+            "contextKey": "services",
+            "styling": {
+              "background": "",
+              "textColor": "",
+              "cssClass": "scw-l2--services"
+            },
+            "options": {
+              "hideLevel3Summary": true,
+              "hideQtyCostColumns": true,
+              "hideFooter": false,
+              "labelRewrite": null
+            },
+            "products": [],
+            "footer": {
+              "label": "Services",
+              "qty": 0,
+              "cost": "$2,000.00"
+            }
+          },
+          {
+            "level": 2,
+            "label": "General Project Assumptions",
+            "contextKey": "assumptions",
+            "styling": {
+              "background": "#f0f7ff",
+              "textColor": "",
+              "cssClass": "scw-l2--assumptions"
+            },
+            "options": {
+              "hideLevel3Summary": true,
+              "hideQtyCostColumns": true,
+              "hideFooter": true,
+              "labelRewrite": null
+            },
+            "products": [],
+            "footer": null
+          }
+        ],
+        "footer": {
+          "_comment": "L1 footer — shows Subtotal/Discount/Total if discount exists, otherwise just Total",
+          "title": "Section Name",
+          "hasDiscount": true,
+          "lines": [
+            {
+              "type": "sub",
+              "label": "Subtotal",
+              "value": "$7,400.00",
+              "style": { "color": "#07467c" }
+            },
+            {
+              "type": "disc",
+              "label": "Discount",
+              "value": "-$500.00",
+              "style": { "color": "orange" }
+            },
+            {
+              "type": "final",
+              "label": "Total",
+              "value": "$6,900.00",
+              "style": { "color": "#07467c", "fontWeight": 900, "fontSize": "18px" }
+            }
+          ]
+        }
+      },
+      {
+        "_comment": "Example of L1 section WITHOUT discount — footer shows only Total line",
+        "level": 1,
+        "label": "Another Section",
+        "showColumnHeaders": true,
+        "columnHeaders": {
+          "qty": "Qty",
+          "cost": "Cost"
+        },
+        "buckets": [],
+        "footer": {
+          "title": "Another Section",
+          "hasDiscount": false,
+          "lines": [
+            {
+              "type": "final",
+              "label": "Total",
+              "value": "$3,200.00",
+              "style": { "color": "#07467c", "fontWeight": 900, "fontSize": "18px" }
+            }
+          ]
+        }
+      }
+    ],
+
+    "projectTotals": {
+      "_comment": "Project Grand Totals — always at the bottom. Discount lines only appear if non-zero.",
+      "title": "Project Totals",
+      "lines": [
+        {
+          "type": "sub",
+          "label": "Equipment Subtotal",
+          "value": "$10,600.00",
+          "showWhen": "hasAnyDiscount"
+        },
+        {
+          "type": "disc",
+          "label": "Line Item Discounts",
+          "value": "-$500.00",
+          "showWhen": "lineItemDiscounts !== 0"
+        },
+        {
+          "type": "disc",
+          "label": "Proposal Discount",
+          "value": "-$200.00",
+          "showWhen": "proposalDiscount !== 0"
+        },
+        {
+          "type": "final",
+          "label": "Equipment Total",
+          "value": "$9,900.00"
+        },
+        {
+          "type": "final",
+          "label": "Installation Total",
+          "value": "$3,000.00"
+        },
+        {
+          "type": "final",
+          "label": "Grand Total",
+          "value": "$12,900.00",
+          "style": { "fontSize": "23px", "labelFontSize": "21px" }
+        }
+      ]
+    }
+  },
+
+  "_styleReference": {
+    "_comment": "Color and typography reference from proposal-grid.js CSS for PDF rendering",
+    "colors": {
+      "primary": "#07467c",
+      "discount": "orange",
+      "l2Background": "aliceblue",
+      "assumptionsBackground": "#f0f7ff",
+      "white": "#ffffff"
+    },
+    "typography": {
+      "l1Header": { "fontSize": "24px", "fontWeight": 200, "color": "#07467c" },
+      "l1BorderBottom": { "width": "20px", "color": "#07467c" },
+      "l2Header": { "fontSize": "16px", "fontWeight": 400, "color": "#07467c" },
+      "l3Header": { "fontSize": "20px", "fontWeight": 300, "color": "#07467c" },
+      "l3Values": { "fontWeight": 600 },
+      "l4Header": { "fontWeight": 300, "color": "#07467c", "paddingLeft": "80px" },
+      "l4Values": { "fontWeight": 600 },
+      "l1FooterTitle": { "fontWeight": 700, "textAlign": "right" },
+      "l1FooterLabel": { "fontWeight": 600, "opacity": 0.85, "textAlign": "right" },
+      "l1FooterValue": { "fontWeight": 700, "textAlign": "right", "minWidth": "120px" },
+      "l1FooterFinal": { "fontWeight": 900, "fontSize": "18px" },
+      "projectTotalTitle": { "fontSize": "2.2em", "fontWeight": 600 },
+      "grandTotalLabel": { "fontSize": "21px" },
+      "grandTotalValue": { "fontSize": "23px" },
+      "l2Subtotal": { "fontWeight": 800, "textAlign": "center" },
+      "sceneHeading": { "fontWeight": 800, "color": "#07467c", "fontSize": "24px" }
+    },
+    "spacing": {
+      "l1FooterBorderTop": "20px solid transparent",
+      "l1FooterBorderBottom": "5px solid #07467c",
+      "l1LastRowBorderBottom": "60px solid #fff",
+      "l2HeaderBorderTop": "20px solid transparent",
+      "l3HeaderPaddingTop": "10px"
+    }
+  },
+
+  "_fieldMapping": {
+    "_comment": "Knack field keys used by proposal-grid.js — maps semantic names to field IDs",
+    "qty": "field_1964",
+    "labor": "field_2028",
+    "hardware": "field_2201",
+    "cost": "field_2203",
+    "discount": "field_2267",
+    "lineItemDiscount": "field_2303",
+    "proposalDiscount": "field_2302",
+    "description": "field_2019",
+    "prefix": "field_2240",
+    "number": "field_1951",
+    "l2Sort": "field_2218",
+    "l2Selector": "field_2228",
+    "l3BlankLabelField": "field_2208",
+    "connectedDevices": "field_1957"
+  },
+
+  "_labelRewriteRules": {
+    "_comment": "L2 label rewrites based on the L1 section's selector field value (field_2228)",
+    "rules": [
+      {
+        "when": "Video",
+        "match": "exact",
+        "renames": {
+          "Camera or Reader": "Cameras",
+          "Networking or Headend": "NVRs, Switches, and Networking"
+        }
+      },
+      {
+        "when": "Access Control",
+        "match": "exact",
+        "renames": {
+          "Camera or Reader": "Entries",
+          "Networking or Headend": "AC Controllers, Switches, and Networking"
+        }
+      },
+      {
+        "when": "video",
+        "match": "contains",
+        "renames": {
+          "Networking or Headend": "NVR, Switches, and Networking"
+        }
+      }
+    ]
+  },
+
+  "_contextKeyMapping": {
+    "_comment": "Maps L2 bucket labels to context keys that drive rendering behavior",
+    "drop": ["Cameras & Cabling", "Cameras and Cabling", "Cameras or Cabling", "Camera or Reader", "Cameras", "Entries"],
+    "headend": ["Networking or Headend", "Networking & Headend", "NVRs, Switches, and Networking", "NVR, Switches, and Networking", "AC Controllers, Switches, and Networking"],
+    "services": ["Services"]
+  },
+
+  "_renderingNotes": {
+    "dataRowsHidden": "All individual data rows (tr[id]) are hidden — only group headers and subtotal rows are visible",
+    "l3SortOrder": "L3 products sorted by cost (field_2203) descending within each L2 bucket",
+    "l2SortOrder": "L2 buckets sorted by field_2218 within each L1 section",
+    "l1SortOrder": "L1 sections sorted alphabetically, blank labels pushed to end",
+    "blankL1Promotion": "When L1 label is blank, L1 header is hidden and its child L2s are promoted to L1 styling",
+    "cameraConcat": "In 'drop' context, L4 labels get camera prefix+number list appended in orange (e.g. 'CAM01, CAM02')",
+    "mountingHardware": "L3 rows under 'Mounting Hardware' L2 get indented styling and camera concat",
+    "field2019Injection": "L4 header labels are replaced/appended with rich text from field_2019 (bold + line breaks preserved)",
+    "moneyFormat": "$X,XXX.XX (uses Knack.formatNumberWithCommas with 2 decimal places)",
+    "discountFormat": "Displayed with en-dash prefix: '\u2013$X,XXX.XX'",
+    "l1FooterLogic": "If discount > 0: show Subtotal + Discount + Total. If no discount: show only Total.",
+    "blankL4Hiding": "L4 headers hidden when both the header label AND field_2019 are blank"
+  }
+}

@@ -1998,6 +1998,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   color: inherit;
   text-decoration: none;
 }
+
+/* ── Locked row (field_2551 = Yes) — disable all interactive widgets ── */
+.${P}-card.${P}-locked .${P}-sum-field input,
+.${P}-card.${P}-locked .${P}-sum-field textarea,
+.${P}-card.${P}-locked .${P}-detail-field input,
+.${P}-card.${P}-locked .${P}-detail-field textarea {
+  pointer-events: none;
+  opacity: 0.6;
+  background: #f5f5f5;
+}
+.${P}-card.${P}-locked .${P}-radio-chips,
+.${P}-card.${P}-locked .${P}-cabling-chit,
+.${P}-card.${P}-locked .${P}-chip-stack {
+  pointer-events: none;
+  opacity: 0.6;
+}
 `;
 
     var style = document.createElement('style');
@@ -4709,7 +4725,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
         }
       }
+      // ── Lock all fields if field_2551 = Yes (row is finalized) ──
+      var lockTd = tr.querySelector('td.field_2551');
+      var isLocked = lockTd && /yes/i.test((lockTd.textContent || '').trim());
+      if (isLocked) {
+        var allTds = tr.querySelectorAll('td');
+        for (var lk = 0; lk < allTds.length; lk++) {
+          allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+          allTds[lk].classList.add('scw-cell-locked');
+        }
+      }
+
       var card = buildWorksheetCard(tr, effectiveCfg);
+      if (isLocked) {
+        card.classList.add(P + '-locked');
+        // Block Knack's native inline-edit popup modals on locked rows
+        card.addEventListener('click', function (e) {
+          var td = e.target.closest('td');
+          if (td) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        }, true); // capturing phase — fires before Knack's handlers
+      }
       if (effectiveCfg !== viewCfg) {
         card.classList.add(P + '-bucket-override');
       }
