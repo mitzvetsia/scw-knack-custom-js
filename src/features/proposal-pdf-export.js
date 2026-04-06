@@ -15,6 +15,7 @@
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203' },
+      payloadType: 'proposal',
     },
     {
       sceneId: 'scene_1149',
@@ -22,6 +23,7 @@
       skipViews: { view_3679: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
+      payloadType: 'subcontractor bid',
     },
   ];
 
@@ -340,7 +342,7 @@
   // ══════════════════════════════════════════════════════════════
 
   function scrapeAllViews(cfg) {
-    var result = { views: [], sceneId: cfg.sceneId };
+    var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
 
     var sceneEl = document.getElementById('kn-' + cfg.sceneId);
     var allViewEls = sceneEl ? sceneEl.querySelectorAll('[id^="view_"]') : [];
