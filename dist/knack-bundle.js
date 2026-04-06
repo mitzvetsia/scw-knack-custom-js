@@ -6132,6 +6132,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           cameraList: cameraList,
         };
 
+        if (!currentL3 && currentL2) {
+          // No visible L3 (e.g. Services with hideLevel3Summary) — create a
+          // synthetic product to hold these orphan L4 line items.
+          currentL3 = {
+            level: 3, label: '', qty: l4Qty, cost: l4Cost,
+            connectedDevices: [], isMountingHardware: false, lineItems: [],
+          };
+          currentL2.products.push(currentL3);
+        }
         if (currentL3) currentL3.lineItems.push(lineItem);
         continue;
       }
@@ -6263,21 +6272,26 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             var prod = bucket.products[p];
             var prodClass = prod.isMountingHardware ? ' class="mounting"' : '';
 
-            html.push('<tr class="l3-row"' + '>');
-            html.push('<td' + prodClass + '>' + esc(prod.label));
-            if (prod.connectedDevices && prod.connectedDevices.length) {
-              html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
+            // Only render L3 product row if it has a label (skip synthetic/hidden L3s)
+            if (prod.label) {
+              html.push('<tr class="l3-row">');
+              html.push('<td' + prodClass + '>' + esc(prod.label));
+              if (prod.connectedDevices && prod.connectedDevices.length) {
+                html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
+              }
+              html.push('</td>');
+              html.push('<td class="col-qty">' + prod.qty + '</td>');
+              html.push('<td class="col-cost">' + esc(prod.cost) + '</td>');
+              html.push('</tr>');
             }
-            html.push('</td>');
-            html.push('<td class="col-qty">' + prod.qty + '</td>');
-            html.push('<td class="col-cost">' + esc(prod.cost) + '</td>');
-            html.push('</tr>');
 
-            // L4 line items
+            // L4 line items — render as top-level rows when L3 has no label
+            var l4Class = prod.label ? 'l4-row' : 'l3-row';
+            var l4TdClass = prod.label ? 'l4-desc' : '';
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
-              html.push('<tr class="l4-row">');
-              html.push('<td class="l4-desc">' + esc(item.label) + '</td>');
+              html.push('<tr class="' + l4Class + '">');
+              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + '>' + esc(item.label) + '</td>');
               html.push('<td class="col-qty">' + item.qty + '</td>');
               html.push('<td class="col-cost">' + esc(item.cost) + '</td>');
               html.push('</tr>');
