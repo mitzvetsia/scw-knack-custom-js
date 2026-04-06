@@ -260,11 +260,31 @@
 
   function scrapeAllViews() {
     var result = { views: [] };
-    for (var i = 0; i < VIEW_IDS.length; i++) {
-      var viewId = VIEW_IDS[i];
 
-      // Skip view_3371 entirely if it has no data rows
-      if (viewId === 'view_3371' && !viewHasDataRows(viewId)) continue;
+    // Scrape ALL views on scene_1096 — not just grids
+    var sceneEl = document.getElementById('kn-' + SCENE_ID);
+    var allViewEls = sceneEl ? sceneEl.querySelectorAll('[id^="view_"]') : [];
+    var discoveredIds = [];
+    for (var d = 0; d < allViewEls.length; d++) {
+      var vid = allViewEls[d].id;
+      if (vid && discoveredIds.indexOf(vid) === -1) discoveredIds.push(vid);
+    }
+    console.log('[SCW PDF Export] Views discovered on scene:', discoveredIds);
+
+    // Use discovered views, but fall back to hardcoded list
+    var viewIds = discoveredIds.length ? discoveredIds : VIEW_IDS;
+
+    for (var i = 0; i < viewIds.length; i++) {
+      var viewId = viewIds[i];
+
+      var inDom = !!document.getElementById(viewId);
+      var hasRows = viewHasDataRows(viewId);
+      console.log('[SCW PDF Export]', viewId, '→ inDom:', inDom, 'hasDataRows:', hasRows, 'title:', getViewTitle(viewId));
+
+      // Skip view_3371 if it has no data rows
+      if (viewId === 'view_3371' && !hasRows) continue;
+      // Skip hidden data-source views (view_3342)
+      if (viewId === 'view_3342') continue;
 
       var data = scrapeView(viewId);
       if (data && data.sections.length) result.views.push(data);
