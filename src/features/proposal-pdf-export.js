@@ -224,8 +224,10 @@
         if (!isVisibleRow(tr)) continue;
 
         var l3Label = groupLabelText(tr);
-        var l3Qty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
-        var l3Cost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        var hideCost = tr.classList.contains('scw-hide-cost');
+        var hideQtyCost = tr.classList.contains('scw-hide-qty-cost');
+        var l3Qty = hideQtyCost ? 0 : parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+        var l3Cost = hideCost ? '' : norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
 
         var connDevSpan = tr.querySelector('.scw-l3-connected-devices');
         var connDevices = [];
@@ -237,7 +239,7 @@
         var isMounting = tr.classList.contains('scw-level3--mounting-hardware');
 
         currentL3 = {
-          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost,
+          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, hideCost: hideCost,
           connectedDevices: connDevices, isMountingHardware: isMounting, lineItems: [],
         };
 
@@ -324,7 +326,12 @@
         var ptTitle = ptr.querySelector('.scw-l1-title');
         if (ptTitle) { projectTotals.title = norm(ptTitle.textContent); continue; }
         var ptLabel = ptr.querySelector('.scw-l1-label');
-        var ptValue = ptr.querySelector('.scw-l1-value');
+        var ptValues = ptr.querySelectorAll('.scw-l1-value');
+        // Pick the last non-empty .scw-l1-value (grand total row has qty + cost cells)
+        var ptValue = null;
+        for (var pv = ptValues.length - 1; pv >= 0; pv--) {
+          if (norm(ptValues[pv].textContent)) { ptValue = ptValues[pv]; break; }
+        }
         if (ptLabel && ptValue) {
           var ptType = 'final';
           if (ptr.classList.contains('scw-l1-line--sub')) ptType = 'sub';
@@ -457,13 +464,15 @@
 
             if (prod.label) {
               html.push('<tr class="l3-row">');
-              html.push('<td' + prodClass + '>' + esc(prod.label));
+              html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
               if (prod.connectedDevices && prod.connectedDevices.length) {
                 html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
               }
               html.push('</td>');
-              html.push('<td class="col-qty">' + prod.qty + '</td>');
-              html.push('<td class="col-cost">' + esc(prod.cost) + '</td>');
+              if (!prod.hideCost) {
+                html.push('<td class="col-qty">' + prod.qty + '</td>');
+                html.push('<td class="col-cost">' + esc(prod.cost) + '</td>');
+              }
               html.push('</tr>');
             }
 
@@ -472,9 +481,11 @@
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
               html.push('<tr class="' + l4Class + '">');
-              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + '>' + esc(item.label) + '</td>');
-              html.push('<td class="col-qty">' + item.qty + '</td>');
-              html.push('<td class="col-cost">' + esc(item.cost) + '</td>');
+              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(item.label) + '</td>');
+              if (!prod.hideCost) {
+                html.push('<td class="col-qty">' + item.qty + '</td>');
+                html.push('<td class="col-cost">' + esc(item.cost) + '</td>');
+              }
               html.push('</tr>');
             }
           }
