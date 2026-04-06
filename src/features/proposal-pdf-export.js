@@ -5,7 +5,9 @@
   var SCENE_ID = 'scene_1096';
   var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
   var BUTTON_ID = 'scw-proposal-pdf-btn';
-  var VIEW_IDS = ['view_3301', 'view_3341', 'view_3371'];
+
+  // Views to skip (Knack internal UI, hidden data sources)
+  var SKIP_VIEWS = { view_3342: true };
 
   var KEYS = {
     qty: 'field_1964',
@@ -43,22 +45,11 @@
     return td ? norm(td.textContent) : '';
   }
 
-  function isVisible(tr) {
+  function isVisibleRow(tr) {
     return tr.style.display !== 'none' && !tr.classList.contains('scw-hide-level3-header') && !tr.classList.contains('scw-hide-level4-header');
   }
 
-  // ── Check if a view has actual data rows ──
-
-  function viewHasDataRows(viewId) {
-    var root = document.getElementById(viewId);
-    if (!root) return false;
-    var tbody = root.querySelector('.kn-table tbody');
-    if (!tbody) return false;
-    // tr[id] = actual Knack data rows (not group headers or injected rows)
-    return tbody.querySelectorAll('tr[id]').length > 0;
-  }
-
-  // ── Get the view title from the DOM ──
+  // ── View type detection ──
 
   function getViewTitle(viewId) {
     var root = document.getElementById(viewId);
@@ -70,9 +61,99 @@
     return '';
   }
 
-  // ── DOM scraper ──
+  function isKnackFilterOrButton(viewId) {
+    // Knack generates filter/button sub-elements with IDs like view_XXXX_filters, view_XXXX-filterDivId, etc.
+    return /_filters$|-filter|_filterBtn$|-filterBtn$|-filterDivId$/.test(viewId);
+  }
 
-  function scrapeView(viewId) {
+  function detectViewType(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return null;
+
+    // Check for grid/table view
+    if (root.querySelector('.kn-table tbody')) return 'grid';
+    // Check for detail view (field list)
+    if (root.querySelector('.kn-detail-body') || root.classList.contains('kn-detail') || root.querySelector('.field-list')) return 'detail';
+    // Check for rich text view
+    if (root.classList.contains('kn-rich_text') || root.querySelector('.kn-rich-text-content')) return 'richtext';
+
+    return 'unknown';
+  }
+
+  function viewHasDataRows(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return false;
+    var tbody = root.querySelector('.kn-table tbody');
+    if (!tbody) return false;
+    return tbody.querySelectorAll('tr[id]').length > 0;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // SCRAPER: Detail views (label/value field pairs)
+  // ══════════════════════════════════════════════════════════════
+
+  function scrapeDetailView(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return null;
+
+    var title = getViewTitle(viewId);
+    var fields = [];
+
+    // Knack detail views: .kn-detail contains .kn-detail-label + .kn-detail-body
+    var detailItems = root.querySelectorAll('.kn-detail');
+    for (var i = 0; i < detailItems.length; i++) {
+      var item = detailItems[i];
+      // Skip the outer container that wraps everything
+      if (item.id === viewId) continue;
+
+      var labelEl = item.querySelector('.kn-detail-label');
+      var valueEl = item.querySelector('.kn-detail-body');
+      if (!labelEl || !valueEl) continue;
+
+      var label = norm(labelEl.textContent);
+      var value = norm(valueEl.textContent);
+      var valueHtml = valueEl.innerHTML || '';
+
+      // Skip empty fields
+      if (!value || value === '-' || value === '—') continue;
+
+      fields.push({ label: label, value: value, valueHtml: valueHtml });
+    }
+
+    if (!fields.length && !title) return null;
+
+    return { viewId: viewId, type: 'detail', title: title, fields: fields };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // SCRAPER: Rich text views
+  // ══════════════════════════════════════════════════════════════
+
+  function scrapeRichTextView(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return null;
+
+    var title = getViewTitle(viewId);
+
+    // Get the rich text content
+    var contentEl = root.querySelector('.kn-rich-text-content') || root.querySelector('.view-body');
+    var html = '';
+    var text = '';
+    if (contentEl) {
+      html = contentEl.innerHTML || '';
+      text = norm(contentEl.textContent);
+    }
+
+    if (!text && !title) return null;
+
+    return { viewId: viewId, type: 'richtext', title: title, contentHtml: html, contentText: text };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // SCRAPER: Grid views (the existing proposal grid scraper)
+  // ══════════════════════════════════════════════════════════════
+
+  function scrapeGridView(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return null;
 
@@ -112,11 +193,7 @@
         var isPromoted = tr.classList.contains('scw-promoted-l2-as-l1');
 
         currentL2 = {
-          level: 2,
-          label: l2Label,
-          isPromoted: isPromoted,
-          products: [],
-          footer: null,
+          level: 2, label: l2Label, isPromoted: isPromoted, products: [], footer: null,
         };
 
         if (isPromoted) {
@@ -130,7 +207,7 @@
       }
 
       if (tr.classList.contains('kn-group-level-3')) {
-        if (!isVisible(tr)) continue;
+        if (!isVisibleRow(tr)) continue;
 
         var l3Label = groupLabelText(tr);
         var l3Qty = parseMoney(norm((tr.querySelector('td.' + KEYS.qty) || {}).textContent || ''));
@@ -146,13 +223,8 @@
         var isMounting = tr.classList.contains('scw-level3--mounting-hardware');
 
         currentL3 = {
-          level: 3,
-          label: l3Label,
-          qty: l3Qty,
-          cost: l3Cost,
-          connectedDevices: connDevices,
-          isMountingHardware: isMounting,
-          lineItems: [],
+          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost,
+          connectedDevices: connDevices, isMountingHardware: isMounting, lineItems: [],
         };
 
         if (currentL2) currentL2.products.push(currentL3);
@@ -160,7 +232,7 @@
       }
 
       if (tr.classList.contains('kn-group-level-4')) {
-        if (!isVisible(tr)) continue;
+        if (!isVisibleRow(tr)) continue;
 
         var labelCell = tr.querySelector('td:first-child');
         var l4Label = labelCell ? norm(labelCell.textContent) : '';
@@ -177,12 +249,8 @@
         var l4Cost = norm((tr.querySelector('td.' + KEYS.cost) || {}).textContent || '');
 
         var lineItem = {
-          level: 4,
-          label: l4Label,
-          description: description,
-          qty: l4Qty,
-          cost: l4Cost,
-          cameraList: cameraList,
+          level: 4, label: l4Label, description: description,
+          qty: l4Qty, cost: l4Cost, cameraList: cameraList,
         };
 
         if (!currentL3 && currentL2) {
@@ -214,8 +282,7 @@
           var titleDiv = tr.querySelector('.scw-l1-title');
           currentL1.footer = {
             title: titleDiv ? norm(titleDiv.textContent) : currentL1.label,
-            hasDiscount: false,
-            lines: [],
+            hasDiscount: false, lines: [],
           };
         }
 
@@ -227,9 +294,7 @@
           else if (tr.classList.contains('scw-l1-line--disc')) { type = 'disc'; currentL1.footer.hasDiscount = true; }
 
           currentL1.footer.lines.push({
-            type: type,
-            label: norm(lineLabel.textContent),
-            value: norm(lineValue.textContent),
+            type: type, label: norm(lineLabel.textContent), value: norm(lineValue.textContent),
           });
         }
         continue;
@@ -255,51 +320,96 @@
       }
     }
 
-    return { viewId: viewId, title: title, sections: sections, projectTotals: projectTotals };
+    return { viewId: viewId, type: 'grid', title: title, sections: sections, projectTotals: projectTotals };
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // SCRAPE ALL VIEWS on scene
+  // ══════════════════════════════════════════════════════════════
 
   function scrapeAllViews() {
     var result = { views: [] };
 
-    // Scrape ALL views on scene_1096 — not just grids
     var sceneEl = document.getElementById('kn-' + SCENE_ID);
+    // Get direct child views only (avoid nested filter elements)
+    // Knack scene structure: #kn-scene_XXXX > .kn-scene > columns > .kn-view (views)
     var allViewEls = sceneEl ? sceneEl.querySelectorAll('[id^="view_"]') : [];
-    var discoveredIds = [];
-    for (var d = 0; d < allViewEls.length; d++) {
-      var vid = allViewEls[d].id;
-      if (vid && discoveredIds.indexOf(vid) === -1) discoveredIds.push(vid);
+
+    for (var i = 0; i < allViewEls.length; i++) {
+      var viewId = allViewEls[i].id;
+
+      // Skip filter/button UI elements
+      if (isKnackFilterOrButton(viewId)) continue;
+      // Skip explicitly excluded views
+      if (SKIP_VIEWS[viewId]) continue;
+
+      var viewType = detectViewType(viewId);
+      console.log('[SCW PDF Export]', viewId, '→ type:', viewType, 'title:', getViewTitle(viewId));
+
+      var data = null;
+
+      if (viewType === 'grid') {
+        // Skip grid views with no data rows (e.g. empty view_3371)
+        if (!viewHasDataRows(viewId)) {
+          console.log('[SCW PDF Export]', viewId, '→ grid has no data rows, skipping');
+          continue;
+        }
+        data = scrapeGridView(viewId);
+      } else if (viewType === 'detail') {
+        data = scrapeDetailView(viewId);
+      } else if (viewType === 'richtext') {
+        data = scrapeRichTextView(viewId);
+      }
+
+      if (data) result.views.push(data);
     }
-    console.log('[SCW PDF Export] Views discovered on scene:', discoveredIds);
 
-    // Use discovered views, but fall back to hardcoded list
-    var viewIds = discoveredIds.length ? discoveredIds : VIEW_IDS;
-
-    for (var i = 0; i < viewIds.length; i++) {
-      var viewId = viewIds[i];
-
-      var inDom = !!document.getElementById(viewId);
-      var hasRows = viewHasDataRows(viewId);
-      console.log('[SCW PDF Export]', viewId, '→ inDom:', inDom, 'hasDataRows:', hasRows, 'title:', getViewTitle(viewId));
-
-      // Skip view_3371 if it has no data rows
-      if (viewId === 'view_3371' && !hasRows) continue;
-      // Skip hidden data-source views (view_3342)
-      if (viewId === 'view_3342') continue;
-
-      var data = scrapeView(viewId);
-      if (data && data.sections.length) result.views.push(data);
-    }
+    // Extract project totals from the first grid view that has them
     for (var j = 0; j < result.views.length; j++) {
-      if (result.views[j].projectTotals) { result.projectTotals = result.views[j].projectTotals; break; }
+      if (result.views[j].projectTotals) {
+        result.projectTotals = result.views[j].projectTotals;
+        break;
+      }
     }
+
     return result;
   }
 
   // ══════════════════════════════════════════════════════════════
-  // HTML PDF RENDERER — builds a print-ready page from JSON
+  // HTML PDF RENDERER
   // ══════════════════════════════════════════════════════════════
 
-  function renderViewSections(view, html) {
+  function renderDetailView(view, html) {
+    if (view.title) {
+      html.push('<div class="view-title">' + esc(view.title) + '</div>');
+    }
+    if (view.fields.length) {
+      html.push('<table class="detail-table">');
+      for (var i = 0; i < view.fields.length; i++) {
+        var f = view.fields[i];
+        html.push('<tr>');
+        html.push('<td class="detail-label">' + esc(f.label) + '</td>');
+        html.push('<td class="detail-value">' + esc(f.value) + '</td>');
+        html.push('</tr>');
+      }
+      html.push('</table>');
+    }
+  }
+
+  function renderRichTextView(view, html) {
+    if (view.title) {
+      html.push('<div class="view-title">' + esc(view.title) + '</div>');
+    }
+    if (view.contentText) {
+      html.push('<div class="richtext-content">' + view.contentHtml + '</div>');
+    }
+  }
+
+  function renderGridSections(view, html) {
+    if (view.title) {
+      html.push('<div class="view-title">' + esc(view.title) + '</div>');
+    }
+
     for (var s = 0; s < view.sections.length; s++) {
       var section = view.sections[s];
 
@@ -399,22 +509,20 @@
     html.push('</style>');
     html.push('</head><body>');
 
-    // ── Render ALL views ──
+    // ── Render ALL views in DOM order ──
     for (var v = 0; v < payload.views.length; v++) {
       var view = payload.views[v];
 
-      // View title / separator between views
-      if (view.title) {
-        html.push('<div class="view-title">' + esc(view.title) + '</div>');
-      } else if (v > 0) {
-        // No title but not the first view — add a separator
-        html.push('<hr class="view-separator" />');
+      if (view.type === 'detail') {
+        renderDetailView(view, html);
+      } else if (view.type === 'richtext') {
+        renderRichTextView(view, html);
+      } else if (view.type === 'grid') {
+        renderGridSections(view, html);
       }
-
-      renderViewSections(view, html);
     }
 
-    // ── Project Totals (use payload-level, then fall back to first view with them) ──
+    // ── Project Totals ──
     var pt = payload.projectTotals;
     if (!pt) {
       for (var j = 0; j < payload.views.length; j++) {
@@ -455,12 +563,24 @@
       '',
       '/* ── View Title ── */',
       '.view-title {',
-      '  font-size: 24px; font-weight: 800; color: #07467c;',
-      '  margin: 30px 0 10px 0; padding-bottom: 6px;',
-      '  border-bottom: 4px solid #07467c;',
+      '  font-size: 20px; font-weight: 800; color: #07467c;',
+      '  margin: 24px 0 8px 0; padding-bottom: 4px;',
+      '  border-bottom: 3px solid #07467c;',
       '}',
       '.view-title:first-child { margin-top: 0; }',
-      '.view-separator { border: none; border-top: 2px solid #ccc; margin: 30px 0; }',
+      '',
+      '/* ── Detail View ── */',
+      '.detail-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }',
+      '.detail-table tr { border-bottom: 1px solid #f0f0f0; }',
+      '.detail-label {',
+      '  font-weight: 600; color: #07467c; padding: 5px 12px 5px 0;',
+      '  white-space: nowrap; vertical-align: top; width: 180px; font-size: 11px;',
+      '}',
+      '.detail-value { padding: 5px 0; color: #333; font-size: 11px; }',
+      '',
+      '/* ── Rich Text View ── */',
+      '.richtext-content { margin-bottom: 16px; line-height: 1.5; color: #333; font-size: 11px; }',
+      '.richtext-content p { margin: 0 0 6px 0; }',
       '',
       '/* ── L1 Section ── */',
       '.l1-section { margin-bottom: 12px; page-break-inside: avoid; }',
@@ -575,13 +695,13 @@
     });
   }
 
-  // ── Hide view_3371 from the page if it has no data rows ──
+  // ── Hide empty grid views on the page ──
 
-  function hideEmptyView3371() {
-    if (!viewHasDataRows('view_3371')) {
-      var el = document.getElementById('view_3371');
-      if (el) el.style.display = 'none';
-    }
+  function hideEmptyGridViews() {
+    var el3371 = document.getElementById('view_3371');
+    if (el3371 && !viewHasDataRows('view_3371')) el3371.style.display = 'none';
+    var el3343 = document.getElementById('view_3343');
+    if (el3343 && !viewHasDataRows('view_3343')) el3343.style.display = 'none';
   }
 
   // ── Button injection ──
@@ -633,13 +753,12 @@
 
   $(document).on('knack-scene-render.' + SCENE_ID, function () {
     setTimeout(function () {
-      hideEmptyView3371();
+      hideEmptyGridViews();
       injectButton();
     }, 1500);
   });
 
-  // Also hide view_3371 when it renders individually (in case it renders after scene)
-  $(document).on('knack-view-render.view_3371', function () {
-    setTimeout(hideEmptyView3371, 500);
+  $(document).on('knack-view-render.view_3371 knack-view-render.view_3343', function () {
+    setTimeout(hideEmptyGridViews, 500);
   });
 })();
