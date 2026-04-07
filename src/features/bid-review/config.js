@@ -38,7 +38,10 @@
       labor:           'field_2401',   // CALC_sub bid extended ($)
       notes:           'field_2412',   // INPUT_survey notes
 
-      // Grouping
+      // SOW connection (can have 1–2 connected records per line item)
+      sow:             'field_2154',   // REL_SOW (connection — columns)
+
+      // Grouping within each SOW grid
       proposalBucket:  'field_2366',   // REL_proposal bucket (Assumptions, Camera or Reader, etc.)
       mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF)
     },

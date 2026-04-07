@@ -26,6 +26,34 @@
       '  padding-bottom: 8px;',
       '}',
 
+      /* ── SOW sections ────────────────────────────────────────── */
+      '.scw-bid-review__sow-section {',
+      '  margin-bottom: 24px;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 6px;',
+      '  overflow: hidden;',
+      '}',
+
+      '.scw-bid-review__sow-title {',
+      '  display: flex;',
+      '  align-items: baseline;',
+      '  gap: 10px;',
+      '  padding: 10px 12px;',
+      '  background: #1e293b;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__sow-title-text {',
+      '  font-size: 14px;',
+      '  font-weight: 700;',
+      '}',
+
+      '.scw-bid-review__sow-title-count {',
+      '  font-size: 11px;',
+      '  font-weight: 400;',
+      '  color: #94a3b8;',
+      '}',
+
       /* ── table ─────────────────────────────────────────────── */
       '.scw-bid-review__table {',
       '  width: 100%;',

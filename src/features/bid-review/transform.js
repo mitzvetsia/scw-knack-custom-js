@@ -1,11 +1,9 @@
 /*** BID REVIEW — DATA TRANSFORMATION ***/
 /**
- * Pivots a flat array of Knack records (one per package × SOW item)
- * into a normalized matrix state.  Each record becomes a "cell";
- * rows are derived by grouping on the SOW/display-label identity.
+ * Groups records by SOW (field_2154), then within each SOW pivots
+ * by bid package (columns) and line items (rows).
  *
- * All derived values (package list, grouping, eligibility counts)
- * are computed here — rendering and actions never re-derive.
+ * A record with TWO SOW connections appears in both SOW grids.
  *
  * Reads : SCW.bidReview.CONFIG.fieldKeys
  * Writes: SCW.bidReview.buildState(records), .collectEligible()
@@ -19,7 +17,6 @@
 
   // ── tiny helpers ──────────────────────────────────────────────
 
-  /** Return the raw text value from a Knack field (handles objects with .raw). */
   function raw(record, key) {
     var v = record[key];
     if (v == null) return '';
@@ -27,14 +24,13 @@
     return String(v);
   }
 
-  /** Parse a numeric field — strips $, commas, returns 0 for blanks. */
   function num(record, key) {
     var s = raw(record, key).replace(/[$,]/g, '');
     var n = parseFloat(s);
     return isNaN(n) ? 0 : n;
   }
 
-  /** Stable identifier for a connection field (Knack stores an array of {id,identifier}). */
+  /** Return first connection ID. */
   function connectionId(record, key) {
     var v = record[key];
     if (!v) return '';
@@ -51,12 +47,37 @@
     return String(v);
   }
 
-  // ── extract packages ──────────────────────────────────────────
+  /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
+  function connectionAll(record, key) {
+    var v = record[key];
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'object' && v.id) return [v];
+    return [];
+  }
 
-  /**
-   * Deduplicate packages from records.
-   * Returns sorted array: [{ id, name }]
-   */
+  // ── extract unique SOW items ──────────────────────────────────
+
+  function extractSows(records) {
+    var seen = {};
+    var list = [];
+
+    for (var i = 0; i < records.length; i++) {
+      var conns = connectionAll(records[i], FK.sow);
+      for (var c = 0; c < conns.length; c++) {
+        var id = conns[c].id;
+        if (!id || seen[id]) continue;
+        seen[id] = true;
+        list.push({ id: id, name: conns[c].identifier || 'SOW ' + list.length });
+      }
+    }
+
+    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    return list;
+  }
+
+  // ── extract unique packages ───────────────────────────────────
+
   function extractPackages(records) {
     var seen = {};
     var list = [];
@@ -69,50 +90,83 @@
       list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
     }
 
-    list.sort(function (a, b) {
-      return a.name.localeCompare(b.name);
-    });
+    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
     return list;
   }
 
-  // ── pivot flat records into rows ──────────────────────────────
+  // ── group records by SOW ──────────────────────────────────────
 
   /**
-   * Group records by their row identity.
-   *
-   * Row identity is determined by:
-   *   1. relatedSowItem connection ID (if present), OR
-   *   2. displayLabel text (fallback for unmatched bid items)
-   *
-   * Each unique identity becomes one matrix row.
-   * Returns: { rowKey: { meta: firstRecord, cells: [records] } }
+   * Splits records into buckets keyed by SOW id.
+   * Records with 2+ SOW connections are duplicated into each bucket.
+   * Returns { sowId: [records] }
    */
-  function pivotRecords(records) {
+  function groupBySow(records) {
+    var buckets = {};
+
+    for (var i = 0; i < records.length; i++) {
+      var rec   = records[i];
+      var conns = connectionAll(rec, FK.sow);
+
+      if (conns.length === 0) {
+        // No SOW — put in a catch-all bucket
+        var noSow = '__no_sow__';
+        if (!buckets[noSow]) buckets[noSow] = [];
+        buckets[noSow].push(rec);
+        continue;
+      }
+
+      for (var c = 0; c < conns.length; c++) {
+        var sowId = conns[c].id;
+        if (!sowId) continue;
+        if (!buckets[sowId]) buckets[sowId] = [];
+        buckets[sowId].push(rec);
+      }
+    }
+
+    return buckets;
+  }
+
+  // ── build rows within a SOW bucket ────────────────────────────
+
+  /**
+   * Within a SOW bucket, pivot by line item identity (rows) and
+   * bid package (columns).
+   *
+   * Row identity = relatedSowItem connection || displayLabel fallback.
+   */
+  function buildRowsForSow(records) {
     var rowMap   = {};
     var rowOrder = [];
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
 
-      // Row identity: prefer SOW connection, fall back to label
-      var sowId = connectionId(rec, FK.relatedSowItem);
-      var label = raw(rec, FK.displayLabel);
-      var rowKey = sowId ? 'sow::' + sowId : 'label::' + label;
+      var sowItemId = connectionId(rec, FK.relatedSowItem);
+      var label     = raw(rec, FK.displayLabel);
+      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'label::' + label;
 
       if (!rowMap[rowKey]) {
         rowMap[rowKey] = { meta: rec, cells: [] };
         rowOrder.push(rowKey);
       }
-
       rowMap[rowKey].cells.push(rec);
     }
 
-    return { map: rowMap, order: rowOrder };
+    var rows = [];
+    for (var j = 0; j < rowOrder.length; j++) {
+      var key    = rowOrder[j];
+      var bucket = rowMap[key];
+      rows.push(buildRow(key, bucket));
+    }
+
+    rows.sort(function (a, b) {
+      return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+    });
+
+    return rows;
   }
 
-  /**
-   * Build a normalized row from the pivot bucket.
-   */
   function buildRow(rowKey, bucket) {
     var meta = bucket.meta;
     var cellsByPackage = {};
@@ -124,7 +178,7 @@
 
       if (cellsByPackage[pkgId]) {
         if (CFG.debug) {
-          console.warn('[BidReview] Duplicate cell for row=' + rowKey +
+          console.warn('[BidReview] Duplicate cell row=' + rowKey +
                        ' pkg=' + pkgId + ' — keeping first');
         }
         continue;
@@ -139,7 +193,7 @@
     }
 
     return {
-      id:             meta.id,            // first record's id as row identifier
+      id:             meta.id,
       rowKey:         rowKey,
       displayLabel:   raw(meta, FK.displayLabel),
       productName:    raw(meta, FK.productName),
@@ -150,12 +204,8 @@
     };
   }
 
-  // ── grouping ──────────────────────────────────────────────────
+  // ── grouping (L1/L2) ─────────────────────────────────────────
 
-  /**
-   * Group rows by L1 then L2.
-   * Returns: [{ key, label, level, rows, subgroups }]
-   */
   function groupRows(rows) {
     var hasAnyGroup = false;
     for (var i = 0; i < rows.length; i++) {
@@ -219,7 +269,7 @@
     return groups;
   }
 
-  // ── eligibility counts ────────────────────────────────────────
+  // ── eligibility counts per package within a SOW grid ──────────
 
   function computeEligibility(rows, packages) {
     var result = {};
@@ -246,11 +296,11 @@
     return result;
   }
 
-  // ── public: collectEligible ───────────────────────────────────
+  // ── collect eligible row IDs for a package action ─────────────
 
-  function collectEligible(pkgId, actionType, state) {
+  function collectEligible(pkgId, actionType, sowGrid) {
     var ids  = [];
-    var rows = state.flatRows;
+    var rows = sowGrid.rows;
 
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -277,41 +327,59 @@
   /**
    * buildState(records) → state
    *
-   * Takes a flat array of Knack records (each is one package × item
-   * intersection) and pivots them into the matrix state object.
-   *
-   * @param {object[]} records — raw Knack records from the single view
-   * @returns {object} Normalized state:
+   * Returns:
    *   {
-   *     packages, groups, flatRows, eligibility, columnCount, isEmpty
+   *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
+   *     allPackages: [{id, name}],
+   *     isEmpty: boolean
    *   }
    */
   ns.buildState = function buildState(records) {
-    var packages = extractPackages(records);
-    var pivot    = pivotRecords(records);
+    var sows       = extractSows(records);
+    var allPkgs    = extractPackages(records);
+    var sowBuckets = groupBySow(records);
 
-    // Build normalized rows in source order
-    var flatRows = [];
-    for (var i = 0; i < pivot.order.length; i++) {
-      var key = pivot.order[i];
-      flatRows.push(buildRow(key, pivot.map[key]));
+    var sowGrids = [];
+
+    for (var i = 0; i < sows.length; i++) {
+      var sow     = sows[i];
+      var recs    = sowBuckets[sow.id] || [];
+      var rows    = buildRowsForSow(recs);
+      var pkgs    = extractPackages(recs);   // packages present in this SOW
+      var groups  = groupRows(rows);
+      var elig    = computeEligibility(rows, pkgs);
+
+      sowGrids.push({
+        sowId:       sow.id,
+        sowName:     sow.name,
+        packages:    pkgs,
+        rows:        rows,
+        groups:      groups,
+        eligibility: elig,
+        columnCount: pkgs.length + 2,  // SOW label col + pkg cols + actions col
+      });
     }
 
-    // Sort by displayLabel
-    flatRows.sort(function (a, b) {
-      return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-    });
-
-    var groups      = groupRows(flatRows);
-    var eligibility = computeEligibility(flatRows, packages);
+    // Handle records with no SOW
+    var noSowRecs = sowBuckets['__no_sow__'];
+    if (noSowRecs && noSowRecs.length) {
+      var noSowRows = buildRowsForSow(noSowRecs);
+      var noSowPkgs = extractPackages(noSowRecs);
+      sowGrids.push({
+        sowId:       '__no_sow__',
+        sowName:     'No SOW Assigned',
+        packages:    noSowPkgs,
+        rows:        noSowRows,
+        groups:      groupRows(noSowRows),
+        eligibility: computeEligibility(noSowRows, noSowPkgs),
+        columnCount: noSowPkgs.length + 2,
+      });
+    }
 
     return {
-      packages:    packages,
-      groups:      groups,
-      flatRows:    flatRows,
-      eligibility: eligibility,
-      columnCount: packages.length + 2,
-      isEmpty:     flatRows.length === 0,
+      sowGrids:    sowGrids,
+      allPackages: allPkgs,
+      isEmpty:     sowGrids.length === 0,
     };
   };
 

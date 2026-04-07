@@ -41,6 +41,7 @@
 
     if (payload.reviewRowId) body.reviewRowId = payload.reviewRowId;
     if (payload.packageId)   body.packageId   = payload.packageId;
+    if (payload.sowId)       body.sowId       = payload.sowId;
     if (payload.rowIds)      body.rowIds      = payload.rowIds;
 
     if (CFG.debug) {
