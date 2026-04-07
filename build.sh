@@ -25,6 +25,13 @@ cat \
   src/features/proposal-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/bid-items-grid.js \
+  src/features/bid-review/config.js \
+  src/features/bid-review/styles.js \
+  src/features/bid-review/adapters.js \
+  src/features/bid-review/transform.js \
+  src/features/bid-review/render.js \
+  src/features/bid-review/actions.js \
+  src/features/bid-review/init.js \
   src/features/group-collapse.js \
   src/features/select-all-checkboxes.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \

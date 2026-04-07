@@ -8658,6 +8658,1468 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   Object.keys(CONFIG.views).forEach(bindForView);
 })();
+/*** BID REVIEW — CONFIGURATION ***/
+/**
+ * Centralized config for the Bid Review Matrix feature.
+ * All view IDs, field keys, webhook URLs, and tuning knobs live here.
+ *
+ * Writes: SCW.bidReview.CONFIG
+ */
+(function () {
+  'use strict';
+
+  var ns = (window.SCW.bidReview = window.SCW.bidReview || {});
+
+  ns.CONFIG = {
+    // ── Knack scene / views ───────────────────────────────────
+    sceneKey:          'scene_1155',
+    rowViewKey:        'view_3560',
+    cellViewKey:       'view_3561',
+
+    // ── Make webhook for all review actions ────────────────────
+    actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
+
+    // ── DOM mount point (created if absent) ────────────────────
+    mountSelector:     '#bid-review-matrix',
+
+    // ── Knack field keys ──────────────────────────────────────
+    fieldKeys: {
+      // Row fields
+      reviewRowId:     'field_2552',
+      displayLabel:    'field_2365',
+      relatedSowItem:  'field_2404',
+      rowType:         'field_2366',
+      groupL1:         'field_2228',
+      groupL2:         'field_2218',
+      sortOrder:       'field_2553',
+
+      // Cell fields
+      cellId:          'field_2554',
+      cellReviewRow:   'field_2555',
+      bidPackage:      'field_2415',
+      bidPackageName:  'field_2556',
+      qty:             'field_2399',
+      labor:           'field_2401',
+      laborDescription:'field_2409',
+      notes:           'field_2557',
+      status:          'field_2558',
+    },
+
+    // ── Status value constants ────────────────────────────────
+    statusValues: {
+      matched:  'Matched',
+      missing:  'Missing',
+      newItem:  'New',
+      conflict: 'Conflict',
+    },
+
+    // ── Timing ────────────────────────────────────────────────
+    renderDelay:       200,     // ms to wait after scene render
+    toastDuration:     4000,    // ms before toast auto-dismiss
+
+    // ── Debug ─────────────────────────────────────────────────
+    debug:   false,
+    eventNs: '.scwBidReview',
+    cssId:   'scw-bid-review-css',
+  };
+
+})();
+/*** BID REVIEW — STYLES ***/
+/**
+ * Injects all CSS for the Bid Review Matrix.
+ * Guarded by a unique style-element ID to prevent duplicates.
+ *
+ * Reads : SCW.bidReview.CONFIG.cssId
+ * Writes: SCW.bidReview.injectStyles()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  ns.injectStyles = function injectStyles() {
+    if (document.getElementById(CFG.cssId)) return;
+
+    var css = [
+
+      /* ── container ─────────────────────────────────────────── */
+      '.scw-bid-review {',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '  color: #1e293b;',
+      '  overflow-x: auto;',
+      '  -webkit-overflow-scrolling: touch;',
+      '  padding-bottom: 8px;',
+      '}',
+
+      /* ── table ─────────────────────────────────────────────── */
+      '.scw-bid-review__table {',
+      '  width: 100%;',
+      '  border-collapse: collapse;',
+      '  table-layout: fixed;',
+      '  min-width: 700px;',
+      '}',
+
+      /* ── header row ────────────────────────────────────────── */
+      '.scw-bid-review__header-row th {',
+      '  position: sticky;',
+      '  top: 0;',
+      '  z-index: 2;',
+      '  background: #f8fafc;',
+      '  border-bottom: 2px solid #cbd5e1;',
+      '  padding: 10px 8px;',
+      '  text-align: left;',
+      '  vertical-align: top;',
+      '  font-weight: 600;',
+      '  font-size: 13px;',
+      '}',
+
+      '.scw-bid-review__sow-header {',
+      '  width: 200px;',
+      '  min-width: 160px;',
+      '}',
+
+      '.scw-bid-review__actions-header {',
+      '  width: 150px;',
+      '  min-width: 120px;',
+      '}',
+
+      /* ── package column header ─────────────────────────────── */
+      '.scw-bid-review__pkg-header {',
+      '  min-width: 180px;',
+      '}',
+
+      '.scw-bid-review__pkg-name {',
+      '  font-size: 14px;',
+      '  font-weight: 700;',
+      '  color: #0f172a;',
+      '  margin-bottom: 4px;',
+      '}',
+
+      '.scw-bid-review__pkg-counts {',
+      '  font-size: 11px;',
+      '  font-weight: 400;',
+      '  color: #64748b;',
+      '  margin-bottom: 6px;',
+      '}',
+
+      '.scw-bid-review__pkg-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      /* ── buttons ───────────────────────────────────────────── */
+      '.scw-bid-review__btn {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  padding: 4px 8px;',
+      '  border: none;',
+      '  border-radius: 4px;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '  transition: opacity .15s, filter .15s;',
+      '  white-space: nowrap;',
+      '}',
+
+      '.scw-bid-review__btn:hover {',
+      '  filter: brightness(0.92);',
+      '}',
+
+      '.scw-bid-review__btn--adopt {',
+      '  background: #16a34a;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--create {',
+      '  background: #2563eb;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--combo {',
+      '  background: #7c3aed;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--skip {',
+      '  background: #e2e8f0;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__btn--busy {',
+      '  opacity: 0.5;',
+      '  pointer-events: none;',
+      '  cursor: default;',
+      '}',
+
+      '.scw-bid-review__btn--sm {',
+      '  font-size: 10px;',
+      '  padding: 3px 6px;',
+      '}',
+
+      /* ── group headers ─────────────────────────────────────── */
+      '.scw-bid-review__group-header td {',
+      '  background: #f1f5f9;',
+      '  padding: 6px 10px;',
+      '  font-weight: 700;',
+      '  font-size: 13px;',
+      '  color: #334155;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '}',
+
+      '.scw-bid-review__group-header--l2 td {',
+      '  background: #f8fafc;',
+      '  font-weight: 600;',
+      '  font-size: 12px;',
+      '  color: #475569;',
+      '  padding-left: 20px;',
+      '}',
+
+      /* ── data rows ─────────────────────────────────────────── */
+      '.scw-bid-review__row td {',
+      '  padding: 6px 8px;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '  vertical-align: top;',
+      '}',
+
+      '.scw-bid-review__row:nth-child(even) td {',
+      '  background: #fafbfc;',
+      '}',
+
+      '.scw-bid-review__row:hover td {',
+      '  background: #eff6ff;',
+      '}',
+
+      /* ── SOW cell ──────────────────────────────────────────── */
+      '.scw-bid-review__sow-cell {',
+      '  font-weight: 600;',
+      '  color: #1e293b;',
+      '}',
+
+      '.scw-bid-review__sow-cell--empty {',
+      '  font-weight: 400;',
+      '  font-style: italic;',
+      '  color: #94a3b8;',
+      '}',
+
+      /* ── package data cell ─────────────────────────────────── */
+      '.scw-bid-review__cell-label {',
+      '  font-size: 12px;',
+      '  color: #334155;',
+      '  margin-bottom: 2px;',
+      '}',
+
+      '.scw-bid-review__cell-values {',
+      '  display: flex;',
+      '  gap: 8px;',
+      '  font-size: 12px;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__cell-value {',
+      '  font-weight: 600;',
+      '  color: #0f172a;',
+      '}',
+
+      '.scw-bid-review__cell--missing {',
+      '  color: #cbd5e1;',
+      '  font-style: italic;',
+      '  font-size: 12px;',
+      '}',
+
+      '.scw-bid-review__cell-notes {',
+      '  font-size: 11px;',
+      '  color: #64748b;',
+      '  margin-top: 2px;',
+      '}',
+
+      /* ── status chips ──────────────────────────────────────── */
+      '.scw-bid-review__chip {',
+      '  display: inline-block;',
+      '  padding: 1px 6px;',
+      '  border-radius: 3px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '  margin-top: 3px;',
+      '}',
+
+      '.scw-bid-review__chip--matched {',
+      '  background: #dcfce7;',
+      '  color: #166534;',
+      '}',
+
+      '.scw-bid-review__chip--missing {',
+      '  background: #fef3c7;',
+      '  color: #92400e;',
+      '}',
+
+      '.scw-bid-review__chip--new {',
+      '  background: #dbeafe;',
+      '  color: #1e40af;',
+      '}',
+
+      '.scw-bid-review__chip--conflict {',
+      '  background: #fee2e2;',
+      '  color: #991b1b;',
+      '}',
+
+      /* ── row actions cell ──────────────────────────────────── */
+      '.scw-bid-review__row-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      /* ── empty & loading states ────────────────────────────── */
+      '.scw-bid-review__empty-state {',
+      '  text-align: center;',
+      '  padding: 40px 20px;',
+      '  color: #94a3b8;',
+      '  font-size: 14px;',
+      '}',
+
+      '.scw-bid-review__loading {',
+      '  text-align: center;',
+      '  padding: 32px 20px;',
+      '  color: #64748b;',
+      '  font-size: 13px;',
+      '}',
+
+      '.scw-bid-review__loading::after {',
+      '  content: "";',
+      '  display: inline-block;',
+      '  width: 14px;',
+      '  height: 14px;',
+      '  border: 2px solid #cbd5e1;',
+      '  border-top-color: #3b82f6;',
+      '  border-radius: 50%;',
+      '  margin-left: 8px;',
+      '  vertical-align: middle;',
+      '  animation: scwBidSpin .7s linear infinite;',
+      '}',
+
+      '@keyframes scwBidSpin {',
+      '  to { transform: rotate(360deg); }',
+      '}',
+
+      /* ── toast ──────────────────────────────────────────────── */
+      '.scw-bid-review__toast {',
+      '  position: fixed;',
+      '  bottom: 24px;',
+      '  left: 50%;',
+      '  transform: translateX(-50%);',
+      '  z-index: 100000;',
+      '  padding: 10px 20px;',
+      '  border-radius: 6px;',
+      '  font: 600 13px/1.3 system-ui, sans-serif;',
+      '  color: #fff;',
+      '  box-shadow: 0 4px 16px rgba(0,0,0,0.25);',
+      '  transition: opacity .3s;',
+      '}',
+
+      '.scw-bid-review__toast--success {',
+      '  background: #16a34a;',
+      '}',
+
+      '.scw-bid-review__toast--error {',
+      '  background: #dc2626;',
+      '}',
+
+      '.scw-bid-review__toast--info {',
+      '  background: #2563eb;',
+      '}',
+
+    ].join('\n');
+
+    var style = document.createElement('style');
+    style.id = CFG.cssId;
+    style.textContent = css;
+    document.head.appendChild(style);
+  };
+
+})();
+/*** BID REVIEW — KNACK ADAPTERS ***/
+/**
+ * Reads raw record arrays from the Knack runtime.
+ * Isolates all Knack.models / Knack.views access so the rest of
+ * the feature never touches Knack internals directly.
+ *
+ * Reads : SCW.bidReview.CONFIG
+ * Writes: SCW.bidReview.loadRawData() → { rows, cells }
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  /**
+   * Find a Knack model by its view key.
+   * Knack stores models keyed by an internal key that often differs
+   * from the view key, so we iterate and match on view_key.
+   */
+  function findModel(viewKey) {
+    if (typeof Knack === 'undefined' || !Knack.models) return null;
+
+    var keys = Object.keys(Knack.models);
+    for (var i = 0; i < keys.length; i++) {
+      var m = Knack.models[keys[i]];
+      if (m && m.view && m.view.key === viewKey) return m;
+    }
+    return null;
+  }
+
+  /**
+   * Extract records from a Knack model.
+   * Handles both .data (array) and .toJSON().records patterns.
+   */
+  function extractRecords(model) {
+    if (!model) return [];
+
+    // Preferred: model.data is a Backbone collection or plain array
+    if (model.data) {
+      if (Array.isArray(model.data)) return model.data;
+      if (typeof model.data.toJSON === 'function') return model.data.toJSON();
+      if (model.data.models && Array.isArray(model.data.models)) {
+        return model.data.models.map(function (m) {
+          return typeof m.toJSON === 'function' ? m.toJSON() : m.attributes || m;
+        });
+      }
+    }
+
+    return [];
+  }
+
+  /**
+   * Fallback: fetch records via Knack REST API for a view.
+   * Returns a jQuery Deferred that resolves to an array of records.
+   * Paginates automatically up to 10 pages (1 000 records).
+   */
+  function fetchFromApi(viewKey) {
+    var deferred = $.Deferred();
+
+    if (typeof Knack === 'undefined') {
+      deferred.resolve([]);
+      return deferred.promise();
+    }
+
+    var allRecords = [];
+    var page = 1;
+    var maxPages = 10;
+
+    function fetchPage() {
+      var url = Knack.api_url + '/v1/pages/' + CFG.sceneKey +
+                '/views/' + viewKey + '/records?page=' + page +
+                '&rows_per_page=100';
+
+      SCW.knackAjax({
+        url: url,
+        type: 'GET',
+        success: function (resp) {
+          var records = resp.records || [];
+          allRecords = allRecords.concat(records);
+
+          if (records.length === 100 && page < maxPages) {
+            page++;
+            fetchPage();
+          } else {
+            deferred.resolve(allRecords);
+          }
+        },
+        error: function (xhr) {
+          console.error('[BidReview] Failed to fetch ' + viewKey +
+                        ' page ' + page, xhr.status);
+          // Return whatever we have so far
+          deferred.resolve(allRecords);
+        },
+      });
+    }
+
+    fetchPage();
+    return deferred.promise();
+  }
+
+  /**
+   * loadRawData() → jQuery.Deferred → { rows: [], cells: [] }
+   *
+   * Tries Knack.models first (synchronous, fast).
+   * Falls back to REST API fetch if models are empty.
+   */
+  ns.loadRawData = function loadRawData() {
+    var rowModel  = findModel(CFG.rowViewKey);
+    var cellModel = findModel(CFG.cellViewKey);
+
+    var rows  = extractRecords(rowModel);
+    var cells = extractRecords(cellModel);
+
+    if (CFG.debug) {
+      console.log('[BidReview] Model rows:', rows.length,
+                  'cells:', cells.length);
+    }
+
+    // If both have data, return synchronously (wrapped in resolved deferred)
+    if (rows.length > 0 && cells.length > 0) {
+      return $.Deferred().resolve({ rows: rows, cells: cells }).promise();
+    }
+
+    // Fall back to API fetch for whichever is missing
+    var rowPromise  = rows.length  > 0
+      ? $.Deferred().resolve(rows).promise()
+      : fetchFromApi(CFG.rowViewKey);
+
+    var cellPromise = cells.length > 0
+      ? $.Deferred().resolve(cells).promise()
+      : fetchFromApi(CFG.cellViewKey);
+
+    return $.when(rowPromise, cellPromise).then(function (r, c) {
+      return { rows: r, cells: c };
+    });
+  };
+
+})();
+/*** BID REVIEW — DATA TRANSFORMATION ***/
+/**
+ * Converts raw Knack row/cell records into a normalized in-memory
+ * state object.  All derived values (package list, grouping, eligibility
+ * counts) are computed here — rendering and actions never re-derive.
+ *
+ * Reads : SCW.bidReview.CONFIG.fieldKeys, CONFIG.statusValues
+ * Writes: SCW.bidReview.buildState(rawRows, rawCells) → state
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+  var FK  = CFG.fieldKeys;
+  var SV  = CFG.statusValues;
+
+  // ── tiny helpers ──────────────────────────────────────────────
+
+  /** Return the raw text value from a Knack field (handles objects with .raw). */
+  function raw(record, key) {
+    var v = record[key];
+    if (v == null) return '';
+    if (typeof v === 'object' && v.raw != null) return String(v.raw);
+    return String(v);
+  }
+
+  /** Parse a numeric field — strips $, commas, returns 0 for blanks. */
+  function num(record, key) {
+    var s = raw(record, key).replace(/[$,]/g, '');
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  /** Stable identifier for a connection field (Knack stores an array of {id,identifier}). */
+  function connectionId(record, key) {
+    var v = record[key];
+    if (!v) return '';
+    if (Array.isArray(v) && v.length) return v[0].id || '';
+    if (typeof v === 'object' && v.id) return v.id;
+    return String(v);
+  }
+
+  function connectionLabel(record, key) {
+    var v = record[key];
+    if (!v) return '';
+    if (Array.isArray(v) && v.length) return v[0].identifier || '';
+    if (typeof v === 'object' && v.identifier) return v.identifier;
+    return String(v);
+  }
+
+  // ── extract packages ──────────────────────────────────────────
+
+  /**
+   * Deduplicate packages from cell records.
+   * Returns sorted array: [{ id, name }]
+   */
+  function extractPackages(cells) {
+    var seen = {};
+    var list = [];
+
+    for (var i = 0; i < cells.length; i++) {
+      var pkgId   = connectionId(cells[i], FK.bidPackage);
+      var pkgName = connectionLabel(cells[i], FK.bidPackageName) ||
+                    connectionLabel(cells[i], FK.bidPackage);
+      if (!pkgId || seen[pkgId]) continue;
+      seen[pkgId] = true;
+      list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
+    }
+
+    list.sort(function (a, b) {
+      return a.name.localeCompare(b.name);
+    });
+    return list;
+  }
+
+  // ── build cell map ────────────────────────────────────────────
+
+  /**
+   * Index cells by (reviewRowId, packageId).
+   * Warns on duplicates and keeps the first occurrence.
+   * Returns: { rowId: { pkgId: cellData } }
+   */
+  function indexCells(cells) {
+    var map = {};
+
+    for (var i = 0; i < cells.length; i++) {
+      var rec   = cells[i];
+      var rowId = connectionId(rec, FK.cellReviewRow);
+      var pkgId = connectionId(rec, FK.bidPackage);
+      if (!rowId || !pkgId) continue;
+
+      if (!map[rowId]) map[rowId] = {};
+
+      if (map[rowId][pkgId]) {
+        if (CFG.debug) {
+          console.warn('[BidReview] Duplicate cell for row=' + rowId +
+                       ' pkg=' + pkgId + ' — keeping first');
+        }
+        continue;
+      }
+
+      map[rowId][pkgId] = {
+        id:               rec.id,
+        qty:              num(rec, FK.qty),
+        labor:            num(rec, FK.labor),
+        laborDescription: raw(rec, FK.laborDescription),
+        notes:            raw(rec, FK.notes),
+        status:           raw(rec, FK.status),
+      };
+    }
+
+    return map;
+  }
+
+  // ── build rows ────────────────────────────────────────────────
+
+  /**
+   * Normalize a raw Knack row record into a flat row object.
+   */
+  function normalizeRow(rec, cellMap) {
+    var id = rec.id;
+    return {
+      id:           id,
+      displayLabel: raw(rec, FK.displayLabel),
+      sowItem:      connectionId(rec, FK.relatedSowItem),
+      rowType:      raw(rec, FK.rowType),
+      groupL1:      raw(rec, FK.groupL1),
+      groupL2:      raw(rec, FK.groupL2),
+      sortOrder:    num(rec, FK.sortOrder),
+      cellsByPackage: cellMap[id] || {},
+    };
+  }
+
+  // ── grouping ──────────────────────────────────────────────────
+
+  /**
+   * Group rows by L1 then L2.
+   * Returns: [{ key, label, level, rows: [row] | subgroups: [{ key, label, level, rows }] }]
+   *
+   * If no grouping fields are populated the result is a single
+   * flat group containing all rows.
+   */
+  function groupRows(rows) {
+    var hasAnyGroup = false;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].groupL1) { hasAnyGroup = true; break; }
+    }
+
+    if (!hasAnyGroup) {
+      return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
+    }
+
+    // Bucket by L1
+    var l1Map   = {};
+    var l1Order = [];
+
+    for (var j = 0; j < rows.length; j++) {
+      var r   = rows[j];
+      var l1  = r.groupL1 || 'Ungrouped';
+
+      if (!l1Map[l1]) {
+        l1Map[l1] = { l2Map: {}, l2Order: [] };
+        l1Order.push(l1);
+      }
+
+      var l2 = r.groupL2 || '';
+      if (!l1Map[l1].l2Map[l2]) {
+        l1Map[l1].l2Map[l2] = [];
+        l1Map[l1].l2Order.push(l2);
+      }
+      l1Map[l1].l2Map[l2].push(r);
+    }
+
+    // Build output
+    var groups = [];
+    for (var gi = 0; gi < l1Order.length; gi++) {
+      var l1Key  = l1Order[gi];
+      var bucket = l1Map[l1Key];
+
+      var subgroups = [];
+      for (var si = 0; si < bucket.l2Order.length; si++) {
+        var l2Key  = bucket.l2Order[si];
+        var l2Rows = bucket.l2Map[l2Key];
+        l2Rows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
+
+        subgroups.push({
+          key:   l1Key + '::' + l2Key,
+          label: l2Key,
+          level: 2,
+          rows:  l2Rows,
+        });
+      }
+
+      groups.push({
+        key:       l1Key,
+        label:     l1Key,
+        level:     1,
+        rows:      [],          // L1 groups hold subgroups, not direct rows
+        subgroups: subgroups,
+      });
+    }
+
+    return groups;
+  }
+
+  // ── eligibility counts (precomputed) ──────────────────────────
+
+  /**
+   * For each package, count how many rows are adoptable, creatable,
+   * or eligible for the combined action.
+   *
+   * Returns: { pkgId: { adoptable, creatable, total } }
+   */
+  function computeEligibility(rows, packages) {
+    var result = {};
+
+    for (var p = 0; p < packages.length; p++) {
+      result[packages[p].id] = { adoptable: 0, creatable: 0, total: 0 };
+    }
+
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      for (var pi = 0; pi < packages.length; pi++) {
+        var pkgId = packages[pi].id;
+        if (!row.cellsByPackage[pkgId]) continue;
+
+        result[pkgId].total++;
+        if (row.sowItem) {
+          result[pkgId].adoptable++;
+        } else {
+          result[pkgId].creatable++;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // ── public: collectEligible ───────────────────────────────────
+
+  /**
+   * Return array of row IDs eligible for a package-level action.
+   * Used by the action system to build payloads.
+   *
+   * @param {string} pkgId
+   * @param {string} actionType  – 'package_adopt_all' | 'package_create_missing' | 'package_adopt_create'
+   * @param {object} state       – the normalized state from buildState
+   * @returns {string[]}
+   */
+  function collectEligible(pkgId, actionType, state) {
+    var ids  = [];
+    var rows = state.flatRows;
+
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (!row.cellsByPackage[pkgId]) continue;
+
+      switch (actionType) {
+        case 'package_adopt_all':
+          if (row.sowItem) ids.push(row.id);
+          break;
+        case 'package_create_missing':
+          if (!row.sowItem) ids.push(row.id);
+          break;
+        case 'package_adopt_create':
+          ids.push(row.id);
+          break;
+      }
+    }
+
+    return ids;
+  }
+
+  // ── public entry point ────────────────────────────────────────
+
+  /**
+   * buildState(rawRows, rawCells) → state
+   *
+   * @param {object[]} rawRows  – Knack records from the rows view
+   * @param {object[]} rawCells – Knack records from the cells view
+   * @returns {object} Normalized state consumed by render + actions:
+   *   {
+   *     packages:    [{ id, name }],
+   *     groups:      [{ key, label, level, rows|subgroups }],
+   *     flatRows:    [row],                       // ungrouped for iteration
+   *     eligibility: { pkgId: { adoptable, creatable, total } },
+   *     columnCount: number,                      // packages.length + 2 (SOW + actions)
+   *     isEmpty:     boolean,
+   *   }
+   */
+  ns.buildState = function buildState(rawRows, rawCells) {
+    var packages = extractPackages(rawCells);
+    var cellMap  = indexCells(rawCells);
+
+    // Normalize rows
+    var flatRows = [];
+    for (var i = 0; i < rawRows.length; i++) {
+      flatRows.push(normalizeRow(rawRows[i], cellMap));
+    }
+
+    // Sort by sortOrder globally before grouping
+    flatRows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
+
+    var groups      = groupRows(flatRows);
+    var eligibility = computeEligibility(flatRows, packages);
+
+    return {
+      packages:    packages,
+      groups:      groups,
+      flatRows:    flatRows,
+      eligibility: eligibility,
+      columnCount: packages.length + 2,
+      isEmpty:     flatRows.length === 0,
+    };
+  };
+
+  ns.collectEligible = collectEligible;
+
+})();
+/*** BID REVIEW — RENDERING ***/
+/**
+ * Pure rendering: state object → DOM nodes.
+ * No business logic, no Knack access, no data derivation.
+ * Every value consumed here is precomputed in the state object.
+ *
+ * Reads : SCW.bidReview.CONFIG (mountSelector, statusValues)
+ * Writes: SCW.bidReview.renderMatrix(state), .renderToast(msg, type),
+ *         .showLoading(), .clearMount()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+  var SV  = CFG.statusValues;
+
+  var TOAST_ID = 'scw-bid-review-toast';
+
+  // ── html helpers ────────────────────────────────────────────
+
+  var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+  var ESC_RE  = /[&<>"']/g;
+
+  function esc(str) {
+    return String(str == null ? '' : str).replace(ESC_RE, function (c) { return ESC_MAP[c]; });
+  }
+
+  function formatCurrency(val) {
+    if (val == null || val === 0) return '$0.00';
+    return '$' + Number(val).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // ── element factories ───────────────────────────────────────
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function btn(label, cssModifier, attrs) {
+    var b = el('button', 'scw-bid-review__btn scw-bid-review__btn--' + cssModifier, label);
+    if (attrs) {
+      var keys = Object.keys(attrs);
+      for (var i = 0; i < keys.length; i++) {
+        b.setAttribute(keys[i], attrs[keys[i]]);
+      }
+    }
+    return b;
+  }
+
+  // ── status chip ─────────────────────────────────────────────
+
+  function chipModifier(statusText) {
+    if (statusText === SV.matched)  return 'matched';
+    if (statusText === SV.missing)  return 'missing';
+    if (statusText === SV.newItem)  return 'new';
+    if (statusText === SV.conflict) return 'conflict';
+    return 'missing';
+  }
+
+  function renderChip(statusText) {
+    if (!statusText) return null;
+    return el('span', 'scw-bid-review__chip scw-bid-review__chip--' + chipModifier(statusText), statusText);
+  }
+
+  // ── mount point ─────────────────────────────────────────────
+
+  function getOrCreateMount() {
+    var mount = document.querySelector(CFG.mountSelector);
+    if (!mount) {
+      mount = el('div');
+      mount.id = CFG.mountSelector.replace(/^#/, '');
+      // Insert after the first view in the scene, or at end of kn-scene
+      var scene = document.getElementById(CFG.sceneKey);
+      if (scene) {
+        scene.appendChild(mount);
+      } else {
+        document.body.appendChild(mount);
+      }
+    }
+    return mount;
+  }
+
+  // ── table header ────────────────────────────────────────────
+
+  function buildHeaderRow(state) {
+    var tr = el('tr', 'scw-bid-review__header-row');
+
+    // SOW column header
+    var sowTh = el('th', 'scw-bid-review__sow-header', 'SOW Item');
+    tr.appendChild(sowTh);
+
+    // One header per package
+    for (var i = 0; i < state.packages.length; i++) {
+      var pkg = state.packages[i];
+      var elig = state.eligibility[pkg.id] || { adoptable: 0, creatable: 0, total: 0 };
+
+      var th = el('th', 'scw-bid-review__pkg-header');
+
+      // Package name
+      th.appendChild(el('div', 'scw-bid-review__pkg-name', pkg.name));
+
+      // Eligibility counts
+      var countsText = elig.adoptable + ' adoptable \u00b7 ' + elig.creatable + ' new';
+      th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
+
+      // Package-level action buttons
+      var actions = el('div', 'scw-bid-review__pkg-actions');
+
+      if (elig.adoptable > 0) {
+        actions.appendChild(btn(
+          'Adopt All (' + elig.adoptable + ')', 'adopt',
+          { 'data-action': 'package_adopt_all', 'data-package-id': pkg.id }
+        ));
+      }
+
+      if (elig.creatable > 0) {
+        actions.appendChild(btn(
+          'Create Missing (' + elig.creatable + ')', 'create',
+          { 'data-action': 'package_create_missing', 'data-package-id': pkg.id }
+        ));
+      }
+
+      if (elig.total > 0 && elig.adoptable > 0 && elig.creatable > 0) {
+        actions.appendChild(btn(
+          'Adopt + Create (' + elig.total + ')', 'combo',
+          { 'data-action': 'package_adopt_create', 'data-package-id': pkg.id }
+        ));
+      }
+
+      th.appendChild(actions);
+      tr.appendChild(th);
+    }
+
+    // Actions column header
+    tr.appendChild(el('th', 'scw-bid-review__actions-header', 'Actions'));
+
+    return tr;
+  }
+
+  // ── data cell for a package column ──────────────────────────
+
+  function buildDataCell(cell) {
+    var td = el('td');
+
+    if (!cell) {
+      td.className = 'scw-bid-review__cell--missing';
+      td.textContent = '\u2014';
+      return td;
+    }
+
+    // Labor description
+    if (cell.laborDescription) {
+      td.appendChild(el('div', 'scw-bid-review__cell-label', cell.laborDescription));
+    }
+
+    // Qty + Labor $
+    var values = el('div', 'scw-bid-review__cell-values');
+
+    if (cell.qty) {
+      values.appendChild(el('span', null, 'Qty: ' + cell.qty));
+    }
+    if (cell.labor) {
+      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor)));
+    }
+
+    if (values.childNodes.length) td.appendChild(values);
+
+    // Notes
+    if (cell.notes) {
+      td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
+    }
+
+    // Status chip
+    var chip = renderChip(cell.status);
+    if (chip) td.appendChild(chip);
+
+    return td;
+  }
+
+  // ── row actions cell ────────────────────────────────────────
+
+  function buildRowActionsCell(row, packages) {
+    var td = el('td');
+    var wrap = el('div', 'scw-bid-review__row-actions');
+
+    for (var i = 0; i < packages.length; i++) {
+      var pkg = packages[i];
+      var cell = row.cellsByPackage[pkg.id];
+      if (!cell) continue;
+
+      if (row.sowItem) {
+        wrap.appendChild(btn(
+          'Adopt \u2190 ' + pkg.name, 'adopt sm',
+          { 'data-action': 'row_adopt', 'data-row-id': row.id, 'data-package-id': pkg.id }
+        ));
+      } else {
+        wrap.appendChild(btn(
+          'Create \u2190 ' + pkg.name, 'create sm',
+          { 'data-action': 'row_create', 'data-row-id': row.id, 'data-package-id': pkg.id }
+        ));
+      }
+    }
+
+    // Skip always available
+    wrap.appendChild(btn(
+      'Skip', 'skip sm',
+      { 'data-action': 'row_skip', 'data-row-id': row.id }
+    ));
+
+    td.appendChild(wrap);
+    return td;
+  }
+
+  // ── data row ────────────────────────────────────────────────
+
+  function buildDataRow(row, packages) {
+    var tr = el('tr', 'scw-bid-review__row');
+    tr.setAttribute('data-row-id', row.id);
+
+    // SOW cell
+    var sowTd = el('td');
+    if (row.sowItem) {
+      sowTd.className = 'scw-bid-review__sow-cell';
+      sowTd.textContent = row.displayLabel || 'SOW Item';
+    } else {
+      sowTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--empty';
+      sowTd.textContent = row.displayLabel
+        ? row.displayLabel + ' (No SOW)'
+        : 'No SOW Item';
+    }
+    tr.appendChild(sowTd);
+
+    // Package cells
+    for (var i = 0; i < packages.length; i++) {
+      tr.appendChild(buildDataCell(row.cellsByPackage[packages[i].id] || null));
+    }
+
+    // Row actions
+    tr.appendChild(buildRowActionsCell(row, packages));
+
+    return tr;
+  }
+
+  // ── group header row ────────────────────────────────────────
+
+  function buildGroupHeader(label, level, colSpan) {
+    var tr = el('tr', 'scw-bid-review__group-header' +
+                (level === 2 ? ' scw-bid-review__group-header--l2' : ''));
+    var td = el('td', null, label);
+    td.setAttribute('colspan', colSpan);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  // ── assemble rows from grouped state ────────────────────────
+
+  function buildBodyRows(groups, packages, colSpan) {
+    var frag = document.createDocumentFragment();
+
+    for (var gi = 0; gi < groups.length; gi++) {
+      var group = groups[gi];
+
+      // L1 header (skip if blank label — single flat group)
+      if (group.label) {
+        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan));
+      }
+
+      // If group has subgroups, recurse into them
+      if (group.subgroups && group.subgroups.length) {
+        for (var si = 0; si < group.subgroups.length; si++) {
+          var sub = group.subgroups[si];
+          if (sub.label) {
+            frag.appendChild(buildGroupHeader(sub.label, sub.level, colSpan));
+          }
+          for (var ri = 0; ri < sub.rows.length; ri++) {
+            frag.appendChild(buildDataRow(sub.rows[ri], packages));
+          }
+        }
+      }
+
+      // Direct rows on this group (flat or ungrouped)
+      for (var di = 0; di < group.rows.length; di++) {
+        frag.appendChild(buildDataRow(group.rows[di], packages));
+      }
+    }
+
+    return frag;
+  }
+
+  // ── public: renderMatrix ────────────────────────────────────
+
+  /**
+   * Renders the full matrix into the mount point.
+   * Replaces any existing content.
+   *
+   * @param {object} state — normalized state from buildState()
+   */
+  ns.renderMatrix = function renderMatrix(state) {
+    var mount = getOrCreateMount();
+    mount.innerHTML = '';
+    mount.className = 'scw-bid-review';
+
+    if (state.isEmpty) {
+      mount.appendChild(el('div', 'scw-bid-review__empty-state',
+        'No comparison data available.'));
+      return mount;
+    }
+
+    var table = el('table', 'scw-bid-review__table');
+
+    // thead
+    var thead = document.createElement('thead');
+    thead.appendChild(buildHeaderRow(state));
+    table.appendChild(thead);
+
+    // tbody
+    var tbody = document.createElement('tbody');
+    tbody.appendChild(buildBodyRows(state.groups, state.packages, state.columnCount));
+    table.appendChild(tbody);
+
+    mount.appendChild(table);
+    return mount;
+  };
+
+  // ── public: showLoading ─────────────────────────────────────
+
+  ns.showLoading = function showLoading() {
+    var mount = getOrCreateMount();
+    mount.innerHTML = '';
+    mount.className = 'scw-bid-review';
+    mount.appendChild(el('div', 'scw-bid-review__loading', 'Loading comparison data'));
+    return mount;
+  };
+
+  // ── public: clearMount ──────────────────────────────────────
+
+  ns.clearMount = function clearMount() {
+    var mount = document.querySelector(CFG.mountSelector);
+    if (mount) mount.innerHTML = '';
+  };
+
+  // ── public: renderToast ─────────────────────────────────────
+
+  /**
+   * Show a transient toast notification.
+   * @param {string} message
+   * @param {'success'|'error'|'info'} type
+   */
+  ns.renderToast = function renderToast(message, type) {
+    // Remove existing toast
+    var existing = document.getElementById(TOAST_ID);
+    if (existing) existing.remove();
+
+    var toast = el('div', 'scw-bid-review__toast scw-bid-review__toast--' + (type || 'info'), message);
+    toast.id = TOAST_ID;
+    document.body.appendChild(toast);
+
+    setTimeout(function () {
+      toast.style.opacity = '0';
+      setTimeout(function () { toast.remove(); }, 300);
+    }, CFG.toastDuration);
+  };
+
+})();
+/*** BID REVIEW — ACTIONS ***/
+/**
+ * Payload construction and webhook submission.
+ * No DOM manipulation, no rendering — only data out.
+ * Calls renderToast for user feedback (the only render dependency).
+ *
+ * Reads : SCW.bidReview.CONFIG, SCW.bidReview.renderToast
+ * Writes: SCW.bidReview.submitAction(payload)
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  /**
+   * Submit a bid review action to the Make webhook.
+   *
+   * @param {object} payload
+   * @param {string} payload.actionType — one of:
+   *   'row_adopt', 'row_create', 'row_skip',
+   *   'package_adopt_all', 'package_create_missing', 'package_adopt_create'
+   * @param {string} [payload.reviewRowId]  — for row-level actions
+   * @param {string} [payload.packageId]    — target package
+   * @param {string[]} [payload.rowIds]     — for package-level batch actions
+   * @returns {jQuery.Deferred}
+   */
+  ns.submitAction = function submitAction(payload) {
+    var deferred = $.Deferred();
+
+    if (!payload || !payload.actionType) {
+      if (CFG.debug) console.warn('[BidReview] submitAction called without actionType');
+      deferred.reject('Missing actionType');
+      return deferred.promise();
+    }
+
+    var body = {
+      actionType:  payload.actionType,
+      timestamp:   new Date().toISOString(),
+    };
+
+    if (payload.reviewRowId) body.reviewRowId = payload.reviewRowId;
+    if (payload.packageId)   body.packageId   = payload.packageId;
+    if (payload.rowIds)      body.rowIds      = payload.rowIds;
+
+    if (CFG.debug) {
+      console.log('[BidReview] Submitting action:', body);
+    }
+
+    SCW.knackAjax({
+      url:  CFG.actionWebhook,
+      type: 'POST',
+      data: JSON.stringify(body),
+      success: function (resp) {
+        if (CFG.debug) console.log('[BidReview] Action success:', resp);
+
+        var label = describeAction(payload);
+        ns.renderToast(label + ' — sent successfully', 'success');
+        deferred.resolve(resp);
+      },
+      error: function (xhr) {
+        console.error('[BidReview] Action failed:', xhr.status, xhr.responseText);
+        ns.renderToast('Action failed — please try again', 'error');
+        deferred.reject(xhr);
+      },
+    });
+
+    return deferred.promise();
+  };
+
+  /**
+   * Build a human-readable label for a toast message.
+   */
+  function describeAction(payload) {
+    switch (payload.actionType) {
+      case 'row_adopt':             return 'Row adopted';
+      case 'row_create':            return 'SOW item creation requested';
+      case 'row_skip':              return 'Row skipped';
+      case 'package_adopt_all':     return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_create_missing':return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_adopt_create':  return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      default:                      return 'Action submitted';
+    }
+  }
+
+})();
+/*** BID REVIEW — INITIALIZATION ***/
+/**
+ * Orchestrates the Bid Review Matrix feature:
+ *   1. Binds to Knack scene render
+ *   2. Loads data → transforms → renders
+ *   3. Installs a single delegated click handler for all actions
+ *
+ * Reads : SCW.bidReview.CONFIG, .injectStyles, .loadRawData,
+ *         .buildState, .collectEligible, .renderMatrix,
+ *         .showLoading, .submitAction, .renderToast
+ * Writes: SCW.bidReview.refresh()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  var INIT_FLAG = 'data-scw-bid-review-init';
+
+  // Current state — kept in closure for the click handler
+  var _state = null;
+
+  // ── load → transform → render pipeline ──────────────────────
+
+  function runPipeline() {
+    ns.showLoading();
+
+    ns.loadRawData().then(function (raw) {
+      _state = ns.buildState(raw.rows, raw.cells);
+
+      if (CFG.debug) {
+        console.log('[BidReview] State built:',
+          _state.packages.length, 'packages,',
+          _state.flatRows.length, 'rows');
+      }
+
+      var mount = ns.renderMatrix(_state);
+      attachClickHandler(mount);
+    }).fail(function (err) {
+      console.error('[BidReview] Pipeline failed:', err);
+      ns.renderToast('Failed to load comparison data', 'error');
+    });
+  }
+
+  // ── delegated click handler ─────────────────────────────────
+
+  function attachClickHandler(mount) {
+    if (!mount || mount.getAttribute(INIT_FLAG)) return;
+    mount.setAttribute(INIT_FLAG, '1');
+
+    mount.addEventListener('click', function (e) {
+      var button = e.target.closest('.scw-bid-review__btn');
+      if (!button) return;
+
+      var action = button.getAttribute('data-action');
+      if (!action) return;
+
+      // Prevent double-click
+      if (button.classList.contains('scw-bid-review__btn--busy')) return;
+
+      if (action.indexOf('package_') === 0) {
+        handlePackageAction(button, action);
+      } else if (action.indexOf('row_') === 0) {
+        handleRowAction(button, action);
+      }
+    });
+  }
+
+  // ── package-level action ────────────────────────────────────
+
+  function handlePackageAction(button, actionType) {
+    if (!_state) return;
+
+    var pkgId  = button.getAttribute('data-package-id');
+    var rowIds = ns.collectEligible(pkgId, actionType, _state);
+
+    if (!rowIds.length) {
+      ns.renderToast('No eligible rows for this action', 'info');
+      return;
+    }
+
+    // Find package name for confirmation
+    var pkgName = pkgId;
+    for (var i = 0; i < _state.packages.length; i++) {
+      if (_state.packages[i].id === pkgId) {
+        pkgName = _state.packages[i].name;
+        break;
+      }
+    }
+
+    var verb = actionType === 'package_adopt_all'      ? 'Adopt'
+             : actionType === 'package_create_missing'  ? 'Create'
+             : 'Adopt + Create';
+
+    var confirmed = window.confirm(
+      verb + ' ' + rowIds.length + ' row(s) from ' + pkgName + '?'
+    );
+    if (!confirmed) return;
+
+    setBusy(button, true);
+
+    ns.submitAction({
+      actionType: actionType,
+      packageId:  pkgId,
+      rowIds:     rowIds,
+    }).always(function () {
+      setBusy(button, false);
+    });
+  }
+
+  // ── row-level action ────────────────────────────────────────
+
+  function handleRowAction(button, actionType) {
+    var rowId = button.getAttribute('data-row-id');
+    var pkgId = button.getAttribute('data-package-id');
+
+    setBusy(button, true);
+
+    var payload = {
+      actionType:  actionType,
+      reviewRowId: rowId,
+    };
+
+    if (pkgId) payload.packageId = pkgId;
+
+    ns.submitAction(payload).always(function () {
+      setBusy(button, false);
+    });
+  }
+
+  // ── busy state helper ───────────────────────────────────────
+
+  function setBusy(button, busy) {
+    if (busy) {
+      button.classList.add('scw-bid-review__btn--busy');
+      button.setAttribute('data-original-text', button.textContent);
+      button.textContent = 'Sending\u2026';
+    } else {
+      button.classList.remove('scw-bid-review__btn--busy');
+      var orig = button.getAttribute('data-original-text');
+      if (orig) button.textContent = orig;
+    }
+  }
+
+  // ── public: refresh ─────────────────────────────────────────
+
+  ns.refresh = function refresh() {
+    runPipeline();
+  };
+
+  // ── init on scene render ────────────────────────────────────
+
+  function init() {
+    ns.injectStyles();
+
+    SCW.onSceneRender(CFG.sceneKey, function () {
+      setTimeout(function () {
+        runPipeline();
+      }, CFG.renderDelay);
+    }, CFG.eventNs);
+  }
+
+  init();
+
+})();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **********************/
 (function () {
   'use strict';
