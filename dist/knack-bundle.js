@@ -8742,7 +8742,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  color: #1e293b;',
       '  overflow-x: auto;',
       '  -webkit-overflow-scrolling: touch;',
-      '  padding-bottom: 8px;',
+      '  padding: 12px 16px 8px;',
+      '  margin: 0 12px;',
       '}',
 
       /* ── SOW sections ────────────────────────────────────────── */
@@ -9235,7 +9236,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
   function connectionAll(record, key) {
-    var v = record[key];
+    // Try the _raw variant first (Knack often stores connection data there)
+    var v = record[key + '_raw'];
+    if (!v) v = record[key];
     if (!v) return [];
     if (Array.isArray(v)) return v;
     if (typeof v === 'object' && v.id) return [v];
@@ -9289,6 +9292,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    */
   function groupBySow(records) {
     var buckets = {};
+
+    // Debug: log the SOW field shape from the first record
+    if (CFG.debug && records.length) {
+      var sample = records[0];
+      console.log('[BidReview] SOW field debug:', {
+        key: FK.sow,
+        value: sample[FK.sow],
+        raw: sample[FK.sow + '_raw'],
+        type: typeof sample[FK.sow],
+        allKeys: Object.keys(sample).filter(function (k) { return k.indexOf('2154') !== -1; }),
+      });
+    }
 
     for (var i = 0; i < records.length; i++) {
       var rec   = records[i];

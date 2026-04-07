@@ -23,7 +23,8 @@
       '  color: #1e293b;',
       '  overflow-x: auto;',
       '  -webkit-overflow-scrolling: touch;',
-      '  padding-bottom: 8px;',
+      '  padding: 12px 16px 8px;',
+      '  margin: 0 12px;',
       '}',
 
       /* ── SOW sections ────────────────────────────────────────── */
