@@ -13,51 +13,42 @@
   ns.CONFIG = {
     // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
-    viewKey:           'view_3575',
+    viewKey:           'view_3680',
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
 
-    // ── DOM mount point (created if absent) ────────────────────
+    // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
 
     // ── Knack field keys ──────────────────────────────────────
     fieldKeys: {
-      // Row fields
-      reviewRowId:     'field_2552',
-      displayLabel:    'field_2365',
-      relatedSowItem:  'field_2404',
-      rowType:         'field_2366',
-      groupL1:         'field_2228',
-      groupL2:         'field_2218',
-      sortOrder:       'field_2553',
+      // Record identity
+      reviewRowId:     'field_2552',   // SYS_record ID
 
-      // Cell fields
-      cellId:          'field_2554',
-      cellReviewRow:   'field_2555',
-      bidPackage:      'field_2415',
-      bidPackageName:  'field_2556',
-      qty:             'field_2399',
-      labor:           'field_2401',
-      laborDescription:'field_2409',
-      notes:           'field_2557',
-      status:          'field_2558',
-    },
+      // Row identity / pivot key
+      relatedSowItem:  'field_2404',   // REL_sow Line Item (connection)
+      displayLabel:    'field_2365',   // LABEL_set line item label (E-003, 00, etc.)
+      productName:     'field_2379',   // STORED_product name
 
-    // ── Status value constants ────────────────────────────────
-    statusValues: {
-      matched:  'Matched',
-      missing:  'Missing',
-      newItem:  'New',
-      conflict: 'Conflict',
+      // Package column (pivot axis)
+      bidPackage:      'field_2415',   // REL_bid (connection — BD-1, BD-2, etc.)
+
+      // Values displayed in each cell
+      labor:           'field_2401',   // CALC_sub bid extended ($)
+      notes:           'field_2412',   // INPUT_survey notes
+
+      // Grouping
+      proposalBucket:  'field_2366',   // REL_proposal bucket (Assumptions, Camera or Reader, etc.)
+      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF)
     },
 
     // ── Timing ────────────────────────────────────────────────
-    renderDelay:       200,     // ms to wait after scene render
+    renderDelay:       200,     // ms to wait after view render
     toastDuration:     4000,    // ms before toast auto-dismiss
 
     // ── Debug ─────────────────────────────────────────────────
-    debug:   false,
+    debug:   true,
     eventNs: '.scwBidReview',
     cssId:   'scw-bid-review-css',
   };

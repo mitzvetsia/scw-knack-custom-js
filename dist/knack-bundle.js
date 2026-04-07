@@ -8673,51 +8673,42 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   ns.CONFIG = {
     // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
-    viewKey:           'view_3575',
+    viewKey:           'view_3680',
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
 
-    // ── DOM mount point (created if absent) ────────────────────
+    // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
 
     // ── Knack field keys ──────────────────────────────────────
     fieldKeys: {
-      // Row fields
-      reviewRowId:     'field_2552',
-      displayLabel:    'field_2365',
-      relatedSowItem:  'field_2404',
-      rowType:         'field_2366',
-      groupL1:         'field_2228',
-      groupL2:         'field_2218',
-      sortOrder:       'field_2553',
+      // Record identity
+      reviewRowId:     'field_2552',   // SYS_record ID
 
-      // Cell fields
-      cellId:          'field_2554',
-      cellReviewRow:   'field_2555',
-      bidPackage:      'field_2415',
-      bidPackageName:  'field_2556',
-      qty:             'field_2399',
-      labor:           'field_2401',
-      laborDescription:'field_2409',
-      notes:           'field_2557',
-      status:          'field_2558',
-    },
+      // Row identity / pivot key
+      relatedSowItem:  'field_2404',   // REL_sow Line Item (connection)
+      displayLabel:    'field_2365',   // LABEL_set line item label (E-003, 00, etc.)
+      productName:     'field_2379',   // STORED_product name
 
-    // ── Status value constants ────────────────────────────────
-    statusValues: {
-      matched:  'Matched',
-      missing:  'Missing',
-      newItem:  'New',
-      conflict: 'Conflict',
+      // Package column (pivot axis)
+      bidPackage:      'field_2415',   // REL_bid (connection — BD-1, BD-2, etc.)
+
+      // Values displayed in each cell
+      labor:           'field_2401',   // CALC_sub bid extended ($)
+      notes:           'field_2412',   // INPUT_survey notes
+
+      // Grouping
+      proposalBucket:  'field_2366',   // REL_proposal bucket (Assumptions, Camera or Reader, etc.)
+      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF)
     },
 
     // ── Timing ────────────────────────────────────────────────
-    renderDelay:       200,     // ms to wait after scene render
+    renderDelay:       200,     // ms to wait after view render
     toastDuration:     4000,    // ms before toast auto-dismiss
 
     // ── Debug ─────────────────────────────────────────────────
-    debug:   false,
+    debug:   true,
     eventNs: '.scwBidReview',
     cssId:   'scw-bid-review-css',
   };
@@ -9171,7 +9162,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
  * All derived values (package list, grouping, eligibility counts)
  * are computed here — rendering and actions never re-derive.
  *
- * Reads : SCW.bidReview.CONFIG.fieldKeys, CONFIG.statusValues
+ * Reads : SCW.bidReview.CONFIG.fieldKeys
  * Writes: SCW.bidReview.buildState(records), .collectEligible()
  */
 (function () {
@@ -9180,7 +9171,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
   var CFG = ns.CONFIG;
   var FK  = CFG.fieldKeys;
-  var SV  = CFG.statusValues;
 
   // ── tiny helpers ──────────────────────────────────────────────
 
@@ -9228,8 +9218,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     for (var i = 0; i < records.length; i++) {
       var pkgId   = connectionId(records[i], FK.bidPackage);
-      var pkgName = connectionLabel(records[i], FK.bidPackageName) ||
-                    connectionLabel(records[i], FK.bidPackage);
+      var pkgName = connectionLabel(records[i], FK.bidPackage);
       if (!pkgId || seen[pkgId]) continue;
       seen[pkgId] = true;
       list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
@@ -9297,12 +9286,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       cellsByPackage[pkgId] = {
-        id:               rec.id,
-        qty:              num(rec, FK.qty),
-        labor:            num(rec, FK.labor),
-        laborDescription: raw(rec, FK.laborDescription),
-        notes:            raw(rec, FK.notes),
-        status:           raw(rec, FK.status),
+        id:          rec.id,
+        labor:       num(rec, FK.labor),
+        productName: raw(rec, FK.productName),
+        notes:       raw(rec, FK.notes),
       };
     }
 
@@ -9310,11 +9297,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       id:             meta.id,            // first record's id as row identifier
       rowKey:         rowKey,
       displayLabel:   raw(meta, FK.displayLabel),
+      productName:    raw(meta, FK.productName),
       sowItem:        connectionId(meta, FK.relatedSowItem),
-      rowType:        raw(meta, FK.rowType),
-      groupL1:        raw(meta, FK.groupL1),
-      groupL2:        raw(meta, FK.groupL2),
-      sortOrder:      num(meta, FK.sortOrder),
+      groupL1:        connectionLabel(meta, FK.proposalBucket),
+      groupL2:        connectionLabel(meta, FK.mdfIdf),
       cellsByPackage: cellsByPackage,
     };
   }
@@ -9364,7 +9350,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       for (var si = 0; si < bucket.l2Order.length; si++) {
         var l2Key  = bucket.l2Order[si];
         var l2Rows = bucket.l2Map[l2Key];
-        l2Rows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
+        l2Rows.sort(function (a, b) {
+          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+        });
 
         subgroups.push({
           key:   l1Key + '::' + l2Key,
@@ -9464,8 +9452,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       flatRows.push(buildRow(key, pivot.map[key]));
     }
 
-    // Sort by sortOrder
-    flatRows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
+    // Sort by displayLabel
+    flatRows.sort(function (a, b) {
+      return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+    });
 
     var groups      = groupRows(flatRows);
     var eligibility = computeEligibility(flatRows, packages);
@@ -9489,7 +9479,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
  * No business logic, no Knack access, no data derivation.
  * Every value consumed here is precomputed in the state object.
  *
- * Reads : SCW.bidReview.CONFIG (mountSelector, statusValues)
+ * Reads : SCW.bidReview.CONFIG (mountSelector)
  * Writes: SCW.bidReview.renderMatrix(state), .renderToast(msg, type),
  *         .showLoading(), .clearMount()
  */
@@ -9498,7 +9488,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
   var CFG = ns.CONFIG;
-  var SV  = CFG.statusValues;
 
   var TOAST_ID = 'scw-bid-review-toast';
 
@@ -9534,21 +9523,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
     return b;
-  }
-
-  // ── status chip ─────────────────────────────────────────────
-
-  function chipModifier(statusText) {
-    if (statusText === SV.matched)  return 'matched';
-    if (statusText === SV.missing)  return 'missing';
-    if (statusText === SV.newItem)  return 'new';
-    if (statusText === SV.conflict) return 'conflict';
-    return 'missing';
-  }
-
-  function renderChip(statusText) {
-    if (!statusText) return null;
-    return el('span', 'scw-bid-review__chip scw-bid-review__chip--' + chipModifier(statusText), statusText);
   }
 
   // ── mount point ─────────────────────────────────────────────
@@ -9637,31 +9611,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return td;
     }
 
-    // Labor description
-    if (cell.laborDescription) {
-      td.appendChild(el('div', 'scw-bid-review__cell-label', cell.laborDescription));
+    // Product name
+    if (cell.productName) {
+      td.appendChild(el('div', 'scw-bid-review__cell-label', cell.productName));
     }
 
-    // Qty + Labor $
-    var values = el('div', 'scw-bid-review__cell-values');
-
-    if (cell.qty) {
-      values.appendChild(el('span', null, 'Qty: ' + cell.qty));
-    }
+    // Labor $
     if (cell.labor) {
+      td.appendChild(el('div', 'scw-bid-review__cell-values',
+        null));
+      var values = td.lastChild;
       values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor)));
     }
-
-    if (values.childNodes.length) td.appendChild(values);
 
     // Notes
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
     }
-
-    // Status chip
-    var chip = renderChip(cell.status);
-    if (chip) td.appendChild(chip);
 
     return td;
   }
@@ -10093,7 +10059,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function init() {
     ns.injectStyles();
 
-    SCW.onSceneRender(CFG.sceneKey, function () {
+    SCW.onViewRender(CFG.viewKey, function () {
       setTimeout(function () {
         runPipeline();
       }, CFG.renderDelay);

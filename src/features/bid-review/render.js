@@ -4,7 +4,7 @@
  * No business logic, no Knack access, no data derivation.
  * Every value consumed here is precomputed in the state object.
  *
- * Reads : SCW.bidReview.CONFIG (mountSelector, statusValues)
+ * Reads : SCW.bidReview.CONFIG (mountSelector)
  * Writes: SCW.bidReview.renderMatrix(state), .renderToast(msg, type),
  *         .showLoading(), .clearMount()
  */
@@ -13,7 +13,6 @@
 
   var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
   var CFG = ns.CONFIG;
-  var SV  = CFG.statusValues;
 
   var TOAST_ID = 'scw-bid-review-toast';
 
@@ -49,21 +48,6 @@
       }
     }
     return b;
-  }
-
-  // ── status chip ─────────────────────────────────────────────
-
-  function chipModifier(statusText) {
-    if (statusText === SV.matched)  return 'matched';
-    if (statusText === SV.missing)  return 'missing';
-    if (statusText === SV.newItem)  return 'new';
-    if (statusText === SV.conflict) return 'conflict';
-    return 'missing';
-  }
-
-  function renderChip(statusText) {
-    if (!statusText) return null;
-    return el('span', 'scw-bid-review__chip scw-bid-review__chip--' + chipModifier(statusText), statusText);
   }
 
   // ── mount point ─────────────────────────────────────────────
@@ -152,31 +136,23 @@
       return td;
     }
 
-    // Labor description
-    if (cell.laborDescription) {
-      td.appendChild(el('div', 'scw-bid-review__cell-label', cell.laborDescription));
+    // Product name
+    if (cell.productName) {
+      td.appendChild(el('div', 'scw-bid-review__cell-label', cell.productName));
     }
 
-    // Qty + Labor $
-    var values = el('div', 'scw-bid-review__cell-values');
-
-    if (cell.qty) {
-      values.appendChild(el('span', null, 'Qty: ' + cell.qty));
-    }
+    // Labor $
     if (cell.labor) {
+      td.appendChild(el('div', 'scw-bid-review__cell-values',
+        null));
+      var values = td.lastChild;
       values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor)));
     }
-
-    if (values.childNodes.length) td.appendChild(values);
 
     // Notes
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
     }
-
-    // Status chip
-    var chip = renderChip(cell.status);
-    if (chip) td.appendChild(chip);
 
     return td;
   }

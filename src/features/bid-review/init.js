@@ -154,7 +154,7 @@
   function init() {
     ns.injectStyles();
 
-    SCW.onSceneRender(CFG.sceneKey, function () {
+    SCW.onViewRender(CFG.viewKey, function () {
       setTimeout(function () {
         runPipeline();
       }, CFG.renderDelay);

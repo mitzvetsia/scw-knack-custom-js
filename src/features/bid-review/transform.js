@@ -7,7 +7,7 @@
  * All derived values (package list, grouping, eligibility counts)
  * are computed here — rendering and actions never re-derive.
  *
- * Reads : SCW.bidReview.CONFIG.fieldKeys, CONFIG.statusValues
+ * Reads : SCW.bidReview.CONFIG.fieldKeys
  * Writes: SCW.bidReview.buildState(records), .collectEligible()
  */
 (function () {
@@ -16,7 +16,6 @@
   var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
   var CFG = ns.CONFIG;
   var FK  = CFG.fieldKeys;
-  var SV  = CFG.statusValues;
 
   // ── tiny helpers ──────────────────────────────────────────────
 
@@ -64,8 +63,7 @@
 
     for (var i = 0; i < records.length; i++) {
       var pkgId   = connectionId(records[i], FK.bidPackage);
-      var pkgName = connectionLabel(records[i], FK.bidPackageName) ||
-                    connectionLabel(records[i], FK.bidPackage);
+      var pkgName = connectionLabel(records[i], FK.bidPackage);
       if (!pkgId || seen[pkgId]) continue;
       seen[pkgId] = true;
       list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
@@ -133,12 +131,10 @@
       }
 
       cellsByPackage[pkgId] = {
-        id:               rec.id,
-        qty:              num(rec, FK.qty),
-        labor:            num(rec, FK.labor),
-        laborDescription: raw(rec, FK.laborDescription),
-        notes:            raw(rec, FK.notes),
-        status:           raw(rec, FK.status),
+        id:          rec.id,
+        labor:       num(rec, FK.labor),
+        productName: raw(rec, FK.productName),
+        notes:       raw(rec, FK.notes),
       };
     }
 
@@ -146,11 +142,10 @@
       id:             meta.id,            // first record's id as row identifier
       rowKey:         rowKey,
       displayLabel:   raw(meta, FK.displayLabel),
+      productName:    raw(meta, FK.productName),
       sowItem:        connectionId(meta, FK.relatedSowItem),
-      rowType:        raw(meta, FK.rowType),
-      groupL1:        raw(meta, FK.groupL1),
-      groupL2:        raw(meta, FK.groupL2),
-      sortOrder:      num(meta, FK.sortOrder),
+      groupL1:        connectionLabel(meta, FK.proposalBucket),
+      groupL2:        connectionLabel(meta, FK.mdfIdf),
       cellsByPackage: cellsByPackage,
     };
   }
@@ -200,7 +195,9 @@
       for (var si = 0; si < bucket.l2Order.length; si++) {
         var l2Key  = bucket.l2Order[si];
         var l2Rows = bucket.l2Map[l2Key];
-        l2Rows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
+        l2Rows.sort(function (a, b) {
+          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+        });
 
         subgroups.push({
           key:   l1Key + '::' + l2Key,
@@ -300,8 +297,10 @@
       flatRows.push(buildRow(key, pivot.map[key]));
     }
 
-    // Sort by sortOrder
-    flatRows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
+    // Sort by displayLabel
+    flatRows.sort(function (a, b) {
+      return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+    });
 
     var groups      = groupRows(flatRows);
     var eligibility = computeEligibility(flatRows, packages);
