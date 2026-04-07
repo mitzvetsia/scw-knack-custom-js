@@ -185,14 +185,39 @@
       '  padding: 3px 6px;',
       '}',
 
-      /* ── group headers ─────────────────────────────────────── */
+      /* ── collapsible group headers (accordion style) ────────── */
+      '.scw-bid-review__group-header {',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  -webkit-user-select: none;',
+      '}',
+
       '.scw-bid-review__group-header td {',
+      '  position: relative;',
       '  background: #f1f5f9;',
-      '  padding: 6px 10px;',
+      '  padding: 10px 12px 10px 28px;',
       '  font-weight: 700;',
       '  font-size: 13px;',
       '  color: #334155;',
       '  border-bottom: 1px solid #cbd5e1;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 8px;',
+      '}',
+
+      /* Left accent bar — mirrors KTL accordion */
+      '.scw-bid-review__group-header td::before {',
+      '  content: "";',
+      '  position: absolute;',
+      '  left: 0;',
+      '  top: 0;',
+      '  bottom: 0;',
+      '  width: 4px;',
+      '  background: #295f91;',
+      '}',
+
+      '.scw-bid-review__group-header:hover td {',
+      '  background: #e8edf3;',
       '}',
 
       '.scw-bid-review__group-header--l2 td {',
@@ -200,7 +225,46 @@
       '  font-weight: 600;',
       '  font-size: 12px;',
       '  color: #475569;',
-      '  padding-left: 20px;',
+      '  padding-left: 40px;',
+      '}',
+
+      '.scw-bid-review__group-header--l2 td::before {',
+      '  background: #6b96bd;',
+      '  width: 3px;',
+      '}',
+
+      '.scw-bid-review__group-header--l2:hover td {',
+      '  background: #eef2f7;',
+      '}',
+
+      /* Chevron in group header */
+      '.scw-bid-review__grp-chevron {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  color: #295f91;',
+      '  transition: transform 220ms ease;',
+      '}',
+
+      '.scw-bid-review__group-header--collapsed .scw-bid-review__grp-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+
+      /* Title */
+      '.scw-bid-review__grp-title {',
+      '  flex: 1 1 auto;',
+      '}',
+
+      /* Count pill — mirrors KTL accordion count */
+      '.scw-bid-review__grp-count {',
+      '  display: inline-block;',
+      '  padding: 2px 8px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  border-radius: 999px;',
+      '  background: rgba(41, 95, 145, 0.12);',
+      '  border: 1px solid rgba(41, 95, 145, 0.22);',
+      '  color: #295f91;',
       '}',
 
       /* ── data rows ─────────────────────────────────────────── */

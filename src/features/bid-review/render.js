@@ -49,6 +49,13 @@
     return b;
   }
 
+  // ── chevron SVG ──────────────────────────────────────────────
+
+  var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="6 9 12 15 18 9"></polyline></svg>';
+
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
@@ -215,14 +222,55 @@
     return tr;
   }
 
-  // ── group header row ────────────────────────────────────────
+  // ── collapsible group header row ─────────────────────────────
 
-  function buildGroupHeader(label, level, colSpan) {
+  function buildGroupHeader(label, level, colSpan, rowCount) {
     var tr = el('tr', 'scw-bid-review__group-header' +
                 (level === 2 ? ' scw-bid-review__group-header--l2' : ''));
-    var td = el('td', null, label);
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('aria-expanded', 'true');
+
+    var td = el('td');
     td.setAttribute('colspan', colSpan);
+
+    // Chevron
+    var chevron = el('span', 'scw-bid-review__grp-chevron');
+    chevron.innerHTML = CHEVRON_SVG;
+    td.appendChild(chevron);
+
+    // Label
+    td.appendChild(el('span', 'scw-bid-review__grp-title', label));
+
+    // Count pill
+    if (rowCount > 0) {
+      td.appendChild(el('span', 'scw-bid-review__grp-count', String(rowCount)));
+    }
+
     tr.appendChild(td);
+
+    // Toggle: hide/show sibling rows until next group header
+    tr.addEventListener('click', function () {
+      var expanded = tr.getAttribute('aria-expanded') === 'true';
+      tr.setAttribute('aria-expanded', String(!expanded));
+      tr.classList.toggle('scw-bid-review__group-header--collapsed', expanded);
+
+      // Walk next siblings and toggle visibility
+      var sibling = tr.nextElementSibling;
+      while (sibling) {
+        if (sibling.classList.contains('scw-bid-review__group-header')) break;
+        sibling.style.display = expanded ? 'none' : '';
+        sibling = sibling.nextElementSibling;
+      }
+    });
+
+    tr.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        tr.click();
+      }
+    });
+
     return tr;
   }
 
@@ -235,14 +283,21 @@
       var group = groups[gi];
 
       if (group.label) {
-        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan));
+        var l1Count = 0;
+        if (group.subgroups) {
+          for (var ci = 0; ci < group.subgroups.length; ci++) {
+            l1Count += group.subgroups[ci].rows.length;
+          }
+        }
+        l1Count += group.rows.length;
+        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, l1Count));
       }
 
       if (group.subgroups && group.subgroups.length) {
         for (var si = 0; si < group.subgroups.length; si++) {
           var sub = group.subgroups[si];
           if (sub.label) {
-            frag.appendChild(buildGroupHeader(sub.label, sub.level, colSpan));
+            frag.appendChild(buildGroupHeader(sub.label, sub.level, colSpan, sub.rows.length));
           }
           for (var ri = 0; ri < sub.rows.length; ri++) {
             frag.appendChild(buildDataRow(sub.rows[ri], packages, sowId));
@@ -257,13 +312,6 @@
 
     return frag;
   }
-
-  // ── chevron SVG ──────────────────────────────────────────────
-
-  var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
-    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
-    'stroke-linecap="round" stroke-linejoin="round">' +
-    '<polyline points="6 9 12 15 18 9"></polyline></svg>';
 
   // ── render a single SOW grid ────────────────────────────────
 
