@@ -8697,7 +8697,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Values displayed in each cell
       labor:           'field_2401',   // CALC_sub bid extended ($)
       notes:           'field_2412',   // INPUT_survey notes
-      surveyQty:       'field_2409',   // survey quantity (shown under price)
+      laborDesc:       'field_2409',   // labor description (shown under price)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -8757,11 +8757,35 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       '.scw-bid-review__sow-title {',
       '  display: flex;',
-      '  align-items: baseline;',
+      '  align-items: center;',
       '  gap: 10px;',
       '  padding: 10px 12px;',
       '  background: #1e293b;',
       '  color: #fff;',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  -webkit-user-select: none;',
+      '}',
+
+      '.scw-bid-review__sow-title:hover {',
+      '  background: #334155;',
+      '}',
+
+      '.scw-bid-review__sow-chevron {',
+      '  display: inline-flex;',
+      '  transition: transform .2s ease;',
+      '}',
+
+      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+
+      '.scw-bid-review__sow-body {',
+      '  overflow: hidden;',
+      '}',
+
+      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-body {',
+      '  display: none;',
       '}',
 
       '.scw-bid-review__sow-title-text {',
@@ -8964,7 +8988,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 12px;',
       '}',
 
-      '.scw-bid-review__cell-qty {',
+      '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',
       '  margin-top: 1px;',
@@ -9415,7 +9439,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       cellsByPackage[pkgId] = {
         id:          rec.id,
         labor:       num(rec, FK.labor),
-        surveyQty:   raw(rec, FK.surveyQty),
+        laborDesc:   raw(rec, FK.laborDesc),
         productName: raw(rec, FK.productName),
         notes:       raw(rec, FK.notes),
       };
@@ -9568,40 +9592,78 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var allPkgs    = extractPackages(records);
     var sowBuckets = groupBySow(records);
 
+    // Distribute no-SOW records into SOW grids that share the same bid package.
+    var noSowRecs = sowBuckets['__no_sow__'] || [];
+    if (noSowRecs.length && sows.length) {
+      // Build a map: pkgId → [sowIds that contain that pkg]
+      var pkgToSows = {};
+      for (var si = 0; si < sows.length; si++) {
+        var sowRecs = sowBuckets[sows[si].id] || [];
+        for (var ri = 0; ri < sowRecs.length; ri++) {
+          var pid = connectionId(sowRecs[ri], FK.bidPackage);
+          if (!pid) continue;
+          if (!pkgToSows[pid]) pkgToSows[pid] = {};
+          pkgToSows[pid][sows[si].id] = true;
+        }
+      }
+
+      for (var ni = 0; ni < noSowRecs.length; ni++) {
+        var rec   = noSowRecs[ni];
+        var recPkg = connectionId(rec, FK.bidPackage);
+        var placed = false;
+
+        if (recPkg && pkgToSows[recPkg]) {
+          var targetSows = Object.keys(pkgToSows[recPkg]);
+          for (var ti = 0; ti < targetSows.length; ti++) {
+            if (!sowBuckets[targetSows[ti]]) sowBuckets[targetSows[ti]] = [];
+            sowBuckets[targetSows[ti]].push(rec);
+            placed = true;
+          }
+        }
+
+        // If the record couldn't be placed in any SOW grid, put it in the first one
+        if (!placed && sows.length) {
+          var fallbackId = sows[0].id;
+          if (!sowBuckets[fallbackId]) sowBuckets[fallbackId] = [];
+          sowBuckets[fallbackId].push(rec);
+        }
+      }
+    }
+    delete sowBuckets['__no_sow__'];
+
     var sowGrids = [];
 
     for (var i = 0; i < sows.length; i++) {
       var sow     = sows[i];
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
-      var pkgs    = extractPackages(recs);   // packages present in this SOW
+      var pkgs    = extractPackages(recs);
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
 
       sowGrids.push({
         sowId:       sow.id,
-        sowName:     sow.name,
+        sowName:     stripHtml(sow.name),
         packages:    pkgs,
         rows:        rows,
         groups:      groups,
         eligibility: elig,
-        columnCount: pkgs.length + 2,  // SOW label col + pkg cols + actions col
+        columnCount: pkgs.length + 2,
       });
     }
 
-    // Handle records with no SOW
-    var noSowRecs = sowBuckets['__no_sow__'];
-    if (noSowRecs && noSowRecs.length) {
-      var noSowRows = buildRowsForSow(noSowRecs);
-      var noSowPkgs = extractPackages(noSowRecs);
+    // Edge case: ALL records lack SOW — show a single unnamed grid
+    if (!sows.length && noSowRecs.length) {
+      var fallbackRows = buildRowsForSow(noSowRecs);
+      var fallbackPkgs = extractPackages(noSowRecs);
       sowGrids.push({
         sowId:       '__no_sow__',
-        sowName:     'No SOW Assigned',
-        packages:    noSowPkgs,
-        rows:        noSowRows,
-        groups:      groupRows(noSowRows),
-        eligibility: computeEligibility(noSowRows, noSowPkgs),
-        columnCount: noSowPkgs.length + 2,
+        sowName:     'Unassigned Items',
+        packages:    fallbackPkgs,
+        rows:        fallbackRows,
+        groups:      groupRows(fallbackRows),
+        eligibility: computeEligibility(fallbackRows, fallbackPkgs),
+        columnCount: fallbackPkgs.length + 2,
       });
     }
 
@@ -9758,8 +9820,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(values);
     }
 
-    if (cell.surveyQty) {
-      td.appendChild(el('div', 'scw-bid-review__cell-qty', 'Qty: ' + cell.surveyQty));
+    if (cell.laborDesc) {
+      td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
     }
 
     if (cell.notes) {
@@ -9875,36 +9937,70 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return frag;
   }
 
+  // ── chevron SVG ──────────────────────────────────────────────
+
+  var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="6 9 12 15 18 9"></polyline></svg>';
+
   // ── render a single SOW grid ────────────────────────────────
 
   function buildSowSection(sowGrid) {
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW title bar
+    // SOW accordion header (clickable)
     var header = el('div', 'scw-bid-review__sow-title');
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'true');
+
+    var chevron = el('span', 'scw-bid-review__sow-chevron');
+    chevron.innerHTML = CHEVRON_SVG;
+    header.appendChild(chevron);
+
     header.appendChild(el('span', 'scw-bid-review__sow-title-text', sowGrid.sowName));
     header.appendChild(el('span', 'scw-bid-review__sow-title-count',
       sowGrid.rows.length + ' line item' + (sowGrid.rows.length !== 1 ? 's' : '') +
       ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
     section.appendChild(header);
 
+    // Collapsible body
+    var body = el('div', 'scw-bid-review__sow-body');
+
     if (!sowGrid.rows.length) {
-      section.appendChild(el('div', 'scw-bid-review__empty-state', 'No bid items for this SOW.'));
-      return section;
+      body.appendChild(el('div', 'scw-bid-review__empty-state', 'No bid items for this SOW.'));
+    } else {
+      var table = el('table', 'scw-bid-review__table');
+
+      var thead = document.createElement('thead');
+      thead.appendChild(buildHeaderRow(sowGrid));
+      table.appendChild(thead);
+
+      var tbody = document.createElement('tbody');
+      tbody.appendChild(buildBodyRows(sowGrid.groups, sowGrid.packages, sowGrid.columnCount, sowGrid.sowId));
+      table.appendChild(tbody);
+
+      body.appendChild(table);
     }
 
-    var table = el('table', 'scw-bid-review__table');
+    section.appendChild(body);
 
-    var thead = document.createElement('thead');
-    thead.appendChild(buildHeaderRow(sowGrid));
-    table.appendChild(thead);
+    // Toggle handler
+    header.addEventListener('click', function () {
+      var expanded = header.getAttribute('aria-expanded') === 'true';
+      header.setAttribute('aria-expanded', String(!expanded));
+      section.classList.toggle('scw-bid-review__sow-section--collapsed', expanded);
+    });
 
-    var tbody = document.createElement('tbody');
-    tbody.appendChild(buildBodyRows(sowGrid.groups, sowGrid.packages, sowGrid.columnCount, sowGrid.sowId));
-    table.appendChild(tbody);
+    header.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        header.click();
+      }
+    });
 
-    section.appendChild(table);
     return section;
   }
 

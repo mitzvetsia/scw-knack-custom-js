@@ -37,11 +37,35 @@
 
       '.scw-bid-review__sow-title {',
       '  display: flex;',
-      '  align-items: baseline;',
+      '  align-items: center;',
       '  gap: 10px;',
       '  padding: 10px 12px;',
       '  background: #1e293b;',
       '  color: #fff;',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  -webkit-user-select: none;',
+      '}',
+
+      '.scw-bid-review__sow-title:hover {',
+      '  background: #334155;',
+      '}',
+
+      '.scw-bid-review__sow-chevron {',
+      '  display: inline-flex;',
+      '  transition: transform .2s ease;',
+      '}',
+
+      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+
+      '.scw-bid-review__sow-body {',
+      '  overflow: hidden;',
+      '}',
+
+      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-body {',
+      '  display: none;',
       '}',
 
       '.scw-bid-review__sow-title-text {',
@@ -244,7 +268,7 @@
       '  font-size: 12px;',
       '}',
 
-      '.scw-bid-review__cell-qty {',
+      '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',
       '  margin-top: 1px;',

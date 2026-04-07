@@ -208,7 +208,7 @@
       cellsByPackage[pkgId] = {
         id:          rec.id,
         labor:       num(rec, FK.labor),
-        surveyQty:   raw(rec, FK.surveyQty),
+        laborDesc:   raw(rec, FK.laborDesc),
         productName: raw(rec, FK.productName),
         notes:       raw(rec, FK.notes),
       };
@@ -361,40 +361,78 @@
     var allPkgs    = extractPackages(records);
     var sowBuckets = groupBySow(records);
 
+    // Distribute no-SOW records into SOW grids that share the same bid package.
+    var noSowRecs = sowBuckets['__no_sow__'] || [];
+    if (noSowRecs.length && sows.length) {
+      // Build a map: pkgId → [sowIds that contain that pkg]
+      var pkgToSows = {};
+      for (var si = 0; si < sows.length; si++) {
+        var sowRecs = sowBuckets[sows[si].id] || [];
+        for (var ri = 0; ri < sowRecs.length; ri++) {
+          var pid = connectionId(sowRecs[ri], FK.bidPackage);
+          if (!pid) continue;
+          if (!pkgToSows[pid]) pkgToSows[pid] = {};
+          pkgToSows[pid][sows[si].id] = true;
+        }
+      }
+
+      for (var ni = 0; ni < noSowRecs.length; ni++) {
+        var rec   = noSowRecs[ni];
+        var recPkg = connectionId(rec, FK.bidPackage);
+        var placed = false;
+
+        if (recPkg && pkgToSows[recPkg]) {
+          var targetSows = Object.keys(pkgToSows[recPkg]);
+          for (var ti = 0; ti < targetSows.length; ti++) {
+            if (!sowBuckets[targetSows[ti]]) sowBuckets[targetSows[ti]] = [];
+            sowBuckets[targetSows[ti]].push(rec);
+            placed = true;
+          }
+        }
+
+        // If the record couldn't be placed in any SOW grid, put it in the first one
+        if (!placed && sows.length) {
+          var fallbackId = sows[0].id;
+          if (!sowBuckets[fallbackId]) sowBuckets[fallbackId] = [];
+          sowBuckets[fallbackId].push(rec);
+        }
+      }
+    }
+    delete sowBuckets['__no_sow__'];
+
     var sowGrids = [];
 
     for (var i = 0; i < sows.length; i++) {
       var sow     = sows[i];
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
-      var pkgs    = extractPackages(recs);   // packages present in this SOW
+      var pkgs    = extractPackages(recs);
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
 
       sowGrids.push({
         sowId:       sow.id,
-        sowName:     sow.name,
+        sowName:     stripHtml(sow.name),
         packages:    pkgs,
         rows:        rows,
         groups:      groups,
         eligibility: elig,
-        columnCount: pkgs.length + 2,  // SOW label col + pkg cols + actions col
+        columnCount: pkgs.length + 2,
       });
     }
 
-    // Handle records with no SOW
-    var noSowRecs = sowBuckets['__no_sow__'];
-    if (noSowRecs && noSowRecs.length) {
-      var noSowRows = buildRowsForSow(noSowRecs);
-      var noSowPkgs = extractPackages(noSowRecs);
+    // Edge case: ALL records lack SOW — show a single unnamed grid
+    if (!sows.length && noSowRecs.length) {
+      var fallbackRows = buildRowsForSow(noSowRecs);
+      var fallbackPkgs = extractPackages(noSowRecs);
       sowGrids.push({
         sowId:       '__no_sow__',
-        sowName:     'No SOW Assigned',
-        packages:    noSowPkgs,
-        rows:        noSowRows,
-        groups:      groupRows(noSowRows),
-        eligibility: computeEligibility(noSowRows, noSowPkgs),
-        columnCount: noSowPkgs.length + 2,
+        sowName:     'Unassigned Items',
+        packages:    fallbackPkgs,
+        rows:        fallbackRows,
+        groups:      groupRows(fallbackRows),
+        eligibility: computeEligibility(fallbackRows, fallbackPkgs),
+        columnCount: fallbackPkgs.length + 2,
       });
     }
 

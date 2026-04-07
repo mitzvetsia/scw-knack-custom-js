@@ -141,8 +141,8 @@
       td.appendChild(values);
     }
 
-    if (cell.surveyQty) {
-      td.appendChild(el('div', 'scw-bid-review__cell-qty', 'Qty: ' + cell.surveyQty));
+    if (cell.laborDesc) {
+      td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
     }
 
     if (cell.notes) {
@@ -258,36 +258,70 @@
     return frag;
   }
 
+  // ── chevron SVG ──────────────────────────────────────────────
+
+  var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="6 9 12 15 18 9"></polyline></svg>';
+
   // ── render a single SOW grid ────────────────────────────────
 
   function buildSowSection(sowGrid) {
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW title bar
+    // SOW accordion header (clickable)
     var header = el('div', 'scw-bid-review__sow-title');
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'true');
+
+    var chevron = el('span', 'scw-bid-review__sow-chevron');
+    chevron.innerHTML = CHEVRON_SVG;
+    header.appendChild(chevron);
+
     header.appendChild(el('span', 'scw-bid-review__sow-title-text', sowGrid.sowName));
     header.appendChild(el('span', 'scw-bid-review__sow-title-count',
       sowGrid.rows.length + ' line item' + (sowGrid.rows.length !== 1 ? 's' : '') +
       ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
     section.appendChild(header);
 
+    // Collapsible body
+    var body = el('div', 'scw-bid-review__sow-body');
+
     if (!sowGrid.rows.length) {
-      section.appendChild(el('div', 'scw-bid-review__empty-state', 'No bid items for this SOW.'));
-      return section;
+      body.appendChild(el('div', 'scw-bid-review__empty-state', 'No bid items for this SOW.'));
+    } else {
+      var table = el('table', 'scw-bid-review__table');
+
+      var thead = document.createElement('thead');
+      thead.appendChild(buildHeaderRow(sowGrid));
+      table.appendChild(thead);
+
+      var tbody = document.createElement('tbody');
+      tbody.appendChild(buildBodyRows(sowGrid.groups, sowGrid.packages, sowGrid.columnCount, sowGrid.sowId));
+      table.appendChild(tbody);
+
+      body.appendChild(table);
     }
 
-    var table = el('table', 'scw-bid-review__table');
+    section.appendChild(body);
 
-    var thead = document.createElement('thead');
-    thead.appendChild(buildHeaderRow(sowGrid));
-    table.appendChild(thead);
+    // Toggle handler
+    header.addEventListener('click', function () {
+      var expanded = header.getAttribute('aria-expanded') === 'true';
+      header.setAttribute('aria-expanded', String(!expanded));
+      section.classList.toggle('scw-bid-review__sow-section--collapsed', expanded);
+    });
 
-    var tbody = document.createElement('tbody');
-    tbody.appendChild(buildBodyRows(sowGrid.groups, sowGrid.packages, sowGrid.columnCount, sowGrid.sowId));
-    table.appendChild(tbody);
+    header.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        header.click();
+      }
+    });
 
-    section.appendChild(table);
     return section;
   }
 
