@@ -126,6 +126,15 @@
     return tr;
   }
 
+  // ── cabling visibility helper ─────────────────────────────────
+
+  /** Cabling fields only apply to Camera / Reader buckets. */
+  function showCabling(proposalBucket) {
+    if (!proposalBucket) return false;
+    var b = proposalBucket.toLowerCase().trim();
+    return b === 'camera' || b === 'reader';
+  }
+
   // ── existing cabling chip ────────────────────────────────────
 
   function isYes(val) {
@@ -142,7 +151,7 @@
 
   // ── SOW detail cell ─────────────────────────────────────────
 
-  function buildSowDetailCell(row) {
+  function buildSowDetailCell(row, cablingVisible) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -159,7 +168,9 @@
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
     }
 
-    td.appendChild(buildCablingChip(row.sowExistCabling));
+    if (cablingVisible) {
+      td.appendChild(buildCablingChip(row.sowExistCabling));
+    }
 
     if (row.sowFee) {
       var values = el('div', 'scw-bid-review__cell-values');
@@ -172,7 +183,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell) {
+  function buildDataCell(cell, cablingVisible) {
     var td = el('td');
 
     if (!cell) {
@@ -189,7 +200,9 @@
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
     }
 
-    td.appendChild(buildCablingChip(cell.bidExistCabling));
+    if (cablingVisible) {
+      td.appendChild(buildCablingChip(cell.bidExistCabling));
+    }
 
     if (cell.labor) {
       var values = el('div', 'scw-bid-review__cell-values');
@@ -243,7 +256,7 @@
    * Pairs: sowFee/labor, sowProduct/productName,
    *        sowLaborDesc/laborDesc, sowExistCabling/bidExistCabling
    */
-  function hasMismatch(row, cell) {
+  function hasMismatch(row, cell, cablingVisible) {
     // No SOW item or no bid cell — nothing to compare
     if (!row.sowItem || !cell) return false;
 
@@ -262,8 +275,10 @@
     // Labor description
     if (norm(row.sowLaborDesc) !== norm(cell.laborDesc)) return true;
 
-    // Existing cabling
-    if (norm(row.sowExistCabling) !== norm(cell.bidExistCabling)) return true;
+    // Existing cabling — only evaluate for Camera / Reader buckets
+    if (cablingVisible) {
+      if (norm(row.sowExistCabling) !== norm(cell.bidExistCabling)) return true;
+    }
 
     return false;
   }
@@ -287,19 +302,22 @@
     }
     tr.appendChild(labelTd);
 
+    // Cabling fields only shown/compared for Camera or Reader buckets
+    var cablingVisible = showCabling(row.proposalBucket);
+
     // Check mismatch for each package to decide if SOW detail needs highlight
     var anyMismatch = false;
     var mismatchByPkg = {};
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgCell = row.cellsByPackage[packages[mi].id] || null;
-      if (hasMismatch(row, pkgCell)) {
+      if (hasMismatch(row, pkgCell, cablingVisible)) {
         anyMismatch = true;
         mismatchByPkg[packages[mi].id] = true;
       }
     }
 
     // SOW detail cell — highlight if any bid column mismatches
-    var sowTd = buildSowDetailCell(row);
+    var sowTd = buildSowDetailCell(row, cablingVisible);
     if (anyMismatch) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -307,7 +325,7 @@
 
     // Package cells — highlight individually if mismatched
     for (var i = 0; i < packages.length; i++) {
-      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null);
+      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null, cablingVisible);
       if (mismatchByPkg[packages[i].id]) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
