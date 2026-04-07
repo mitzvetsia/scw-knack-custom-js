@@ -348,6 +348,12 @@
       '  font-size: 12px;',
       '}',
 
+      /* ── mismatch highlight (SOW vs Bid field pair differs) ── */
+      '.scw-bid-review__cell--mismatch {',
+      '  background: #fff7ed !important;',
+      '  border-left: 3px solid #fb923c;',
+      '}',
+
       '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',

@@ -9076,6 +9076,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 12px;',
       '}',
 
+      /* ── mismatch highlight (SOW vs Bid field pair differs) ── */
+      '.scw-bid-review__cell--mismatch {',
+      '  background: #fff7ed !important;',
+      '  border-left: 3px solid #fb923c;',
+      '}',
+
       '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',
@@ -9960,14 +9966,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (elig.creatable > 0) {
         var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
         th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
-
-        var actions = el('div', 'scw-bid-review__pkg-actions');
-        actions.appendChild(btn(
-          'Create Missing (' + elig.creatable + ')', 'create',
-          { 'data-action': 'package_create_missing', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-        ));
-        th.appendChild(actions);
       }
+
+      var actions = el('div', 'scw-bid-review__pkg-actions');
+      actions.appendChild(btn(
+        'Copy to SOW', 'adopt',
+        { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+      ));
+      actions.appendChild(btn(
+        'Create new SOW', 'create',
+        { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+      ));
+      th.appendChild(actions);
+
       tr.appendChild(th);
     }
 
@@ -10085,6 +10096,40 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return td;
   }
 
+  // ── mismatch comparison ──────────────────────────────────────
+
+  /**
+   * Compare SOW detail vs a bid cell on the four paired fields.
+   * Returns true if ANY pair doesn't match (= mismatch).
+   *
+   * Pairs: sowFee/labor, sowProduct/productName,
+   *        sowLaborDesc/laborDesc, sowExistCabling/bidExistCabling
+   */
+  function hasMismatch(row, cell) {
+    // No SOW item or no bid cell — nothing to compare
+    if (!row.sowItem || !cell) return false;
+
+    // Normalize for comparison: lowercase, trim
+    function norm(v) {
+      if (v == null) return '';
+      return String(v).toLowerCase().trim();
+    }
+
+    // Price: compare as numbers (both stored as num() results)
+    if (row.sowFee !== cell.labor) return true;
+
+    // Product name
+    if (norm(row.sowProduct) !== norm(cell.productName)) return true;
+
+    // Labor description
+    if (norm(row.sowLaborDesc) !== norm(cell.laborDesc)) return true;
+
+    // Existing cabling
+    if (norm(row.sowExistCabling) !== norm(cell.bidExistCabling)) return true;
+
+    return false;
+  }
+
   // ── data row ────────────────────────────────────────────────
 
   function buildDataRow(row, packages, sowId) {
@@ -10104,12 +10149,31 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
     tr.appendChild(labelTd);
 
-    // SOW detail cell
-    tr.appendChild(buildSowDetailCell(row));
+    // Check mismatch for each package to decide if SOW detail needs highlight
+    var anyMismatch = false;
+    var mismatchByPkg = {};
+    for (var mi = 0; mi < packages.length; mi++) {
+      var pkgCell = row.cellsByPackage[packages[mi].id] || null;
+      if (hasMismatch(row, pkgCell)) {
+        anyMismatch = true;
+        mismatchByPkg[packages[mi].id] = true;
+      }
+    }
 
-    // Package cells
+    // SOW detail cell — highlight if any bid column mismatches
+    var sowTd = buildSowDetailCell(row);
+    if (anyMismatch) {
+      sowTd.classList.add('scw-bid-review__cell--mismatch');
+    }
+    tr.appendChild(sowTd);
+
+    // Package cells — highlight individually if mismatched
     for (var i = 0; i < packages.length; i++) {
-      tr.appendChild(buildDataCell(row.cellsByPackage[packages[i].id] || null));
+      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null);
+      if (mismatchByPkg[packages[i].id]) {
+        dataTd.classList.add('scw-bid-review__cell--mismatch');
+      }
+      tr.appendChild(dataTd);
     }
 
     // Row actions
@@ -10427,10 +10491,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       case 'row_adopt':             return 'Row adopted';
       case 'row_create':            return 'SOW item creation requested';
       case 'row_skip':              return 'Row skipped';
-      case 'package_adopt_all':     return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
-      case 'package_create_missing':return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
-      case 'package_adopt_create':  return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
-      default:                      return 'Action submitted';
+      case 'package_adopt_all':      return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_create_missing': return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_adopt_create':   return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_copy_to_sow':    return 'Copy to SOW requested';
+      case 'package_create_sow':     return 'Create new SOW requested';
+      default:                       return 'Action submitted';
     }
   }
 

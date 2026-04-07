@@ -77,10 +77,12 @@
       case 'row_adopt':             return 'Row adopted';
       case 'row_create':            return 'SOW item creation requested';
       case 'row_skip':              return 'Row skipped';
-      case 'package_adopt_all':     return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
-      case 'package_create_missing':return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
-      case 'package_adopt_create':  return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
-      default:                      return 'Action submitted';
+      case 'package_adopt_all':      return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_create_missing': return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_adopt_create':   return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_copy_to_sow':    return 'Copy to SOW requested';
+      case 'package_create_sow':     return 'Create new SOW requested';
+      default:                       return 'Action submitted';
     }
   }
 
