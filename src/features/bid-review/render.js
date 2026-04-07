@@ -302,7 +302,8 @@
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
       var labelText = row.displayLabel || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
-      labelTd.appendChild(document.createTextNode(' ' + labelText));
+      labelTd.appendChild(document.createElement('br'));
+      labelTd.appendChild(document.createTextNode(labelText));
     }
     tr.appendChild(labelTd);
 
