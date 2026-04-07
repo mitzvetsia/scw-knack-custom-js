@@ -229,6 +229,7 @@
       productName:     raw(meta, FK.productName),
       sowItem:         connectionId(meta, FK.relatedSowItem),
       proposalBucket:  connectionLabel(meta, FK.proposalBucket),
+      proposalBucketId: connectionId(meta, FK.proposalBucket),
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)

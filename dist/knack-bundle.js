@@ -9581,6 +9581,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       productName:     raw(meta, FK.productName),
       sowItem:         connectionId(meta, FK.relatedSowItem),
       proposalBucket:  connectionLabel(meta, FK.proposalBucket),
+      proposalBucketId: connectionId(meta, FK.proposalBucket),
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
@@ -9991,10 +9992,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ── cabling visibility helper ─────────────────────────────────
 
   /** Cabling fields only apply to Camera / Reader buckets. */
-  function showCabling(proposalBucket) {
-    if (!proposalBucket) return false;
-    var b = proposalBucket.toLowerCase().trim();
-    return b === 'camera' || b === 'reader';
+  var CABLING_BUCKET_ID = '6481e5ba38f283002898113c';
+
+  function showCabling(row) {
+    if (row.proposalBucketId === CABLING_BUCKET_ID) return true;
+    if (!row.proposalBucket) return false;
+    var b = row.proposalBucket.toLowerCase().trim();
+    return b === 'camera' || b === 'cameras' ||
+           b === 'reader' || b === 'readers';
   }
 
   // ── existing cabling chip ────────────────────────────────────
@@ -10165,7 +10170,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     tr.appendChild(labelTd);
 
     // Cabling fields only shown/compared for Camera or Reader buckets
-    var cablingVisible = showCabling(row.proposalBucket);
+    var cablingVisible = showCabling(row);
 
     // Check mismatch for each package to decide if SOW detail needs highlight
     var anyMismatch = false;

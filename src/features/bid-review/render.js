@@ -129,10 +129,14 @@
   // ── cabling visibility helper ─────────────────────────────────
 
   /** Cabling fields only apply to Camera / Reader buckets. */
-  function showCabling(proposalBucket) {
-    if (!proposalBucket) return false;
-    var b = proposalBucket.toLowerCase().trim();
-    return b === 'camera' || b === 'reader';
+  var CABLING_BUCKET_ID = '6481e5ba38f283002898113c';
+
+  function showCabling(row) {
+    if (row.proposalBucketId === CABLING_BUCKET_ID) return true;
+    if (!row.proposalBucket) return false;
+    var b = row.proposalBucket.toLowerCase().trim();
+    return b === 'camera' || b === 'cameras' ||
+           b === 'reader' || b === 'readers';
   }
 
   // ── existing cabling chip ────────────────────────────────────
@@ -303,7 +307,7 @@
     tr.appendChild(labelTd);
 
     // Cabling fields only shown/compared for Camera or Reader buckets
-    var cablingVisible = showCabling(row.proposalBucket);
+    var cablingVisible = showCabling(row);
 
     // Check mismatch for each package to decide if SOW detail needs highlight
     var anyMismatch = false;
