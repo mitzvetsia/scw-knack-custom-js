@@ -34,10 +34,17 @@
       // Package column (pivot axis)
       bidPackage:      'field_2415',   // REL_bid (connection — BD-1, BD-2, etc.)
 
-      // Values displayed in each cell
+      // Values displayed in bid cells
       labor:           'field_2401',   // CALC_sub bid extended ($)
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
+      bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
+
+      // SOW detail fields (shown in SOW detail column)
+      sowFee:          'field_2028',   // install fee on SOW line item
+      sowProduct:      'field_1958',   // product connection on SOW line item
+      sowLaborDesc:    'field_2019',   // labor description on SOW line item
+      sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)

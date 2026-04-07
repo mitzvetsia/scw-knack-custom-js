@@ -81,6 +81,9 @@
     // Line item column header
     tr.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
 
+    // SOW detail column header
+    tr.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW Detail'));
+
     // One header per bid package
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkg = sowGrid.packages[i];
@@ -127,7 +130,51 @@
     return tr;
   }
 
-  // ── data cell for a package column ──────────────────────────
+  // ── existing cabling chip ────────────────────────────────────
+
+  function isYes(val) {
+    return val && /^yes$/i.test(String(val).trim());
+  }
+
+  function buildCablingChip(val) {
+    if (isYes(val)) {
+      return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
+    }
+    // "No" or empty — render a dim off chip
+    return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--off', 'New Cabling');
+  }
+
+  // ── SOW detail cell ─────────────────────────────────────────
+
+  function buildSowDetailCell(row) {
+    var td = el('td', 'scw-bid-review__sow-detail');
+
+    if (!row.sowItem) {
+      td.className += ' scw-bid-review__cell--missing';
+      td.textContent = '\u2014';
+      return td;
+    }
+
+    if (row.sowProduct) {
+      td.appendChild(el('div', 'scw-bid-review__cell-label', row.sowProduct));
+    }
+
+    if (row.sowFee) {
+      var values = el('div', 'scw-bid-review__cell-values');
+      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee)));
+      td.appendChild(values);
+    }
+
+    if (row.sowLaborDesc) {
+      td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
+    }
+
+    td.appendChild(buildCablingChip(row.sowExistCabling));
+
+    return td;
+  }
+
+  // ── data cell for a bid package column ──────────────────────
 
   function buildDataCell(cell) {
     var td = el('td');
@@ -151,6 +198,8 @@
     if (cell.laborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
     }
+
+    td.appendChild(buildCablingChip(cell.bidExistCabling));
 
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
@@ -210,6 +259,9 @@
       labelTd.appendChild(document.createTextNode(' ' + labelText));
     }
     tr.appendChild(labelTd);
+
+    // SOW detail cell
+    tr.appendChild(buildSowDetailCell(row));
 
     // Package cells
     for (var i = 0; i < packages.length; i++) {

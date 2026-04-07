@@ -102,8 +102,13 @@
       '}',
 
       '.scw-bid-review__sow-header {',
-      '  width: 200px;',
-      '  min-width: 160px;',
+      '  width: 160px;',
+      '  min-width: 120px;',
+      '}',
+
+      '.scw-bid-review__sow-detail-header {',
+      '  width: 220px;',
+      '  min-width: 180px;',
       '}',
 
       '.scw-bid-review__actions-header {',
@@ -320,6 +325,33 @@
       '  font-size: 11px;',
       '  color: #64748b;',
       '  margin-top: 2px;',
+      '}',
+
+      /* ── SOW detail cell ─────────────────────────────────────── */
+      '.scw-bid-review__sow-detail {',
+      '  vertical-align: top;',
+      '  font-size: 12px;',
+      '}',
+
+      /* ── cabling chips ────────────────────────────────────────── */
+      '.scw-bid-review__cabling-chip {',
+      '  display: inline-block;',
+      '  padding: 2px 7px;',
+      '  border-radius: 3px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  margin-top: 4px;',
+      '}',
+
+      '.scw-bid-review__cabling-chip--on {',
+      '  background: #dcfce7;',
+      '  color: #166534;',
+      '}',
+
+      '.scw-bid-review__cabling-chip--off {',
+      '  background: #f1f5f9;',
+      '  color: #94a3b8;',
+      '  font-weight: 400;',
       '}',
 
       /* ── status chips ──────────────────────────────────────── */

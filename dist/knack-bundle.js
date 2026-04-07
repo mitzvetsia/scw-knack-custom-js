@@ -8694,10 +8694,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Package column (pivot axis)
       bidPackage:      'field_2415',   // REL_bid (connection — BD-1, BD-2, etc.)
 
-      // Values displayed in each cell
+      // Values displayed in bid cells
       labor:           'field_2401',   // CALC_sub bid extended ($)
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
+      bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
+
+      // SOW detail fields (shown in SOW detail column)
+      sowFee:          'field_2028',   // install fee on SOW line item
+      sowProduct:      'field_1958',   // product connection on SOW line item
+      sowLaborDesc:    'field_2019',   // labor description on SOW line item
+      sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -8822,8 +8829,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__sow-header {',
-      '  width: 200px;',
-      '  min-width: 160px;',
+      '  width: 160px;',
+      '  min-width: 120px;',
+      '}',
+
+      '.scw-bid-review__sow-detail-header {',
+      '  width: 220px;',
+      '  min-width: 180px;',
       '}',
 
       '.scw-bid-review__actions-header {',
@@ -9040,6 +9052,33 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 11px;',
       '  color: #64748b;',
       '  margin-top: 2px;',
+      '}',
+
+      /* ── SOW detail cell ─────────────────────────────────────── */
+      '.scw-bid-review__sow-detail {',
+      '  vertical-align: top;',
+      '  font-size: 12px;',
+      '}',
+
+      /* ── cabling chips ────────────────────────────────────────── */
+      '.scw-bid-review__cabling-chip {',
+      '  display: inline-block;',
+      '  padding: 2px 7px;',
+      '  border-radius: 3px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  margin-top: 4px;',
+      '}',
+
+      '.scw-bid-review__cabling-chip--on {',
+      '  background: #dcfce7;',
+      '  color: #166534;',
+      '}',
+
+      '.scw-bid-review__cabling-chip--off {',
+      '  background: #f1f5f9;',
+      '  color: #94a3b8;',
+      '  font-weight: 400;',
       '}',
 
       /* ── status chips ──────────────────────────────────────── */
@@ -9479,23 +9518,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       cellsByPackage[pkgId] = {
-        id:          rec.id,
-        labor:       num(rec, FK.labor),
-        laborDesc:   raw(rec, FK.laborDesc),
-        productName: raw(rec, FK.productName),
-        notes:       raw(rec, FK.notes),
+        id:              rec.id,
+        labor:           num(rec, FK.labor),
+        laborDesc:       raw(rec, FK.laborDesc),
+        productName:     raw(rec, FK.productName),
+        notes:           raw(rec, FK.notes),
+        bidExistCabling: raw(rec, FK.bidExistCabling),
       };
     }
 
     return {
-      id:             meta.id,
-      rowKey:         rowKey,
-      displayLabel:   raw(meta, FK.displayLabel),
-      productName:    raw(meta, FK.productName),
-      sowItem:        connectionId(meta, FK.relatedSowItem),
-      groupL1:        connectionLabel(meta, FK.proposalBucket),
-      groupL2:        connectionLabel(meta, FK.mdfIdf),
-      cellsByPackage: cellsByPackage,
+      id:              meta.id,
+      rowKey:          rowKey,
+      displayLabel:    raw(meta, FK.displayLabel),
+      productName:     raw(meta, FK.productName),
+      sowItem:         connectionId(meta, FK.relatedSowItem),
+      groupL1:         connectionLabel(meta, FK.proposalBucket),
+      groupL2:         connectionLabel(meta, FK.mdfIdf),
+      // SOW detail fields (from first record in the row)
+      sowFee:          num(meta, FK.sowFee),
+      sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
+      sowLaborDesc:    raw(meta, FK.sowLaborDesc),
+      sowExistCabling: raw(meta, FK.sowExistCabling),
+      cellsByPackage:  cellsByPackage,
     };
   }
 
@@ -9674,7 +9719,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         rows:        rows,
         groups:      groups,
         eligibility: elig,
-        columnCount: pkgs.length + 2,
+        columnCount: pkgs.length + 3,
       });
     }
 
@@ -9786,6 +9831,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Line item column header
     tr.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
 
+    // SOW detail column header
+    tr.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW Detail'));
+
     // One header per bid package
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkg = sowGrid.packages[i];
@@ -9832,7 +9880,51 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return tr;
   }
 
-  // ── data cell for a package column ──────────────────────────
+  // ── existing cabling chip ────────────────────────────────────
+
+  function isYes(val) {
+    return val && /^yes$/i.test(String(val).trim());
+  }
+
+  function buildCablingChip(val) {
+    if (isYes(val)) {
+      return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
+    }
+    // "No" or empty — render a dim off chip
+    return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--off', 'New Cabling');
+  }
+
+  // ── SOW detail cell ─────────────────────────────────────────
+
+  function buildSowDetailCell(row) {
+    var td = el('td', 'scw-bid-review__sow-detail');
+
+    if (!row.sowItem) {
+      td.className += ' scw-bid-review__cell--missing';
+      td.textContent = '\u2014';
+      return td;
+    }
+
+    if (row.sowProduct) {
+      td.appendChild(el('div', 'scw-bid-review__cell-label', row.sowProduct));
+    }
+
+    if (row.sowFee) {
+      var values = el('div', 'scw-bid-review__cell-values');
+      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee)));
+      td.appendChild(values);
+    }
+
+    if (row.sowLaborDesc) {
+      td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
+    }
+
+    td.appendChild(buildCablingChip(row.sowExistCabling));
+
+    return td;
+  }
+
+  // ── data cell for a bid package column ──────────────────────
 
   function buildDataCell(cell) {
     var td = el('td');
@@ -9856,6 +9948,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (cell.laborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
     }
+
+    td.appendChild(buildCablingChip(cell.bidExistCabling));
 
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
@@ -9915,6 +10009,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       labelTd.appendChild(document.createTextNode(' ' + labelText));
     }
     tr.appendChild(labelTd);
+
+    // SOW detail cell
+    tr.appendChild(buildSowDetailCell(row));
 
     // Package cells
     for (var i = 0; i < packages.length; i++) {

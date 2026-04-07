@@ -206,23 +206,29 @@
       }
 
       cellsByPackage[pkgId] = {
-        id:          rec.id,
-        labor:       num(rec, FK.labor),
-        laborDesc:   raw(rec, FK.laborDesc),
-        productName: raw(rec, FK.productName),
-        notes:       raw(rec, FK.notes),
+        id:              rec.id,
+        labor:           num(rec, FK.labor),
+        laborDesc:       raw(rec, FK.laborDesc),
+        productName:     raw(rec, FK.productName),
+        notes:           raw(rec, FK.notes),
+        bidExistCabling: raw(rec, FK.bidExistCabling),
       };
     }
 
     return {
-      id:             meta.id,
-      rowKey:         rowKey,
-      displayLabel:   raw(meta, FK.displayLabel),
-      productName:    raw(meta, FK.productName),
-      sowItem:        connectionId(meta, FK.relatedSowItem),
-      groupL1:        connectionLabel(meta, FK.proposalBucket),
-      groupL2:        connectionLabel(meta, FK.mdfIdf),
-      cellsByPackage: cellsByPackage,
+      id:              meta.id,
+      rowKey:          rowKey,
+      displayLabel:    raw(meta, FK.displayLabel),
+      productName:     raw(meta, FK.productName),
+      sowItem:         connectionId(meta, FK.relatedSowItem),
+      groupL1:         connectionLabel(meta, FK.proposalBucket),
+      groupL2:         connectionLabel(meta, FK.mdfIdf),
+      // SOW detail fields (from first record in the row)
+      sowFee:          num(meta, FK.sowFee),
+      sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
+      sowLaborDesc:    raw(meta, FK.sowLaborDesc),
+      sowExistCabling: raw(meta, FK.sowExistCabling),
+      cellsByPackage:  cellsByPackage,
     };
   }
 
@@ -401,7 +407,7 @@
         rows:        rows,
         groups:      groups,
         eligibility: elig,
-        columnCount: pkgs.length + 2,
+        columnCount: pkgs.length + 3,
       });
     }
 
