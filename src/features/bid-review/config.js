@@ -11,10 +11,9 @@
   var ns = (window.SCW.bidReview = window.SCW.bidReview || {});
 
   ns.CONFIG = {
-    // ── Knack scene / views ───────────────────────────────────
+    // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
-    rowViewKey:        'view_3560',
-    cellViewKey:       'view_3561',
+    viewKey:           'view_3575',
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',

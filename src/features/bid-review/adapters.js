@@ -1,11 +1,11 @@
 /*** BID REVIEW — KNACK ADAPTERS ***/
 /**
- * Reads raw record arrays from the Knack runtime.
- * Isolates all Knack.models / Knack.views access so the rest of
- * the feature never touches Knack internals directly.
+ * Reads raw record arrays from a single Knack view.
+ * Each record is one "cell" (package × SOW item intersection).
+ * The transform layer pivots these into rows.
  *
  * Reads : SCW.bidReview.CONFIG
- * Writes: SCW.bidReview.loadRawData() → { rows, cells }
+ * Writes: SCW.bidReview.loadRawData() → { records: [] }
  */
 (function () {
   'use strict';
@@ -15,8 +15,6 @@
 
   /**
    * Find a Knack model by its view key.
-   * Knack stores models keyed by an internal key that often differs
-   * from the view key, so we iterate and match on view_key.
    */
   function findModel(viewKey) {
     if (typeof Knack === 'undefined' || !Knack.models) return null;
@@ -31,12 +29,10 @@
 
   /**
    * Extract records from a Knack model.
-   * Handles both .data (array) and .toJSON().records patterns.
    */
   function extractRecords(model) {
     if (!model) return [];
 
-    // Preferred: model.data is a Backbone collection or plain array
     if (model.data) {
       if (Array.isArray(model.data)) return model.data;
       if (typeof model.data.toJSON === 'function') return model.data.toJSON();
@@ -51,9 +47,8 @@
   }
 
   /**
-   * Fallback: fetch records via Knack REST API for a view.
-   * Returns a jQuery Deferred that resolves to an array of records.
-   * Paginates automatically up to 10 pages (1 000 records).
+   * Fallback: paginated fetch via Knack REST API.
+   * Returns a jQuery Deferred resolving to an array of records.
    */
   function fetchFromApi(viewKey) {
     var deferred = $.Deferred();
@@ -89,7 +84,6 @@
         error: function (xhr) {
           console.error('[BidReview] Failed to fetch ' + viewKey +
                         ' page ' + page, xhr.status);
-          // Return whatever we have so far
           deferred.resolve(allRecords);
         },
       });
@@ -100,39 +94,28 @@
   }
 
   /**
-   * loadRawData() → jQuery.Deferred → { rows: [], cells: [] }
+   * loadRawData() → jQuery.Deferred → { records: [] }
    *
-   * Tries Knack.models first (synchronous, fast).
-   * Falls back to REST API fetch if models are empty.
+   * Reads from a single Knack view. Tries Knack.models first,
+   * falls back to REST API.
    */
   ns.loadRawData = function loadRawData() {
-    var rowModel  = findModel(CFG.rowViewKey);
-    var cellModel = findModel(CFG.cellViewKey);
-
-    var rows  = extractRecords(rowModel);
-    var cells = extractRecords(cellModel);
+    var model   = findModel(CFG.viewKey);
+    var records = extractRecords(model);
 
     if (CFG.debug) {
-      console.log('[BidReview] Model rows:', rows.length,
-                  'cells:', cells.length);
+      console.log('[BidReview] Model records from ' + CFG.viewKey + ':', records.length);
     }
 
-    // If both have data, return synchronously (wrapped in resolved deferred)
-    if (rows.length > 0 && cells.length > 0) {
-      return $.Deferred().resolve({ rows: rows, cells: cells }).promise();
+    if (records.length > 0) {
+      return $.Deferred().resolve({ records: records }).promise();
     }
 
-    // Fall back to API fetch for whichever is missing
-    var rowPromise  = rows.length  > 0
-      ? $.Deferred().resolve(rows).promise()
-      : fetchFromApi(CFG.rowViewKey);
-
-    var cellPromise = cells.length > 0
-      ? $.Deferred().resolve(cells).promise()
-      : fetchFromApi(CFG.cellViewKey);
-
-    return $.when(rowPromise, cellPromise).then(function (r, c) {
-      return { rows: r, cells: c };
+    return fetchFromApi(CFG.viewKey).then(function (recs) {
+      if (CFG.debug) {
+        console.log('[BidReview] API records from ' + CFG.viewKey + ':', recs.length);
+      }
+      return { records: recs };
     });
   };
 

@@ -1,11 +1,14 @@
 /*** BID REVIEW — DATA TRANSFORMATION ***/
 /**
- * Converts raw Knack row/cell records into a normalized in-memory
- * state object.  All derived values (package list, grouping, eligibility
- * counts) are computed here — rendering and actions never re-derive.
+ * Pivots a flat array of Knack records (one per package × SOW item)
+ * into a normalized matrix state.  Each record becomes a "cell";
+ * rows are derived by grouping on the SOW/display-label identity.
+ *
+ * All derived values (package list, grouping, eligibility counts)
+ * are computed here — rendering and actions never re-derive.
  *
  * Reads : SCW.bidReview.CONFIG.fieldKeys, CONFIG.statusValues
- * Writes: SCW.bidReview.buildState(rawRows, rawCells) → state
+ * Writes: SCW.bidReview.buildState(records), .collectEligible()
  */
 (function () {
   'use strict';
@@ -52,17 +55,17 @@
   // ── extract packages ──────────────────────────────────────────
 
   /**
-   * Deduplicate packages from cell records.
+   * Deduplicate packages from records.
    * Returns sorted array: [{ id, name }]
    */
-  function extractPackages(cells) {
+  function extractPackages(records) {
     var seen = {};
     var list = [];
 
-    for (var i = 0; i < cells.length; i++) {
-      var pkgId   = connectionId(cells[i], FK.bidPackage);
-      var pkgName = connectionLabel(cells[i], FK.bidPackageName) ||
-                    connectionLabel(cells[i], FK.bidPackage);
+    for (var i = 0; i < records.length; i++) {
+      var pkgId   = connectionId(records[i], FK.bidPackage);
+      var pkgName = connectionLabel(records[i], FK.bidPackageName) ||
+                    connectionLabel(records[i], FK.bidPackage);
       if (!pkgId || seen[pkgId]) continue;
       seen[pkgId] = true;
       list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
@@ -74,33 +77,62 @@
     return list;
   }
 
-  // ── build cell map ────────────────────────────────────────────
+  // ── pivot flat records into rows ──────────────────────────────
 
   /**
-   * Index cells by (reviewRowId, packageId).
-   * Warns on duplicates and keeps the first occurrence.
-   * Returns: { rowId: { pkgId: cellData } }
+   * Group records by their row identity.
+   *
+   * Row identity is determined by:
+   *   1. relatedSowItem connection ID (if present), OR
+   *   2. displayLabel text (fallback for unmatched bid items)
+   *
+   * Each unique identity becomes one matrix row.
+   * Returns: { rowKey: { meta: firstRecord, cells: [records] } }
    */
-  function indexCells(cells) {
-    var map = {};
+  function pivotRecords(records) {
+    var rowMap   = {};
+    var rowOrder = [];
 
-    for (var i = 0; i < cells.length; i++) {
-      var rec   = cells[i];
-      var rowId = connectionId(rec, FK.cellReviewRow);
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+
+      // Row identity: prefer SOW connection, fall back to label
+      var sowId = connectionId(rec, FK.relatedSowItem);
+      var label = raw(rec, FK.displayLabel);
+      var rowKey = sowId ? 'sow::' + sowId : 'label::' + label;
+
+      if (!rowMap[rowKey]) {
+        rowMap[rowKey] = { meta: rec, cells: [] };
+        rowOrder.push(rowKey);
+      }
+
+      rowMap[rowKey].cells.push(rec);
+    }
+
+    return { map: rowMap, order: rowOrder };
+  }
+
+  /**
+   * Build a normalized row from the pivot bucket.
+   */
+  function buildRow(rowKey, bucket) {
+    var meta = bucket.meta;
+    var cellsByPackage = {};
+
+    for (var i = 0; i < bucket.cells.length; i++) {
+      var rec   = bucket.cells[i];
       var pkgId = connectionId(rec, FK.bidPackage);
-      if (!rowId || !pkgId) continue;
+      if (!pkgId) continue;
 
-      if (!map[rowId]) map[rowId] = {};
-
-      if (map[rowId][pkgId]) {
+      if (cellsByPackage[pkgId]) {
         if (CFG.debug) {
-          console.warn('[BidReview] Duplicate cell for row=' + rowId +
+          console.warn('[BidReview] Duplicate cell for row=' + rowKey +
                        ' pkg=' + pkgId + ' — keeping first');
         }
         continue;
       }
 
-      map[rowId][pkgId] = {
+      cellsByPackage[pkgId] = {
         id:               rec.id,
         qty:              num(rec, FK.qty),
         labor:            num(rec, FK.labor),
@@ -110,25 +142,16 @@
       };
     }
 
-    return map;
-  }
-
-  // ── build rows ────────────────────────────────────────────────
-
-  /**
-   * Normalize a raw Knack row record into a flat row object.
-   */
-  function normalizeRow(rec, cellMap) {
-    var id = rec.id;
     return {
-      id:           id,
-      displayLabel: raw(rec, FK.displayLabel),
-      sowItem:      connectionId(rec, FK.relatedSowItem),
-      rowType:      raw(rec, FK.rowType),
-      groupL1:      raw(rec, FK.groupL1),
-      groupL2:      raw(rec, FK.groupL2),
-      sortOrder:    num(rec, FK.sortOrder),
-      cellsByPackage: cellMap[id] || {},
+      id:             meta.id,            // first record's id as row identifier
+      rowKey:         rowKey,
+      displayLabel:   raw(meta, FK.displayLabel),
+      sowItem:        connectionId(meta, FK.relatedSowItem),
+      rowType:        raw(meta, FK.rowType),
+      groupL1:        raw(meta, FK.groupL1),
+      groupL2:        raw(meta, FK.groupL2),
+      sortOrder:      num(meta, FK.sortOrder),
+      cellsByPackage: cellsByPackage,
     };
   }
 
@@ -136,10 +159,7 @@
 
   /**
    * Group rows by L1 then L2.
-   * Returns: [{ key, label, level, rows: [row] | subgroups: [{ key, label, level, rows }] }]
-   *
-   * If no grouping fields are populated the result is a single
-   * flat group containing all rows.
+   * Returns: [{ key, label, level, rows, subgroups }]
    */
   function groupRows(rows) {
     var hasAnyGroup = false;
@@ -151,13 +171,12 @@
       return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
     }
 
-    // Bucket by L1
     var l1Map   = {};
     var l1Order = [];
 
     for (var j = 0; j < rows.length; j++) {
-      var r   = rows[j];
-      var l1  = r.groupL1 || 'Ungrouped';
+      var r  = rows[j];
+      var l1 = r.groupL1 || 'Ungrouped';
 
       if (!l1Map[l1]) {
         l1Map[l1] = { l2Map: {}, l2Order: [] };
@@ -172,7 +191,6 @@
       l1Map[l1].l2Map[l2].push(r);
     }
 
-    // Build output
     var groups = [];
     for (var gi = 0; gi < l1Order.length; gi++) {
       var l1Key  = l1Order[gi];
@@ -196,7 +214,7 @@
         key:       l1Key,
         label:     l1Key,
         level:     1,
-        rows:      [],          // L1 groups hold subgroups, not direct rows
+        rows:      [],
         subgroups: subgroups,
       });
     }
@@ -204,14 +222,8 @@
     return groups;
   }
 
-  // ── eligibility counts (precomputed) ──────────────────────────
+  // ── eligibility counts ────────────────────────────────────────
 
-  /**
-   * For each package, count how many rows are adoptable, creatable,
-   * or eligible for the combined action.
-   *
-   * Returns: { pkgId: { adoptable, creatable, total } }
-   */
   function computeEligibility(rows, packages) {
     var result = {};
 
@@ -239,15 +251,6 @@
 
   // ── public: collectEligible ───────────────────────────────────
 
-  /**
-   * Return array of row IDs eligible for a package-level action.
-   * Used by the action system to build payloads.
-   *
-   * @param {string} pkgId
-   * @param {string} actionType  – 'package_adopt_all' | 'package_create_missing' | 'package_adopt_create'
-   * @param {object} state       – the normalized state from buildState
-   * @returns {string[]}
-   */
   function collectEligible(pkgId, actionType, state) {
     var ids  = [];
     var rows = state.flatRows;
@@ -275,31 +278,29 @@
   // ── public entry point ────────────────────────────────────────
 
   /**
-   * buildState(rawRows, rawCells) → state
+   * buildState(records) → state
    *
-   * @param {object[]} rawRows  – Knack records from the rows view
-   * @param {object[]} rawCells – Knack records from the cells view
-   * @returns {object} Normalized state consumed by render + actions:
+   * Takes a flat array of Knack records (each is one package × item
+   * intersection) and pivots them into the matrix state object.
+   *
+   * @param {object[]} records — raw Knack records from the single view
+   * @returns {object} Normalized state:
    *   {
-   *     packages:    [{ id, name }],
-   *     groups:      [{ key, label, level, rows|subgroups }],
-   *     flatRows:    [row],                       // ungrouped for iteration
-   *     eligibility: { pkgId: { adoptable, creatable, total } },
-   *     columnCount: number,                      // packages.length + 2 (SOW + actions)
-   *     isEmpty:     boolean,
+   *     packages, groups, flatRows, eligibility, columnCount, isEmpty
    *   }
    */
-  ns.buildState = function buildState(rawRows, rawCells) {
-    var packages = extractPackages(rawCells);
-    var cellMap  = indexCells(rawCells);
+  ns.buildState = function buildState(records) {
+    var packages = extractPackages(records);
+    var pivot    = pivotRecords(records);
 
-    // Normalize rows
+    // Build normalized rows in source order
     var flatRows = [];
-    for (var i = 0; i < rawRows.length; i++) {
-      flatRows.push(normalizeRow(rawRows[i], cellMap));
+    for (var i = 0; i < pivot.order.length; i++) {
+      var key = pivot.order[i];
+      flatRows.push(buildRow(key, pivot.map[key]));
     }
 
-    // Sort by sortOrder globally before grouping
+    // Sort by sortOrder
     flatRows.sort(function (a, b) { return a.sortOrder - b.sortOrder; });
 
     var groups      = groupRows(flatRows);
