@@ -17,11 +17,17 @@
 
   // ── tiny helpers ──────────────────────────────────────────────
 
+  /** Strip HTML tags from a string — Knack wraps connection values in <span>. */
+  function stripHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/<[^>]*>/g, '').trim();
+  }
+
   function raw(record, key) {
     var v = record[key];
     if (v == null) return '';
-    if (typeof v === 'object' && v.raw != null) return String(v.raw);
-    return String(v);
+    if (typeof v === 'object' && v.raw != null) return stripHtml(v.raw);
+    return stripHtml(v);
   }
 
   function num(record, key) {
@@ -32,19 +38,20 @@
 
   /** Return first connection ID. */
   function connectionId(record, key) {
-    var v = record[key];
+    var v = record[key + '_raw'] || record[key];
     if (!v) return '';
     if (Array.isArray(v) && v.length) return v[0].id || '';
     if (typeof v === 'object' && v.id) return v.id;
-    return String(v);
+    return '';
   }
 
   function connectionLabel(record, key) {
-    var v = record[key];
+    var v = record[key + '_raw'] || record[key];
     if (!v) return '';
-    if (Array.isArray(v) && v.length) return v[0].identifier || '';
-    if (typeof v === 'object' && v.identifier) return v.identifier;
-    return String(v);
+    if (Array.isArray(v) && v.length) return stripHtml(v[0].identifier || '');
+    if (typeof v === 'object' && v.identifier) return stripHtml(v.identifier);
+    // Fallback: the rendered value may be HTML
+    return stripHtml(record[key] || '');
   }
 
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
@@ -201,6 +208,7 @@
       cellsByPackage[pkgId] = {
         id:          rec.id,
         labor:       num(rec, FK.labor),
+        surveyQty:   raw(rec, FK.surveyQty),
         productName: raw(rec, FK.productName),
         notes:       raw(rec, FK.notes),
       };

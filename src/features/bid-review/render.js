@@ -141,6 +141,10 @@
       td.appendChild(values);
     }
 
+    if (cell.surveyQty) {
+      td.appendChild(el('div', 'scw-bid-review__cell-qty', 'Qty: ' + cell.surveyQty));
+    }
+
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
     }
@@ -193,8 +197,10 @@
       labelTd.className = 'scw-bid-review__sow-cell';
       labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
     } else {
-      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--empty';
-      labelTd.textContent = (row.displayLabel || row.productName || 'Unknown') + ' (No SOW)';
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
+      var labelText = row.displayLabel || row.productName || 'Item';
+      labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
+      labelTd.appendChild(document.createTextNode(' ' + labelText));
     }
     tr.appendChild(labelTd);
 

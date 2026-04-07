@@ -200,10 +200,23 @@
       '  color: #1e293b;',
       '}',
 
-      '.scw-bid-review__sow-cell--empty {',
-      '  font-weight: 400;',
-      '  font-style: italic;',
-      '  color: #94a3b8;',
+      '.scw-bid-review__sow-cell--new {',
+      '  font-weight: 600;',
+      '  color: #1e293b;',
+      '}',
+
+      '.scw-bid-review__new-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #2563eb;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
       '}',
 
       /* ── package data cell ─────────────────────────────────── */
@@ -229,6 +242,12 @@
       '  color: #cbd5e1;',
       '  font-style: italic;',
       '  font-size: 12px;',
+      '}',
+
+      '.scw-bid-review__cell-qty {',
+      '  font-size: 11px;',
+      '  color: #475569;',
+      '  margin-top: 1px;',
       '}',
 
       '.scw-bid-review__cell-notes {',

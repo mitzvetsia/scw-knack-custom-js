@@ -37,6 +37,7 @@
       // Values displayed in each cell
       labor:           'field_2401',   // CALC_sub bid extended ($)
       notes:           'field_2412',   // INPUT_survey notes
+      surveyQty:       'field_2409',   // survey quantity (shown under price)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)

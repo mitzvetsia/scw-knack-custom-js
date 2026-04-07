@@ -8697,6 +8697,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Values displayed in each cell
       labor:           'field_2401',   // CALC_sub bid extended ($)
       notes:           'field_2412',   // INPUT_survey notes
+      surveyQty:       'field_2409',   // survey quantity (shown under price)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -8919,10 +8920,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  color: #1e293b;',
       '}',
 
-      '.scw-bid-review__sow-cell--empty {',
-      '  font-weight: 400;',
-      '  font-style: italic;',
-      '  color: #94a3b8;',
+      '.scw-bid-review__sow-cell--new {',
+      '  font-weight: 600;',
+      '  color: #1e293b;',
+      '}',
+
+      '.scw-bid-review__new-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #2563eb;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
       '}',
 
       /* ── package data cell ─────────────────────────────────── */
@@ -8948,6 +8962,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  color: #cbd5e1;',
       '  font-style: italic;',
       '  font-size: 12px;',
+      '}',
+
+      '.scw-bid-review__cell-qty {',
+      '  font-size: 11px;',
+      '  color: #475569;',
+      '  margin-top: 1px;',
       '}',
 
       '.scw-bid-review__cell-notes {',
@@ -9204,11 +9224,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── tiny helpers ──────────────────────────────────────────────
 
+  /** Strip HTML tags from a string — Knack wraps connection values in <span>. */
+  function stripHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/<[^>]*>/g, '').trim();
+  }
+
   function raw(record, key) {
     var v = record[key];
     if (v == null) return '';
-    if (typeof v === 'object' && v.raw != null) return String(v.raw);
-    return String(v);
+    if (typeof v === 'object' && v.raw != null) return stripHtml(v.raw);
+    return stripHtml(v);
   }
 
   function num(record, key) {
@@ -9219,19 +9245,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   /** Return first connection ID. */
   function connectionId(record, key) {
-    var v = record[key];
+    var v = record[key + '_raw'] || record[key];
     if (!v) return '';
     if (Array.isArray(v) && v.length) return v[0].id || '';
     if (typeof v === 'object' && v.id) return v.id;
-    return String(v);
+    return '';
   }
 
   function connectionLabel(record, key) {
-    var v = record[key];
+    var v = record[key + '_raw'] || record[key];
     if (!v) return '';
-    if (Array.isArray(v) && v.length) return v[0].identifier || '';
-    if (typeof v === 'object' && v.identifier) return v.identifier;
-    return String(v);
+    if (Array.isArray(v) && v.length) return stripHtml(v[0].identifier || '');
+    if (typeof v === 'object' && v.identifier) return stripHtml(v.identifier);
+    // Fallback: the rendered value may be HTML
+    return stripHtml(record[key] || '');
   }
 
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
@@ -9388,6 +9415,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       cellsByPackage[pkgId] = {
         id:          rec.id,
         labor:       num(rec, FK.labor),
+        surveyQty:   raw(rec, FK.surveyQty),
         productName: raw(rec, FK.productName),
         notes:       raw(rec, FK.notes),
       };
@@ -9730,6 +9758,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(values);
     }
 
+    if (cell.surveyQty) {
+      td.appendChild(el('div', 'scw-bid-review__cell-qty', 'Qty: ' + cell.surveyQty));
+    }
+
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
     }
@@ -9782,8 +9814,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       labelTd.className = 'scw-bid-review__sow-cell';
       labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
     } else {
-      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--empty';
-      labelTd.textContent = (row.displayLabel || row.productName || 'Unknown') + ' (No SOW)';
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
+      var labelText = row.displayLabel || row.productName || 'Item';
+      labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
+      labelTd.appendChild(document.createTextNode(' ' + labelText));
     }
     tr.appendChild(labelTd);
 
