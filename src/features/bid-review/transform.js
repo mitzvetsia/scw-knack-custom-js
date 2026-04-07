@@ -228,63 +228,47 @@
 
   // ── grouping (L1/L2) ─────────────────────────────────────────
 
+  /**
+   * Group rows by mdfIdf (field_2375) only — single level of collapsible groups.
+   */
   function groupRows(rows) {
     var hasAnyGroup = false;
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].groupL1) { hasAnyGroup = true; break; }
+      if (rows[i].groupL2) { hasAnyGroup = true; break; }
     }
 
     if (!hasAnyGroup) {
       return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
     }
 
-    var l1Map   = {};
-    var l1Order = [];
+    var grpMap   = {};
+    var grpOrder = [];
 
     for (var j = 0; j < rows.length; j++) {
-      var r  = rows[j];
-      var l1 = r.groupL1 || 'Ungrouped';
+      var r   = rows[j];
+      var grp = r.groupL2 || 'Ungrouped';
 
-      if (!l1Map[l1]) {
-        l1Map[l1] = { l2Map: {}, l2Order: [] };
-        l1Order.push(l1);
+      if (!grpMap[grp]) {
+        grpMap[grp] = [];
+        grpOrder.push(grp);
       }
-
-      var l2 = r.groupL2 || '';
-      if (!l1Map[l1].l2Map[l2]) {
-        l1Map[l1].l2Map[l2] = [];
-        l1Map[l1].l2Order.push(l2);
-      }
-      l1Map[l1].l2Map[l2].push(r);
+      grpMap[grp].push(r);
     }
 
     var groups = [];
-    for (var gi = 0; gi < l1Order.length; gi++) {
-      var l1Key  = l1Order[gi];
-      var bucket = l1Map[l1Key];
-
-      var subgroups = [];
-      for (var si = 0; si < bucket.l2Order.length; si++) {
-        var l2Key  = bucket.l2Order[si];
-        var l2Rows = bucket.l2Map[l2Key];
-        l2Rows.sort(function (a, b) {
-          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-        });
-
-        subgroups.push({
-          key:   l1Key + '::' + l2Key,
-          label: l2Key,
-          level: 2,
-          rows:  l2Rows,
-        });
-      }
+    for (var gi = 0; gi < grpOrder.length; gi++) {
+      var key     = grpOrder[gi];
+      var grpRows = grpMap[key];
+      grpRows.sort(function (a, b) {
+        return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+      });
 
       groups.push({
-        key:       l1Key,
-        label:     l1Key,
+        key:       key,
+        label:     key,
         level:     1,
-        rows:      [],
-        subgroups: subgroups,
+        rows:      grpRows,
+        subgroups: [],
       });
     }
 

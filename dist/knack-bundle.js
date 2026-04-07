@@ -8915,52 +8915,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-review__group-header td {',
       '  position: relative;',
       '  background: #f1f5f9;',
-      '  padding: 10px 12px 10px 28px;',
+      '  padding: 0;',
       '  font-weight: 700;',
       '  font-size: 13px;',
       '  color: #334155;',
       '  border-bottom: 1px solid #cbd5e1;',
+      '  border-left: 4px solid #295f91;',
+      '}',
+
+      '.scw-bid-review__grp-inner {',
       '  display: flex;',
       '  align-items: center;',
       '  gap: 8px;',
-      '}',
-
-      /* Left accent bar — mirrors KTL accordion */
-      '.scw-bid-review__group-header td::before {',
-      '  content: "";',
-      '  position: absolute;',
-      '  left: 0;',
-      '  top: 0;',
-      '  bottom: 0;',
-      '  width: 4px;',
-      '  background: #295f91;',
+      '  padding: 10px 12px 10px 12px;',
       '}',
 
       '.scw-bid-review__group-header:hover td {',
       '  background: #e8edf3;',
       '}',
 
-      '.scw-bid-review__group-header--l2 td {',
-      '  background: #f8fafc;',
-      '  font-weight: 600;',
-      '  font-size: 12px;',
-      '  color: #475569;',
-      '  padding-left: 40px;',
-      '}',
-
-      '.scw-bid-review__group-header--l2 td::before {',
-      '  background: #6b96bd;',
-      '  width: 3px;',
-      '}',
-
-      '.scw-bid-review__group-header--l2:hover td {',
-      '  background: #eef2f7;',
-      '}',
-
       /* Chevron in group header */
       '.scw-bid-review__grp-chevron {',
       '  display: inline-flex;',
       '  align-items: center;',
+      '  flex: 0 0 auto;',
       '  color: #295f91;',
       '  transition: transform 220ms ease;',
       '}',
@@ -9523,63 +9501,47 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── grouping (L1/L2) ─────────────────────────────────────────
 
+  /**
+   * Group rows by mdfIdf (field_2375) only — single level of collapsible groups.
+   */
   function groupRows(rows) {
     var hasAnyGroup = false;
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].groupL1) { hasAnyGroup = true; break; }
+      if (rows[i].groupL2) { hasAnyGroup = true; break; }
     }
 
     if (!hasAnyGroup) {
       return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
     }
 
-    var l1Map   = {};
-    var l1Order = [];
+    var grpMap   = {};
+    var grpOrder = [];
 
     for (var j = 0; j < rows.length; j++) {
-      var r  = rows[j];
-      var l1 = r.groupL1 || 'Ungrouped';
+      var r   = rows[j];
+      var grp = r.groupL2 || 'Ungrouped';
 
-      if (!l1Map[l1]) {
-        l1Map[l1] = { l2Map: {}, l2Order: [] };
-        l1Order.push(l1);
+      if (!grpMap[grp]) {
+        grpMap[grp] = [];
+        grpOrder.push(grp);
       }
-
-      var l2 = r.groupL2 || '';
-      if (!l1Map[l1].l2Map[l2]) {
-        l1Map[l1].l2Map[l2] = [];
-        l1Map[l1].l2Order.push(l2);
-      }
-      l1Map[l1].l2Map[l2].push(r);
+      grpMap[grp].push(r);
     }
 
     var groups = [];
-    for (var gi = 0; gi < l1Order.length; gi++) {
-      var l1Key  = l1Order[gi];
-      var bucket = l1Map[l1Key];
-
-      var subgroups = [];
-      for (var si = 0; si < bucket.l2Order.length; si++) {
-        var l2Key  = bucket.l2Order[si];
-        var l2Rows = bucket.l2Map[l2Key];
-        l2Rows.sort(function (a, b) {
-          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-        });
-
-        subgroups.push({
-          key:   l1Key + '::' + l2Key,
-          label: l2Key,
-          level: 2,
-          rows:  l2Rows,
-        });
-      }
+    for (var gi = 0; gi < grpOrder.length; gi++) {
+      var key     = grpOrder[gi];
+      var grpRows = grpMap[key];
+      grpRows.sort(function (a, b) {
+        return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+      });
 
       groups.push({
-        key:       l1Key,
-        label:     l1Key,
+        key:       key,
+        label:     key,
         level:     1,
-        rows:      [],
-        subgroups: subgroups,
+        rows:      grpRows,
+        subgroups: [],
       });
     }
 
@@ -9968,8 +9930,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ── collapsible group header row ─────────────────────────────
 
   function buildGroupHeader(label, level, colSpan, rowCount) {
-    var tr = el('tr', 'scw-bid-review__group-header' +
-                (level === 2 ? ' scw-bid-review__group-header--l2' : ''));
+    var tr = el('tr', 'scw-bid-review__group-header');
     tr.setAttribute('role', 'button');
     tr.setAttribute('tabindex', '0');
     tr.setAttribute('aria-expanded', 'true');
@@ -9977,19 +9938,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var td = el('td');
     td.setAttribute('colspan', colSpan);
 
+    // Inner flex wrapper (flex on <td> breaks table width)
+    var inner = el('div', 'scw-bid-review__grp-inner');
+
     // Chevron
     var chevron = el('span', 'scw-bid-review__grp-chevron');
     chevron.innerHTML = CHEVRON_SVG;
-    td.appendChild(chevron);
+    inner.appendChild(chevron);
 
     // Label
-    td.appendChild(el('span', 'scw-bid-review__grp-title', label));
+    inner.appendChild(el('span', 'scw-bid-review__grp-title', label));
 
     // Count pill
     if (rowCount > 0) {
-      td.appendChild(el('span', 'scw-bid-review__grp-count', String(rowCount)));
+      inner.appendChild(el('span', 'scw-bid-review__grp-count', String(rowCount)));
     }
 
+    td.appendChild(inner);
     tr.appendChild(td);
 
     // Toggle: hide/show sibling rows until next group header
@@ -10026,26 +9991,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var group = groups[gi];
 
       if (group.label) {
-        var l1Count = 0;
-        if (group.subgroups) {
-          for (var ci = 0; ci < group.subgroups.length; ci++) {
-            l1Count += group.subgroups[ci].rows.length;
-          }
-        }
-        l1Count += group.rows.length;
-        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, l1Count));
-      }
-
-      if (group.subgroups && group.subgroups.length) {
-        for (var si = 0; si < group.subgroups.length; si++) {
-          var sub = group.subgroups[si];
-          if (sub.label) {
-            frag.appendChild(buildGroupHeader(sub.label, sub.level, colSpan, sub.rows.length));
-          }
-          for (var ri = 0; ri < sub.rows.length; ri++) {
-            frag.appendChild(buildDataRow(sub.rows[ri], packages, sowId));
-          }
-        }
+        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, group.rows.length));
       }
 
       for (var di = 0; di < group.rows.length; di++) {
