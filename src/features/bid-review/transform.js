@@ -92,11 +92,14 @@
     var list = [];
 
     for (var i = 0; i < records.length; i++) {
-      var pkgId   = connectionId(records[i], FK.bidPackage);
-      var pkgName = connectionLabel(records[i], FK.bidPackage);
-      if (!pkgId || seen[pkgId]) continue;
-      seen[pkgId] = true;
-      list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
+      var conns = connectionAll(records[i], FK.bidPackage);
+      for (var c = 0; c < conns.length; c++) {
+        var pkgId   = conns[c].id;
+        var pkgName = stripHtml(conns[c].identifier || '');
+        if (!pkgId || seen[pkgId]) continue;
+        seen[pkgId] = true;
+        list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
+      }
     }
 
     list.sort(function (a, b) { return a.name.localeCompare(b.name); });
@@ -193,26 +196,30 @@
     var cellsByPackage = {};
 
     for (var i = 0; i < bucket.cells.length; i++) {
-      var rec   = bucket.cells[i];
-      var pkgId = connectionId(rec, FK.bidPackage);
-      if (!pkgId) continue;
+      var rec     = bucket.cells[i];
+      var pkgConns = connectionAll(rec, FK.bidPackage);
 
-      if (cellsByPackage[pkgId]) {
-        if (CFG.debug) {
-          console.warn('[BidReview] Duplicate cell row=' + rowKey +
-                       ' pkg=' + pkgId + ' — keeping first');
+      for (var pi = 0; pi < pkgConns.length; pi++) {
+        var pkgId = pkgConns[pi].id;
+        if (!pkgId) continue;
+
+        if (cellsByPackage[pkgId]) {
+          if (CFG.debug) {
+            console.warn('[BidReview] Duplicate cell row=' + rowKey +
+                         ' pkg=' + pkgId + ' — keeping first');
+          }
+          continue;
         }
-        continue;
-      }
 
-      cellsByPackage[pkgId] = {
-        id:              rec.id,
-        labor:           num(rec, FK.labor),
-        laborDesc:       raw(rec, FK.laborDesc),
-        productName:     raw(rec, FK.productName),
-        notes:           raw(rec, FK.notes),
-        bidExistCabling: raw(rec, FK.bidExistCabling),
-      };
+        cellsByPackage[pkgId] = {
+          id:              rec.id,
+          labor:           num(rec, FK.labor),
+          laborDesc:       raw(rec, FK.laborDesc),
+          productName:     raw(rec, FK.productName),
+          notes:           raw(rec, FK.notes),
+          bidExistCabling: raw(rec, FK.bidExistCabling),
+        };
+      }
     }
 
     return {
@@ -418,24 +425,30 @@
       for (var si = 0; si < sows.length; si++) {
         var sowRecs = sowBuckets[sows[si].id] || [];
         for (var ri = 0; ri < sowRecs.length; ri++) {
-          var pid = connectionId(sowRecs[ri], FK.bidPackage);
-          if (!pid) continue;
-          if (!pkgToSows[pid]) pkgToSows[pid] = {};
-          pkgToSows[pid][sows[si].id] = true;
+          var pids = connectionAll(sowRecs[ri], FK.bidPackage);
+          for (var pk = 0; pk < pids.length; pk++) {
+            var pid = pids[pk].id;
+            if (!pid) continue;
+            if (!pkgToSows[pid]) pkgToSows[pid] = {};
+            pkgToSows[pid][sows[si].id] = true;
+          }
         }
       }
 
       for (var ni = 0; ni < noSowRecs.length; ni++) {
-        var rec   = noSowRecs[ni];
-        var recPkg = connectionId(rec, FK.bidPackage);
-        var placed = false;
+        var rec     = noSowRecs[ni];
+        var recPkgs = connectionAll(rec, FK.bidPackage);
+        var placed  = false;
 
-        if (recPkg && pkgToSows[recPkg]) {
-          var targetSows = Object.keys(pkgToSows[recPkg]);
-          for (var ti = 0; ti < targetSows.length; ti++) {
-            if (!sowBuckets[targetSows[ti]]) sowBuckets[targetSows[ti]] = [];
-            sowBuckets[targetSows[ti]].push(rec);
-            placed = true;
+        for (var rp = 0; rp < recPkgs.length; rp++) {
+          var recPkg = recPkgs[rp].id;
+          if (recPkg && pkgToSows[recPkg]) {
+            var targetSows = Object.keys(pkgToSows[recPkg]);
+            for (var ti = 0; ti < targetSows.length; ti++) {
+              if (!sowBuckets[targetSows[ti]]) sowBuckets[targetSows[ti]] = [];
+              sowBuckets[targetSows[ti]].push(rec);
+              placed = true;
+            }
           }
         }
 
