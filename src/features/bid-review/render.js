@@ -63,16 +63,19 @@
     if (!mount) {
       mount = el('div');
       mount.id = CFG.mountSelector.replace(/^#/, '');
-      // Insert at the top of the scene (before all views)
-      var scene = document.getElementById(CFG.sceneKey);
-      if (scene) {
-        scene.insertBefore(mount, scene.firstChild);
+      // Insert after the nav menu (view_44)
+      var nav = document.getElementById('view_44');
+      if (nav && nav.nextSibling) {
+        nav.parentNode.insertBefore(mount, nav.nextSibling);
+      } else if (nav) {
+        nav.parentNode.appendChild(mount);
       } else {
-        // Fallback: insert at top of #knack-dist-content or body
-        var knackContent = document.getElementById('knack-dist-content') ||
-                           document.getElementById('kn-scene') ||
-                           document.body;
-        knackContent.insertBefore(mount, knackContent.firstChild);
+        var scene = document.getElementById(CFG.sceneKey);
+        if (scene) {
+          scene.insertBefore(mount, scene.firstChild);
+        } else {
+          document.body.appendChild(mount);
+        }
       }
     }
     return mount;
