@@ -41,7 +41,7 @@
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
 
       // SOW detail fields (shown in SOW detail column)
-      sowFee:          'field_2028',   // install fee on SOW line item
+      sowFee:          'field_2151',   // install fee on SOW line item
       sowProduct:      'field_1958',   // product connection on SOW line item
       sowLaborDesc:    'field_2019',   // labor description on SOW line item
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
