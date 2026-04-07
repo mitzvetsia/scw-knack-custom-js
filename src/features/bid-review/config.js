@@ -50,8 +50,9 @@
       sow:             'field_2154',   // REL_SOW (connection — columns)
 
       // Grouping within each SOW grid
-      proposalBucket:  'field_2366',   // REL_proposal bucket (Assumptions, Camera or Reader, etc.)
-      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF)
+      proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
+      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
+      sortOrder:       'field_2218',   // sort order for proposal bucket groups
     },
 
     // ── Timing ────────────────────────────────────────────────

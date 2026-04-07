@@ -102,13 +102,13 @@
       '}',
 
       '.scw-bid-review__sow-header {',
-      '  width: 160px;',
-      '  min-width: 120px;',
+      '  width: 120px;',
+      '  min-width: 90px;',
       '}',
 
-      '.scw-bid-review__sow-detail-header {',
-      '  width: 220px;',
-      '  min-width: 180px;',
+      /* SOW detail and bid columns share equal width */
+      '.scw-bid-review__sow-detail-header,',
+      '.scw-bid-review__pkg-header {',
       '}',
 
       '.scw-bid-review__actions-header {',
@@ -117,9 +117,6 @@
       '}',
 
       /* ── package column header ─────────────────────────────── */
-      '.scw-bid-review__pkg-header {',
-      '  min-width: 180px;',
-      '}',
 
       '.scw-bid-review__pkg-name {',
       '  font-size: 14px;',
@@ -177,6 +174,11 @@
       '.scw-bid-review__btn--skip {',
       '  background: #e2e8f0;',
       '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__btn--revision {',
+      '  background: #fbbf24;',
+      '  color: #78350f;',
       '}',
 
       '.scw-bid-review__btn--busy {',
@@ -248,6 +250,37 @@
       '  background: rgba(41, 95, 145, 0.12);',
       '  border: 1px solid rgba(41, 95, 145, 0.22);',
       '  color: #295f91;',
+      '}',
+
+      /* ── subgroup headers (proposalBucket within mdfIdf) ──── */
+      '.scw-bid-review__subgroup-header td {',
+      '  background: #f8fafc;',
+      '  padding: 0;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '}',
+
+      '.scw-bid-review__subgrp-inner {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  padding: 6px 12px 6px 28px;',
+      '}',
+
+      '.scw-bid-review__subgrp-title {',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__subgrp-count {',
+      '  display: inline-block;',
+      '  padding: 1px 6px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  border-radius: 999px;',
+      '  background: #f1f5f9;',
+      '  color: #64748b;',
       '}',
 
       /* ── data rows ─────────────────────────────────────────── */

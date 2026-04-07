@@ -8710,8 +8710,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sow:             'field_2154',   // REL_SOW (connection — columns)
 
       // Grouping within each SOW grid
-      proposalBucket:  'field_2366',   // REL_proposal bucket (Assumptions, Camera or Reader, etc.)
-      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF)
+      proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
+      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
+      sortOrder:       'field_2218',   // sort order for proposal bucket groups
     },
 
     // ── Timing ────────────────────────────────────────────────
@@ -8829,13 +8830,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__sow-header {',
-      '  width: 160px;',
-      '  min-width: 120px;',
+      '  width: 120px;',
+      '  min-width: 90px;',
       '}',
 
-      '.scw-bid-review__sow-detail-header {',
-      '  width: 220px;',
-      '  min-width: 180px;',
+      /* SOW detail and bid columns share equal width */
+      '.scw-bid-review__sow-detail-header,',
+      '.scw-bid-review__pkg-header {',
       '}',
 
       '.scw-bid-review__actions-header {',
@@ -8844,9 +8845,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       /* ── package column header ─────────────────────────────── */
-      '.scw-bid-review__pkg-header {',
-      '  min-width: 180px;',
-      '}',
 
       '.scw-bid-review__pkg-name {',
       '  font-size: 14px;',
@@ -8904,6 +8902,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-review__btn--skip {',
       '  background: #e2e8f0;',
       '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__btn--revision {',
+      '  background: #fbbf24;',
+      '  color: #78350f;',
       '}',
 
       '.scw-bid-review__btn--busy {',
@@ -8975,6 +8978,37 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  background: rgba(41, 95, 145, 0.12);',
       '  border: 1px solid rgba(41, 95, 145, 0.22);',
       '  color: #295f91;',
+      '}',
+
+      /* ── subgroup headers (proposalBucket within mdfIdf) ──── */
+      '.scw-bid-review__subgroup-header td {',
+      '  background: #f8fafc;',
+      '  padding: 0;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '}',
+
+      '.scw-bid-review__subgrp-inner {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  padding: 6px 12px 6px 28px;',
+      '}',
+
+      '.scw-bid-review__subgrp-title {',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__subgrp-count {',
+      '  display: inline-block;',
+      '  padding: 1px 6px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  border-radius: 999px;',
+      '  background: #f1f5f9;',
+      '  color: #64748b;',
       '}',
 
       /* ── data rows ─────────────────────────────────────────── */
@@ -9533,8 +9567,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       displayLabel:    raw(meta, FK.displayLabel),
       productName:     raw(meta, FK.productName),
       sowItem:         connectionId(meta, FK.relatedSowItem),
-      groupL1:         connectionLabel(meta, FK.proposalBucket),
-      groupL2:         connectionLabel(meta, FK.mdfIdf),
+      proposalBucket:  connectionLabel(meta, FK.proposalBucket),
+      mdfIdf:          connectionLabel(meta, FK.mdfIdf),
+      sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
       sowFee:          num(meta, FK.sowFee),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
@@ -9547,47 +9582,105 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ── grouping (L1/L2) ─────────────────────────────────────────
 
   /**
-   * Group rows by mdfIdf (field_2375) only — single level of collapsible groups.
+   * Group rows by mdfIdf (field_2375, primary accordion) then by
+   * proposalBucket (field_2366, sub-group within each accordion).
+   * Sub-groups are sorted by sortOrder (field_2218).
    */
   function groupRows(rows) {
-    var hasAnyGroup = false;
+    var hasMdfIdf = false;
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].groupL2) { hasAnyGroup = true; break; }
+      if (rows[i].mdfIdf) { hasMdfIdf = true; break; }
     }
 
-    if (!hasAnyGroup) {
+    if (!hasMdfIdf) {
       return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
     }
 
-    var grpMap   = {};
-    var grpOrder = [];
+    // Primary grouping: mdfIdf
+    var mdfMap   = {};
+    var mdfOrder = [];
 
     for (var j = 0; j < rows.length; j++) {
       var r   = rows[j];
-      var grp = r.groupL2 || 'Ungrouped';
+      var mdf = r.mdfIdf || 'Ungrouped';
 
-      if (!grpMap[grp]) {
-        grpMap[grp] = [];
-        grpOrder.push(grp);
+      if (!mdfMap[mdf]) {
+        mdfMap[mdf] = [];
+        mdfOrder.push(mdf);
       }
-      grpMap[grp].push(r);
+      mdfMap[mdf].push(r);
     }
 
     var groups = [];
-    for (var gi = 0; gi < grpOrder.length; gi++) {
-      var key     = grpOrder[gi];
-      var grpRows = grpMap[key];
-      grpRows.sort(function (a, b) {
-        return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-      });
+    for (var gi = 0; gi < mdfOrder.length; gi++) {
+      var mdfKey  = mdfOrder[gi];
+      var mdfRows = mdfMap[mdfKey];
 
-      groups.push({
-        key:       key,
-        label:     key,
-        level:     1,
-        rows:      grpRows,
-        subgroups: [],
-      });
+      // Sub-grouping within this mdfIdf: proposalBucket
+      var hasBucket = false;
+      for (var bi = 0; bi < mdfRows.length; bi++) {
+        if (mdfRows[bi].proposalBucket) { hasBucket = true; break; }
+      }
+
+      var subgroups = [];
+      if (hasBucket) {
+        var bucketMap   = {};
+        var bucketOrder = [];
+
+        for (var ri = 0; ri < mdfRows.length; ri++) {
+          var row    = mdfRows[ri];
+          var bucket = row.proposalBucket || 'Other';
+
+          if (!bucketMap[bucket]) {
+            bucketMap[bucket] = { rows: [], minSort: row.sortOrder };
+            bucketOrder.push(bucket);
+          }
+          bucketMap[bucket].rows.push(row);
+          if (row.sortOrder < bucketMap[bucket].minSort) {
+            bucketMap[bucket].minSort = row.sortOrder;
+          }
+        }
+
+        // Sort sub-groups by sortOrder (field_2218)
+        bucketOrder.sort(function (a, b) {
+          return bucketMap[a].minSort - bucketMap[b].minSort;
+        });
+
+        for (var si = 0; si < bucketOrder.length; si++) {
+          var bKey  = bucketOrder[si];
+          var bRows = bucketMap[bKey].rows;
+          bRows.sort(function (a, b) {
+            return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+          });
+
+          subgroups.push({
+            key:   mdfKey + '::' + bKey,
+            label: bKey,
+            level: 2,
+            rows:  bRows,
+          });
+        }
+
+        groups.push({
+          key:       mdfKey,
+          label:     mdfKey,
+          level:     1,
+          rows:      [],
+          subgroups: subgroups,
+        });
+      } else {
+        mdfRows.sort(function (a, b) {
+          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+        });
+
+        groups.push({
+          key:       mdfKey,
+          label:     mdfKey,
+          level:     1,
+          rows:      mdfRows,
+          subgroups: [],
+        });
+      }
     }
 
     return groups;
@@ -9813,11 +9906,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!mount) {
       mount = el('div');
       mount.id = CFG.mountSelector.replace(/^#/, '');
+      // Insert at the top of the scene (before all views)
       var scene = document.getElementById(CFG.sceneKey);
       if (scene) {
-        scene.appendChild(mount);
+        scene.insertBefore(mount, scene.firstChild);
       } else {
-        document.body.appendChild(mount);
+        // Fallback: insert at top of #knack-dist-content or body
+        var knackContent = document.getElementById('knack-dist-content') ||
+                           document.getElementById('kn-scene') ||
+                           document.body;
+        knackContent.insertBefore(mount, knackContent.firstChild);
       }
     }
     return mount;
@@ -9843,34 +9941,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       th.appendChild(el('div', 'scw-bid-review__pkg-name', pkg.name));
 
-      var countsText = elig.adoptable + ' adoptable \u00b7 ' + elig.creatable + ' new';
-      th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
-
-      // Package-level action buttons (scoped to this SOW)
-      var actions = el('div', 'scw-bid-review__pkg-actions');
-
-      if (elig.adoptable > 0) {
-        actions.appendChild(btn(
-          'Adopt All (' + elig.adoptable + ')', 'adopt',
-          { 'data-action': 'package_adopt_all', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-        ));
-      }
-
       if (elig.creatable > 0) {
+        var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
+        th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
+
+        var actions = el('div', 'scw-bid-review__pkg-actions');
         actions.appendChild(btn(
           'Create Missing (' + elig.creatable + ')', 'create',
           { 'data-action': 'package_create_missing', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
         ));
+        th.appendChild(actions);
       }
-
-      if (elig.total > 0 && elig.adoptable > 0 && elig.creatable > 0) {
-        actions.appendChild(btn(
-          'Adopt + Create (' + elig.total + ')', 'combo',
-          { 'data-action': 'package_adopt_create', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-        ));
-      }
-
-      th.appendChild(actions);
       tr.appendChild(th);
     }
 
@@ -9909,17 +9990,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(el('div', 'scw-bid-review__cell-label', row.sowProduct));
     }
 
-    if (row.sowFee) {
-      var values = el('div', 'scw-bid-review__cell-values');
-      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee)));
-      td.appendChild(values);
-    }
-
     if (row.sowLaborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
     }
 
     td.appendChild(buildCablingChip(row.sowExistCabling));
+
+    if (row.sowFee) {
+      var values = el('div', 'scw-bid-review__cell-values');
+      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee)));
+      td.appendChild(values);
+    }
 
     return td;
   }
@@ -9939,17 +10020,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(el('div', 'scw-bid-review__cell-label', cell.productName));
     }
 
-    if (cell.labor) {
-      var values = el('div', 'scw-bid-review__cell-values');
-      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor)));
-      td.appendChild(values);
-    }
-
     if (cell.laborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
     }
 
     td.appendChild(buildCablingChip(cell.bidExistCabling));
+
+    if (cell.labor) {
+      var values = el('div', 'scw-bid-review__cell-values');
+      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor)));
+      td.appendChild(values);
+    }
 
     if (cell.notes) {
       td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
@@ -9964,17 +10045,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var td = el('td');
     var wrap = el('div', 'scw-bid-review__row-actions');
 
-    for (var i = 0; i < packages.length; i++) {
-      var pkg = packages[i];
-      var cell = row.cellsByPackage[pkg.id];
-      if (!cell) continue;
+    // Create buttons — only for NEW items (no SOW match)
+    if (!row.sowItem) {
+      for (var i = 0; i < packages.length; i++) {
+        var pkg = packages[i];
+        var cell = row.cellsByPackage[pkg.id];
+        if (!cell) continue;
 
-      if (row.sowItem) {
-        wrap.appendChild(btn(
-          'Adopt \u2190 ' + pkg.name, 'adopt sm',
-          { 'data-action': 'row_adopt', 'data-row-id': row.id, 'data-package-id': pkg.id, 'data-sow-id': sowId }
-        ));
-      } else {
         wrap.appendChild(btn(
           'Create \u2190 ' + pkg.name, 'create sm',
           { 'data-action': 'row_create', 'data-row-id': row.id, 'data-package-id': pkg.id, 'data-sow-id': sowId }
@@ -9982,9 +10059,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
 
+    // Request Revision — always available
     wrap.appendChild(btn(
-      'Skip', 'skip sm',
-      { 'data-action': 'row_skip', 'data-row-id': row.id, 'data-sow-id': sowId }
+      'Request Revision', 'revision sm',
+      { 'data-action': 'row_revision', 'data-row-id': row.id, 'data-sow-id': sowId }
     ));
 
     td.appendChild(wrap);
@@ -10087,10 +10165,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     for (var gi = 0; gi < groups.length; gi++) {
       var group = groups[gi];
 
-      if (group.label) {
-        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, group.rows.length));
+      // Count all rows including subgroups
+      var totalRows = group.rows.length;
+      if (group.subgroups) {
+        for (var ci = 0; ci < group.subgroups.length; ci++) {
+          totalRows += group.subgroups[ci].rows.length;
+        }
       }
 
+      if (group.label) {
+        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, totalRows));
+      }
+
+      // Subgroups (proposalBucket within mdfIdf)
+      if (group.subgroups && group.subgroups.length) {
+        for (var si = 0; si < group.subgroups.length; si++) {
+          var sub = group.subgroups[si];
+          if (sub.label) {
+            frag.appendChild(buildSubgroupHeader(sub.label, colSpan, sub.rows.length));
+          }
+          for (var ri = 0; ri < sub.rows.length; ri++) {
+            frag.appendChild(buildDataRow(sub.rows[ri], packages, sowId));
+          }
+        }
+      }
+
+      // Direct rows (no subgroups)
       for (var di = 0; di < group.rows.length; di++) {
         frag.appendChild(buildDataRow(group.rows[di], packages, sowId));
       }
@@ -10099,17 +10199,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return frag;
   }
 
+  // ── subgroup header (proposalBucket within mdfIdf) ──────────
+
+  function buildSubgroupHeader(label, colSpan, rowCount) {
+    var tr = el('tr', 'scw-bid-review__subgroup-header');
+
+    var td = el('td');
+    td.setAttribute('colspan', colSpan);
+
+    var inner = el('div', 'scw-bid-review__subgrp-inner');
+    inner.appendChild(el('span', 'scw-bid-review__subgrp-title', label));
+    if (rowCount > 0) {
+      inner.appendChild(el('span', 'scw-bid-review__subgrp-count', String(rowCount)));
+    }
+
+    td.appendChild(inner);
+    tr.appendChild(td);
+    return tr;
+  }
+
   // ── render a single SOW grid ────────────────────────────────
 
   function buildSowSection(sowGrid) {
-    var section = el('div', 'scw-bid-review__sow-section');
+    var section = el('div', 'scw-bid-review__sow-section scw-bid-review__sow-section--collapsed');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW accordion header (clickable)
+    // SOW accordion header (clickable) — collapsed by default
     var header = el('div', 'scw-bid-review__sow-title');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'true');
+    header.setAttribute('aria-expanded', 'false');
 
     var chevron = el('span', 'scw-bid-review__sow-chevron');
     chevron.innerHTML = CHEVRON_SVG;

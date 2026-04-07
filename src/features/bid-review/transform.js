@@ -221,8 +221,9 @@
       displayLabel:    raw(meta, FK.displayLabel),
       productName:     raw(meta, FK.productName),
       sowItem:         connectionId(meta, FK.relatedSowItem),
-      groupL1:         connectionLabel(meta, FK.proposalBucket),
-      groupL2:         connectionLabel(meta, FK.mdfIdf),
+      proposalBucket:  connectionLabel(meta, FK.proposalBucket),
+      mdfIdf:          connectionLabel(meta, FK.mdfIdf),
+      sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
       sowFee:          num(meta, FK.sowFee),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
@@ -235,47 +236,105 @@
   // ── grouping (L1/L2) ─────────────────────────────────────────
 
   /**
-   * Group rows by mdfIdf (field_2375) only — single level of collapsible groups.
+   * Group rows by mdfIdf (field_2375, primary accordion) then by
+   * proposalBucket (field_2366, sub-group within each accordion).
+   * Sub-groups are sorted by sortOrder (field_2218).
    */
   function groupRows(rows) {
-    var hasAnyGroup = false;
+    var hasMdfIdf = false;
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].groupL2) { hasAnyGroup = true; break; }
+      if (rows[i].mdfIdf) { hasMdfIdf = true; break; }
     }
 
-    if (!hasAnyGroup) {
+    if (!hasMdfIdf) {
       return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
     }
 
-    var grpMap   = {};
-    var grpOrder = [];
+    // Primary grouping: mdfIdf
+    var mdfMap   = {};
+    var mdfOrder = [];
 
     for (var j = 0; j < rows.length; j++) {
       var r   = rows[j];
-      var grp = r.groupL2 || 'Ungrouped';
+      var mdf = r.mdfIdf || 'Ungrouped';
 
-      if (!grpMap[grp]) {
-        grpMap[grp] = [];
-        grpOrder.push(grp);
+      if (!mdfMap[mdf]) {
+        mdfMap[mdf] = [];
+        mdfOrder.push(mdf);
       }
-      grpMap[grp].push(r);
+      mdfMap[mdf].push(r);
     }
 
     var groups = [];
-    for (var gi = 0; gi < grpOrder.length; gi++) {
-      var key     = grpOrder[gi];
-      var grpRows = grpMap[key];
-      grpRows.sort(function (a, b) {
-        return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-      });
+    for (var gi = 0; gi < mdfOrder.length; gi++) {
+      var mdfKey  = mdfOrder[gi];
+      var mdfRows = mdfMap[mdfKey];
 
-      groups.push({
-        key:       key,
-        label:     key,
-        level:     1,
-        rows:      grpRows,
-        subgroups: [],
-      });
+      // Sub-grouping within this mdfIdf: proposalBucket
+      var hasBucket = false;
+      for (var bi = 0; bi < mdfRows.length; bi++) {
+        if (mdfRows[bi].proposalBucket) { hasBucket = true; break; }
+      }
+
+      var subgroups = [];
+      if (hasBucket) {
+        var bucketMap   = {};
+        var bucketOrder = [];
+
+        for (var ri = 0; ri < mdfRows.length; ri++) {
+          var row    = mdfRows[ri];
+          var bucket = row.proposalBucket || 'Other';
+
+          if (!bucketMap[bucket]) {
+            bucketMap[bucket] = { rows: [], minSort: row.sortOrder };
+            bucketOrder.push(bucket);
+          }
+          bucketMap[bucket].rows.push(row);
+          if (row.sortOrder < bucketMap[bucket].minSort) {
+            bucketMap[bucket].minSort = row.sortOrder;
+          }
+        }
+
+        // Sort sub-groups by sortOrder (field_2218)
+        bucketOrder.sort(function (a, b) {
+          return bucketMap[a].minSort - bucketMap[b].minSort;
+        });
+
+        for (var si = 0; si < bucketOrder.length; si++) {
+          var bKey  = bucketOrder[si];
+          var bRows = bucketMap[bKey].rows;
+          bRows.sort(function (a, b) {
+            return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+          });
+
+          subgroups.push({
+            key:   mdfKey + '::' + bKey,
+            label: bKey,
+            level: 2,
+            rows:  bRows,
+          });
+        }
+
+        groups.push({
+          key:       mdfKey,
+          label:     mdfKey,
+          level:     1,
+          rows:      [],
+          subgroups: subgroups,
+        });
+      } else {
+        mdfRows.sort(function (a, b) {
+          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+        });
+
+        groups.push({
+          key:       mdfKey,
+          label:     mdfKey,
+          level:     1,
+          rows:      mdfRows,
+          subgroups: [],
+        });
+      }
     }
 
     return groups;
