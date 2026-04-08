@@ -10857,12 +10857,37 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     runPipeline();
   };
 
+  // ── force views to load 1000 records per page ───────────────
+
+  /**
+   * Set a view's "per page" dropdown to 1000 so Knack natively loads
+   * all records into its model cache. Returns true if the view already
+   * had 1000 selected (ready to proceed); false if we just changed it
+   * (Knack will re-render the view with full data).
+   */
+  function ensureFullPage(viewKey) {
+    var $select = $('#' + viewKey + ' select[name="limit"]');
+    if ($select.length && $select.val() !== '1000') {
+      $select.val('1000').trigger('change');
+      return false; // Knack will re-render — not ready yet
+    }
+    return true; // already at 1000 (or no dropdown found)
+  }
+
   // ── init on view render ─────────────────────────────────────
 
   function init() {
     ns.injectStyles();
 
     SCW.onViewRender(CFG.viewKey, function () {
+      // Force both data views to 1000 per page.
+      // If either needed changing, Knack re-renders the view and
+      // this handler will fire again with full data in the cache.
+      var bidReady = ensureFullPage(CFG.viewKey);
+      ensureFullPage(CFG.sowItemsViewKey);
+
+      if (!bidReady) return; // wait for re-render with full data
+
       setTimeout(function () {
         runPipeline();
       }, CFG.renderDelay);
