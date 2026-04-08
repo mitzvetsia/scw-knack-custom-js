@@ -323,6 +323,29 @@
       '  margin-right: 4px;',
       '}',
 
+      /* ── NO BID badge & row ──────────────────────────────────── */
+      '.scw-bid-review__no-bid-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #dc2626;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
+      '}',
+
+      '.scw-bid-review__row--no-bid td {',
+      '  background: #fef2f2 !important;',
+      '}',
+
+      '.scw-bid-review__row--no-bid:hover td {',
+      '  background: #fee2e2 !important;',
+      '}',
+
       /* ── package data cell ─────────────────────────────────── */
       '.scw-bid-review__cell-label {',
       '  font-size: 12px;',

@@ -27,7 +27,7 @@
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records);
+      _state = ns.buildState(raw.records, raw.sowItems || []);
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',

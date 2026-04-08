@@ -8674,6 +8674,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
+    sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
@@ -8713,6 +8714,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
       mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
       sortOrder:       'field_2218',   // sort order for proposal bucket groups
+    },
+
+    // ── SOW item fields (view_3728 — different keys than bid records) ──
+    sowItemFieldKeys: {
+      sow:             'field_2154',   // REL_SOW (same key as bid records)
+      product:         'field_1949',   // product connection (display label)
+      productName:     'field_1958',   // stored product name
+      laborDesc:       'field_2020',   // labor description
+      fee:             'field_2151',   // sub bid total / install fee
+      mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
+      proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
+      sortOrder:       'field_2218',   // sort order (same key)
+      displayLabel:    'field_1950',   // display label
+      existCabling:    'field_2461',   // existing cabling (same as SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────
@@ -9051,6 +9066,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  margin-right: 4px;',
       '}',
 
+      /* ── NO BID badge & row ──────────────────────────────────── */
+      '.scw-bid-review__no-bid-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #dc2626;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
+      '}',
+
+      '.scw-bid-review__row--no-bid td {',
+      '  background: #fef2f2 !important;',
+      '}',
+
+      '.scw-bid-review__row--no-bid:hover td {',
+      '  background: #fee2e2 !important;',
+      '}',
+
       /* ── package data cell ─────────────────────────────────── */
       '.scw-bid-review__cell-label {',
       '  font-size: 12px;',
@@ -9324,28 +9362,45 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   /**
-   * loadRawData() → jQuery.Deferred → { records: [] }
-   *
-   * Reads from a single Knack view. Tries Knack.models first,
+   * Load records from a single view. Tries Knack.models first,
    * falls back to REST API.
+   * Returns a jQuery Deferred resolving to an array of records.
    */
-  ns.loadRawData = function loadRawData() {
-    var model   = findModel(CFG.viewKey);
+  function loadView(viewKey) {
+    var model   = findModel(viewKey);
     var records = extractRecords(model);
 
     if (CFG.debug) {
-      console.log('[BidReview] Model records from ' + CFG.viewKey + ':', records.length);
+      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
     }
 
     if (records.length > 0) {
-      return $.Deferred().resolve({ records: records }).promise();
+      return $.Deferred().resolve(records).promise();
     }
 
-    return fetchFromApi(CFG.viewKey).then(function (recs) {
+    return fetchFromApi(viewKey).then(function (recs) {
       if (CFG.debug) {
-        console.log('[BidReview] API records from ' + CFG.viewKey + ':', recs.length);
+        console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
       }
-      return { records: recs };
+      return recs;
+    });
+  }
+
+  /**
+   * loadRawData() → jQuery.Deferred → { records: [], sowItems: [] }
+   *
+   * Loads bid records from view_3680 and unbid SOW items from view_3728.
+   */
+  ns.loadRawData = function loadRawData() {
+    var bidPromise     = loadView(CFG.viewKey);
+    var sowItemPromise = loadView(CFG.sowItemsViewKey);
+
+    return $.when(bidPromise, sowItemPromise).then(function (bidRecs, sowRecs) {
+      if (CFG.debug) {
+        console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
+                    sowRecs.length, 'unbid SOW items');
+      }
+      return { records: bidRecs, sowItems: sowRecs };
     });
   };
 
@@ -9753,11 +9808,60 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return ids;
   }
 
+  // ── build "NO BID" rows from unbid SOW items (view_3728) ────
+
+  /**
+   * Convert SOW item records (from view_3728) into NO BID rows.
+   * These use DIFFERENT field keys than bid records.
+   * Returns rows keyed by SOW id: { sowId: [row, ...] }
+   */
+  function buildNoBidRows(sowItems) {
+    var SFK = CFG.sowItemFieldKeys;
+    var bySow = {};
+
+    for (var i = 0; i < sowItems.length; i++) {
+      var rec = sowItems[i];
+      var conns = connectionAll(rec, SFK.sow);
+
+      if (!conns.length) continue;
+
+      for (var c = 0; c < conns.length; c++) {
+        var sowId = conns[c].id;
+        if (!sowId) continue;
+        if (!bySow[sowId]) bySow[sowId] = [];
+
+        bySow[sowId].push({
+          id:              rec.id,
+          rowKey:          'nobid::' + rec.id,
+          displayLabel:    raw(rec, SFK.displayLabel) || connectionLabel(rec, SFK.product),
+          productName:     raw(rec, SFK.productName),
+          sowItem:         rec.id,   // it IS a SOW item
+          proposalBucket:  connectionLabel(rec, SFK.proposalBucket),
+          proposalBucketId: connectionId(rec, SFK.proposalBucket),
+          mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
+          sortOrder:       num(rec, SFK.sortOrder),
+          // SOW detail — populated from the SOW item record itself
+          sowFee:          num(rec, SFK.fee),
+          sowProduct:      raw(rec, SFK.productName),
+          sowLaborDesc:    raw(rec, SFK.laborDesc),
+          sowExistCabling: raw(rec, SFK.existCabling),
+          // No bid data at all
+          cellsByPackage:  {},
+          noBid:           true,
+        });
+      }
+    }
+
+    return bySow;
+  }
+
   // ── public entry point ────────────────────────────────────────
 
   /**
-   * buildState(records) → state
+   * buildState(records, sowItems) → state
    *
+   * @param {Array} records  — bid records from view_3680
+   * @param {Array} sowItems — unbid SOW items from view_3728
    * Returns:
    *   {
    *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
@@ -9765,7 +9869,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    *     isEmpty: boolean
    *   }
    */
-  ns.buildState = function buildState(records) {
+  ns.buildState = function buildState(records, sowItems) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
     var sowBuckets = groupBySow(records);
@@ -9815,12 +9919,59 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
     delete sowBuckets['__no_sow__'];
 
+    // Build NO BID rows from view_3728 SOW items
+    var noBidBySow = buildNoBidRows(sowItems || []);
+
+    if (CFG.debug && Object.keys(noBidBySow).length) {
+      var noBidTotal = 0;
+      var noBidSowIds = Object.keys(noBidBySow);
+      for (var nk = 0; nk < noBidSowIds.length; nk++) {
+        noBidTotal += noBidBySow[noBidSowIds[nk]].length;
+      }
+      console.log('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
+    }
+
+    // Ensure SOW list includes any SOWs that only appear in the unbid items
+    var sowSeen = {};
+    for (var sk = 0; sk < sows.length; sk++) { sowSeen[sows[sk].id] = true; }
+    var noBidKeys = Object.keys(noBidBySow);
+    for (var nbi = 0; nbi < noBidKeys.length; nbi++) {
+      var nbSowId = noBidKeys[nbi];
+      if (!sowSeen[nbSowId]) {
+        // Derive SOW name from the first NO BID row's SOW connection
+        var nbSample = noBidBySow[nbSowId][0];
+        var SFK = CFG.sowItemFieldKeys;
+        var nbConns = connectionAll({ id: nbSample.id }, SFK.sow);
+        // Fallback: use the SOW item records to find the name
+        var nbName = 'SOW ' + (sows.length + 1);
+        var nbRawItems = (sowItems || []);
+        for (var nri = 0; nri < nbRawItems.length; nri++) {
+          var nrConns = connectionAll(nbRawItems[nri], SFK.sow);
+          for (var nrc = 0; nrc < nrConns.length; nrc++) {
+            if (nrConns[nrc].id === nbSowId) {
+              nbName = stripHtml(nrConns[nrc].identifier || nbName);
+              break;
+            }
+          }
+        }
+        sows.push({ id: nbSowId, name: nbName });
+        sowSeen[nbSowId] = true;
+      }
+    }
+
     var sowGrids = [];
 
     for (var i = 0; i < sows.length; i++) {
       var sow     = sows[i];
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
+
+      // Merge in NO BID rows for this SOW
+      var noBidRows = noBidBySow[sow.id] || [];
+      for (var nb = 0; nb < noBidRows.length; nb++) {
+        rows.push(noBidRows[nb]);
+      }
+
       var pkgs    = extractPackages(recs);
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
@@ -10153,12 +10304,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ── data row ────────────────────────────────────────────────
 
   function buildDataRow(row, packages, sowId) {
-    var tr = el('tr', 'scw-bid-review__row');
+    var rowClass = 'scw-bid-review__row';
+    if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
+    var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
 
     // Line item label cell
     var labelTd = el('td');
-    if (row.sowItem) {
+    if (row.noBid) {
+      // SOW item with no bid at all
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
+      var noBidLabel = row.displayLabel || row.productName || 'Item';
+      labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+      labelTd.appendChild(document.createElement('br'));
+      labelTd.appendChild(document.createTextNode(noBidLabel));
+    } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
       labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
     } else {
@@ -10554,7 +10714,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records);
+      _state = ns.buildState(raw.records, raw.sowItems || []);
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',

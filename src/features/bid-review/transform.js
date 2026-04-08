@@ -401,11 +401,60 @@
     return ids;
   }
 
+  // ── build "NO BID" rows from unbid SOW items (view_3728) ────
+
+  /**
+   * Convert SOW item records (from view_3728) into NO BID rows.
+   * These use DIFFERENT field keys than bid records.
+   * Returns rows keyed by SOW id: { sowId: [row, ...] }
+   */
+  function buildNoBidRows(sowItems) {
+    var SFK = CFG.sowItemFieldKeys;
+    var bySow = {};
+
+    for (var i = 0; i < sowItems.length; i++) {
+      var rec = sowItems[i];
+      var conns = connectionAll(rec, SFK.sow);
+
+      if (!conns.length) continue;
+
+      for (var c = 0; c < conns.length; c++) {
+        var sowId = conns[c].id;
+        if (!sowId) continue;
+        if (!bySow[sowId]) bySow[sowId] = [];
+
+        bySow[sowId].push({
+          id:              rec.id,
+          rowKey:          'nobid::' + rec.id,
+          displayLabel:    raw(rec, SFK.displayLabel) || connectionLabel(rec, SFK.product),
+          productName:     raw(rec, SFK.productName),
+          sowItem:         rec.id,   // it IS a SOW item
+          proposalBucket:  connectionLabel(rec, SFK.proposalBucket),
+          proposalBucketId: connectionId(rec, SFK.proposalBucket),
+          mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
+          sortOrder:       num(rec, SFK.sortOrder),
+          // SOW detail — populated from the SOW item record itself
+          sowFee:          num(rec, SFK.fee),
+          sowProduct:      raw(rec, SFK.productName),
+          sowLaborDesc:    raw(rec, SFK.laborDesc),
+          sowExistCabling: raw(rec, SFK.existCabling),
+          // No bid data at all
+          cellsByPackage:  {},
+          noBid:           true,
+        });
+      }
+    }
+
+    return bySow;
+  }
+
   // ── public entry point ────────────────────────────────────────
 
   /**
-   * buildState(records) → state
+   * buildState(records, sowItems) → state
    *
+   * @param {Array} records  — bid records from view_3680
+   * @param {Array} sowItems — unbid SOW items from view_3728
    * Returns:
    *   {
    *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
@@ -413,7 +462,7 @@
    *     isEmpty: boolean
    *   }
    */
-  ns.buildState = function buildState(records) {
+  ns.buildState = function buildState(records, sowItems) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
     var sowBuckets = groupBySow(records);
@@ -463,12 +512,59 @@
     }
     delete sowBuckets['__no_sow__'];
 
+    // Build NO BID rows from view_3728 SOW items
+    var noBidBySow = buildNoBidRows(sowItems || []);
+
+    if (CFG.debug && Object.keys(noBidBySow).length) {
+      var noBidTotal = 0;
+      var noBidSowIds = Object.keys(noBidBySow);
+      for (var nk = 0; nk < noBidSowIds.length; nk++) {
+        noBidTotal += noBidBySow[noBidSowIds[nk]].length;
+      }
+      console.log('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
+    }
+
+    // Ensure SOW list includes any SOWs that only appear in the unbid items
+    var sowSeen = {};
+    for (var sk = 0; sk < sows.length; sk++) { sowSeen[sows[sk].id] = true; }
+    var noBidKeys = Object.keys(noBidBySow);
+    for (var nbi = 0; nbi < noBidKeys.length; nbi++) {
+      var nbSowId = noBidKeys[nbi];
+      if (!sowSeen[nbSowId]) {
+        // Derive SOW name from the first NO BID row's SOW connection
+        var nbSample = noBidBySow[nbSowId][0];
+        var SFK = CFG.sowItemFieldKeys;
+        var nbConns = connectionAll({ id: nbSample.id }, SFK.sow);
+        // Fallback: use the SOW item records to find the name
+        var nbName = 'SOW ' + (sows.length + 1);
+        var nbRawItems = (sowItems || []);
+        for (var nri = 0; nri < nbRawItems.length; nri++) {
+          var nrConns = connectionAll(nbRawItems[nri], SFK.sow);
+          for (var nrc = 0; nrc < nrConns.length; nrc++) {
+            if (nrConns[nrc].id === nbSowId) {
+              nbName = stripHtml(nrConns[nrc].identifier || nbName);
+              break;
+            }
+          }
+        }
+        sows.push({ id: nbSowId, name: nbName });
+        sowSeen[nbSowId] = true;
+      }
+    }
+
     var sowGrids = [];
 
     for (var i = 0; i < sows.length; i++) {
       var sow     = sows[i];
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
+
+      // Merge in NO BID rows for this SOW
+      var noBidRows = noBidBySow[sow.id] || [];
+      for (var nb = 0; nb < noBidRows.length; nb++) {
+        rows.push(noBidRows[nb]);
+      }
+
       var pkgs    = extractPackages(recs);
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);

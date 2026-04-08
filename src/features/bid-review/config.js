@@ -14,6 +14,7 @@
     // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
+    sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
@@ -53,6 +54,20 @@
       proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
       mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
       sortOrder:       'field_2218',   // sort order for proposal bucket groups
+    },
+
+    // ── SOW item fields (view_3728 — different keys than bid records) ──
+    sowItemFieldKeys: {
+      sow:             'field_2154',   // REL_SOW (same key as bid records)
+      product:         'field_1949',   // product connection (display label)
+      productName:     'field_1958',   // stored product name
+      laborDesc:       'field_2020',   // labor description
+      fee:             'field_2151',   // sub bid total / install fee
+      mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
+      proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
+      sortOrder:       'field_2218',   // sort order (same key)
+      displayLabel:    'field_1950',   // display label
+      existCabling:    'field_2461',   // existing cabling (same as SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────

@@ -94,28 +94,45 @@
   }
 
   /**
-   * loadRawData() → jQuery.Deferred → { records: [] }
-   *
-   * Reads from a single Knack view. Tries Knack.models first,
+   * Load records from a single view. Tries Knack.models first,
    * falls back to REST API.
+   * Returns a jQuery Deferred resolving to an array of records.
    */
-  ns.loadRawData = function loadRawData() {
-    var model   = findModel(CFG.viewKey);
+  function loadView(viewKey) {
+    var model   = findModel(viewKey);
     var records = extractRecords(model);
 
     if (CFG.debug) {
-      console.log('[BidReview] Model records from ' + CFG.viewKey + ':', records.length);
+      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
     }
 
     if (records.length > 0) {
-      return $.Deferred().resolve({ records: records }).promise();
+      return $.Deferred().resolve(records).promise();
     }
 
-    return fetchFromApi(CFG.viewKey).then(function (recs) {
+    return fetchFromApi(viewKey).then(function (recs) {
       if (CFG.debug) {
-        console.log('[BidReview] API records from ' + CFG.viewKey + ':', recs.length);
+        console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
       }
-      return { records: recs };
+      return recs;
+    });
+  }
+
+  /**
+   * loadRawData() → jQuery.Deferred → { records: [], sowItems: [] }
+   *
+   * Loads bid records from view_3680 and unbid SOW items from view_3728.
+   */
+  ns.loadRawData = function loadRawData() {
+    var bidPromise     = loadView(CFG.viewKey);
+    var sowItemPromise = loadView(CFG.sowItemsViewKey);
+
+    return $.when(bidPromise, sowItemPromise).then(function (bidRecs, sowRecs) {
+      if (CFG.debug) {
+        console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
+                    sowRecs.length, 'unbid SOW items');
+      }
+      return { records: bidRecs, sowItems: sowRecs };
     });
   };
 

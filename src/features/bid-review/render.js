@@ -290,12 +290,21 @@
   // ── data row ────────────────────────────────────────────────
 
   function buildDataRow(row, packages, sowId) {
-    var tr = el('tr', 'scw-bid-review__row');
+    var rowClass = 'scw-bid-review__row';
+    if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
+    var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
 
     // Line item label cell
     var labelTd = el('td');
-    if (row.sowItem) {
+    if (row.noBid) {
+      // SOW item with no bid at all
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
+      var noBidLabel = row.displayLabel || row.productName || 'Item';
+      labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+      labelTd.appendChild(document.createElement('br'));
+      labelTd.appendChild(document.createTextNode(noBidLabel));
+    } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
       labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
     } else {
