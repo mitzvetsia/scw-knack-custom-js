@@ -12427,6 +12427,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     //networking or headend
     '647953bb54b4e1002931ed97': [
       ['field_2182', 'REL_scope of work'],
+      ['field_2180', 'REL_mdf-idf_mandatory multi select'],
       ['field_2194', 'REL_products_for networking'],
       ['field_2183', 'INPUT_product quantity'],
       ['field_2246', 'REL_unified product field'],
