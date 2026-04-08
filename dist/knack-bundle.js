@@ -9362,12 +9362,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   /**
-   * Load ALL records from a single view via the REST API.
-   * Always fetches from the API with rows_per_page=1000 to avoid
-   * incomplete data from Knack's model cache (default 25 per page).
+   * Load records from a single view. Tries Knack.models first,
+   * falls back to REST API with rows_per_page=1000.
    * Returns a jQuery Deferred resolving to an array of records.
    */
   function loadView(viewKey) {
+    var model   = findModel(viewKey);
+    var records = extractRecords(model);
+
+    if (CFG.debug) {
+      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
+    }
+
+    if (records.length > 0) {
+      return $.Deferred().resolve(records).promise();
+    }
+
     return fetchFromApi(viewKey).then(function (recs) {
       if (CFG.debug) {
         console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
