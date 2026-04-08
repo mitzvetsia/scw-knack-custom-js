@@ -435,7 +435,7 @@
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
           sowFee:          num(rec, SFK.fee),
-          sowProduct:      raw(rec, SFK.productName),
+          sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
           // No bid data at all
