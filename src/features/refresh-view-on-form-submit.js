@@ -232,36 +232,7 @@
       if (window.SCW && SCW.deviceWorksheet && typeof SCW.deviceWorksheet.captureState === 'function') {
         SCW.deviceWorksheet.captureState();
       }
-
-      // Lock container height and fade to prevent flash during re-render
-      var el = document.getElementById(viewId);
-      if (el) {
-        el.style.minHeight = el.offsetHeight + 'px';
-        el.style.transition = 'opacity 200ms ease';
-        el.style.opacity = '0.45';
-      }
-
-      // Restore after Knack re-renders
-      $(document).one('knack-view-render.' + viewId + DTO_NS + 'Fade', function () {
-        var v = document.getElementById(viewId);
-        if (v) {
-          v.style.opacity = '1';
-          // Release the height lock after a brief settle
-          setTimeout(function () { v.style.minHeight = ''; }, 300);
-        }
-      });
-
       view.model.fetch();
-
-      // Safety: clear styles if render never fires (e.g. network error)
-      setTimeout(function () {
-        var v = document.getElementById(viewId);
-        if (v) {
-          v.style.opacity = '';
-          v.style.transition = '';
-          v.style.minHeight = '';
-        }
-      }, 8000);
     }
   }
 
