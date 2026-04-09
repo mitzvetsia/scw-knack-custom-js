@@ -280,7 +280,7 @@
 
     for (var j = 0; j < rows.length; j++) {
       var r   = rows[j];
-      var mdf = r.mdfIdf || 'Ungrouped';
+      var mdf = r.mdfIdf || 'Unassigned';
 
       if (!mdfMap[mdf]) {
         mdfMap[mdf] = [];

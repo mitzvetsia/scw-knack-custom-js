@@ -9746,7 +9746,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     for (var j = 0; j < rows.length; j++) {
       var r   = rows[j];
-      var mdf = r.mdfIdf || 'Ungrouped';
+      var mdf = r.mdfIdf || 'Unassigned';
 
       if (!mdfMap[mdf]) {
         mdfMap[mdf] = [];
