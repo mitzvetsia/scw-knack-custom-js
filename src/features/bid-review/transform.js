@@ -250,6 +250,8 @@
           field2367:       raw(rec, FK.field2367),
           field2368:       raw(rec, FK.field2368),
           field2371:       raw(rec, FK.field2371),
+          sku:             raw(rec, FK.sku),
+          price:           num(rec, FK.price),
         };
       }
     }

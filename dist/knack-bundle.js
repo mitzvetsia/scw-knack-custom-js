@@ -8736,6 +8736,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       field2367:       'field_2367',
       field2368:       'field_2368',
       field2371:       'field_2371',
+      sku:             'field_2328',
+      price:           'field_2382',
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -9732,6 +9734,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           field2367:       raw(rec, FK.field2367),
           field2368:       raw(rec, FK.field2368),
           field2371:       raw(rec, FK.field2371),
+          sku:             raw(rec, FK.sku),
+          price:           num(rec, FK.price),
         };
       }
     }
@@ -10929,6 +10933,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           mapConn:      cell.bidMapConn,
           notes:        cell.notes,
           product:      cell.field2627,
+          sku:          cell.sku,
+          price:        cell.price,
           field2367:    cell.field2367,
           field2368:    cell.field2368,
           field2371:    cell.field2371,
@@ -10947,6 +10953,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           mapConn:          cell.bidMapConn,
           notes:            cell.notes,
           product:          cell.field2627,
+          sku:              cell.sku,
+          price:            cell.price,
           field2367:        cell.field2367,
           field2368:        cell.field2368,
           field2371:        cell.field2371,
