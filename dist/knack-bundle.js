@@ -19945,6 +19945,7 @@ td.${P}-sum-move {
   justify-content: center;
   align-self: flex-start;
   flex-shrink: 0;
+  min-width: 22px;
   padding: 5px 4px 0 4px;
   border: none !important;
   background: transparent !important;
@@ -22821,29 +22822,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    // ── Delete link (if Knack provides one in this grid) ──
+    // ── Delete link (always reserve space for alignment) ──
     var deleteLink = tr.querySelector('a.kn-link-delete');
+    var deleteWrap = document.createElement('span');
+    deleteWrap.className = P + '-sum-delete';
     if (deleteLink) {
       var deleteTd = deleteLink.closest('td');
-
-      var deleteWrap = document.createElement('span');
-      deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      if (hasStackedFields) {
-        var delCol = document.createElement('span');
-        delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-        var delSpacer = document.createElement('span');
-        delSpacer.className = P + '-sum-label';
-        delSpacer.innerHTML = '&nbsp;';
-        delCol.appendChild(delSpacer);
-        delCol.appendChild(deleteWrap);
-        rightGroup.appendChild(delCol);
-      } else {
-        rightGroup.appendChild(deleteWrap);
-      }
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
+    }
+    if (hasStackedFields) {
+      var delCol = document.createElement('span');
+      delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var delSpacer = document.createElement('span');
+      delSpacer.className = P + '-sum-label';
+      delSpacer.innerHTML = '&nbsp;';
+      delCol.appendChild(delSpacer);
+      delCol.appendChild(deleteWrap);
+      rightGroup.appendChild(delCol);
+    } else {
+      rightGroup.appendChild(deleteWrap);
     }
 
     bar.appendChild(rightGroup);
@@ -24110,7 +24110,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
         var del = card.querySelector('.' + P + '-sum-delete');
         if (del) {
-          del.style.display = val ? 'none' : '';
+          del.style.visibility = val ? 'hidden' : '';
         }
       }
     });
