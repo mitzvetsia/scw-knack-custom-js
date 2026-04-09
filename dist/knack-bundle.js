@@ -9750,6 +9750,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           exterior:        raw(rec, FK.exterior),
           limitQtyOne:     raw(rec, FK.limitQtyOne),
           mapConnections:  raw(rec, FK.mapConnections),
+          proposalBucketId: connectionId(rec, FK.proposalBucket),
+          mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
       }
     }
@@ -10957,8 +10959,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           dropNumber:     cell.dropNumber,
           existing:       cell.existing,
           exterior:       cell.exterior,
-          limitQtyOne:    cell.limitQtyOne,
-          mapConnections: cell.mapConnections,
+          limitQtyOne:      cell.limitQtyOne,
+          mapConnections:   cell.mapConnections,
+          proposalBucket:   cell.proposalBucketId,
+          mdfIdf:           cell.mdfIdfId,
         });
       } else if (!row.sowItem && cell) {
         // NEW: create SOW item from bid data
@@ -10986,10 +10990,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           exterior:         cell.exterior,
           limitQtyOne:      cell.limitQtyOne,
           mapConnections:   cell.mapConnections,
+          proposalBucket:   cell.proposalBucketId,
+          mdfIdf:           cell.mdfIdfId,
           displayLabel:     row.displayLabel,
-          mdfIdf:           row.mdfIdf,
-          proposalBucket:   row.proposalBucket,
-          proposalBucketId: row.proposalBucketId,
         });
       } else if (row.sowItem && !cell) {
         // Removal: SOW item not covered by this bid package

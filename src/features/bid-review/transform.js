@@ -259,6 +259,8 @@
           exterior:        raw(rec, FK.exterior),
           limitQtyOne:     raw(rec, FK.limitQtyOne),
           mapConnections:  raw(rec, FK.mapConnections),
+          proposalBucketId: connectionId(rec, FK.proposalBucket),
+          mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
       }
     }
