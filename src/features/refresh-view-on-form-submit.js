@@ -203,10 +203,19 @@
       '  border-top-color: #fff; border-radius: 50%;',
       '  animation: scwDtoSpin .8s linear infinite;',
       '}',
+      '#' + TOAST_ID + ' .scw-dto-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 16px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700;',
+      '}',
+      '#' + TOAST_ID + ' .scw-dto-close:hover { color: #fff; }',
       '@keyframes scwDtoSpin { to { transform: rotate(360deg); } }'
     ].join('\n');
     document.head.appendChild(s);
   }
+
+  // Active poll timer — stored so the close button can cancel it
+  var _dtoPollTimer = null;
 
   function showDtoToast() {
     injectToastStyle();
@@ -214,6 +223,17 @@
     var toast = document.createElement('div');
     toast.id = TOAST_ID;
     toast.innerHTML = '<span class="scw-dto-spinner"></span> Adding records \u2014 grids will refresh automatically\u2026';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-dto-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      if (_dtoPollTimer) { clearInterval(_dtoPollTimer); _dtoPollTimer = null; }
+      hideDtoToast();
+    });
+    toast.appendChild(closeBtn);
+
     document.body.appendChild(toast);
   }
 
@@ -250,7 +270,8 @@
     });
 
     var elapsed = 0;
-    var timer = setInterval(function () {
+    if (_dtoPollTimer) clearInterval(_dtoPollTimer);
+    _dtoPollTimer = setInterval(function () {
       elapsed += DTO_POLL_MS;
 
       DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
@@ -273,13 +294,15 @@
           DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
           hideDtoToast();
         }, DTO_POLL_MS * 2);
-        clearInterval(timer);
+        clearInterval(_dtoPollTimer);
+        _dtoPollTimer = null;
         return;
       }
 
       if (elapsed >= DTO_TIMEOUT_MS) {
         console.log('[scw-refresh] DTO poll timeout');
-        clearInterval(timer);
+        clearInterval(_dtoPollTimer);
+        _dtoPollTimer = null;
         hideDtoToast();
       }
     }, DTO_POLL_MS);
