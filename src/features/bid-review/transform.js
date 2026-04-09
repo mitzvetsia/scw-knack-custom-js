@@ -247,12 +247,18 @@
           bidMapConn:      raw(rec, FK.bidMapConn),
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
-          field2367:       raw(rec, FK.field2367),
-          field2368:       raw(rec, FK.field2368),
-          field2371:       raw(rec, FK.field2371),
+          dropLength:      raw(rec, FK.dropLength),
+          conduit:         raw(rec, FK.conduit),
+          plenum:          raw(rec, FK.plenum),
           sku:             raw(rec, FK.sku),
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
+          dropPrefix:      raw(rec, FK.dropPrefix),
+          dropNumber:      raw(rec, FK.dropNumber),
+          existing:        raw(rec, FK.existing),
+          exterior:        raw(rec, FK.exterior),
+          limitQtyOne:     raw(rec, FK.limitQtyOne),
+          mapConnections:  raw(rec, FK.mapConnections),
         };
       }
     }

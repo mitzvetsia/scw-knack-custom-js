@@ -47,12 +47,18 @@
 
       // Payload-only fields (not displayed in grid)
       field2627:       'field_2627',
-      field2367:       'field_2367',
-      field2368:       'field_2368',
-      field2371:       'field_2371',
+      dropLength:      'field_2367',
+      conduit:         'field_2368',
+      plenum:          'field_2371',
       sku:             'field_2328',
       price:           'field_2382',
       productDesc:     'field_2629',
+      dropPrefix:      'field_2361',
+      dropNumber:      'field_2362',
+      existing:        'field_2370',
+      exterior:        'field_2372',
+      limitQtyOne:     'field_2373',
+      mapConnections:  'field_2374',
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
