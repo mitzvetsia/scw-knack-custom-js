@@ -3398,6 +3398,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       requestAnimationFrame(autoGrow);
       setTimeout(autoGrow, 50);
       setTimeout(autoGrow, 200);
+      setTimeout(autoGrow, 600);
+
+      // ResizeObserver: re-run autoGrow when the textarea's width changes
+      // (flex container may settle its layout after initial paint).
+      if (typeof ResizeObserver !== 'undefined') {
+        var lastW = 0;
+        var ro = new ResizeObserver(function (entries) {
+          var w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
+          if (w && w !== lastW) {
+            lastW = w;
+            autoGrow();
+          }
+        });
+        ro.observe(input);
+      }
     } else {
       input = document.createElement('input');
       input.type = 'text';
