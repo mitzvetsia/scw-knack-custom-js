@@ -153,7 +153,7 @@
       margin: 6px 0 2px;
       font-size: 13px;
       line-height: 1.45;
-      color: #1e3a5f;
+      color: #1e3a5f !important;
     }
     .kn-instructions::before {
       content: '\\2139';
