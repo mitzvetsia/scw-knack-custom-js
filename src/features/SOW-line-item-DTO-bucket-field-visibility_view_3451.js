@@ -6,7 +6,7 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3451']; // add more views
+  const VIEW_IDS = ['view_3451', 'view_3748']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules3451';
   const CSS_ID = 'scw-bucket-visibility-css-3451';

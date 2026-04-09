@@ -12403,7 +12403,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3451']; // add more views
+  const VIEW_IDS = ['view_3451', 'view_3748']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules3451';
   const CSS_ID = 'scw-bucket-visibility-css-3451';
@@ -14640,7 +14640,7 @@ $(".kn-navigation-bar").hide();
   const EVENT_NS = ".scwUnifiedProducts";
   const CONFIG = {
     SCENES: [], // e.g. ['scene_123'] or leave [] for all scenes
-    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627"],
+    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627","view_3748"],
 
     // parent product fields
     PARENTS: ["field_2193", "field_2194", "field_2195"],

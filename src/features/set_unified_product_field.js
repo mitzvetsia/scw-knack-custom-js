@@ -8,7 +8,7 @@
   const EVENT_NS = ".scwUnifiedProducts";
   const CONFIG = {
     SCENES: [], // e.g. ['scene_123'] or leave [] for all scenes
-    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627"],
+    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627","view_3748"],
 
     // parent product fields
     PARENTS: ["field_2193", "field_2194", "field_2195"],
