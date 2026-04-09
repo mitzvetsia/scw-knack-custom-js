@@ -377,7 +377,7 @@
           discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
           total:            { key: 'field_2269', type: 'readOnly' },
-          dropPrefix:       { key: 'field_2240', type: 'directEdit' },
+          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
           // ── Detail panel – right ──
