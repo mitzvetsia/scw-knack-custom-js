@@ -21751,31 +21751,68 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var row = cards[ci].closest('tr');
       if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
     }
-    if (!card) return;
+    if (!card) {
+      console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
+      return;
+    }
+
+    // Helper: extract clean display text from a response value.
+    // Prefers the formatted display string (resp[fk]) for readOnly fields
+    // because _raw is often a bare number (294 vs "$294.00") or object.
+    function displayText(fk) {
+      var display = resp[fk];
+      if (display != null) return String(display).replace(/<[^>]*>/g, '').trim();
+      var raw = resp[fk + '_raw'];
+      if (raw == null) return null;
+      if (typeof raw === 'object') {
+        if (Array.isArray(raw)) {
+          return raw.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
+        }
+        return (raw && raw.identifier) ? raw.identifier : null;
+      }
+      return String(raw);
+    }
+
+    // Helper: extract raw/editable text from a response value.
+    // For directEdit inputs the raw value is often more appropriate.
+    function editableText(fk) {
+      var raw = resp[fk + '_raw'];
+      var display = resp[fk];
+      var val = raw != null ? raw : display;
+      if (val == null) return null;
+      if (typeof val === 'object') {
+        if (Array.isArray(val)) {
+          return val.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
+        }
+        return (val && val.identifier) ? val.identifier : (display != null ? String(display).replace(/<[^>]*>/g, '').trim() : null);
+      }
+      return String(val).replace(/<[^>]*>/g, '').trim();
+    }
 
     var f = cfg.fields;
+    var patched = 0;
     Object.keys(f).forEach(function (name) {
       var desc = f[name];
       var fk = desc.key;
 
-      // Extract clean text from the response
-      var raw = resp[fk + '_raw'];
-      var val = raw != null ? raw : resp[fk];
-      if (val == null) return;
-      var txt = (typeof val === 'string') ? val.replace(/<[^>]*>/g, '').trim() : String(val);
-
-      // ── readOnly fields: patch the span/td text ──
+      // ── readOnly fields: patch ALL matching tds (summary + detail) ──
       if (desc.type === 'readOnly') {
-        var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
-        if (!td) return;
-        var span = td.querySelector('span[class^="col-"]');
-        if (span) { span.textContent = txt; }
-        else { td.textContent = txt; }
+        var txt = displayText(fk);
+        if (txt == null) return;
+        var tds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        for (var ti = 0; ti < tds.length; ti++) {
+          var span = tds[ti].querySelector('span[class^="col-"]');
+          if (span) { span.textContent = txt; }
+          else { tds[ti].textContent = txt; }
+          patched++;
+        }
         return;
       }
 
       // ── directEdit fields: patch both input/textarea AND hidden backing store ──
       if (desc.type === 'directEdit') {
+        var txt = editableText(fk);
+        if (txt == null) return;
         // Summary bar direct-edit inputs
         var inputs = card.querySelectorAll('[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]');
         for (var ii = 0; ii < inputs.length; ii++) {
@@ -21798,20 +21835,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           var hiddenSpan = directWrapper.querySelector('span[style*="display"]');
           if (hiddenSpan) hiddenSpan.textContent = txt;
         }
+        patched++;
         return;
       }
 
-      // ── toggleChit (booleans): patch the chit text + hidden span ──
+      // ── toggleChit (booleans): patch ALL matching tds ──
       if (desc.type === 'toggleChit') {
-        var chitTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
-        if (!chitTd) return;
-        var chitSpan = chitTd.querySelector('span[style*="display"]');
-        if (chitSpan) chitSpan.textContent = txt;
+        var txt = displayText(fk);
+        if (txt == null) return;
+        var chitTds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        for (var chi = 0; chi < chitTds.length; chi++) {
+          var chitSpan = chitTds[chi].querySelector('span[style*="display"]');
+          if (chitSpan) chitSpan.textContent = txt;
+        }
+        patched++;
         return;
       }
     });
 
-    console.log('[scw-ws] Patched card for ' + recordId + ' in ' + viewId);
+    console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
   }
 
   /** Extract the label text from a Knack API response object. */
