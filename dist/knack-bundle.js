@@ -13913,6 +13913,11 @@ enableCheckboxSelectSync({
   selectFieldId: 'field_2250'
 });
 
+enableCheckboxSelectSync({
+  viewId: 'view_3748',
+  selectFieldId: 'field_2180'
+});
+
 /*
 
 
