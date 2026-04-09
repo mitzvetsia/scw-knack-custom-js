@@ -82,6 +82,11 @@
   }
   const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
 
+  // Cameras or Readers bucket: relabel field_2211
+  const CAMERAS_BUCKET_ID = '6481e5ba38f283002898113c';
+  const MDF_IDF_FIELD = 'field_2211';
+  const MDF_IDF_CAMERA_LABEL = 'cabling for these cameras will route back to which MDF or IDF?';
+
   // ============================================================
   // EARLY CSS: inject immediately so there's no initial "flash"
   // ============================================================
@@ -184,6 +189,15 @@
     if (!bucketValue) return;
 
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+
+    // Cameras or Readers bucket: relabel field_2211
+    if (bucketValue === CAMERAS_BUCKET_ID) {
+      var $mdfWrap = $wrapForKeyWithinScope($scope, MDF_IDF_FIELD);
+      var $mdfLabel = $mdfWrap.find('label:first');
+      if ($mdfLabel.length) {
+        $mdfLabel.text(MDF_IDF_CAMERA_LABEL);
+      }
+    }
 
     syncDividers($scope);
     syncSectionBreaks($scope);
