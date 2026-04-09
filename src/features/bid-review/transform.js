@@ -289,6 +289,13 @@
       mdfMap[mdf].push(r);
     }
 
+    // Sort alphabetically, with 'Unassigned' always last
+    mdfOrder.sort(function (a, b) {
+      if (a === 'Unassigned') return 1;
+      if (b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
+
     var groups = [];
     for (var gi = 0; gi < mdfOrder.length; gi++) {
       var mdfKey  = mdfOrder[gi];
