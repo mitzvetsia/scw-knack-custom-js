@@ -142,8 +142,9 @@
       display: none !important;
     }
 
-    /* ─── Instructions callout ─── */
-    .kn-instructions {
+    /* ─── Instructions & description callout ─── */
+    .kn-instructions,
+    .kn-description {
       position: relative;
       background: #eff6ff;
       border: 1px solid #bfdbfe;
@@ -155,7 +156,8 @@
       line-height: 1.45;
       color: #1e3a5f !important;
     }
-    .kn-instructions::before {
+    .kn-instructions::before,
+    .kn-description::before {
       content: '\\2139';
       position: absolute;
       left: 11px;
@@ -165,10 +167,12 @@
       color: #3b82f6;
       line-height: 1;
     }
-    .kn-instructions p {
+    .kn-instructions p,
+    .kn-description p {
       margin: 0 0 4px;
     }
-    .kn-instructions p:last-child {
+    .kn-instructions p:last-child,
+    .kn-description p:last-child {
       margin-bottom: 0;
     }
   `;
