@@ -112,6 +112,8 @@
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -153,6 +155,32 @@
     showField($scope, BUCKET_FIELD_KEY);
   }
 
+  /** Show a divider only if the .kn-input immediately before it is visible. */
+  function syncDividers($scope) {
+    $scope.find('.kn-input-divider').each(function () {
+      var $div = $(this);
+      var $prev = $div.prev('.kn-input');
+      if ($prev.length && $prev.hasClass('scw-visible')) {
+        $div.addClass('scw-visible');
+      } else {
+        $div.removeClass('scw-visible');
+      }
+    });
+  }
+
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -187,6 +215,9 @@
         hideField($scope, ASSUMPTION_DESC_FIELD);
       }
     }
+
+    syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================

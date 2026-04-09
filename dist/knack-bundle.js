@@ -1071,6 +1071,32 @@ window.SCW = window.SCW || {};
     #kn-scene_1140 .ktlAddonsDiv {
       display: none !important;
     }
+
+    /* ─── Instructions & description callout ─── */
+    .kn-instructions,
+    .kn-description {
+      position: relative;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #3b82f6;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin: 6px 0 2px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #1e3a5f !important;
+    }
+    .kn-instructions p,
+    .kn-description p {
+      margin: 0 0 4px;
+    }
+    .kn-instructions p:last-child,
+    .kn-description p:last-child {
+      margin-bottom: 0;
+    }
+    .kn-description.is-6 {
+      padding: 10px 14px !important;
+    }
   `;
 
   const style = document.createElement('style');
@@ -8658,6 +8684,2343 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   Object.keys(CONFIG.views).forEach(bindForView);
 })();
+/*** BID REVIEW — CONFIGURATION ***/
+/**
+ * Centralized config for the Bid Review Matrix feature.
+ * All view IDs, field keys, webhook URLs, and tuning knobs live here.
+ *
+ * Writes: SCW.bidReview.CONFIG
+ */
+(function () {
+  'use strict';
+
+  var ns = (window.SCW.bidReview = window.SCW.bidReview || {});
+
+  ns.CONFIG = {
+    // ── Knack scene / view ──────────────────────────────────
+    sceneKey:          'scene_1155',
+    viewKey:           'view_3680',
+    sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
+
+    // ── Make webhook for all review actions ────────────────────
+    actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
+
+    // ── DOM mount point (inserted after the source view) ──────
+    mountSelector:     '#bid-review-matrix',
+
+    // ── Knack field keys ──────────────────────────────────────
+    fieldKeys: {
+      // Record identity
+      reviewRowId:     'field_2552',   // SYS_record ID
+
+      // Row identity / pivot key
+      relatedSowItem:  'field_2404',   // REL_sow Line Item (connection)
+      displayLabel:    'field_2365',   // LABEL_set line item label (E-003, 00, etc.)
+      productName:     'field_2379',   // STORED_product name
+
+      // Package column (pivot axis)
+      bidPackage:      'field_2415',   // REL_bid (connection — BD-1, BD-2, etc.)
+
+      // Values displayed in bid cells
+      labor:           'field_2401',   // CALC_sub bid extended ($)
+      notes:           'field_2412',   // INPUT_survey notes
+      laborDesc:       'field_2409',   // labor description (shown under price)
+      bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
+      bidConnDevice:   'field_2380',   // Connected Devices (bid side)
+      bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
+
+      // SOW detail fields (shown in SOW detail column)
+      sowFee:          'field_2151',   // install fee on SOW line item
+      sowProduct:      'field_1958',   // product connection on SOW line item
+      sowLaborDesc:    'field_2019',   // labor description on SOW line item
+      sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
+      sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
+      sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
+
+      // SOW connection (can have 1–2 connected records per line item)
+      sow:             'field_2154',   // REL_SOW (connection — columns)
+
+      // Grouping within each SOW grid
+      proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
+      mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
+      sortOrder:       'field_2218',   // sort order for proposal bucket groups
+    },
+
+    // ── SOW item fields (view_3728 — different keys than bid records) ──
+    sowItemFieldKeys: {
+      sow:             'field_2154',   // REL_SOW (same key as bid records)
+      product:         'field_1949',   // product connection (display label)
+      productName:     'field_1958',   // stored product name
+      laborDesc:       'field_2020',   // labor description
+      fee:             'field_2151',   // sub bid total / install fee
+      mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
+      proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
+      sortOrder:       'field_2218',   // sort order (same key)
+      displayLabel:    'field_1950',   // display label
+      existCabling:    'field_2461',   // existing cabling (same as SOW side)
+      connDevice:      'field_1957',   // Connected Devices (SOW side)
+      mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
+    },
+
+    // ── Timing ────────────────────────────────────────────────
+    renderDelay:       200,     // ms to wait after view render
+    toastDuration:     4000,    // ms before toast auto-dismiss
+
+    // ── Debug ─────────────────────────────────────────────────
+    debug:   true,
+    eventNs: '.scwBidReview',
+    cssId:   'scw-bid-review-css',
+  };
+
+})();
+/*** BID REVIEW — STYLES ***/
+/**
+ * Injects all CSS for the Bid Review Matrix.
+ * Guarded by a unique style-element ID to prevent duplicates.
+ *
+ * Reads : SCW.bidReview.CONFIG.cssId
+ * Writes: SCW.bidReview.injectStyles()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  ns.injectStyles = function injectStyles() {
+    if (document.getElementById(CFG.cssId)) return;
+
+    var css = [
+
+      /* ── container ─────────────────────────────────────────── */
+      '.scw-bid-review {',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '  color: #1e293b;',
+      '  overflow-x: auto;',
+      '  -webkit-overflow-scrolling: touch;',
+      '  padding: 12px 16px 8px;',
+      '  margin: 0 12px;',
+      '}',
+
+      /* ── SOW sections ────────────────────────────────────────── */
+      '.scw-bid-review__sow-section {',
+      '  margin-bottom: 24px;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 6px;',
+      '  overflow: hidden;',
+      '}',
+
+      '.scw-bid-review__sow-title {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 10px;',
+      '  padding: 10px 12px;',
+      '  background: #1e293b;',
+      '  color: #fff;',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  -webkit-user-select: none;',
+      '}',
+
+      '.scw-bid-review__sow-title:hover {',
+      '  background: #334155;',
+      '}',
+
+      '.scw-bid-review__sow-chevron {',
+      '  display: inline-flex;',
+      '  transition: transform .2s ease;',
+      '}',
+
+      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+
+      '.scw-bid-review__sow-body {',
+      '  overflow: hidden;',
+      '}',
+
+      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-body {',
+      '  display: none;',
+      '}',
+
+      '.scw-bid-review__sow-title-text {',
+      '  font-size: 14px;',
+      '  font-weight: 700;',
+      '}',
+
+      '.scw-bid-review__sow-title-count {',
+      '  font-size: 11px;',
+      '  font-weight: 400;',
+      '  color: #94a3b8;',
+      '}',
+
+      /* ── table ─────────────────────────────────────────────── */
+      '.scw-bid-review__table {',
+      '  width: 100%;',
+      '  border-collapse: collapse;',
+      '  table-layout: fixed;',
+      '  min-width: 700px;',
+      '}',
+
+      /* ── header row ────────────────────────────────────────── */
+      '.scw-bid-review__header-row th {',
+      '  position: sticky;',
+      '  top: 0;',
+      '  z-index: 2;',
+      '  background: #f8fafc;',
+      '  border-bottom: 2px solid #cbd5e1;',
+      '  padding: 10px 8px;',
+      '  text-align: left;',
+      '  vertical-align: top;',
+      '  font-weight: 600;',
+      '  font-size: 13px;',
+      '}',
+
+      '.scw-bid-review__sow-header {',
+      '  width: 120px;',
+      '  min-width: 90px;',
+      '}',
+
+      /* SOW detail and bid columns share equal width */
+      '.scw-bid-review__sow-detail-header,',
+      '.scw-bid-review__pkg-header {',
+      '}',
+
+      '.scw-bid-review__actions-header {',
+      '  width: 150px;',
+      '  min-width: 120px;',
+      '}',
+
+      /* ── package column header ─────────────────────────────── */
+
+      '.scw-bid-review__pkg-name {',
+      '  font-size: 14px;',
+      '  font-weight: 700;',
+      '  color: #0f172a;',
+      '  margin-bottom: 4px;',
+      '}',
+
+      '.scw-bid-review__pkg-counts {',
+      '  font-size: 11px;',
+      '  font-weight: 400;',
+      '  color: #64748b;',
+      '  margin-bottom: 6px;',
+      '}',
+
+      '.scw-bid-review__pkg-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      /* ── buttons ───────────────────────────────────────────── */
+      '.scw-bid-review__btn {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  padding: 4px 8px;',
+      '  border: none;',
+      '  border-radius: 4px;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '  transition: opacity .15s, filter .15s;',
+      '  white-space: nowrap;',
+      '}',
+
+      '.scw-bid-review__btn:hover {',
+      '  filter: brightness(0.92);',
+      '}',
+
+      '.scw-bid-review__btn--adopt {',
+      '  background: #16a34a;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--create {',
+      '  background: #2563eb;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--combo {',
+      '  background: #7c3aed;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--skip {',
+      '  background: #e2e8f0;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__btn--revision {',
+      '  background: #fbbf24;',
+      '  color: #78350f;',
+      '}',
+
+      '.scw-bid-review__btn--busy {',
+      '  opacity: 0.5;',
+      '  pointer-events: none;',
+      '  cursor: default;',
+      '}',
+
+      '.scw-bid-review__btn--sm {',
+      '  font-size: 10px;',
+      '  padding: 3px 6px;',
+      '}',
+
+      /* ── collapsible group headers (accordion style) ────────── */
+      '.scw-bid-review__group-header {',
+      '  cursor: pointer;',
+      '  user-select: none;',
+      '  -webkit-user-select: none;',
+      '}',
+
+      '.scw-bid-review__group-header td {',
+      '  position: relative;',
+      '  background: #f1f5f9;',
+      '  padding: 0;',
+      '  font-weight: 700;',
+      '  font-size: 13px;',
+      '  color: #334155;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '  border-left: 4px solid #295f91;',
+      '}',
+
+      '.scw-bid-review__grp-inner {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 8px;',
+      '  padding: 10px 12px 10px 12px;',
+      '}',
+
+      '.scw-bid-review__group-header:hover td {',
+      '  background: #e8edf3;',
+      '}',
+
+      /* Chevron in group header */
+      '.scw-bid-review__grp-chevron {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  flex: 0 0 auto;',
+      '  color: #295f91;',
+      '  transition: transform 220ms ease;',
+      '}',
+
+      '.scw-bid-review__group-header--collapsed .scw-bid-review__grp-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+
+      /* Title */
+      '.scw-bid-review__grp-title {',
+      '  flex: 1 1 auto;',
+      '}',
+
+      /* Count pill — mirrors KTL accordion count */
+      '.scw-bid-review__grp-count {',
+      '  display: inline-block;',
+      '  padding: 2px 8px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  border-radius: 999px;',
+      '  background: rgba(41, 95, 145, 0.12);',
+      '  border: 1px solid rgba(41, 95, 145, 0.22);',
+      '  color: #295f91;',
+      '}',
+
+      /* ── subgroup headers (proposalBucket within mdfIdf) ──── */
+      '.scw-bid-review__subgroup-header td {',
+      '  background: #f8fafc;',
+      '  padding: 0;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '}',
+
+      '.scw-bid-review__subgrp-inner {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  padding: 6px 12px 6px 28px;',
+      '}',
+
+      '.scw-bid-review__subgrp-title {',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__subgrp-count {',
+      '  display: inline-block;',
+      '  padding: 1px 6px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  border-radius: 999px;',
+      '  background: #f1f5f9;',
+      '  color: #64748b;',
+      '}',
+
+      /* ── data rows ─────────────────────────────────────────── */
+      '.scw-bid-review__row td {',
+      '  padding: 6px 8px;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '  vertical-align: top;',
+      '}',
+
+      '.scw-bid-review__row:nth-child(even) td {',
+      '  background: #fafbfc;',
+      '}',
+
+      '.scw-bid-review__row:hover td {',
+      '  background: #eff6ff;',
+      '}',
+
+      /* ── SOW cell ──────────────────────────────────────────── */
+      '.scw-bid-review__sow-cell {',
+      '  font-weight: 600;',
+      '  color: #1e293b;',
+      '}',
+
+      '.scw-bid-review__sow-cell--new {',
+      '  font-weight: 600;',
+      '  color: #1e293b;',
+      '}',
+
+      '.scw-bid-review__new-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #2563eb;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
+      '}',
+
+      /* ── NO BID badge & row ──────────────────────────────────── */
+      '.scw-bid-review__no-bid-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #dc2626;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
+      '}',
+
+      '.scw-bid-review__row--no-bid td {',
+      '  background: #fef2f2 !important;',
+      '}',
+
+      '.scw-bid-review__row--no-bid:hover td {',
+      '  background: #fee2e2 !important;',
+      '}',
+
+      /* ── package data cell ─────────────────────────────────── */
+      '.scw-bid-review__cell-label {',
+      '  font-size: 12px;',
+      '  color: #334155;',
+      '  margin-bottom: 2px;',
+      '}',
+
+      '.scw-bid-review__cell-values {',
+      '  display: flex;',
+      '  gap: 8px;',
+      '  font-size: 12px;',
+      '  color: #475569;',
+      '}',
+
+      '.scw-bid-review__cell-value {',
+      '  font-weight: 600;',
+      '  color: #0f172a;',
+      '}',
+
+      '.scw-bid-review__cell--missing {',
+      '  color: #cbd5e1;',
+      '  font-style: italic;',
+      '  font-size: 12px;',
+      '}',
+
+      /* ── mismatch highlight (SOW vs Bid field pair differs) ── */
+      '.scw-bid-review__cell--mismatch {',
+      '  background: #fff7ed !important;',
+      '  border-left: 3px solid #fb923c;',
+      '}',
+
+      /* ── per-field diff highlight (pinpoints WHICH values differ) ── */
+      '.scw-bid-review__field-diff {',
+      '  background: #fed7aa;',
+      '  border-radius: 2px;',
+      '  padding: 1px 4px;',
+      '  box-decoration-break: clone;',
+      '  -webkit-box-decoration-break: clone;',
+      '}',
+
+      '.scw-bid-review__cell-labor-desc {',
+      '  font-size: 11px;',
+      '  color: #475569;',
+      '  margin-top: 1px;',
+      '}',
+
+      '.scw-bid-review__cell-notes {',
+      '  font-size: 11px;',
+      '  color: #64748b;',
+      '  margin-top: 2px;',
+      '}',
+
+      '.scw-bid-review__cell-conn-device {',
+      '  font-size: 11px;',
+      '  color: #6366f1;',
+      '  margin-top: 2px;',
+      '  font-weight: 500;',
+      '}',
+
+      /* ── SOW detail cell ─────────────────────────────────────── */
+      '.scw-bid-review__sow-detail {',
+      '  vertical-align: top;',
+      '  font-size: 12px;',
+      '}',
+
+      /* ── cabling chips ────────────────────────────────────────── */
+      '.scw-bid-review__cabling-chip {',
+      '  display: inline-block;',
+      '  padding: 2px 7px;',
+      '  border-radius: 3px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  margin-top: 4px;',
+      '}',
+
+      '.scw-bid-review__cabling-chip--on {',
+      '  background: #dcfce7;',
+      '  color: #166534;',
+      '}',
+
+      '.scw-bid-review__cabling-chip--off {',
+      '  background: #f1f5f9;',
+      '  color: #94a3b8;',
+      '  font-weight: 400;',
+      '}',
+
+      /* ── status chips ──────────────────────────────────────── */
+      '.scw-bid-review__chip {',
+      '  display: inline-block;',
+      '  padding: 1px 6px;',
+      '  border-radius: 3px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '  margin-top: 3px;',
+      '}',
+
+      '.scw-bid-review__chip--matched {',
+      '  background: #dcfce7;',
+      '  color: #166534;',
+      '}',
+
+      '.scw-bid-review__chip--missing {',
+      '  background: #fef3c7;',
+      '  color: #92400e;',
+      '}',
+
+      '.scw-bid-review__chip--new {',
+      '  background: #dbeafe;',
+      '  color: #1e40af;',
+      '}',
+
+      '.scw-bid-review__chip--conflict {',
+      '  background: #fee2e2;',
+      '  color: #991b1b;',
+      '}',
+
+      /* ── row actions cell ──────────────────────────────────── */
+      '.scw-bid-review__row-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      /* ── empty & loading states ────────────────────────────── */
+      '.scw-bid-review__empty-state {',
+      '  text-align: center;',
+      '  padding: 40px 20px;',
+      '  color: #94a3b8;',
+      '  font-size: 14px;',
+      '}',
+
+      '.scw-bid-review__loading {',
+      '  text-align: center;',
+      '  padding: 32px 20px;',
+      '  color: #64748b;',
+      '  font-size: 13px;',
+      '}',
+
+      '.scw-bid-review__loading::after {',
+      '  content: "";',
+      '  display: inline-block;',
+      '  width: 14px;',
+      '  height: 14px;',
+      '  border: 2px solid #cbd5e1;',
+      '  border-top-color: #3b82f6;',
+      '  border-radius: 50%;',
+      '  margin-left: 8px;',
+      '  vertical-align: middle;',
+      '  animation: scwBidSpin .7s linear infinite;',
+      '}',
+
+      '@keyframes scwBidSpin {',
+      '  to { transform: rotate(360deg); }',
+      '}',
+
+      /* ── toast ──────────────────────────────────────────────── */
+      '.scw-bid-review__toast {',
+      '  position: fixed;',
+      '  bottom: 24px;',
+      '  left: 50%;',
+      '  transform: translateX(-50%);',
+      '  z-index: 100000;',
+      '  padding: 10px 20px;',
+      '  border-radius: 6px;',
+      '  font: 600 13px/1.3 system-ui, sans-serif;',
+      '  color: #fff;',
+      '  box-shadow: 0 4px 16px rgba(0,0,0,0.25);',
+      '  transition: opacity .3s;',
+      '}',
+
+      '.scw-bid-review__toast--success {',
+      '  background: #16a34a;',
+      '}',
+
+      '.scw-bid-review__toast--error {',
+      '  background: #dc2626;',
+      '}',
+
+      '.scw-bid-review__toast--info {',
+      '  background: #2563eb;',
+      '}',
+
+    ].join('\n');
+
+    var style = document.createElement('style');
+    style.id = CFG.cssId;
+    style.textContent = css;
+    document.head.appendChild(style);
+  };
+
+})();
+/*** BID REVIEW — KNACK ADAPTERS ***/
+/**
+ * Reads raw record arrays from a single Knack view.
+ * Each record is one "cell" (package × SOW item intersection).
+ * The transform layer pivots these into rows.
+ *
+ * Reads : SCW.bidReview.CONFIG
+ * Writes: SCW.bidReview.loadRawData() → { records: [] }
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  /**
+   * Find a Knack model by its view key.
+   */
+  function findModel(viewKey) {
+    if (typeof Knack === 'undefined' || !Knack.models) return null;
+
+    var keys = Object.keys(Knack.models);
+    for (var i = 0; i < keys.length; i++) {
+      var m = Knack.models[keys[i]];
+      if (m && m.view && m.view.key === viewKey) return m;
+    }
+    return null;
+  }
+
+  /**
+   * Extract records from a Knack model.
+   */
+  function extractRecords(model) {
+    if (!model) return [];
+
+    if (model.data) {
+      if (Array.isArray(model.data)) return model.data;
+      if (typeof model.data.toJSON === 'function') return model.data.toJSON();
+      if (model.data.models && Array.isArray(model.data.models)) {
+        return model.data.models.map(function (m) {
+          return typeof m.toJSON === 'function' ? m.toJSON() : m.attributes || m;
+        });
+      }
+    }
+
+    return [];
+  }
+
+  /**
+   * Fallback: paginated fetch via Knack REST API.
+   * Returns a jQuery Deferred resolving to an array of records.
+   */
+  function fetchFromApi(viewKey) {
+    var deferred = $.Deferred();
+
+    if (typeof Knack === 'undefined') {
+      deferred.resolve([]);
+      return deferred.promise();
+    }
+
+    var allRecords = [];
+    var page = 1;
+    var maxPages = 10;
+
+    function fetchPage() {
+      var url = Knack.api_url + '/v1/pages/' + CFG.sceneKey +
+                '/views/' + viewKey + '/records?page=' + page +
+                '&rows_per_page=1000';
+
+      SCW.knackAjax({
+        url: url,
+        type: 'GET',
+        success: function (resp) {
+          var records = resp.records || [];
+          allRecords = allRecords.concat(records);
+
+          if (records.length === 1000 && page < maxPages) {
+            page++;
+            fetchPage();
+          } else {
+            deferred.resolve(allRecords);
+          }
+        },
+        error: function (xhr) {
+          console.error('[BidReview] Failed to fetch ' + viewKey +
+                        ' page ' + page, xhr.status);
+          deferred.resolve(allRecords);
+        },
+      });
+    }
+
+    fetchPage();
+    return deferred.promise();
+  }
+
+  /**
+   * Load records from a single view. Tries Knack.models first,
+   * falls back to REST API with rows_per_page=1000.
+   * Returns a jQuery Deferred resolving to an array of records.
+   */
+  function loadView(viewKey) {
+    var model   = findModel(viewKey);
+    var records = extractRecords(model);
+
+    if (CFG.debug) {
+      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
+    }
+
+    if (records.length > 0) {
+      return $.Deferred().resolve(records).promise();
+    }
+
+    return fetchFromApi(viewKey).then(function (recs) {
+      if (CFG.debug) {
+        console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+      }
+      return recs;
+    });
+  }
+
+  /**
+   * loadRawData() → jQuery.Deferred → { records: [], sowItems: [] }
+   *
+   * Loads bid records from view_3680 and unbid SOW items from view_3728.
+   */
+  ns.loadRawData = function loadRawData() {
+    var bidPromise     = loadView(CFG.viewKey);
+    var sowItemPromise = loadView(CFG.sowItemsViewKey);
+
+    return $.when(bidPromise, sowItemPromise).then(function (bidRecs, sowRecs) {
+      if (CFG.debug) {
+        console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
+                    sowRecs.length, 'unbid SOW items');
+      }
+      return { records: bidRecs, sowItems: sowRecs };
+    });
+  };
+
+})();
+/*** BID REVIEW — DATA TRANSFORMATION ***/
+/**
+ * Groups records by SOW (field_2154), then within each SOW pivots
+ * by bid package (columns) and line items (rows).
+ *
+ * A record with TWO SOW connections appears in both SOW grids.
+ *
+ * Reads : SCW.bidReview.CONFIG.fieldKeys
+ * Writes: SCW.bidReview.buildState(records), .collectEligible()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+  var FK  = CFG.fieldKeys;
+
+  // ── tiny helpers ──────────────────────────────────────────────
+
+  /** Strip HTML tags from a string — Knack wraps connection values in <span>. */
+  function stripHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function raw(record, key) {
+    var v = record[key];
+    if (v == null) return '';
+    if (typeof v === 'object' && v.raw != null) return stripHtml(v.raw);
+    return stripHtml(v);
+  }
+
+  function num(record, key) {
+    var s = raw(record, key).replace(/[$,]/g, '');
+    var n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  /** Return first connection ID. */
+  function connectionId(record, key) {
+    var v = record[key + '_raw'] || record[key];
+    if (!v) return '';
+    if (Array.isArray(v) && v.length) return v[0].id || '';
+    if (typeof v === 'object' && v.id) return v.id;
+    return '';
+  }
+
+  function connectionLabel(record, key) {
+    var v = record[key + '_raw'] || record[key];
+    if (!v) return '';
+    if (Array.isArray(v) && v.length) return stripHtml(v[0].identifier || '');
+    if (typeof v === 'object' && v.identifier) return stripHtml(v.identifier);
+    // Fallback: the rendered value may be HTML
+    return stripHtml(record[key] || '');
+  }
+
+  /** Return ALL connection labels joined with ", ". */
+  function connectionLabelsAll(record, key) {
+    var conns = connectionAll(record, key);
+    if (!conns.length) return stripHtml(record[key] || '');
+    var labels = [];
+    for (var i = 0; i < conns.length; i++) {
+      var lbl = stripHtml(conns[i].identifier || '');
+      if (lbl) labels.push(lbl);
+    }
+    return labels.join(', ');
+  }
+
+  /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
+  function connectionAll(record, key) {
+    // Try the _raw variant first (Knack often stores connection data there)
+    var v = record[key + '_raw'];
+    if (!v) v = record[key];
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'object' && v.id) return [v];
+    return [];
+  }
+
+  // ── extract unique SOW items ──────────────────────────────────
+
+  function extractSows(records) {
+    var seen = {};
+    var list = [];
+
+    for (var i = 0; i < records.length; i++) {
+      var conns = connectionAll(records[i], FK.sow);
+      for (var c = 0; c < conns.length; c++) {
+        var id = conns[c].id;
+        if (!id || seen[id]) continue;
+        seen[id] = true;
+        list.push({ id: id, name: conns[c].identifier || 'SOW ' + list.length });
+      }
+    }
+
+    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    return list;
+  }
+
+  // ── extract unique packages ───────────────────────────────────
+
+  function extractPackages(records) {
+    var seen = {};
+    var list = [];
+
+    for (var i = 0; i < records.length; i++) {
+      var conns = connectionAll(records[i], FK.bidPackage);
+      for (var c = 0; c < conns.length; c++) {
+        var pkgId   = conns[c].id;
+        var pkgName = stripHtml(conns[c].identifier || '');
+        if (!pkgId || seen[pkgId]) continue;
+        seen[pkgId] = true;
+        list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
+      }
+    }
+
+    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    return list;
+  }
+
+  // ── group records by SOW ──────────────────────────────────────
+
+  /**
+   * Splits records into buckets keyed by SOW id.
+   * Records with 2+ SOW connections are duplicated into each bucket.
+   * Returns { sowId: [records] }
+   */
+  function groupBySow(records) {
+    var buckets = {};
+
+    // Debug: log the SOW field shape from the first record
+    if (CFG.debug && records.length) {
+      var sample = records[0];
+      console.log('[BidReview] SOW field debug:', {
+        key: FK.sow,
+        value: sample[FK.sow],
+        raw: sample[FK.sow + '_raw'],
+        type: typeof sample[FK.sow],
+        allKeys: Object.keys(sample).filter(function (k) { return k.indexOf('2154') !== -1; }),
+      });
+    }
+
+    for (var i = 0; i < records.length; i++) {
+      var rec   = records[i];
+      var conns = connectionAll(rec, FK.sow);
+
+      if (conns.length === 0) {
+        // No SOW — put in a catch-all bucket
+        var noSow = '__no_sow__';
+        if (!buckets[noSow]) buckets[noSow] = [];
+        buckets[noSow].push(rec);
+        continue;
+      }
+
+      for (var c = 0; c < conns.length; c++) {
+        var sowId = conns[c].id;
+        if (!sowId) continue;
+        if (!buckets[sowId]) buckets[sowId] = [];
+        buckets[sowId].push(rec);
+      }
+    }
+
+    return buckets;
+  }
+
+  // ── build rows within a SOW bucket ────────────────────────────
+
+  /**
+   * Within a SOW bucket, pivot by line item identity (rows) and
+   * bid package (columns).
+   *
+   * Row identity = relatedSowItem connection || displayLabel fallback.
+   */
+  function buildRowsForSow(records) {
+    var rowMap   = {};
+    var rowOrder = [];
+
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+
+      var sowItemId = connectionId(rec, FK.relatedSowItem);
+      var label     = raw(rec, FK.displayLabel);
+      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'label::' + label;
+
+      if (!rowMap[rowKey]) {
+        rowMap[rowKey] = { meta: rec, cells: [] };
+        rowOrder.push(rowKey);
+      }
+      rowMap[rowKey].cells.push(rec);
+    }
+
+    var rows = [];
+    for (var j = 0; j < rowOrder.length; j++) {
+      var key    = rowOrder[j];
+      var bucket = rowMap[key];
+      rows.push(buildRow(key, bucket));
+    }
+
+    rows.sort(function (a, b) {
+      return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+    });
+
+    return rows;
+  }
+
+  function buildRow(rowKey, bucket) {
+    var meta = bucket.meta;
+    var cellsByPackage = {};
+
+    for (var i = 0; i < bucket.cells.length; i++) {
+      var rec     = bucket.cells[i];
+      var pkgConns = connectionAll(rec, FK.bidPackage);
+
+      for (var pi = 0; pi < pkgConns.length; pi++) {
+        var pkgId = pkgConns[pi].id;
+        if (!pkgId) continue;
+
+        if (cellsByPackage[pkgId]) {
+          if (CFG.debug) {
+            console.warn('[BidReview] Duplicate cell row=' + rowKey +
+                         ' pkg=' + pkgId + ' — keeping first');
+          }
+          continue;
+        }
+
+        cellsByPackage[pkgId] = {
+          id:              rec.id,
+          labor:           num(rec, FK.labor),
+          laborDesc:       raw(rec, FK.laborDesc),
+          productName:     raw(rec, FK.productName),
+          notes:           raw(rec, FK.notes),
+          bidExistCabling: raw(rec, FK.bidExistCabling),
+          bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
+          bidMapConn:      raw(rec, FK.bidMapConn),
+        };
+      }
+    }
+
+    return {
+      id:              meta.id,
+      rowKey:          rowKey,
+      displayLabel:    raw(meta, FK.displayLabel),
+      productName:     raw(meta, FK.productName),
+      sowItem:         connectionId(meta, FK.relatedSowItem),
+      proposalBucket:  connectionLabel(meta, FK.proposalBucket),
+      proposalBucketId: connectionId(meta, FK.proposalBucket),
+      mdfIdf:          connectionLabel(meta, FK.mdfIdf),
+      sortOrder:       num(meta, FK.sortOrder),
+      // SOW detail fields (from first record in the row)
+      sowFee:          num(meta, FK.sowFee),
+      sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
+      sowLaborDesc:    raw(meta, FK.sowLaborDesc),
+      sowExistCabling: raw(meta, FK.sowExistCabling),
+      sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
+      sowMapConn:      raw(meta, FK.sowMapConn),
+      cellsByPackage:  cellsByPackage,
+    };
+  }
+
+  // ── grouping (L1/L2) ─────────────────────────────────────────
+
+  /**
+   * Group rows by mdfIdf (field_2375, primary accordion) then by
+   * proposalBucket (field_2366, sub-group within each accordion).
+   * Sub-groups are sorted by sortOrder (field_2218).
+   */
+  function groupRows(rows) {
+    var hasMdfIdf = false;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].mdfIdf) { hasMdfIdf = true; break; }
+    }
+
+    if (!hasMdfIdf) {
+      return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
+    }
+
+    // Primary grouping: mdfIdf
+    var mdfMap   = {};
+    var mdfOrder = [];
+
+    for (var j = 0; j < rows.length; j++) {
+      var r   = rows[j];
+      var mdf = r.mdfIdf || 'Ungrouped';
+
+      if (!mdfMap[mdf]) {
+        mdfMap[mdf] = [];
+        mdfOrder.push(mdf);
+      }
+      mdfMap[mdf].push(r);
+    }
+
+    var groups = [];
+    for (var gi = 0; gi < mdfOrder.length; gi++) {
+      var mdfKey  = mdfOrder[gi];
+      var mdfRows = mdfMap[mdfKey];
+
+      // Sub-grouping within this mdfIdf: proposalBucket
+      var hasBucket = false;
+      for (var bi = 0; bi < mdfRows.length; bi++) {
+        if (mdfRows[bi].proposalBucket) { hasBucket = true; break; }
+      }
+
+      var subgroups = [];
+      if (hasBucket) {
+        var bucketMap   = {};
+        var bucketOrder = [];
+
+        for (var ri = 0; ri < mdfRows.length; ri++) {
+          var row    = mdfRows[ri];
+          var bucket = row.proposalBucket || 'Other';
+
+          if (!bucketMap[bucket]) {
+            bucketMap[bucket] = { rows: [], minSort: row.sortOrder };
+            bucketOrder.push(bucket);
+          }
+          bucketMap[bucket].rows.push(row);
+          if (row.sortOrder < bucketMap[bucket].minSort) {
+            bucketMap[bucket].minSort = row.sortOrder;
+          }
+        }
+
+        // Sort sub-groups by sortOrder (field_2218)
+        bucketOrder.sort(function (a, b) {
+          return bucketMap[a].minSort - bucketMap[b].minSort;
+        });
+
+        for (var si = 0; si < bucketOrder.length; si++) {
+          var bKey  = bucketOrder[si];
+          var bRows = bucketMap[bKey].rows;
+          bRows.sort(function (a, b) {
+            return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+          });
+
+          subgroups.push({
+            key:   mdfKey + '::' + bKey,
+            label: bKey,
+            level: 2,
+            rows:  bRows,
+          });
+        }
+
+        groups.push({
+          key:       mdfKey,
+          label:     mdfKey,
+          level:     1,
+          rows:      [],
+          subgroups: subgroups,
+        });
+      } else {
+        mdfRows.sort(function (a, b) {
+          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+        });
+
+        groups.push({
+          key:       mdfKey,
+          label:     mdfKey,
+          level:     1,
+          rows:      mdfRows,
+          subgroups: [],
+        });
+      }
+    }
+
+    return groups;
+  }
+
+  // ── eligibility counts per package within a SOW grid ──────────
+
+  function computeEligibility(rows, packages) {
+    var result = {};
+
+    for (var p = 0; p < packages.length; p++) {
+      result[packages[p].id] = { adoptable: 0, creatable: 0, total: 0 };
+    }
+
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      for (var pi = 0; pi < packages.length; pi++) {
+        var pkgId = packages[pi].id;
+        if (!row.cellsByPackage[pkgId]) continue;
+
+        result[pkgId].total++;
+        if (row.sowItem) {
+          result[pkgId].adoptable++;
+        } else {
+          result[pkgId].creatable++;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // ── collect eligible row IDs for a package action ─────────────
+
+  function collectEligible(pkgId, actionType, sowGrid) {
+    var ids  = [];
+    var rows = sowGrid.rows;
+
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (!row.cellsByPackage[pkgId]) continue;
+
+      switch (actionType) {
+        case 'package_adopt_all':
+          if (row.sowItem) ids.push(row.id);
+          break;
+        case 'package_create_missing':
+          if (!row.sowItem) ids.push(row.id);
+          break;
+        case 'package_adopt_create':
+          ids.push(row.id);
+          break;
+      }
+    }
+
+    return ids;
+  }
+
+  // ── build "NO BID" rows from unbid SOW items (view_3728) ────
+
+  /**
+   * Convert SOW item records (from view_3728) into NO BID rows.
+   * These use DIFFERENT field keys than bid records.
+   * Returns rows keyed by SOW id: { sowId: [row, ...] }
+   */
+  function buildNoBidRows(sowItems) {
+    var SFK = CFG.sowItemFieldKeys;
+    var bySow = {};
+
+    for (var i = 0; i < sowItems.length; i++) {
+      var rec = sowItems[i];
+      var conns = connectionAll(rec, SFK.sow);
+
+      if (!conns.length) continue;
+
+      for (var c = 0; c < conns.length; c++) {
+        var sowId = conns[c].id;
+        if (!sowId) continue;
+        if (!bySow[sowId]) bySow[sowId] = [];
+
+        bySow[sowId].push({
+          id:              rec.id,
+          rowKey:          'nobid::' + rec.id,
+          displayLabel:    raw(rec, SFK.displayLabel) || connectionLabel(rec, SFK.product),
+          productName:     raw(rec, SFK.productName),
+          sowItem:         rec.id,   // it IS a SOW item
+          proposalBucket:  connectionLabel(rec, SFK.proposalBucket),
+          proposalBucketId: connectionId(rec, SFK.proposalBucket),
+          mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
+          sortOrder:       num(rec, SFK.sortOrder),
+          // SOW detail — populated from the SOW item record itself
+          sowFee:          num(rec, SFK.fee),
+          sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
+          sowLaborDesc:    raw(rec, SFK.laborDesc),
+          sowExistCabling: raw(rec, SFK.existCabling),
+          sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
+          sowMapConn:      raw(rec, SFK.mapConn),
+          // No bid data at all
+          cellsByPackage:  {},
+          noBid:           true,
+        });
+      }
+    }
+
+    return bySow;
+  }
+
+  // ── public entry point ────────────────────────────────────────
+
+  /**
+   * buildState(records, sowItems) → state
+   *
+   * @param {Array} records  — bid records from view_3680
+   * @param {Array} sowItems — unbid SOW items from view_3728
+   * Returns:
+   *   {
+   *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
+   *     allPackages: [{id, name}],
+   *     isEmpty: boolean
+   *   }
+   */
+  ns.buildState = function buildState(records, sowItems) {
+    var sows       = extractSows(records);
+    var allPkgs    = extractPackages(records);
+    var sowBuckets = groupBySow(records);
+
+    // Distribute no-SOW records into SOW grids that share the same bid package.
+    var noSowRecs = sowBuckets['__no_sow__'] || [];
+    if (noSowRecs.length && sows.length) {
+      // Build a map: pkgId → [sowIds that contain that pkg]
+      var pkgToSows = {};
+      for (var si = 0; si < sows.length; si++) {
+        var sowRecs = sowBuckets[sows[si].id] || [];
+        for (var ri = 0; ri < sowRecs.length; ri++) {
+          var pids = connectionAll(sowRecs[ri], FK.bidPackage);
+          for (var pk = 0; pk < pids.length; pk++) {
+            var pid = pids[pk].id;
+            if (!pid) continue;
+            if (!pkgToSows[pid]) pkgToSows[pid] = {};
+            pkgToSows[pid][sows[si].id] = true;
+          }
+        }
+      }
+
+      for (var ni = 0; ni < noSowRecs.length; ni++) {
+        var rec     = noSowRecs[ni];
+        var recPkgs = connectionAll(rec, FK.bidPackage);
+        var placed  = false;
+
+        for (var rp = 0; rp < recPkgs.length; rp++) {
+          var recPkg = recPkgs[rp].id;
+          if (recPkg && pkgToSows[recPkg]) {
+            var targetSows = Object.keys(pkgToSows[recPkg]);
+            for (var ti = 0; ti < targetSows.length; ti++) {
+              if (!sowBuckets[targetSows[ti]]) sowBuckets[targetSows[ti]] = [];
+              sowBuckets[targetSows[ti]].push(rec);
+              placed = true;
+            }
+          }
+        }
+
+        // If the record couldn't be placed in any SOW grid, put it in the first one
+        if (!placed && sows.length) {
+          var fallbackId = sows[0].id;
+          if (!sowBuckets[fallbackId]) sowBuckets[fallbackId] = [];
+          sowBuckets[fallbackId].push(rec);
+        }
+      }
+    }
+    delete sowBuckets['__no_sow__'];
+
+    // Build NO BID rows from view_3728 SOW items
+    var noBidBySow = buildNoBidRows(sowItems || []);
+
+    if (CFG.debug && Object.keys(noBidBySow).length) {
+      var noBidTotal = 0;
+      var noBidSowIds = Object.keys(noBidBySow);
+      for (var nk = 0; nk < noBidSowIds.length; nk++) {
+        noBidTotal += noBidBySow[noBidSowIds[nk]].length;
+      }
+      console.log('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
+    }
+
+    // Ensure SOW list includes any SOWs that only appear in the unbid items
+    var sowSeen = {};
+    for (var sk = 0; sk < sows.length; sk++) { sowSeen[sows[sk].id] = true; }
+    var noBidKeys = Object.keys(noBidBySow);
+    for (var nbi = 0; nbi < noBidKeys.length; nbi++) {
+      var nbSowId = noBidKeys[nbi];
+      if (!sowSeen[nbSowId]) {
+        // Derive SOW name from the first NO BID row's SOW connection
+        var nbSample = noBidBySow[nbSowId][0];
+        var SFK = CFG.sowItemFieldKeys;
+        var nbConns = connectionAll({ id: nbSample.id }, SFK.sow);
+        // Fallback: use the SOW item records to find the name
+        var nbName = 'SOW ' + (sows.length + 1);
+        var nbRawItems = (sowItems || []);
+        for (var nri = 0; nri < nbRawItems.length; nri++) {
+          var nrConns = connectionAll(nbRawItems[nri], SFK.sow);
+          for (var nrc = 0; nrc < nrConns.length; nrc++) {
+            if (nrConns[nrc].id === nbSowId) {
+              nbName = stripHtml(nrConns[nrc].identifier || nbName);
+              break;
+            }
+          }
+        }
+        sows.push({ id: nbSowId, name: nbName });
+        sowSeen[nbSowId] = true;
+      }
+    }
+
+    var sowGrids = [];
+
+    for (var i = 0; i < sows.length; i++) {
+      var sow     = sows[i];
+      var recs    = sowBuckets[sow.id] || [];
+      var rows    = buildRowsForSow(recs);
+
+      // Merge in NO BID rows for this SOW
+      var noBidRows = noBidBySow[sow.id] || [];
+      for (var nb = 0; nb < noBidRows.length; nb++) {
+        rows.push(noBidRows[nb]);
+      }
+
+      var pkgs    = extractPackages(recs);
+      var groups  = groupRows(rows);
+      var elig    = computeEligibility(rows, pkgs);
+
+      sowGrids.push({
+        sowId:       sow.id,
+        sowName:     stripHtml(sow.name),
+        packages:    pkgs,
+        rows:        rows,
+        groups:      groups,
+        eligibility: elig,
+        columnCount: pkgs.length + 3,
+      });
+    }
+
+    // Edge case: ALL records lack SOW — show a single unnamed grid
+    if (!sows.length && noSowRecs.length) {
+      var fallbackRows = buildRowsForSow(noSowRecs);
+      var fallbackPkgs = extractPackages(noSowRecs);
+      sowGrids.push({
+        sowId:       '__no_sow__',
+        sowName:     'Unassigned Items',
+        packages:    fallbackPkgs,
+        rows:        fallbackRows,
+        groups:      groupRows(fallbackRows),
+        eligibility: computeEligibility(fallbackRows, fallbackPkgs),
+        columnCount: fallbackPkgs.length + 2,
+      });
+    }
+
+    return {
+      sowGrids:    sowGrids,
+      allPackages: allPkgs,
+      isEmpty:     sowGrids.length === 0,
+    };
+  };
+
+  ns.collectEligible = collectEligible;
+
+})();
+/*** BID REVIEW — RENDERING ***/
+/**
+ * Pure rendering: state object → DOM nodes.
+ * Renders one grid (table) per SOW, each with bid-package columns.
+ *
+ * Reads : SCW.bidReview.CONFIG (mountSelector)
+ * Writes: SCW.bidReview.renderMatrix(state), .renderToast(msg, type),
+ *         .showLoading(), .clearMount()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  var TOAST_ID = 'scw-bid-review-toast';
+
+  // ── html helpers ────────────────────────────────────────────
+
+  var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+  var ESC_RE  = /[&<>"']/g;
+
+  function esc(str) {
+    return String(str == null ? '' : str).replace(ESC_RE, function (c) { return ESC_MAP[c]; });
+  }
+
+  function formatCurrency(val) {
+    if (val == null || val === 0) return '$0.00';
+    return '$' + Number(val).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // ── element factories ───────────────────────────────────────
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function btn(label, cssModifier, attrs) {
+    var b = el('button', 'scw-bid-review__btn scw-bid-review__btn--' + cssModifier, label);
+    if (attrs) {
+      var keys = Object.keys(attrs);
+      for (var i = 0; i < keys.length; i++) {
+        b.setAttribute(keys[i], attrs[keys[i]]);
+      }
+    }
+    return b;
+  }
+
+  // ── chevron SVG ──────────────────────────────────────────────
+
+  var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+  // ── mount point ─────────────────────────────────────────────
+
+  function getOrCreateMount() {
+    var mount = document.querySelector(CFG.mountSelector);
+    if (!mount) {
+      mount = el('div');
+      mount.id = CFG.mountSelector.replace(/^#/, '');
+      // Insert after the nav menu (view_44)
+      var nav = document.getElementById('view_44');
+      if (nav && nav.nextSibling) {
+        nav.parentNode.insertBefore(mount, nav.nextSibling);
+      } else if (nav) {
+        nav.parentNode.appendChild(mount);
+      } else {
+        var scene = document.getElementById(CFG.sceneKey);
+        if (scene) {
+          scene.insertBefore(mount, scene.firstChild);
+        } else {
+          document.body.appendChild(mount);
+        }
+      }
+    }
+    return mount;
+  }
+
+  // ── table header for a SOW grid ─────────────────────────────
+
+  function buildHeaderRow(sowGrid) {
+    var tr = el('tr', 'scw-bid-review__header-row');
+
+    // Line item column header
+    tr.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
+
+    // SOW detail column header
+    tr.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW Detail'));
+
+    // One header per bid package
+    for (var i = 0; i < sowGrid.packages.length; i++) {
+      var pkg = sowGrid.packages[i];
+      var elig = sowGrid.eligibility[pkg.id] || { adoptable: 0, creatable: 0, total: 0 };
+
+      var th = el('th', 'scw-bid-review__pkg-header');
+
+      th.appendChild(el('div', 'scw-bid-review__pkg-name', pkg.name));
+
+      if (elig.creatable > 0) {
+        var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
+        th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
+      }
+
+      var actions = el('div', 'scw-bid-review__pkg-actions');
+      actions.appendChild(btn(
+        'Copy to SOW', 'adopt',
+        { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+      ));
+      actions.appendChild(btn(
+        'Create new SOW', 'create',
+        { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+      ));
+      th.appendChild(actions);
+
+      tr.appendChild(th);
+    }
+
+    // Actions column header
+    tr.appendChild(el('th', 'scw-bid-review__actions-header', 'Actions'));
+
+    return tr;
+  }
+
+  // ── cabling visibility helper ─────────────────────────────────
+
+  /** Cabling fields only apply to Camera / Reader buckets. */
+  var CABLING_BUCKET_ID = '6481e5ba38f283002898113c';
+
+  function showCabling(row) {
+    if (row.proposalBucketId === CABLING_BUCKET_ID) return true;
+    if (!row.proposalBucket) return false;
+    var b = row.proposalBucket.toLowerCase().trim();
+    return b === 'camera' || b === 'cameras' ||
+           b === 'reader' || b === 'readers';
+  }
+
+  // ── existing cabling chip ────────────────────────────────────
+
+  function isYes(val) {
+    return val && /^yes$/i.test(String(val).trim());
+  }
+
+  // ── connected-device visibility helper ───────────────────────
+
+  /**
+   * Show Connected Devices when field_2374 is Yes on any bid cell
+   * in the row, OR when field_2231 is Yes on the SOW item
+   * (especially when no bid item is present).
+   */
+  function showConnectedDevices(row) {
+    // SOW side: field_2231
+    if (isYes(row.sowMapConn)) return true;
+    // Bid side: check every package cell for field_2374
+    var pkgs = Object.keys(row.cellsByPackage || {});
+    for (var i = 0; i < pkgs.length; i++) {
+      if (isYes(row.cellsByPackage[pkgs[i]].bidMapConn)) return true;
+    }
+    return false;
+  }
+
+  function buildCablingChip(val) {
+    if (isYes(val)) {
+      return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
+    }
+    // "No" or empty — render a dim off chip
+    return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--off', 'New Cabling');
+  }
+
+  // ── SOW detail cell ─────────────────────────────────────────
+
+  /** diff class helper — appends --field-diff modifier when flagged */
+  var DIFF_CLS = 'scw-bid-review__field-diff';
+
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, diffs) {
+    var td = el('td', 'scw-bid-review__sow-detail');
+
+    if (!row.sowItem) {
+      td.className += ' scw-bid-review__cell--missing';
+      td.textContent = '\u2014';
+      return td;
+    }
+
+    if (row.sowProduct) {
+      var prodEl = el('div', 'scw-bid-review__cell-label', row.sowProduct);
+      if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
+      td.appendChild(prodEl);
+    }
+
+    if (row.sowLaborDesc) {
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc);
+      if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
+      td.appendChild(ldEl);
+    }
+
+    if (connDevVisible && row.sowConnDevice) {
+      var cdEl = el('div', 'scw-bid-review__cell-conn-device', row.sowConnDevice);
+      if (diffs && diffs.connDevice) cdEl.classList.add(DIFF_CLS);
+      td.appendChild(cdEl);
+    }
+
+    if (cablingVisible) {
+      var cabEl = buildCablingChip(row.sowExistCabling);
+      if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
+      td.appendChild(cabEl);
+    }
+
+    if (row.sowFee) {
+      var values = el('div', 'scw-bid-review__cell-values');
+      var feeEl = el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee));
+      if (diffs && diffs.fee) feeEl.classList.add(DIFF_CLS);
+      values.appendChild(feeEl);
+      td.appendChild(values);
+    }
+
+    return td;
+  }
+
+  // ── data cell for a bid package column ──────────────────────
+
+  function buildDataCell(cell, cablingVisible, connDevVisible, diffs) {
+    var td = el('td');
+
+    if (!cell) {
+      td.className = 'scw-bid-review__cell--missing';
+      td.textContent = '\u2014';
+      return td;
+    }
+
+    if (cell.productName) {
+      var prodEl = el('div', 'scw-bid-review__cell-label', cell.productName);
+      if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
+      td.appendChild(prodEl);
+    }
+
+    if (cell.laborDesc) {
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc);
+      if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
+      td.appendChild(ldEl);
+    }
+
+    if (connDevVisible && cell.bidConnDevice) {
+      var cdEl = el('div', 'scw-bid-review__cell-conn-device', cell.bidConnDevice);
+      if (diffs && diffs.connDevice) cdEl.classList.add(DIFF_CLS);
+      td.appendChild(cdEl);
+    }
+
+    if (cablingVisible) {
+      var cabEl = buildCablingChip(cell.bidExistCabling);
+      if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
+      td.appendChild(cabEl);
+    }
+
+    if (cell.labor) {
+      var values = el('div', 'scw-bid-review__cell-values');
+      var feeEl = el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor));
+      if (diffs && diffs.fee) feeEl.classList.add(DIFF_CLS);
+      values.appendChild(feeEl);
+      td.appendChild(values);
+    }
+
+    if (cell.notes) {
+      td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
+    }
+
+    return td;
+  }
+
+  // ── row actions cell ────────────────────────────────────────
+
+  function buildRowActionsCell(row, packages, sowId) {
+    var td = el('td');
+    var wrap = el('div', 'scw-bid-review__row-actions');
+
+    // Create buttons — only for NEW items (no SOW match)
+    if (!row.sowItem) {
+      for (var i = 0; i < packages.length; i++) {
+        var pkg = packages[i];
+        var cell = row.cellsByPackage[pkg.id];
+        if (!cell) continue;
+
+        wrap.appendChild(btn(
+          'Create \u2190 ' + pkg.name, 'create sm',
+          { 'data-action': 'row_create', 'data-row-id': row.id, 'data-package-id': pkg.id, 'data-sow-id': sowId }
+        ));
+      }
+    }
+
+    // Request Revision — always available
+    wrap.appendChild(btn(
+      'Request Revision', 'revision sm',
+      { 'data-action': 'row_revision', 'data-row-id': row.id, 'data-sow-id': sowId }
+    ));
+
+    td.appendChild(wrap);
+    return td;
+  }
+
+  // ── mismatch comparison ──────────────────────────────────────
+
+  /**
+   * Compare SOW detail vs a bid cell on paired fields.
+   * Returns null if nothing to compare (no SOW item or no cell),
+   * otherwise an object with boolean flags for each differing field:
+   *   { any, product, laborDesc, fee, cabling, connDevice }
+   */
+  function getMismatches(row, cell, cablingVisible, connDevVisible) {
+    // No SOW item or no bid cell — nothing to compare
+    if (!row.sowItem || !cell) return null;
+
+    // Normalize for comparison: lowercase, trim
+    function norm(v) {
+      if (v == null) return '';
+      return String(v).toLowerCase().trim();
+    }
+
+    var m = {
+      any:       false,
+      product:   norm(row.sowProduct)   !== norm(cell.productName),
+      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:       row.sowFee !== cell.labor,
+      cabling:   cablingVisible  ? norm(row.sowExistCabling) !== norm(cell.bidExistCabling) : false,
+      connDevice: connDevVisible ? norm(row.sowConnDevice)   !== norm(cell.bidConnDevice)   : false,
+    };
+
+    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice;
+    return m;
+  }
+
+  // ── data row ────────────────────────────────────────────────
+
+  function buildDataRow(row, packages, sowId) {
+    var rowClass = 'scw-bid-review__row';
+    if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
+    var tr = el('tr', rowClass);
+    tr.setAttribute('data-row-id', row.id);
+
+    // Line item label cell
+    var labelTd = el('td');
+    if (row.noBid) {
+      // SOW item with no bid at all
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
+      var noBidLabel = row.displayLabel || row.productName || 'Item';
+      labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+      labelTd.appendChild(document.createElement('br'));
+      labelTd.appendChild(document.createTextNode(noBidLabel));
+    } else if (row.sowItem) {
+      labelTd.className = 'scw-bid-review__sow-cell';
+      labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
+    } else {
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
+      var labelText = row.displayLabel || row.productName || 'Item';
+      labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
+      labelTd.appendChild(document.createElement('br'));
+      labelTd.appendChild(document.createTextNode(labelText));
+    }
+    tr.appendChild(labelTd);
+
+    // Cabling fields only shown/compared for Camera or Reader buckets
+    var cablingVisible = showCabling(row);
+    // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
+    var connDevVisible = showConnectedDevices(row);
+
+    // Per-package mismatch breakdown
+    var diffsByPkg = {};
+    // Aggregate: which fields differ in ANY package (for SOW detail highlight)
+    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false, cabling: false, connDevice: false };
+
+    for (var mi = 0; mi < packages.length; mi++) {
+      var pkgId   = packages[mi].id;
+      var pkgCell = row.cellsByPackage[pkgId] || null;
+      var m       = getMismatches(row, pkgCell, cablingVisible, connDevVisible);
+      diffsByPkg[pkgId] = m;
+
+      if (m && m.any) {
+        sowDiffs.any = true;
+        if (m.product)    sowDiffs.product    = true;
+        if (m.laborDesc)  sowDiffs.laborDesc  = true;
+        if (m.fee)        sowDiffs.fee        = true;
+        if (m.cabling)    sowDiffs.cabling    = true;
+        if (m.connDevice) sowDiffs.connDevice = true;
+      }
+    }
+
+    // SOW detail cell — highlight cell + individual differing fields
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, sowDiffs.any ? sowDiffs : null);
+    if (sowDiffs.any) {
+      sowTd.classList.add('scw-bid-review__cell--mismatch');
+    }
+    tr.appendChild(sowTd);
+
+    // Package cells — highlight cell + individual differing fields
+    for (var i = 0; i < packages.length; i++) {
+      var pid = packages[i].id;
+      var d   = diffsByPkg[pid];
+      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, d);
+      if (d && d.any) {
+        dataTd.classList.add('scw-bid-review__cell--mismatch');
+      }
+      tr.appendChild(dataTd);
+    }
+
+    // Row actions
+    tr.appendChild(buildRowActionsCell(row, packages, sowId));
+
+    return tr;
+  }
+
+  // ── collapsible group header row ─────────────────────────────
+
+  function buildGroupHeader(label, level, colSpan, rowCount) {
+    var tr = el('tr', 'scw-bid-review__group-header');
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('aria-expanded', 'true');
+
+    var td = el('td');
+    td.setAttribute('colspan', colSpan);
+
+    // Inner flex wrapper (flex on <td> breaks table width)
+    var inner = el('div', 'scw-bid-review__grp-inner');
+
+    // Chevron
+    var chevron = el('span', 'scw-bid-review__grp-chevron');
+    chevron.innerHTML = CHEVRON_SVG;
+    inner.appendChild(chevron);
+
+    // Label
+    inner.appendChild(el('span', 'scw-bid-review__grp-title', label));
+
+    // Count pill
+    if (rowCount > 0) {
+      inner.appendChild(el('span', 'scw-bid-review__grp-count', String(rowCount)));
+    }
+
+    td.appendChild(inner);
+    tr.appendChild(td);
+
+    // Toggle: hide/show sibling rows until next group header
+    tr.addEventListener('click', function () {
+      var expanded = tr.getAttribute('aria-expanded') === 'true';
+      tr.setAttribute('aria-expanded', String(!expanded));
+      tr.classList.toggle('scw-bid-review__group-header--collapsed', expanded);
+
+      // Walk next siblings and toggle visibility
+      var sibling = tr.nextElementSibling;
+      while (sibling) {
+        if (sibling.classList.contains('scw-bid-review__group-header')) break;
+        sibling.style.display = expanded ? 'none' : '';
+        sibling = sibling.nextElementSibling;
+      }
+    });
+
+    tr.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        tr.click();
+      }
+    });
+
+    return tr;
+  }
+
+  // ── assemble rows from grouped state ────────────────────────
+
+  function buildBodyRows(groups, packages, colSpan, sowId) {
+    var frag = document.createDocumentFragment();
+
+    for (var gi = 0; gi < groups.length; gi++) {
+      var group = groups[gi];
+
+      // Count all rows including subgroups
+      var totalRows = group.rows.length;
+      if (group.subgroups) {
+        for (var ci = 0; ci < group.subgroups.length; ci++) {
+          totalRows += group.subgroups[ci].rows.length;
+        }
+      }
+
+      if (group.label) {
+        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, totalRows));
+      }
+
+      // Subgroups (proposalBucket within mdfIdf)
+      if (group.subgroups && group.subgroups.length) {
+        for (var si = 0; si < group.subgroups.length; si++) {
+          var sub = group.subgroups[si];
+          if (sub.label) {
+            frag.appendChild(buildSubgroupHeader(sub.label, colSpan, sub.rows.length));
+          }
+          for (var ri = 0; ri < sub.rows.length; ri++) {
+            frag.appendChild(buildDataRow(sub.rows[ri], packages, sowId));
+          }
+        }
+      }
+
+      // Direct rows (no subgroups)
+      for (var di = 0; di < group.rows.length; di++) {
+        frag.appendChild(buildDataRow(group.rows[di], packages, sowId));
+      }
+    }
+
+    return frag;
+  }
+
+  // ── subgroup header (proposalBucket within mdfIdf) ──────────
+
+  function buildSubgroupHeader(label, colSpan, rowCount) {
+    var tr = el('tr', 'scw-bid-review__subgroup-header');
+
+    var td = el('td');
+    td.setAttribute('colspan', colSpan);
+
+    var inner = el('div', 'scw-bid-review__subgrp-inner');
+    inner.appendChild(el('span', 'scw-bid-review__subgrp-title', label));
+    if (rowCount > 0) {
+      inner.appendChild(el('span', 'scw-bid-review__subgrp-count', String(rowCount)));
+    }
+
+    td.appendChild(inner);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  // ── render a single SOW grid ────────────────────────────────
+
+  function buildSowSection(sowGrid) {
+    var section = el('div', 'scw-bid-review__sow-section scw-bid-review__sow-section--collapsed');
+    section.setAttribute('data-sow-id', sowGrid.sowId);
+
+    // SOW accordion header (clickable) — collapsed by default
+    var header = el('div', 'scw-bid-review__sow-title');
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'false');
+
+    var chevron = el('span', 'scw-bid-review__sow-chevron');
+    chevron.innerHTML = CHEVRON_SVG;
+    header.appendChild(chevron);
+
+    header.appendChild(el('span', 'scw-bid-review__sow-title-text', sowGrid.sowName));
+    header.appendChild(el('span', 'scw-bid-review__sow-title-count',
+      sowGrid.rows.length + ' line item' + (sowGrid.rows.length !== 1 ? 's' : '') +
+      ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
+    section.appendChild(header);
+
+    // Collapsible body
+    var body = el('div', 'scw-bid-review__sow-body');
+
+    if (!sowGrid.rows.length) {
+      body.appendChild(el('div', 'scw-bid-review__empty-state', 'No bid items for this SOW.'));
+    } else {
+      var table = el('table', 'scw-bid-review__table');
+
+      var thead = document.createElement('thead');
+      thead.appendChild(buildHeaderRow(sowGrid));
+      table.appendChild(thead);
+
+      var tbody = document.createElement('tbody');
+      tbody.appendChild(buildBodyRows(sowGrid.groups, sowGrid.packages, sowGrid.columnCount, sowGrid.sowId));
+      table.appendChild(tbody);
+
+      body.appendChild(table);
+    }
+
+    section.appendChild(body);
+
+    // Toggle handler
+    header.addEventListener('click', function () {
+      var expanded = header.getAttribute('aria-expanded') === 'true';
+      header.setAttribute('aria-expanded', String(!expanded));
+      section.classList.toggle('scw-bid-review__sow-section--collapsed', expanded);
+    });
+
+    header.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        header.click();
+      }
+    });
+
+    return section;
+  }
+
+  // ── public: renderMatrix ────────────────────────────────────
+
+  ns.renderMatrix = function renderMatrix(state) {
+    var mount = getOrCreateMount();
+    mount.innerHTML = '';
+    mount.className = 'scw-bid-review';
+
+    if (state.isEmpty) {
+      mount.appendChild(el('div', 'scw-bid-review__empty-state',
+        'No comparison data available.'));
+      return mount;
+    }
+
+    for (var i = 0; i < state.sowGrids.length; i++) {
+      mount.appendChild(buildSowSection(state.sowGrids[i]));
+    }
+
+    return mount;
+  };
+
+  // ── public: showLoading ─────────────────────────────────────
+
+  ns.showLoading = function showLoading() {
+    var mount = getOrCreateMount();
+    mount.innerHTML = '';
+    mount.className = 'scw-bid-review';
+    mount.appendChild(el('div', 'scw-bid-review__loading', 'Loading comparison data'));
+    return mount;
+  };
+
+  // ── public: clearMount ──────────────────────────────────────
+
+  ns.clearMount = function clearMount() {
+    var mount = document.querySelector(CFG.mountSelector);
+    if (mount) mount.innerHTML = '';
+  };
+
+  // ── public: renderToast ─────────────────────────────────────
+
+  ns.renderToast = function renderToast(message, type) {
+    var existing = document.getElementById(TOAST_ID);
+    if (existing) existing.remove();
+
+    var toast = el('div', 'scw-bid-review__toast scw-bid-review__toast--' + (type || 'info'), message);
+    toast.id = TOAST_ID;
+    document.body.appendChild(toast);
+
+    setTimeout(function () {
+      toast.style.opacity = '0';
+      setTimeout(function () { toast.remove(); }, 300);
+    }, CFG.toastDuration);
+  };
+
+})();
+/*** BID REVIEW — ACTIONS ***/
+/**
+ * Payload construction and webhook submission.
+ * No DOM manipulation, no rendering — only data out.
+ * Calls renderToast for user feedback (the only render dependency).
+ *
+ * Reads : SCW.bidReview.CONFIG, SCW.bidReview.renderToast
+ * Writes: SCW.bidReview.submitAction(payload)
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  /**
+   * Submit a bid review action to the Make webhook.
+   *
+   * @param {object} payload
+   * @param {string} payload.actionType — one of:
+   *   'row_adopt', 'row_create', 'row_skip',
+   *   'package_adopt_all', 'package_create_missing', 'package_adopt_create'
+   * @param {string} [payload.reviewRowId]  — for row-level actions
+   * @param {string} [payload.packageId]    — target package
+   * @param {string[]} [payload.rowIds]     — for package-level batch actions
+   * @returns {jQuery.Deferred}
+   */
+  ns.submitAction = function submitAction(payload) {
+    var deferred = $.Deferred();
+
+    if (!payload || !payload.actionType) {
+      if (CFG.debug) console.warn('[BidReview] submitAction called without actionType');
+      deferred.reject('Missing actionType');
+      return deferred.promise();
+    }
+
+    var body = {
+      actionType:  payload.actionType,
+      timestamp:   new Date().toISOString(),
+    };
+
+    if (payload.reviewRowId) body.reviewRowId = payload.reviewRowId;
+    if (payload.packageId)   body.packageId   = payload.packageId;
+    if (payload.sowId)       body.sowId       = payload.sowId;
+    if (payload.rowIds)      body.rowIds      = payload.rowIds;
+
+    if (CFG.debug) {
+      console.log('[BidReview] Submitting action:', body);
+    }
+
+    SCW.knackAjax({
+      url:  CFG.actionWebhook,
+      type: 'POST',
+      data: JSON.stringify(body),
+      success: function (resp) {
+        if (CFG.debug) console.log('[BidReview] Action success:', resp);
+
+        var label = describeAction(payload);
+        ns.renderToast(label + ' — sent successfully', 'success');
+        deferred.resolve(resp);
+      },
+      error: function (xhr) {
+        console.error('[BidReview] Action failed:', xhr.status, xhr.responseText);
+        ns.renderToast('Action failed — please try again', 'error');
+        deferred.reject(xhr);
+      },
+    });
+
+    return deferred.promise();
+  };
+
+  /**
+   * Build a human-readable label for a toast message.
+   */
+  function describeAction(payload) {
+    switch (payload.actionType) {
+      case 'row_adopt':             return 'Row adopted';
+      case 'row_create':            return 'SOW item creation requested';
+      case 'row_skip':              return 'Row skipped';
+      case 'package_adopt_all':      return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_create_missing': return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_adopt_create':   return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
+      case 'package_copy_to_sow':    return 'Copy to SOW requested';
+      case 'package_create_sow':     return 'Create new SOW requested';
+      default:                       return 'Action submitted';
+    }
+  }
+
+})();
+/*** BID REVIEW — INITIALIZATION ***/
+/**
+ * Orchestrates the Bid Review Matrix feature:
+ *   1. Binds to Knack view render
+ *   2. Loads data → transforms → renders
+ *   3. Installs a single delegated click handler for all actions
+ *
+ * Reads : SCW.bidReview.CONFIG, .injectStyles, .loadRawData,
+ *         .buildState, .collectEligible, .renderMatrix,
+ *         .showLoading, .submitAction, .renderToast
+ * Writes: SCW.bidReview.refresh()
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
+  var CFG = ns.CONFIG;
+
+  var INIT_FLAG = 'data-scw-bid-review-init';
+
+  // Current state — kept in closure for the click handler
+  var _state = null;
+
+  // ── load → transform → render pipeline ──────────────────────
+
+  function runPipeline() {
+    ns.showLoading();
+
+    ns.loadRawData().then(function (raw) {
+      _state = ns.buildState(raw.records, raw.sowItems || []);
+
+      if (CFG.debug) {
+        console.log('[BidReview] State built:',
+          _state.sowGrids.length, 'SOW grids,',
+          _state.allPackages.length, 'packages');
+      }
+
+      var mount = ns.renderMatrix(_state);
+      attachClickHandler(mount);
+    }).fail(function (err) {
+      console.error('[BidReview] Pipeline failed:', err);
+      ns.renderToast('Failed to load comparison data', 'error');
+    });
+  }
+
+  // ── find a SOW grid from the current state ──────────────────
+
+  function findSowGrid(sowId) {
+    if (!_state) return null;
+    for (var i = 0; i < _state.sowGrids.length; i++) {
+      if (_state.sowGrids[i].sowId === sowId) return _state.sowGrids[i];
+    }
+    return null;
+  }
+
+  // ── delegated click handler ─────────────────────────────────
+
+  function attachClickHandler(mount) {
+    if (!mount || mount.getAttribute(INIT_FLAG)) return;
+    mount.setAttribute(INIT_FLAG, '1');
+
+    mount.addEventListener('click', function (e) {
+      var button = e.target.closest('.scw-bid-review__btn');
+      if (!button) return;
+
+      var action = button.getAttribute('data-action');
+      if (!action) return;
+
+      if (button.classList.contains('scw-bid-review__btn--busy')) return;
+
+      if (action.indexOf('package_') === 0) {
+        handlePackageAction(button, action);
+      } else if (action.indexOf('row_') === 0) {
+        handleRowAction(button, action);
+      }
+    });
+  }
+
+  // ── package-level action ────────────────────────────────────
+
+  function handlePackageAction(button, actionType) {
+    if (!_state) return;
+
+    var pkgId  = button.getAttribute('data-package-id');
+    var sowId  = button.getAttribute('data-sow-id');
+    var grid   = findSowGrid(sowId);
+
+    if (!grid) {
+      ns.renderToast('SOW grid not found', 'error');
+      return;
+    }
+
+    var rowIds = ns.collectEligible(pkgId, actionType, grid);
+
+    if (!rowIds.length) {
+      ns.renderToast('No eligible rows for this action', 'info');
+      return;
+    }
+
+    // Find package name for confirmation
+    var pkgName = pkgId;
+    for (var i = 0; i < grid.packages.length; i++) {
+      if (grid.packages[i].id === pkgId) {
+        pkgName = grid.packages[i].name;
+        break;
+      }
+    }
+
+    var verb = actionType === 'package_adopt_all'      ? 'Adopt'
+             : actionType === 'package_create_missing'  ? 'Create'
+             : 'Adopt + Create';
+
+    var confirmed = window.confirm(
+      verb + ' ' + rowIds.length + ' row(s) from ' + pkgName +
+      ' into ' + grid.sowName + '?'
+    );
+    if (!confirmed) return;
+
+    setBusy(button, true);
+
+    ns.submitAction({
+      actionType: actionType,
+      packageId:  pkgId,
+      sowId:      sowId,
+      rowIds:     rowIds,
+    }).always(function () {
+      setBusy(button, false);
+    });
+  }
+
+  // ── row-level action ────────────────────────────────────────
+
+  function handleRowAction(button, actionType) {
+    var rowId = button.getAttribute('data-row-id');
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+
+    setBusy(button, true);
+
+    var payload = {
+      actionType:  actionType,
+      reviewRowId: rowId,
+    };
+
+    if (pkgId) payload.packageId = pkgId;
+    if (sowId) payload.sowId     = sowId;
+
+    ns.submitAction(payload).always(function () {
+      setBusy(button, false);
+    });
+  }
+
+  // ── busy state helper ───────────────────────────────────────
+
+  function setBusy(button, busy) {
+    if (busy) {
+      button.classList.add('scw-bid-review__btn--busy');
+      button.setAttribute('data-original-text', button.textContent);
+      button.textContent = 'Sending\u2026';
+    } else {
+      button.classList.remove('scw-bid-review__btn--busy');
+      var orig = button.getAttribute('data-original-text');
+      if (orig) button.textContent = orig;
+    }
+  }
+
+  // ── public: refresh ─────────────────────────────────────────
+
+  ns.refresh = function refresh() {
+    runPipeline();
+  };
+
+  // ── force views to load 1000 records per page ───────────────
+
+  /**
+   * Set a view's "per page" dropdown to 1000 so Knack natively loads
+   * all records into its model cache. Returns true if the view already
+   * had 1000 selected (ready to proceed); false if we just changed it
+   * (Knack will re-render the view with full data).
+   */
+  function ensureFullPage(viewKey) {
+    var $select = $('#' + viewKey + ' select[name="limit"]');
+    if ($select.length && $select.val() !== '1000') {
+      $select.val('1000').trigger('change');
+      return false; // Knack will re-render — not ready yet
+    }
+    return true; // already at 1000 (or no dropdown found)
+  }
+
+  // ── init on view render ─────────────────────────────────────
+
+  function init() {
+    ns.injectStyles();
+
+    SCW.onViewRender(CFG.viewKey, function () {
+      // Force both data views to 1000 per page.
+      // If either needed changing, Knack re-renders the view and
+      // this handler will fire again with full data in the cache.
+      var bidReady = ensureFullPage(CFG.viewKey);
+      ensureFullPage(CFG.sowItemsViewKey);
+
+      if (!bidReady) return; // wait for re-render with full data
+
+      setTimeout(function () {
+        runPipeline();
+      }, CFG.renderDelay);
+    }, CFG.eventNs);
+  }
+
+  init();
+
+})();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **********************/
 (function () {
   'use strict';
@@ -9933,6 +12296,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   const ASSUMPTION_DESC_FIELD = 'field_2210';
   const CUSTOM_ASSUMPTION_LABEL = 'detail custom assumption:';
 
+  // Cameras or Readers bucket: relabel field_2211
+  const CAMERAS_BUCKET_ID = '6481e5ba38f283002898113c';
+  const MDF_IDF_FIELD = 'field_2211';
+  const MDF_IDF_CAMERA_LABEL = 'cabling for these cameras will route back to which MDF or IDF?';
+
   // Readable mapping
   const BUCKET_RULES_HUMAN = {
     //cameras or readers
@@ -10019,6 +12387,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -10058,6 +12428,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       hideField($scope, k);
     });
     showField($scope, BUCKET_FIELD_KEY);
+  }
+
+  /** Show a divider only if the .kn-input immediately before it is visible. */
+  function syncDividers($scope) {
+    $scope.find('.kn-input-divider').each(function () {
+      var $div = $(this);
+      var $prev = $div.prev('.kn-input');
+      if ($prev.length && $prev.hasClass('scw-visible')) {
+        $div.addClass('scw-visible');
+      } else {
+        $div.removeClass('scw-visible');
+      }
+    });
+  }
+
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
   }
 
   function findBucketSelectInScope($scope, viewId) {
@@ -10101,6 +12497,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         hideField($scope, ASSUMPTION_DESC_FIELD);
       }
     }
+
+    // Cameras or Readers bucket: relabel field_2211
+    if (bucketValue === CAMERAS_BUCKET_ID) {
+      var $mdfWrap = $wrapForKeyWithinScope($scope, MDF_IDF_FIELD);
+      var $mdfLabel = $mdfWrap.find('label:first');
+      if ($mdfLabel.length) {
+        $mdfLabel.text(MDF_IDF_CAMERA_LABEL);
+      }
+    }
+
+    syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
@@ -10164,7 +12572,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3451']; // add more views
+  const VIEW_IDS = ['view_3451', 'view_3748']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules3451';
   const CSS_ID = 'scw-bucket-visibility-css-3451';
@@ -10225,7 +12633,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
+    'field_2182','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
   ];
 
@@ -10239,6 +12647,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return out;
   }
   const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
+
+  // Cameras or Readers bucket: relabel field_2211
+  const CAMERAS_BUCKET_ID = '6481e5ba38f283002898113c';
+  const MDF_IDF_FIELD = 'field_2211';
+  const MDF_IDF_CAMERA_LABEL = 'cabling for these cameras will route back to which MDF or IDF?';
 
   // ============================================================
   // EARLY CSS: inject immediately so there's no initial "flash"
@@ -10255,6 +12668,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -10296,6 +12711,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     showField($scope, BUCKET_FIELD_KEY);
   }
 
+  /** Show a divider only if the .kn-input immediately before it is visible. */
+  function syncDividers($scope) {
+    $scope.find('.kn-input-divider').each(function () {
+      var $div = $(this);
+      var $prev = $div.prev('.kn-input');
+      if ($prev.length && $prev.hasClass('scw-visible')) {
+        $div.addClass('scw-visible');
+      } else {
+        $div.removeClass('scw-visible');
+      }
+    });
+  }
+
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -10314,6 +12755,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!bucketValue) return;
 
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+
+    // Cameras or Readers bucket: relabel field_2211
+    if (bucketValue === CAMERAS_BUCKET_ID) {
+      var $mdfWrap = $wrapForKeyWithinScope($scope, MDF_IDF_FIELD);
+      var $mdfLabel = $mdfWrap.find('label:first');
+      if ($mdfLabel.length) {
+        $mdfLabel.text(MDF_IDF_CAMERA_LABEL);
+      }
+    }
+
+    syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
@@ -11674,6 +14127,11 @@ enableCheckboxSelectSync({
   selectFieldId: 'field_2250'
 });
 
+enableCheckboxSelectSync({
+  viewId: 'view_3748',
+  selectFieldId: 'field_2180'
+});
+
 /*
 
 
@@ -12401,7 +14859,7 @@ $(".kn-navigation-bar").hide();
   const EVENT_NS = ".scwUnifiedProducts";
   const CONFIG = {
     SCENES: [], // e.g. ['scene_123'] or leave [] for all scenes
-    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627"],
+    VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627","view_3748"],
 
     // parent product fields
     PARENTS: ["field_2193", "field_2194", "field_2195"],
@@ -12972,6 +15430,121 @@ $(".kn-navigation-bar").hide();
       setTimeout(recalcTotals, 3000);
     }
   });
+
+  // ============================================================
+  // Poll-refresh grids after DTO form submit (Make automation)
+  // ============================================================
+  // view_3748 is a DTO form that triggers a Make automation which
+  // creates records asynchronously.  Poll the target grids until
+  // new records appear or the timeout expires.
+
+  var DTO_FORM = 'view_3748';
+  var DTO_GRIDS = ['view_3588', 'view_3586'];
+  var DTO_POLL_MS = 4000;       // poll every 4 s
+  var DTO_TIMEOUT_MS = 60000;   // stop after 60 s
+  var DTO_NS = '.scwDtoPoll';
+  var TOAST_ID = 'scw-dto-poll-toast';
+  var TOAST_CSS_ID = 'scw-dto-poll-css';
+
+  function injectToastStyle() {
+    if (document.getElementById(TOAST_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = TOAST_CSS_ID;
+    s.textContent = [
+      '#' + TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 10px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + TOAST_ID + ' .scw-dto-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwDtoSpin .8s linear infinite;',
+      '}',
+      '@keyframes scwDtoSpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showDtoToast() {
+    injectToastStyle();
+    if (document.getElementById(TOAST_ID)) return;
+    var toast = document.createElement('div');
+    toast.id = TOAST_ID;
+    toast.innerHTML = '<span class="scw-dto-spinner"></span> Adding records \u2014 grids will refresh automatically\u2026';
+    document.body.appendChild(toast);
+  }
+
+  function hideDtoToast() {
+    var toast = document.getElementById(TOAST_ID);
+    if (!toast) return;
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function fetchGrid(viewId) {
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[viewId];
+    if (view && view.model && typeof view.model.fetch === 'function') {
+      // Preserve expanded worksheet panels across the re-render
+      if (window.SCW && SCW.deviceWorksheet && typeof SCW.deviceWorksheet.captureState === 'function') {
+        SCW.deviceWorksheet.captureState();
+      }
+      view.model.fetch();
+    }
+  }
+
+  $(document).off('knack-form-submit.' + DTO_FORM + DTO_NS)
+             .on('knack-form-submit.' + DTO_FORM + DTO_NS, function () {
+    console.log('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
+    showDtoToast();
+
+    // Capture initial record counts so we can detect when new records arrive
+    var startCounts = {};
+    DTO_GRIDS.forEach(function (viewId) {
+      var view = Knack.views && Knack.views[viewId];
+      startCounts[viewId] = (view && view.model && view.model.data)
+        ? view.model.data.length : 0;
+    });
+
+    var elapsed = 0;
+    var timer = setInterval(function () {
+      elapsed += DTO_POLL_MS;
+
+      DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+
+      // Check if any grid gained records
+      var gained = DTO_GRIDS.some(function (viewId) {
+        var view = Knack.views && Knack.views[viewId];
+        var current = (view && view.model && view.model.data)
+          ? view.model.data.length : 0;
+        return current > (startCounts[viewId] || 0);
+      });
+
+      if (gained) {
+        console.log('[scw-refresh] New records detected \u2014 stopping poll');
+        // Keep polling a few more times to catch stragglers
+        setTimeout(function () {
+          DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+        }, DTO_POLL_MS);
+        setTimeout(function () {
+          DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+          hideDtoToast();
+        }, DTO_POLL_MS * 2);
+        clearInterval(timer);
+        return;
+      }
+
+      if (elapsed >= DTO_TIMEOUT_MS) {
+        console.log('[scw-refresh] DTO poll timeout');
+        clearInterval(timer);
+        hideDtoToast();
+      }
+    }, DTO_POLL_MS);
+  });
 })();
 ////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL rebuild-proof) *************////
 (function () {
@@ -13432,6 +16005,8 @@ $(".kn-navigation-bar").hide();
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -13473,6 +16048,32 @@ $(".kn-navigation-bar").hide();
     showField($scope, BUCKET_FIELD_KEY);
   }
 
+  /** Show a divider only if the .kn-input immediately before it is visible. */
+  function syncDividers($scope) {
+    $scope.find('.kn-input-divider').each(function () {
+      var $div = $(this);
+      var $prev = $div.prev('.kn-input');
+      if ($prev.length && $prev.hasClass('scw-visible')) {
+        $div.addClass('scw-visible');
+      } else {
+        $div.removeClass('scw-visible');
+      }
+    });
+  }
+
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -13507,6 +16108,9 @@ $(".kn-navigation-bar").hide();
         hideField($scope, ASSUMPTION_DESC_FIELD);
       }
     }
+
+    syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
@@ -16949,7 +19553,7 @@ $(".kn-navigation-bar").hide();
           discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
           total:            { key: 'field_2269', type: 'readOnly' },
-          dropPrefix:       { key: 'field_2240', type: 'directEdit' },
+          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
           // ── Detail panel – right ──
@@ -17603,6 +20207,7 @@ td.${P}-sum-move {
   justify-content: center;
   align-self: flex-start;
   flex-shrink: 0;
+  min-width: 22px;
   padding: 5px 4px 0 4px;
   border: none !important;
   background: transparent !important;
@@ -19384,17 +21989,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return cfg.feeTriggerFields.indexOf(fieldKey) !== -1;
   }
 
-  /** After a fee-trigger save, patch the Fee cell from the API response
-   *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
-  /**
-   * After a feeTrigger save, patch calculated/readOnly cells in-place
+  /** After a feeTrigger save, patch calculated/readOnly cells in-place
    * from the PUT response instead of doing a full view refresh.
    * This avoids the gray-out / opacity fade that blocks back-to-back edits.
    */
-  function patchCalculatedCells(viewId, recordId, resp) {
+  /**
+   * After ANY save, patch all visible field cells in-place from the
+   * PUT response.  Updates readOnly summary fields, directEdit inputs
+   * & textareas, toggle chits, and detail-panel cells.
+   */
+  function patchCardFromResponse(viewId, recordId, resp) {
     if (!resp) return;
     var cfg = viewCfgFor(viewId);
     if (!cfg) return;
+
+    // Knack view-scoped PUT may wrap the record under a "record" key
+    if (resp.record && typeof resp.record === 'object' && resp.record.id) {
+      resp = resp.record;
+    }
 
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
@@ -19406,34 +22018,123 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var row = cards[ci].closest('tr');
       if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
     }
-    if (!card) return;
+    if (!card) {
+      console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
+      return;
+    }
 
-    // Patch each readOnly summary field that has a value in the response
+    // Debug: log which config fields have matching response keys
     var f = cfg.fields;
+    var readOnlyKeys = [];
     Object.keys(f).forEach(function (name) {
       var desc = f[name];
-      if (desc.type !== 'readOnly' || !desc.summary) return;
-      var fk = desc.key;
-      // Try _raw first (Knack's formatted value), then plain
-      var raw = resp[fk + '_raw'];
-      var val = raw != null ? raw : resp[fk];
-      if (val == null) return;
-      // Strip HTML tags if present
-      var txt = (typeof val === 'string') ? val.replace(/<[^>]*>/g, '').trim() : String(val);
+      if (desc.type === 'readOnly') {
+        var fk = desc.key;
+        var hasDisplay = resp[fk] != null;
+        var hasRaw = resp[fk + '_raw'] != null;
+        readOnlyKeys.push(fk + (hasDisplay ? '=\u2713' : '=\u2717') + (hasRaw ? '/raw\u2713' : '/raw\u2717'));
+      }
+    });
+    console.log('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
 
-      // Find the td inside the card (summary bar)
-      var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
-      if (!td) return;
-      // Update the span inside the td (Knack's value wrapper) or the td itself
-      var span = td.querySelector('span[class^="col-"]');
-      if (span) {
-        span.textContent = txt;
-      } else {
-        td.textContent = txt;
+    // Helper: extract clean display text from a response value.
+    // Prefers the formatted display string (resp[fk]) for readOnly fields
+    // because _raw is often a bare number (294 vs "$294.00") or object.
+    function displayText(fk) {
+      var display = resp[fk];
+      if (display != null) return String(display).replace(/<[^>]*>/g, '').trim();
+      var raw = resp[fk + '_raw'];
+      if (raw == null) return null;
+      if (typeof raw === 'object') {
+        if (Array.isArray(raw)) {
+          return raw.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
+        }
+        return (raw && raw.identifier) ? raw.identifier : null;
+      }
+      return String(raw);
+    }
+
+    // Helper: extract raw/editable text from a response value.
+    // For directEdit inputs the raw value is often more appropriate.
+    function editableText(fk) {
+      var raw = resp[fk + '_raw'];
+      var display = resp[fk];
+      var val = raw != null ? raw : display;
+      if (val == null) return null;
+      if (typeof val === 'object') {
+        if (Array.isArray(val)) {
+          return val.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
+        }
+        return (val && val.identifier) ? val.identifier : (display != null ? String(display).replace(/<[^>]*>/g, '').trim() : null);
+      }
+      return String(val).replace(/<[^>]*>/g, '').trim();
+    }
+
+    var f = cfg.fields;
+    var patched = 0;
+    Object.keys(f).forEach(function (name) {
+      var desc = f[name];
+      var fk = desc.key;
+
+      // ── readOnly fields: patch ALL matching tds (summary + detail) ──
+      if (desc.type === 'readOnly') {
+        var txt = displayText(fk);
+        if (txt == null) return;
+        var tds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        for (var ti = 0; ti < tds.length; ti++) {
+          var span = tds[ti].querySelector('span[class^="col-"]');
+          if (span) { span.textContent = txt; }
+          else { tds[ti].textContent = txt; }
+          patched++;
+        }
+        return;
+      }
+
+      // ── directEdit fields: patch both input/textarea AND hidden backing store ──
+      if (desc.type === 'directEdit') {
+        var txt = editableText(fk);
+        if (txt == null) return;
+        // Summary bar direct-edit inputs
+        var inputs = card.querySelectorAll('[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]');
+        for (var ii = 0; ii < inputs.length; ii++) {
+          var inp = inputs[ii];
+          if (inp.tagName === 'INPUT' || inp.tagName === 'TEXTAREA') {
+            inp.value = txt;
+            inp._scwPrev = txt;
+            refreshInputConditionalColor(inp);
+          }
+        }
+        // Hidden tds / spans that back the inputs
+        var hiddenTds = card.querySelectorAll('td[' + DIRECT_EDIT_ATTR + '].' + fk +
+                        ', td[' + DIRECT_EDIT_ATTR + '][data-field-key="' + fk + '"]');
+        for (var hi = 0; hi < hiddenTds.length; hi++) {
+          hiddenTds[hi].textContent = txt;
+        }
+        // Hidden spans in summary bar
+        var directWrapper = card.querySelector('[data-scw-fields="' + fk + '"] td.' + P + '-sum-direct-edit');
+        if (directWrapper) {
+          var hiddenSpan = directWrapper.querySelector('span[style*="display"]');
+          if (hiddenSpan) hiddenSpan.textContent = txt;
+        }
+        patched++;
+        return;
+      }
+
+      // ── toggleChit (booleans): patch ALL matching tds ──
+      if (desc.type === 'toggleChit') {
+        var txt = displayText(fk);
+        if (txt == null) return;
+        var chitTds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        for (var chi = 0; chi < chitTds.length; chi++) {
+          var chitSpan = chitTds[chi].querySelector('span[style*="display"]');
+          if (chitSpan) chitSpan.textContent = txt;
+        }
+        patched++;
+        return;
       }
     });
 
-    console.log('[scw-ws] Patched calculated cells for ' + recordId + ' in ' + viewId);
+    console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -19577,30 +22278,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
-    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
-    // Non-trigger fields: prefer model.updateRecord (no re-render)
-    if (!trigger && !feeTrig) {
-      var view = Knack.views[viewId];
-      if (view && view.model && typeof view.model.updateRecord === 'function') {
-        view.model.updateRecord(recordId, data);
-        $(document).trigger('scw-record-saved');
-        if (onSuccess) onSuccess(null);
-        return;
-      }
-    }
-
-    // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
+    // Always use AJAX PUT so we get the full response for card patching
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+        patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
-        // Sync Knack's internal model so KTL bulk edit reads correct values.
-        // Merge the full API response into the Backbone model so every
-        // field format (_raw, display, etc.) matches what Knack expects.
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
@@ -19734,35 +22420,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
-    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
-    // Non-trigger: prefer model.updateRecord (no re-render)
-    if (!trigger && !feeTrig) {
-      var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
-      if (view && view.model && typeof view.model.updateRecord === 'function') {
-        view.model.updateRecord(recordId, data);
-        if (onSuccess) onSuccess(null);
-        return;
+    if (typeof Knack === 'undefined') return;
+
+    // Always use AJAX PUT so we get the full response for card patching
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
+      type: 'PUT',
+      data: JSON.stringify(data),
+      success: function (resp) {
+        patchCardFromResponse(viewId, recordId, resp);
+        if (trigger) fetchAndApplyLabel(viewId, recordId);
+        syncKnackModel(viewId, recordId, resp, fieldKey, value);
+        if (onSuccess) onSuccess(resp);
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
       }
-    }
-
-    // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
-    if (typeof Knack !== 'undefined') {
-      SCW.knackAjax({
-        url: SCW.knackRecordUrl(viewId, recordId),
-        type: 'PUT',
-        data: JSON.stringify(data),
-        success: function (resp) {
-          if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
-          if (trigger) fetchAndApplyLabel(viewId, recordId);
-          syncKnackModel(viewId, recordId, resp, fieldKey, value);
-          if (onSuccess) onSuccess(resp);
-        },
-        error: function (xhr) {
-          console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
-        }
-      });
-    }
+    });
   }
 
   // ── Capture-phase click handler for radio / multi chips ──
@@ -19970,6 +22645,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       requestAnimationFrame(autoGrow);
       setTimeout(autoGrow, 50);
       setTimeout(autoGrow, 200);
+      setTimeout(autoGrow, 600);
+
+      // ResizeObserver: re-run autoGrow when the textarea's width changes
+      // (flex container may settle its layout after initial paint).
+      if (typeof ResizeObserver !== 'undefined') {
+        var lastW = 0;
+        var ro = new ResizeObserver(function (entries) {
+          var w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
+          if (w && w !== lastW) {
+            lastW = w;
+            autoGrow();
+          }
+        });
+        ro.observe(input);
+      }
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -20464,29 +23154,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    // ── Delete link (if Knack provides one in this grid) ──
+    // ── Delete link (always reserve space for alignment) ──
     var deleteLink = tr.querySelector('a.kn-link-delete');
+    var deleteWrap = document.createElement('span');
+    deleteWrap.className = P + '-sum-delete';
     if (deleteLink) {
       var deleteTd = deleteLink.closest('td');
-
-      var deleteWrap = document.createElement('span');
-      deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      if (hasStackedFields) {
-        var delCol = document.createElement('span');
-        delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-        var delSpacer = document.createElement('span');
-        delSpacer.className = P + '-sum-label';
-        delSpacer.innerHTML = '&nbsp;';
-        delCol.appendChild(delSpacer);
-        delCol.appendChild(deleteWrap);
-        rightGroup.appendChild(delCol);
-      } else {
-        rightGroup.appendChild(deleteWrap);
-      }
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
+    }
+    if (hasStackedFields) {
+      var delCol = document.createElement('span');
+      delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var delSpacer = document.createElement('span');
+      delSpacer.className = P + '-sum-label';
+      delSpacer.innerHTML = '&nbsp;';
+      delCol.appendChild(delSpacer);
+      delCol.appendChild(deleteWrap);
+      rightGroup.appendChild(delCol);
+    } else {
+      rightGroup.appendChild(deleteWrap);
     }
 
     bar.appendChild(rightGroup);
@@ -21753,7 +24442,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
         var del = card.querySelector('.' + P + '-sum-delete');
         if (del) {
-          del.style.display = val ? 'none' : '';
+          del.style.visibility = val ? 'hidden' : '';
         }
       }
     });
@@ -21777,10 +24466,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
-        .on('knack-cell-update.' + viewId + EVENT_NS, function () {
+        .on('knack-cell-update.' + viewId + EVENT_NS, function (event, view, record) {
           // Capture expanded panel state BEFORE Knack re-renders.
           // transformView will restore it after rebuilding.
           captureExpandedState(viewId);
+
+          // Patch the edited record's card in-place from the updated
+          // record data Knack passes with the event — no extra API call.
+          if (record && record.id) {
+            patchCardFromResponse(viewId, record.id, record);
+          }
         });
 
       if ($('#' + viewId).length) {

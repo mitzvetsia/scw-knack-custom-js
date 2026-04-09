@@ -377,7 +377,7 @@
           discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
           total:            { key: 'field_2269', type: 'readOnly' },
-          dropPrefix:       { key: 'field_2240', type: 'directEdit' },
+          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
           dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
           // ── Detail panel – right ──
@@ -1031,6 +1031,7 @@ td.${P}-sum-move {
   justify-content: center;
   align-self: flex-start;
   flex-shrink: 0;
+  min-width: 22px;
   padding: 5px 4px 0 4px;
   border: none !important;
   background: transparent !important;
@@ -2812,17 +2813,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return cfg.feeTriggerFields.indexOf(fieldKey) !== -1;
   }
 
-  /** After a fee-trigger save, patch the Fee cell from the API response
-   *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
-  /**
-   * After a feeTrigger save, patch calculated/readOnly cells in-place
+  /** After a feeTrigger save, patch calculated/readOnly cells in-place
    * from the PUT response instead of doing a full view refresh.
    * This avoids the gray-out / opacity fade that blocks back-to-back edits.
    */
-  function patchCalculatedCells(viewId, recordId, resp) {
+  /**
+   * After ANY save, patch all visible field cells in-place from the
+   * PUT response.  Updates readOnly summary fields, directEdit inputs
+   * & textareas, toggle chits, and detail-panel cells.
+   */
+  function patchCardFromResponse(viewId, recordId, resp) {
     if (!resp) return;
     var cfg = viewCfgFor(viewId);
     if (!cfg) return;
+
+    // Knack view-scoped PUT may wrap the record under a "record" key
+    if (resp.record && typeof resp.record === 'object' && resp.record.id) {
+      resp = resp.record;
+    }
 
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
@@ -2834,34 +2842,123 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var row = cards[ci].closest('tr');
       if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
     }
-    if (!card) return;
+    if (!card) {
+      console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
+      return;
+    }
 
-    // Patch each readOnly summary field that has a value in the response
+    // Debug: log which config fields have matching response keys
     var f = cfg.fields;
+    var readOnlyKeys = [];
     Object.keys(f).forEach(function (name) {
       var desc = f[name];
-      if (desc.type !== 'readOnly' || !desc.summary) return;
-      var fk = desc.key;
-      // Try _raw first (Knack's formatted value), then plain
-      var raw = resp[fk + '_raw'];
-      var val = raw != null ? raw : resp[fk];
-      if (val == null) return;
-      // Strip HTML tags if present
-      var txt = (typeof val === 'string') ? val.replace(/<[^>]*>/g, '').trim() : String(val);
+      if (desc.type === 'readOnly') {
+        var fk = desc.key;
+        var hasDisplay = resp[fk] != null;
+        var hasRaw = resp[fk + '_raw'] != null;
+        readOnlyKeys.push(fk + (hasDisplay ? '=\u2713' : '=\u2717') + (hasRaw ? '/raw\u2713' : '/raw\u2717'));
+      }
+    });
+    console.log('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
 
-      // Find the td inside the card (summary bar)
-      var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
-      if (!td) return;
-      // Update the span inside the td (Knack's value wrapper) or the td itself
-      var span = td.querySelector('span[class^="col-"]');
-      if (span) {
-        span.textContent = txt;
-      } else {
-        td.textContent = txt;
+    // Helper: extract clean display text from a response value.
+    // Prefers the formatted display string (resp[fk]) for readOnly fields
+    // because _raw is often a bare number (294 vs "$294.00") or object.
+    function displayText(fk) {
+      var display = resp[fk];
+      if (display != null) return String(display).replace(/<[^>]*>/g, '').trim();
+      var raw = resp[fk + '_raw'];
+      if (raw == null) return null;
+      if (typeof raw === 'object') {
+        if (Array.isArray(raw)) {
+          return raw.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
+        }
+        return (raw && raw.identifier) ? raw.identifier : null;
+      }
+      return String(raw);
+    }
+
+    // Helper: extract raw/editable text from a response value.
+    // For directEdit inputs the raw value is often more appropriate.
+    function editableText(fk) {
+      var raw = resp[fk + '_raw'];
+      var display = resp[fk];
+      var val = raw != null ? raw : display;
+      if (val == null) return null;
+      if (typeof val === 'object') {
+        if (Array.isArray(val)) {
+          return val.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
+        }
+        return (val && val.identifier) ? val.identifier : (display != null ? String(display).replace(/<[^>]*>/g, '').trim() : null);
+      }
+      return String(val).replace(/<[^>]*>/g, '').trim();
+    }
+
+    var f = cfg.fields;
+    var patched = 0;
+    Object.keys(f).forEach(function (name) {
+      var desc = f[name];
+      var fk = desc.key;
+
+      // ── readOnly fields: patch ALL matching tds (summary + detail) ──
+      if (desc.type === 'readOnly') {
+        var txt = displayText(fk);
+        if (txt == null) return;
+        var tds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        for (var ti = 0; ti < tds.length; ti++) {
+          var span = tds[ti].querySelector('span[class^="col-"]');
+          if (span) { span.textContent = txt; }
+          else { tds[ti].textContent = txt; }
+          patched++;
+        }
+        return;
+      }
+
+      // ── directEdit fields: patch both input/textarea AND hidden backing store ──
+      if (desc.type === 'directEdit') {
+        var txt = editableText(fk);
+        if (txt == null) return;
+        // Summary bar direct-edit inputs
+        var inputs = card.querySelectorAll('[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]');
+        for (var ii = 0; ii < inputs.length; ii++) {
+          var inp = inputs[ii];
+          if (inp.tagName === 'INPUT' || inp.tagName === 'TEXTAREA') {
+            inp.value = txt;
+            inp._scwPrev = txt;
+            refreshInputConditionalColor(inp);
+          }
+        }
+        // Hidden tds / spans that back the inputs
+        var hiddenTds = card.querySelectorAll('td[' + DIRECT_EDIT_ATTR + '].' + fk +
+                        ', td[' + DIRECT_EDIT_ATTR + '][data-field-key="' + fk + '"]');
+        for (var hi = 0; hi < hiddenTds.length; hi++) {
+          hiddenTds[hi].textContent = txt;
+        }
+        // Hidden spans in summary bar
+        var directWrapper = card.querySelector('[data-scw-fields="' + fk + '"] td.' + P + '-sum-direct-edit');
+        if (directWrapper) {
+          var hiddenSpan = directWrapper.querySelector('span[style*="display"]');
+          if (hiddenSpan) hiddenSpan.textContent = txt;
+        }
+        patched++;
+        return;
+      }
+
+      // ── toggleChit (booleans): patch ALL matching tds ──
+      if (desc.type === 'toggleChit') {
+        var txt = displayText(fk);
+        if (txt == null) return;
+        var chitTds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        for (var chi = 0; chi < chitTds.length; chi++) {
+          var chitSpan = chitTds[chi].querySelector('span[style*="display"]');
+          if (chitSpan) chitSpan.textContent = txt;
+        }
+        patched++;
+        return;
       }
     });
 
-    console.log('[scw-ws] Patched calculated cells for ' + recordId + ' in ' + viewId);
+    console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -3005,30 +3102,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
-    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
-    // Non-trigger fields: prefer model.updateRecord (no re-render)
-    if (!trigger && !feeTrig) {
-      var view = Knack.views[viewId];
-      if (view && view.model && typeof view.model.updateRecord === 'function') {
-        view.model.updateRecord(recordId, data);
-        $(document).trigger('scw-record-saved');
-        if (onSuccess) onSuccess(null);
-        return;
-      }
-    }
-
-    // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
+    // Always use AJAX PUT so we get the full response for card patching
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+        patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
-        // Sync Knack's internal model so KTL bulk edit reads correct values.
-        // Merge the full API response into the Backbone model so every
-        // field format (_raw, display, etc.) matches what Knack expects.
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
@@ -3162,35 +3244,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
-    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
-    // Non-trigger: prefer model.updateRecord (no re-render)
-    if (!trigger && !feeTrig) {
-      var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
-      if (view && view.model && typeof view.model.updateRecord === 'function') {
-        view.model.updateRecord(recordId, data);
-        if (onSuccess) onSuccess(null);
-        return;
+    if (typeof Knack === 'undefined') return;
+
+    // Always use AJAX PUT so we get the full response for card patching
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
+      type: 'PUT',
+      data: JSON.stringify(data),
+      success: function (resp) {
+        patchCardFromResponse(viewId, recordId, resp);
+        if (trigger) fetchAndApplyLabel(viewId, recordId);
+        syncKnackModel(viewId, recordId, resp, fieldKey, value);
+        if (onSuccess) onSuccess(resp);
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
       }
-    }
-
-    // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
-    if (typeof Knack !== 'undefined') {
-      SCW.knackAjax({
-        url: SCW.knackRecordUrl(viewId, recordId),
-        type: 'PUT',
-        data: JSON.stringify(data),
-        success: function (resp) {
-          if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
-          if (trigger) fetchAndApplyLabel(viewId, recordId);
-          syncKnackModel(viewId, recordId, resp, fieldKey, value);
-          if (onSuccess) onSuccess(resp);
-        },
-        error: function (xhr) {
-          console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
-        }
-      });
-    }
+    });
   }
 
   // ── Capture-phase click handler for radio / multi chips ──
@@ -3398,6 +3469,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       requestAnimationFrame(autoGrow);
       setTimeout(autoGrow, 50);
       setTimeout(autoGrow, 200);
+      setTimeout(autoGrow, 600);
+
+      // ResizeObserver: re-run autoGrow when the textarea's width changes
+      // (flex container may settle its layout after initial paint).
+      if (typeof ResizeObserver !== 'undefined') {
+        var lastW = 0;
+        var ro = new ResizeObserver(function (entries) {
+          var w = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
+          if (w && w !== lastW) {
+            lastW = w;
+            autoGrow();
+          }
+        });
+        ro.observe(input);
+      }
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -3892,29 +3978,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    // ── Delete link (if Knack provides one in this grid) ──
+    // ── Delete link (always reserve space for alignment) ──
     var deleteLink = tr.querySelector('a.kn-link-delete');
+    var deleteWrap = document.createElement('span');
+    deleteWrap.className = P + '-sum-delete';
     if (deleteLink) {
       var deleteTd = deleteLink.closest('td');
-
-      var deleteWrap = document.createElement('span');
-      deleteWrap.className = P + '-sum-delete';
       deleteWrap.appendChild(deleteLink);
-      if (hasStackedFields) {
-        var delCol = document.createElement('span');
-        delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
-        var delSpacer = document.createElement('span');
-        delSpacer.className = P + '-sum-label';
-        delSpacer.innerHTML = '&nbsp;';
-        delCol.appendChild(delSpacer);
-        delCol.appendChild(deleteWrap);
-        rightGroup.appendChild(delCol);
-      } else {
-        rightGroup.appendChild(deleteWrap);
-      }
       if (deleteTd && !deleteTd.children.length) {
         deleteTd.style.display = 'none';
       }
+    }
+    if (hasStackedFields) {
+      var delCol = document.createElement('span');
+      delCol.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      var delSpacer = document.createElement('span');
+      delSpacer.className = P + '-sum-label';
+      delSpacer.innerHTML = '&nbsp;';
+      delCol.appendChild(delSpacer);
+      delCol.appendChild(deleteWrap);
+      rightGroup.appendChild(delCol);
+    } else {
+      rightGroup.appendChild(deleteWrap);
     }
 
     bar.appendChild(rightGroup);
@@ -5181,7 +5266,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
         var del = card.querySelector('.' + P + '-sum-delete');
         if (del) {
-          del.style.display = val ? 'none' : '';
+          del.style.visibility = val ? 'hidden' : '';
         }
       }
     });
@@ -5205,10 +5290,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
-        .on('knack-cell-update.' + viewId + EVENT_NS, function () {
+        .on('knack-cell-update.' + viewId + EVENT_NS, function (event, view, record) {
           // Capture expanded panel state BEFORE Knack re-renders.
           // transformView will restore it after rebuilding.
           captureExpandedState(viewId);
+
+          // Patch the edited record's card in-place from the updated
+          // record data Knack passes with the event — no extra API call.
+          if (record && record.id) {
+            patchCardFromResponse(viewId, record.id, record);
+          }
         });
 
       if ($('#' + viewId).length) {

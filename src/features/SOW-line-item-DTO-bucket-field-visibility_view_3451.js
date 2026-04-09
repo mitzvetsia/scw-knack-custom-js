@@ -6,7 +6,7 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3451']; // add more views
+  const VIEW_IDS = ['view_3451', 'view_3748']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules3451';
   const CSS_ID = 'scw-bucket-visibility-css-3451';
@@ -67,7 +67,7 @@
   };
 
   const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
+    'field_2182','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
   ];
 
@@ -81,6 +81,11 @@
     return out;
   }
   const BUCKET_RULES = compileRules(BUCKET_RULES_HUMAN);
+
+  // Cameras or Readers bucket: relabel field_2211
+  const CAMERAS_BUCKET_ID = '6481e5ba38f283002898113c';
+  const MDF_IDF_FIELD = 'field_2211';
+  const MDF_IDF_CAMERA_LABEL = 'cabling for these cameras will route back to which MDF or IDF?';
 
   // ============================================================
   // EARLY CSS: inject immediately so there's no initial "flash"
@@ -97,6 +102,8 @@
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -138,6 +145,32 @@
     showField($scope, BUCKET_FIELD_KEY);
   }
 
+  /** Show a divider only if the .kn-input immediately before it is visible. */
+  function syncDividers($scope) {
+    $scope.find('.kn-input-divider').each(function () {
+      var $div = $(this);
+      var $prev = $div.prev('.kn-input');
+      if ($prev.length && $prev.hasClass('scw-visible')) {
+        $div.addClass('scw-visible');
+      } else {
+        $div.removeClass('scw-visible');
+      }
+    });
+  }
+
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -156,6 +189,18 @@
     if (!bucketValue) return;
 
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
+
+    // Cameras or Readers bucket: relabel field_2211
+    if (bucketValue === CAMERAS_BUCKET_ID) {
+      var $mdfWrap = $wrapForKeyWithinScope($scope, MDF_IDF_FIELD);
+      var $mdfLabel = $mdfWrap.find('label:first');
+      if ($mdfLabel.length) {
+        $mdfLabel.text(MDF_IDF_CAMERA_LABEL);
+      }
+    }
+
+    syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
