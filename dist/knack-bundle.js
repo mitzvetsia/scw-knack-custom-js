@@ -24143,10 +24143,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       $(document)
         .off('knack-cell-update.' + viewId + EVENT_NS)
-        .on('knack-cell-update.' + viewId + EVENT_NS, function () {
+        .on('knack-cell-update.' + viewId + EVENT_NS, function (event, view, record) {
           // Capture expanded panel state BEFORE Knack re-renders.
           // transformView will restore it after rebuilding.
           captureExpandedState(viewId);
+
+          // Patch the edited record's card in-place from the updated
+          // record data Knack passes with the event — no extra API call.
+          if (record && record.id) {
+            patchCardFromResponse(viewId, record.id, record);
+          }
         });
 
       if ($('#' + viewId).length) {
