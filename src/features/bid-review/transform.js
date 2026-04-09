@@ -246,7 +246,7 @@
           bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
           bidMapConn:      raw(rec, FK.bidMapConn),
           // Payload-only fields
-          field2627:       raw(rec, FK.field2627),
+          field2627:       connectionId(rec, FK.field2627),
           field2367:       raw(rec, FK.field2367),
           field2368:       raw(rec, FK.field2368),
           field2371:       raw(rec, FK.field2371),
