@@ -226,6 +226,7 @@
         cellsByPackage[pkgId] = {
           id:              rec.id,
           labor:           num(rec, FK.labor),
+          rate:            num(rec, FK.rate),
           laborDesc:       raw(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),

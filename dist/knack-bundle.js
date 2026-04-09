@@ -8723,6 +8723,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // Values displayed in bid cells
       labor:           'field_2401',   // CALC_sub bid extended ($)
+      rate:            'field_2400',   // INPUT_sub bid rate (unit price)
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
@@ -9692,6 +9693,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         cellsByPackage[pkgId] = {
           id:              rec.id,
           labor:           num(rec, FK.labor),
+          rate:            num(rec, FK.rate),
           laborDesc:       raw(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
@@ -10853,6 +10855,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         updates.push({
           sowItemId:    row.sowItem,
           bidRecordId:  cell.id,
+          rate:         cell.rate,
           labor:        cell.labor,
           laborDesc:    cell.laborDesc,
           productName:  cell.productName,
@@ -10865,6 +10868,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         // NEW: create SOW item from bid data
         creates.push({
           bidRecordId:      cell.id,
+          rate:             cell.rate,
           labor:            cell.labor,
           laborDesc:        cell.laborDesc,
           productName:      cell.productName,

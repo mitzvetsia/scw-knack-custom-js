@@ -37,6 +37,7 @@
 
       // Values displayed in bid cells
       labor:           'field_2401',   // CALC_sub bid extended ($)
+      rate:            'field_2400',   // INPUT_sub bid rate (unit price)
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
