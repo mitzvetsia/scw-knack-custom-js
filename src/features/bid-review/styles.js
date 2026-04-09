@@ -386,6 +386,12 @@
       '  -webkit-box-decoration-break: clone;',
       '}',
 
+      '.scw-bid-review__cell-qty {',
+      '  font-size: 11px;',
+      '  color: #475569;',
+      '  margin-top: 1px;',
+      '}',
+
       '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',

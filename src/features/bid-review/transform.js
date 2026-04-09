@@ -66,6 +66,16 @@
     return labels.join(', ');
   }
 
+  /** Return ALL connection IDs as a flat array of strings. */
+  function connectionIdsAll(record, key) {
+    var conns = connectionAll(record, key);
+    var ids = [];
+    for (var i = 0; i < conns.length; i++) {
+      if (conns[i].id) ids.push(conns[i].id);
+    }
+    return ids;
+  }
+
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
   function connectionAll(record, key) {
     // Try the _raw variant first (Knack often stores connection data there)
@@ -227,12 +237,19 @@
           id:              rec.id,
           labor:           num(rec, FK.labor),
           rate:            num(rec, FK.rate),
+          qty:             num(rec, FK.qty),
           laborDesc:       raw(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
           bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
+          bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
           bidMapConn:      raw(rec, FK.bidMapConn),
+          // Payload-only fields
+          field2627:       raw(rec, FK.field2627),
+          field2367:       raw(rec, FK.field2367),
+          field2368:       raw(rec, FK.field2368),
+          field2371:       raw(rec, FK.field2371),
         };
       }
     }
@@ -248,11 +265,13 @@
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
+      sowQty:          num(meta, FK.sowQty),
       sowFee:          num(meta, FK.sowFee),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
+      sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
     };
@@ -458,11 +477,13 @@
           mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
+          sowQty:          num(rec, SFK.qty),
           sowFee:          num(rec, SFK.fee),
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
+          sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
           // No bid data at all
           cellsByPackage:  {},

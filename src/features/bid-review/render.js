@@ -163,6 +163,18 @@
     return false;
   }
 
+  // ── qty visibility helper ─────────────────────────────────────
+
+  /** Show Qty when EITHER SOW qty or any bid cell qty is > 1. */
+  function showQty(row) {
+    if (row.sowQty > 1) return true;
+    var pkgs = Object.keys(row.cellsByPackage || {});
+    for (var i = 0; i < pkgs.length; i++) {
+      if (row.cellsByPackage[pkgs[i]].qty > 1) return true;
+    }
+    return false;
+  }
+
   function buildCablingChip(val) {
     if (isYes(val)) {
       return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
@@ -176,7 +188,7 @@
   /** diff class helper — appends --field-diff modifier when flagged */
   var DIFF_CLS = 'scw-bid-review__field-diff';
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible, diffs) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -189,6 +201,13 @@
       var prodEl = el('div', 'scw-bid-review__cell-label', row.sowProduct);
       if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
       td.appendChild(prodEl);
+    }
+
+    if (qtyVisible && row.sowQty) {
+      var qtyEl = el('div', 'scw-bid-review__cell-qty');
+      qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+      qtyEl.appendChild(document.createTextNode(row.sowQty));
+      td.appendChild(qtyEl);
     }
 
     if (row.sowLaborDesc) {
@@ -224,7 +243,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible, diffs) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td');
 
     if (!cell) {
@@ -237,6 +256,13 @@
       var prodEl = el('div', 'scw-bid-review__cell-label', cell.productName);
       if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
       td.appendChild(prodEl);
+    }
+
+    if (qtyVisible && cell.qty) {
+      var qtyEl = el('div', 'scw-bid-review__cell-qty');
+      qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+      qtyEl.appendChild(document.createTextNode(cell.qty));
+      td.appendChild(qtyEl);
     }
 
     if (cell.laborDesc) {
@@ -378,6 +404,8 @@
     var cablingVisible = showCabling(row);
     // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
     var connDevVisible = showConnectedDevices(row);
+    // Qty: shown when EITHER SOW or any bid cell has qty > 1
+    var qtyVisible = showQty(row);
 
     // Per-package mismatch breakdown
     var diffsByPkg = {};
@@ -401,7 +429,7 @@
     }
 
     // SOW detail cell — highlight cell + individual differing fields
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, sowDiffs.any ? sowDiffs : null);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null);
     if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -411,7 +439,7 @@
     for (var i = 0; i < packages.length; i++) {
       var pid = packages[i].id;
       var d   = diffsByPkg[pid];
-      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, d);
+      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d);
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
