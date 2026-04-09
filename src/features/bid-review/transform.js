@@ -253,7 +253,7 @@
           sku:             raw(rec, FK.sku),
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
-          dropPrefix:      raw(rec, FK.dropPrefix),
+          dropPrefix:      connectionId(rec, FK.dropPrefix),
           dropNumber:      raw(rec, FK.dropNumber),
           existing:        raw(rec, FK.existing),
           exterior:        raw(rec, FK.exterior),
