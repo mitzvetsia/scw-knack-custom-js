@@ -141,6 +141,36 @@
     #kn-scene_1140 .ktlAddonsDiv {
       display: none !important;
     }
+
+    /* ─── Instructions callout ─── */
+    .kn-instructions {
+      position: relative;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #3b82f6;
+      border-radius: 6px;
+      padding: 10px 14px 10px 36px;
+      margin: 6px 0 2px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #1e3a5f;
+    }
+    .kn-instructions::before {
+      content: '\\2139';
+      position: absolute;
+      left: 11px;
+      top: 9px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #3b82f6;
+      line-height: 1;
+    }
+    .kn-instructions p {
+      margin: 0 0 4px;
+    }
+    .kn-instructions p:last-child {
+      margin-bottom: 0;
+    }
   `;
 
   const style = document.createElement('style');
