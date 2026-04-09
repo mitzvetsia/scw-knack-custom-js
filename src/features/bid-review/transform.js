@@ -252,6 +252,7 @@
           field2371:       raw(rec, FK.field2371),
           sku:             raw(rec, FK.sku),
           price:           num(rec, FK.price),
+          productDesc:     raw(rec, FK.productDesc),
         };
       }
     }

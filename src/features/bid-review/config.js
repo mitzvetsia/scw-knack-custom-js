@@ -52,6 +52,7 @@
       field2371:       'field_2371',
       sku:             'field_2328',
       price:           'field_2382',
+      productDesc:     'field_2629',
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
