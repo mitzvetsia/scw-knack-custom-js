@@ -173,7 +173,10 @@
 
   // ── SOW detail cell ─────────────────────────────────────────
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible) {
+  /** diff class helper — appends --field-diff modifier when flagged */
+  var DIFF_CLS = 'scw-bid-review__field-diff';
+
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, diffs) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -183,24 +186,34 @@
     }
 
     if (row.sowProduct) {
-      td.appendChild(el('div', 'scw-bid-review__cell-label', row.sowProduct));
+      var prodEl = el('div', 'scw-bid-review__cell-label', row.sowProduct);
+      if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
+      td.appendChild(prodEl);
     }
 
     if (row.sowLaborDesc) {
-      td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc);
+      if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
+      td.appendChild(ldEl);
     }
 
     if (connDevVisible && row.sowConnDevice) {
-      td.appendChild(el('div', 'scw-bid-review__cell-conn-device', row.sowConnDevice));
+      var cdEl = el('div', 'scw-bid-review__cell-conn-device', row.sowConnDevice);
+      if (diffs && diffs.connDevice) cdEl.classList.add(DIFF_CLS);
+      td.appendChild(cdEl);
     }
 
     if (cablingVisible) {
-      td.appendChild(buildCablingChip(row.sowExistCabling));
+      var cabEl = buildCablingChip(row.sowExistCabling);
+      if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
+      td.appendChild(cabEl);
     }
 
     if (row.sowFee) {
       var values = el('div', 'scw-bid-review__cell-values');
-      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee)));
+      var feeEl = el('span', 'scw-bid-review__cell-value', formatCurrency(row.sowFee));
+      if (diffs && diffs.fee) feeEl.classList.add(DIFF_CLS);
+      values.appendChild(feeEl);
       td.appendChild(values);
     }
 
@@ -209,7 +222,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, diffs) {
     var td = el('td');
 
     if (!cell) {
@@ -219,24 +232,34 @@
     }
 
     if (cell.productName) {
-      td.appendChild(el('div', 'scw-bid-review__cell-label', cell.productName));
+      var prodEl = el('div', 'scw-bid-review__cell-label', cell.productName);
+      if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
+      td.appendChild(prodEl);
     }
 
     if (cell.laborDesc) {
-      td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc);
+      if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
+      td.appendChild(ldEl);
     }
 
     if (connDevVisible && cell.bidConnDevice) {
-      td.appendChild(el('div', 'scw-bid-review__cell-conn-device', cell.bidConnDevice));
+      var cdEl = el('div', 'scw-bid-review__cell-conn-device', cell.bidConnDevice);
+      if (diffs && diffs.connDevice) cdEl.classList.add(DIFF_CLS);
+      td.appendChild(cdEl);
     }
 
     if (cablingVisible) {
-      td.appendChild(buildCablingChip(cell.bidExistCabling));
+      var cabEl = buildCablingChip(cell.bidExistCabling);
+      if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
+      td.appendChild(cabEl);
     }
 
     if (cell.labor) {
       var values = el('div', 'scw-bid-review__cell-values');
-      values.appendChild(el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor)));
+      var feeEl = el('span', 'scw-bid-review__cell-value', formatCurrency(cell.labor));
+      if (diffs && diffs.fee) feeEl.classList.add(DIFF_CLS);
+      values.appendChild(feeEl);
       td.appendChild(values);
     }
 
@@ -280,15 +303,14 @@
   // ── mismatch comparison ──────────────────────────────────────
 
   /**
-   * Compare SOW detail vs a bid cell on the four paired fields.
-   * Returns true if ANY pair doesn't match (= mismatch).
-   *
-   * Pairs: sowFee/labor, sowProduct/productName,
-   *        sowLaborDesc/laborDesc, sowExistCabling/bidExistCabling
+   * Compare SOW detail vs a bid cell on paired fields.
+   * Returns null if nothing to compare (no SOW item or no cell),
+   * otherwise an object with boolean flags for each differing field:
+   *   { any, product, laborDesc, fee, cabling, connDevice }
    */
-  function hasMismatch(row, cell, cablingVisible, connDevVisible) {
+  function getMismatches(row, cell, cablingVisible, connDevVisible) {
     // No SOW item or no bid cell — nothing to compare
-    if (!row.sowItem || !cell) return false;
+    if (!row.sowItem || !cell) return null;
 
     // Normalize for comparison: lowercase, trim
     function norm(v) {
@@ -296,26 +318,17 @@
       return String(v).toLowerCase().trim();
     }
 
-    // Price: compare as numbers (both stored as num() results)
-    if (row.sowFee !== cell.labor) return true;
+    var m = {
+      any:       false,
+      product:   norm(row.sowProduct)   !== norm(cell.productName),
+      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:       row.sowFee !== cell.labor,
+      cabling:   cablingVisible  ? norm(row.sowExistCabling) !== norm(cell.bidExistCabling) : false,
+      connDevice: connDevVisible ? norm(row.sowConnDevice)   !== norm(cell.bidConnDevice)   : false,
+    };
 
-    // Product name
-    if (norm(row.sowProduct) !== norm(cell.productName)) return true;
-
-    // Labor description
-    if (norm(row.sowLaborDesc) !== norm(cell.laborDesc)) return true;
-
-    // Existing cabling — only evaluate for Camera / Reader buckets
-    if (cablingVisible) {
-      if (norm(row.sowExistCabling) !== norm(cell.bidExistCabling)) return true;
-    }
-
-    // Connected Devices — only evaluate when visible
-    if (connDevVisible) {
-      if (norm(row.sowConnDevice) !== norm(cell.bidConnDevice)) return true;
-    }
-
-    return false;
+    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice;
+    return m;
   }
 
   // ── data row ────────────────────────────────────────────────
@@ -352,28 +365,40 @@
     // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
     var connDevVisible = showConnectedDevices(row);
 
-    // Check mismatch for each package to decide if SOW detail needs highlight
-    var anyMismatch = false;
-    var mismatchByPkg = {};
+    // Per-package mismatch breakdown
+    var diffsByPkg = {};
+    // Aggregate: which fields differ in ANY package (for SOW detail highlight)
+    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false, cabling: false, connDevice: false };
+
     for (var mi = 0; mi < packages.length; mi++) {
-      var pkgCell = row.cellsByPackage[packages[mi].id] || null;
-      if (hasMismatch(row, pkgCell, cablingVisible, connDevVisible)) {
-        anyMismatch = true;
-        mismatchByPkg[packages[mi].id] = true;
+      var pkgId   = packages[mi].id;
+      var pkgCell = row.cellsByPackage[pkgId] || null;
+      var m       = getMismatches(row, pkgCell, cablingVisible, connDevVisible);
+      diffsByPkg[pkgId] = m;
+
+      if (m && m.any) {
+        sowDiffs.any = true;
+        if (m.product)    sowDiffs.product    = true;
+        if (m.laborDesc)  sowDiffs.laborDesc  = true;
+        if (m.fee)        sowDiffs.fee        = true;
+        if (m.cabling)    sowDiffs.cabling    = true;
+        if (m.connDevice) sowDiffs.connDevice = true;
       }
     }
 
-    // SOW detail cell — highlight if any bid column mismatches
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible);
-    if (anyMismatch) {
+    // SOW detail cell — highlight cell + individual differing fields
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, sowDiffs.any ? sowDiffs : null);
+    if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
     tr.appendChild(sowTd);
 
-    // Package cells — highlight individually if mismatched
+    // Package cells — highlight cell + individual differing fields
     for (var i = 0; i < packages.length; i++) {
-      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null, cablingVisible, connDevVisible);
-      if (mismatchByPkg[packages[i].id]) {
+      var pid = packages[i].id;
+      var d   = diffsByPkg[pid];
+      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, d);
+      if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
       tr.appendChild(dataTd);

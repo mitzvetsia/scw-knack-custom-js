@@ -377,6 +377,15 @@
       '  border-left: 3px solid #fb923c;',
       '}',
 
+      /* ── per-field diff highlight (pinpoints WHICH values differ) ── */
+      '.scw-bid-review__field-diff {',
+      '  background: #fed7aa;',
+      '  border-radius: 2px;',
+      '  padding: 1px 4px;',
+      '  box-decoration-break: clone;',
+      '  -webkit-box-decoration-break: clone;',
+      '}',
+
       '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',
