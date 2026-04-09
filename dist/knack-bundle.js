@@ -21727,14 +21727,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return cfg.feeTriggerFields.indexOf(fieldKey) !== -1;
   }
 
-  /** After a fee-trigger save, patch the Fee cell from the API response
-   *  and re-evaluate danger styling on Sub Bid / +Hrs / +Mat groups. */
-  /**
-   * After a feeTrigger save, patch calculated/readOnly cells in-place
+  /** After a feeTrigger save, patch calculated/readOnly cells in-place
    * from the PUT response instead of doing a full view refresh.
    * This avoids the gray-out / opacity fade that blocks back-to-back edits.
    */
-  function patchCalculatedCells(viewId, recordId, resp) {
+  /**
+   * After ANY save, patch all visible field cells in-place from the
+   * PUT response.  Updates readOnly summary fields, directEdit inputs
+   * & textareas, toggle chits, and detail-panel cells.
+   */
+  function patchCardFromResponse(viewId, recordId, resp) {
     if (!resp) return;
     var cfg = viewCfgFor(viewId);
     if (!cfg) return;
@@ -21751,32 +21753,65 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     if (!card) return;
 
-    // Patch each readOnly summary field that has a value in the response
     var f = cfg.fields;
     Object.keys(f).forEach(function (name) {
       var desc = f[name];
-      if (desc.type !== 'readOnly' || !desc.summary) return;
       var fk = desc.key;
-      // Try _raw first (Knack's formatted value), then plain
+
+      // Extract clean text from the response
       var raw = resp[fk + '_raw'];
       var val = raw != null ? raw : resp[fk];
       if (val == null) return;
-      // Strip HTML tags if present
       var txt = (typeof val === 'string') ? val.replace(/<[^>]*>/g, '').trim() : String(val);
 
-      // Find the td inside the card (summary bar)
-      var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
-      if (!td) return;
-      // Update the span inside the td (Knack's value wrapper) or the td itself
-      var span = td.querySelector('span[class^="col-"]');
-      if (span) {
-        span.textContent = txt;
-      } else {
-        td.textContent = txt;
+      // ── readOnly fields: patch the span/td text ──
+      if (desc.type === 'readOnly') {
+        var td = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (!td) return;
+        var span = td.querySelector('span[class^="col-"]');
+        if (span) { span.textContent = txt; }
+        else { td.textContent = txt; }
+        return;
+      }
+
+      // ── directEdit fields: patch both input/textarea AND hidden backing store ──
+      if (desc.type === 'directEdit') {
+        // Summary bar direct-edit inputs
+        var inputs = card.querySelectorAll('[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]');
+        for (var ii = 0; ii < inputs.length; ii++) {
+          var inp = inputs[ii];
+          if (inp.tagName === 'INPUT' || inp.tagName === 'TEXTAREA') {
+            inp.value = txt;
+            inp._scwPrev = txt;
+            refreshInputConditionalColor(inp);
+          }
+        }
+        // Hidden tds / spans that back the inputs
+        var hiddenTds = card.querySelectorAll('td[' + DIRECT_EDIT_ATTR + '].' + fk +
+                        ', td[' + DIRECT_EDIT_ATTR + '][data-field-key="' + fk + '"]');
+        for (var hi = 0; hi < hiddenTds.length; hi++) {
+          hiddenTds[hi].textContent = txt;
+        }
+        // Hidden spans in summary bar
+        var directWrapper = card.querySelector('[data-scw-fields="' + fk + '"] td.' + P + '-sum-direct-edit');
+        if (directWrapper) {
+          var hiddenSpan = directWrapper.querySelector('span[style*="display"]');
+          if (hiddenSpan) hiddenSpan.textContent = txt;
+        }
+        return;
+      }
+
+      // ── toggleChit (booleans): patch the chit text + hidden span ──
+      if (desc.type === 'toggleChit') {
+        var chitTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (!chitTd) return;
+        var chitSpan = chitTd.querySelector('span[style*="display"]');
+        if (chitSpan) chitSpan.textContent = txt;
+        return;
       }
     });
 
-    console.log('[scw-ws] Patched calculated cells for ' + recordId + ' in ' + viewId);
+    console.log('[scw-ws] Patched card for ' + recordId + ' in ' + viewId);
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -21920,30 +21955,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
-    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
-    // Non-trigger fields: prefer model.updateRecord (no re-render)
-    if (!trigger && !feeTrig) {
-      var view = Knack.views[viewId];
-      if (view && view.model && typeof view.model.updateRecord === 'function') {
-        view.model.updateRecord(recordId, data);
-        $(document).trigger('scw-record-saved');
-        if (onSuccess) onSuccess(null);
-        return;
-      }
-    }
-
-    // Trigger / fee-trigger fields (or fallback): direct AJAX PUT
+    // Always use AJAX PUT so we get the full response for card patching
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'PUT',
       data: JSON.stringify(data),
       success: function (resp) {
-        if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
+        patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
-        // Sync Knack's internal model so KTL bulk edit reads correct values.
-        // Merge the full API response into the Backbone model so every
-        // field format (_raw, display, etc.) matches what Knack expects.
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
@@ -22077,35 +22097,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = {};
     data[fieldKey] = value;
     var trigger = isHeaderTrigger(viewId, fieldKey);
-    var feeTrig = isFeeTrigger(viewId, fieldKey);
 
-    // Non-trigger: prefer model.updateRecord (no re-render)
-    if (!trigger && !feeTrig) {
-      var view = typeof Knack !== 'undefined' && Knack.views ? Knack.views[viewId] : null;
-      if (view && view.model && typeof view.model.updateRecord === 'function') {
-        view.model.updateRecord(recordId, data);
-        if (onSuccess) onSuccess(null);
-        return;
+    if (typeof Knack === 'undefined') return;
+
+    // Always use AJAX PUT so we get the full response for card patching
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(viewId, recordId),
+      type: 'PUT',
+      data: JSON.stringify(data),
+      success: function (resp) {
+        patchCardFromResponse(viewId, recordId, resp);
+        if (trigger) fetchAndApplyLabel(viewId, recordId);
+        syncKnackModel(viewId, recordId, resp, fieldKey, value);
+        if (onSuccess) onSuccess(resp);
+      },
+      error: function (xhr) {
+        console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
       }
-    }
-
-    // Trigger / fee-trigger fields (or fallback): AJAX PUT — response has the formula
-    if (typeof Knack !== 'undefined') {
-      SCW.knackAjax({
-        url: SCW.knackRecordUrl(viewId, recordId),
-        type: 'PUT',
-        data: JSON.stringify(data),
-        success: function (resp) {
-          if (feeTrig) patchCalculatedCells(viewId, recordId, resp);
-          if (trigger) fetchAndApplyLabel(viewId, recordId);
-          syncKnackModel(viewId, recordId, resp, fieldKey, value);
-          if (onSuccess) onSuccess(resp);
-        },
-        error: function (xhr) {
-          console.warn('[scw-ws-radio] Save failed for ' + recordId, xhr.responseText);
-        }
-      });
-    }
+    });
   }
 
   // ── Capture-phase click handler for radio / multi chips ──
