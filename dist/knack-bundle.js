@@ -11075,6 +11075,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
   }
 
+  /** Silent refresh — re-fetches data and re-renders without the loading spinner. */
+  var _silentRefreshRunning = false;
+
+  function refreshSilently() {
+    if (_silentRefreshRunning) return;
+    _silentRefreshRunning = true;
+
+    ns.loadRawData().then(function (raw) {
+      _state = ns.buildState(raw.records, raw.sowItems || []);
+      var mount = ns.renderMatrix(_state);
+      attachClickHandler(mount);
+    }).fail(function (err) {
+      if (CFG.debug) console.warn('[BidReview] Silent refresh failed:', err);
+    }).always(function () {
+      _silentRefreshRunning = false;
+    });
+  }
+
   // ── find a SOW grid from the current state ──────────────────
 
   function findSowGrid(sowId) {
@@ -11166,7 +11184,99 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
   }
 
-  // ── Copy to SOW handler ────────────────────────────────────
+  // ── Copy to SOW — processing toast + poll refresh ────────────
+
+  var COPY_TOAST_ID  = 'scw-bid-review-copy-toast';
+  var COPY_CSS_ID    = 'scw-bid-review-copy-css';
+  var COPY_POLL_MS   = 5000;     // poll every 5s
+  var COPY_TIMEOUT_MS = 120000;  // stop after 2 minutes
+  var _copyPollTimer = null;
+
+  function injectCopyToastStyle() {
+    if (document.getElementById(COPY_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = COPY_CSS_ID;
+    s.textContent = [
+      '#' + COPY_TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 12px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + COPY_TOAST_ID + ' .scw-copy-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwCopySpin .8s linear infinite; flex-shrink: 0;',
+      '}',
+      '#' + COPY_TOAST_ID + ' .scw-copy-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 18px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700; flex-shrink: 0;',
+      '}',
+      '#' + COPY_TOAST_ID + ' .scw-copy-close:hover { color: #fff; }',
+      '@keyframes scwCopySpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showCopyToast(message) {
+    injectCopyToastStyle();
+    hideCopyToast(true); // remove any existing toast instantly
+
+    var toast = document.createElement('div');
+    toast.id = COPY_TOAST_ID;
+
+    var spinner = document.createElement('span');
+    spinner.className = 'scw-copy-spinner';
+    toast.appendChild(spinner);
+
+    toast.appendChild(document.createTextNode(message));
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-copy-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      stopCopyPoll();
+      hideCopyToast();
+    });
+    toast.appendChild(closeBtn);
+
+    document.body.appendChild(toast);
+  }
+
+  function hideCopyToast(instant) {
+    var toast = document.getElementById(COPY_TOAST_ID);
+    if (!toast) return;
+    if (instant) { toast.remove(); return; }
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function startCopyPoll() {
+    stopCopyPoll();
+    var elapsed = 0;
+
+    _copyPollTimer = setInterval(function () {
+      elapsed += COPY_POLL_MS;
+      refreshSilently();
+
+      if (elapsed >= COPY_TIMEOUT_MS) {
+        stopCopyPoll();
+        hideCopyToast();
+        ns.renderToast('Sync may still be processing \u2014 refresh to check', 'info');
+      }
+    }, COPY_POLL_MS);
+  }
+
+  function stopCopyPoll() {
+    if (_copyPollTimer) {
+      clearInterval(_copyPollTimer);
+      _copyPollTimer = null;
+    }
+  }
 
   function handleCopyToSow(button, pkgId, grid) {
     var payload = ns.buildCopyToSowPayload(pkgId, grid);
@@ -11189,11 +11299,35 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     );
     if (!confirmed) return;
 
+    // Show processing toast and start polling
+    showCopyToast('Syncing ' + pkgName + ' \u2192 ' + grid.sowName + ': ' + summary.join(', ') + '\u2026');
+    startCopyPoll();
+
     setBusy(button, true);
 
-    ns.submitAction(payload).always(function () {
-      setBusy(button, false);
-    });
+    ns.submitAction(payload)
+      .done(function () {
+        // Webhook responded — schedule final refreshes then stop
+        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
+        stopCopyPoll();
+        // Two final refreshes to catch any stragglers
+        setTimeout(function () { refreshSilently(); }, 2000);
+        setTimeout(function () {
+          refreshSilently();
+          hideCopyToast();
+          ns.renderToast('SOW updated successfully', 'success');
+        }, 5000);
+      })
+      .fail(function (xhr) {
+        // Timeout or error — keep polling; Make may still be processing
+        if (CFG.debug) {
+          console.log('[BidReview] Webhook timeout/error (status ' +
+            (xhr && xhr.status) + ') — continuing to poll');
+        }
+      })
+      .always(function () {
+        setBusy(button, false);
+      });
   }
 
   // ── row-level action ────────────────────────────────────────
