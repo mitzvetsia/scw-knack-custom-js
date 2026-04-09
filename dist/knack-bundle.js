@@ -15420,6 +15420,121 @@ $(".kn-navigation-bar").hide();
       setTimeout(recalcTotals, 3000);
     }
   });
+
+  // ============================================================
+  // Poll-refresh grids after DTO form submit (Make automation)
+  // ============================================================
+  // view_3748 is a DTO form that triggers a Make automation which
+  // creates records asynchronously.  Poll the target grids until
+  // new records appear or the timeout expires.
+
+  var DTO_FORM = 'view_3748';
+  var DTO_GRIDS = ['view_3588', 'view_3586'];
+  var DTO_POLL_MS = 4000;       // poll every 4 s
+  var DTO_TIMEOUT_MS = 60000;   // stop after 60 s
+  var DTO_NS = '.scwDtoPoll';
+  var TOAST_ID = 'scw-dto-poll-toast';
+  var TOAST_CSS_ID = 'scw-dto-poll-css';
+
+  function injectToastStyle() {
+    if (document.getElementById(TOAST_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = TOAST_CSS_ID;
+    s.textContent = [
+      '#' + TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 10px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + TOAST_ID + ' .scw-dto-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwDtoSpin .8s linear infinite;',
+      '}',
+      '@keyframes scwDtoSpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showDtoToast() {
+    injectToastStyle();
+    if (document.getElementById(TOAST_ID)) return;
+    var toast = document.createElement('div');
+    toast.id = TOAST_ID;
+    toast.innerHTML = '<span class="scw-dto-spinner"></span> Adding records \u2014 grids will refresh automatically\u2026';
+    document.body.appendChild(toast);
+  }
+
+  function hideDtoToast() {
+    var toast = document.getElementById(TOAST_ID);
+    if (!toast) return;
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function fetchGrid(viewId) {
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[viewId];
+    if (view && view.model && typeof view.model.fetch === 'function') {
+      // Preserve expanded worksheet panels across the re-render
+      if (window.SCW && SCW.deviceWorksheet && typeof SCW.deviceWorksheet.captureState === 'function') {
+        SCW.deviceWorksheet.captureState();
+      }
+      view.model.fetch();
+    }
+  }
+
+  $(document).off('knack-form-submit.' + DTO_FORM + DTO_NS)
+             .on('knack-form-submit.' + DTO_FORM + DTO_NS, function () {
+    console.log('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
+    showDtoToast();
+
+    // Capture initial record counts so we can detect when new records arrive
+    var startCounts = {};
+    DTO_GRIDS.forEach(function (viewId) {
+      var view = Knack.views && Knack.views[viewId];
+      startCounts[viewId] = (view && view.model && view.model.data)
+        ? view.model.data.length : 0;
+    });
+
+    var elapsed = 0;
+    var timer = setInterval(function () {
+      elapsed += DTO_POLL_MS;
+
+      DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+
+      // Check if any grid gained records
+      var gained = DTO_GRIDS.some(function (viewId) {
+        var view = Knack.views && Knack.views[viewId];
+        var current = (view && view.model && view.model.data)
+          ? view.model.data.length : 0;
+        return current > (startCounts[viewId] || 0);
+      });
+
+      if (gained) {
+        console.log('[scw-refresh] New records detected \u2014 stopping poll');
+        // Keep polling a few more times to catch stragglers
+        setTimeout(function () {
+          DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+        }, DTO_POLL_MS);
+        setTimeout(function () {
+          DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+          hideDtoToast();
+        }, DTO_POLL_MS * 2);
+        clearInterval(timer);
+        return;
+      }
+
+      if (elapsed >= DTO_TIMEOUT_MS) {
+        console.log('[scw-refresh] DTO poll timeout');
+        clearInterval(timer);
+        hideDtoToast();
+      }
+    }, DTO_POLL_MS);
+  });
 })();
 ////************* SCW: FORM BUCKET → FIELD VISIBILITY (KTL rebuild-proof) *************////
 (function () {
