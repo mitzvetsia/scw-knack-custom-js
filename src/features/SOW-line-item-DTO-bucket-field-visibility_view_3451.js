@@ -97,6 +97,7 @@
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider { display: block !important; } /* dividers always visible */
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 

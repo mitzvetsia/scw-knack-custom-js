@@ -12356,6 +12356,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider { display: block !important; } /* dividers always visible */
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -12592,6 +12593,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider { display: block !important; } /* dividers always visible */
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -15774,6 +15776,7 @@ $(".kn-navigation-bar").hide();
     const blocks = VIEW_IDS.map((viewId) => `
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
+#${viewId} .kn-input-divider { display: block !important; } /* dividers always visible */
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -21741,6 +21744,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var cfg = viewCfgFor(viewId);
     if (!cfg) return;
 
+    // Knack view-scoped PUT may wrap the record under a "record" key
+    if (resp.record && typeof resp.record === 'object' && resp.record.id) {
+      resp = resp.record;
+    }
+
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
 
@@ -21755,6 +21763,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
       return;
     }
+
+    // Debug: log which config fields have matching response keys
+    var f = cfg.fields;
+    var readOnlyKeys = [];
+    Object.keys(f).forEach(function (name) {
+      var desc = f[name];
+      if (desc.type === 'readOnly') {
+        var fk = desc.key;
+        var hasDisplay = resp[fk] != null;
+        var hasRaw = resp[fk + '_raw'] != null;
+        readOnlyKeys.push(fk + (hasDisplay ? '=\u2713' : '=\u2717') + (hasRaw ? '/raw\u2713' : '/raw\u2717'));
+      }
+    });
+    console.log('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
 
     // Helper: extract clean display text from a response value.
     // Prefers the formatted display string (resp[fk]) for readOnly fields
