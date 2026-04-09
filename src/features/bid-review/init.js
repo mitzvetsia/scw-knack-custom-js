@@ -78,6 +78,13 @@
 
   // ── package-level action ────────────────────────────────────
 
+  function findPackageName(grid, pkgId) {
+    for (var i = 0; i < grid.packages.length; i++) {
+      if (grid.packages[i].id === pkgId) return grid.packages[i].name;
+    }
+    return pkgId;
+  }
+
   function handlePackageAction(button, actionType) {
     if (!_state) return;
 
@@ -90,6 +97,12 @@
       return;
     }
 
+    // Copy to SOW uses the structured payload builder
+    if (actionType === 'package_copy_to_sow') {
+      handleCopyToSow(button, pkgId, grid);
+      return;
+    }
+
     var rowIds = ns.collectEligible(pkgId, actionType, grid);
 
     if (!rowIds.length) {
@@ -97,14 +110,7 @@
       return;
     }
 
-    // Find package name for confirmation
-    var pkgName = pkgId;
-    for (var i = 0; i < grid.packages.length; i++) {
-      if (grid.packages[i].id === pkgId) {
-        pkgName = grid.packages[i].name;
-        break;
-      }
-    }
+    var pkgName = findPackageName(grid, pkgId);
 
     var verb = actionType === 'package_adopt_all'      ? 'Adopt'
              : actionType === 'package_create_missing'  ? 'Create'
@@ -124,6 +130,36 @@
       sowId:      sowId,
       rowIds:     rowIds,
     }).always(function () {
+      setBusy(button, false);
+    });
+  }
+
+  // ── Copy to SOW handler ────────────────────────────────────
+
+  function handleCopyToSow(button, pkgId, grid) {
+    var payload = ns.buildCopyToSowPayload(pkgId, grid);
+
+    var total = payload.updates.length + payload.creates.length + payload.removals.length;
+    if (total === 0) {
+      ns.renderToast('Nothing to sync \u2014 SOW already matches this bid', 'info');
+      return;
+    }
+
+    var pkgName = findPackageName(grid, pkgId);
+
+    var summary = [];
+    if (payload.updates.length)  summary.push(payload.updates.length  + ' update(s)');
+    if (payload.creates.length)  summary.push(payload.creates.length  + ' new item(s)');
+    if (payload.removals.length) summary.push(payload.removals.length + ' removal(s)');
+
+    var confirmed = window.confirm(
+      'Copy ' + pkgName + ' to ' + grid.sowName + '?\n\n' + summary.join(', ')
+    );
+    if (!confirmed) return;
+
+    setBusy(button, true);
+
+    ns.submitAction(payload).always(function () {
       setBusy(button, false);
     });
   }

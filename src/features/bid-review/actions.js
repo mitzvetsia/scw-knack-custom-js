@@ -43,6 +43,9 @@
     if (payload.packageId)   body.packageId   = payload.packageId;
     if (payload.sowId)       body.sowId       = payload.sowId;
     if (payload.rowIds)      body.rowIds      = payload.rowIds;
+    if (payload.updates)     body.updates     = payload.updates;
+    if (payload.creates)     body.creates     = payload.creates;
+    if (payload.removals)    body.removals    = payload.removals;
 
     if (CFG.debug) {
       console.log('[BidReview] Submitting action:', body);
@@ -67,6 +70,75 @@
     });
 
     return deferred.promise();
+  };
+
+  // ── Copy to SOW payload builder ──────────────────────────────
+
+  /**
+   * Walk a SOW grid's rows for a given bid package and categorize into:
+   *   updates  — matched SOW item + bid cell → copy bid values to SOW
+   *   creates  — bid cell with no SOW match  → new SOW item needed
+   *   removals — SOW item with no bid cell   → remove from SOW
+   *
+   * @param {string} pkgId   — bid package ID to sync
+   * @param {object} sowGrid — one entry from state.sowGrids
+   * @returns {object} payload ready for submitAction
+   */
+  ns.buildCopyToSowPayload = function buildCopyToSowPayload(pkgId, sowGrid) {
+    var updates  = [];
+    var creates  = [];
+    var removals = [];
+    var rows     = sowGrid.rows;
+
+    for (var i = 0; i < rows.length; i++) {
+      var row  = rows[i];
+      var cell = row.cellsByPackage[pkgId] || null;
+
+      if (row.sowItem && cell) {
+        // Matched: update SOW item with bid values
+        updates.push({
+          sowItemId:    row.sowItem,
+          bidRecordId:  cell.id,
+          labor:        cell.labor,
+          laborDesc:    cell.laborDesc,
+          productName:  cell.productName,
+          existCabling: cell.bidExistCabling,
+          connDevice:   cell.bidConnDevice,
+          mapConn:      cell.bidMapConn,
+          notes:        cell.notes,
+        });
+      } else if (!row.sowItem && cell) {
+        // NEW: create SOW item from bid data
+        creates.push({
+          bidRecordId:      cell.id,
+          labor:            cell.labor,
+          laborDesc:        cell.laborDesc,
+          productName:      cell.productName,
+          existCabling:     cell.bidExistCabling,
+          connDevice:       cell.bidConnDevice,
+          mapConn:          cell.bidMapConn,
+          notes:            cell.notes,
+          displayLabel:     row.displayLabel,
+          mdfIdf:           row.mdfIdf,
+          proposalBucket:   row.proposalBucket,
+          proposalBucketId: row.proposalBucketId,
+        });
+      } else if (row.sowItem && !cell) {
+        // Removal: SOW item not covered by this bid package
+        removals.push({
+          sowItemId: row.sowItem,
+        });
+      }
+    }
+
+    return {
+      actionType: 'package_copy_to_sow',
+      packageId:  pkgId,
+      sowId:      sowGrid.sowId,
+      updates:    updates,
+      creates:    creates,
+      removals:   removals,
+    };
   };
 
   /**
