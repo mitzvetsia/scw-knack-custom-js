@@ -9483,6 +9483,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return stripHtml(record[key] || '');
   }
 
+  /** Return ALL connection labels joined with ", ". */
+  function connectionLabelsAll(record, key) {
+    var conns = connectionAll(record, key);
+    if (!conns.length) return stripHtml(record[key] || '');
+    var labels = [];
+    for (var i = 0; i < conns.length; i++) {
+      var lbl = stripHtml(conns[i].identifier || '');
+      if (lbl) labels.push(lbl);
+    }
+    return labels.join(', ');
+  }
+
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
   function connectionAll(record, key) {
     // Try the _raw variant first (Knack often stores connection data there)
@@ -9647,7 +9659,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
-          bidConnDevice:   connectionLabel(rec, FK.bidConnDevice) || raw(rec, FK.bidConnDevice),
+          bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
           bidMapConn:      raw(rec, FK.bidMapConn),
         };
       }
@@ -9668,7 +9680,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
-      sowConnDevice:   connectionLabel(meta, FK.sowConnDevice) || raw(meta, FK.sowConnDevice),
+      sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
     };
@@ -9871,7 +9883,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
-          sowConnDevice:   connectionLabel(rec, SFK.connDevice) || raw(rec, SFK.connDevice),
+          sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
           // No bid data at all
           cellsByPackage:  {},
