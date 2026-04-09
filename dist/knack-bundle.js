@@ -8700,12 +8700,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
+      bidConnDevice:   'field_2380',   // Connected Devices (bid side)
+      bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
 
       // SOW detail fields (shown in SOW detail column)
       sowFee:          'field_2151',   // install fee on SOW line item
       sowProduct:      'field_1958',   // product connection on SOW line item
       sowLaborDesc:    'field_2019',   // labor description on SOW line item
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
+      sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
+      sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -8728,6 +8732,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sortOrder:       'field_2218',   // sort order (same key)
       displayLabel:    'field_1950',   // display label
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
+      connDevice:      'field_1957',   // Connected Devices (SOW side)
+      mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────
@@ -9130,6 +9136,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 11px;',
       '  color: #64748b;',
       '  margin-top: 2px;',
+      '}',
+
+      '.scw-bid-review__cell-conn-device {',
+      '  font-size: 11px;',
+      '  color: #6366f1;',
+      '  margin-top: 2px;',
+      '  font-weight: 500;',
       '}',
 
       /* ── SOW detail cell ─────────────────────────────────────── */
@@ -9625,6 +9638,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
+          bidConnDevice:   connectionLabel(rec, FK.bidConnDevice) || raw(rec, FK.bidConnDevice),
+          bidMapConn:      raw(rec, FK.bidMapConn),
         };
       }
     }
@@ -9644,6 +9659,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
+      sowConnDevice:   connectionLabel(meta, FK.sowConnDevice) || raw(meta, FK.sowConnDevice),
+      sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
     };
   }
@@ -9845,6 +9862,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
+          sowConnDevice:   connectionLabel(rec, SFK.connDevice) || raw(rec, SFK.connDevice),
+          sowMapConn:      raw(rec, SFK.mapConn),
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
@@ -10159,6 +10178,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return val && /^yes$/i.test(String(val).trim());
   }
 
+  // ── connected-device visibility helper ───────────────────────
+
+  /**
+   * Show Connected Devices when field_2374 is Yes on any bid cell
+   * in the row, OR when field_2231 is Yes on the SOW item
+   * (especially when no bid item is present).
+   */
+  function showConnectedDevices(row) {
+    // SOW side: field_2231
+    if (isYes(row.sowMapConn)) return true;
+    // Bid side: check every package cell for field_2374
+    var pkgs = Object.keys(row.cellsByPackage || {});
+    for (var i = 0; i < pkgs.length; i++) {
+      if (isYes(row.cellsByPackage[pkgs[i]].bidMapConn)) return true;
+    }
+    return false;
+  }
+
   function buildCablingChip(val) {
     if (isYes(val)) {
       return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
@@ -10169,7 +10206,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── SOW detail cell ─────────────────────────────────────────
 
-  function buildSowDetailCell(row, cablingVisible) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -10184,6 +10221,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     if (row.sowLaborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
+    }
+
+    if (connDevVisible && row.sowConnDevice) {
+      td.appendChild(el('div', 'scw-bid-review__cell-conn-device', row.sowConnDevice));
     }
 
     if (cablingVisible) {
@@ -10201,7 +10242,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible) {
+  function buildDataCell(cell, cablingVisible, connDevVisible) {
     var td = el('td');
 
     if (!cell) {
@@ -10216,6 +10257,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     if (cell.laborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
+    }
+
+    if (connDevVisible && cell.bidConnDevice) {
+      td.appendChild(el('div', 'scw-bid-review__cell-conn-device', cell.bidConnDevice));
     }
 
     if (cablingVisible) {
@@ -10274,7 +10319,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * Pairs: sowFee/labor, sowProduct/productName,
    *        sowLaborDesc/laborDesc, sowExistCabling/bidExistCabling
    */
-  function hasMismatch(row, cell, cablingVisible) {
+  function hasMismatch(row, cell, cablingVisible, connDevVisible) {
     // No SOW item or no bid cell — nothing to compare
     if (!row.sowItem || !cell) return false;
 
@@ -10296,6 +10341,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Existing cabling — only evaluate for Camera / Reader buckets
     if (cablingVisible) {
       if (norm(row.sowExistCabling) !== norm(cell.bidExistCabling)) return true;
+    }
+
+    // Connected Devices — only evaluate when visible
+    if (connDevVisible) {
+      if (norm(row.sowConnDevice) !== norm(cell.bidConnDevice)) return true;
     }
 
     return false;
@@ -10332,20 +10382,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // Cabling fields only shown/compared for Camera or Reader buckets
     var cablingVisible = showCabling(row);
+    // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
+    var connDevVisible = showConnectedDevices(row);
 
     // Check mismatch for each package to decide if SOW detail needs highlight
     var anyMismatch = false;
     var mismatchByPkg = {};
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgCell = row.cellsByPackage[packages[mi].id] || null;
-      if (hasMismatch(row, pkgCell, cablingVisible)) {
+      if (hasMismatch(row, pkgCell, cablingVisible, connDevVisible)) {
         anyMismatch = true;
         mismatchByPkg[packages[mi].id] = true;
       }
     }
 
     // SOW detail cell — highlight if any bid column mismatches
-    var sowTd = buildSowDetailCell(row, cablingVisible);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible);
     if (anyMismatch) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -10353,7 +10405,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // Package cells — highlight individually if mismatched
     for (var i = 0; i < packages.length; i++) {
-      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null, cablingVisible);
+      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null, cablingVisible, connDevVisible);
       if (mismatchByPkg[packages[i].id]) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }

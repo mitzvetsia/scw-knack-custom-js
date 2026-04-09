@@ -40,12 +40,16 @@
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
+      bidConnDevice:   'field_2380',   // Connected Devices (bid side)
+      bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
 
       // SOW detail fields (shown in SOW detail column)
       sowFee:          'field_2151',   // install fee on SOW line item
       sowProduct:      'field_1958',   // product connection on SOW line item
       sowLaborDesc:    'field_2019',   // labor description on SOW line item
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
+      sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
+      sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -68,6 +72,8 @@
       sortOrder:       'field_2218',   // sort order (same key)
       displayLabel:    'field_1950',   // display label
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
+      connDevice:      'field_1957',   // Connected Devices (SOW side)
+      mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────

@@ -145,6 +145,24 @@
     return val && /^yes$/i.test(String(val).trim());
   }
 
+  // ── connected-device visibility helper ───────────────────────
+
+  /**
+   * Show Connected Devices when field_2374 is Yes on any bid cell
+   * in the row, OR when field_2231 is Yes on the SOW item
+   * (especially when no bid item is present).
+   */
+  function showConnectedDevices(row) {
+    // SOW side: field_2231
+    if (isYes(row.sowMapConn)) return true;
+    // Bid side: check every package cell for field_2374
+    var pkgs = Object.keys(row.cellsByPackage || {});
+    for (var i = 0; i < pkgs.length; i++) {
+      if (isYes(row.cellsByPackage[pkgs[i]].bidMapConn)) return true;
+    }
+    return false;
+  }
+
   function buildCablingChip(val) {
     if (isYes(val)) {
       return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
@@ -155,7 +173,7 @@
 
   // ── SOW detail cell ─────────────────────────────────────────
 
-  function buildSowDetailCell(row, cablingVisible) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -170,6 +188,10 @@
 
     if (row.sowLaborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc));
+    }
+
+    if (connDevVisible && row.sowConnDevice) {
+      td.appendChild(el('div', 'scw-bid-review__cell-conn-device', row.sowConnDevice));
     }
 
     if (cablingVisible) {
@@ -187,7 +209,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible) {
+  function buildDataCell(cell, cablingVisible, connDevVisible) {
     var td = el('td');
 
     if (!cell) {
@@ -202,6 +224,10 @@
 
     if (cell.laborDesc) {
       td.appendChild(el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc));
+    }
+
+    if (connDevVisible && cell.bidConnDevice) {
+      td.appendChild(el('div', 'scw-bid-review__cell-conn-device', cell.bidConnDevice));
     }
 
     if (cablingVisible) {
@@ -260,7 +286,7 @@
    * Pairs: sowFee/labor, sowProduct/productName,
    *        sowLaborDesc/laborDesc, sowExistCabling/bidExistCabling
    */
-  function hasMismatch(row, cell, cablingVisible) {
+  function hasMismatch(row, cell, cablingVisible, connDevVisible) {
     // No SOW item or no bid cell — nothing to compare
     if (!row.sowItem || !cell) return false;
 
@@ -282,6 +308,11 @@
     // Existing cabling — only evaluate for Camera / Reader buckets
     if (cablingVisible) {
       if (norm(row.sowExistCabling) !== norm(cell.bidExistCabling)) return true;
+    }
+
+    // Connected Devices — only evaluate when visible
+    if (connDevVisible) {
+      if (norm(row.sowConnDevice) !== norm(cell.bidConnDevice)) return true;
     }
 
     return false;
@@ -318,20 +349,22 @@
 
     // Cabling fields only shown/compared for Camera or Reader buckets
     var cablingVisible = showCabling(row);
+    // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
+    var connDevVisible = showConnectedDevices(row);
 
     // Check mismatch for each package to decide if SOW detail needs highlight
     var anyMismatch = false;
     var mismatchByPkg = {};
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgCell = row.cellsByPackage[packages[mi].id] || null;
-      if (hasMismatch(row, pkgCell, cablingVisible)) {
+      if (hasMismatch(row, pkgCell, cablingVisible, connDevVisible)) {
         anyMismatch = true;
         mismatchByPkg[packages[mi].id] = true;
       }
     }
 
     // SOW detail cell — highlight if any bid column mismatches
-    var sowTd = buildSowDetailCell(row, cablingVisible);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible);
     if (anyMismatch) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -339,7 +372,7 @@
 
     // Package cells — highlight individually if mismatched
     for (var i = 0; i < packages.length; i++) {
-      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null, cablingVisible);
+      var dataTd = buildDataCell(row.cellsByPackage[packages[i].id] || null, cablingVisible, connDevVisible);
       if (mismatchByPkg[packages[i].id]) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }

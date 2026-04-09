@@ -218,6 +218,8 @@
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
+          bidConnDevice:   connectionLabel(rec, FK.bidConnDevice) || raw(rec, FK.bidConnDevice),
+          bidMapConn:      raw(rec, FK.bidMapConn),
         };
       }
     }
@@ -237,6 +239,8 @@
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
+      sowConnDevice:   connectionLabel(meta, FK.sowConnDevice) || raw(meta, FK.sowConnDevice),
+      sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
     };
   }
@@ -438,6 +442,8 @@
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
+          sowConnDevice:   connectionLabel(rec, SFK.connDevice) || raw(rec, SFK.connDevice),
+          sowMapConn:      raw(rec, SFK.mapConn),
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,

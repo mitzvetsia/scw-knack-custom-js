@@ -389,6 +389,13 @@
       '  margin-top: 2px;',
       '}',
 
+      '.scw-bid-review__cell-conn-device {',
+      '  font-size: 11px;',
+      '  color: #6366f1;',
+      '  margin-top: 2px;',
+      '  font-weight: 500;',
+      '}',
+
       /* ── SOW detail cell ─────────────────────────────────────── */
       '.scw-bid-review__sow-detail {',
       '  vertical-align: top;',
