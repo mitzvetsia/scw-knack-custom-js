@@ -354,19 +354,23 @@
     if (row.noBid) {
       // SOW item with no bid at all
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
-      var noBidLabel = (isCamReader ? row.displayLabel : '') || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
-      labelTd.appendChild(document.createElement('br'));
-      labelTd.appendChild(document.createTextNode(noBidLabel));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
     } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
-      labelTd.textContent = (isCamReader ? row.displayLabel : '') || row.productName || 'Line Item';
+      if (isCamReader && row.displayLabel) {
+        labelTd.textContent = row.displayLabel;
+      }
     } else {
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
-      var labelText = (isCamReader ? row.displayLabel : '') || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
-      labelTd.appendChild(document.createElement('br'));
-      labelTd.appendChild(document.createTextNode(labelText));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
     }
     tr.appendChild(labelTd);
 
