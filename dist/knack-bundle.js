@@ -9167,6 +9167,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  margin-top: 1px;',
       '}',
 
+      '.scw-bid-review__field-label {',
+      '  font-weight: 600;',
+      '  color: #64748b;',
+      '}',
+
+      '.scw-bid-review__cell-notes-divider {',
+      '  border: none;',
+      '  border-top: 1px solid #e2e8f0;',
+      '  margin: 4px 0 2px;',
+      '}',
+
       '.scw-bid-review__cell-notes {',
       '  font-size: 11px;',
       '  color: #64748b;',
@@ -10272,7 +10283,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     if (row.sowLaborDesc) {
-      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc);
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
+      ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+      ldEl.appendChild(document.createTextNode(row.sowLaborDesc));
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -10318,7 +10331,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     if (cell.laborDesc) {
-      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc);
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
+      ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+      ldEl.appendChild(document.createTextNode(cell.laborDesc));
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -10344,7 +10359,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     if (cell.notes) {
-      td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
+      td.appendChild(el('hr', 'scw-bid-review__cell-notes-divider'));
+      var notesEl = el('div', 'scw-bid-review__cell-notes');
+      notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
+      notesEl.appendChild(document.createTextNode(cell.notes));
+      td.appendChild(notesEl);
     }
 
     return td;
@@ -10420,20 +10439,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     tr.setAttribute('data-row-id', row.id);
 
     // Line item label cell
+    // Only show displayLabel (field_2365) for Camera / Reader buckets
+    var isCamReader = showCabling(row);
     var labelTd = el('td');
     if (row.noBid) {
       // SOW item with no bid at all
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
-      var noBidLabel = row.displayLabel || row.productName || 'Item';
+      var noBidLabel = (isCamReader ? row.displayLabel : '') || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
       labelTd.appendChild(document.createElement('br'));
       labelTd.appendChild(document.createTextNode(noBidLabel));
     } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
-      labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
+      labelTd.textContent = (isCamReader ? row.displayLabel : '') || row.productName || 'Line Item';
     } else {
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
-      var labelText = row.displayLabel || row.productName || 'Item';
+      var labelText = (isCamReader ? row.displayLabel : '') || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
       labelTd.appendChild(document.createElement('br'));
       labelTd.appendChild(document.createTextNode(labelText));
