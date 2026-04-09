@@ -1094,6 +1094,9 @@ window.SCW = window.SCW || {};
     .kn-description p:last-child {
       margin-bottom: 0;
     }
+    .kn-description.is-6 {
+      padding: 10px 14px !important;
+    }
   `;
 
   const style = document.createElement('style');
