@@ -8703,7 +8703,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
 
     // ── Make webhook for all review actions ────────────────────
-    actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
+    actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
