@@ -113,6 +113,7 @@
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
 #${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -167,6 +168,19 @@
     });
   }
 
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -203,6 +217,7 @@
     }
 
     syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================

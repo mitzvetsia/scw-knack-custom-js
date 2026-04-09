@@ -12357,6 +12357,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
 #${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -12411,6 +12412,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
   }
 
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -12454,6 +12468,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
@@ -12609,6 +12624,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
 #${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -12663,6 +12679,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
   }
 
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -12683,6 +12712,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     (BUCKET_RULES[bucketValue] || []).forEach((k) => showField($scope, k));
 
     syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
@@ -15807,6 +15837,7 @@ $(".kn-navigation-bar").hide();
 #${viewId} .kn-input { display: none !important; }
 #${viewId} .kn-input.scw-visible { display: block !important; }
 #${viewId} .kn-input-divider.scw-visible { display: block !important; }
+#${viewId} .kn-input-section_break.scw-visible { display: block !important; }
 #${viewId} #kn-input-${BUCKET_FIELD_KEY} { display: block !important; } /* bucket always visible */
     `.trim()).join('\n\n');
 
@@ -15861,6 +15892,19 @@ $(".kn-navigation-bar").hide();
     });
   }
 
+  /** Show a section break only if the .kn-input immediately after it is visible. */
+  function syncSectionBreaks($scope) {
+    $scope.find('.kn-input-section_break').each(function () {
+      var $sb = $(this);
+      var $next = $sb.next('.kn-input');
+      if ($next.length && $next.hasClass('scw-visible')) {
+        $sb.addClass('scw-visible');
+      } else {
+        $sb.removeClass('scw-visible');
+      }
+    });
+  }
+
   function findBucketSelectInScope($scope, viewId) {
     let $sel = $scope.find('#' + viewId + '-' + BUCKET_FIELD_KEY);
     if ($sel.length) return $sel;
@@ -15897,6 +15941,7 @@ $(".kn-navigation-bar").hide();
     }
 
     syncDividers($scope);
+    syncSectionBreaks($scope);
   }
 
   // ======================
