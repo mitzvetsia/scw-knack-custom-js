@@ -20,10 +20,19 @@
     {
       sceneId: 'scene_1149',
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true },
+      skipViews: { view_3679: true, view_3770: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
+      pollViewOnReturn: 'view_3507',
+      pollField: 'field_2626',
+      extraFields: [
+        { field: 'field_2386', name: 'surveyRequestId' },
+        { field: 'field_2638', name: 'bidId' },
+        { field: 'field_666',  name: 'clientSite' },
+        { field: 'field_2410', name: 'projectAddress' },
+        { field: 'field_2633', name: 'field_2633' }
+      ],
     },
   ];
 
@@ -839,8 +848,34 @@
           if ($idInput.length) extra.recordId = $idInput.val();
         }
 
+        // Extract additional field values from the scene DOM
+        if (cfg.extraFields) {
+          var _fNum;
+          for (var ef = 0; ef < cfg.extraFields.length; ef++) {
+            var spec = cfg.extraFields[ef];
+            _fNum = spec.field.replace('field_', '');
+            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
+            // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
+            if (!el) el = document.querySelector('.kn-detail.' + spec.field + ', .kn-label-none.' + spec.field);
+            // Read value only — cascade through Knack detail-view DOM wrappers
+            var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
+            var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+            if (val) extra[spec.name] = val;
+          }
+        }
+
         console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
+
+        // Flag for poll-refresh on the parent page
+        if (cfg.pollViewOnReturn) {
+          try {
+            sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+            if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+          } catch (e) {}
+        }
       });
     });
 
@@ -851,6 +886,174 @@
       });
     }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // POLL-REFRESH — after form submit returns to parent page
+  // ══════════════════════════════════════════════════════════════
+
+  var POLL_INTERVAL_MS = 4000;
+  var POLL_TIMEOUT_MS  = 60000;
+  var POLL_TOAST_ID    = 'scw-pdf-poll-toast';
+  var POLL_CSS_ID      = 'scw-pdf-poll-css';
+  var POLL_NS          = '.scwPdfPoll';
+  var _pollTimer       = null;
+  var _pollActive      = false;
+  var _pollViewId      = null;
+  var _pollFieldId     = null;
+  var _pollInitial     = '';
+
+  function injectPollStyles() {
+    if (document.getElementById(POLL_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = POLL_CSS_ID;
+    s.textContent = [
+      '#' + POLL_TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 10px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwPollSpin .8s linear infinite;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 16px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-close:hover { color: #fff; }',
+      '@keyframes scwPollSpin { to { transform: rotate(360deg); } }',
+      '.scw-pdf-poll-target { position: relative !important; }',
+      '.scw-pdf-poll-target > * { opacity: .35; pointer-events: none; }',
+      '.scw-pdf-poll-target::after {',
+      '  content: "Generating bid PDF\\2026";',
+      '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
+      '  color: #555; font-size: 12px; font-weight: 500;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showPollToast() {
+    injectPollStyles();
+    if (document.getElementById(POLL_TOAST_ID)) return;
+    var toast = document.createElement('div');
+    toast.id = POLL_TOAST_ID;
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> Generating bid PDF\u2026';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-poll-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      stopPolling();
+    });
+    toast.appendChild(closeBtn);
+    document.body.appendChild(toast);
+  }
+
+  function hidePollToast() {
+    var toast = document.getElementById(POLL_TOAST_ID);
+    if (!toast) return;
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function readFieldText(viewId, fieldId) {
+    if (!fieldId) return '';
+    var td = document.querySelector('#' + viewId + ' td.' + fieldId);
+    if (!td) return '';
+    return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  }
+
+  // Apply the overlay class to the field_2626 td in the current DOM
+  function applyFieldOverlay(viewId, fieldId) {
+    if (!fieldId) return;
+    var td = document.querySelector('#' + viewId + ' td.' + fieldId);
+    if (td) td.classList.add('scw-pdf-poll-target');
+  }
+
+  function clearFieldOverlay() {
+    var targets = document.querySelectorAll('.scw-pdf-poll-target');
+    for (var j = 0; j < targets.length; j++) targets[j].classList.remove('scw-pdf-poll-target');
+  }
+
+  function stopPolling() {
+    _pollActive = false;
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    $(document).off('knack-view-render.' + _pollViewId + POLL_NS);
+    clearFieldOverlay();
+    hidePollToast();
+    _pollViewId = null;
+    _pollFieldId = null;
+    _pollInitial = '';
+  }
+
+  // Called every time the polled view re-renders (from model.fetch or anything else)
+  function onPollViewRender() {
+    if (!_pollActive) return;
+    var newValue = readFieldText(_pollViewId, _pollFieldId);
+    console.log('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
+    if (_pollFieldId && newValue !== _pollInitial) {
+      console.log('[SCW PDF Export] Field changed — stopping poll');
+      stopPolling();
+    } else {
+      // View re-rendered with same data; re-apply overlay to fresh td
+      applyFieldOverlay(_pollViewId, _pollFieldId);
+    }
+  }
+
+  function startPollRefresh(viewId, fieldId) {
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollActive = true;
+    _pollViewId = viewId;
+    _pollFieldId = fieldId;
+    _pollInitial = readFieldText(viewId, fieldId);
+
+    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    showPollToast();
+    applyFieldOverlay(viewId, fieldId);
+
+    // Listen for every re-render of this view
+    $(document).off('knack-view-render.' + viewId + POLL_NS)
+               .on('knack-view-render.' + viewId + POLL_NS, onPollViewRender);
+
+    // Interval just triggers model.fetch() to pull fresh data from server
+    var elapsed = 0;
+    _pollTimer = setInterval(function () {
+      elapsed += POLL_INTERVAL_MS;
+      if (typeof Knack === 'undefined') return;
+      var view = Knack.views && Knack.views[viewId];
+      if (view && view.model && typeof view.model.fetch === 'function') {
+        view.model.fetch();
+      }
+      if (elapsed >= POLL_TIMEOUT_MS) {
+        console.log('[SCW PDF Export] Poll timeout for ' + viewId);
+        stopPolling();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  // Check for poll flag whenever any scene renders
+  $(document).on('knack-scene-render.any.scwPdfPoll', function () {
+    var viewId, fieldId;
+    try {
+      viewId = sessionStorage.getItem('scw-pdf-poll-view');
+      fieldId = sessionStorage.getItem('scw-pdf-poll-field');
+    } catch (e) {}
+    if (!viewId) return;
+    if (!document.getElementById(viewId)) return;
+    try {
+      sessionStorage.removeItem('scw-pdf-poll-view');
+      sessionStorage.removeItem('scw-pdf-poll-field');
+    } catch (e) {}
+    setTimeout(function () { startPollRefresh(viewId, fieldId); }, 2000);
+  });
 
   // ══════════════════════════════════════════════════════════════
   // INIT — wire up all scenes
