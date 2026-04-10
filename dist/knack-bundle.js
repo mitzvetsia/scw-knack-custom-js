@@ -20307,6 +20307,7 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
@@ -20340,6 +20341,7 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel (matches view_3512 layout) ──
@@ -25217,16 +25219,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (headerRow) {
       var L = viewCfg.layout;
 
-      // Build desired field-key order + labels from view config:
-      //   [checkbox] [label] [product] [summaryLayout fields...] [move]
+      // Build desired field-key order + labels from view config.
+      // The thead is for sorting — only include fields that are useful
+      // sort targets (skip product identity and move icon columns).
+      //   [checkbox] [label] [summaryLayout fields...] [quantity if present]
       var desiredFields = [];
       var thLabels = {};   // field_key → display label
 
       var _labelDesc = fieldDesc(viewCfg, 'label');
       if (_labelDesc) desiredFields.push(_labelDesc.key);
-
-      var _productDesc = fieldDesc(viewCfg, 'product');
-      if (_productDesc) desiredFields.push(_productDesc.key);
 
       var _summaryLayout = viewCfg.summaryLayout || [];
       for (var si = 0; si < _summaryLayout.length; si++) {
@@ -25237,8 +25238,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (_desc.label) thLabels[_desc.key] = _desc.label;
       }
 
-      var _moveDesc = fieldDesc(viewCfg, 'move');
-      if (_moveDesc) desiredFields.push(_moveDesc.key);
+      // Add quantity if it exists in config but isn't already included
+      var _qtyDesc = fieldDesc(viewCfg, 'quantity');
+      if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
+        desiredFields.push(_qtyDesc.key);
+        if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+      }
 
       // Index <th> elements by field key
       var thByField = {};
@@ -25277,7 +25282,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
-        if (_fKey === 'field_1946') continue; // hide move/MDF field from sort header
         var _showTh = thByField[_fKey];
         if (!_showTh) continue;
 
