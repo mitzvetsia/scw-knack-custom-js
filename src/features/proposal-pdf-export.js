@@ -27,7 +27,9 @@
       pollViewOnReturn: 'view_3507',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { field: 'field_2414', name: 'bidId' }
+        { field: 'field_2414', name: 'bidId' },
+        { field: 'field_666',  name: 'clientSite' },
+        { field: 'field_2410', name: 'projectAddress' }
       ],
     },
   ];
