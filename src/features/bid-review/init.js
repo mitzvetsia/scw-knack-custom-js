@@ -147,6 +147,8 @@
       packageId:  pkgId,
       sowId:      sowId,
       rowIds:     rowIds,
+    }).done(function () {
+      refreshSilently();
     }).always(function () {
       setBusy(button, false);
     });
@@ -315,7 +317,9 @@
     if (pkgId) payload.packageId = pkgId;
     if (sowId) payload.sowId     = sowId;
 
-    ns.submitAction(payload).always(function () {
+    ns.submitAction(payload).done(function () {
+      refreshSilently();
+    }).always(function () {
       setBusy(button, false);
     });
   }
