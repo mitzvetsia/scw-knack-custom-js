@@ -26060,10 +26060,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var VIEW_ID         = 'view_3505';
   var TRIGGER_FIELD   = 'field_2380';   // the field the user inline-edits
   var GROUPING_FIELD  = 'field_2381';   // the field the webhook rewrites → drives L1 groups
-  var POLL_INTERVAL   = 1500;           // ms between polls
+  var POLL_INTERVAL   = 1000;           // ms between polls
   var STABLE_CYCLES   = 2;              // consecutive unchanged cycles → webhook done
-  var MAX_POLLS       = 20;             // hard cap (~30s)
-  var START_DELAY     = 500;            // ms to wait after PUT response before first poll
+  var MAX_POLLS       = 12;             // hard cap (~14s)
+  var START_DELAY     = 250;            // ms to wait after trigger before first poll
   var LOG_PREFIX      = '[scw-silent-poll.' + VIEW_ID + ']';
 
   var HEX24 = /^[0-9a-f]{24}$/i;
@@ -26542,73 +26542,58 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ======================================================================
-  // Trigger: successful PUT whose body mentions field_2380
+  // Trigger: knack-cell-update.view_3505
   // ----------------------------------------------------------------------
-  // NOTE: this listens to the USER'S own inline-edit PUT — the one that
-  // saves field_2380 and causes Knack's record rule to queue the Make
-  // webhook. It is NOT listening to the webhook's own REST calls (those
-  // run server-to-server and never appear in the browser).
+  // In this codebase, Knack's inline-edit save for view_3505 does NOT go
+  // through $(document).ajaxComplete (verified by diagnostic round: zero
+  // "saw PUT" lines on a field_2380 edit). However knack-cell-update
+  // fires reliably with the full updated record, which is exactly what
+  // we need — device-worksheet already binds this event to call
+  // patchCardFromResponse (device-worksheet.js:5712), but patchCard only
+  // updates card display elements, not the hidden sourceTr.td.field_2381,
+  // so the row's group membership never migrates.
+  //
+  // Our handler runs independently: for the record in the event, we
+  // check whether its field_2381 has actually changed vs the DOM, and
+  // if so, immediately migrate that one row to its new L1 group. Then
+  // we kick off the polling loop as a safety net so that any *async*
+  // webhook updates to OTHER records (Make rewriting field_2381 on
+  // connected records over the next few seconds) also get picked up.
+  //
+  // The old ajaxComplete handler has been removed — it was dead code.
   // ======================================================================
-  $(document).ajaxComplete(function (event, xhr, settings) {
-    if (!settings || settings.type !== 'PUT') return;
-    var url = settings.url || '';
-    // Log ANY PUT that looks remotely related to view_3505 so we can see
-    // what Knack is actually sending when field_2380 is inline-edited.
-    var touchesView = url.indexOf(VIEW_ID) !== -1 || url.indexOf('view_3505') !== -1;
-    if (!touchesView) return;
-
-    var status = xhr && xhr.status;
-    var body = settings.data;
-    var bodyStr = typeof body === 'string' ? body : '';
-    if (typeof body === 'string') {
-      try { body = JSON.parse(body); } catch (e) { body = null; }
-    }
-    log('saw PUT', {
-      url: url,
-      status: status,
-      bodyKeys: (body && typeof body === 'object') ? Object.keys(body) : null,
-      bodyType: typeof body,
-      rawBody: bodyStr.length > 400 ? bodyStr.slice(0, 400) + '…' : bodyStr
-    });
-
-    if (url.indexOf('/views/' + VIEW_ID + '/records/') === -1) {
-      log('  → URL does not match /views/' + VIEW_ID + '/records/, not a record PUT');
-      return;
-    }
-    if (!xhr || status < 200 || status >= 300) {
-      log('  → non-2xx status, ignoring');
-      return;
-    }
-    if (!body || typeof body !== 'object') {
-      log('  → body not a parseable object, ignoring');
-      return;
-    }
-    if (!Object.prototype.hasOwnProperty.call(body, TRIGGER_FIELD)) {
-      log('  → body does not contain ' + TRIGGER_FIELD + ', ignoring');
-      return;
-    }
-
-    log('✔ trigger PUT observed (' + TRIGGER_FIELD + ') — starting poll');
-    start();
-  });
-
-  // Also listen for Knack's post-inline-edit event in case the trigger
-  // PUT is structured differently than we expect. knack-cell-update
-  // fires after Knack finishes a successful inline-edit save.
   $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentPoll', function (event, view, record) {
     try {
-      var fieldKey = null;
-      if (record && typeof record === 'object') {
-        // Knack passes the updated record; we only care whether field_2380
-        // was touched. The event doesn't expose the changed field directly,
-        // so log what we have and let the user confirm.
-        fieldKey = Object.prototype.hasOwnProperty.call(record, TRIGGER_FIELD) ? TRIGGER_FIELD : null;
+      if (!record || !record.id) {
+        log('knack-cell-update fired without a usable record — ignoring');
+        return;
       }
-      log('knack-cell-update.' + VIEW_ID + ' fired', {
-        hasTriggerField: fieldKey != null,
-        recordId: record && record.id
-      });
-    } catch (e) { /* ignore */ }
+      log('knack-cell-update fired', { recordId: record.id });
+
+      // STEP 1: Attempt immediate single-record regroup. This handles the
+      // common synchronous case where Knack's server-side record rule has
+      // already rewritten field_2381 on the record the user edited, and
+      // the event ships the new value to us via the record object.
+      var domSnap = captureDomSnapshot();
+      var eventSnap = snapshotFromResponse([record]);
+      var eventKey = eventSnap[record.id];
+      if (eventKey != null && eventKey !== (domSnap[record.id] || '')) {
+        log('event record has dirty ' + GROUPING_FIELD +
+            ' (DOM="' + (domSnap[record.id] || '') + '" → event="' + eventKey + '") — immediate regroup');
+        applySilentRegroup([record]);
+      } else {
+        log('event record ' + GROUPING_FIELD + ' matches DOM — no immediate regroup');
+      }
+
+      // STEP 2: Start polling to catch any async updates to OTHER records.
+      // The Make webhook may still be processing over the next few seconds;
+      // polling will compare the new API snapshot against the *current*
+      // DOM baseline (which already reflects any immediate regroup above)
+      // and apply a second regroup pass if more rows need moving.
+      start();
+    } catch (e) {
+      console.warn(LOG_PREFIX, 'knack-cell-update handler threw', e);
+    }
   });
 
   // Public debug hooks — poke these from DevTools to force-run without
