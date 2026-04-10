@@ -21654,6 +21654,44 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return td.classList.contains('scw-cond-grayed') || td.classList.contains('scw-cell-locked');
   }
 
+  /**
+   * Synchronous fetch of a connection field's record ID via Knack REST API.
+   * Used when the field isn't included in the view's model data.
+   * Results are cached so we only hit the API once per record.
+   */
+  var _linkFieldCache = {};
+
+  function fetchLinkFieldId(viewId, recordId, fieldKey) {
+    var cacheKey = recordId + '::' + fieldKey;
+    if (_linkFieldCache[cacheKey] !== undefined) return _linkFieldCache[cacheKey];
+
+    var result = '';
+    try {
+      var xhr = new XMLHttpRequest();
+      var url = Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+                '/views/' + viewId + '/records/' + recordId;
+      xhr.open('GET', url, false); // synchronous
+      xhr.setRequestHeader('X-Knack-Application-Id', Knack.application_id);
+      xhr.setRequestHeader('x-knack-rest-api-key', 'knack');
+      xhr.setRequestHeader('Authorization', Knack.getUserToken());
+      xhr.send();
+
+      if (xhr.status === 200) {
+        var data = JSON.parse(xhr.responseText);
+        var raw = data[fieldKey + '_raw'] || data[fieldKey];
+        if (raw) {
+          if (Array.isArray(raw) && raw.length) result = raw[0].id || '';
+          else if (typeof raw === 'object' && raw.id) result = raw.id;
+        }
+      }
+    } catch (e) {
+      console.warn('[DeviceWorksheet] fetchLinkFieldId failed:', e);
+    }
+
+    _linkFieldCache[cacheKey] = result;
+    return result;
+  }
+
   function getRecordId(tr) {
     var trId = tr.id || '';
     var match = trId.match(/[0-9a-f]{24}/i);
@@ -23767,6 +23805,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                   if (lfMatch) linkFieldVal = lfMatch[1];
                 }
               }
+            }
+            // Fallback: fetch the field via Knack REST API
+            if (!linkFieldVal && trRecId2) {
+              linkFieldVal = fetchLinkFieldId(viewKey, trRecId2, desc.linkField);
             }
           }
 
