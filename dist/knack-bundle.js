@@ -23085,16 +23085,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             var had = [];
             if (allTds[ti].classList.contains('cell-edit')) had.push('cell-edit');
             if (allTds[ti].classList.contains('ktlInlineEditableCellsStyle')) had.push('ktlInlineEditableCellsStyle');
-            if (had.length) allTds[ti].setAttribute('data-scw-lock-edit', had.join(' '));
+            // Always mark as locked — even tds without edit classes need
+            // click blocking because Knack uses delegated event handlers.
+            allTds[ti].setAttribute('data-scw-lock-edit', had.join(' ') || 'none');
           }
           allTds[ti].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
         } else {
           // Restore original edit classes
           var saved = allTds[ti].getAttribute('data-scw-lock-edit');
-          if (saved) {
+          if (saved && saved !== 'none') {
             saved.split(' ').forEach(function (cls) { allTds[ti].classList.add(cls); });
-            allTds[ti].removeAttribute('data-scw-lock-edit');
           }
+          allTds[ti].removeAttribute('data-scw-lock-edit');
         }
       }
 
@@ -23128,6 +23130,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
   }
+
+  // ── Capture-phase click blocker for locked fields ──
+  // Knack binds its own click handlers to td.cell-edit elements.
+  // Even after we strip those classes, existing jQuery delegated handlers
+  // can still fire. This capture-phase listener stops the event before
+  // Knack ever sees it.
+  document.addEventListener('click', function (e) {
+    var td = e.target.closest('td');
+    if (!td) return;
+    var card = td.closest('.' + P + '-card');
+    if (!card || !card.classList.contains(LOCK_CLASS)) return;
+
+    // Check if this td belongs to a locked (non-exempt) field
+    if (td.hasAttribute('data-scw-lock-edit') ||
+        td.classList.contains(P + '-native-locked')) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true); // ← capture phase
 
   /** Extract the label text from a Knack API response object. */
   function extractLabelFromResponse(viewId, resp) {
