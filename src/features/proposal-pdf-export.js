@@ -20,7 +20,7 @@
     {
       sceneId: 'scene_1149',
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true },
+      skipViews: { view_3679: true, view_3770: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
