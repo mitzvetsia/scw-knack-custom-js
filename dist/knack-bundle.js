@@ -20292,6 +20292,14 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
+/* ── view_3505: non-camera rows widen product group to absorb absent label ── */
+#view_3505 .${P}-bucket-override .${P}-product-group {
+  width: 380px; min-width: 380px; max-width: 380px;
+}
+#view_3505 .${P}-bucket-override .${P}-sum-sep {
+  display: none;
+}
+
 /* ── Kill ALL residual Knack hover / striping ── */
 tr.${WORKSHEET_ROW},
 tr.${WORKSHEET_ROW}:hover,
