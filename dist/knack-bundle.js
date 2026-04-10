@@ -2988,7 +2988,8 @@ window.SCW = window.SCW || {};
 
     var countWrap = document.createElement('span');
     countWrap.className = 'scw-acc-count';
-    countWrap.style.display = 'none';
+    countWrap.textContent = '0';
+    countWrap.style.visibility = 'hidden';
     header.appendChild(countWrap);
 
     var chevronWrap = document.createElement('span');
@@ -3021,8 +3022,12 @@ window.SCW = window.SCW || {};
         if (count !== null) {
           countEl.textContent = count;
           countEl.style.display = '';
+          countEl.style.visibility = '';
         } else {
-          countEl.style.display = 'none';
+          // Reserve space so buttons stay aligned across accordions
+          countEl.textContent = '0';
+          countEl.style.display = '';
+          countEl.style.visibility = 'hidden';
         }
       }
     }
