@@ -3518,6 +3518,35 @@ window.SCW = window.SCW || {};
   });
 })();
 
+/** Default: view_3566 auto-selects the first option for field_2342 (REL_sow line items) */
+(function defaultValue_view3566_field2342() {
+  $(document).on('knack-view-render.view_3566', function () {
+    setTimeout(function () {
+      var $select = $('#view_3566-field_2342');
+      if (!$select.length) return;
+
+      // Skip if something is already selected
+      if ($select.val() && $select.val().length) return;
+
+      // Grab the first option with a real value
+      var $first = $select.find('option').filter(function () {
+        return !!this.value;
+      }).first();
+      if (!$first.length) return;
+
+      $first.prop('selected', true);
+      $select.trigger('chosen:updated');
+      $select.trigger('liszt:updated');
+
+      // Sync the hidden input Knack uses for form submission
+      var $hidden = $('#kn-input-field_2342 input.connection[name="field_2342"]');
+      $hidden.val($first.val());
+
+      $select.trigger('change');
+    }, 1);
+  });
+})();
+
 /*** END FEATURE: Default field value injection *********************************************************/
 /**************************************************************************************************
  * FEATURE: Post-inline-edit behavior (refresh / spinner / alerts)
