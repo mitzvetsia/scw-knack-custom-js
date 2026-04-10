@@ -10787,10 +10787,84 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return section;
   }
 
+  // ── accordion state save / restore ──────────────────────────
+
+  /**
+   * Snapshot which SOW sections and MDF/IDF groups are expanded
+   * so we can restore them after a re-render.
+   */
+  function snapshotAccordionState(mount) {
+    var snap = { sow: {}, group: {} };
+    if (!mount) return snap;
+
+    // SOW-level sections
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id');
+      if (sowId) {
+        snap.sow[sowId] = !sections[i].classList.contains('scw-bid-review__sow-section--collapsed');
+      }
+    }
+
+    // MDF/IDF group headers (inside each SOW section)
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) {
+      var section = headers[h].closest('.scw-bid-review__sow-section');
+      var sowKey = section ? section.getAttribute('data-sow-id') : '__root__';
+      var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
+      if (label) {
+        snap.group[sowKey + '::' + label] = headers[h].getAttribute('aria-expanded') === 'true';
+      }
+    }
+
+    return snap;
+  }
+
+  function restoreAccordionState(mount, snap) {
+    if (!mount || !snap) return;
+
+    // Restore SOW sections
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id');
+      if (sowId && snap.sow[sowId] === true) {
+        // Was open — remove collapsed class and update aria
+        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
+        var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
+        if (hdr) hdr.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    // Restore MDF/IDF group headers
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) {
+      var section = headers[h].closest('.scw-bid-review__sow-section');
+      var sowKey = section ? section.getAttribute('data-sow-id') : '__root__';
+      var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
+      var key = sowKey + '::' + label;
+
+      if (label && snap.group[key] === false) {
+        // Was collapsed — collapse it
+        headers[h].setAttribute('aria-expanded', 'false');
+        headers[h].classList.add('scw-bid-review__group-header--collapsed');
+        var sibling = headers[h].nextElementSibling;
+        while (sibling) {
+          if (sibling.classList.contains('scw-bid-review__group-header')) break;
+          sibling.style.display = 'none';
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    }
+  }
+
   // ── public: renderMatrix ────────────────────────────────────
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
+
+    // Preserve accordion state across re-renders
+    var snap = snapshotAccordionState(mount);
+
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';
 
@@ -10803,6 +10877,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     for (var i = 0; i < state.sowGrids.length; i++) {
       mount.appendChild(buildSowSection(state.sowGrids[i]));
     }
+
+    restoreAccordionState(mount, snap);
 
     return mount;
   };
