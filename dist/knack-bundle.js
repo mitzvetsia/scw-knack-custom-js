@@ -6890,7 +6890,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   var POLL_CSS_ID      = 'scw-pdf-poll-css';
   var POLL_OVERLAY_ID  = 'scw-pdf-poll-field-overlay';
   var _pollTimer       = null;
-  var _overlayTimer    = null;
+  var _pollActive      = false;
 
   function injectPollStyles() {
     if (document.getElementById(POLL_CSS_ID)) return;
@@ -6917,18 +6917,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       '}',
       '#' + POLL_TOAST_ID + ' .scw-poll-close:hover { color: #fff; }',
       '@keyframes scwPollSpin { to { transform: rotate(360deg); } }',
-      '#' + POLL_OVERLAY_ID + ' {',
+      '.scw-pdf-polling .kn-detail-body, .scw-pdf-polling td { opacity: .35; pointer-events: none; }',
+      '.scw-pdf-poll-target { position: relative !important; }',
+      '.scw-pdf-poll-target::after {',
+      '  content: "Generating bid PDF\\2026";',
       '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
       '  display: flex; align-items: center; justify-content: center;',
       '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
-      '}',
-      '#' + POLL_OVERLAY_ID + ' .scw-poll-field-spinner {',
-      '  width: 16px; height: 16px; border: 2px solid rgba(30,58,95,.2);',
-      '  border-top-color: #1e3a5f; border-radius: 50%;',
-      '  animation: scwPollSpin .8s linear infinite;',
-      '}',
-      '#' + POLL_OVERLAY_ID + ' .scw-poll-field-text {',
-      '  color: #555; font-size: 12px; font-weight: 500; margin-left: 8px;',
+      '  color: #555; font-size: 12px; font-weight: 500;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -6959,21 +6955,21 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   function showFieldOverlay(viewId, fieldId) {
+    if (!_pollActive) return;
+    injectPollStyles();
+    var viewEl = document.getElementById(viewId);
+    if (viewEl) viewEl.classList.add('scw-pdf-polling');
     if (!fieldId) return;
     var fieldEl = document.querySelector('#' + viewId + ' .kn-detail.' + fieldId);
     if (!fieldEl) fieldEl = document.querySelector('#' + viewId + ' .' + fieldId);
-    if (!fieldEl) return;
-    if (getComputedStyle(fieldEl).position === 'static') fieldEl.style.position = 'relative';
-    if (document.getElementById(POLL_OVERLAY_ID)) return;
-    var overlay = document.createElement('div');
-    overlay.id = POLL_OVERLAY_ID;
-    overlay.innerHTML = '<span class="scw-poll-field-spinner"></span><span class="scw-poll-field-text">Generating bid PDF\u2026</span>';
-    fieldEl.appendChild(overlay);
+    if (fieldEl) fieldEl.classList.add('scw-pdf-poll-target');
   }
 
   function hideFieldOverlay() {
-    var overlay = document.getElementById(POLL_OVERLAY_ID);
-    if (overlay) overlay.remove();
+    var els = document.querySelectorAll('.scw-pdf-polling');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('scw-pdf-polling');
+    var targets = document.querySelectorAll('.scw-pdf-poll-target');
+    for (var j = 0; j < targets.length; j++) targets[j].classList.remove('scw-pdf-poll-target');
   }
 
   var _pollObserver = null;
@@ -6992,8 +6988,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   function stopPolling() {
+    _pollActive = false;
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-    if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null; }
     if (_pollObserver) { _pollObserver.disconnect(); _pollObserver = null; }
     hideFieldOverlay();
     hidePollToast();
@@ -7002,6 +6998,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function startPollRefresh(viewId, fieldId) {
     if (_pollTimer) clearInterval(_pollTimer);
     if (_pollObserver) { _pollObserver.disconnect(); _pollObserver = null; }
+    _pollActive = true;
 
     var initialValue = readFieldText(viewId, fieldId);
     console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + initialValue + '")');
@@ -7034,9 +7031,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (view && view.model && typeof view.model.fetch === 'function') {
         view.model.fetch();
       }
-      // Re-apply overlay after fetch triggers re-render
-      if (_overlayTimer) clearTimeout(_overlayTimer);
-      _overlayTimer = setTimeout(function () { showFieldOverlay(viewId, fieldId); }, 1000);
+      // Re-apply CSS classes after fetch triggers re-render (class on view
+      // container survives, but the field element may be replaced)
+      setTimeout(function () { showFieldOverlay(viewId, fieldId); }, 500);
       if (elapsed >= POLL_TIMEOUT_MS) {
         console.log('[SCW PDF Export] Poll timeout for ' + viewId);
         stopPolling();
