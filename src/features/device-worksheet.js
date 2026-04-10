@@ -106,7 +106,7 @@
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -236,13 +236,16 @@
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
+                              linkField: 'field_2360',
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-          right: ['connectedDevice', 'dropLength', 'scwNotes']
+          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid']
         }
       },
       {
@@ -268,13 +271,16 @@
 
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
+                              linkField: 'field_2360',
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes']
+          right: ['scwNotes', 'selectedSubBid']
         },
         conditionalHide: [
           {
@@ -4097,6 +4103,128 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         } else {
           var crFallback2 = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty });
           if (crFallback2) section.appendChild(crFallback2);
+        }
+        break;
+
+      case 'link':
+        // Render a connection field as a clickable link
+        // desc.linkField = field key for the secondary record ID (from the same row)
+        // desc.linkPattern = URL template with {linkField} and {recordId} placeholders
+        if (td && !isCellEmpty(td)) {
+          // Extract connection record ID from the cell (Knack wraps in <a> or <span>)
+          var linkA = td.querySelector('a[href*="knack"]') || td.querySelector('a');
+          var connRecordId = '';
+          if (linkA && linkA.href) {
+            var idMatch = linkA.href.match(/([0-9a-f]{24})/i);
+            if (idMatch) connRecordId = idMatch[1];
+          }
+          if (!connRecordId) {
+            // Fallback: try data attribute or raw model data
+            var trRecId = getRecordId(tr);
+            if (trRecId && typeof Knack !== 'undefined' && Knack.models) {
+              var modelKeys = Object.keys(Knack.models);
+              for (var mk = 0; mk < modelKeys.length; mk++) {
+                var mdl = Knack.models[modelKeys[mk]];
+                if (!mdl || !mdl.data) continue;
+                var recs = Array.isArray(mdl.data) ? mdl.data : (mdl.data.models || []);
+                for (var ri = 0; ri < recs.length; ri++) {
+                  var rec = recs[ri].attributes || recs[ri];
+                  if (rec.id === trRecId) {
+                    var rawConn = rec[desc.key + '_raw'] || rec[desc.key];
+                    if (rawConn) {
+                      if (Array.isArray(rawConn) && rawConn.length) connRecordId = rawConn[0].id || '';
+                      else if (typeof rawConn === 'object' && rawConn.id) connRecordId = rawConn.id;
+                    }
+                    break;
+                  }
+                }
+                if (connRecordId) break;
+              }
+            }
+          }
+
+          // Get the secondary field's record ID (e.g. survey request record ID)
+          var linkFieldVal = '';
+          if (desc.linkField) {
+            // Primary: Knack model _raw data (always gives the connection record ID)
+            var trRecId2 = trRecId || getRecordId(tr);
+            if (trRecId2 && typeof Knack !== 'undefined' && Knack.models) {
+              var mk2 = Object.keys(Knack.models);
+              for (var mi = 0; mi < mk2.length; mi++) {
+                var mdl2 = Knack.models[mk2[mi]];
+                if (!mdl2 || !mdl2.data) continue;
+                var recs2 = Array.isArray(mdl2.data) ? mdl2.data : (mdl2.data.models || []);
+                for (var ri2 = 0; ri2 < recs2.length; ri2++) {
+                  var rec2 = recs2[ri2].attributes || recs2[ri2];
+                  if (rec2.id === trRecId2) {
+                    var rawLf = rec2[desc.linkField + '_raw'] || rec2[desc.linkField];
+                    if (rawLf) {
+                      if (Array.isArray(rawLf) && rawLf.length) linkFieldVal = rawLf[0].id || '';
+                      else if (typeof rawLf === 'object' && rawLf.id) linkFieldVal = rawLf.id;
+                    }
+                    break;
+                  }
+                }
+                if (linkFieldVal) break;
+              }
+            }
+            // Fallback: extract record ID from DOM cell
+            if (!linkFieldVal) {
+              var linkTd = findCell(tr, desc.linkField);
+              if (linkTd) {
+                // Try <a> href first
+                var lfA = linkTd.querySelector('a');
+                if (lfA && lfA.href) {
+                  var lfMatch = lfA.href.match(/([0-9a-f]{24})/i);
+                  if (lfMatch) linkFieldVal = lfMatch[1];
+                }
+                // Try <span data-kn="connection-value"> — Knack puts the
+                // record ID in the class or id attribute of these spans
+                if (!linkFieldVal) {
+                  // Knack puts the record ID in the class or id attribute.
+                  // For through-connections there are nested spans — the
+                  // innermost one holds the actual target record ID, so we
+                  // iterate all and keep the last match.
+                  var connSpans = linkTd.querySelectorAll('span[data-kn="connection-value"]');
+                  for (var cs = 0; cs < connSpans.length; cs++) {
+                    var csClass = (connSpans[cs].className || '').trim();
+                    var csId    = (connSpans[cs].id || '').trim();
+                    if (/^[0-9a-f]{24}$/i.test(csClass)) linkFieldVal = csClass;
+                    else if (/^[0-9a-f]{24}$/i.test(csId)) linkFieldVal = csId;
+                  }
+                }
+              }
+            }
+          }
+
+          var displayText = (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
+          var linkRow = document.createElement('div');
+          linkRow.className = P + '-field';
+
+          var linkLabel = document.createElement('div');
+          linkLabel.className = P + '-field-label';
+          linkLabel.textContent = label;
+          linkRow.appendChild(linkLabel);
+
+          var linkVal = document.createElement('div');
+          linkVal.className = P + '-field-value';
+
+          if (connRecordId && desc.linkPattern) {
+            var href = desc.linkPattern
+              .replace('{recordId}', connRecordId)
+              .replace('{linkField}', linkFieldVal);
+            var anchor = document.createElement('a');
+            anchor.href = href;
+            anchor.textContent = displayText || 'View';
+            anchor.style.cssText = 'color:#2563eb;text-decoration:underline;cursor:pointer;';
+            anchor.target = '_blank';
+            linkVal.appendChild(anchor);
+          } else {
+            linkVal.textContent = displayText || '\u2014';
+          }
+
+          linkRow.appendChild(linkVal);
+          section.appendChild(linkRow);
         }
         break;
 

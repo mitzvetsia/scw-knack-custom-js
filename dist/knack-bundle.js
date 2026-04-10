@@ -8703,7 +8703,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
 
     // ── Make webhook for all review actions ────────────────────
-    actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
+    actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -8723,13 +8723,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // Values displayed in bid cells
       labor:           'field_2401',   // CALC_sub bid extended ($)
+      rate:            'field_2400',   // INPUT_sub bid rate (unit price)
+      qty:             'field_2399',   // INPUT_bid quantity
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
       bidConnDevice:   'field_2380',   // Connected Devices (bid side)
       bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
 
+      // Payload-only fields (not displayed in grid)
+      field2627:       'field_2627',
+      dropLength:      'field_2367',
+      conduit:         'field_2368',
+      plenum:          'field_2371',
+      sku:             'field_2328',
+      price:           'field_2382',
+      productDesc:     'field_2629',
+      dropPrefix:      'field_2361',
+      dropNumber:      'field_2362',
+      exterior:        'field_2372',
+      limitQtyOne:     'field_2373',
+
       // SOW detail fields (shown in SOW detail column)
+      sowQty:          'field_1964',   // quantity on SOW line item
       sowFee:          'field_2151',   // install fee on SOW line item
       sowProduct:      'field_1958',   // product connection on SOW line item
       sowLaborDesc:    'field_2019',   // labor description on SOW line item
@@ -8752,6 +8768,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       product:         'field_1949',   // product connection (display label)
       productName:     'field_1958',   // stored product name
       laborDesc:       'field_2020',   // labor description
+      qty:             'field_1964',   // quantity
       fee:             'field_2151',   // sub bid total / install fee
       mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
       proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
@@ -9161,10 +9178,27 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  -webkit-box-decoration-break: clone;',
       '}',
 
+      '.scw-bid-review__cell-qty {',
+      '  font-size: 11px;',
+      '  color: #475569;',
+      '  margin-top: 1px;',
+      '}',
+
       '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',
       '  margin-top: 1px;',
+      '}',
+
+      '.scw-bid-review__field-label {',
+      '  font-weight: 600;',
+      '  color: #64748b;',
+      '}',
+
+      '.scw-bid-review__cell-notes-divider {',
+      '  border: none;',
+      '  border-top: 1px solid #e2e8f0;',
+      '  margin: 4px 0 2px;',
       '}',
 
       '.scw-bid-review__cell-notes {',
@@ -9491,6 +9525,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return isNaN(n) ? 0 : n;
   }
 
+  /** Convert Yes/No string to true/false boolean. */
+  function bool(record, key) {
+    var v = raw(record, key).toLowerCase();
+    return v === 'yes' || v === 'true';
+  }
+
   /** Return first connection ID. */
   function connectionId(record, key) {
     var v = record[key + '_raw'] || record[key];
@@ -9519,6 +9559,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (lbl) labels.push(lbl);
     }
     return labels.join(', ');
+  }
+
+  /** Return ALL connection IDs as a flat array of strings. */
+  function connectionIdsAll(record, key) {
+    var conns = connectionAll(record, key);
+    var ids = [];
+    for (var i = 0; i < conns.length; i++) {
+      if (conns[i].id) ids.push(conns[i].id);
+    }
+    return ids;
   }
 
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
@@ -9681,12 +9731,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         cellsByPackage[pkgId] = {
           id:              rec.id,
           labor:           num(rec, FK.labor),
+          rate:            num(rec, FK.rate),
+          qty:             num(rec, FK.qty),
           laborDesc:       raw(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
           bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
+          bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
           bidMapConn:      raw(rec, FK.bidMapConn),
+          // Payload-only fields
+          field2627:       connectionId(rec, FK.field2627),
+          dropLength:      raw(rec, FK.dropLength),
+          conduit:         bool(rec, FK.conduit),
+          plenum:          bool(rec, FK.plenum),
+          sku:             raw(rec, FK.sku),
+          price:           num(rec, FK.price),
+          productDesc:     raw(rec, FK.productDesc),
+          dropPrefix:      connectionId(rec, FK.dropPrefix),
+          dropNumber:      raw(rec, FK.dropNumber),
+          exterior:        bool(rec, FK.exterior),
+          limitQtyOne:     bool(rec, FK.limitQtyOne),
+          mapConnections:  bool(rec, FK.bidMapConn),
+          proposalBucketId: connectionId(rec, FK.proposalBucket),
+          mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
       }
     }
@@ -9702,11 +9770,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
+      sowQty:          num(meta, FK.sowQty),
       sowFee:          num(meta, FK.sowFee),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
+      sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
     };
@@ -9735,7 +9805,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     for (var j = 0; j < rows.length; j++) {
       var r   = rows[j];
-      var mdf = r.mdfIdf || 'Ungrouped';
+      var mdf = r.mdfIdf || 'Unassigned';
 
       if (!mdfMap[mdf]) {
         mdfMap[mdf] = [];
@@ -9743,6 +9813,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
       mdfMap[mdf].push(r);
     }
+
+    // Sort alphabetically, with 'Unassigned' always last
+    mdfOrder.sort(function (a, b) {
+      if (a === 'Unassigned') return 1;
+      if (b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
 
     var groups = [];
     for (var gi = 0; gi < mdfOrder.length; gi++) {
@@ -9905,11 +9982,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
+          sowQty:          num(rec, SFK.qty),
           sowFee:          num(rec, SFK.fee),
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
+          sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
           // No bid data at all
           cellsByPackage:  {},
@@ -10243,6 +10322,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return false;
   }
 
+  // ── qty visibility helper ─────────────────────────────────────
+
+  /** Show Qty when EITHER SOW qty or any bid cell qty is > 1. */
+  function showQty(row) {
+    if (row.sowQty > 1) return true;
+    var pkgs = Object.keys(row.cellsByPackage || {});
+    for (var i = 0; i < pkgs.length; i++) {
+      if (row.cellsByPackage[pkgs[i]].qty > 1) return true;
+    }
+    return false;
+  }
+
   function buildCablingChip(val) {
     if (isYes(val)) {
       return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
@@ -10256,7 +10347,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   /** diff class helper — appends --field-diff modifier when flagged */
   var DIFF_CLS = 'scw-bid-review__field-diff';
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible, diffs) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -10271,8 +10362,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(prodEl);
     }
 
+    if (qtyVisible && row.sowQty) {
+      var qtyEl = el('div', 'scw-bid-review__cell-qty');
+      qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+      qtyEl.appendChild(document.createTextNode(row.sowQty));
+      td.appendChild(qtyEl);
+    }
+
     if (row.sowLaborDesc) {
-      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc);
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
+      ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+      ldEl.appendChild(document.createTextNode(row.sowLaborDesc));
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -10302,7 +10402,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible, diffs) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td');
 
     if (!cell) {
@@ -10317,8 +10417,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(prodEl);
     }
 
+    if (qtyVisible && cell.qty) {
+      var qtyEl = el('div', 'scw-bid-review__cell-qty');
+      qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+      qtyEl.appendChild(document.createTextNode(cell.qty));
+      td.appendChild(qtyEl);
+    }
+
     if (cell.laborDesc) {
-      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc);
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
+      ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+      ldEl.appendChild(document.createTextNode(cell.laborDesc));
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -10344,7 +10453,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     if (cell.notes) {
-      td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
+      td.appendChild(el('hr', 'scw-bid-review__cell-notes-divider'));
+      var notesEl = el('div', 'scw-bid-review__cell-notes');
+      notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
+      notesEl.appendChild(document.createTextNode(cell.notes));
+      td.appendChild(notesEl);
     }
 
     return td;
@@ -10420,23 +10533,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     tr.setAttribute('data-row-id', row.id);
 
     // Line item label cell
+    // Only show displayLabel (field_2365) for Camera / Reader buckets
+    var isCamReader = showCabling(row);
     var labelTd = el('td');
     if (row.noBid) {
       // SOW item with no bid at all
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
-      var noBidLabel = row.displayLabel || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
-      labelTd.appendChild(document.createElement('br'));
-      labelTd.appendChild(document.createTextNode(noBidLabel));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
     } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
-      labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
+      if (isCamReader && row.displayLabel) {
+        labelTd.textContent = row.displayLabel;
+      }
     } else {
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
-      var labelText = row.displayLabel || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
-      labelTd.appendChild(document.createElement('br'));
-      labelTd.appendChild(document.createTextNode(labelText));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
     }
     tr.appendChild(labelTd);
 
@@ -10444,6 +10563,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var cablingVisible = showCabling(row);
     // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
     var connDevVisible = showConnectedDevices(row);
+    // Qty: shown when EITHER SOW or any bid cell has qty > 1
+    var qtyVisible = showQty(row);
 
     // Per-package mismatch breakdown
     var diffsByPkg = {};
@@ -10467,7 +10588,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     // SOW detail cell — highlight cell + individual differing fields
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, sowDiffs.any ? sowDiffs : null);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null);
     if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -10477,7 +10598,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     for (var i = 0; i < packages.length; i++) {
       var pid = packages[i].id;
       var d   = diffsByPkg[pid];
-      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, d);
+      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d);
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
@@ -10666,10 +10787,84 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return section;
   }
 
+  // ── accordion state save / restore ──────────────────────────
+
+  /**
+   * Snapshot which SOW sections and MDF/IDF groups are expanded
+   * so we can restore them after a re-render.
+   */
+  function snapshotAccordionState(mount) {
+    var snap = { sow: {}, group: {} };
+    if (!mount) return snap;
+
+    // SOW-level sections
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id');
+      if (sowId) {
+        snap.sow[sowId] = !sections[i].classList.contains('scw-bid-review__sow-section--collapsed');
+      }
+    }
+
+    // MDF/IDF group headers (inside each SOW section)
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) {
+      var section = headers[h].closest('.scw-bid-review__sow-section');
+      var sowKey = section ? section.getAttribute('data-sow-id') : '__root__';
+      var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
+      if (label) {
+        snap.group[sowKey + '::' + label] = headers[h].getAttribute('aria-expanded') === 'true';
+      }
+    }
+
+    return snap;
+  }
+
+  function restoreAccordionState(mount, snap) {
+    if (!mount || !snap) return;
+
+    // Restore SOW sections
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id');
+      if (sowId && snap.sow[sowId] === true) {
+        // Was open — remove collapsed class and update aria
+        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
+        var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
+        if (hdr) hdr.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    // Restore MDF/IDF group headers
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) {
+      var section = headers[h].closest('.scw-bid-review__sow-section');
+      var sowKey = section ? section.getAttribute('data-sow-id') : '__root__';
+      var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
+      var key = sowKey + '::' + label;
+
+      if (label && snap.group[key] === false) {
+        // Was collapsed — collapse it
+        headers[h].setAttribute('aria-expanded', 'false');
+        headers[h].classList.add('scw-bid-review__group-header--collapsed');
+        var sibling = headers[h].nextElementSibling;
+        while (sibling) {
+          if (sibling.classList.contains('scw-bid-review__group-header')) break;
+          sibling.style.display = 'none';
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    }
+  }
+
   // ── public: renderMatrix ────────────────────────────────────
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
+
+    // Preserve accordion state across re-renders
+    var snap = snapshotAccordionState(mount);
+
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';
 
@@ -10682,6 +10877,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     for (var i = 0; i < state.sowGrids.length; i++) {
       mount.appendChild(buildSowSection(state.sowGrids[i]));
     }
+
+    restoreAccordionState(mount, snap);
 
     return mount;
   };
@@ -10765,6 +10962,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (payload.packageId)   body.packageId   = payload.packageId;
     if (payload.sowId)       body.sowId       = payload.sowId;
     if (payload.rowIds)      body.rowIds      = payload.rowIds;
+    if (payload.updates)     body.updates     = payload.updates;
+    if (payload.creates)     body.creates     = payload.creates;
+    if (payload.removals)    body.removals    = payload.removals;
 
     if (CFG.debug) {
       console.log('[BidReview] Submitting action:', body);
@@ -10789,6 +10989,102 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 
     return deferred.promise();
+  };
+
+  // ── Copy to SOW payload builder ──────────────────────────────
+
+  /**
+   * Walk a SOW grid's rows for a given bid package and categorize into:
+   *   updates  — matched SOW item + bid cell → copy bid values to SOW
+   *   creates  — bid cell with no SOW match  → new SOW item needed
+   *   removals — SOW item with no bid cell   → remove from SOW
+   *
+   * @param {string} pkgId   — bid package ID to sync
+   * @param {object} sowGrid — one entry from state.sowGrids
+   * @returns {object} payload ready for submitAction
+   */
+  ns.buildCopyToSowPayload = function buildCopyToSowPayload(pkgId, sowGrid) {
+    var updates  = [];
+    var creates  = [];
+    var removals = [];
+    var rows     = sowGrid.rows;
+
+    for (var i = 0; i < rows.length; i++) {
+      var row  = rows[i];
+      var cell = row.cellsByPackage[pkgId] || null;
+
+      if (row.sowItem && cell) {
+        // Matched: update SOW item with bid values
+        updates.push({
+          sowItemId:    row.sowItem,
+          bidRecordId:  cell.id,
+          qty:          cell.qty,
+          rate:         cell.rate,
+          labor:        cell.labor,
+          laborDesc:    cell.laborDesc,
+          productName:  cell.productName,
+          existCabling: /^yes$/i.test(cell.bidExistCabling),
+          connDevice:   cell.bidConnDeviceIds,
+          mapConn:      cell.mapConnections,
+          notes:        cell.notes,
+          product:        cell.field2627,
+          sku:            cell.sku,
+          price:          cell.price,
+          productDesc:    cell.productDesc,
+          dropLength:     cell.dropLength,
+          conduit:        cell.conduit,
+          plenum:         cell.plenum,
+          dropPrefix:     cell.dropPrefix,
+          dropNumber:     cell.dropNumber,
+          exterior:       cell.exterior,
+          limitQtyOne:      cell.limitQtyOne,
+          proposalBucket:   cell.proposalBucketId,
+          mdfIdf:           cell.mdfIdfId,
+        });
+      } else if (!row.sowItem && cell) {
+        // NEW: create SOW item from bid data
+        creates.push({
+          bidRecordId:      cell.id,
+          qty:              cell.qty,
+          rate:             cell.rate,
+          labor:            cell.labor,
+          laborDesc:        cell.laborDesc,
+          productName:      cell.productName,
+          existCabling:     /^yes$/i.test(cell.bidExistCabling),
+          connDevice:       cell.bidConnDeviceIds,
+          mapConn:          cell.mapConnections,
+          notes:            cell.notes,
+          product:          cell.field2627,
+          sku:              cell.sku,
+          price:            cell.price,
+          productDesc:      cell.productDesc,
+          dropLength:       cell.dropLength,
+          conduit:          cell.conduit,
+          plenum:           cell.plenum,
+          dropPrefix:       cell.dropPrefix,
+          dropNumber:       cell.dropNumber,
+          exterior:         cell.exterior,
+          limitQtyOne:      cell.limitQtyOne,
+          proposalBucket:   cell.proposalBucketId,
+          mdfIdf:           cell.mdfIdfId,
+          displayLabel:     row.displayLabel,
+        });
+      } else if (row.sowItem && !cell) {
+        // Removal: SOW item not covered by this bid package
+        removals.push({
+          sowItemId: row.sowItem,
+        });
+      }
+    }
+
+    return {
+      actionType: 'package_copy_to_sow',
+      packageId:  pkgId,
+      sowId:      sowGrid.sowId,
+      updates:    updates,
+      creates:    creates,
+      removals:   removals,
+    };
   };
 
   /**
@@ -10854,6 +11150,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
   }
 
+  /** Silent refresh — re-fetches data and re-renders without the loading spinner. */
+  var _silentRefreshRunning = false;
+
+  function refreshSilently() {
+    if (_silentRefreshRunning) return;
+    _silentRefreshRunning = true;
+
+    ns.loadRawData().then(function (raw) {
+      _state = ns.buildState(raw.records, raw.sowItems || []);
+      var mount = ns.renderMatrix(_state);
+      attachClickHandler(mount);
+    }).fail(function (err) {
+      if (CFG.debug) console.warn('[BidReview] Silent refresh failed:', err);
+    }).always(function () {
+      _silentRefreshRunning = false;
+    });
+  }
+
   // ── find a SOW grid from the current state ──────────────────
 
   function findSowGrid(sowId) {
@@ -10889,6 +11203,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── package-level action ────────────────────────────────────
 
+  function findPackageName(grid, pkgId) {
+    for (var i = 0; i < grid.packages.length; i++) {
+      if (grid.packages[i].id === pkgId) return grid.packages[i].name;
+    }
+    return pkgId;
+  }
+
   function handlePackageAction(button, actionType) {
     if (!_state) return;
 
@@ -10901,6 +11222,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
+    // Copy to SOW uses the structured payload builder
+    if (actionType === 'package_copy_to_sow') {
+      handleCopyToSow(button, pkgId, grid);
+      return;
+    }
+
     var rowIds = ns.collectEligible(pkgId, actionType, grid);
 
     if (!rowIds.length) {
@@ -10908,14 +11235,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
-    // Find package name for confirmation
-    var pkgName = pkgId;
-    for (var i = 0; i < grid.packages.length; i++) {
-      if (grid.packages[i].id === pkgId) {
-        pkgName = grid.packages[i].name;
-        break;
-      }
-    }
+    var pkgName = findPackageName(grid, pkgId);
 
     var verb = actionType === 'package_adopt_all'      ? 'Adopt'
              : actionType === 'package_create_missing'  ? 'Create'
@@ -10937,6 +11257,152 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }).always(function () {
       setBusy(button, false);
     });
+  }
+
+  // ── Copy to SOW — processing toast + poll refresh ────────────
+
+  var COPY_TOAST_ID  = 'scw-bid-review-copy-toast';
+  var COPY_CSS_ID    = 'scw-bid-review-copy-css';
+  var COPY_POLL_MS   = 5000;     // poll every 5s
+  var COPY_TIMEOUT_MS = 120000;  // stop after 2 minutes
+  var _copyPollTimer = null;
+
+  function injectCopyToastStyle() {
+    if (document.getElementById(COPY_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = COPY_CSS_ID;
+    s.textContent = [
+      '#' + COPY_TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 12px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + COPY_TOAST_ID + ' .scw-copy-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwCopySpin .8s linear infinite; flex-shrink: 0;',
+      '}',
+      '#' + COPY_TOAST_ID + ' .scw-copy-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 18px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700; flex-shrink: 0;',
+      '}',
+      '#' + COPY_TOAST_ID + ' .scw-copy-close:hover { color: #fff; }',
+      '@keyframes scwCopySpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showCopyToast(message) {
+    injectCopyToastStyle();
+    hideCopyToast(true); // remove any existing toast instantly
+
+    var toast = document.createElement('div');
+    toast.id = COPY_TOAST_ID;
+
+    var spinner = document.createElement('span');
+    spinner.className = 'scw-copy-spinner';
+    toast.appendChild(spinner);
+
+    toast.appendChild(document.createTextNode(message));
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-copy-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      stopCopyPoll();
+      hideCopyToast();
+    });
+    toast.appendChild(closeBtn);
+
+    document.body.appendChild(toast);
+  }
+
+  function hideCopyToast(instant) {
+    var toast = document.getElementById(COPY_TOAST_ID);
+    if (!toast) return;
+    if (instant) { toast.remove(); return; }
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function startCopyPoll() {
+    stopCopyPoll();
+    var elapsed = 0;
+
+    _copyPollTimer = setInterval(function () {
+      elapsed += COPY_POLL_MS;
+      refreshSilently();
+
+      if (elapsed >= COPY_TIMEOUT_MS) {
+        stopCopyPoll();
+        hideCopyToast();
+        ns.renderToast('Sync may still be processing \u2014 refresh to check', 'info');
+      }
+    }, COPY_POLL_MS);
+  }
+
+  function stopCopyPoll() {
+    if (_copyPollTimer) {
+      clearInterval(_copyPollTimer);
+      _copyPollTimer = null;
+    }
+  }
+
+  function handleCopyToSow(button, pkgId, grid) {
+    var payload = ns.buildCopyToSowPayload(pkgId, grid);
+
+    var total = payload.updates.length + payload.creates.length + payload.removals.length;
+    if (total === 0) {
+      ns.renderToast('Nothing to sync \u2014 SOW already matches this bid', 'info');
+      return;
+    }
+
+    var pkgName = findPackageName(grid, pkgId);
+
+    var summary = [];
+    if (payload.updates.length)  summary.push(payload.updates.length  + ' update(s)');
+    if (payload.creates.length)  summary.push(payload.creates.length  + ' new item(s)');
+    if (payload.removals.length) summary.push(payload.removals.length + ' removal(s)');
+
+    var confirmed = window.confirm(
+      'Copy ' + pkgName + ' to ' + grid.sowName + '?\n\n' + summary.join(', ')
+    );
+    if (!confirmed) return;
+
+    // Show processing toast and start polling
+    showCopyToast('Syncing ' + pkgName + ' \u2192 ' + grid.sowName + ': ' + summary.join(', ') + '\u2026');
+    startCopyPoll();
+
+    setBusy(button, true);
+
+    ns.submitAction(payload)
+      .done(function () {
+        // Webhook responded — schedule final refreshes then stop
+        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
+        stopCopyPoll();
+        // Two final refreshes to catch any stragglers
+        setTimeout(function () { refreshSilently(); }, 2000);
+        setTimeout(function () {
+          refreshSilently();
+          hideCopyToast();
+          ns.renderToast('SOW updated successfully', 'success');
+        }, 5000);
+      })
+      .fail(function (xhr) {
+        // Timeout or error — keep polling; Make may still be processing
+        if (CFG.debug) {
+          console.log('[BidReview] Webhook timeout/error (status ' +
+            (xhr && xhr.status) + ') — continuing to poll');
+        }
+      })
+      .always(function () {
+        setBusy(button, false);
+      });
   }
 
   // ── row-level action ────────────────────────────────────────
@@ -15464,10 +15930,19 @@ $(".kn-navigation-bar").hide();
       '  border-top-color: #fff; border-radius: 50%;',
       '  animation: scwDtoSpin .8s linear infinite;',
       '}',
+      '#' + TOAST_ID + ' .scw-dto-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 16px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700;',
+      '}',
+      '#' + TOAST_ID + ' .scw-dto-close:hover { color: #fff; }',
       '@keyframes scwDtoSpin { to { transform: rotate(360deg); } }'
     ].join('\n');
     document.head.appendChild(s);
   }
+
+  // Active poll timer — stored so the close button can cancel it
+  var _dtoPollTimer = null;
 
   function showDtoToast() {
     injectToastStyle();
@@ -15475,6 +15950,17 @@ $(".kn-navigation-bar").hide();
     var toast = document.createElement('div');
     toast.id = TOAST_ID;
     toast.innerHTML = '<span class="scw-dto-spinner"></span> Adding records \u2014 grids will refresh automatically\u2026';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-dto-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      if (_dtoPollTimer) { clearInterval(_dtoPollTimer); _dtoPollTimer = null; }
+      hideDtoToast();
+    });
+    toast.appendChild(closeBtn);
+
     document.body.appendChild(toast);
   }
 
@@ -15511,7 +15997,8 @@ $(".kn-navigation-bar").hide();
     });
 
     var elapsed = 0;
-    var timer = setInterval(function () {
+    if (_dtoPollTimer) clearInterval(_dtoPollTimer);
+    _dtoPollTimer = setInterval(function () {
       elapsed += DTO_POLL_MS;
 
       DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
@@ -15534,13 +16021,15 @@ $(".kn-navigation-bar").hide();
           DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
           hideDtoToast();
         }, DTO_POLL_MS * 2);
-        clearInterval(timer);
+        clearInterval(_dtoPollTimer);
+        _dtoPollTimer = null;
         return;
       }
 
       if (elapsed >= DTO_TIMEOUT_MS) {
         console.log('[scw-refresh] DTO poll timeout');
-        clearInterval(timer);
+        clearInterval(_dtoPollTimer);
+        _dtoPollTimer = null;
         hideDtoToast();
       }
     }, DTO_POLL_MS);
@@ -19282,7 +19771,7 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
           extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -19412,13 +19901,16 @@ $(".kn-navigation-bar").hide();
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
+                              linkField: 'field_2360',
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-          right: ['connectedDevice', 'dropLength', 'scwNotes']
+          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid']
         }
       },
       {
@@ -19444,13 +19936,16 @@ $(".kn-navigation-bar").hide();
 
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
+                              linkField: 'field_2360',
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes']
+          right: ['scwNotes', 'selectedSubBid']
         },
         conditionalHide: [
           {
@@ -23273,6 +23768,128 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         } else {
           var crFallback2 = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty });
           if (crFallback2) section.appendChild(crFallback2);
+        }
+        break;
+
+      case 'link':
+        // Render a connection field as a clickable link
+        // desc.linkField = field key for the secondary record ID (from the same row)
+        // desc.linkPattern = URL template with {linkField} and {recordId} placeholders
+        if (td && !isCellEmpty(td)) {
+          // Extract connection record ID from the cell (Knack wraps in <a> or <span>)
+          var linkA = td.querySelector('a[href*="knack"]') || td.querySelector('a');
+          var connRecordId = '';
+          if (linkA && linkA.href) {
+            var idMatch = linkA.href.match(/([0-9a-f]{24})/i);
+            if (idMatch) connRecordId = idMatch[1];
+          }
+          if (!connRecordId) {
+            // Fallback: try data attribute or raw model data
+            var trRecId = getRecordId(tr);
+            if (trRecId && typeof Knack !== 'undefined' && Knack.models) {
+              var modelKeys = Object.keys(Knack.models);
+              for (var mk = 0; mk < modelKeys.length; mk++) {
+                var mdl = Knack.models[modelKeys[mk]];
+                if (!mdl || !mdl.data) continue;
+                var recs = Array.isArray(mdl.data) ? mdl.data : (mdl.data.models || []);
+                for (var ri = 0; ri < recs.length; ri++) {
+                  var rec = recs[ri].attributes || recs[ri];
+                  if (rec.id === trRecId) {
+                    var rawConn = rec[desc.key + '_raw'] || rec[desc.key];
+                    if (rawConn) {
+                      if (Array.isArray(rawConn) && rawConn.length) connRecordId = rawConn[0].id || '';
+                      else if (typeof rawConn === 'object' && rawConn.id) connRecordId = rawConn.id;
+                    }
+                    break;
+                  }
+                }
+                if (connRecordId) break;
+              }
+            }
+          }
+
+          // Get the secondary field's record ID (e.g. survey request record ID)
+          var linkFieldVal = '';
+          if (desc.linkField) {
+            // Primary: Knack model _raw data (always gives the connection record ID)
+            var trRecId2 = trRecId || getRecordId(tr);
+            if (trRecId2 && typeof Knack !== 'undefined' && Knack.models) {
+              var mk2 = Object.keys(Knack.models);
+              for (var mi = 0; mi < mk2.length; mi++) {
+                var mdl2 = Knack.models[mk2[mi]];
+                if (!mdl2 || !mdl2.data) continue;
+                var recs2 = Array.isArray(mdl2.data) ? mdl2.data : (mdl2.data.models || []);
+                for (var ri2 = 0; ri2 < recs2.length; ri2++) {
+                  var rec2 = recs2[ri2].attributes || recs2[ri2];
+                  if (rec2.id === trRecId2) {
+                    var rawLf = rec2[desc.linkField + '_raw'] || rec2[desc.linkField];
+                    if (rawLf) {
+                      if (Array.isArray(rawLf) && rawLf.length) linkFieldVal = rawLf[0].id || '';
+                      else if (typeof rawLf === 'object' && rawLf.id) linkFieldVal = rawLf.id;
+                    }
+                    break;
+                  }
+                }
+                if (linkFieldVal) break;
+              }
+            }
+            // Fallback: extract record ID from DOM cell
+            if (!linkFieldVal) {
+              var linkTd = findCell(tr, desc.linkField);
+              if (linkTd) {
+                // Try <a> href first
+                var lfA = linkTd.querySelector('a');
+                if (lfA && lfA.href) {
+                  var lfMatch = lfA.href.match(/([0-9a-f]{24})/i);
+                  if (lfMatch) linkFieldVal = lfMatch[1];
+                }
+                // Try <span data-kn="connection-value"> — Knack puts the
+                // record ID in the class or id attribute of these spans
+                if (!linkFieldVal) {
+                  // Knack puts the record ID in the class or id attribute.
+                  // For through-connections there are nested spans — the
+                  // innermost one holds the actual target record ID, so we
+                  // iterate all and keep the last match.
+                  var connSpans = linkTd.querySelectorAll('span[data-kn="connection-value"]');
+                  for (var cs = 0; cs < connSpans.length; cs++) {
+                    var csClass = (connSpans[cs].className || '').trim();
+                    var csId    = (connSpans[cs].id || '').trim();
+                    if (/^[0-9a-f]{24}$/i.test(csClass)) linkFieldVal = csClass;
+                    else if (/^[0-9a-f]{24}$/i.test(csId)) linkFieldVal = csId;
+                  }
+                }
+              }
+            }
+          }
+
+          var displayText = (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
+          var linkRow = document.createElement('div');
+          linkRow.className = P + '-field';
+
+          var linkLabel = document.createElement('div');
+          linkLabel.className = P + '-field-label';
+          linkLabel.textContent = label;
+          linkRow.appendChild(linkLabel);
+
+          var linkVal = document.createElement('div');
+          linkVal.className = P + '-field-value';
+
+          if (connRecordId && desc.linkPattern) {
+            var href = desc.linkPattern
+              .replace('{recordId}', connRecordId)
+              .replace('{linkField}', linkFieldVal);
+            var anchor = document.createElement('a');
+            anchor.href = href;
+            anchor.textContent = displayText || 'View';
+            anchor.style.cssText = 'color:#2563eb;text-decoration:underline;cursor:pointer;';
+            anchor.target = '_blank';
+            linkVal.appendChild(anchor);
+          } else {
+            linkVal.textContent = displayText || '\u2014';
+          }
+
+          linkRow.appendChild(linkVal);
+          section.appendChild(linkRow);
         }
         break;
 

@@ -163,6 +163,18 @@
     return false;
   }
 
+  // ── qty visibility helper ─────────────────────────────────────
+
+  /** Show Qty when EITHER SOW qty or any bid cell qty is > 1. */
+  function showQty(row) {
+    if (row.sowQty > 1) return true;
+    var pkgs = Object.keys(row.cellsByPackage || {});
+    for (var i = 0; i < pkgs.length; i++) {
+      if (row.cellsByPackage[pkgs[i]].qty > 1) return true;
+    }
+    return false;
+  }
+
   function buildCablingChip(val) {
     if (isYes(val)) {
       return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
@@ -176,7 +188,7 @@
   /** diff class helper — appends --field-diff modifier when flagged */
   var DIFF_CLS = 'scw-bid-review__field-diff';
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible, diffs) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
@@ -191,8 +203,17 @@
       td.appendChild(prodEl);
     }
 
+    if (qtyVisible && row.sowQty) {
+      var qtyEl = el('div', 'scw-bid-review__cell-qty');
+      qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+      qtyEl.appendChild(document.createTextNode(row.sowQty));
+      td.appendChild(qtyEl);
+    }
+
     if (row.sowLaborDesc) {
-      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', row.sowLaborDesc);
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
+      ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+      ldEl.appendChild(document.createTextNode(row.sowLaborDesc));
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -222,7 +243,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible, diffs) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td');
 
     if (!cell) {
@@ -237,8 +258,17 @@
       td.appendChild(prodEl);
     }
 
+    if (qtyVisible && cell.qty) {
+      var qtyEl = el('div', 'scw-bid-review__cell-qty');
+      qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+      qtyEl.appendChild(document.createTextNode(cell.qty));
+      td.appendChild(qtyEl);
+    }
+
     if (cell.laborDesc) {
-      var ldEl = el('div', 'scw-bid-review__cell-labor-desc', cell.laborDesc);
+      var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
+      ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+      ldEl.appendChild(document.createTextNode(cell.laborDesc));
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -264,7 +294,11 @@
     }
 
     if (cell.notes) {
-      td.appendChild(el('div', 'scw-bid-review__cell-notes', cell.notes));
+      td.appendChild(el('hr', 'scw-bid-review__cell-notes-divider'));
+      var notesEl = el('div', 'scw-bid-review__cell-notes');
+      notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
+      notesEl.appendChild(document.createTextNode(cell.notes));
+      td.appendChild(notesEl);
     }
 
     return td;
@@ -340,23 +374,29 @@
     tr.setAttribute('data-row-id', row.id);
 
     // Line item label cell
+    // Only show displayLabel (field_2365) for Camera / Reader buckets
+    var isCamReader = showCabling(row);
     var labelTd = el('td');
     if (row.noBid) {
       // SOW item with no bid at all
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
-      var noBidLabel = row.displayLabel || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
-      labelTd.appendChild(document.createElement('br'));
-      labelTd.appendChild(document.createTextNode(noBidLabel));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
     } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
-      labelTd.textContent = row.displayLabel || row.productName || 'Line Item';
+      if (isCamReader && row.displayLabel) {
+        labelTd.textContent = row.displayLabel;
+      }
     } else {
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
-      var labelText = row.displayLabel || row.productName || 'Item';
       labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
-      labelTd.appendChild(document.createElement('br'));
-      labelTd.appendChild(document.createTextNode(labelText));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
     }
     tr.appendChild(labelTd);
 
@@ -364,6 +404,8 @@
     var cablingVisible = showCabling(row);
     // Connected Devices: shown when bid has field_2374=Yes or SOW has field_2231=Yes
     var connDevVisible = showConnectedDevices(row);
+    // Qty: shown when EITHER SOW or any bid cell has qty > 1
+    var qtyVisible = showQty(row);
 
     // Per-package mismatch breakdown
     var diffsByPkg = {};
@@ -387,7 +429,7 @@
     }
 
     // SOW detail cell — highlight cell + individual differing fields
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, sowDiffs.any ? sowDiffs : null);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null);
     if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -397,7 +439,7 @@
     for (var i = 0; i < packages.length; i++) {
       var pid = packages[i].id;
       var d   = diffsByPkg[pid];
-      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, d);
+      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d);
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
@@ -586,10 +628,84 @@
     return section;
   }
 
+  // ── accordion state save / restore ──────────────────────────
+
+  /**
+   * Snapshot which SOW sections and MDF/IDF groups are expanded
+   * so we can restore them after a re-render.
+   */
+  function snapshotAccordionState(mount) {
+    var snap = { sow: {}, group: {} };
+    if (!mount) return snap;
+
+    // SOW-level sections
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id');
+      if (sowId) {
+        snap.sow[sowId] = !sections[i].classList.contains('scw-bid-review__sow-section--collapsed');
+      }
+    }
+
+    // MDF/IDF group headers (inside each SOW section)
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) {
+      var section = headers[h].closest('.scw-bid-review__sow-section');
+      var sowKey = section ? section.getAttribute('data-sow-id') : '__root__';
+      var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
+      if (label) {
+        snap.group[sowKey + '::' + label] = headers[h].getAttribute('aria-expanded') === 'true';
+      }
+    }
+
+    return snap;
+  }
+
+  function restoreAccordionState(mount, snap) {
+    if (!mount || !snap) return;
+
+    // Restore SOW sections
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id');
+      if (sowId && snap.sow[sowId] === true) {
+        // Was open — remove collapsed class and update aria
+        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
+        var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
+        if (hdr) hdr.setAttribute('aria-expanded', 'true');
+      }
+    }
+
+    // Restore MDF/IDF group headers
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) {
+      var section = headers[h].closest('.scw-bid-review__sow-section');
+      var sowKey = section ? section.getAttribute('data-sow-id') : '__root__';
+      var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
+      var key = sowKey + '::' + label;
+
+      if (label && snap.group[key] === false) {
+        // Was collapsed — collapse it
+        headers[h].setAttribute('aria-expanded', 'false');
+        headers[h].classList.add('scw-bid-review__group-header--collapsed');
+        var sibling = headers[h].nextElementSibling;
+        while (sibling) {
+          if (sibling.classList.contains('scw-bid-review__group-header')) break;
+          sibling.style.display = 'none';
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    }
+  }
+
   // ── public: renderMatrix ────────────────────────────────────
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
+
+    // Preserve accordion state across re-renders
+    var snap = snapshotAccordionState(mount);
+
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';
 
@@ -602,6 +718,8 @@
     for (var i = 0; i < state.sowGrids.length; i++) {
       mount.appendChild(buildSowSection(state.sowGrids[i]));
     }
+
+    restoreAccordionState(mount, snap);
 
     return mount;
   };

@@ -36,6 +36,12 @@
     return isNaN(n) ? 0 : n;
   }
 
+  /** Convert Yes/No string to true/false boolean. */
+  function bool(record, key) {
+    var v = raw(record, key).toLowerCase();
+    return v === 'yes' || v === 'true';
+  }
+
   /** Return first connection ID. */
   function connectionId(record, key) {
     var v = record[key + '_raw'] || record[key];
@@ -64,6 +70,16 @@
       if (lbl) labels.push(lbl);
     }
     return labels.join(', ');
+  }
+
+  /** Return ALL connection IDs as a flat array of strings. */
+  function connectionIdsAll(record, key) {
+    var conns = connectionAll(record, key);
+    var ids = [];
+    for (var i = 0; i < conns.length; i++) {
+      if (conns[i].id) ids.push(conns[i].id);
+    }
+    return ids;
   }
 
   /** Return ALL connections as [{id, identifier}]. Handles 1 or many. */
@@ -226,12 +242,30 @@
         cellsByPackage[pkgId] = {
           id:              rec.id,
           labor:           num(rec, FK.labor),
+          rate:            num(rec, FK.rate),
+          qty:             num(rec, FK.qty),
           laborDesc:       raw(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
           bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
+          bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
           bidMapConn:      raw(rec, FK.bidMapConn),
+          // Payload-only fields
+          field2627:       connectionId(rec, FK.field2627),
+          dropLength:      raw(rec, FK.dropLength),
+          conduit:         bool(rec, FK.conduit),
+          plenum:          bool(rec, FK.plenum),
+          sku:             raw(rec, FK.sku),
+          price:           num(rec, FK.price),
+          productDesc:     raw(rec, FK.productDesc),
+          dropPrefix:      connectionId(rec, FK.dropPrefix),
+          dropNumber:      raw(rec, FK.dropNumber),
+          exterior:        bool(rec, FK.exterior),
+          limitQtyOne:     bool(rec, FK.limitQtyOne),
+          mapConnections:  bool(rec, FK.bidMapConn),
+          proposalBucketId: connectionId(rec, FK.proposalBucket),
+          mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
       }
     }
@@ -247,11 +281,13 @@
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
+      sowQty:          num(meta, FK.sowQty),
       sowFee:          num(meta, FK.sowFee),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
+      sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
     };
@@ -280,7 +316,7 @@
 
     for (var j = 0; j < rows.length; j++) {
       var r   = rows[j];
-      var mdf = r.mdfIdf || 'Ungrouped';
+      var mdf = r.mdfIdf || 'Unassigned';
 
       if (!mdfMap[mdf]) {
         mdfMap[mdf] = [];
@@ -288,6 +324,13 @@
       }
       mdfMap[mdf].push(r);
     }
+
+    // Sort alphabetically, with 'Unassigned' always last
+    mdfOrder.sort(function (a, b) {
+      if (a === 'Unassigned') return 1;
+      if (b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
 
     var groups = [];
     for (var gi = 0; gi < mdfOrder.length; gi++) {
@@ -450,11 +493,13 @@
           mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
+          sowQty:          num(rec, SFK.qty),
           sowFee:          num(rec, SFK.fee),
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
+          sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
           // No bid data at all
           cellsByPackage:  {},

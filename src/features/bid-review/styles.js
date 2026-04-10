@@ -386,10 +386,27 @@
       '  -webkit-box-decoration-break: clone;',
       '}',
 
+      '.scw-bid-review__cell-qty {',
+      '  font-size: 11px;',
+      '  color: #475569;',
+      '  margin-top: 1px;',
+      '}',
+
       '.scw-bid-review__cell-labor-desc {',
       '  font-size: 11px;',
       '  color: #475569;',
       '  margin-top: 1px;',
+      '}',
+
+      '.scw-bid-review__field-label {',
+      '  font-weight: 600;',
+      '  color: #64748b;',
+      '}',
+
+      '.scw-bid-review__cell-notes-divider {',
+      '  border: none;',
+      '  border-top: 1px solid #e2e8f0;',
+      '  margin: 4px 0 2px;',
       '}',
 
       '.scw-bid-review__cell-notes {',

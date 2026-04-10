@@ -17,7 +17,7 @@
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
 
     // ── Make webhook for all review actions ────────────────────
-    actionWebhook:     'https://hook.us1.make.com/PLACEHOLDER_BID_REVIEW',
+    actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -37,13 +37,29 @@
 
       // Values displayed in bid cells
       labor:           'field_2401',   // CALC_sub bid extended ($)
+      rate:            'field_2400',   // INPUT_sub bid rate (unit price)
+      qty:             'field_2399',   // INPUT_bid quantity
       notes:           'field_2412',   // INPUT_survey notes
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
       bidConnDevice:   'field_2380',   // Connected Devices (bid side)
       bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
 
+      // Payload-only fields (not displayed in grid)
+      field2627:       'field_2627',
+      dropLength:      'field_2367',
+      conduit:         'field_2368',
+      plenum:          'field_2371',
+      sku:             'field_2328',
+      price:           'field_2382',
+      productDesc:     'field_2629',
+      dropPrefix:      'field_2361',
+      dropNumber:      'field_2362',
+      exterior:        'field_2372',
+      limitQtyOne:     'field_2373',
+
       // SOW detail fields (shown in SOW detail column)
+      sowQty:          'field_1964',   // quantity on SOW line item
       sowFee:          'field_2151',   // install fee on SOW line item
       sowProduct:      'field_1958',   // product connection on SOW line item
       sowLaborDesc:    'field_2019',   // labor description on SOW line item
@@ -66,6 +82,7 @@
       product:         'field_1949',   // product connection (display label)
       productName:     'field_1958',   // stored product name
       laborDesc:       'field_2020',   // labor description
+      qty:             'field_1964',   // quantity
       fee:             'field_2151',   // sub bid total / install fee
       mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
       proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
