@@ -25,6 +25,10 @@
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
       pollViewOnReturn: 'view_3507',
+      extraFields: [
+        { field: 'field_2386', name: 'surveyRequestId' },
+        { field: 'field_2414', name: 'bidId' }
+      ],
     },
   ];
 
@@ -838,6 +842,18 @@
         if (cfg.trigger.recordIdInput) {
           var $idInput = $('#' + formViewId + ' input[name="' + cfg.trigger.recordIdInput + '"]');
           if ($idInput.length) extra.recordId = $idInput.val();
+        }
+
+        // Extract additional field values from the scene DOM
+        if (cfg.extraFields) {
+          for (var ef = 0; ef < cfg.extraFields.length; ef++) {
+            var spec = cfg.extraFields[ef];
+            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + spec.field.replace('field_', ''));
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
+            var val = el ? (el.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+            if (val) extra[spec.name] = val;
+          }
         }
 
         console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
