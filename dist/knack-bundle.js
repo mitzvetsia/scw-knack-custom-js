@@ -6890,6 +6890,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   var POLL_CSS_ID      = 'scw-pdf-poll-css';
   var POLL_OVERLAY_ID  = 'scw-pdf-poll-field-overlay';
   var _pollTimer       = null;
+  var _overlayTimer    = null;
 
   function injectPollStyles() {
     if (document.getElementById(POLL_CSS_ID)) return;
@@ -6992,6 +6993,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   function stopPolling() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    if (_overlayTimer) { clearTimeout(_overlayTimer); _overlayTimer = null; }
     if (_pollObserver) { _pollObserver.disconnect(); _pollObserver = null; }
     hideFieldOverlay();
     hidePollToast();
@@ -7033,7 +7035,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         view.model.fetch();
       }
       // Re-apply overlay after fetch triggers re-render
-      setTimeout(function () { showFieldOverlay(viewId, fieldId); }, 1000);
+      if (_overlayTimer) clearTimeout(_overlayTimer);
+      _overlayTimer = setTimeout(function () { showFieldOverlay(viewId, fieldId); }, 1000);
       if (elapsed >= POLL_TIMEOUT_MS) {
         console.log('[SCW PDF Export] Poll timeout for ' + viewId);
         stopPolling();
