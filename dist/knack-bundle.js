@@ -1072,6 +1072,19 @@ window.SCW = window.SCW || {};
       display: none !important;
     }
 
+    /* Hide view_3770 visually but keep it in the DOM */
+    #view_3770 {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+      padding: 0 !important;
+      margin: -1px !important;
+    }
+
     /* ─── Instructions & description callout ─── */
     .kn-instructions,
     .kn-description {
@@ -2988,7 +3001,8 @@ window.SCW = window.SCW || {};
 
     var countWrap = document.createElement('span');
     countWrap.className = 'scw-acc-count';
-    countWrap.style.display = 'none';
+    countWrap.textContent = '0';
+    countWrap.style.visibility = 'hidden';
     header.appendChild(countWrap);
 
     var chevronWrap = document.createElement('span');
@@ -3021,8 +3035,12 @@ window.SCW = window.SCW || {};
         if (count !== null) {
           countEl.textContent = count;
           countEl.style.display = '';
+          countEl.style.visibility = '';
         } else {
-          countEl.style.display = 'none';
+          // Reserve space so buttons stay aligned across accordions
+          countEl.textContent = '0';
+          countEl.style.display = '';
+          countEl.style.visibility = 'hidden';
         }
       }
     }
@@ -3461,6 +3479,259 @@ window.SCW = window.SCW || {};
     debug: function (on) { DEBUG = !!on; }
   };
 })();
+/*** FEATURE: Accordion Menu Button Injection ************************************
+ *
+ * Scans for kn-menu views in the view-group immediately preceding an
+ * accordion's view-group and injects their action buttons into the
+ * accordion header as solid accent-colored pill buttons.  Only the
+ * kn-menu view itself is hidden; sibling views (rich_text titles,
+ * etc.) in the same view-group are left visible.
+ *
+ * Two DOM patterns are detected:
+ *
+ *   Pattern A — menu in a preceding view-group:
+ *
+ *     <div class="view-group">
+ *       <div class="kn-view kn-rich_text">    (optional — left visible)
+ *       <div class="kn-view kn-menu">         (hidden after injection)
+ *     </div>
+ *     <div class="view-group">
+ *       <div class="scw-ktl-accordion">       (enhanced accordion)
+ *     </div>
+ *
+ *   Pattern B — menu is an immediate sibling in the same group:
+ *
+ *     <div class="view-group">
+ *       <div class="kn-view kn-menu">         (hidden after injection)
+ *       <div class="scw-ktl-accordion">       (enhanced accordion)
+ *     </div>
+ *
+ * Button clicks proxy to the original (hidden) links so all Knack
+ * event handlers are preserved.
+ *
+ * Reads : .scw-ktl-accordion, .scw-ktl-accordion__header, .kn-menu
+ * Writes: Injects .scw-acc-actions into accordion headers
+ *
+ *********************************************************************************/
+(function () {
+  'use strict';
+
+  var STYLE_ID = 'scw-acc-menu-inject-css';
+  var INJECTED = 'data-scw-menu-injected';
+  var MENU_SRC = 'data-scw-menu-src';
+  var HIDDEN_CLASS = 'scw-acc-menu-src-hidden';
+  var EVENT_NS = '.scwAccMenuInject';
+
+  // ── Plus icon for "Add" / "New" buttons ─────────────
+  var PLUS_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/>' +
+    '<line x1="5" y1="12" x2="19" y2="12"/></svg>';
+
+  // ── CSS injection ───────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+
+    var css = [
+      /* Hide the source view-group */
+      '.' + HIDDEN_CLASS + ' { display: none !important; }',
+
+      /* Action-button container inside the accordion header */
+      '.scw-acc-actions {',
+      '  flex: 0 0 auto;',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  margin: 0 10px 0 0;',
+      '}',
+
+      /* Individual action button — solid accent fill so they pop */
+      '.scw-acc-action-btn {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 4px;',
+      '  padding: 5px 12px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  line-height: 1.4;',
+      '  color: #fff;',
+      '  background: var(--scw-accent, #295f91);',
+      '  border: none;',
+      '  border-radius: 6px;',
+      '  cursor: pointer;',
+      '  white-space: nowrap;',
+      '  text-decoration: none !important;',
+      '  font-family: inherit;',
+      '  box-shadow: 0 1px 3px rgba(0,0,0,.15);',
+      '  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease;',
+      '}',
+
+      '.scw-acc-action-btn:hover {',
+      '  background: rgba(var(--scw-accent-rgb, 41,95,145), 0.85);',
+      '  box-shadow: 0 2px 6px rgba(0,0,0,.20);',
+      '  color: #fff;',
+      '  text-decoration: none !important;',
+      '  transform: translateY(-1px);',
+      '}',
+
+      '.scw-acc-action-btn:active {',
+      '  transform: translateY(0);',
+      '  box-shadow: 0 1px 2px rgba(0,0,0,.12);',
+      '}',
+
+      '.scw-acc-action-btn:focus-visible {',
+      '  outline: 2px solid var(--scw-accent, #295f91);',
+      '  outline-offset: 1px;',
+      '}',
+
+      /* SVG icon inside button */
+      '.scw-acc-action-btn svg {',
+      '  flex-shrink: 0;',
+      '  opacity: 0.85;',
+      '}',
+      '.scw-acc-action-btn:hover svg {',
+      '  opacity: 1;',
+      '}',
+    ].join('\n');
+
+    var el = document.createElement('style');
+    el.id = STYLE_ID;
+    el.textContent = css;
+    document.head.appendChild(el);
+  }
+
+  // ── Detect and inject ───────────────────────────────
+
+  function enhance() {
+    var accordions = document.querySelectorAll('.scw-ktl-accordion');
+
+    for (var i = 0; i < accordions.length; i++) {
+      var accordion = accordions[i];
+      var header = accordion.querySelector('.scw-ktl-accordion__header');
+      if (!header || header.hasAttribute(INJECTED)) continue;
+
+      // --- Strategy 1: menu is an immediate preceding sibling of the
+      //     accordion inside the same view-group / view-column.
+      //     e.g. view_3774 sits right before view_3531's accordion.
+      var menuView = null;
+      var prevSibling = accordion.previousElementSibling;
+      if (prevSibling && prevSibling.classList.contains('kn-menu')) {
+        menuView = prevSibling;
+      }
+
+      // --- Strategy 2 (original): menu lives in the preceding view-group
+      var prevGroup = null;
+      if (!menuView) {
+        var viewGroup = accordion.parentElement;
+        while (viewGroup && !viewGroup.classList.contains('view-group')) {
+          viewGroup = viewGroup.parentElement;
+        }
+        if (!viewGroup) continue;
+
+        prevGroup = viewGroup.previousElementSibling;
+        if (prevGroup && prevGroup.classList.contains('view-group')) {
+          menuView = prevGroup.querySelector('.kn-view.kn-menu');
+        }
+      }
+
+      if (!menuView) continue;
+
+      // Collect action links
+      var links = menuView.querySelectorAll('a');
+      var actionLinks = [];
+      for (var j = 0; j < links.length; j++) {
+        var text = (links[j].textContent || '').trim();
+        if (text) actionLinks.push({ text: text, index: j });
+      }
+      if (!actionLinks.length) continue;
+
+      // Build the button container
+      var container = document.createElement('div');
+      container.className = 'scw-acc-actions';
+      container.setAttribute(MENU_SRC, menuView.id);
+
+      for (var k = 0; k < actionLinks.length; k++) {
+        var info = actionLinks[k];
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-acc-action-btn';
+        btn.setAttribute('data-menu-view', menuView.id);
+        btn.setAttribute('data-link-index', String(info.index));
+
+        // Prefix a "+" icon for Add / New / Bulk Add buttons
+        if (/^(add|bulk add|new)\b/i.test(info.text)) {
+          var iconSpan = document.createElement('span');
+          iconSpan.innerHTML = PLUS_SVG;
+          btn.appendChild(iconSpan);
+        }
+
+        btn.appendChild(document.createTextNode(info.text));
+
+        // Proxy click to the original hidden link
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+
+          var menuId = this.getAttribute('data-menu-view');
+          var linkIdx = parseInt(this.getAttribute('data-link-index'), 10);
+          var menu = document.getElementById(menuId);
+          if (!menu) return;
+
+          var targets = menu.querySelectorAll('a');
+          if (targets[linkIdx]) targets[linkIdx].click();
+        });
+
+        container.appendChild(btn);
+      }
+
+      // Insert before chevron in the header, then move count pill
+      // to sit between the buttons and the chevron:
+      //   icon | title | [buttons] | count | chevron
+      var chevron = header.querySelector('.scw-acc-chevron');
+      var countPill = header.querySelector('.scw-acc-count');
+      if (chevron) {
+        header.insertBefore(container, chevron);
+        // Move count pill to right of buttons (before chevron)
+        if (countPill) header.insertBefore(countPill, chevron);
+      } else {
+        header.appendChild(container);
+      }
+
+      // Hide only the kn-menu view (preserve rich_text titles, etc.)
+      menuView.classList.add(HIDDEN_CLASS);
+
+      // Mark this accordion header as processed
+      header.setAttribute(INJECTED, '1');
+    }
+  }
+
+  // ── Lifecycle ───────────────────────────────────────
+
+  injectStyles();
+
+  // Run after accordion enhancement (which uses 80ms delay)
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      setTimeout(enhance, 200);
+    });
+
+  $(document)
+    .off('knack-view-render.any' + EVENT_NS)
+    .on('knack-view-render.any' + EVENT_NS, function () {
+      setTimeout(enhance, 200);
+    });
+
+  // Initial pass
+  $(document).ready(function () {
+    setTimeout(enhance, 500);
+  });
+
+})();
+/*** END FEATURE: Accordion Menu Button Injection ********************************/
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
@@ -3514,6 +3785,35 @@ window.SCW = window.SCW || {};
   $(document).on('knack-modal-render.view_1457', function (event, view, record) {
     setTimeout(function () {
       $('input#field_737').attr('value', 'Create_Project');
+    }, 1);
+  });
+})();
+
+/** Default: view_3566 auto-selects the first option for field_2342 (REL_sow line items) */
+(function defaultValue_view3566_field2342() {
+  $(document).on('knack-view-render.view_3566', function () {
+    setTimeout(function () {
+      var $select = $('#view_3566-field_2342');
+      if (!$select.length) return;
+
+      // Skip if something is already selected
+      if ($select.val() && $select.val().length) return;
+
+      // Grab the first option with a real value
+      var $first = $select.find('option').filter(function () {
+        return !!this.value;
+      }).first();
+      if (!$first.length) return;
+
+      $first.prop('selected', true);
+      $select.trigger('chosen:updated');
+      $select.trigger('liszt:updated');
+
+      // Sync the hidden input Knack uses for form submission
+      var $hidden = $('#kn-input-field_2342 input.connection[name="field_2342"]');
+      $hidden.val($first.val());
+
+      $select.trigger('change');
     }, 1);
   });
 })();
@@ -6017,10 +6317,19 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     {
       sceneId: 'scene_1149',
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true },
+      skipViews: { view_3679: true, view_3770: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
+      pollViewOnReturn: 'view_3507',
+      pollField: 'field_2626',
+      extraFields: [
+        { field: 'field_2386', name: 'surveyRequestId' },
+        { field: 'field_2638', name: 'bidId' },
+        { field: 'field_666',  name: 'clientSite' },
+        { field: 'field_2410', name: 'projectAddress' },
+        { field: 'field_2633', name: 'field_2633' }
+      ],
     },
   ];
 
@@ -6836,8 +7145,34 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           if ($idInput.length) extra.recordId = $idInput.val();
         }
 
+        // Extract additional field values from the scene DOM
+        if (cfg.extraFields) {
+          var _fNum;
+          for (var ef = 0; ef < cfg.extraFields.length; ef++) {
+            var spec = cfg.extraFields[ef];
+            _fNum = spec.field.replace('field_', '');
+            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
+            // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
+            if (!el) el = document.querySelector('.kn-detail.' + spec.field + ', .kn-label-none.' + spec.field);
+            // Read value only — cascade through Knack detail-view DOM wrappers
+            var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
+            var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+            if (val) extra[spec.name] = val;
+          }
+        }
+
         console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
+
+        // Flag for poll-refresh on the parent page
+        if (cfg.pollViewOnReturn) {
+          try {
+            sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+            if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+          } catch (e) {}
+        }
       });
     });
 
@@ -6848,6 +7183,174 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       });
     }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // POLL-REFRESH — after form submit returns to parent page
+  // ══════════════════════════════════════════════════════════════
+
+  var POLL_INTERVAL_MS = 4000;
+  var POLL_TIMEOUT_MS  = 60000;
+  var POLL_TOAST_ID    = 'scw-pdf-poll-toast';
+  var POLL_CSS_ID      = 'scw-pdf-poll-css';
+  var POLL_NS          = '.scwPdfPoll';
+  var _pollTimer       = null;
+  var _pollActive      = false;
+  var _pollViewId      = null;
+  var _pollFieldId     = null;
+  var _pollInitial     = '';
+
+  function injectPollStyles() {
+    if (document.getElementById(POLL_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = POLL_CSS_ID;
+    s.textContent = [
+      '#' + POLL_TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 10px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwPollSpin .8s linear infinite;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 16px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-close:hover { color: #fff; }',
+      '@keyframes scwPollSpin { to { transform: rotate(360deg); } }',
+      '.scw-pdf-poll-target { position: relative !important; }',
+      '.scw-pdf-poll-target > * { opacity: .35; pointer-events: none; }',
+      '.scw-pdf-poll-target::after {',
+      '  content: "Generating bid PDF\\2026";',
+      '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
+      '  color: #555; font-size: 12px; font-weight: 500;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showPollToast() {
+    injectPollStyles();
+    if (document.getElementById(POLL_TOAST_ID)) return;
+    var toast = document.createElement('div');
+    toast.id = POLL_TOAST_ID;
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> Generating bid PDF\u2026';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-poll-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      stopPolling();
+    });
+    toast.appendChild(closeBtn);
+    document.body.appendChild(toast);
+  }
+
+  function hidePollToast() {
+    var toast = document.getElementById(POLL_TOAST_ID);
+    if (!toast) return;
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function readFieldText(viewId, fieldId) {
+    if (!fieldId) return '';
+    var td = document.querySelector('#' + viewId + ' td.' + fieldId);
+    if (!td) return '';
+    return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  }
+
+  // Apply the overlay class to the field_2626 td in the current DOM
+  function applyFieldOverlay(viewId, fieldId) {
+    if (!fieldId) return;
+    var td = document.querySelector('#' + viewId + ' td.' + fieldId);
+    if (td) td.classList.add('scw-pdf-poll-target');
+  }
+
+  function clearFieldOverlay() {
+    var targets = document.querySelectorAll('.scw-pdf-poll-target');
+    for (var j = 0; j < targets.length; j++) targets[j].classList.remove('scw-pdf-poll-target');
+  }
+
+  function stopPolling() {
+    _pollActive = false;
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    $(document).off('knack-view-render.' + _pollViewId + POLL_NS);
+    clearFieldOverlay();
+    hidePollToast();
+    _pollViewId = null;
+    _pollFieldId = null;
+    _pollInitial = '';
+  }
+
+  // Called every time the polled view re-renders (from model.fetch or anything else)
+  function onPollViewRender() {
+    if (!_pollActive) return;
+    var newValue = readFieldText(_pollViewId, _pollFieldId);
+    console.log('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
+    if (_pollFieldId && newValue !== _pollInitial) {
+      console.log('[SCW PDF Export] Field changed — stopping poll');
+      stopPolling();
+    } else {
+      // View re-rendered with same data; re-apply overlay to fresh td
+      applyFieldOverlay(_pollViewId, _pollFieldId);
+    }
+  }
+
+  function startPollRefresh(viewId, fieldId) {
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollActive = true;
+    _pollViewId = viewId;
+    _pollFieldId = fieldId;
+    _pollInitial = readFieldText(viewId, fieldId);
+
+    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    showPollToast();
+    applyFieldOverlay(viewId, fieldId);
+
+    // Listen for every re-render of this view
+    $(document).off('knack-view-render.' + viewId + POLL_NS)
+               .on('knack-view-render.' + viewId + POLL_NS, onPollViewRender);
+
+    // Interval just triggers model.fetch() to pull fresh data from server
+    var elapsed = 0;
+    _pollTimer = setInterval(function () {
+      elapsed += POLL_INTERVAL_MS;
+      if (typeof Knack === 'undefined') return;
+      var view = Knack.views && Knack.views[viewId];
+      if (view && view.model && typeof view.model.fetch === 'function') {
+        view.model.fetch();
+      }
+      if (elapsed >= POLL_TIMEOUT_MS) {
+        console.log('[SCW PDF Export] Poll timeout for ' + viewId);
+        stopPolling();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  // Check for poll flag whenever any scene renders
+  $(document).on('knack-scene-render.any.scwPdfPoll', function () {
+    var viewId, fieldId;
+    try {
+      viewId = sessionStorage.getItem('scw-pdf-poll-view');
+      fieldId = sessionStorage.getItem('scw-pdf-poll-field');
+    } catch (e) {}
+    if (!viewId) return;
+    if (!document.getElementById(viewId)) return;
+    try {
+      sessionStorage.removeItem('scw-pdf-poll-view');
+      sessionStorage.removeItem('scw-pdf-poll-field');
+    } catch (e) {}
+    setTimeout(function () { startPollRefresh(viewId, fieldId); }, 2000);
+  });
 
   // ══════════════════════════════════════════════════════════════
   // INIT — wire up all scenes
@@ -8701,6 +9204,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
+    bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -8743,6 +9247,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       dropNumber:      'field_2362',
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
+      bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -8915,7 +9420,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-weight: 700;',
       '  color: #0f172a;',
       '  margin-bottom: 4px;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
       '}',
+
+      '.scw-bid-review__pdf-link {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  color: #dc2626;',
+      '  opacity: .7;',
+      '  transition: opacity 150ms ease;',
+      '  flex-shrink: 0;',
+      '}',
+      '.scw-bid-review__pdf-link:hover { opacity: 1; }',
+      '.scw-bid-review__pdf-link svg { display: block; width: 20px; height: 20px; }',
 
       '.scw-bid-review__pkg-counts {',
       '  font-size: 11px;',
@@ -9476,13 +9995,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   ns.loadRawData = function loadRawData() {
     var bidPromise     = loadView(CFG.viewKey);
     var sowItemPromise = loadView(CFG.sowItemsViewKey);
+    var pkgPromise     = CFG.bidPackagesViewKey
+                           ? loadView(CFG.bidPackagesViewKey)
+                           : $.Deferred().resolve([]).promise();
 
-    return $.when(bidPromise, sowItemPromise).then(function (bidRecs, sowRecs) {
+    return $.when(bidPromise, sowItemPromise, pkgPromise).then(function (bidRecs, sowRecs, pkgRecs) {
       if (CFG.debug) {
         console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
-                    sowRecs.length, 'unbid SOW items');
+                    sowRecs.length, 'unbid SOW items,',
+                    pkgRecs.length, 'bid packages');
       }
-      return { records: bidRecs, sowItems: sowRecs };
+      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs };
     });
   };
 
@@ -10002,11 +10525,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── public entry point ────────────────────────────────────────
 
+  // ── extract PDF URLs from bid package records ──────────────────
+
+  function buildPdfMap(bidPackages) {
+    var map = {};
+    if (!bidPackages || !bidPackages.length) return map;
+    for (var i = 0; i < bidPackages.length; i++) {
+      var rec = bidPackages[i];
+      var id = rec.id;
+      if (!id) continue;
+      // File fields: try _raw (object with url) then fall back to HTML parsing
+      var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
+      if (!rawPdf) continue;
+      if (typeof rawPdf === 'object' && rawPdf.url) {
+        map[id] = { url: rawPdf.url, filename: rawPdf.filename || '' };
+      } else if (typeof rawPdf === 'string') {
+        // May be HTML: <a href="...">filename</a>
+        var m = rawPdf.match(/href="([^"]+)"/);
+        var fn = rawPdf.match(/>([^<]+)<\/a>/);
+        if (m) map[id] = { url: m[1], filename: fn ? fn[1] : '' };
+      }
+    }
+    return map;
+  }
+
   /**
-   * buildState(records, sowItems) → state
+   * buildState(records, sowItems, bidPackages) → state
    *
-   * @param {Array} records  — bid records from view_3680
-   * @param {Array} sowItems — unbid SOW items from view_3728
+   * @param {Array} records     — bid records from view_3680
+   * @param {Array} sowItems    — unbid SOW items from view_3728
+   * @param {Array} bidPackages — bid package records from view_3573
    * Returns:
    *   {
    *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
@@ -10014,9 +10562,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    *     isEmpty: boolean
    *   }
    */
-  ns.buildState = function buildState(records, sowItems) {
+  ns.buildState = function buildState(records, sowItems, bidPackages) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
+    var pdfMap     = buildPdfMap(bidPackages || []);
+
+    // Attach PDF info to each package
+    for (var pi = 0; pi < allPkgs.length; pi++) {
+      var pdf = pdfMap[allPkgs[pi].id];
+      if (pdf) { allPkgs[pi].pdfUrl = pdf.url; allPkgs[pi].pdfFilename = pdf.filename; }
+    }
+
     var sowBuckets = groupBySow(records);
 
     // Distribute no-SOW records into SOW grids that share the same bid package.
@@ -10118,6 +10674,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       var pkgs    = extractPackages(recs);
+      // Attach PDF info to per-SOW packages
+      for (var ppi = 0; ppi < pkgs.length; ppi++) {
+        var ppdf = pdfMap[pkgs[ppi].id];
+        if (ppdf) { pkgs[ppi].pdfUrl = ppdf.url; pkgs[ppi].pdfFilename = ppdf.filename; }
+      }
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
 
@@ -10258,12 +10819,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var th = el('th', 'scw-bid-review__pkg-header');
 
-      th.appendChild(el('div', 'scw-bid-review__pkg-name', pkg.name));
-
-      if (elig.creatable > 0) {
-        var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
-        th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
+      var nameRow = el('div', 'scw-bid-review__pkg-name');
+      nameRow.textContent = pkg.name;
+      if (pkg.pdfUrl) {
+        var pdfLink = document.createElement('a');
+        pdfLink.href = pkg.pdfUrl;
+        pdfLink.target = '_blank';
+        pdfLink.title = pkg.pdfFilename || 'View PDF';
+        pdfLink.className = 'scw-bid-review__pdf-link';
+        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+        nameRow.appendChild(pdfLink);
       }
+      th.appendChild(nameRow);
 
       var actions = el('div', 'scw-bid-review__pkg-actions');
       actions.appendChild(btn(
@@ -11134,7 +11701,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',
@@ -11158,7 +11725,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     _silentRefreshRunning = true;
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
     }).fail(function (err) {
@@ -11254,6 +11821,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       packageId:  pkgId,
       sowId:      sowId,
       rowIds:     rowIds,
+    }).done(function () {
+      refreshSilently();
     }).always(function () {
       setBusy(button, false);
     });
@@ -11422,7 +11991,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (pkgId) payload.packageId = pkgId;
     if (sowId) payload.sowId     = sowId;
 
-    ns.submitAction(payload).always(function () {
+    ns.submitAction(payload).done(function () {
+      refreshSilently();
+    }).always(function () {
       setBusy(button, false);
     });
   }
@@ -11526,6 +12097,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3331: { L1bg: '#124E85' },
     view_3475: { L1bg: '#5F6B7A' },
     view_3596: { defaultOpen: true },
+    // Device worksheet views — groups default expanded
+    view_3512: { defaultOpen: true },
+    view_3505: { defaultOpen: true },
+    view_3313: { defaultOpen: true },
+    view_3602: { defaultOpen: true },
+    view_3575: { defaultOpen: true },
+    view_3586: { defaultOpen: true },
+    view_3588: { defaultOpen: true },
+    view_3608: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -19740,6 +20320,7 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
@@ -19761,36 +20342,67 @@ $(".kn-navigation-bar").hide();
       },
       {
         viewId: 'view_3505',
-        layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr' },
         hideDeleteWhenFieldNotBlank: 'field_2404',
+        // ── Main config: used for Cameras or Readers rows ──
         fields: {
+          // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-          label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+          label:            { key: 'field_2365', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
-          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
-          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
+          // ── Detail panel (matches view_3512 layout) ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2380', type: 'readOnly' },
+          connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          plenum:           { key: 'field_2371', type: 'readOnly' }
+          plenum:           { key: 'field_2371', type: 'readOnly' },
+          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
+          dropLength:       { key: 'field_2367', type: 'directEdit' },
+          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'quantity', 'labor', 'extended', 'bid'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'exterior', 'surveyNotes']
+          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         },
         bucketField: 'field_2366',
+        // ── Override: used for all NON-camera/reader rows ──
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
+            move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
+            product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+            warningCount:     { key: 'field_2454', type: 'warningChit' },
+
+            mounting:         { key: 'field_2463', type: 'readOnly' },
+            connections:      { key: 'field_2380', type: 'readOnly' },
+            scwNotes:         { key: 'field_2418', type: 'readOnly' },
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
+            exterior:         { key: 'field_2372', type: 'chipStack' },
+            plenum:           { key: 'field_2371', type: 'readOnly' }
+          },
+          summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
+          detailLayout: {
+            left:  ['mounting', 'scwNotes'],
+            right: ['connections', 'exterior', 'surveyNotes']
+          }
+        },
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2379'],
+            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
@@ -19816,7 +20428,7 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           notes:            { key: 'field_1643', type: 'directEdit' }
@@ -19834,7 +20446,7 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           notes:            { key: 'field_1643', type: 'directEdit', notes: true }
         },
@@ -19904,14 +20516,17 @@ $(".kn-navigation-bar").hide();
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
-                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' }
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid']
-        }
+          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+        },
+        recordLockField: 'field_2634',
+        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
         viewIds: ['view_3610'],
@@ -19939,14 +20554,17 @@ $(".kn-navigation-bar").hide();
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid']
+          right: ['scwNotes', 'selectedSubBid', 'subBidLock']
         },
+        recordLockField: 'field_2634',
+        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
         conditionalHide: [
           {
             whenLocked: 'field_1964',
@@ -20261,6 +20879,7 @@ tr[${PROCESSED_ATTR}="1"] {
 #view_3505 th.field_2370 {
   display: none !important;
 }
+
 
 /* ── Kill ALL residual Knack hover / striping ── */
 tr.${WORKSHEET_ROW},
@@ -21524,6 +22143,23 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-thead-styled th:hover {
   background: rgb(10, 90, 155) !important;
 }
+/* Sort affordance icon — appended to every sortable <th> via JS */
+.${P}-thead-styled th .scw-sort-hint {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
+  opacity: 0.4;
+  transition: opacity 150ms ease;
+  flex-shrink: 0;
+}
+.${P}-thead-styled th:hover .scw-sort-hint {
+  opacity: 0.85;
+}
+/* Hide the hint when Knack's own active-sort icon is present */
+.${P}-thead-styled th.sorted-asc .scw-sort-hint,
+.${P}-thead-styled th.sorted-desc .scw-sort-hint {
+  display: none;
+}
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
 }
@@ -21671,20 +22307,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   text-decoration: none;
 }
 
-/* ── Locked row (field_2551 = Yes) — disable all interactive widgets ── */
-.${P}-card.${P}-locked .${P}-sum-field input,
-.${P}-card.${P}-locked .${P}-sum-field textarea,
-.${P}-card.${P}-locked .${P}-detail-field input,
-.${P}-card.${P}-locked .${P}-detail-field textarea {
-  pointer-events: none;
-  opacity: 0.6;
-  background: #f5f5f5;
+/* ── Record lock: make locked fields look like normal readOnly fields ── */
+.${P}-input-locked {
+  display: none !important;
 }
-.${P}-card.${P}-locked .${P}-radio-chips,
-.${P}-card.${P}-locked .${P}-cabling-chit,
-.${P}-card.${P}-locked .${P}-chip-stack {
-  pointer-events: none;
+.${P}-lock-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  padding: 2px 0;
+  line-height: 1.5;
+}
+.${P}-chips-locked {
+  pointer-events: none !important;
+}
+.${P}-chips-locked .${P}-radio-chip {
   opacity: 0.6;
+  cursor: default;
+}
+.${P}-chit-locked {
+  pointer-events: none !important;
+}
+.${P}-chit-locked .${P}-cabling-chit {
+  opacity: 0.6;
+  cursor: default;
+}
+.${P}-native-locked {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+.${P}-card.${P}-locked td.${P}-sum-check {
+  visibility: hidden;
 }
 `;
 
@@ -22630,7 +23283,175 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
 
     console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
+
+    // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
+    applyHideWhenFieldEquals(card, cfg);
+
+    // Re-evaluate record lock after patching (e.g. toggling sub bid lock)
+    applyRecordLock(card, cfg);
   }
+
+  /** Apply hideWhenFieldEquals rules on a card — show or hide fields dynamically. */
+  function applyHideWhenFieldEquals(card, viewCfg) {
+    var tr = card.closest('tr');
+    var fNames = Object.keys(viewCfg.fields);
+    for (var hwi = 0; hwi < fNames.length; hwi++) {
+      var hwDesc = viewCfg.fields[fNames[hwi]];
+      if (!hwDesc.hideWhenFieldEquals) continue;
+      var hwGuard = hwDesc.hideWhenFieldEquals;
+      var hwTd = (tr ? tr.querySelector('td.' + hwGuard.field) : null)
+              || card.querySelector('td[data-field-key="' + hwGuard.field + '"]');
+      var hwVal = hwTd ? (hwTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+      var shouldHide = hwVal.toUpperCase() === hwGuard.value.toUpperCase();
+
+      // Summary group
+      var hwSumGroup = card.querySelector('[data-scw-fields="' + hwDesc.key + '"]');
+      if (hwSumGroup) hwSumGroup.style.display = shouldHide ? 'none' : '';
+
+      // Detail field wrapper
+      var hwDetailTd = card.querySelector('td.' + hwDesc.key)
+                    || card.querySelector('td[data-field-key="' + hwDesc.key + '"]');
+      if (hwDetailTd) {
+        var hwFieldWrap = hwDetailTd.closest('.' + P + '-field');
+        if (hwFieldWrap) hwFieldWrap.style.display = shouldHide ? 'none' : '';
+      }
+    }
+  }
+
+  // ── Record-level lock (field_2634 = "Yes" → disable most editing) ──
+
+  var LOCK_CLASS = P + '-locked';
+
+  /**
+   * When viewCfg.recordLockField is set and its value is "Yes",
+   * disable all editable controls except those in lockExemptFields.
+   * Toggles both a card-level CSS class and individual input states
+   * so it works on initial render AND after chip-toggle saves.
+   */
+  function applyRecordLock(card, viewCfg) {
+    if (!viewCfg.recordLockField) return;
+    var exempt = viewCfg.lockExemptFields || [];
+    var tr = card.closest('tr');
+
+    // Read lock field value
+    var lockTd = (tr ? tr.querySelector('td.' + viewCfg.recordLockField) : null)
+              || card.querySelector('td[data-field-key="' + viewCfg.recordLockField + '"]');
+    var lockVal = lockTd ? (lockTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+    var isLocked = /^yes$/i.test(lockVal);
+
+    // Toggle card-level class (hides checkbox via CSS)
+    card.classList.toggle(LOCK_CLASS, isLocked);
+
+    // Walk every configured field and lock/unlock editable controls
+    var fNames = Object.keys(viewCfg.fields);
+    for (var li = 0; li < fNames.length; li++) {
+      var desc = viewCfg.fields[fNames[li]];
+      if (exempt.indexOf(desc.key) !== -1) continue;
+
+      var fk = desc.key;
+
+      // ── Direct-edit inputs and textareas: hide input, show static text ──
+      var inputs = card.querySelectorAll(
+        '[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]'
+      );
+      for (var ii = 0; ii < inputs.length; ii++) {
+        var inp = inputs[ii];
+        if (isLocked) {
+          inp.classList.add(P + '-input-locked');
+          // Create a static text span if not already present
+          var lockText = inp.nextElementSibling;
+          if (!lockText || !lockText.classList.contains(P + '-lock-text')) {
+            lockText = document.createElement('span');
+            lockText.className = P + '-lock-text';
+            inp.parentNode.insertBefore(lockText, inp.nextSibling);
+          }
+          lockText.textContent = inp.value || '\u2014';
+          lockText.style.display = '';
+        } else {
+          inp.classList.remove(P + '-input-locked');
+          // Hide the static text span
+          var existingText = inp.nextElementSibling;
+          if (existingText && existingText.classList.contains(P + '-lock-text')) {
+            existingText.style.display = 'none';
+          }
+        }
+      }
+
+      // ── Strip Knack inline-edit classes from ALL tds for this field ──
+      var allTds = card.querySelectorAll(
+        'td.' + fk + ', td[data-field-key="' + fk + '"]'
+      );
+      for (var ti = 0; ti < allTds.length; ti++) {
+        if (isLocked) {
+          // Store original classes so we can restore on unlock
+          if (!allTds[ti].hasAttribute('data-scw-lock-edit')) {
+            var had = [];
+            if (allTds[ti].classList.contains('cell-edit')) had.push('cell-edit');
+            if (allTds[ti].classList.contains('ktlInlineEditableCellsStyle')) had.push('ktlInlineEditableCellsStyle');
+            // Always mark as locked — even tds without edit classes need
+            // click blocking because Knack uses delegated event handlers.
+            allTds[ti].setAttribute('data-scw-lock-edit', had.join(' ') || 'none');
+          }
+          allTds[ti].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+        } else {
+          // Restore original edit classes
+          var saved = allTds[ti].getAttribute('data-scw-lock-edit');
+          if (saved && saved !== 'none') {
+            saved.split(' ').forEach(function (cls) { allTds[ti].classList.add(cls); });
+          }
+          allTds[ti].removeAttribute('data-scw-lock-edit');
+        }
+      }
+
+      // ── Radio / multi chip containers ──
+      var chipContainers = card.querySelectorAll(
+        '.' + P + '-radio-chips[data-field="' + fk + '"], ' +
+        '.' + RADIO_CHIP_CLASS + '[data-field="' + fk + '"]'
+      );
+      for (var ci = 0; ci < chipContainers.length; ci++) {
+        var container = chipContainers[ci].closest('.' + P + '-radio-chips') || chipContainers[ci];
+        if (isLocked) container.classList.add(P + '-chips-locked');
+        else container.classList.remove(P + '-chips-locked');
+      }
+
+      // ── Toggle chits (boolean Yes/No) ──
+      if (desc.type === 'toggleChit') {
+        var chitHost = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (chitHost) {
+          if (isLocked) chitHost.classList.add(P + '-chit-locked');
+          else chitHost.classList.remove(P + '-chit-locked');
+        }
+      }
+
+      // ── Native-edit fields (Knack popup inline edit) ──
+      if (desc.type === 'nativeEdit') {
+        var nativeTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (nativeTd) {
+          if (isLocked) nativeTd.classList.add(P + '-native-locked');
+          else nativeTd.classList.remove(P + '-native-locked');
+        }
+      }
+    }
+  }
+
+  // ── Capture-phase click blocker for locked fields ──
+  // Knack binds its own click handlers to td.cell-edit elements.
+  // Even after we strip those classes, existing jQuery delegated handlers
+  // can still fire. This capture-phase listener stops the event before
+  // Knack ever sees it.
+  document.addEventListener('click', function (e) {
+    var td = e.target.closest('td');
+    if (!td) return;
+    var card = td.closest('.' + P + '-card');
+    if (!card || !card.classList.contains(LOCK_CLASS)) return;
+
+    // Check if this td belongs to a locked (non-exempt) field
+    if (td.hasAttribute('data-scw-lock-edit') ||
+        td.classList.contains(P + '-native-locked')) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true); // ← capture phase
 
   /** Extract the label text from a Knack API response object. */
   function extractLabelFromResponse(viewId, resp) {
@@ -22952,6 +23773,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var container = chip.closest('.' + P + '-radio-chips');
     if (!container) return;
 
+    // Block clicks on locked chip containers (record lock)
+    if (container.classList.contains(P + '-chips-locked')) return;
+
     var isMulti = container.getAttribute(MULTI_CHIP_ATTR) === '1';
     var allChips = container.querySelectorAll('.' + RADIO_CHIP_CLASS);
     var saveValue;
@@ -23044,6 +23868,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Let KTL bulk-edit handle the click when active
     var chitTd = chit.closest('td');
     if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
+
+    // Block clicks on locked chits (record lock)
+    if (chitTd && chitTd.classList.contains(P + '-chit-locked')) return;
 
     e.stopPropagation();
     e.preventDefault();
@@ -23491,6 +24318,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         labelTd.classList.add(P + '-sum-label-cell');
         identity.appendChild(labelTd);
       }
+    } else if (viewCfg.labelPlaceholder) {
+      // Insert an invisible spacer matching the label cell's width
+      // so that product + laborDescription align with rows that have a label.
+      var labelSpacer = document.createElement('span');
+      labelSpacer.className = P + '-sum-label-cell';
+      labelSpacer.style.visibility = 'hidden';
+      labelSpacer.innerHTML = '&nbsp;';
+      identity.appendChild(labelSpacer);
     }
 
     var productDesc = fieldDesc(viewCfg, 'product');
@@ -24328,9 +25163,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Apply showWhenFieldIsYes visibility ──
     var fNames = Object.keys(viewCfg.fields);
+    // Check if this row's bucket rule has a descLabel (Services/Assumptions) —
+    // if so, skip all showWhenFieldIsYes guards; bucket hideFields handles hiding instead.
+    var swBucketId = viewCfg.bucketField ? readBucketId(tr, viewCfg.bucketField) : null;
+    var swBucketRule = swBucketId && viewCfg.bucketRules ? viewCfg.bucketRules[swBucketId] : null;
     for (var swi = 0; swi < fNames.length; swi++) {
       var swDesc = viewCfg.fields[fNames[swi]];
       if (!swDesc.showWhenFieldIsYes) continue;
+      if (swBucketRule && swBucketRule.descLabel) continue;
       var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
       var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
@@ -24339,6 +25179,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (targetGroup) targetGroup.style.display = 'none';
       }
     }
+
+    // ── Apply hideWhenFieldEquals visibility ──
+    applyHideWhenFieldEquals(card, viewCfg);
+
+    // ── Apply record-level lock (sub bid lock) ──
+    applyRecordLock(card, viewCfg);
 
     return card;
   }
@@ -24386,16 +25232,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (headerRow) {
       var L = viewCfg.layout;
 
-      // Build desired field-key order + labels from view config:
-      //   [checkbox] [label] [product] [summaryLayout fields...] [move]
+      // Build desired field-key order + labels from view config.
+      // The thead is for sorting — only include fields that are useful
+      // sort targets (skip product identity and move icon columns).
+      //   [checkbox] [label] [summaryLayout fields...] [quantity if present]
       var desiredFields = [];
       var thLabels = {};   // field_key → display label
 
       var _labelDesc = fieldDesc(viewCfg, 'label');
       if (_labelDesc) desiredFields.push(_labelDesc.key);
-
-      var _productDesc = fieldDesc(viewCfg, 'product');
-      if (_productDesc) desiredFields.push(_productDesc.key);
 
       var _summaryLayout = viewCfg.summaryLayout || [];
       for (var si = 0; si < _summaryLayout.length; si++) {
@@ -24406,8 +25251,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (_desc.label) thLabels[_desc.key] = _desc.label;
       }
 
-      var _moveDesc = fieldDesc(viewCfg, 'move');
-      if (_moveDesc) desiredFields.push(_moveDesc.key);
+      // Add quantity if it exists in config but isn't already included
+      var _qtyDesc = fieldDesc(viewCfg, 'quantity');
+      if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
+        desiredFields.push(_qtyDesc.key);
+        if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+      }
 
       // Index <th> elements by field key
       var thByField = {};
@@ -24446,7 +25295,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
-        if (_fKey === 'field_1946') continue; // hide move/MDF field from sort header
         var _showTh = thByField[_fKey];
         if (!_showTh) continue;
 
@@ -24480,6 +25328,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
 
         headerRow.appendChild(_showTh);
+      }
+
+      // ── Inject sort-hint icons into sortable <th>s ──
+      var sortableThs = thead.querySelectorAll('th a.kn-sort');
+      for (var si = 0; si < sortableThs.length; si++) {
+        var sortLink = sortableThs[si];
+        if (sortLink.querySelector('.scw-sort-hint')) continue;
+        var hint = document.createElement('span');
+        hint.className = 'scw-sort-hint';
+        hint.innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg>';
+        sortLink.appendChild(hint);
       }
 
       // ── Sync header checkbox visibility with row selections ──
@@ -24601,6 +25464,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.fields = viewCfg.bucketOverride.fields;
           effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+          // If the main config has a label but the override doesn't,
+          // flag the effective config so a spacer is inserted to keep alignment.
+          if (viewCfg.fields.label && !effectiveCfg.fields.label) {
+            effectiveCfg.labelPlaceholder = true;
+          }
         }
       }
       // ── Lock all fields if field_2551 = Yes (row is finalized) ──

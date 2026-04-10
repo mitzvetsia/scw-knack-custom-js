@@ -15,6 +15,7 @@
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
+    bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -57,6 +58,7 @@
       dropNumber:      'field_2362',
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
+      bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item

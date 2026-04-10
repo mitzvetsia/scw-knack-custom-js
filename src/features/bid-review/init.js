@@ -27,7 +27,7 @@
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',
@@ -51,7 +51,7 @@
     _silentRefreshRunning = true;
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
     }).fail(function (err) {
@@ -147,6 +147,8 @@
       packageId:  pkgId,
       sowId:      sowId,
       rowIds:     rowIds,
+    }).done(function () {
+      refreshSilently();
     }).always(function () {
       setBusy(button, false);
     });
@@ -315,7 +317,9 @@
     if (pkgId) payload.packageId = pkgId;
     if (sowId) payload.sowId     = sowId;
 
-    ns.submitAction(payload).always(function () {
+    ns.submitAction(payload).done(function () {
+      refreshSilently();
+    }).always(function () {
       setBusy(button, false);
     });
   }

@@ -75,6 +75,7 @@
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
@@ -96,36 +97,67 @@
       },
       {
         viewId: 'view_3505',
-        layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr' },
         hideDeleteWhenFieldNotBlank: 'field_2404',
+        // ── Main config: used for Cameras or Readers rows ──
         fields: {
+          // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-          label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+          label:            { key: 'field_2365', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
-          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
-          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
+          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
+          // ── Detail panel (matches view_3512 layout) ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2380', type: 'readOnly' },
+          connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          plenum:           { key: 'field_2371', type: 'readOnly' }
+          plenum:           { key: 'field_2371', type: 'readOnly' },
+          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
+          dropLength:       { key: 'field_2367', type: 'directEdit' },
+          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'quantity', 'labor', 'extended', 'bid'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'exterior', 'surveyNotes']
+          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         },
         bucketField: 'field_2366',
+        // ── Override: used for all NON-camera/reader rows ──
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
+            move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
+            product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+            warningCount:     { key: 'field_2454', type: 'warningChit' },
+
+            mounting:         { key: 'field_2463', type: 'readOnly' },
+            connections:      { key: 'field_2380', type: 'readOnly' },
+            scwNotes:         { key: 'field_2418', type: 'readOnly' },
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
+            exterior:         { key: 'field_2372', type: 'chipStack' },
+            plenum:           { key: 'field_2371', type: 'readOnly' }
+          },
+          summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
+          detailLayout: {
+            left:  ['mounting', 'scwNotes'],
+            right: ['connections', 'exterior', 'surveyNotes']
+          }
+        },
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2379'],
+            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
@@ -151,7 +183,7 @@
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           notes:            { key: 'field_1643', type: 'directEdit' }
@@ -169,7 +201,7 @@
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           notes:            { key: 'field_1643', type: 'directEdit', notes: true }
         },
@@ -239,14 +271,17 @@
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
-                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' }
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid']
-        }
+          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+        },
+        recordLockField: 'field_2634',
+        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
         viewIds: ['view_3610'],
@@ -274,14 +309,17 @@
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid']
+          right: ['scwNotes', 'selectedSubBid', 'subBidLock']
         },
+        recordLockField: 'field_2634',
+        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
         conditionalHide: [
           {
             whenLocked: 'field_1964',
@@ -596,6 +634,7 @@ tr[${PROCESSED_ATTR}="1"] {
 #view_3505 th.field_2370 {
   display: none !important;
 }
+
 
 /* ── Kill ALL residual Knack hover / striping ── */
 tr.${WORKSHEET_ROW},
@@ -1859,6 +1898,23 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-thead-styled th:hover {
   background: rgb(10, 90, 155) !important;
 }
+/* Sort affordance icon — appended to every sortable <th> via JS */
+.${P}-thead-styled th .scw-sort-hint {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
+  opacity: 0.4;
+  transition: opacity 150ms ease;
+  flex-shrink: 0;
+}
+.${P}-thead-styled th:hover .scw-sort-hint {
+  opacity: 0.85;
+}
+/* Hide the hint when Knack's own active-sort icon is present */
+.${P}-thead-styled th.sorted-asc .scw-sort-hint,
+.${P}-thead-styled th.sorted-desc .scw-sort-hint {
+  display: none;
+}
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
 }
@@ -2006,20 +2062,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   text-decoration: none;
 }
 
-/* ── Locked row (field_2551 = Yes) — disable all interactive widgets ── */
-.${P}-card.${P}-locked .${P}-sum-field input,
-.${P}-card.${P}-locked .${P}-sum-field textarea,
-.${P}-card.${P}-locked .${P}-detail-field input,
-.${P}-card.${P}-locked .${P}-detail-field textarea {
-  pointer-events: none;
-  opacity: 0.6;
-  background: #f5f5f5;
+/* ── Record lock: make locked fields look like normal readOnly fields ── */
+.${P}-input-locked {
+  display: none !important;
 }
-.${P}-card.${P}-locked .${P}-radio-chips,
-.${P}-card.${P}-locked .${P}-cabling-chit,
-.${P}-card.${P}-locked .${P}-chip-stack {
-  pointer-events: none;
+.${P}-lock-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  padding: 2px 0;
+  line-height: 1.5;
+}
+.${P}-chips-locked {
+  pointer-events: none !important;
+}
+.${P}-chips-locked .${P}-radio-chip {
   opacity: 0.6;
+  cursor: default;
+}
+.${P}-chit-locked {
+  pointer-events: none !important;
+}
+.${P}-chit-locked .${P}-cabling-chit {
+  opacity: 0.6;
+  cursor: default;
+}
+.${P}-native-locked {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+.${P}-card.${P}-locked td.${P}-sum-check {
+  visibility: hidden;
 }
 `;
 
@@ -2965,7 +3038,175 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
 
     console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
+
+    // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
+    applyHideWhenFieldEquals(card, cfg);
+
+    // Re-evaluate record lock after patching (e.g. toggling sub bid lock)
+    applyRecordLock(card, cfg);
   }
+
+  /** Apply hideWhenFieldEquals rules on a card — show or hide fields dynamically. */
+  function applyHideWhenFieldEquals(card, viewCfg) {
+    var tr = card.closest('tr');
+    var fNames = Object.keys(viewCfg.fields);
+    for (var hwi = 0; hwi < fNames.length; hwi++) {
+      var hwDesc = viewCfg.fields[fNames[hwi]];
+      if (!hwDesc.hideWhenFieldEquals) continue;
+      var hwGuard = hwDesc.hideWhenFieldEquals;
+      var hwTd = (tr ? tr.querySelector('td.' + hwGuard.field) : null)
+              || card.querySelector('td[data-field-key="' + hwGuard.field + '"]');
+      var hwVal = hwTd ? (hwTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+      var shouldHide = hwVal.toUpperCase() === hwGuard.value.toUpperCase();
+
+      // Summary group
+      var hwSumGroup = card.querySelector('[data-scw-fields="' + hwDesc.key + '"]');
+      if (hwSumGroup) hwSumGroup.style.display = shouldHide ? 'none' : '';
+
+      // Detail field wrapper
+      var hwDetailTd = card.querySelector('td.' + hwDesc.key)
+                    || card.querySelector('td[data-field-key="' + hwDesc.key + '"]');
+      if (hwDetailTd) {
+        var hwFieldWrap = hwDetailTd.closest('.' + P + '-field');
+        if (hwFieldWrap) hwFieldWrap.style.display = shouldHide ? 'none' : '';
+      }
+    }
+  }
+
+  // ── Record-level lock (field_2634 = "Yes" → disable most editing) ──
+
+  var LOCK_CLASS = P + '-locked';
+
+  /**
+   * When viewCfg.recordLockField is set and its value is "Yes",
+   * disable all editable controls except those in lockExemptFields.
+   * Toggles both a card-level CSS class and individual input states
+   * so it works on initial render AND after chip-toggle saves.
+   */
+  function applyRecordLock(card, viewCfg) {
+    if (!viewCfg.recordLockField) return;
+    var exempt = viewCfg.lockExemptFields || [];
+    var tr = card.closest('tr');
+
+    // Read lock field value
+    var lockTd = (tr ? tr.querySelector('td.' + viewCfg.recordLockField) : null)
+              || card.querySelector('td[data-field-key="' + viewCfg.recordLockField + '"]');
+    var lockVal = lockTd ? (lockTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+    var isLocked = /^yes$/i.test(lockVal);
+
+    // Toggle card-level class (hides checkbox via CSS)
+    card.classList.toggle(LOCK_CLASS, isLocked);
+
+    // Walk every configured field and lock/unlock editable controls
+    var fNames = Object.keys(viewCfg.fields);
+    for (var li = 0; li < fNames.length; li++) {
+      var desc = viewCfg.fields[fNames[li]];
+      if (exempt.indexOf(desc.key) !== -1) continue;
+
+      var fk = desc.key;
+
+      // ── Direct-edit inputs and textareas: hide input, show static text ──
+      var inputs = card.querySelectorAll(
+        '[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]'
+      );
+      for (var ii = 0; ii < inputs.length; ii++) {
+        var inp = inputs[ii];
+        if (isLocked) {
+          inp.classList.add(P + '-input-locked');
+          // Create a static text span if not already present
+          var lockText = inp.nextElementSibling;
+          if (!lockText || !lockText.classList.contains(P + '-lock-text')) {
+            lockText = document.createElement('span');
+            lockText.className = P + '-lock-text';
+            inp.parentNode.insertBefore(lockText, inp.nextSibling);
+          }
+          lockText.textContent = inp.value || '\u2014';
+          lockText.style.display = '';
+        } else {
+          inp.classList.remove(P + '-input-locked');
+          // Hide the static text span
+          var existingText = inp.nextElementSibling;
+          if (existingText && existingText.classList.contains(P + '-lock-text')) {
+            existingText.style.display = 'none';
+          }
+        }
+      }
+
+      // ── Strip Knack inline-edit classes from ALL tds for this field ──
+      var allTds = card.querySelectorAll(
+        'td.' + fk + ', td[data-field-key="' + fk + '"]'
+      );
+      for (var ti = 0; ti < allTds.length; ti++) {
+        if (isLocked) {
+          // Store original classes so we can restore on unlock
+          if (!allTds[ti].hasAttribute('data-scw-lock-edit')) {
+            var had = [];
+            if (allTds[ti].classList.contains('cell-edit')) had.push('cell-edit');
+            if (allTds[ti].classList.contains('ktlInlineEditableCellsStyle')) had.push('ktlInlineEditableCellsStyle');
+            // Always mark as locked — even tds without edit classes need
+            // click blocking because Knack uses delegated event handlers.
+            allTds[ti].setAttribute('data-scw-lock-edit', had.join(' ') || 'none');
+          }
+          allTds[ti].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+        } else {
+          // Restore original edit classes
+          var saved = allTds[ti].getAttribute('data-scw-lock-edit');
+          if (saved && saved !== 'none') {
+            saved.split(' ').forEach(function (cls) { allTds[ti].classList.add(cls); });
+          }
+          allTds[ti].removeAttribute('data-scw-lock-edit');
+        }
+      }
+
+      // ── Radio / multi chip containers ──
+      var chipContainers = card.querySelectorAll(
+        '.' + P + '-radio-chips[data-field="' + fk + '"], ' +
+        '.' + RADIO_CHIP_CLASS + '[data-field="' + fk + '"]'
+      );
+      for (var ci = 0; ci < chipContainers.length; ci++) {
+        var container = chipContainers[ci].closest('.' + P + '-radio-chips') || chipContainers[ci];
+        if (isLocked) container.classList.add(P + '-chips-locked');
+        else container.classList.remove(P + '-chips-locked');
+      }
+
+      // ── Toggle chits (boolean Yes/No) ──
+      if (desc.type === 'toggleChit') {
+        var chitHost = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (chitHost) {
+          if (isLocked) chitHost.classList.add(P + '-chit-locked');
+          else chitHost.classList.remove(P + '-chit-locked');
+        }
+      }
+
+      // ── Native-edit fields (Knack popup inline edit) ──
+      if (desc.type === 'nativeEdit') {
+        var nativeTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (nativeTd) {
+          if (isLocked) nativeTd.classList.add(P + '-native-locked');
+          else nativeTd.classList.remove(P + '-native-locked');
+        }
+      }
+    }
+  }
+
+  // ── Capture-phase click blocker for locked fields ──
+  // Knack binds its own click handlers to td.cell-edit elements.
+  // Even after we strip those classes, existing jQuery delegated handlers
+  // can still fire. This capture-phase listener stops the event before
+  // Knack ever sees it.
+  document.addEventListener('click', function (e) {
+    var td = e.target.closest('td');
+    if (!td) return;
+    var card = td.closest('.' + P + '-card');
+    if (!card || !card.classList.contains(LOCK_CLASS)) return;
+
+    // Check if this td belongs to a locked (non-exempt) field
+    if (td.hasAttribute('data-scw-lock-edit') ||
+        td.classList.contains(P + '-native-locked')) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true); // ← capture phase
 
   /** Extract the label text from a Knack API response object. */
   function extractLabelFromResponse(viewId, resp) {
@@ -3287,6 +3528,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var container = chip.closest('.' + P + '-radio-chips');
     if (!container) return;
 
+    // Block clicks on locked chip containers (record lock)
+    if (container.classList.contains(P + '-chips-locked')) return;
+
     var isMulti = container.getAttribute(MULTI_CHIP_ATTR) === '1';
     var allChips = container.querySelectorAll('.' + RADIO_CHIP_CLASS);
     var saveValue;
@@ -3379,6 +3623,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Let KTL bulk-edit handle the click when active
     var chitTd = chit.closest('td');
     if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
+
+    // Block clicks on locked chits (record lock)
+    if (chitTd && chitTd.classList.contains(P + '-chit-locked')) return;
 
     e.stopPropagation();
     e.preventDefault();
@@ -3826,6 +4073,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         labelTd.classList.add(P + '-sum-label-cell');
         identity.appendChild(labelTd);
       }
+    } else if (viewCfg.labelPlaceholder) {
+      // Insert an invisible spacer matching the label cell's width
+      // so that product + laborDescription align with rows that have a label.
+      var labelSpacer = document.createElement('span');
+      labelSpacer.className = P + '-sum-label-cell';
+      labelSpacer.style.visibility = 'hidden';
+      labelSpacer.innerHTML = '&nbsp;';
+      identity.appendChild(labelSpacer);
     }
 
     var productDesc = fieldDesc(viewCfg, 'product');
@@ -4663,9 +4918,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Apply showWhenFieldIsYes visibility ──
     var fNames = Object.keys(viewCfg.fields);
+    // Check if this row's bucket rule has a descLabel (Services/Assumptions) —
+    // if so, skip all showWhenFieldIsYes guards; bucket hideFields handles hiding instead.
+    var swBucketId = viewCfg.bucketField ? readBucketId(tr, viewCfg.bucketField) : null;
+    var swBucketRule = swBucketId && viewCfg.bucketRules ? viewCfg.bucketRules[swBucketId] : null;
     for (var swi = 0; swi < fNames.length; swi++) {
       var swDesc = viewCfg.fields[fNames[swi]];
       if (!swDesc.showWhenFieldIsYes) continue;
+      if (swBucketRule && swBucketRule.descLabel) continue;
       var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
       var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
@@ -4674,6 +4934,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (targetGroup) targetGroup.style.display = 'none';
       }
     }
+
+    // ── Apply hideWhenFieldEquals visibility ──
+    applyHideWhenFieldEquals(card, viewCfg);
+
+    // ── Apply record-level lock (sub bid lock) ──
+    applyRecordLock(card, viewCfg);
 
     return card;
   }
@@ -4721,16 +4987,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (headerRow) {
       var L = viewCfg.layout;
 
-      // Build desired field-key order + labels from view config:
-      //   [checkbox] [label] [product] [summaryLayout fields...] [move]
+      // Build desired field-key order + labels from view config.
+      // The thead is for sorting — only include fields that are useful
+      // sort targets (skip product identity and move icon columns).
+      //   [checkbox] [label] [summaryLayout fields...] [quantity if present]
       var desiredFields = [];
       var thLabels = {};   // field_key → display label
 
       var _labelDesc = fieldDesc(viewCfg, 'label');
       if (_labelDesc) desiredFields.push(_labelDesc.key);
-
-      var _productDesc = fieldDesc(viewCfg, 'product');
-      if (_productDesc) desiredFields.push(_productDesc.key);
 
       var _summaryLayout = viewCfg.summaryLayout || [];
       for (var si = 0; si < _summaryLayout.length; si++) {
@@ -4741,8 +5006,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (_desc.label) thLabels[_desc.key] = _desc.label;
       }
 
-      var _moveDesc = fieldDesc(viewCfg, 'move');
-      if (_moveDesc) desiredFields.push(_moveDesc.key);
+      // Add quantity if it exists in config but isn't already included
+      var _qtyDesc = fieldDesc(viewCfg, 'quantity');
+      if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
+        desiredFields.push(_qtyDesc.key);
+        if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+      }
 
       // Index <th> elements by field key
       var thByField = {};
@@ -4781,7 +5050,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       for (var di = 0; di < desiredFields.length; di++) {
         var _fKey = desiredFields[di];
-        if (_fKey === 'field_1946') continue; // hide move/MDF field from sort header
         var _showTh = thByField[_fKey];
         if (!_showTh) continue;
 
@@ -4815,6 +5083,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
 
         headerRow.appendChild(_showTh);
+      }
+
+      // ── Inject sort-hint icons into sortable <th>s ──
+      var sortableThs = thead.querySelectorAll('th a.kn-sort');
+      for (var si = 0; si < sortableThs.length; si++) {
+        var sortLink = sortableThs[si];
+        if (sortLink.querySelector('.scw-sort-hint')) continue;
+        var hint = document.createElement('span');
+        hint.className = 'scw-sort-hint';
+        hint.innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg>';
+        sortLink.appendChild(hint);
       }
 
       // ── Sync header checkbox visibility with row selections ──
@@ -4936,6 +5219,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.fields = viewCfg.bucketOverride.fields;
           effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+          // If the main config has a label but the override doesn't,
+          // flag the effective config so a spacer is inserted to keep alignment.
+          if (viewCfg.fields.label && !effectiveCfg.fields.label) {
+            effectiveCfg.labelPlaceholder = true;
+          }
         }
       }
       // ── Lock all fields if field_2551 = Yes (row is finalized) ──
