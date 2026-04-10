@@ -9130,7 +9130,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  flex-shrink: 0;',
       '}',
       '.scw-bid-review__pdf-link:hover { opacity: 1; }',
-      '.scw-bid-review__pdf-link svg { display: block; }',
+      '.scw-bid-review__pdf-link svg { display: block; width: 20px; height: 20px; }',
 
       '.scw-bid-review__pkg-counts {',
       '  font-size: 11px;',
@@ -10527,11 +10527,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         nameRow.appendChild(pdfLink);
       }
       th.appendChild(nameRow);
-
-      if (elig.creatable > 0) {
-        var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
-        th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
-      }
 
       var actions = el('div', 'scw-bid-review__pkg-actions');
       actions.appendChild(btn(

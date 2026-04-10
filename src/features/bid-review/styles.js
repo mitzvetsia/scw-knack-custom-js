@@ -137,7 +137,7 @@
       '  flex-shrink: 0;',
       '}',
       '.scw-bid-review__pdf-link:hover { opacity: 1; }',
-      '.scw-bid-review__pdf-link svg { display: block; }',
+      '.scw-bid-review__pdf-link svg { display: block; width: 20px; height: 20px; }',
 
       '.scw-bid-review__pkg-counts {',
       '  font-size: 11px;',

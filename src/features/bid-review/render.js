@@ -112,11 +112,6 @@
       }
       th.appendChild(nameRow);
 
-      if (elig.creatable > 0) {
-        var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
-        th.appendChild(el('div', 'scw-bid-review__pkg-counts', countsText));
-      }
-
       var actions = el('div', 'scw-bid-review__pkg-actions');
       actions.appendChild(btn(
         'Copy to SOW', 'adopt',
