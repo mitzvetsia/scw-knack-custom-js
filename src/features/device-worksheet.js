@@ -627,13 +627,6 @@ tr[${PROCESSED_ATTR}="1"] {
   display: none !important;
 }
 
-/* ── view_3505: non-camera rows widen product group to absorb absent label ── */
-#view_3505 .${P}-bucket-override .${P}-product-group {
-  width: 380px; min-width: 380px; max-width: 380px;
-}
-#view_3505 .${P}-bucket-override .${P}-sum-sep {
-  display: none;
-}
 
 /* ── Kill ALL residual Knack hover / striping ── */
 tr.${WORKSHEET_ROW},
@@ -3864,6 +3857,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         labelTd.classList.add(P + '-sum-label-cell');
         identity.appendChild(labelTd);
       }
+    } else if (viewCfg.labelPlaceholder) {
+      // Insert an invisible spacer matching the label cell's width
+      // so that product + laborDescription align with rows that have a label.
+      var labelSpacer = document.createElement('span');
+      labelSpacer.className = P + '-sum-label-cell';
+      labelSpacer.style.visibility = 'hidden';
+      labelSpacer.innerHTML = '&nbsp;';
+      identity.appendChild(labelSpacer);
     }
 
     var productDesc = fieldDesc(viewCfg, 'product');
@@ -4974,6 +4975,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.fields = viewCfg.bucketOverride.fields;
           effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+          // If the main config has a label but the override doesn't,
+          // flag the effective config so a spacer is inserted to keep alignment.
+          if (viewCfg.fields.label && !effectiveCfg.fields.label) {
+            effectiveCfg.labelPlaceholder = true;
+          }
         }
       }
       // ── Lock all fields if field_2551 = Yes (row is finalized) ──
