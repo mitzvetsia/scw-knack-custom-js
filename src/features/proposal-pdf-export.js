@@ -24,6 +24,7 @@
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
+      pollViewOnReturn: 'view_3507',
     },
   ];
 
@@ -841,6 +842,11 @@
 
         console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
+
+        // Flag for poll-refresh on the parent page
+        if (cfg.pollViewOnReturn) {
+          try { sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn); } catch (e) {}
+        }
       });
     });
 
@@ -851,6 +857,104 @@
       });
     }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // POLL-REFRESH — after form submit returns to parent page
+  // ══════════════════════════════════════════════════════════════
+
+  var POLL_INTERVAL_MS = 4000;
+  var POLL_TIMEOUT_MS  = 60000;
+  var POLL_TOAST_ID    = 'scw-pdf-poll-toast';
+  var POLL_CSS_ID      = 'scw-pdf-poll-css';
+  var _pollTimer       = null;
+
+  function injectPollToastStyle() {
+    if (document.getElementById(POLL_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = POLL_CSS_ID;
+    s.textContent = [
+      '#' + POLL_TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 10px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwPollSpin .8s linear infinite;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-close {',
+      '  background: none; border: none; color: rgba(255,255,255,.7);',
+      '  font-size: 16px; cursor: pointer; padding: 0 0 0 6px;',
+      '  line-height: 1; font-weight: 700;',
+      '}',
+      '#' + POLL_TOAST_ID + ' .scw-poll-close:hover { color: #fff; }',
+      '@keyframes scwPollSpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showPollToast() {
+    injectPollToastStyle();
+    if (document.getElementById(POLL_TOAST_ID)) return;
+    var toast = document.createElement('div');
+    toast.id = POLL_TOAST_ID;
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> Waiting for sub bid update\u2026';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-poll-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.addEventListener('click', function () {
+      if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+      hidePollToast();
+    });
+    toast.appendChild(closeBtn);
+    document.body.appendChild(toast);
+  }
+
+  function hidePollToast() {
+    var toast = document.getElementById(POLL_TOAST_ID);
+    if (!toast) return;
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  function startPollRefresh(viewId) {
+    if (_pollTimer) clearInterval(_pollTimer);
+    console.log('[SCW PDF Export] Polling ' + viewId + ' for record update');
+    showPollToast();
+
+    var elapsed = 0;
+    _pollTimer = setInterval(function () {
+      elapsed += POLL_INTERVAL_MS;
+      if (typeof Knack === 'undefined') return;
+      var view = Knack.views && Knack.views[viewId];
+      if (view && view.model && typeof view.model.fetch === 'function') {
+        view.model.fetch();
+      }
+      if (elapsed >= POLL_TIMEOUT_MS) {
+        console.log('[SCW PDF Export] Poll timeout for ' + viewId);
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+        hidePollToast();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  // Check for poll flag whenever any scene renders
+  $(document).on('knack-scene-render.any.scwPdfPoll', function () {
+    var viewId;
+    try { viewId = sessionStorage.getItem('scw-pdf-poll-view'); } catch (e) {}
+    if (!viewId) return;
+    // Only start polling once the target view exists on the page
+    if (!document.getElementById(viewId)) return;
+    try { sessionStorage.removeItem('scw-pdf-poll-view'); } catch (e) {}
+    // Small delay to let the view finish its initial render
+    setTimeout(function () { startPollRefresh(viewId); }, 2000);
+  });
 
   // ══════════════════════════════════════════════════════════════
   // INIT — wire up all scenes
