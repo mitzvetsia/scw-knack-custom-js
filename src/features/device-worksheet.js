@@ -3957,7 +3957,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    if (hasStackedFields && labelDesc) {
+    if (hasStackedFields && (labelDesc || viewCfg.labelPlaceholder)) {
       // Wrap entire identity so label-cell, separator, and product all
       // drop down together — keeps them aligned with checkbox & chevron.
       var idWrap = document.createElement('span');
