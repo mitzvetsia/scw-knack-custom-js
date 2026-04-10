@@ -2,14 +2,15 @@
  *
  * Scans for kn-menu views in the view-group immediately preceding an
  * accordion's view-group and injects their action buttons into the
- * accordion header as compact, modern pills.  The original menu
- * view-group is hidden since the buttons now live in the header.
+ * accordion header as solid accent-colored pill buttons.  Only the
+ * kn-menu view itself is hidden; sibling views (rich_text titles,
+ * etc.) in the same view-group are left visible.
  *
  * Pattern detected (throughout the app):
  *
- *   <div class="view-group">               <-- hidden after injection
- *     <div class="kn-view kn-rich_text">    (optional section title)
- *     <div class="kn-view kn-menu">         (action buttons)
+ *   <div class="view-group">
+ *     <div class="kn-view kn-rich_text">    (optional — left visible)
+ *     <div class="kn-view kn-menu">         (hidden after injection)
  *   </div>
  *   <div class="view-group">
  *     <div class="scw-ktl-accordion">       (enhanced accordion)
@@ -60,35 +61,38 @@
       '  margin: 0 10px 0 0;',
       '}',
 
-      /* Individual action button */
+      /* Individual action button — solid accent fill so they pop */
       '.scw-acc-action-btn {',
       '  display: inline-flex;',
       '  align-items: center;',
       '  gap: 4px;',
-      '  padding: 4px 10px;',
+      '  padding: 5px 12px;',
       '  font-size: 11px;',
       '  font-weight: 600;',
       '  line-height: 1.4;',
-      '  color: var(--scw-accent, #295f91);',
-      '  background: transparent;',
-      '  border: 1px solid rgba(var(--scw-accent-rgb, 41,95,145), 0.22);',
+      '  color: #fff;',
+      '  background: var(--scw-accent, #295f91);',
+      '  border: none;',
       '  border-radius: 6px;',
       '  cursor: pointer;',
       '  white-space: nowrap;',
       '  text-decoration: none !important;',
       '  font-family: inherit;',
-      '  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;',
+      '  box-shadow: 0 1px 3px rgba(0,0,0,.15);',
+      '  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease;',
       '}',
 
       '.scw-acc-action-btn:hover {',
-      '  background: rgba(var(--scw-accent-rgb, 41,95,145), 0.10);',
-      '  border-color: rgba(var(--scw-accent-rgb, 41,95,145), 0.35);',
-      '  color: var(--scw-accent, #295f91);',
+      '  background: rgba(var(--scw-accent-rgb, 41,95,145), 0.85);',
+      '  box-shadow: 0 2px 6px rgba(0,0,0,.20);',
+      '  color: #fff;',
       '  text-decoration: none !important;',
+      '  transform: translateY(-1px);',
       '}',
 
       '.scw-acc-action-btn:active {',
-      '  background: rgba(var(--scw-accent-rgb, 41,95,145), 0.18);',
+      '  transform: translateY(0);',
+      '  box-shadow: 0 1px 2px rgba(0,0,0,.12);',
       '}',
 
       '.scw-acc-action-btn:focus-visible {',
@@ -99,7 +103,7 @@
       /* SVG icon inside button */
       '.scw-acc-action-btn svg {',
       '  flex-shrink: 0;',
-      '  opacity: 0.7;',
+      '  opacity: 0.85;',
       '}',
       '.scw-acc-action-btn:hover svg {',
       '  opacity: 1;',
@@ -195,8 +199,8 @@
         header.appendChild(container);
       }
 
-      // Hide the original view-group (section title + menu)
-      prevGroup.classList.add(HIDDEN_CLASS);
+      // Hide only the kn-menu view (preserve rich_text titles, etc.)
+      menuView.classList.add(HIDDEN_CLASS);
 
       // Mark this accordion header as processed
       header.setAttribute(INJECTED, '1');
