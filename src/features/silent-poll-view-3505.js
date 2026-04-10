@@ -5,23 +5,33 @@
  *   - Knack's native inline-edit record rule on field_2380 (view_3505)
  *     triggers a Make webhook.
  *   - The webhook updates OTHER, already-connected records in the same
- *     grid via the Knack REST API (it does NOT create new records).
+ *     grid via the Knack REST API. The key change is to field_2381
+ *     (REL_DROP → parent networking device), which is the L1 GROUPING
+ *     key for the worksheet view. In other words: the webhook moves
+ *     existing rows between MDF/IDF groups.
  *   - Those updates land asynchronously, AFTER Knack's PUT response, so
  *     the user would otherwise need to hard-refresh to see them.
  *
  * Strategy:
- *   - Watch `ajaxComplete` for successful PUTs to view_3505/records/* whose
- *     request body includes field_2380.
- *   - Start a silent polling loop that GETs the view's records endpoint
- *     and, for every returned record, calls
- *     `SCW.deviceWorksheet.patchCard(viewId, recordId, record, { skipFocused: true })`.
- *   - `patchCard` only touches text nodes, input values, and chips inside
- *     the existing worksheet cards — no DOM restructure, no re-render, no
- *     accordion flicker. Inputs the user is currently typing in are left
- *     alone (skipFocused).
- *   - Stop when the record payload hash is unchanged for 2 consecutive
- *     polls (webhook is done), when a hard timeout expires, or when the
- *     view re-renders for an unrelated reason (we hand control back).
+ *   - When a successful PUT to view_3505/records/* containing field_2380
+ *     is observed, capture a DOM baseline of every row's current
+ *     field_2381 connection-id set (read out of the
+ *     span[data-kn="connection-value"] classNames, which hold the 24-hex
+ *     record IDs).
+ *   - Poll the view's records endpoint. For each response, build an
+ *     equivalent snapshot from field_2381_raw arrays.
+ *   - Detect:
+ *       * dirty   → any record's field_2381 set differs from baseline
+ *       * stable  → the snapshot is identical to the previous poll's
+ *                   snapshot for N consecutive cycles
+ *     When dirty AND stable, do exactly ONE full view refresh via
+ *     Knack.views[VIEW_ID].model.fetch(). The existing preservation
+ *     machinery (group-collapse localStorage, preserve-scroll-on-refresh
+ *     coordinator, device-worksheet captureState/refresh) restores the
+ *     accordion/expanded/scroll state after the re-render.
+ *   - We do NOT call patchCardFromResponse per record here — that would
+ *     touch every card on every poll and paint-flash the view, and it
+ *     cannot move rows between group headers anyway.
  *
  * Tunables live in the CONFIG block below.
  **************************************************************************************************/
@@ -32,11 +42,12 @@
   // CONFIG
   // ======================
   var VIEW_ID         = 'view_3505';
-  var TRIGGER_FIELD   = 'field_2380';
-  var POLL_INTERVAL   = 1500;   // ms between polls
-  var STABLE_CYCLES   = 2;      // consecutive unchanged cycles → stop
-  var MAX_POLLS       = 15;     // hard cap (~22s)
-  var START_DELAY     = 400;    // ms to wait after PUT response before first poll
+  var TRIGGER_FIELD   = 'field_2380';   // the field the user inline-edits
+  var GROUPING_FIELD  = 'field_2381';   // the field the webhook rewrites → drives L1 groups
+  var POLL_INTERVAL   = 1500;           // ms between polls
+  var STABLE_CYCLES   = 2;              // consecutive unchanged cycles → webhook done
+  var MAX_POLLS       = 20;             // hard cap (~30s)
+  var START_DELAY     = 500;            // ms to wait after PUT response before first poll
   var LOG_PREFIX      = '[scw-silent-poll.' + VIEW_ID + ']';
 
   // ======================
@@ -45,8 +56,10 @@
   var pollTimer       = null;
   var pollsRemaining  = 0;
   var stableStreak    = 0;
-  var lastHash        = null;
+  var lastSnapshot    = null;   // snapshot from previous poll (for stability check)
+  var domBaseline     = null;   // snapshot captured at trigger time (for dirty check)
   var inFlight        = false;
+  var active          = false;
 
   function log() {
     if (!window.SCW || !window.SCW.DEBUG_SILENT_POLL) return;
@@ -54,46 +67,127 @@
   }
 
   // ======================
-  // Hash a record payload so we can detect stability.
-  // We intentionally hash ALL field keys in the response so any change
-  // (label, fee, calculated, etc.) resets the stable streak.
+  // Snapshot helpers
+  // ----------------------
+  // A "snapshot" is { recordId: "id1,id2,..." } where the value is the
+  // sorted, comma-joined list of 24-hex record IDs that record is
+  // connected to via field_2381. Comparing two snapshots with === on
+  // the joined strings tells us whether any row's grouping connections
+  // have changed.
   // ======================
-  function hashRecords(records) {
-    if (!records || !records.length) return '0:0';
-    var parts = [];
+
+  var HEX24 = /^[0-9a-f]{24}$/i;
+
+  function sortedIdString(ids) {
+    if (!ids || !ids.length) return '';
+    // copy before sorting so we don't mutate caller arrays
+    var copy = ids.slice();
+    copy.sort();
+    return copy.join(',');
+  }
+
+  /**
+   * Walk the live view_3505 DOM and extract each record row's current
+   * field_2381 connection IDs from the span[data-kn="connection-value"]
+   * classNames.
+   */
+  function captureDomBaseline() {
+    var snap = {};
+    var view = document.getElementById(VIEW_ID);
+    if (!view) return snap;
+
+    var rows = view.querySelectorAll('tr.scw-ws-row[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      var recordId = tr.id;
+      if (!HEX24.test(recordId)) continue;
+
+      var cell = tr.querySelector('td.' + GROUPING_FIELD);
+      if (!cell) { snap[recordId] = ''; continue; }
+
+      var spans = cell.querySelectorAll('span[data-kn="connection-value"]');
+      var ids = [];
+      for (var s = 0; s < spans.length; s++) {
+        // Knack writes each connected record's 24-hex ID as a className
+        // on the connection-value span. There may be other classes too,
+        // so walk the classList looking for the hex pattern.
+        var classes = spans[s].classList;
+        for (var c = 0; c < classes.length; c++) {
+          if (HEX24.test(classes[c])) { ids.push(classes[c]); break; }
+        }
+      }
+      snap[recordId] = sortedIdString(ids);
+    }
+    return snap;
+  }
+
+  /**
+   * Build an equivalent snapshot from a records API response payload.
+   * Prefers field_2381_raw (array of {id, identifier}), falls back to
+   * parsing HTML out of field_2381 if _raw isn't present.
+   */
+  function snapshotFromResponse(records) {
+    var snap = {};
+    if (!records || !records.length) return snap;
+
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r || !r.id) continue;
-      var keys = Object.keys(r).sort();
-      var buf = r.id + '|';
-      for (var k = 0; k < keys.length; k++) {
-        var key = keys[k];
-        // Skip meta/internal keys
-        if (key.charAt(0) === '_') continue;
-        var v = r[key];
-        if (v == null) { buf += key + '=;'; continue; }
-        if (typeof v === 'object') {
-          try { buf += key + '=' + JSON.stringify(v) + ';'; }
-          catch (e) { buf += key + '=?;'; }
-        } else {
-          buf += key + '=' + String(v) + ';';
+
+      var ids = [];
+      var raw = r[GROUPING_FIELD + '_raw'];
+      if (Array.isArray(raw)) {
+        for (var k = 0; k < raw.length; k++) {
+          var entry = raw[k];
+          if (entry && typeof entry === 'object' && entry.id && HEX24.test(entry.id)) {
+            ids.push(entry.id);
+          } else if (typeof entry === 'string' && HEX24.test(entry)) {
+            ids.push(entry);
+          }
         }
+      } else if (typeof r[GROUPING_FIELD] === 'string') {
+        // Defensive fallback: parse 24-hex substrings out of any HTML.
+        var m = r[GROUPING_FIELD].match(/[0-9a-f]{24}/gi);
+        if (m) ids = m;
       }
-      parts.push(buf);
+      snap[r.id] = sortedIdString(ids);
     }
-    return parts.length + ':' + parts.join('\n').length + ':' + simpleHash(parts.join('\n'));
+    return snap;
   }
 
-  function simpleHash(s) {
-    // Tiny non-cryptographic hash — plenty for change detection.
-    var h = 0, i, c;
-    if (!s) return 0;
-    for (i = 0; i < s.length; i++) {
-      c = s.charCodeAt(i);
-      h = ((h << 5) - h) + c;
-      h |= 0;
+  /** True if two snapshots have identical { recordId → joinedIds } shape. */
+  function snapshotsEqual(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    var ka = Object.keys(a);
+    var kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    for (var i = 0; i < ka.length; i++) {
+      var key = ka[i];
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (a[key] !== b[key]) return false;
     }
-    return h;
+    return true;
+  }
+
+  /**
+   * True if ANY record shared between baseline and current has a
+   * different joinedIds value. Records that exist only in one side
+   * also count as dirty (row added/removed from the visible set).
+   */
+  function isDirty(baseline, current) {
+    if (!baseline || !current) return false;
+    var bk = Object.keys(baseline);
+    var ck = Object.keys(current);
+    // If every baseline record is present in current with the same
+    // joined string AND current has no extra records, we're clean.
+    if (bk.length !== ck.length) return true;
+    for (var i = 0; i < bk.length; i++) {
+      var key = bk[i];
+      if (!Object.prototype.hasOwnProperty.call(current, key)) return true;
+      if (baseline[key] !== current[key]) return true;
+    }
+    return false;
   }
 
   // ======================
@@ -101,44 +195,45 @@
   // ======================
   function buildRecordsUrl() {
     if (typeof Knack === 'undefined' || !Knack.router || !Knack.router.current_scene_key) return null;
-    // rows_per_page=1000 is well above any expected grid size; Knack caps
-    // at 1000 so this is effectively "everything the view exposes".
     return Knack.api_url +
       '/v1/pages/' + Knack.router.current_scene_key +
       '/views/' + VIEW_ID + '/records?rows_per_page=1000';
   }
 
   // ======================
-  // Patch every returned record into its worksheet card.
-  // patchCard is a no-op if the card isn't present, so records outside
-  // the visible page are harmlessly skipped.
+  // Trigger the single full refresh once we've decided the webhook is done.
+  // Capture the current expanded-panel state first so device-worksheet can
+  // restore it after the re-render, same path used by the normal refresh
+  // coordinator.
   // ======================
-  function patchAll(records) {
-    if (!records || !records.length) return 0;
-    var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
-    if (typeof patchFn !== 'function') {
-      log('patchCard unavailable — aborting');
-      return 0;
-    }
-    var count = 0;
-    for (var i = 0; i < records.length; i++) {
-      var r = records[i];
-      if (!r || !r.id) continue;
-      try {
-        patchFn(VIEW_ID, r.id, r, { skipFocused: true });
-        count++;
-      } catch (e) {
-        console.warn(LOG_PREFIX, 'patchCard threw for ' + r.id, e);
+  function triggerRefresh() {
+    log('dirty+stable → triggering model.fetch()');
+    try {
+      if (window.SCW && window.SCW.deviceWorksheet && typeof window.SCW.deviceWorksheet.captureState === 'function') {
+        window.SCW.deviceWorksheet.captureState();
       }
+    } catch (e) {
+      console.warn(LOG_PREFIX, 'captureState threw', e);
     }
-    return count;
+
+    try {
+      var view = Knack.views && Knack.views[VIEW_ID];
+      if (view && view.model && typeof view.model.fetch === 'function') {
+        view.model.fetch();
+      } else {
+        log('Knack.views[' + VIEW_ID + '].model.fetch not available — nothing to do');
+      }
+    } catch (e) {
+      console.warn(LOG_PREFIX, 'model.fetch threw', e);
+    }
   }
 
   // ======================
-  // One poll cycle: GET records, hash, patch, decide whether to continue.
+  // One poll cycle: GET records, snapshot, compare, decide.
   // ======================
   function poll() {
     pollTimer = null;
+    if (!active) return;
     if (pollsRemaining <= 0) { log('max polls reached — stop'); return stop(); }
     if (inFlight)            { log('previous request still in flight — skip'); return scheduleNext(); }
 
@@ -161,26 +256,34 @@
       dataType: 'json',
       success: function (resp) {
         inFlight = false;
+        if (!active) return;
+
         var records = (resp && resp.records) || [];
-        var hash = hashRecords(records);
-        log('poll ok — ' + records.length + ' records, hash=' + hash);
+        var snap = snapshotFromResponse(records);
 
-        patchAll(records);
+        var stableNow = snapshotsEqual(snap, lastSnapshot);
+        var dirtyNow  = isDirty(domBaseline, snap);
 
-        if (hash === lastHash) {
+        log('poll ok — ' + records.length + ' records, dirty=' + dirtyNow + ', stable=' + stableNow);
+
+        if (stableNow) {
           stableStreak++;
-          if (stableStreak >= STABLE_CYCLES) {
-            log('stable for ' + stableStreak + ' cycles — stop');
-            return stop();
-          }
         } else {
           stableStreak = 0;
-          lastHash = hash;
         }
+        lastSnapshot = snap;
+
+        if (dirtyNow && stableStreak >= STABLE_CYCLES) {
+          log('webhook done — stable for ' + stableStreak + ' cycles and dirty vs baseline');
+          triggerRefresh();
+          return stop();
+        }
+
         scheduleNext();
       },
       error: function (xhr) {
         inFlight = false;
+        if (!active) return;
         log('poll error ' + (xhr && xhr.status));
         // Keep trying until the poll budget runs out.
         scheduleNext();
@@ -189,26 +292,33 @@
   }
 
   function scheduleNext() {
+    if (!active) return;
     if (pollsRemaining <= 0) return stop();
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = setTimeout(poll, POLL_INTERVAL);
   }
 
   function stop() {
+    active         = false;
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     pollsRemaining = 0;
     stableStreak   = 0;
-    lastHash       = null;
+    lastSnapshot   = null;
+    domBaseline    = null;
     inFlight       = false;
   }
 
   function start() {
-    log('start polling (' + MAX_POLLS + ' polls @ ' + POLL_INTERVAL + 'ms)');
-    // Reset state but keep any in-flight request; scheduleNext will skip if needed.
-    if (pollTimer) clearTimeout(pollTimer);
+    // Capture the baseline BEFORE any polling, so even very fast webhook
+    // updates that land before poll #1 still register as "dirty".
+    domBaseline = captureDomBaseline();
+    log('start polling (' + MAX_POLLS + ' polls @ ' + POLL_INTERVAL + 'ms), baseline rows=' + Object.keys(domBaseline).length);
+
+    active         = true;
     pollsRemaining = MAX_POLLS;
     stableStreak   = 0;
-    lastHash       = null;
+    lastSnapshot   = null;
+    if (pollTimer) clearTimeout(pollTimer);
     pollTimer = setTimeout(poll, START_DELAY);
   }
 
@@ -235,11 +345,12 @@
     start();
   });
 
-  // If the view is re-rendered for any reason (e.g. the user triggered a
-  // real refresh) abandon the current poll — patchCard would target stale
-  // cards anyway, and transformView rebuilds from scratch.
+  // If the view is re-rendered for any reason (including the model.fetch
+  // we triggered ourselves) stop polling. For our own fetch this is the
+  // correct terminal state; for unrelated re-renders the poll would be
+  // targeting stale data anyway.
   $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentPoll', function () {
-    if (pollsRemaining > 0) log('view re-rendered — stop');
+    if (active) log('view re-rendered — stop');
     stop();
   });
 })();
