@@ -15023,157 +15023,150 @@ $(document).on('knack-view-render.view_3313', function () {
 
 
 /***************************** SURVEY / PROJECT FORM - network device mapping *******************/
-
+/**
+ * Replaces Chosen.js multi-select dropdowns with checkbox lists.
+ *
+ * Design principles:
+ *   - ZERO persistent state — every render reads fresh from the <select>
+ *   - Scoped per view+field combo (safe when two fields share a view)
+ *   - Polls for options (Knack lazy-loads them via AJAX)
+ *   - MutationObserver auto-rebuilds if options reload (e.g. dependent
+ *     field change) — no hard-coded field dependencies
+ *   - All timers / observers are cleaned up on re-render
+ */
 (function () {
   'use strict';
 
-  var checkboxState = {};
+  /* ── cleanup registries ──────────────────────────────────── */
+  var polls    = {};   // setInterval IDs
+  var watchers = {};   // MutationObserver refs
+  var bounces  = {};   // debounce setTimeout IDs
 
-  function stateKey(viewId, fieldId) {
-    return viewId + '--' + fieldId;
+  /* ── helpers ─────────────────────────────────────────────── */
+  function realOptions($sel) {
+    return $sel.find('option').filter(function () { return $(this).val() !== ''; });
   }
 
-  function enableCheckboxSelectSync(cfg) {
-    var viewId = cfg.viewId;
-    var selectFieldId = cfg.selectFieldId;
-    var sk = stateKey(viewId, selectFieldId);
-    var ns = '.scwCbSync_' + sk;
-    var domId = 'custom-checkboxes-' + viewId + '-' + selectFieldId;
+  /* ── core ────────────────────────────────────────────────── */
+  function enableCheckboxSelectSync(viewId, fieldId) {
+    var key = viewId + '_' + fieldId;
+    var boxId = 'scw-cb-' + key;          // checkbox container DOM id
+    var ns  = '.scwCb_' + key;            // jQuery event namespace
 
-    checkboxState[sk] = checkboxState[sk] || [];
-
+    // off/on prevents handler stacking across hot reloads
     $(document).off('knack-view-render.' + viewId + ns)
                .on('knack-view-render.' + viewId + ns, function () {
 
-      var $selectInput = $('#' + viewId + '-' + selectFieldId);
-      if (!$selectInput.length || !$selectInput.is(':visible')) return;
+      /* ── teardown previous cycle ──────────────────────────── */
+      if (polls[key])    { clearInterval(polls[key]);       polls[key]    = null; }
+      if (watchers[key]) { watchers[key].disconnect();      watchers[key] = null; }
+      if (bounces[key])  { clearTimeout(bounces[key]);      bounces[key]  = null; }
 
-      // Force Knack to populate options
-      $selectInput.trigger('focus').trigger('mousedown');
+      var $sel = $('#' + viewId + '-' + fieldId);
+      // The <select> exists but is hidden by Chosen — do NOT check :visible
+      if (!$sel.length) return;
 
-      // MutationObserver for option population
-      var observer = new MutationObserver(function () {
-        var options = $selectInput.find('option');
-        if (options.length === 0) return;
-        syncSelectedToState(options);
-        observer.disconnect();
-        renderCheckboxes();
-        bindCheckboxListeners();
-      });
-      observer.observe($selectInput[0], { childList: true, subtree: true });
+      // Nudge Knack to populate options (some connection fields lazy-load)
+      $sel.trigger('focus').trigger('mousedown');
 
-      // Fallback polling
-      var fallbackPoll = setInterval(function () {
-        var options = $selectInput.find('option');
-        if (options.length > 0) {
-          clearInterval(fallbackPoll);
-          syncSelectedToState(options);
-          renderCheckboxes();
-          bindCheckboxListeners();
+      /* ── poll until options appear (max ~5 s) ─────────────── */
+      var tries = 0;
+      polls[key] = setInterval(function () {
+        tries++;
+        if (realOptions($sel).length) {
+          clearInterval(polls[key]);
+          polls[key] = null;
+          build($sel, key, boxId, ns);
+          observe($sel, key, boxId, ns);
+        } else if (tries >= 50) {
+          clearInterval(polls[key]);
+          polls[key] = null;
         }
       }, 100);
-
-      // Handle quote field change
-      $(document).off('change.quote-' + sk);
-      $(document).on('change.quote-' + sk, '#' + viewId + '-field_1864', function () {
-        $('#' + domId + ' input[type="checkbox"]:checked').each(function () {
-          var val = $(this).val();
-          var label = $(this).parent().text().trim();
-          if (!checkboxState[sk].some(function (o) { return o.value === val; })) {
-            checkboxState[sk].push({ value: val, label: label });
-          }
-        });
-
-        var reobserve = new MutationObserver(function () {
-          var options = $selectInput.find('option');
-          if (options.length === 0) return;
-          reobserve.disconnect();
-          renderCheckboxes();
-          bindCheckboxListeners();
-        });
-
-        $selectInput.trigger('focus').trigger('mousedown');
-        reobserve.observe($selectInput[0], { childList: true, subtree: true });
-      });
-
-      function syncSelectedToState(options) {
-        options.filter(':selected').each(function () {
-          var val = $(this).val();
-          var label = $(this).text();
-          if (!checkboxState[sk].some(function (o) { return o.value === val; })) {
-            checkboxState[sk].push({ value: val, label: label });
-          }
-        });
-      }
-
-      function renderCheckboxes() {
-        var $chosen = $selectInput.siblings('.chzn-container');
-        if ($chosen.length) $chosen.hide();
-
-        $('#' + domId).remove();
-
-        $selectInput.find('option').prop('selected', false);
-        checkboxState[sk].forEach(function (item) {
-          $selectInput.find('option[value="' + item.value + '"]').prop('selected', true);
-        });
-        $selectInput.trigger('change').trigger('chosen:updated');
-
-        var html = '<div id="' + domId + '" style="margin-top:10px;">';
-        var seen = {};
-
-        checkboxState[sk].forEach(function (item) {
-          html += '<label style="display:block;margin:5px 0;">' +
-                    '<input type="checkbox" value="' + item.value + '" checked> ' + item.label +
-                  '</label>';
-          seen[item.value] = true;
-        });
-
-        $selectInput.find('option').each(function () {
-          var val = $(this).val();
-          var label = $(this).text();
-          if (!seen[val]) {
-            html += '<label style="display:block;margin:5px 0;">' +
-                      '<input type="checkbox" value="' + val + '"> ' + label +
-                    '</label>';
-          }
-        });
-
-        html += '</div>';
-        $selectInput.after(html);
-      }
-
-      function bindCheckboxListeners() {
-        $(document).off('change.checkbox-' + sk);
-        $(document).on('change.checkbox-' + sk, '#' + domId + ' input[type="checkbox"]', function () {
-          $selectInput.find('option').prop('selected', false);
-          checkboxState[sk] = [];
-
-          $('#' + domId + ' input[type="checkbox"]:checked').each(function () {
-            var val = $(this).val();
-            var label = $(this).parent().text().trim();
-            checkboxState[sk].push({ value: val, label: label });
-            $selectInput.find('option[value="' + val + '"]').prop('selected', true);
-          });
-
-          $selectInput.trigger('change').trigger('chosen:updated');
-        });
-      }
     });
   }
 
-  // ── Activate for each view + field combo ──
-  enableCheckboxSelectSync({ viewId: 'view_2688', selectFieldId: 'field_1656' });
-  enableCheckboxSelectSync({ viewId: 'view_2697', selectFieldId: 'field_1656' });
+  /* ── build checkbox UI ──────────────────────────────────── */
+  function build($sel, key, boxId, ns) {
+    // Hide the Chosen dropdown
+    $sel.siblings('.chzn-container').hide();
 
-  enableCheckboxSelectSync({ viewId: 'view_3544', selectFieldId: 'field_2180' });
-  enableCheckboxSelectSync({ viewId: 'view_3619', selectFieldId: 'field_2180' });
-  enableCheckboxSelectSync({ viewId: 'view_3627', selectFieldId: 'field_2180' });
+    // Remove stale checkbox container
+    $('#' + boxId).remove();
 
-  enableCheckboxSelectSync({ viewId: 'view_3544', selectFieldId: 'field_2250' });
-  enableCheckboxSelectSync({ viewId: 'view_3619', selectFieldId: 'field_2250' });
-  enableCheckboxSelectSync({ viewId: 'view_3627', selectFieldId: 'field_2250' });
+    // Read the CURRENT selected state straight from the <select>.
+    // No external state object — guarantees a clean slate on every render.
+    var $opts = realOptions($sel);
+    var selected = {};
+    $sel.find('option:selected').each(function () {
+      var v = $(this).val();
+      if (v) selected[v] = true;
+    });
 
-  enableCheckboxSelectSync({ viewId: 'view_3748', selectFieldId: 'field_2180' });
+    // Render — selected items first, then unselected
+    var html = '<div id="' + boxId + '" style="margin-top:10px;">';
+
+    $opts.each(function () {
+      var v = $(this).val(), lbl = $(this).text();
+      if (v && selected[v]) {
+        html += '<label style="display:block;margin:5px 0;">' +
+                  '<input type="checkbox" value="' + v + '" checked> ' + lbl +
+                '</label>';
+      }
+    });
+    $opts.each(function () {
+      var v = $(this).val(), lbl = $(this).text();
+      if (v && !selected[v]) {
+        html += '<label style="display:block;margin:5px 0;">' +
+                  '<input type="checkbox" value="' + v + '"> ' + lbl +
+                '</label>';
+      }
+    });
+
+    html += '</div>';
+    $sel.after(html);
+
+    // Bind checkbox → select sync
+    $(document).off('change' + ns, '#' + boxId + ' input[type="checkbox"]');
+    $(document).on('change' + ns, '#' + boxId + ' input[type="checkbox"]', function () {
+      $sel.find('option').prop('selected', false);
+      $('#' + boxId + ' input[type="checkbox"]:checked').each(function () {
+        $sel.find('option[value="' + $(this).val() + '"]').prop('selected', true);
+      });
+      $sel.trigger('change').trigger('chosen:updated');
+    });
+  }
+
+  /* ── watch for option-list changes (dependent field swap) ── */
+  function observe($sel, key, boxId, ns) {
+    // childList fires when Knack replaces <option> elements (e.g. after
+    // a parent connection field changes).  prop('selected') does NOT
+    // add/remove elements, so our own sync won't re-trigger this.
+    var watcher = new MutationObserver(function () {
+      if (bounces[key]) clearTimeout(bounces[key]);
+      bounces[key] = setTimeout(function () {
+        if (realOptions($sel).length) {
+          build($sel, key, boxId, ns);
+        }
+      }, 250);
+    });
+    watcher.observe($sel[0], { childList: true });
+    watchers[key] = watcher;
+  }
+
+  /* ── activate ───────────────────────────────────────────── */
+  enableCheckboxSelectSync('view_2688', 'field_1656');
+  enableCheckboxSelectSync('view_2697', 'field_1656');
+
+  enableCheckboxSelectSync('view_3544', 'field_2180');
+  enableCheckboxSelectSync('view_3619', 'field_2180');
+  enableCheckboxSelectSync('view_3627', 'field_2180');
+
+  enableCheckboxSelectSync('view_3544', 'field_2250');
+  enableCheckboxSelectSync('view_3619', 'field_2250');
+  enableCheckboxSelectSync('view_3627', 'field_2250');
+
+  enableCheckboxSelectSync('view_3748', 'field_2180');
 })();
 
 /***************************** SURVEY / PROJECT FORM: drag + drop View / Location Upload fields *******************/
