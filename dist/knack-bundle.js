@@ -3739,14 +3739,41 @@ window.SCW = window.SCW || {};
  **************************************************************************************************/
 
 /**************************************************************************************************
- * FEATURE: Modal backdrop click-to-close DISABLE (possibly obsolete)
- * - DEPRECATE? Knack now has “keep open till action”
- * - Purpose: prevents closing modal when clicking outside it
+ * FEATURE: Modal backdrop click-to-close DISABLE
+ * - Page modals: unbinds click on .kn-modal-bg during scene render
+ * - “Add new option” modals (.kn-modal.default): prevents close via overlay
+ *   click or Escape key. Only the X button (.delete.close-modal) or form
+ *   submit can close these modals.
  **************************************************************************************************/
 (function modalBackdropClickDisable() {
+  // ── Page modals (scene-level) ──────────────────────────────
   $(document).on('knack-scene-render.any', function (event, scene) {
     $('.kn-modal-bg').off('click');
   });
+
+  // ── “Add new option” modals (.kn-modal.default) ────────────
+  // Capturing-phase listeners fire before Knack's own handlers,
+  // ensuring the event is killed before it can trigger a close.
+
+  // Prevent overlay click from closing modal
+  document.addEventListener('click', function (e) {
+    if (!e.target.classList.contains('kn-overlay')) return;
+    var modal = document.querySelector('.kn-modal.default');
+    if (modal && modal.style.display !== 'none') {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    }
+  }, true);
+
+  // Prevent Escape key from closing modal
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' && e.keyCode !== 27) return;
+    var modal = document.querySelector('.kn-modal.default');
+    if (modal && modal.style.display !== 'none') {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    }
+  }, true);
 })();
 /*** END FEATURE: Modal backdrop click-to-close DISABLE ************************************************/
 /**************************************************************************************************
@@ -14996,192 +15023,158 @@ $(document).on('knack-view-render.view_3313', function () {
 
 
 /***************************** SURVEY / PROJECT FORM - network device mapping *******************/
-/* testing*/
 
-const checkboxStateByView = {};
+(function () {
+  'use strict';
 
-function enableCheckboxSelectSync({ viewId, selectFieldId }) {
-  checkboxStateByView[viewId] = checkboxStateByView[viewId] || [];
+  var checkboxState = {};
 
-  $(document).on(`knack-view-render.${viewId}`, function () {
-    console.log(`✅ View ${viewId} rendered`);
+  function stateKey(viewId, fieldId) {
+    return viewId + '--' + fieldId;
+  }
 
-    const $selectInput = $(`#${viewId}-${selectFieldId}`);
-    if (!$selectInput.length) {
-      console.error(`❌ Select input not found in ${viewId}`);
-      return;
-    }
+  function enableCheckboxSelectSync(cfg) {
+    var viewId = cfg.viewId;
+    var selectFieldId = cfg.selectFieldId;
+    var sk = stateKey(viewId, selectFieldId);
+    var ns = '.scwCbSync_' + sk;
+    var domId = 'custom-checkboxes-' + viewId + '-' + selectFieldId;
 
-    // ✅ Force open to trigger Knack to populate options
-    $selectInput.trigger('focus').trigger('mousedown');
+    checkboxState[sk] = checkboxState[sk] || [];
 
-    // ✅ MutationObserver for normal (multi-option) cases
-    const observer = new MutationObserver(() => {
-      const options = $selectInput.find('option');
-      if (options.length === 0) return;
+    $(document).off('knack-view-render.' + viewId + ns)
+               .on('knack-view-render.' + viewId + ns, function () {
 
-      console.log(`📋 ${options.length} options detected in ${viewId}`);
-      syncSelectedToCheckboxState(options, viewId);
-      observer.disconnect();
-      renderCheckboxes();
-      bindCheckboxListeners();
-    });
+      var $selectInput = $('#' + viewId + '-' + selectFieldId);
+      if (!$selectInput.length || !$selectInput.is(':visible')) return;
 
-    observer.observe($selectInput[0], { childList: true, subtree: true });
-
-    // ✅ Fallback polling in case only one quote and Knack injects slowly
-    const fallbackPoll = setInterval(() => {
-      const options = $selectInput.find('option');
-      if (options.length > 0) {
-        clearInterval(fallbackPoll);
-        console.log(`⏳ Fallback: camera options detected in ${viewId}`);
-        syncSelectedToCheckboxState(options, viewId);
-        renderCheckboxes();
-        bindCheckboxListeners();
-      }
-    }, 100);
-
-    // ✅ Handle quote field change (clear + wait for new camera list)
-    $(document).off(`change.quote-${viewId}`);
-    $(document).on(`change.quote-${viewId}`, `#${viewId}-field_1864`, function () {
-      console.log(`🔁 Quote field changed in ${viewId}`);
-
-      $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
-        const val = $(this).val();
-        const label = $(this).parent().text().trim();
-        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
-          checkboxStateByView[viewId].push({ value: val, label });
-        }
-      });
-
-      const reobserve = new MutationObserver(() => {
-        const options = $selectInput.find('option');
-        if (options.length === 0) return;
-
-        reobserve.disconnect();
-        renderCheckboxes();
-        bindCheckboxListeners();
-      });
-
+      // Force Knack to populate options
       $selectInput.trigger('focus').trigger('mousedown');
-      reobserve.observe($selectInput[0], { childList: true, subtree: true });
-    });
 
-    function syncSelectedToCheckboxState(options, viewId) {
-      options.filter(':selected').each(function () {
-        const val = $(this).val();
-        const label = $(this).text();
-        if (!checkboxStateByView[viewId].some(o => o.value === val)) {
-          checkboxStateByView[viewId].push({ value: val, label });
+      // MutationObserver for option population
+      var observer = new MutationObserver(function () {
+        var options = $selectInput.find('option');
+        if (options.length === 0) return;
+        syncSelectedToState(options);
+        observer.disconnect();
+        renderCheckboxes();
+        bindCheckboxListeners();
+      });
+      observer.observe($selectInput[0], { childList: true, subtree: true });
+
+      // Fallback polling
+      var fallbackPoll = setInterval(function () {
+        var options = $selectInput.find('option');
+        if (options.length > 0) {
+          clearInterval(fallbackPoll);
+          syncSelectedToState(options);
+          renderCheckboxes();
+          bindCheckboxListeners();
         }
-      });
-    }
+      }, 100);
 
-    function renderCheckboxes() {
-      const $chosen = $selectInput.siblings('.chzn-container');
-      if ($chosen.length) $chosen.hide();
-
-      $(`#custom-checkboxes-${viewId}`).remove();
-
-      $selectInput.find('option').prop('selected', false);
-      checkboxStateByView[viewId].forEach(({ value }) => {
-        $selectInput.find(`option[value="${value}"]`).prop('selected', true);
-      });
-      $selectInput.trigger('change').trigger('chosen:updated');
-
-      let html = `<div id="custom-checkboxes-${viewId}" style="margin-top:10px;">`;
-      const seen = {};
-
-      checkboxStateByView[viewId].forEach(({ value, label }) => {
-        html += `<label style="display:block;margin:5px 0;">
-                   <input type="checkbox" value="${value}" checked> ${label}
-                 </label>`;
-        seen[value] = true;
-      });
-
-      $selectInput.find('option').each(function () {
-        const val = $(this).val();
-        const label = $(this).text();
-        if (!seen[val]) {
-          html += `<label style="display:block;margin:5px 0;">
-                     <input type="checkbox" value="${val}"> ${label}
-                   </label>`;
-        }
-      });
-
-      html += '</div>';
-      $selectInput.after(html);
-    }
-
-    function bindCheckboxListeners() {
-      $(document).off(`change.checkbox-${viewId}`);
-      $(document).on(`change.checkbox-${viewId}`, `#custom-checkboxes-${viewId} input[type="checkbox"]`, function () {
-        $selectInput.find('option').prop('selected', false);
-        checkboxStateByView[viewId] = [];
-
-        $(`#custom-checkboxes-${viewId} input[type="checkbox"]:checked`).each(function () {
-          const val = $(this).val();
-          const label = $(this).parent().text().trim();
-          checkboxStateByView[viewId].push({ value: val, label });
-          $selectInput.find(`option[value="${val}"]`).prop('selected', true);
+      // Handle quote field change
+      $(document).off('change.quote-' + sk);
+      $(document).on('change.quote-' + sk, '#' + viewId + '-field_1864', function () {
+        $('#' + domId + ' input[type="checkbox"]:checked').each(function () {
+          var val = $(this).val();
+          var label = $(this).parent().text().trim();
+          if (!checkboxState[sk].some(function (o) { return o.value === val; })) {
+            checkboxState[sk].push({ value: val, label: label });
+          }
         });
 
-        $selectInput.trigger('change').trigger('chosen:updated');
+        var reobserve = new MutationObserver(function () {
+          var options = $selectInput.find('option');
+          if (options.length === 0) return;
+          reobserve.disconnect();
+          renderCheckboxes();
+          bindCheckboxListeners();
+        });
+
+        $selectInput.trigger('focus').trigger('mousedown');
+        reobserve.observe($selectInput[0], { childList: true, subtree: true });
       });
-    }
-  });
-}
 
-// ✅ Activate for each view
-enableCheckboxSelectSync({
-  viewId: 'view_2688',
-  selectFieldId: 'field_1656'
-});
+      function syncSelectedToState(options) {
+        options.filter(':selected').each(function () {
+          var val = $(this).val();
+          var label = $(this).text();
+          if (!checkboxState[sk].some(function (o) { return o.value === val; })) {
+            checkboxState[sk].push({ value: val, label: label });
+          }
+        });
+      }
 
-enableCheckboxSelectSync({
-  viewId: 'view_2697',
-  selectFieldId: 'field_1656'
-});
+      function renderCheckboxes() {
+        var $chosen = $selectInput.siblings('.chzn-container');
+        if ($chosen.length) $chosen.hide();
 
-enableCheckboxSelectSync({
-  viewId: 'view_3544',
-  selectFieldId: 'field_2180'
-});
+        $('#' + domId).remove();
 
-enableCheckboxSelectSync({
-  viewId: 'view_3619',
-  selectFieldId: 'field_2180'
-});
+        $selectInput.find('option').prop('selected', false);
+        checkboxState[sk].forEach(function (item) {
+          $selectInput.find('option[value="' + item.value + '"]').prop('selected', true);
+        });
+        $selectInput.trigger('change').trigger('chosen:updated');
 
-enableCheckboxSelectSync({
-  viewId: 'view_3627',
-  selectFieldId: 'field_2180'
-});
+        var html = '<div id="' + domId + '" style="margin-top:10px;">';
+        var seen = {};
 
-enableCheckboxSelectSync({
-  viewId: 'view_3544',
-  selectFieldId: 'field_2250'
-});
+        checkboxState[sk].forEach(function (item) {
+          html += '<label style="display:block;margin:5px 0;">' +
+                    '<input type="checkbox" value="' + item.value + '" checked> ' + item.label +
+                  '</label>';
+          seen[item.value] = true;
+        });
 
-enableCheckboxSelectSync({
-  viewId: 'view_3619',
-  selectFieldId: 'field_2250'
-});
+        $selectInput.find('option').each(function () {
+          var val = $(this).val();
+          var label = $(this).text();
+          if (!seen[val]) {
+            html += '<label style="display:block;margin:5px 0;">' +
+                      '<input type="checkbox" value="' + val + '"> ' + label +
+                    '</label>';
+          }
+        });
 
-enableCheckboxSelectSync({
-  viewId: 'view_3627',
-  selectFieldId: 'field_2250'
-});
+        html += '</div>';
+        $selectInput.after(html);
+      }
 
-enableCheckboxSelectSync({
-  viewId: 'view_3748',
-  selectFieldId: 'field_2180'
-});
+      function bindCheckboxListeners() {
+        $(document).off('change.checkbox-' + sk);
+        $(document).on('change.checkbox-' + sk, '#' + domId + ' input[type="checkbox"]', function () {
+          $selectInput.find('option').prop('selected', false);
+          checkboxState[sk] = [];
 
-/*
+          $('#' + domId + ' input[type="checkbox"]:checked').each(function () {
+            var val = $(this).val();
+            var label = $(this).parent().text().trim();
+            checkboxState[sk].push({ value: val, label: label });
+            $selectInput.find('option[value="' + val + '"]').prop('selected', true);
+          });
 
+          $selectInput.trigger('change').trigger('chosen:updated');
+        });
+      }
+    });
+  }
 
+  // ── Activate for each view + field combo ──
+  enableCheckboxSelectSync({ viewId: 'view_2688', selectFieldId: 'field_1656' });
+  enableCheckboxSelectSync({ viewId: 'view_2697', selectFieldId: 'field_1656' });
 
+  enableCheckboxSelectSync({ viewId: 'view_3544', selectFieldId: 'field_2180' });
+  enableCheckboxSelectSync({ viewId: 'view_3619', selectFieldId: 'field_2180' });
+  enableCheckboxSelectSync({ viewId: 'view_3627', selectFieldId: 'field_2180' });
+
+  enableCheckboxSelectSync({ viewId: 'view_3544', selectFieldId: 'field_2250' });
+  enableCheckboxSelectSync({ viewId: 'view_3619', selectFieldId: 'field_2250' });
+  enableCheckboxSelectSync({ viewId: 'view_3627', selectFieldId: 'field_2250' });
+
+  enableCheckboxSelectSync({ viewId: 'view_3748', selectFieldId: 'field_2180' });
+})();
 
 /***************************** SURVEY / PROJECT FORM: drag + drop View / Location Upload fields *******************/
 
@@ -20554,6 +20547,7 @@ $(".kn-navigation-bar").hide();
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          surveyNotes:      { key: 'field_2412', type: 'readOnly', label: 'Survey Notes' },
           subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
@@ -20561,7 +20555,7 @@ $(".kn-navigation-bar").hide();
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid', 'subBidLock']
+          right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
         },
         recordLockField: 'field_2634',
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
