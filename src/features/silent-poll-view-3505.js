@@ -527,8 +527,8 @@
     inFlight       = false;
   }
 
-  function start() {
-    domBaseline = captureDomSnapshot();
+  function startPolling(preservedBaseline) {
+    domBaseline = preservedBaseline || captureDomSnapshot();
     log('start polling (' + MAX_POLLS + ' polls @ ' + POLL_INTERVAL + 'ms), baseline rows=' + Object.keys(domBaseline).length);
     active         = true;
     pollsRemaining = MAX_POLLS;
@@ -537,80 +537,134 @@
     if (pollTimer) clearTimeout(pollTimer);
     pollTimer = setTimeout(poll, START_DELAY);
   }
+  // Legacy alias used by the DevTools debug hook
+  var start = startPolling;
 
   // ======================================================================
-  // Trigger: knack-cell-update.view_3505
+  // Trigger + settle coordinator
   // ----------------------------------------------------------------------
-  // In this codebase, Knack's inline-edit save for view_3505 does NOT go
-  // through $(document).ajaxComplete (verified by diagnostic round: zero
-  // "saw PUT" lines on a field_2380 edit). However knack-cell-update
-  // fires reliably with the full updated record, which is exactly what
-  // we need — device-worksheet already binds this event to call
-  // patchCardFromResponse (device-worksheet.js:5712), but patchCard only
-  // updates card display elements, not the hidden sourceTr.td.field_2381,
-  // so the row's group membership never migrates.
+  // Observed timing (from the diagnostic run):
+  //   1. User confirms field_2380 inline-edit
+  //   2. device-worksheet patches card display
+  //   3. knack-cell-update.view_3505 fires with the record (field_2381 STILL OLD
+  //      because the Make webhook is async)
+  //   4. Knack natively re-renders view_3505 within ~50-250ms from its cached
+  //      model data → old knack-view-render handler used to call stop() here
+  //      and killed the poll loop before a single poll could fire
+  //   5. Make webhook finishes over the next N seconds and rewrites field_2381
+  //      on one or more records in the database
   //
-  // Our handler runs independently: for the record in the event, we
-  // check whether its field_2381 has actually changed vs the DOM, and
-  // if so, immediately migrate that one row to its new L1 group. Then
-  // we kick off the polling loop as a safety net so that any *async*
-  // webhook updates to OTHER records (Make rewriting field_2381 on
-  // connected records over the next few seconds) also get picked up.
-  //
-  // The old ajaxComplete handler has been removed — it was dead code.
+  // We cannot prevent step 4 — it's Knack's native post-edit behavior.
+  // Instead, we use a debounced settle detector:
+  //   - On knack-cell-update we snapshot the PRE-render DOM baseline
+  //     synchronously (before step 4 wipes the DOM nodes) and arm the
+  //     settle timer.
+  //   - Every subsequent knack-view-render.view_3505 RESETS the settle
+  //     timer rather than killing it. After SETTLE_MS of render silence,
+  //     the poll loop starts with the captured pre-render baseline.
+  //   - A re-render that happens DURING active polling means our in-progress
+  //     moves may have been wiped by Knack. Save the baseline, stop the
+  //     poll loop, and restart the settle cycle.
   // ======================================================================
+
+  var SETTLE_MS = 400;
+  var settleTimer = null;
+  var pendingBaseline = null;
+  var inEditCycle = false;
+
+  function armSettle() {
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = setTimeout(onSettled, SETTLE_MS);
+  }
+
+  function onSettled() {
+    settleTimer = null;
+    var baseline = pendingBaseline;
+    pendingBaseline = null;
+    inEditCycle = false;
+    if (!baseline) return;
+    log('settled — starting poll loop');
+    startPolling(baseline);
+  }
+
+  function beginEditCycle() {
+    if (!inEditCycle) {
+      pendingBaseline = captureDomSnapshot();
+      inEditCycle = true;
+      log('captured pre-render baseline (rows=' + Object.keys(pendingBaseline).length + ')');
+    }
+    armSettle();
+  }
+
   $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentPoll', function (event, view, record) {
     try {
-      if (!record || !record.id) {
-        log('knack-cell-update fired without a usable record — ignoring');
-        return;
-      }
-      log('knack-cell-update fired', { recordId: record.id });
+      log('knack-cell-update fired', { recordId: record && record.id });
 
-      // STEP 1: Attempt immediate single-record regroup. This handles the
-      // common synchronous case where Knack's server-side record rule has
-      // already rewritten field_2381 on the record the user edited, and
-      // the event ships the new value to us via the record object.
-      var domSnap = captureDomSnapshot();
-      var eventSnap = snapshotFromResponse([record]);
-      var eventKey = eventSnap[record.id];
-      if (eventKey != null && eventKey !== (domSnap[record.id] || '')) {
-        log('event record has dirty ' + GROUPING_FIELD +
-            ' (DOM="' + (domSnap[record.id] || '') + '" → event="' + eventKey + '") — immediate regroup');
-        applySilentRegroup([record]);
-      } else {
-        log('event record ' + GROUPING_FIELD + ' matches DOM — no immediate regroup');
+      // Fast path: if the event record already has a new field_2381 (some
+      // server-side record rule fired synchronously), apply it immediately.
+      // For the async Make-webhook case this branch is a no-op.
+      if (record && record.id) {
+        var nowSnap = captureDomSnapshot();
+        var eventSnap = snapshotFromResponse([record]);
+        var eventKey = eventSnap[record.id];
+        if (eventKey != null && eventKey !== (nowSnap[record.id] || '')) {
+          log('event record has dirty ' + GROUPING_FIELD +
+              ' (DOM="' + (nowSnap[record.id] || '') + '" → event="' + eventKey + '") — immediate regroup');
+          applySilentRegroup([record]);
+        }
       }
 
-      // STEP 2: Start polling to catch any async updates to OTHER records.
-      // The Make webhook may still be processing over the next few seconds;
-      // polling will compare the new API snapshot against the *current*
-      // DOM baseline (which already reflects any immediate regroup above)
-      // and apply a second regroup pass if more rows need moving.
-      start();
+      beginEditCycle();
     } catch (e) {
       console.warn(LOG_PREFIX, 'knack-cell-update handler threw', e);
     }
+  });
+
+  // Re-render coordination: DO NOT stop polling on a stray render. If we
+  // are still in an edit cycle (waiting to settle), reset the timer. If
+  // polling is active, assume our moves were wiped by the render, stash
+  // the baseline, stop the loop, and re-arm the settle cycle.
+  $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentPoll', function () {
+    if (inEditCycle) {
+      log('view re-rendered during edit cycle — resetting settle timer');
+      armSettle();
+      return;
+    }
+    if (active) {
+      log('view re-rendered mid-poll — saving baseline, stopping poll, re-arming settle');
+      var saved = domBaseline;
+      stop();
+      pendingBaseline = saved;
+      inEditCycle = true;
+      armSettle();
+      return;
+    }
+    // Unrelated render (e.g. navigating to the scene) — nothing to do.
   });
 
   // Public debug hooks — poke these from DevTools to force-run without
   // needing to reproduce an inline edit.
   window.SCW = window.SCW || {};
   window.SCW.silentPollView3505 = {
-    start: start,
+    start: startPolling,
     stop: stop,
     captureDomSnapshot: captureDomSnapshot,
     buildGroupHeaderMap: buildGroupHeaderMap,
-    applySilentRegroup: applySilentRegroup
+    applySilentRegroup: applySilentRegroup,
+    beginEditCycle: beginEditCycle,
+    inspectState: function () {
+      return {
+        active: active,
+        inEditCycle: inEditCycle,
+        pollsRemaining: pollsRemaining,
+        stableStreak: stableStreak,
+        hasPendingBaseline: pendingBaseline != null,
+        hasDomBaseline: domBaseline != null,
+        hasSettleTimer: settleTimer != null,
+        hasPollTimer: pollTimer != null
+      };
+    }
   };
   log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
-
-  // If the view is hard re-rendered for some other reason, bail out —
-  // our silent moves would target stale DOM anyway, and the new render
-  // will reflect whatever the model currently holds.
-  $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentPoll', function () {
-    if (active) log('view re-rendered — stop');
-    stop();
-  });
 })();
 /*** END FEATURE: Silent poll + silent regroup after field_2380 inline-edit on view_3505 ************/
