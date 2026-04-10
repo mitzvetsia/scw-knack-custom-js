@@ -2043,25 +2043,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   text-decoration: none;
 }
 
-/* ── Per-field locked state (record lock via field_2634) ── */
+/* ── Record lock: make locked fields look like normal readOnly fields ── */
 .${P}-input-locked {
-  pointer-events: none !important;
-  opacity: 0.5 !important;
-  background: #f5f5f5 !important;
-  cursor: not-allowed !important;
+  display: none !important;
+}
+.${P}-lock-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  padding: 2px 0;
+  line-height: 1.5;
 }
 .${P}-chips-locked {
   pointer-events: none !important;
-  opacity: 0.5 !important;
-  cursor: not-allowed !important;
+}
+.${P}-chips-locked .${P}-radio-chip {
+  opacity: 0.6;
+  cursor: default;
 }
 .${P}-chit-locked {
   pointer-events: none !important;
-  opacity: 0.5 !important;
+}
+.${P}-chit-locked .${P}-cabling-chit {
+  opacity: 0.6;
+  cursor: default;
 }
 .${P}-native-locked {
   pointer-events: none !important;
-  opacity: 0.5 !important;
+  cursor: default !important;
+}
+.${P}-card.${P}-locked td.${P}-sum-check {
+  visibility: hidden;
 }
 `;
 
@@ -3063,7 +3075,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var lockVal = lockTd ? (lockTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
     var isLocked = /^yes$/i.test(lockVal);
 
-    // Toggle card-level class for CSS-driven styling
+    // Toggle card-level class (hides checkbox via CSS)
     card.classList.toggle(LOCK_CLASS, isLocked);
 
     // Walk every configured field and lock/unlock editable controls
@@ -3074,14 +3086,55 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       var fk = desc.key;
 
-      // ── Direct-edit inputs and textareas ──
+      // ── Direct-edit inputs and textareas: hide input, show static text ──
       var inputs = card.querySelectorAll(
         '[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]'
       );
       for (var ii = 0; ii < inputs.length; ii++) {
-        inputs[ii].disabled = isLocked;
-        if (isLocked) inputs[ii].classList.add(P + '-input-locked');
-        else inputs[ii].classList.remove(P + '-input-locked');
+        var inp = inputs[ii];
+        if (isLocked) {
+          inp.classList.add(P + '-input-locked');
+          // Create a static text span if not already present
+          var lockText = inp.nextElementSibling;
+          if (!lockText || !lockText.classList.contains(P + '-lock-text')) {
+            lockText = document.createElement('span');
+            lockText.className = P + '-lock-text';
+            inp.parentNode.insertBefore(lockText, inp.nextSibling);
+          }
+          lockText.textContent = inp.value || '\u2014';
+          lockText.style.display = '';
+        } else {
+          inp.classList.remove(P + '-input-locked');
+          // Hide the static text span
+          var existingText = inp.nextElementSibling;
+          if (existingText && existingText.classList.contains(P + '-lock-text')) {
+            existingText.style.display = 'none';
+          }
+        }
+      }
+
+      // ── Strip Knack inline-edit classes from ALL tds for this field ──
+      var allTds = card.querySelectorAll(
+        'td.' + fk + ', td[data-field-key="' + fk + '"]'
+      );
+      for (var ti = 0; ti < allTds.length; ti++) {
+        if (isLocked) {
+          // Store original classes so we can restore on unlock
+          if (!allTds[ti].hasAttribute('data-scw-lock-edit')) {
+            var had = [];
+            if (allTds[ti].classList.contains('cell-edit')) had.push('cell-edit');
+            if (allTds[ti].classList.contains('ktlInlineEditableCellsStyle')) had.push('ktlInlineEditableCellsStyle');
+            if (had.length) allTds[ti].setAttribute('data-scw-lock-edit', had.join(' '));
+          }
+          allTds[ti].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+        } else {
+          // Restore original edit classes
+          var saved = allTds[ti].getAttribute('data-scw-lock-edit');
+          if (saved) {
+            saved.split(' ').forEach(function (cls) { allTds[ti].classList.add(cls); });
+            allTds[ti].removeAttribute('data-scw-lock-edit');
+          }
+        }
       }
 
       // ── Radio / multi chip containers ──
@@ -3096,19 +3149,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
 
       // ── Toggle chits (boolean Yes/No) ──
-      var chitTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
-      if (chitTd && desc.type === 'toggleChit') {
-        if (isLocked) chitTd.classList.add(P + '-chit-locked');
-        else chitTd.classList.remove(P + '-chit-locked');
+      if (desc.type === 'toggleChit') {
+        var chitHost = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (chitHost) {
+          if (isLocked) chitHost.classList.add(P + '-chit-locked');
+          else chitHost.classList.remove(P + '-chit-locked');
+        }
       }
 
       // ── Native-edit fields (Knack popup inline edit) ──
-      if (desc.type === 'nativeEdit' && chitTd) {
-        if (isLocked) {
-          chitTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
-          chitTd.classList.add(P + '-native-locked');
-        } else {
-          chitTd.classList.remove(P + '-native-locked');
+      if (desc.type === 'nativeEdit') {
+        var nativeTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if (nativeTd) {
+          if (isLocked) nativeTd.classList.add(P + '-native-locked');
+          else nativeTd.classList.remove(P + '-native-locked');
         }
       }
     }
