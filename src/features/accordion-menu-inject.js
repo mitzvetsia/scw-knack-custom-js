@@ -6,20 +6,24 @@
  * kn-menu view itself is hidden; sibling views (rich_text titles,
  * etc.) in the same view-group are left visible.
  *
- * Pattern detected (throughout the app):
+ * Two DOM patterns are detected:
  *
- *   <div class="view-group">
- *     <div class="kn-view kn-rich_text">    (optional — left visible)
- *     <div class="kn-view kn-menu">         (hidden after injection)
- *   </div>
- *   <div class="view-group">
- *     <div class="scw-ktl-accordion">       (enhanced accordion)
- *       <div class="scw-ktl-accordion__header">
- *         icon | title | [injected buttons] | count | chevron
- *       </div>
- *       ...
+ *   Pattern A — menu in a preceding view-group:
+ *
+ *     <div class="view-group">
+ *       <div class="kn-view kn-rich_text">    (optional — left visible)
+ *       <div class="kn-view kn-menu">         (hidden after injection)
  *     </div>
- *   </div>
+ *     <div class="view-group">
+ *       <div class="scw-ktl-accordion">       (enhanced accordion)
+ *     </div>
+ *
+ *   Pattern B — menu is an immediate sibling in the same group:
+ *
+ *     <div class="view-group">
+ *       <div class="kn-view kn-menu">         (hidden after injection)
+ *       <div class="scw-ktl-accordion">       (enhanced accordion)
+ *     </div>
  *
  * Button clicks proxy to the original (hidden) links so all Knack
  * event handlers are preserved.
@@ -126,19 +130,30 @@
       var header = accordion.querySelector('.scw-ktl-accordion__header');
       if (!header || header.hasAttribute(INJECTED)) continue;
 
-      // Walk up to the parent view-group
-      var viewGroup = accordion.parentElement;
-      while (viewGroup && !viewGroup.classList.contains('view-group')) {
-        viewGroup = viewGroup.parentElement;
+      // --- Strategy 1: menu is an immediate preceding sibling of the
+      //     accordion inside the same view-group / view-column.
+      //     e.g. view_3774 sits right before view_3531's accordion.
+      var menuView = null;
+      var prevSibling = accordion.previousElementSibling;
+      if (prevSibling && prevSibling.classList.contains('kn-menu')) {
+        menuView = prevSibling;
       }
-      if (!viewGroup) continue;
 
-      // Check the immediately preceding sibling view-group
-      var prevGroup = viewGroup.previousElementSibling;
-      if (!prevGroup || !prevGroup.classList.contains('view-group')) continue;
+      // --- Strategy 2 (original): menu lives in the preceding view-group
+      var prevGroup = null;
+      if (!menuView) {
+        var viewGroup = accordion.parentElement;
+        while (viewGroup && !viewGroup.classList.contains('view-group')) {
+          viewGroup = viewGroup.parentElement;
+        }
+        if (!viewGroup) continue;
 
-      // Look for a kn-menu view in the previous group
-      var menuView = prevGroup.querySelector('.kn-view.kn-menu');
+        prevGroup = viewGroup.previousElementSibling;
+        if (prevGroup && prevGroup.classList.contains('view-group')) {
+          menuView = prevGroup.querySelector('.kn-view.kn-menu');
+        }
+      }
+
       if (!menuView) continue;
 
       // Collect action links
