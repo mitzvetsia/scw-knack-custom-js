@@ -181,7 +181,7 @@
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           notes:            { key: 'field_1643', type: 'directEdit' }
@@ -199,7 +199,7 @@
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
 
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
-          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true },
+          mdfNumber:        { key: 'field_2458', type: 'readOnly',   headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
           notes:            { key: 'field_1643', type: 'directEdit', notes: true }
         },
@@ -4716,6 +4716,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (guardVal !== 'yes' && guardVal !== 'true') {
         var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
         if (targetGroup) targetGroup.style.display = 'none';
+      }
+    }
+
+    // ── Apply hideWhenFieldEquals visibility ──
+    for (var hwi = 0; hwi < fNames.length; hwi++) {
+      var hwDesc = viewCfg.fields[fNames[hwi]];
+      if (!hwDesc.hideWhenFieldEquals) continue;
+      var hwGuard = hwDesc.hideWhenFieldEquals;
+      var hwTd = tr.querySelector('td.' + hwGuard.field)
+              || card.querySelector('td[data-field-key="' + hwGuard.field + '"]');
+      var hwVal = hwTd ? (hwTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+      if (hwVal.toUpperCase() === hwGuard.value.toUpperCase()) {
+        var hwGroup = card.querySelector('[data-scw-fields="' + hwDesc.key + '"]');
+        if (hwGroup) hwGroup.style.display = 'none';
       }
     }
 
