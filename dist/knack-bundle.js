@@ -24368,14 +24368,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Apply showWhenFieldIsYes visibility ──
     var fNames = Object.keys(viewCfg.fields);
     // Check if this row's bucket rule has a descLabel (Services/Assumptions) —
-    // if so, laborDescription is repurposed and should stay visible.
+    // if so, skip all showWhenFieldIsYes guards; bucket hideFields handles hiding instead.
     var swBucketId = viewCfg.bucketField ? readBucketId(tr, viewCfg.bucketField) : null;
     var swBucketRule = swBucketId && viewCfg.bucketRules ? viewCfg.bucketRules[swBucketId] : null;
     for (var swi = 0; swi < fNames.length; swi++) {
       var swDesc = viewCfg.fields[fNames[swi]];
       if (!swDesc.showWhenFieldIsYes) continue;
-      // Skip guard for laborDescription when a bucket rule repurposes it via descLabel
-      if (swBucketRule && swBucketRule.descLabel && fNames[swi] === 'laborDescription') continue;
+      if (swBucketRule && swBucketRule.descLabel) continue;
       var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
       var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
