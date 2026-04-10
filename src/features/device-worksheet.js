@@ -4168,14 +4168,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                 if (linkFieldVal) break;
               }
             }
-            // Fallback: extract record ID from <a> tag in the cell
+            // Fallback: extract record ID from DOM cell
             if (!linkFieldVal) {
               var linkTd = findCell(tr, desc.linkField);
               if (linkTd) {
+                // Try <a> href first
                 var lfA = linkTd.querySelector('a');
                 if (lfA && lfA.href) {
                   var lfMatch = lfA.href.match(/([0-9a-f]{24})/i);
                   if (lfMatch) linkFieldVal = lfMatch[1];
+                }
+                // Try <span data-kn="connection-value"> — Knack puts the
+                // record ID in the class or id attribute of these spans
+                if (!linkFieldVal) {
+                  // Knack puts the record ID in the class or id attribute.
+                  // For through-connections there are nested spans — the
+                  // innermost one holds the actual target record ID, so we
+                  // iterate all and keep the last match.
+                  var connSpans = linkTd.querySelectorAll('span[data-kn="connection-value"]');
+                  for (var cs = 0; cs < connSpans.length; cs++) {
+                    var csClass = (connSpans[cs].className || '').trim();
+                    var csId    = (connSpans[cs].id || '').trim();
+                    if (/^[0-9a-f]{24}$/i.test(csClass)) linkFieldVal = csClass;
+                    else if (/^[0-9a-f]{24}$/i.test(csId)) linkFieldVal = csId;
+                  }
                 }
               }
             }
