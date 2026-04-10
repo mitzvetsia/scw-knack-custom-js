@@ -12097,6 +12097,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3331: { L1bg: '#124E85' },
     view_3475: { L1bg: '#5F6B7A' },
     view_3596: { defaultOpen: true },
+    // Device worksheet views — groups default expanded
+    view_3512: { defaultOpen: true },
+    view_3505: { defaultOpen: true },
+    view_3313: { defaultOpen: true },
+    view_3602: { defaultOpen: true },
+    view_3575: { defaultOpen: true },
+    view_3586: { defaultOpen: true },
+    view_3588: { defaultOpen: true },
+    view_3608: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
