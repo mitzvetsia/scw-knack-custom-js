@@ -5089,8 +5089,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var hint = document.createElement('span');
         hint.className = 'scw-sort-hint';
         hint.innerHTML =
-          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" ' +
-          'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
           'stroke-linejoin="round">' +
           '<path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg>';
         sortLink.appendChild(hint);
