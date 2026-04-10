@@ -103,7 +103,7 @@
           // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-          label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+          label:            { key: 'field_2365', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
@@ -133,7 +133,7 @@
           fields: {
             bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
             move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-            label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+            label:            { key: 'field_2365', type: 'readOnly',   summary: true },
             product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
             laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
             existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
