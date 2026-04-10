@@ -2996,6 +2996,36 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
 
     console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
+
+    // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
+    applyHideWhenFieldEquals(card, cfg);
+  }
+
+  /** Apply hideWhenFieldEquals rules on a card — show or hide fields dynamically. */
+  function applyHideWhenFieldEquals(card, viewCfg) {
+    var tr = card.closest('tr');
+    var fNames = Object.keys(viewCfg.fields);
+    for (var hwi = 0; hwi < fNames.length; hwi++) {
+      var hwDesc = viewCfg.fields[fNames[hwi]];
+      if (!hwDesc.hideWhenFieldEquals) continue;
+      var hwGuard = hwDesc.hideWhenFieldEquals;
+      var hwTd = (tr ? tr.querySelector('td.' + hwGuard.field) : null)
+              || card.querySelector('td[data-field-key="' + hwGuard.field + '"]');
+      var hwVal = hwTd ? (hwTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+      var shouldHide = hwVal.toUpperCase() === hwGuard.value.toUpperCase();
+
+      // Summary group
+      var hwSumGroup = card.querySelector('[data-scw-fields="' + hwDesc.key + '"]');
+      if (hwSumGroup) hwSumGroup.style.display = shouldHide ? 'none' : '';
+
+      // Detail field wrapper
+      var hwDetailTd = card.querySelector('td.' + hwDesc.key)
+                    || card.querySelector('td[data-field-key="' + hwDesc.key + '"]');
+      if (hwDetailTd) {
+        var hwFieldWrap = hwDetailTd.closest('.' + P + '-field');
+        if (hwFieldWrap) hwFieldWrap.style.display = shouldHide ? 'none' : '';
+      }
+    }
   }
 
   /** Extract the label text from a Knack API response object. */
@@ -4720,18 +4750,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     // ── Apply hideWhenFieldEquals visibility ──
-    for (var hwi = 0; hwi < fNames.length; hwi++) {
-      var hwDesc = viewCfg.fields[fNames[hwi]];
-      if (!hwDesc.hideWhenFieldEquals) continue;
-      var hwGuard = hwDesc.hideWhenFieldEquals;
-      var hwTd = tr.querySelector('td.' + hwGuard.field)
-              || card.querySelector('td[data-field-key="' + hwGuard.field + '"]');
-      var hwVal = hwTd ? (hwTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
-      if (hwVal.toUpperCase() === hwGuard.value.toUpperCase()) {
-        var hwGroup = card.querySelector('[data-scw-fields="' + hwDesc.key + '"]');
-        if (hwGroup) hwGroup.style.display = 'none';
-      }
-    }
+    applyHideWhenFieldEquals(card, viewCfg);
 
     return card;
   }
