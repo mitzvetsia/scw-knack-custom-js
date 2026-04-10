@@ -15167,6 +15167,7 @@ $(document).on('knack-view-render.view_3313', function () {
   enableCheckboxSelectSync('view_3627', 'field_2250');
 
   enableCheckboxSelectSync('view_3748', 'field_2180');
+  enableCheckboxSelectSync('view_3748', 'field_2250');
 })();
 
 /***************************** SURVEY / PROJECT FORM: drag + drop View / Location Upload fields *******************/

@@ -145,4 +145,5 @@
   enableCheckboxSelectSync('view_3627', 'field_2250');
 
   enableCheckboxSelectSync('view_3748', 'field_2180');
+  enableCheckboxSelectSync('view_3748', 'field_2250');
 })();
