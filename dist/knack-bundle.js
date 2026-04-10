@@ -6937,7 +6937,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     if (document.getElementById(POLL_TOAST_ID)) return;
     var toast = document.createElement('div');
     toast.id = POLL_TOAST_ID;
-    toast.innerHTML = '<span class="scw-poll-spinner"></span> Waiting for sub bid update\u2026';
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> Generating bid PDF\u2026';
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-poll-close';
     closeBtn.textContent = '\u00d7';
@@ -6965,7 +6965,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     if (document.getElementById(POLL_OVERLAY_ID)) return;
     var overlay = document.createElement('div');
     overlay.id = POLL_OVERLAY_ID;
-    overlay.innerHTML = '<span class="scw-poll-field-spinner"></span><span class="scw-poll-field-text">Generating sub bid\u2026</span>';
+    overlay.innerHTML = '<span class="scw-poll-field-spinner"></span><span class="scw-poll-field-text">Generating bid PDF\u2026</span>';
     fieldEl.appendChild(overlay);
   }
 
