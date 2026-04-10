@@ -20231,7 +20231,7 @@ $(".kn-navigation-bar").hide();
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
-          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Sub Bid Lock' }
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
@@ -20268,7 +20268,7 @@ $(".kn-navigation-bar").hide();
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
-          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Sub Bid Lock' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
