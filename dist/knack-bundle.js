@@ -6975,58 +6975,65 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     if (overlay) overlay.remove();
   }
 
-  function readModelFieldValue(viewId, fieldId) {
-    if (!fieldId || typeof Knack === 'undefined') return '';
-    var view = Knack.views && Knack.views[viewId];
-    if (!view || !view.model) return '';
-    // Detail view: model.data is a single object
-    var data = view.model.data;
-    if (data && !Array.isArray(data)) {
-      var raw = data[fieldId + '_raw'] || data[fieldId] || '';
-      return String(raw).replace(/[\u00a0\s]+/g, ' ').trim();
-    }
-    // Grid/list view: model.data is an array
-    if (Array.isArray(data) && data.length) {
-      var raw2 = data[0][fieldId + '_raw'] || data[0][fieldId] || '';
-      return String(raw2).replace(/[\u00a0\s]+/g, ' ').trim();
-    }
-    return '';
+  var _pollObserver = null;
+
+  function readFieldText(viewId, fieldId) {
+    if (!fieldId) return '';
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return '';
+    // Try common Knack selectors for the field value
+    var el = viewEl.querySelector('.kn-detail.' + fieldId + ' .kn-detail-body')
+          || viewEl.querySelector('.' + fieldId + ' .kn-detail-body')
+          || viewEl.querySelector('td.' + fieldId)
+          || viewEl.querySelector('.' + fieldId);
+    if (!el) return '';
+    return (el.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
   function stopPolling() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    if (_pollObserver) { _pollObserver.disconnect(); _pollObserver = null; }
     hideFieldOverlay();
     hidePollToast();
   }
 
   function startPollRefresh(viewId, fieldId) {
     if (_pollTimer) clearInterval(_pollTimer);
+    if (_pollObserver) { _pollObserver.disconnect(); _pollObserver = null; }
 
-    var initialValue = readModelFieldValue(viewId, fieldId);
+    var initialValue = readFieldText(viewId, fieldId);
     console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + initialValue + '")');
     showPollToast();
     showFieldOverlay(viewId, fieldId);
 
+    // ── MutationObserver: watch the view for any DOM change to the field ──
+    var viewEl = document.getElementById(viewId);
+    if (viewEl && fieldId) {
+      var checkDebounce = null;
+      _pollObserver = new MutationObserver(function () {
+        clearTimeout(checkDebounce);
+        checkDebounce = setTimeout(function () {
+          var newValue = readFieldText(viewId, fieldId);
+          if (newValue && newValue !== initialValue) {
+            console.log('[SCW PDF Export] Observer detected change: "' + initialValue + '" → "' + newValue + '"');
+            stopPolling();
+          }
+        }, 300);
+      });
+      _pollObserver.observe(viewEl, { childList: true, subtree: true, characterData: true });
+    }
+
+    // ── Interval: trigger model.fetch() to pull fresh data ──
     var elapsed = 0;
-    var ns = '.scwPdfPoll';
     _pollTimer = setInterval(function () {
       elapsed += POLL_INTERVAL_MS;
       if (typeof Knack === 'undefined') return;
       var view = Knack.views && Knack.views[viewId];
       if (view && view.model && typeof view.model.fetch === 'function') {
-        $(document).off('knack-view-render.' + viewId + ns)
-                   .one('knack-view-render.' + viewId + ns, function () {
-          var newValue = readModelFieldValue(viewId, fieldId);
-          console.log('[SCW PDF Export] Poll check: "' + initialValue + '" → "' + newValue + '"');
-          if (fieldId && newValue !== initialValue) {
-            console.log('[SCW PDF Export] Field changed — stopping poll');
-            stopPolling();
-          } else {
-            showFieldOverlay(viewId, fieldId);
-          }
-        });
         view.model.fetch();
       }
+      // Re-apply overlay after fetch triggers re-render
+      setTimeout(function () { showFieldOverlay(viewId, fieldId); }, 1000);
       if (elapsed >= POLL_TIMEOUT_MS) {
         console.log('[SCW PDF Export] Poll timeout for ' + viewId);
         stopPolling();
