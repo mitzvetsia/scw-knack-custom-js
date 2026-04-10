@@ -853,7 +853,9 @@
             var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + spec.field.replace('field_', ''));
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
-            var val = el ? (el.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+            // Read from .kn-value inside the field to skip the label
+            var valEl = el ? (el.querySelector('.kn-value') || el) : null;
+            var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
             if (val) extra[spec.name] = val;
           }
         }
