@@ -236,13 +236,14 @@
           dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true }
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          bidNotes:         { key: 'field_2630', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-          right: ['connectedDevice', 'dropLength', 'scwNotes']
+          right: ['connectedDevice', 'dropLength', 'scwNotes', 'bidNotes']
         }
       },
       {
@@ -268,13 +269,14 @@
 
           // ── Detail panel ──
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+          bidNotes:         { key: 'field_2630', type: 'directEdit',  notes: true },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes']
+          right: ['scwNotes', 'bidNotes']
         },
         conditionalHide: [
           {
