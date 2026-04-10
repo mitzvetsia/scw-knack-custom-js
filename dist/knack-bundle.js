@@ -22128,6 +22128,23 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
 .${P}-thead-styled th:hover {
   background: rgb(10, 90, 155) !important;
 }
+/* Sort affordance icon — appended to every sortable <th> via JS */
+.${P}-thead-styled th .scw-sort-hint {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
+  opacity: 0.4;
+  transition: opacity 150ms ease;
+  flex-shrink: 0;
+}
+.${P}-thead-styled th:hover .scw-sort-hint {
+  opacity: 0.85;
+}
+/* Hide the hint when Knack's own active-sort icon is present */
+.${P}-thead-styled th.sorted-asc .scw-sort-hint,
+.${P}-thead-styled th.sorted-desc .scw-sort-hint {
+  display: none;
+}
 .${P}-thead-styled th .table-fixed-label {
   justify-content: center;
 }
@@ -25294,6 +25311,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
 
         headerRow.appendChild(_showTh);
+      }
+
+      // ── Inject sort-hint icons into sortable <th>s ──
+      var sortableThs = thead.querySelectorAll('th a.kn-sort');
+      for (var si = 0; si < sortableThs.length; si++) {
+        var sortLink = sortableThs[si];
+        if (sortLink.querySelector('.scw-sort-hint')) continue;
+        var hint = document.createElement('span');
+        hint.className = 'scw-sort-hint';
+        hint.innerHTML =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg>';
+        sortLink.appendChild(hint);
       }
 
       // ── Sync header checkbox visibility with row selections ──
