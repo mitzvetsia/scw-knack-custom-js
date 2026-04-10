@@ -6975,13 +6975,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     if (overlay) overlay.remove();
   }
 
-  function readFieldValue(viewId, fieldId) {
-    if (!fieldId) return '';
-    var el = document.querySelector('#' + viewId + ' .kn-detail.' + fieldId);
-    if (!el) el = document.querySelector('#' + viewId + ' .' + fieldId);
-    if (!el) return '';
-    var valEl = el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el;
-    return (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  function readModelFieldValue(viewId, fieldId) {
+    if (!fieldId || typeof Knack === 'undefined') return '';
+    var view = Knack.views && Knack.views[viewId];
+    if (!view || !view.model) return '';
+    // Detail view: model.data is a single object
+    var data = view.model.data;
+    if (data && !Array.isArray(data)) {
+      var raw = data[fieldId + '_raw'] || data[fieldId] || '';
+      return String(raw).replace(/[\u00a0\s]+/g, ' ').trim();
+    }
+    // Grid/list view: model.data is an array
+    if (Array.isArray(data) && data.length) {
+      var raw2 = data[0][fieldId + '_raw'] || data[0][fieldId] || '';
+      return String(raw2).replace(/[\u00a0\s]+/g, ' ').trim();
+    }
+    return '';
   }
 
   function stopPolling() {
@@ -6992,9 +7001,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   function startPollRefresh(viewId, fieldId) {
     if (_pollTimer) clearInterval(_pollTimer);
-    console.log('[SCW PDF Export] Polling ' + viewId + ' for record update (watching ' + (fieldId || 'none') + ')');
 
-    var initialValue = readFieldValue(viewId, fieldId);
+    var initialValue = readModelFieldValue(viewId, fieldId);
+    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + initialValue + '")');
     showPollToast();
     showFieldOverlay(viewId, fieldId);
 
@@ -7005,14 +7014,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (typeof Knack === 'undefined') return;
       var view = Knack.views && Knack.views[viewId];
       if (view && view.model && typeof view.model.fetch === 'function') {
-        // Listen for re-render to check if field changed
-        $(document).one('knack-view-render.' + viewId + ns, function () {
-          var newValue = readFieldValue(viewId, fieldId);
+        $(document).off('knack-view-render.' + viewId + ns)
+                   .one('knack-view-render.' + viewId + ns, function () {
+          var newValue = readModelFieldValue(viewId, fieldId);
+          console.log('[SCW PDF Export] Poll check: "' + initialValue + '" → "' + newValue + '"');
           if (fieldId && newValue !== initialValue) {
-            console.log('[SCW PDF Export] Field changed: "' + initialValue + '" → "' + newValue + '" — stopping poll');
+            console.log('[SCW PDF Export] Field changed — stopping poll');
             stopPolling();
           } else {
-            // Re-apply overlay (view re-render removes it)
             showFieldOverlay(viewId, fieldId);
           }
         });
