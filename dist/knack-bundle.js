@@ -8741,10 +8741,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       productDesc:     'field_2629',
       dropPrefix:      'field_2361',
       dropNumber:      'field_2362',
-      existing:        'field_2370',
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
-      mapConnections:  'field_2374',
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -9527,6 +9525,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return isNaN(n) ? 0 : n;
   }
 
+  /** Convert Yes/No string to true/false boolean. */
+  function bool(record, key) {
+    var v = raw(record, key).toLowerCase();
+    return v === 'yes' || v === 'true';
+  }
+
   /** Return first connection ID. */
   function connectionId(record, key) {
     var v = record[key + '_raw'] || record[key];
@@ -9739,17 +9743,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
           dropLength:      raw(rec, FK.dropLength),
-          conduit:         raw(rec, FK.conduit),
-          plenum:          raw(rec, FK.plenum),
+          conduit:         bool(rec, FK.conduit),
+          plenum:          bool(rec, FK.plenum),
           sku:             raw(rec, FK.sku),
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
           dropPrefix:      connectionId(rec, FK.dropPrefix),
           dropNumber:      raw(rec, FK.dropNumber),
-          existing:        raw(rec, FK.existing),
-          exterior:        raw(rec, FK.exterior),
-          limitQtyOne:     raw(rec, FK.limitQtyOne),
-          mapConnections:  raw(rec, FK.mapConnections),
+          exterior:        bool(rec, FK.exterior),
+          limitQtyOne:     bool(rec, FK.limitQtyOne),
+          mapConnections:  bool(rec, FK.bidMapConn),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
@@ -10944,9 +10947,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           labor:        cell.labor,
           laborDesc:    cell.laborDesc,
           productName:  cell.productName,
-          existCabling: cell.bidExistCabling,
+          existCabling: /^yes$/i.test(cell.bidExistCabling),
           connDevice:   cell.bidConnDeviceIds,
-          mapConn:      cell.bidMapConn,
+          mapConn:      cell.mapConnections,
           notes:        cell.notes,
           product:        cell.field2627,
           sku:            cell.sku,
@@ -10957,10 +10960,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           plenum:         cell.plenum,
           dropPrefix:     cell.dropPrefix,
           dropNumber:     cell.dropNumber,
-          existing:       cell.existing,
           exterior:       cell.exterior,
           limitQtyOne:      cell.limitQtyOne,
-          mapConnections:   cell.mapConnections,
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
         });
@@ -10973,9 +10974,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           labor:            cell.labor,
           laborDesc:        cell.laborDesc,
           productName:      cell.productName,
-          existCabling:     cell.bidExistCabling,
+          existCabling:     /^yes$/i.test(cell.bidExistCabling),
           connDevice:       cell.bidConnDeviceIds,
-          mapConn:          cell.bidMapConn,
+          mapConn:          cell.mapConnections,
           notes:            cell.notes,
           product:          cell.field2627,
           sku:              cell.sku,
@@ -10986,10 +10987,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           plenum:           cell.plenum,
           dropPrefix:       cell.dropPrefix,
           dropNumber:       cell.dropNumber,
-          existing:         cell.existing,
           exterior:         cell.exterior,
           limitQtyOne:      cell.limitQtyOne,
-          mapConnections:   cell.mapConnections,
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
           displayLabel:     row.displayLabel,

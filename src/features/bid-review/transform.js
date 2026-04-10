@@ -36,6 +36,12 @@
     return isNaN(n) ? 0 : n;
   }
 
+  /** Convert Yes/No string to true/false boolean. */
+  function bool(record, key) {
+    var v = raw(record, key).toLowerCase();
+    return v === 'yes' || v === 'true';
+  }
+
   /** Return first connection ID. */
   function connectionId(record, key) {
     var v = record[key + '_raw'] || record[key];
@@ -248,17 +254,16 @@
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
           dropLength:      raw(rec, FK.dropLength),
-          conduit:         raw(rec, FK.conduit),
-          plenum:          raw(rec, FK.plenum),
+          conduit:         bool(rec, FK.conduit),
+          plenum:          bool(rec, FK.plenum),
           sku:             raw(rec, FK.sku),
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
           dropPrefix:      connectionId(rec, FK.dropPrefix),
           dropNumber:      raw(rec, FK.dropNumber),
-          existing:        raw(rec, FK.existing),
-          exterior:        raw(rec, FK.exterior),
-          limitQtyOne:     raw(rec, FK.limitQtyOne),
-          mapConnections:  raw(rec, FK.mapConnections),
+          exterior:        bool(rec, FK.exterior),
+          limitQtyOne:     bool(rec, FK.limitQtyOne),
+          mapConnections:  bool(rec, FK.bidMapConn),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };

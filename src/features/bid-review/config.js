@@ -55,10 +55,8 @@
       productDesc:     'field_2629',
       dropPrefix:      'field_2361',
       dropNumber:      'field_2362',
-      existing:        'field_2370',
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
-      mapConnections:  'field_2374',
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
