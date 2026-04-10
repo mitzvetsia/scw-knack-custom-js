@@ -23732,20 +23732,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             }
           }
 
-          // Get the secondary field value (e.g. survey record ID)
+          // Get the secondary field's record ID (e.g. survey request record ID)
           var linkFieldVal = '';
           if (desc.linkField) {
-            var linkTd = findCell(tr, desc.linkField);
-            if (linkTd) {
-              var lfA = linkTd.querySelector('a');
-              if (lfA && lfA.href) {
-                var lfMatch = lfA.href.match(/([0-9a-f]{24})/i);
-                if (lfMatch) linkFieldVal = lfMatch[1];
-              }
-              if (!linkFieldVal) linkFieldVal = (linkTd.textContent || '').trim();
-            }
-            // Fallback: Knack model
-            if (!linkFieldVal && trRecId && typeof Knack !== 'undefined' && Knack.models) {
+            // Primary: Knack model _raw data (always gives the connection record ID)
+            var trRecId2 = trRecId || getRecordId(tr);
+            if (trRecId2 && typeof Knack !== 'undefined' && Knack.models) {
               var mk2 = Object.keys(Knack.models);
               for (var mi = 0; mi < mk2.length; mi++) {
                 var mdl2 = Knack.models[mk2[mi]];
@@ -23753,17 +23745,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                 var recs2 = Array.isArray(mdl2.data) ? mdl2.data : (mdl2.data.models || []);
                 for (var ri2 = 0; ri2 < recs2.length; ri2++) {
                   var rec2 = recs2[ri2].attributes || recs2[ri2];
-                  if (rec2.id === trRecId) {
+                  if (rec2.id === trRecId2) {
                     var rawLf = rec2[desc.linkField + '_raw'] || rec2[desc.linkField];
                     if (rawLf) {
                       if (Array.isArray(rawLf) && rawLf.length) linkFieldVal = rawLf[0].id || '';
                       else if (typeof rawLf === 'object' && rawLf.id) linkFieldVal = rawLf.id;
-                      else linkFieldVal = String(rawLf).replace(/<[^>]*>/g, '').trim();
                     }
                     break;
                   }
                 }
                 if (linkFieldVal) break;
+              }
+            }
+            // Fallback: extract record ID from <a> tag in the cell
+            if (!linkFieldVal) {
+              var linkTd = findCell(tr, desc.linkField);
+              if (linkTd) {
+                var lfA = linkTd.querySelector('a');
+                if (lfA && lfA.href) {
+                  var lfMatch = lfA.href.match(/([0-9a-f]{24})/i);
+                  if (lfMatch) linkFieldVal = lfMatch[1];
+                }
               }
             }
           }
