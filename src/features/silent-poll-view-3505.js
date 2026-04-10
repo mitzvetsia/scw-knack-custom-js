@@ -1,37 +1,50 @@
 /**************************************************************************************************
- * FEATURE: Silent poll after field_2380 inline-edit on view_3505
+ * FEATURE: Silent poll + silent regroup after field_2380 inline-edit on view_3505
  *
  * Context:
  *   - Knack's native inline-edit record rule on field_2380 (view_3505)
  *     triggers a Make webhook.
- *   - The webhook updates OTHER, already-connected records in the same
- *     grid via the Knack REST API. The key change is to field_2381
- *     (REL_DROP → parent networking device), which is the L1 GROUPING
- *     key for the worksheet view. In other words: the webhook moves
- *     existing rows between MDF/IDF groups.
- *   - Those updates land asynchronously, AFTER Knack's PUT response, so
- *     the user would otherwise need to hard-refresh to see them.
+ *   - The webhook rewrites field_2381 (REL_DROP → parent networking device)
+ *     on OTHER, already-connected records in the grid. field_2381 is the
+ *     L1 GROUPING key for the worksheet, so the webhook effectively moves
+ *     existing rows between MDF/IDF/HEADEND group sections.
+ *   - Those updates land asynchronously, AFTER Knack's PUT response.
+ *
+ * Why not model.fetch()?
+ *   - A full Knack re-render wipes the card DOM, flashes the view, and
+ *     churns through every card's enhancer (applyRecordLock,
+ *     applyHideWhenFieldEquals, refreshInputConditionalColor). The user
+ *     explicitly asked for a silent refresh that does NOT flash.
+ *
+ * Why not patchCardFromResponse for everything?
+ *   - patchCard only updates text nodes / inputs INSIDE an existing card.
+ *     It cannot move a row from one L1 group header to another, so it
+ *     physically cannot reflect the webhook's main change.
  *
  * Strategy:
- *   - When a successful PUT to view_3505/records/* containing field_2380
- *     is observed, capture a DOM baseline of every row's current
- *     field_2381 connection-id set (read out of the
- *     span[data-kn="connection-value"] classNames, which hold the 24-hex
- *     record IDs).
- *   - Poll the view's records endpoint. For each response, build an
- *     equivalent snapshot from field_2381_raw arrays.
- *   - Detect:
- *       * dirty   → any record's field_2381 set differs from baseline
- *       * stable  → the snapshot is identical to the previous poll's
- *                   snapshot for N consecutive cycles
- *     When dirty AND stable, do exactly ONE full view refresh via
- *     Knack.views[VIEW_ID].model.fetch(). The existing preservation
- *     machinery (group-collapse localStorage, preserve-scroll-on-refresh
- *     coordinator, device-worksheet captureState/refresh) restores the
- *     accordion/expanded/scroll state after the re-render.
- *   - We do NOT call patchCardFromResponse per record here — that would
- *     touch every card on every poll and paint-flash the view, and it
- *     cannot move rows between group headers anyway.
+ *   1. On each successful PUT whose body contains field_2380, snapshot the
+ *      DOM's current {recordId → sortedParentIds} map as a baseline.
+ *   2. Poll the view records endpoint on a timer, computing the same
+ *      shape from field_2381_raw in the API response.
+ *   3. When two successive API polls agree AND differ from the baseline,
+ *      assume the webhook is done.
+ *   4. Apply a SILENT REGROUP:
+ *        a. Build {parentDeviceId → L1 group header row} from the DOM.
+ *        b. For every record whose field_2381 differs between DOM and API,
+ *           move its row-triple (hidden sourceTr + visible wsTr + optional
+ *           photo row) to the tail of the destination group header.
+ *        c. Rewrite the sourceTr's td.field_2381 to reflect the new parent.
+ *        d. Patch the corresponding Backbone model record's attributes so
+ *           subsequent inline-edit PUTs see the new parent.
+ *        e. Call SCW.deviceWorksheet.patchCard for every record so other
+ *           changed fields (labels, fees, calcs) sync into the card.
+ *      If any record requires moving to a destination group that doesn't
+ *      exist in the visible DOM (or to a record that isn't visible at all)
+ *      fall back to model.fetch() — we can't silently construct a new L1
+ *      group header from scratch.
+ *   5. group-collapse's MutationObserver re-runs on its own (debounced
+ *      100ms) and its state map is keyed by L1 label text, so collapse
+ *      state survives the moves.
  *
  * Tunables live in the CONFIG block below.
  **************************************************************************************************/
@@ -50,6 +63,8 @@
   var START_DELAY     = 500;            // ms to wait after PUT response before first poll
   var LOG_PREFIX      = '[scw-silent-poll.' + VIEW_ID + ']';
 
+  var HEX24 = /^[0-9a-f]{24}$/i;
+
   // ======================
   // STATE
   // ======================
@@ -66,74 +81,75 @@
     try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
   }
 
-  // ======================
-  // Snapshot helpers
-  // ----------------------
-  // A "snapshot" is { recordId: "id1,id2,..." } where the value is the
-  // sorted, comma-joined list of 24-hex record IDs that record is
-  // connected to via field_2381. Comparing two snapshots with === on
-  // the joined strings tells us whether any row's grouping connections
-  // have changed.
-  // ======================
+  // ======================================================================
+  // DOM helpers — reading field_2381 out of the triple-row card structure
+  // ----------------------------------------------------------------------
+  // For view_3505 the device-worksheet feature lays each record out as
+  //    sourceTr [data-scw-worksheet="1"]  (hidden original Knack tr, has td.field_2381)
+  //    wsTr    .scw-ws-row                (visible, id=RECORD_ID, wraps card)
+  //    photoRow .scw-inline-photo-row     (optional trailing photo strip)
+  // All field cells live on sourceTr; wsTr only has one <td colspan> with
+  // the card inside it. So to read field_2381 we look at wsTr's PREVIOUS
+  // sibling.
+  // ======================================================================
 
-  var HEX24 = /^[0-9a-f]{24}$/i;
+  function getSourceTr(wsTr) {
+    if (!wsTr) return null;
+    var s = wsTr.previousElementSibling;
+    if (s && s.getAttribute && s.getAttribute('data-scw-worksheet') === '1') return s;
+    return null;
+  }
+
+  function getTrailingPhotoRow(wsTr) {
+    if (!wsTr) return null;
+    var n = wsTr.nextElementSibling;
+    if (n && n.classList && n.classList.contains('scw-inline-photo-row')) return n;
+    return null;
+  }
+
+  function extractField2381Ids(tr) {
+    var ids = [];
+    if (!tr) return ids;
+    var cell = tr.querySelector('td.' + GROUPING_FIELD);
+    if (!cell) return ids;
+    var spans = cell.querySelectorAll('span[data-kn="connection-value"]');
+    for (var s = 0; s < spans.length; s++) {
+      var classes = spans[s].classList;
+      for (var c = 0; c < classes.length; c++) {
+        if (HEX24.test(classes[c])) { ids.push(classes[c]); break; }
+      }
+    }
+    return ids;
+  }
 
   function sortedIdString(ids) {
     if (!ids || !ids.length) return '';
-    // copy before sorting so we don't mutate caller arrays
     var copy = ids.slice();
     copy.sort();
     return copy.join(',');
   }
 
-  /**
-   * Walk the live view_3505 DOM and extract each record row's current
-   * field_2381 connection IDs from the span[data-kn="connection-value"]
-   * classNames.
-   */
-  function captureDomBaseline() {
+  /** Build { recordId → sortedJoinedParentIds } from the current DOM. */
+  function captureDomSnapshot() {
     var snap = {};
     var view = document.getElementById(VIEW_ID);
     if (!view) return snap;
-
     var rows = view.querySelectorAll('tr.scw-ws-row[id]');
     for (var i = 0; i < rows.length; i++) {
-      var tr = rows[i];
-      var recordId = tr.id;
-      if (!HEX24.test(recordId)) continue;
-
-      var cell = tr.querySelector('td.' + GROUPING_FIELD);
-      if (!cell) { snap[recordId] = ''; continue; }
-
-      var spans = cell.querySelectorAll('span[data-kn="connection-value"]');
-      var ids = [];
-      for (var s = 0; s < spans.length; s++) {
-        // Knack writes each connected record's 24-hex ID as a className
-        // on the connection-value span. There may be other classes too,
-        // so walk the classList looking for the hex pattern.
-        var classes = spans[s].classList;
-        for (var c = 0; c < classes.length; c++) {
-          if (HEX24.test(classes[c])) { ids.push(classes[c]); break; }
-        }
-      }
-      snap[recordId] = sortedIdString(ids);
+      var wsTr = rows[i];
+      if (!HEX24.test(wsTr.id)) continue;
+      snap[wsTr.id] = sortedIdString(extractField2381Ids(getSourceTr(wsTr)));
     }
     return snap;
   }
 
-  /**
-   * Build an equivalent snapshot from a records API response payload.
-   * Prefers field_2381_raw (array of {id, identifier}), falls back to
-   * parsing HTML out of field_2381 if _raw isn't present.
-   */
+  /** Build the same shape from an API records response. */
   function snapshotFromResponse(records) {
     var snap = {};
     if (!records || !records.length) return snap;
-
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r || !r.id) continue;
-
       var ids = [];
       var raw = r[GROUPING_FIELD + '_raw'];
       if (Array.isArray(raw)) {
@@ -146,7 +162,6 @@
           }
         }
       } else if (typeof r[GROUPING_FIELD] === 'string') {
-        // Defensive fallback: parse 24-hex substrings out of any HTML.
         var m = r[GROUPING_FIELD].match(/[0-9a-f]{24}/gi);
         if (m) ids = m;
       }
@@ -155,12 +170,10 @@
     return snap;
   }
 
-  /** True if two snapshots have identical { recordId → joinedIds } shape. */
   function snapshotsEqual(a, b) {
     if (a === b) return true;
     if (!a || !b) return false;
-    var ka = Object.keys(a);
-    var kb = Object.keys(b);
+    var ka = Object.keys(a), kb = Object.keys(b);
     if (ka.length !== kb.length) return false;
     for (var i = 0; i < ka.length; i++) {
       var key = ka[i];
@@ -170,17 +183,9 @@
     return true;
   }
 
-  /**
-   * True if ANY record shared between baseline and current has a
-   * different joinedIds value. Records that exist only in one side
-   * also count as dirty (row added/removed from the visible set).
-   */
   function isDirty(baseline, current) {
     if (!baseline || !current) return false;
-    var bk = Object.keys(baseline);
-    var ck = Object.keys(current);
-    // If every baseline record is present in current with the same
-    // joined string AND current has no extra records, we're clean.
+    var bk = Object.keys(baseline), ck = Object.keys(current);
     if (bk.length !== ck.length) return true;
     for (var i = 0; i < bk.length; i++) {
       var key = bk[i];
@@ -190,9 +195,253 @@
     return false;
   }
 
-  // ======================
-  // Build the view-records GET URL, respecting the current scene key.
-  // ======================
+  // ======================================================================
+  // Group header index
+  // ----------------------------------------------------------------------
+  // Walk the tbody, identify every L1 group header, and for each header
+  // record the parent device ID shared by its child rows (read from their
+  // td.field_2381 spans). Returns { parentDeviceId → headerTr }.
+  // ======================================================================
+
+  function buildGroupHeaderMap() {
+    var map = {};
+    var view = document.getElementById(VIEW_ID);
+    if (!view) return map;
+    var tbody = view.querySelector('tbody');
+    if (!tbody) return map;
+
+    var kids = tbody.children;
+    var curHeader = null;
+    var curParentId = null;
+
+    for (var i = 0; i < kids.length; i++) {
+      var row = kids[i];
+      var isL1Group = row.classList.contains('kn-table-group') &&
+                      row.classList.contains('kn-group-level-1');
+
+      if (isL1Group) {
+        // Commit previous group
+        if (curHeader && curParentId && !map[curParentId]) {
+          map[curParentId] = curHeader;
+        }
+        curHeader = row;
+        curParentId = null;
+        continue;
+      }
+      if (row.classList.contains('kn-table-group')) continue; // L2+ subgroup header
+
+      // Data row — only read parent id from hidden originals (sourceTr)
+      if (curParentId == null && row.getAttribute && row.getAttribute('data-scw-worksheet') === '1') {
+        var ids = extractField2381Ids(row);
+        if (ids.length) curParentId = ids[0];
+      }
+    }
+    // Commit trailing group
+    if (curHeader && curParentId && !map[curParentId]) {
+      map[curParentId] = curHeader;
+    }
+    return map;
+  }
+
+  /** Walk forward from a group header to the last row in its section. */
+  function findLastRowInGroup(headerTr) {
+    var cur = headerTr;
+    var nxt = cur.nextElementSibling;
+    while (nxt) {
+      if (nxt.classList.contains('kn-table-group') &&
+          nxt.classList.contains('kn-group-level-1')) break;
+      cur = nxt;
+      nxt = nxt.nextElementSibling;
+    }
+    return cur;
+  }
+
+  // ======================================================================
+  // Row moving
+  // ----------------------------------------------------------------------
+  // Move the full triple (sourceTr + wsTr + optional photoRow) to the
+  // tail of the destination group, preserving relative order.
+  // ======================================================================
+
+  function moveRowTriple(wsTr, destHeader) {
+    var sourceTr = getSourceTr(wsTr);
+    if (!sourceTr) {
+      console.warn(LOG_PREFIX, 'missing sourceTr for', wsTr.id, '— cannot move');
+      return false;
+    }
+    var photoRow = getTrailingPhotoRow(wsTr);
+    var anchor = findLastRowInGroup(destHeader);
+    var parent = destHeader.parentNode;
+    if (!parent) return false;
+
+    // Guard: if we're already at the tail of the right group, no-op.
+    if (anchor === (photoRow || wsTr)) return true;
+
+    var cursor = anchor;
+    parent.insertBefore(sourceTr, cursor.nextSibling);  cursor = sourceTr;
+    parent.insertBefore(wsTr,     cursor.nextSibling);  cursor = wsTr;
+    if (photoRow) parent.insertBefore(photoRow, cursor.nextSibling);
+    return true;
+  }
+
+  // ======================================================================
+  // Update td.field_2381 in-place on the hidden sourceTr
+  // ======================================================================
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function updateField2381Cell(wsTr, record) {
+    var sourceTr = getSourceTr(wsTr);
+    if (!sourceTr) return;
+    var cell = sourceTr.querySelector('td.' + GROUPING_FIELD);
+    if (!cell) return;
+    var raw = record[GROUPING_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return;
+
+    var parts = [];
+    for (var i = 0; i < raw.length; i++) {
+      var entry = raw[i];
+      if (!entry || !entry.id || !HEX24.test(entry.id)) continue;
+      parts.push(
+        '<span class="' + entry.id + '" data-kn="connection-value">' +
+        escapeHtml(entry.identifier || '') +
+        '</span>'
+      );
+    }
+    cell.innerHTML = parts.join('');
+  }
+
+  // ======================================================================
+  // Update the Backbone model record's attributes so the next inline-edit
+  // PUT carries the new parent. Pattern borrowed from device-worksheet.js
+  // syncKnackModel (src/features/device-worksheet.js:3314).
+  // ======================================================================
+
+  function syncModelRecord(recordId, record) {
+    try {
+      if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[VIEW_ID]) return;
+      var view = Knack.views[VIEW_ID];
+      if (!view.model) return;
+      var m = view.model;
+
+      var entry = (typeof m.get === 'function') ? m.get(recordId) : null;
+      if (!entry && m.data && typeof m.data.get === 'function') entry = m.data.get(recordId);
+      if (!entry) {
+        var arr = m.models || (m.data && m.data.models) || [];
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && arr[i].id === recordId) { entry = arr[i]; break; }
+        }
+      }
+      if (!entry) return;
+
+      var attrs = entry.attributes || entry;
+      var raw = record[GROUPING_FIELD + '_raw'];
+      if (raw != null) {
+        attrs[GROUPING_FIELD] = raw;
+        attrs[GROUPING_FIELD + '_raw'] = raw;
+      }
+    } catch (ex) {
+      // best-effort
+    }
+  }
+
+  // ======================================================================
+  // Silent regroup — the main payoff
+  // ======================================================================
+
+  function fallbackFetch(reason) {
+    log('fallback → model.fetch(): ' + reason);
+    try {
+      if (window.SCW && window.SCW.deviceWorksheet &&
+          typeof window.SCW.deviceWorksheet.captureState === 'function') {
+        window.SCW.deviceWorksheet.captureState();
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      var view = Knack.views && Knack.views[VIEW_ID];
+      if (view && view.model && typeof view.model.fetch === 'function') {
+        view.model.fetch();
+      }
+    } catch (e) {
+      console.warn(LOG_PREFIX, 'fallback fetch threw', e);
+    }
+  }
+
+  function applySilentRegroup(records) {
+    var groupMap = buildGroupHeaderMap();
+    var domNow = captureDomSnapshot();
+    var apiNow = snapshotFromResponse(records);
+    var moves = 0;
+    var skipped = 0;
+
+    var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
+
+    // First pass: validate that all moving rows have a destination group
+    // in the current DOM. If even one destination is missing, bail to
+    // model.fetch — we can't silently construct new L1 group headers.
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      if (!r || !r.id) continue;
+      var wsTr = document.getElementById(r.id);
+      if (!wsTr || !wsTr.classList.contains('scw-ws-row')) continue;
+      var cur = domNow[r.id] || '';
+      var want = apiNow[r.id] || '';
+      if (cur === want) continue;
+
+      var rawArr = r[GROUPING_FIELD + '_raw'];
+      var newParentId = (Array.isArray(rawArr) && rawArr[0] && rawArr[0].id) ? rawArr[0].id : null;
+      if (!newParentId) {
+        fallbackFetch('record ' + r.id + ' has no parent id in response');
+        return;
+      }
+      if (!groupMap[newParentId]) {
+        fallbackFetch('destination group ' + newParentId + ' not in DOM (group currently empty)');
+        return;
+      }
+    }
+
+    // Second pass: apply moves + cell rewrites + model sync
+    for (var j = 0; j < records.length; j++) {
+      var rec = records[j];
+      if (!rec || !rec.id) continue;
+      var row = document.getElementById(rec.id);
+      if (!row || !row.classList.contains('scw-ws-row')) { skipped++; continue; }
+
+      var current = domNow[rec.id] || '';
+      var target  = apiNow[rec.id] || '';
+
+      if (current !== target) {
+        var rawA = rec[GROUPING_FIELD + '_raw'];
+        var destId = (Array.isArray(rawA) && rawA[0] && rawA[0].id) ? rawA[0].id : null;
+        var destHeader = destId ? groupMap[destId] : null;
+        if (destHeader) {
+          if (moveRowTriple(row, destHeader)) moves++;
+          updateField2381Cell(row, rec);
+          syncModelRecord(rec.id, rec);
+        }
+      }
+
+      // Always sync other cell contents (fees, labels, calcs, inputs)
+      if (typeof patchFn === 'function') {
+        try { patchFn(VIEW_ID, rec.id, rec, { skipFocused: true }); }
+        catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + rec.id, e); }
+      }
+    }
+
+    log('silent regroup: ' + moves + ' moved, ' + skipped + ' skipped, ' + records.length + ' total');
+  }
+
+  // ======================================================================
+  // Polling core
+  // ======================================================================
+
   function buildRecordsUrl() {
     if (typeof Knack === 'undefined' || !Knack.router || !Knack.router.current_scene_key) return null;
     return Knack.api_url +
@@ -200,37 +449,6 @@
       '/views/' + VIEW_ID + '/records?rows_per_page=1000';
   }
 
-  // ======================
-  // Trigger the single full refresh once we've decided the webhook is done.
-  // Capture the current expanded-panel state first so device-worksheet can
-  // restore it after the re-render, same path used by the normal refresh
-  // coordinator.
-  // ======================
-  function triggerRefresh() {
-    log('dirty+stable → triggering model.fetch()');
-    try {
-      if (window.SCW && window.SCW.deviceWorksheet && typeof window.SCW.deviceWorksheet.captureState === 'function') {
-        window.SCW.deviceWorksheet.captureState();
-      }
-    } catch (e) {
-      console.warn(LOG_PREFIX, 'captureState threw', e);
-    }
-
-    try {
-      var view = Knack.views && Knack.views[VIEW_ID];
-      if (view && view.model && typeof view.model.fetch === 'function') {
-        view.model.fetch();
-      } else {
-        log('Knack.views[' + VIEW_ID + '].model.fetch not available — nothing to do');
-      }
-    } catch (e) {
-      console.warn(LOG_PREFIX, 'model.fetch threw', e);
-    }
-  }
-
-  // ======================
-  // One poll cycle: GET records, snapshot, compare, decide.
-  // ======================
   function poll() {
     pollTimer = null;
     if (!active) return;
@@ -243,8 +461,6 @@
       log('SCW.knackAjax unavailable — stop');
       return stop();
     }
-
-    // Bail if the user has navigated away from the view.
     if (!document.getElementById(VIEW_ID)) { log('view gone — stop'); return stop(); }
 
     inFlight = true;
@@ -266,26 +482,25 @@
 
         log('poll ok — ' + records.length + ' records, dirty=' + dirtyNow + ', stable=' + stableNow);
 
-        if (stableNow) {
-          stableStreak++;
-        } else {
-          stableStreak = 0;
-        }
+        if (stableNow) stableStreak++;
+        else           stableStreak = 0;
         lastSnapshot = snap;
 
-        if (dirtyNow && stableStreak >= STABLE_CYCLES) {
-          log('webhook done — stable for ' + stableStreak + ' cycles and dirty vs baseline');
-          triggerRefresh();
+        if (stableStreak >= STABLE_CYCLES) {
+          if (dirtyNow) {
+            log('webhook done — applying silent regroup');
+            applySilentRegroup(records);
+          } else {
+            log('webhook done — no DOM changes needed');
+          }
           return stop();
         }
-
         scheduleNext();
       },
       error: function (xhr) {
         inFlight = false;
         if (!active) return;
         log('poll error ' + (xhr && xhr.status));
-        // Keep trying until the poll budget runs out.
         scheduleNext();
       }
     });
@@ -309,11 +524,8 @@
   }
 
   function start() {
-    // Capture the baseline BEFORE any polling, so even very fast webhook
-    // updates that land before poll #1 still register as "dirty".
-    domBaseline = captureDomBaseline();
+    domBaseline = captureDomSnapshot();
     log('start polling (' + MAX_POLLS + ' polls @ ' + POLL_INTERVAL + 'ms), baseline rows=' + Object.keys(domBaseline).length);
-
     active         = true;
     pollsRemaining = MAX_POLLS;
     stableStreak   = 0;
@@ -322,18 +534,15 @@
     pollTimer = setTimeout(poll, START_DELAY);
   }
 
-  // ======================
-  // Detect inline-edit PUTs that include field_2380.
-  // ajaxComplete fires after the response — perfect for "start polling
-  // once Knack has saved the value and queued the webhook".
-  // ======================
+  // ======================================================================
+  // Trigger: successful PUT whose body mentions field_2380
+  // ======================================================================
   $(document).ajaxComplete(function (event, xhr, settings) {
     if (!settings || settings.type !== 'PUT') return;
     var url = settings.url || '';
     if (url.indexOf('/views/' + VIEW_ID + '/records/') === -1) return;
     if (!xhr || xhr.status < 200 || xhr.status >= 300) return;
 
-    // Parse the request body — may be a JSON string or an object.
     var body = settings.data;
     if (typeof body === 'string') {
       try { body = JSON.parse(body); } catch (e) { body = null; }
@@ -345,13 +554,12 @@
     start();
   });
 
-  // If the view is re-rendered for any reason (including the model.fetch
-  // we triggered ourselves) stop polling. For our own fetch this is the
-  // correct terminal state; for unrelated re-renders the poll would be
-  // targeting stale data anyway.
+  // If the view is hard re-rendered for some other reason, bail out —
+  // our silent moves would target stale DOM anyway, and the new render
+  // will reflect whatever the model currently holds.
   $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentPoll', function () {
     if (active) log('view re-rendered — stop');
     stop();
   });
 })();
-/*** END FEATURE: Silent poll after field_2380 inline-edit on view_3505 ************************/
+/*** END FEATURE: Silent poll + silent regroup after field_2380 inline-edit on view_3505 ************/
