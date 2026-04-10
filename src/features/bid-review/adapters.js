@@ -126,13 +126,17 @@
   ns.loadRawData = function loadRawData() {
     var bidPromise     = loadView(CFG.viewKey);
     var sowItemPromise = loadView(CFG.sowItemsViewKey);
+    var pkgPromise     = CFG.bidPackagesViewKey
+                           ? loadView(CFG.bidPackagesViewKey)
+                           : $.Deferred().resolve([]).promise();
 
-    return $.when(bidPromise, sowItemPromise).then(function (bidRecs, sowRecs) {
+    return $.when(bidPromise, sowItemPromise, pkgPromise).then(function (bidRecs, sowRecs, pkgRecs) {
       if (CFG.debug) {
         console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
-                    sowRecs.length, 'unbid SOW items');
+                    sowRecs.length, 'unbid SOW items,',
+                    pkgRecs.length, 'bid packages');
       }
-      return { records: bidRecs, sowItems: sowRecs };
+      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs };
     });
   };
 

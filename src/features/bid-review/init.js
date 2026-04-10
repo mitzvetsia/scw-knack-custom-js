@@ -27,7 +27,7 @@
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',
@@ -51,7 +51,7 @@
     _silentRefreshRunning = true;
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
     }).fail(function (err) {

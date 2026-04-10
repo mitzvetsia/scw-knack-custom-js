@@ -513,11 +513,36 @@
 
   // ── public entry point ────────────────────────────────────────
 
+  // ── extract PDF URLs from bid package records ──────────────────
+
+  function buildPdfMap(bidPackages) {
+    var map = {};
+    if (!bidPackages || !bidPackages.length) return map;
+    for (var i = 0; i < bidPackages.length; i++) {
+      var rec = bidPackages[i];
+      var id = rec.id;
+      if (!id) continue;
+      // File fields: try _raw (object with url) then fall back to HTML parsing
+      var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
+      if (!rawPdf) continue;
+      if (typeof rawPdf === 'object' && rawPdf.url) {
+        map[id] = { url: rawPdf.url, filename: rawPdf.filename || '' };
+      } else if (typeof rawPdf === 'string') {
+        // May be HTML: <a href="...">filename</a>
+        var m = rawPdf.match(/href="([^"]+)"/);
+        var fn = rawPdf.match(/>([^<]+)<\/a>/);
+        if (m) map[id] = { url: m[1], filename: fn ? fn[1] : '' };
+      }
+    }
+    return map;
+  }
+
   /**
-   * buildState(records, sowItems) → state
+   * buildState(records, sowItems, bidPackages) → state
    *
-   * @param {Array} records  — bid records from view_3680
-   * @param {Array} sowItems — unbid SOW items from view_3728
+   * @param {Array} records     — bid records from view_3680
+   * @param {Array} sowItems    — unbid SOW items from view_3728
+   * @param {Array} bidPackages — bid package records from view_3573
    * Returns:
    *   {
    *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
@@ -525,9 +550,17 @@
    *     isEmpty: boolean
    *   }
    */
-  ns.buildState = function buildState(records, sowItems) {
+  ns.buildState = function buildState(records, sowItems, bidPackages) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
+    var pdfMap     = buildPdfMap(bidPackages || []);
+
+    // Attach PDF info to each package
+    for (var pi = 0; pi < allPkgs.length; pi++) {
+      var pdf = pdfMap[allPkgs[pi].id];
+      if (pdf) { allPkgs[pi].pdfUrl = pdf.url; allPkgs[pi].pdfFilename = pdf.filename; }
+    }
+
     var sowBuckets = groupBySow(records);
 
     // Distribute no-SOW records into SOW grids that share the same bid package.
@@ -629,6 +662,11 @@
       }
 
       var pkgs    = extractPackages(recs);
+      // Attach PDF info to per-SOW packages
+      for (var ppi = 0; ppi < pkgs.length; ppi++) {
+        var ppdf = pdfMap[pkgs[ppi].id];
+        if (ppdf) { pkgs[ppi].pdfUrl = ppdf.url; pkgs[ppi].pdfFilename = ppdf.filename; }
+      }
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
 

@@ -8900,6 +8900,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
+    bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
 
     // ── Make webhook for all review actions ────────────────────
     actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -8942,6 +8943,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       dropNumber:      'field_2362',
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
+      bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -9114,7 +9116,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-weight: 700;',
       '  color: #0f172a;',
       '  margin-bottom: 4px;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
       '}',
+
+      '.scw-bid-review__pdf-link {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  color: #dc2626;',
+      '  opacity: .7;',
+      '  transition: opacity 150ms ease;',
+      '  flex-shrink: 0;',
+      '}',
+      '.scw-bid-review__pdf-link:hover { opacity: 1; }',
+      '.scw-bid-review__pdf-link svg { display: block; }',
 
       '.scw-bid-review__pkg-counts {',
       '  font-size: 11px;',
@@ -9675,13 +9691,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   ns.loadRawData = function loadRawData() {
     var bidPromise     = loadView(CFG.viewKey);
     var sowItemPromise = loadView(CFG.sowItemsViewKey);
+    var pkgPromise     = CFG.bidPackagesViewKey
+                           ? loadView(CFG.bidPackagesViewKey)
+                           : $.Deferred().resolve([]).promise();
 
-    return $.when(bidPromise, sowItemPromise).then(function (bidRecs, sowRecs) {
+    return $.when(bidPromise, sowItemPromise, pkgPromise).then(function (bidRecs, sowRecs, pkgRecs) {
       if (CFG.debug) {
         console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
-                    sowRecs.length, 'unbid SOW items');
+                    sowRecs.length, 'unbid SOW items,',
+                    pkgRecs.length, 'bid packages');
       }
-      return { records: bidRecs, sowItems: sowRecs };
+      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs };
     });
   };
 
@@ -10201,11 +10221,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── public entry point ────────────────────────────────────────
 
+  // ── extract PDF URLs from bid package records ──────────────────
+
+  function buildPdfMap(bidPackages) {
+    var map = {};
+    if (!bidPackages || !bidPackages.length) return map;
+    for (var i = 0; i < bidPackages.length; i++) {
+      var rec = bidPackages[i];
+      var id = rec.id;
+      if (!id) continue;
+      // File fields: try _raw (object with url) then fall back to HTML parsing
+      var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
+      if (!rawPdf) continue;
+      if (typeof rawPdf === 'object' && rawPdf.url) {
+        map[id] = { url: rawPdf.url, filename: rawPdf.filename || '' };
+      } else if (typeof rawPdf === 'string') {
+        // May be HTML: <a href="...">filename</a>
+        var m = rawPdf.match(/href="([^"]+)"/);
+        var fn = rawPdf.match(/>([^<]+)<\/a>/);
+        if (m) map[id] = { url: m[1], filename: fn ? fn[1] : '' };
+      }
+    }
+    return map;
+  }
+
   /**
-   * buildState(records, sowItems) → state
+   * buildState(records, sowItems, bidPackages) → state
    *
-   * @param {Array} records  — bid records from view_3680
-   * @param {Array} sowItems — unbid SOW items from view_3728
+   * @param {Array} records     — bid records from view_3680
+   * @param {Array} sowItems    — unbid SOW items from view_3728
+   * @param {Array} bidPackages — bid package records from view_3573
    * Returns:
    *   {
    *     sowGrids: [{ sowId, sowName, packages, rows, groups, eligibility, columnCount }],
@@ -10213,9 +10258,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    *     isEmpty: boolean
    *   }
    */
-  ns.buildState = function buildState(records, sowItems) {
+  ns.buildState = function buildState(records, sowItems, bidPackages) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
+    var pdfMap     = buildPdfMap(bidPackages || []);
+
+    // Attach PDF info to each package
+    for (var pi = 0; pi < allPkgs.length; pi++) {
+      var pdf = pdfMap[allPkgs[pi].id];
+      if (pdf) { allPkgs[pi].pdfUrl = pdf.url; allPkgs[pi].pdfFilename = pdf.filename; }
+    }
+
     var sowBuckets = groupBySow(records);
 
     // Distribute no-SOW records into SOW grids that share the same bid package.
@@ -10317,6 +10370,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       var pkgs    = extractPackages(recs);
+      // Attach PDF info to per-SOW packages
+      for (var ppi = 0; ppi < pkgs.length; ppi++) {
+        var ppdf = pdfMap[pkgs[ppi].id];
+        if (ppdf) { pkgs[ppi].pdfUrl = ppdf.url; pkgs[ppi].pdfFilename = ppdf.filename; }
+      }
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
 
@@ -10457,7 +10515,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var th = el('th', 'scw-bid-review__pkg-header');
 
-      th.appendChild(el('div', 'scw-bid-review__pkg-name', pkg.name));
+      var nameRow = el('div', 'scw-bid-review__pkg-name');
+      nameRow.textContent = pkg.name;
+      if (pkg.pdfUrl) {
+        var pdfLink = document.createElement('a');
+        pdfLink.href = pkg.pdfUrl;
+        pdfLink.target = '_blank';
+        pdfLink.title = pkg.pdfFilename || 'View PDF';
+        pdfLink.className = 'scw-bid-review__pdf-link';
+        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+        nameRow.appendChild(pdfLink);
+      }
+      th.appendChild(nameRow);
 
       if (elig.creatable > 0) {
         var countsText = elig.creatable + ' new item' + (elig.creatable !== 1 ? 's' : '');
@@ -11333,7 +11402,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',
@@ -11357,7 +11426,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     _silentRefreshRunning = true;
 
     ns.loadRawData().then(function (raw) {
-      _state = ns.buildState(raw.records, raw.sowItems || []);
+      _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
     }).fail(function (err) {
