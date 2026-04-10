@@ -96,33 +96,65 @@
       },
       {
         viewId: 'view_3505',
-        layout: { productGroupWidth: '400px', detailGrid: '555px 1fr' },
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr' },
         hideDeleteWhenFieldNotBlank: 'field_2404',
+        // ── Main config: used for Cameras or Readers rows ──
         fields: {
+          // ── Summary row ──
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
           label:            { key: 'field_2364', type: 'readOnly',   summary: true },
           product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
-          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-          quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
-          extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
+          // ── Detail panel (matches view_3512 layout) ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2380', type: 'readOnly' },
+          connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exterior:         { key: 'field_2372', type: 'chipStack' },
-          plenum:           { key: 'field_2371', type: 'readOnly' }
+          plenum:           { key: 'field_2371', type: 'readOnly' },
+          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
+          dropLength:       { key: 'field_2367', type: 'directEdit' },
+          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'quantity', 'labor', 'extended', 'bid'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'exterior', 'surveyNotes']
+          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         },
         bucketField: 'field_2366',
+        // ── Override: used for all NON-camera/reader rows ──
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
+            move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
+            label:            { key: 'field_2364', type: 'readOnly',   summary: true },
+            product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
+            existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
+            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true },
+            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+            warningCount:     { key: 'field_2454', type: 'warningChit' },
+
+            mounting:         { key: 'field_2463', type: 'readOnly' },
+            connections:      { key: 'field_2380', type: 'readOnly' },
+            scwNotes:         { key: 'field_2418', type: 'readOnly' },
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
+            exterior:         { key: 'field_2372', type: 'chipStack' },
+            plenum:           { key: 'field_2371', type: 'readOnly' }
+          },
+          summaryLayout: ['laborDescription', 'existingCabling', 'quantity', 'labor', 'extended', 'bid'],
+          detailLayout: {
+            left:  ['mounting', 'scwNotes'],
+            right: ['connections', 'exterior', 'surveyNotes']
+          }
+        },
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_2379'],
