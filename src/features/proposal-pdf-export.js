@@ -28,7 +28,7 @@
       pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { field: 'field_2414', name: 'bidId' },
+        { field: 'field_2638', name: 'bidId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
         { field: 'field_2633', name: 'field_2633' }
