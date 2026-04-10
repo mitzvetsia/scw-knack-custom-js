@@ -26007,11 +26007,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  * Context:
  *   - Knack's native inline-edit record rule on field_2380 (view_3505)
  *     triggers a Make webhook.
- *   - The webhook rewrites field_2381 (REL_DROP → parent networking device)
- *     on OTHER, already-connected records in the grid. field_2381 is the
- *     L1 GROUPING key for the worksheet, so the webhook effectively moves
- *     existing rows between MDF/IDF/HEADEND group sections.
- *   - Those updates land asynchronously, AFTER Knack's PUT response.
+ *   - The webhook rewrites field_2375 (REL_mdf-idf) on one or more
+ *     records asynchronously. field_2375 is the L1 GROUPING key for
+ *     view_3505 — it's the same field device-worksheet's move icon
+ *     rewrites when a user drags a row between MDF/IDF groups
+ *     (src/features/device-worksheet.js:106, type: moveIcon). So the
+ *     webhook's effect is to move existing rows between MDF/IDF/HEADEND
+ *     group sections.
+ *   - These updates land AFTER Knack's inline-edit save response,
+ *     AFTER knack-cell-update fires, and AFTER Knack's native
+ *     post-edit re-render has already executed.
+ *
+ *   NB: do NOT confuse field_2375 with field_2381 ("connections"),
+ *   which is a read-only detail-panel field and NOT the grouping key.
+ *   An earlier revision of this file watched field_2381 by mistake.
  *
  * Why not model.fetch()?
  *   - A full Knack re-render wipes the card DOM, flashes the view, and
@@ -26025,26 +26034,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *     physically cannot reflect the webhook's main change.
  *
  * Strategy:
- *   1. On each successful PUT whose body contains field_2380, snapshot the
- *      DOM's current {recordId → sortedParentIds} map as a baseline.
- *   2. Poll the view records endpoint on a timer, computing the same
- *      shape from field_2381_raw in the API response.
- *   3. When two successive API polls agree AND differ from the baseline,
- *      assume the webhook is done.
- *   4. Apply a SILENT REGROUP:
- *        a. Build {parentDeviceId → L1 group header row} from the DOM.
- *        b. For every record whose field_2381 differs between DOM and API,
+ *   1. On knack-cell-update.view_3505, snapshot the DOM's current
+ *      {recordId → sortedGroupingIds} map as a baseline. Arm a
+ *      debounced settle timer — Knack's native post-edit re-render
+ *      will fire within ~50ms and would otherwise kill any poll
+ *      loop we started immediately.
+ *   2. Every knack-view-render.view_3505 during the edit cycle resets
+ *      the settle timer rather than aborting. When the view is quiet
+ *      for SETTLE_MS, start polling.
+ *   3. Poll the view records endpoint on a timer, computing the same
+ *      shape from field_2375_raw in the API response.
+ *   4. When two successive API polls agree AND differ from the baseline,
+ *      assume the webhook is done and apply a SILENT REGROUP:
+ *        a. Build {mdfIdfRecordId → L1 group header row} from the DOM.
+ *        b. For every record whose field_2375 differs between DOM and API,
  *           move its row-triple (hidden sourceTr + visible wsTr + optional
  *           photo row) to the tail of the destination group header.
- *        c. Rewrite the sourceTr's td.field_2381 to reflect the new parent.
+ *        c. Rewrite the sourceTr's td.field_2375 to reflect the new group.
  *        d. Patch the corresponding Backbone model record's attributes so
- *           subsequent inline-edit PUTs see the new parent.
+ *           subsequent inline-edit PUTs see the new grouping value.
  *        e. Call SCW.deviceWorksheet.patchCard for every record so other
  *           changed fields (labels, fees, calcs) sync into the card.
  *      If any record requires moving to a destination group that doesn't
- *      exist in the visible DOM (or to a record that isn't visible at all)
- *      fall back to model.fetch() — we can't silently construct a new L1
- *      group header from scratch.
+ *      exist in the visible DOM (group currently empty), fall back to
+ *      model.fetch() — we can't silently construct a new L1 header.
  *   5. group-collapse's MutationObserver re-runs on its own (debounced
  *      100ms) and its state map is keyed by L1 label text, so collapse
  *      state survives the moves.
@@ -26059,7 +26072,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ======================
   var VIEW_ID         = 'view_3505';
   var TRIGGER_FIELD   = 'field_2380';   // the field the user inline-edits
-  var GROUPING_FIELD  = 'field_2381';   // the field the webhook rewrites → drives L1 groups
+  // field_2375 = REL_mdf-idf. It is the "move:" field in device-worksheet's
+  // view_3505 config (src/features/device-worksheet.js:106) — i.e., the L1
+  // grouping key for the worksheet and the exact field the Make webhook
+  // rewrites when it moves a record between MDF/IDF groups. Do NOT confuse
+  // with field_2381 ("connections"), which is a separate read-only detail-
+  // panel field and is NOT the grouping key.
+  var GROUPING_FIELD  = 'field_2375';
   var POLL_INTERVAL   = 1000;           // ms between polls
   var STABLE_CYCLES   = 2;              // consecutive unchanged cycles → webhook done
   var MAX_POLLS       = 12;             // hard cap (~14s)
@@ -26089,14 +26108,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ======================================================================
-  // DOM helpers — reading field_2381 out of the triple-row card structure
+  // DOM helpers — reading the grouping field out of the triple-row card
   // ----------------------------------------------------------------------
   // For view_3505 the device-worksheet feature lays each record out as
-  //    sourceTr [data-scw-worksheet="1"]  (hidden original Knack tr, has td.field_2381)
+  //    sourceTr [data-scw-worksheet="1"]  (hidden original Knack tr, has td.field_2375)
   //    wsTr    .scw-ws-row                (visible, id=RECORD_ID, wraps card)
   //    photoRow .scw-inline-photo-row     (optional trailing photo strip)
   // All field cells live on sourceTr; wsTr only has one <td colspan> with
-  // the card inside it. So to read field_2381 we look at wsTr's PREVIOUS
+  // the card inside it. So to read field_2375 we look at wsTr's PREVIOUS
   // sibling.
   // ======================================================================
 
@@ -26114,7 +26133,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return null;
   }
 
-  function extractField2381Ids(tr) {
+  function extractGroupingIds(tr) {
     var ids = [];
     if (!tr) return ids;
     var cell = tr.querySelector('td.' + GROUPING_FIELD);
@@ -26145,7 +26164,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var i = 0; i < rows.length; i++) {
       var wsTr = rows[i];
       if (!HEX24.test(wsTr.id)) continue;
-      snap[wsTr.id] = sortedIdString(extractField2381Ids(getSourceTr(wsTr)));
+      snap[wsTr.id] = sortedIdString(extractGroupingIds(getSourceTr(wsTr)));
     }
     return snap;
   }
@@ -26207,7 +26226,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ----------------------------------------------------------------------
   // Walk the tbody, identify every L1 group header, and for each header
   // record the parent device ID shared by its child rows (read from their
-  // td.field_2381 spans). Returns { parentDeviceId → headerTr }.
+  // td.field_2375 spans). Returns { mdfIdfRecordId → headerTr }.
   // ======================================================================
 
   function buildGroupHeaderMap() {
@@ -26239,7 +26258,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       // Data row — only read parent id from hidden originals (sourceTr)
       if (curParentId == null && row.getAttribute && row.getAttribute('data-scw-worksheet') === '1') {
-        var ids = extractField2381Ids(row);
+        var ids = extractGroupingIds(row);
         if (ids.length) curParentId = ids[0];
       }
     }
@@ -26292,7 +26311,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ======================================================================
-  // Update td.field_2381 in-place on the hidden sourceTr
+  // Update td.field_2375 in-place on the hidden sourceTr
   // ======================================================================
 
   function escapeHtml(s) {
@@ -26304,7 +26323,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       .replace(/'/g, '&#39;');
   }
 
-  function updateField2381Cell(wsTr, record) {
+  function updateGroupingCell(wsTr, record) {
     var sourceTr = getSourceTr(wsTr);
     if (!sourceTr) return;
     var cell = sourceTr.querySelector('td.' + GROUPING_FIELD);
@@ -26430,7 +26449,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var destHeader = destId ? groupMap[destId] : null;
         if (destHeader) {
           if (moveRowTriple(row, destHeader)) moves++;
-          updateField2381Cell(row, rec);
+          updateGroupingCell(row, rec);
           syncModelRecord(rec.id, rec);
         }
       }
@@ -26549,12 +26568,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // Observed timing (from the diagnostic run):
   //   1. User confirms field_2380 inline-edit
   //   2. device-worksheet patches card display
-  //   3. knack-cell-update.view_3505 fires with the record (field_2381 STILL OLD
+  //   3. knack-cell-update.view_3505 fires with the record (field_2375 STILL OLD
   //      because the Make webhook is async)
   //   4. Knack natively re-renders view_3505 within ~50-250ms from its cached
   //      model data → old knack-view-render handler used to call stop() here
   //      and killed the poll loop before a single poll could fire
-  //   5. Make webhook finishes over the next N seconds and rewrites field_2381
+  //   5. Make webhook finishes over the next N seconds and rewrites field_2375
   //      on one or more records in the database
   //
   // We cannot prevent step 4 — it's Knack's native post-edit behavior.
@@ -26603,7 +26622,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     try {
       log('knack-cell-update fired', { recordId: record && record.id });
 
-      // Fast path: if the event record already has a new field_2381 (some
+      // Fast path: if the event record already has a new field_2375 (some
       // server-side record rule fired synchronously), apply it immediately.
       // For the async Make-webhook case this branch is a no-op.
       if (record && record.id) {
