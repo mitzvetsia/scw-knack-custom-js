@@ -77,8 +77,12 @@
   var active          = false;
 
   function log() {
-    if (!window.SCW || !window.SCW.DEBUG_SILENT_POLL) return;
+    // Always-on lifecycle logging while we're diagnosing. Cheap and low-volume.
     try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
+  }
+  function debug() {
+    if (!window.SCW || !window.SCW.DEBUG_SILENT_POLL) return;
+    try { console.log.apply(console, [LOG_PREFIX + '[dbg]'].concat([].slice.call(arguments))); } catch (e) {}
   }
 
   // ======================================================================
@@ -536,23 +540,85 @@
 
   // ======================================================================
   // Trigger: successful PUT whose body mentions field_2380
+  // ----------------------------------------------------------------------
+  // NOTE: this listens to the USER'S own inline-edit PUT — the one that
+  // saves field_2380 and causes Knack's record rule to queue the Make
+  // webhook. It is NOT listening to the webhook's own REST calls (those
+  // run server-to-server and never appear in the browser).
   // ======================================================================
   $(document).ajaxComplete(function (event, xhr, settings) {
     if (!settings || settings.type !== 'PUT') return;
     var url = settings.url || '';
-    if (url.indexOf('/views/' + VIEW_ID + '/records/') === -1) return;
-    if (!xhr || xhr.status < 200 || xhr.status >= 300) return;
+    // Log ANY PUT that looks remotely related to view_3505 so we can see
+    // what Knack is actually sending when field_2380 is inline-edited.
+    var touchesView = url.indexOf(VIEW_ID) !== -1 || url.indexOf('view_3505') !== -1;
+    if (!touchesView) return;
 
+    var status = xhr && xhr.status;
     var body = settings.data;
+    var bodyStr = typeof body === 'string' ? body : '';
     if (typeof body === 'string') {
       try { body = JSON.parse(body); } catch (e) { body = null; }
     }
-    if (!body || typeof body !== 'object') return;
-    if (!Object.prototype.hasOwnProperty.call(body, TRIGGER_FIELD)) return;
+    log('saw PUT', {
+      url: url,
+      status: status,
+      bodyKeys: (body && typeof body === 'object') ? Object.keys(body) : null,
+      bodyType: typeof body,
+      rawBody: bodyStr.length > 400 ? bodyStr.slice(0, 400) + '…' : bodyStr
+    });
 
-    log('trigger PUT observed (' + TRIGGER_FIELD + ')');
+    if (url.indexOf('/views/' + VIEW_ID + '/records/') === -1) {
+      log('  → URL does not match /views/' + VIEW_ID + '/records/, not a record PUT');
+      return;
+    }
+    if (!xhr || status < 200 || status >= 300) {
+      log('  → non-2xx status, ignoring');
+      return;
+    }
+    if (!body || typeof body !== 'object') {
+      log('  → body not a parseable object, ignoring');
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(body, TRIGGER_FIELD)) {
+      log('  → body does not contain ' + TRIGGER_FIELD + ', ignoring');
+      return;
+    }
+
+    log('✔ trigger PUT observed (' + TRIGGER_FIELD + ') — starting poll');
     start();
   });
+
+  // Also listen for Knack's post-inline-edit event in case the trigger
+  // PUT is structured differently than we expect. knack-cell-update
+  // fires after Knack finishes a successful inline-edit save.
+  $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentPoll', function (event, view, record) {
+    try {
+      var fieldKey = null;
+      if (record && typeof record === 'object') {
+        // Knack passes the updated record; we only care whether field_2380
+        // was touched. The event doesn't expose the changed field directly,
+        // so log what we have and let the user confirm.
+        fieldKey = Object.prototype.hasOwnProperty.call(record, TRIGGER_FIELD) ? TRIGGER_FIELD : null;
+      }
+      log('knack-cell-update.' + VIEW_ID + ' fired', {
+        hasTriggerField: fieldKey != null,
+        recordId: record && record.id
+      });
+    } catch (e) { /* ignore */ }
+  });
+
+  // Public debug hooks — poke these from DevTools to force-run without
+  // needing to reproduce an inline edit.
+  window.SCW = window.SCW || {};
+  window.SCW.silentPollView3505 = {
+    start: start,
+    stop: stop,
+    captureDomSnapshot: captureDomSnapshot,
+    buildGroupHeaderMap: buildGroupHeaderMap,
+    applySilentRegroup: applySilentRegroup
+  };
+  log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
 
   // If the view is hard re-rendered for some other reason, bail out —
   // our silent moves would target stale DOM anyway, and the new render
