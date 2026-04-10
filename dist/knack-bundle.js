@@ -20201,14 +20201,17 @@ $(".kn-navigation-bar").hide();
           scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
-                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' }
+                              linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Sub Bid Lock' }
         },
         summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
                          'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid']
-        }
+          right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+        },
+        recordLockField: 'field_2634',
+        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
         viewIds: ['view_3610'],
@@ -20236,14 +20239,17 @@ $(".kn-navigation-bar").hide();
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Sub Bid Lock' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid']
+          right: ['scwNotes', 'selectedSubBid', 'subBidLock']
         },
+        recordLockField: 'field_2634',
+        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
         conditionalHide: [
           {
             whenLocked: 'field_1964',
@@ -21969,20 +21975,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   text-decoration: none;
 }
 
-/* ── Locked row (field_2551 = Yes) — disable all interactive widgets ── */
-.${P}-card.${P}-locked .${P}-sum-field input,
-.${P}-card.${P}-locked .${P}-sum-field textarea,
-.${P}-card.${P}-locked .${P}-detail-field input,
-.${P}-card.${P}-locked .${P}-detail-field textarea {
-  pointer-events: none;
-  opacity: 0.6;
-  background: #f5f5f5;
+/* ── Per-field locked state (record lock via field_2634) ── */
+.${P}-input-locked {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
+  background: #f5f5f5 !important;
+  cursor: not-allowed !important;
 }
-.${P}-card.${P}-locked .${P}-radio-chips,
-.${P}-card.${P}-locked .${P}-cabling-chit,
-.${P}-card.${P}-locked .${P}-chip-stack {
-  pointer-events: none;
-  opacity: 0.6;
+.${P}-chips-locked {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+.${P}-chit-locked {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
+}
+.${P}-native-locked {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
 }
 `;
 
@@ -22931,6 +22942,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
     applyHideWhenFieldEquals(card, cfg);
+
+    // Re-evaluate record lock after patching (e.g. toggling sub bid lock)
+    applyRecordLock(card, cfg);
   }
 
   /** Apply hideWhenFieldEquals rules on a card — show or hide fields dynamically. */
@@ -22956,6 +22970,78 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (hwDetailTd) {
         var hwFieldWrap = hwDetailTd.closest('.' + P + '-field');
         if (hwFieldWrap) hwFieldWrap.style.display = shouldHide ? 'none' : '';
+      }
+    }
+  }
+
+  // ── Record-level lock (field_2634 = "Yes" → disable most editing) ──
+
+  var LOCK_CLASS = P + '-locked';
+
+  /**
+   * When viewCfg.recordLockField is set and its value is "Yes",
+   * disable all editable controls except those in lockExemptFields.
+   * Toggles both a card-level CSS class and individual input states
+   * so it works on initial render AND after chip-toggle saves.
+   */
+  function applyRecordLock(card, viewCfg) {
+    if (!viewCfg.recordLockField) return;
+    var exempt = viewCfg.lockExemptFields || [];
+    var tr = card.closest('tr');
+
+    // Read lock field value
+    var lockTd = (tr ? tr.querySelector('td.' + viewCfg.recordLockField) : null)
+              || card.querySelector('td[data-field-key="' + viewCfg.recordLockField + '"]');
+    var lockVal = lockTd ? (lockTd.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+    var isLocked = /^yes$/i.test(lockVal);
+
+    // Toggle card-level class for CSS-driven styling
+    card.classList.toggle(LOCK_CLASS, isLocked);
+
+    // Walk every configured field and lock/unlock editable controls
+    var fNames = Object.keys(viewCfg.fields);
+    for (var li = 0; li < fNames.length; li++) {
+      var desc = viewCfg.fields[fNames[li]];
+      if (exempt.indexOf(desc.key) !== -1) continue;
+
+      var fk = desc.key;
+
+      // ── Direct-edit inputs and textareas ──
+      var inputs = card.querySelectorAll(
+        '[' + DIRECT_EDIT_ATTR + '][data-field="' + fk + '"]'
+      );
+      for (var ii = 0; ii < inputs.length; ii++) {
+        inputs[ii].disabled = isLocked;
+        if (isLocked) inputs[ii].classList.add(P + '-input-locked');
+        else inputs[ii].classList.remove(P + '-input-locked');
+      }
+
+      // ── Radio / multi chip containers ──
+      var chipContainers = card.querySelectorAll(
+        '.' + P + '-radio-chips[data-field="' + fk + '"], ' +
+        '.' + RADIO_CHIP_CLASS + '[data-field="' + fk + '"]'
+      );
+      for (var ci = 0; ci < chipContainers.length; ci++) {
+        var container = chipContainers[ci].closest('.' + P + '-radio-chips') || chipContainers[ci];
+        if (isLocked) container.classList.add(P + '-chips-locked');
+        else container.classList.remove(P + '-chips-locked');
+      }
+
+      // ── Toggle chits (boolean Yes/No) ──
+      var chitTd = card.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+      if (chitTd && desc.type === 'toggleChit') {
+        if (isLocked) chitTd.classList.add(P + '-chit-locked');
+        else chitTd.classList.remove(P + '-chit-locked');
+      }
+
+      // ── Native-edit fields (Knack popup inline edit) ──
+      if (desc.type === 'nativeEdit' && chitTd) {
+        if (isLocked) {
+          chitTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+          chitTd.classList.add(P + '-native-locked');
+        } else {
+          chitTd.classList.remove(P + '-native-locked');
+        }
       }
     }
   }
@@ -23280,6 +23366,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var container = chip.closest('.' + P + '-radio-chips');
     if (!container) return;
 
+    // Block clicks on locked chip containers (record lock)
+    if (container.classList.contains(P + '-chips-locked')) return;
+
     var isMulti = container.getAttribute(MULTI_CHIP_ATTR) === '1';
     var allChips = container.querySelectorAll('.' + RADIO_CHIP_CLASS);
     var saveValue;
@@ -23372,6 +23461,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Let KTL bulk-edit handle the click when active
     var chitTd = chit.closest('td');
     if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
+
+    // Block clicks on locked chits (record lock)
+    if (chitTd && chitTd.classList.contains(P + '-chit-locked')) return;
 
     e.stopPropagation();
     e.preventDefault();
@@ -24683,6 +24775,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Apply hideWhenFieldEquals visibility ──
     applyHideWhenFieldEquals(card, viewCfg);
+
+    // ── Apply record-level lock (sub bid lock) ──
+    applyRecordLock(card, viewCfg);
 
     return card;
   }
