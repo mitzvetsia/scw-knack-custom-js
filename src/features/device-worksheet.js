@@ -2902,8 +2902,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * PUT response.  Updates readOnly summary fields, directEdit inputs
    * & textareas, toggle chits, and detail-panel cells.
    */
-  function patchCardFromResponse(viewId, recordId, resp) {
+  function patchCardFromResponse(viewId, recordId, resp, opts) {
     if (!resp) return;
+    opts = opts || {};
     var cfg = viewCfgFor(viewId);
     if (!cfg) return;
 
@@ -3003,6 +3004,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var ii = 0; ii < inputs.length; ii++) {
           var inp = inputs[ii];
           if (inp.tagName === 'INPUT' || inp.tagName === 'TEXTAREA') {
+            // Silent polls: never clobber a field the user is actively editing.
+            if (opts.skipFocused && document.activeElement === inp) continue;
             inp.value = txt;
             inp._scwPrev = txt;
             refreshInputConditionalColor(inp);
@@ -5755,7 +5758,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           transformView(viewCfg);
         }
       });
-    }
+    },
+    /** Silent in-place patch of a single worksheet card.
+     *  opts.skipFocused — don't clobber inputs that currently have focus.
+     *  Used by silent-poll-view-3505 to reflect webhook-driven record
+     *  updates without re-rendering the view. */
+    patchCard: patchCardFromResponse
   };
 })();
 // ============================================================
