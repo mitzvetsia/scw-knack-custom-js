@@ -3478,7 +3478,7 @@ window.SCW = window.SCW || {};
  *   <div class="view-group">
  *     <div class="scw-ktl-accordion">       (enhanced accordion)
  *       <div class="scw-ktl-accordion__header">
- *         icon | title | count | [injected buttons] | chevron
+ *         icon | title | [injected buttons] | count | chevron
  *       </div>
  *       ...
  *     </div>
@@ -3654,10 +3654,15 @@ window.SCW = window.SCW || {};
         container.appendChild(btn);
       }
 
-      // Insert before chevron in the header
+      // Insert before chevron in the header, then move count pill
+      // to sit between the buttons and the chevron:
+      //   icon | title | [buttons] | count | chevron
       var chevron = header.querySelector('.scw-acc-chevron');
+      var countPill = header.querySelector('.scw-acc-count');
       if (chevron) {
         header.insertBefore(container, chevron);
+        // Move count pill to right of buttons (before chevron)
+        if (countPill) header.insertBefore(countPill, chevron);
       } else {
         header.appendChild(container);
       }
