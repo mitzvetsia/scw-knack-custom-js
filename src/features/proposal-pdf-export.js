@@ -25,6 +25,7 @@
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
       pollViewOnReturn: 'view_3507',
+      pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
         { field: 'field_2414', name: 'bidId' },
@@ -865,7 +866,10 @@
 
         // Flag for poll-refresh on the parent page
         if (cfg.pollViewOnReturn) {
-          try { sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn); } catch (e) {}
+          try {
+            sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+            if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+          } catch (e) {}
         }
       });
     });
@@ -886,9 +890,10 @@
   var POLL_TIMEOUT_MS  = 60000;
   var POLL_TOAST_ID    = 'scw-pdf-poll-toast';
   var POLL_CSS_ID      = 'scw-pdf-poll-css';
+  var POLL_OVERLAY_ID  = 'scw-pdf-poll-field-overlay';
   var _pollTimer       = null;
 
-  function injectPollToastStyle() {
+  function injectPollStyles() {
     if (document.getElementById(POLL_CSS_ID)) return;
     var s = document.createElement('style');
     s.id = POLL_CSS_ID;
@@ -912,13 +917,26 @@
       '  line-height: 1; font-weight: 700;',
       '}',
       '#' + POLL_TOAST_ID + ' .scw-poll-close:hover { color: #fff; }',
-      '@keyframes scwPollSpin { to { transform: rotate(360deg); } }'
+      '@keyframes scwPollSpin { to { transform: rotate(360deg); } }',
+      '#' + POLL_OVERLAY_ID + ' {',
+      '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
+      '}',
+      '#' + POLL_OVERLAY_ID + ' .scw-poll-field-spinner {',
+      '  width: 16px; height: 16px; border: 2px solid rgba(30,58,95,.2);',
+      '  border-top-color: #1e3a5f; border-radius: 50%;',
+      '  animation: scwPollSpin .8s linear infinite;',
+      '}',
+      '#' + POLL_OVERLAY_ID + ' .scw-poll-field-text {',
+      '  color: #555; font-size: 12px; font-weight: 500; margin-left: 8px;',
+      '}'
     ].join('\n');
     document.head.appendChild(s);
   }
 
   function showPollToast() {
-    injectPollToastStyle();
+    injectPollStyles();
     if (document.getElementById(POLL_TOAST_ID)) return;
     var toast = document.createElement('div');
     toast.id = POLL_TOAST_ID;
@@ -928,8 +946,7 @@
     closeBtn.textContent = '\u00d7';
     closeBtn.title = 'Dismiss and stop refreshing';
     closeBtn.addEventListener('click', function () {
-      if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-      hidePollToast();
+      stopPolling();
     });
     toast.appendChild(closeBtn);
     document.body.appendChild(toast);
@@ -942,38 +959,90 @@
     setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
   }
 
-  function startPollRefresh(viewId) {
+  function showFieldOverlay(viewId, fieldId) {
+    if (!fieldId) return;
+    var fieldEl = document.querySelector('#' + viewId + ' .kn-detail.' + fieldId);
+    if (!fieldEl) fieldEl = document.querySelector('#' + viewId + ' .' + fieldId);
+    if (!fieldEl) return;
+    if (getComputedStyle(fieldEl).position === 'static') fieldEl.style.position = 'relative';
+    if (document.getElementById(POLL_OVERLAY_ID)) return;
+    var overlay = document.createElement('div');
+    overlay.id = POLL_OVERLAY_ID;
+    overlay.innerHTML = '<span class="scw-poll-field-spinner"></span><span class="scw-poll-field-text">Generating sub bid\u2026</span>';
+    fieldEl.appendChild(overlay);
+  }
+
+  function hideFieldOverlay() {
+    var overlay = document.getElementById(POLL_OVERLAY_ID);
+    if (overlay) overlay.remove();
+  }
+
+  function readFieldValue(viewId, fieldId) {
+    if (!fieldId) return '';
+    var el = document.querySelector('#' + viewId + ' .kn-detail.' + fieldId);
+    if (!el) el = document.querySelector('#' + viewId + ' .' + fieldId);
+    if (!el) return '';
+    var valEl = el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el;
+    return (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  }
+
+  function stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    hideFieldOverlay();
+    hidePollToast();
+  }
+
+  function startPollRefresh(viewId, fieldId) {
     if (_pollTimer) clearInterval(_pollTimer);
-    console.log('[SCW PDF Export] Polling ' + viewId + ' for record update');
+    console.log('[SCW PDF Export] Polling ' + viewId + ' for record update (watching ' + (fieldId || 'none') + ')');
+
+    var initialValue = readFieldValue(viewId, fieldId);
     showPollToast();
+    showFieldOverlay(viewId, fieldId);
 
     var elapsed = 0;
+    var ns = '.scwPdfPoll';
     _pollTimer = setInterval(function () {
       elapsed += POLL_INTERVAL_MS;
       if (typeof Knack === 'undefined') return;
       var view = Knack.views && Knack.views[viewId];
       if (view && view.model && typeof view.model.fetch === 'function') {
+        // Listen for re-render to check if field changed
+        $(document).one('knack-view-render.' + viewId + ns, function () {
+          var newValue = readFieldValue(viewId, fieldId);
+          if (fieldId && newValue !== initialValue) {
+            console.log('[SCW PDF Export] Field changed: "' + initialValue + '" → "' + newValue + '" — stopping poll');
+            stopPolling();
+          } else {
+            // Re-apply overlay (view re-render removes it)
+            showFieldOverlay(viewId, fieldId);
+          }
+        });
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
         console.log('[SCW PDF Export] Poll timeout for ' + viewId);
-        clearInterval(_pollTimer);
-        _pollTimer = null;
-        hidePollToast();
+        stopPolling();
       }
     }, POLL_INTERVAL_MS);
   }
 
   // Check for poll flag whenever any scene renders
   $(document).on('knack-scene-render.any.scwPdfPoll', function () {
-    var viewId;
-    try { viewId = sessionStorage.getItem('scw-pdf-poll-view'); } catch (e) {}
+    var viewId, fieldId;
+    try {
+      viewId = sessionStorage.getItem('scw-pdf-poll-view');
+      fieldId = sessionStorage.getItem('scw-pdf-poll-field');
+    } catch (e) {}
     if (!viewId) return;
     // Only start polling once the target view exists on the page
     if (!document.getElementById(viewId)) return;
-    try { sessionStorage.removeItem('scw-pdf-poll-view'); } catch (e) {}
+    try {
+      sessionStorage.removeItem('scw-pdf-poll-view');
+      sessionStorage.removeItem('scw-pdf-poll-field');
+    } catch (e) {}
     // Small delay to let the view finish its initial render
-    setTimeout(function () { startPollRefresh(viewId); }, 2000);
+    setTimeout(function () { startPollRefresh(viewId, fieldId); }, 2000);
   });
 
   // ══════════════════════════════════════════════════════════════
