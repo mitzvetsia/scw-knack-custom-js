@@ -7147,11 +7147,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
         // Extract additional field values from the scene DOM
         if (cfg.extraFields) {
+          var _fNum;
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
-            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + spec.field.replace('field_', ''));
+            _fNum = spec.field.replace('field_', '');
+            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
+            // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
+            if (!el) el = document.querySelector('.kn-detail.' + spec.field + ', .kn-label-none.' + spec.field);
             // Read value only — cascade through Knack detail-view DOM wrappers
             var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
             var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
