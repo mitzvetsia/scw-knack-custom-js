@@ -6850,8 +6850,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + spec.field.replace('field_', ''));
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
-            // Read from .kn-value inside the field to skip the label
-            var valEl = el ? (el.querySelector('.kn-value') || el) : null;
+            // Read value only — cascade through Knack detail-view DOM wrappers
+            var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
             var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
             if (val) extra[spec.name] = val;
           }
