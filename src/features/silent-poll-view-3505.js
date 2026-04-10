@@ -1,119 +1,84 @@
 /**************************************************************************************************
- * FEATURE: Silent poll + silent regroup after field_2380 inline-edit on view_3505
+ * FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505
  *
  * Context:
  *   - Knack's native inline-edit record rule on field_2380 (view_3505)
- *     triggers a Make webhook.
- *   - The webhook rewrites field_2375 (REL_mdf-idf) on one or more
- *     records asynchronously. field_2375 is the L1 GROUPING key for
- *     view_3505 — it's the same field device-worksheet's move icon
- *     rewrites when a user drags a row between MDF/IDF groups
- *     (src/features/device-worksheet.js:106, type: moveIcon). So the
- *     webhook's effect is to move existing rows between MDF/IDF/HEADEND
- *     group sections.
- *   - These updates land AFTER Knack's inline-edit save response,
- *     AFTER knack-cell-update fires, and AFTER Knack's native
- *     post-edit re-render has already executed.
+ *     triggers a Make webhook whose only job is to rewrite field_2375 +
+ *     field_2381 on the connected CHILD records:
+ *        * added child D    → field_2375 = R.field_2375, field_2381 = [R]
+ *        * removed child D  → field_2381 = []  (field_2375 untouched)
+ *     where R is the record the user just edited.
+ *   - field_2375 (REL_mdf-idf) is view_3505's L1 grouping key
+ *     (device-worksheet.js:106 "move: { key: 'field_2375' }"), so the
+ *     side-effect is that child rows visually move between MDF/IDF groups.
+ *   - field_2381 ("connections") is a readOnly detail-panel field on the
+ *     card (device-worksheet.js:117), NOT the grouping key.
  *
- *   NB: do NOT confuse field_2375 with field_2381 ("connections"),
- *   which is a read-only detail-panel field and NOT the grouping key.
- *   An earlier revision of this file watched field_2381 by mistake.
+ * Why not wait for the Make webhook and model.fetch()?
+ *   - A full re-render wipes all cards, flashes the view, and re-runs every
+ *     per-card enhancer. The user explicitly asked for a silent refresh.
  *
- * Why not model.fetch()?
- *   - A full Knack re-render wipes the card DOM, flashes the view, and
- *     churns through every card's enhancer (applyRecordLock,
- *     applyHideWhenFieldEquals, refreshInputConditionalColor). The user
- *     explicitly asked for a silent refresh that does NOT flash.
- *
- * Why not patchCardFromResponse for everything?
- *   - patchCard only updates text nodes / inputs INSIDE an existing card.
- *     It cannot move a row from one L1 group header to another, so it
- *     physically cannot reflect the webhook's main change.
+ * Why not poll the API?
+ *   - We own the rule deterministically. Given R on knack-cell-update we
+ *     already know exactly what the webhook will do, so we can do it
+ *     ourselves locally and fire the PUTs from the client. No polling,
+ *     no webhook dependency, no guessing at stability.
  *
  * Strategy:
- *   1. On knack-cell-update.view_3505, snapshot the DOM's current
- *      {recordId → sortedGroupingIds} map as a baseline. Arm a
- *      debounced settle timer — Knack's native post-edit re-render
- *      will fire within ~50ms and would otherwise kill any poll
- *      loop we started immediately.
- *   2. Every knack-view-render.view_3505 during the edit cycle resets
- *      the settle timer rather than aborting. When the view is quiet
- *      for SETTLE_MS, start polling.
- *   3. Poll the view records endpoint on a timer, computing the same
- *      shape from field_2375_raw in the API response.
- *   4. When two successive API polls agree AND differ from the baseline,
- *      assume the webhook is done and apply a SILENT REGROUP:
- *        a. Build {mdfIdfRecordId → L1 group header row} from the DOM.
- *        b. For every record whose field_2375 differs between DOM and API,
- *           move its row-triple (hidden sourceTr + visible wsTr + optional
- *           photo row) to the tail of the destination group header.
- *        c. Rewrite the sourceTr's td.field_2375 to reflect the new group.
- *        d. Patch the corresponding Backbone model record's attributes so
- *           subsequent inline-edit PUTs see the new grouping value.
- *        e. Call SCW.deviceWorksheet.patchCard for every record so other
- *           changed fields (labels, fees, calcs) sync into the card.
- *      If any record requires moving to a destination group that doesn't
- *      exist in the visible DOM (group currently empty), fall back to
- *      model.fetch() — we can't silently construct a new L1 header.
- *   5. group-collapse's MutationObserver re-runs on its own (debounced
- *      100ms) and its state map is keyed by L1 label text, so collapse
- *      state survives the moves.
- *
- * Tunables live in the CONFIG block below.
+ *   1. On knack-cell-update.view_3505 stash the event record R and arm a
+ *      debounced settle timer — Knack's native post-edit re-render fires
+ *      within ~50ms and would wipe any DOM changes we made synchronously.
+ *   2. Every knack-view-render.view_3505 during the edit cycle resets the
+ *      settle timer. After SETTLE_MS of render silence, apply the regroup.
+ *   3. Deterministic regroup:
+ *        newChildren = R.field_2380_raw
+ *        currentChildren = scan DOM for rows whose td.field_2381 span
+ *                          className === R.id
+ *        added   = newChildren ∖ currentChildren
+ *        removed = currentChildren ∖ newChildren
+ *      For each added child D:
+ *        - move D's row-triple to R.field_2375's L1 group
+ *        - rewrite D.sourceTr td.field_2375 + td.field_2381
+ *        - patch D's Backbone model attrs
+ *        - patch D's visible card via SCW.deviceWorksheet.patchCard
+ *        - fire background PUT { field_2375: [R.field_2375], field_2381: [R] }
+ *      For each removed child D:
+ *        - clear D.sourceTr td.field_2381
+ *        - patch D's Backbone model (field_2381 = [])
+ *        - patch D's visible card
+ *        - fire background PUT { field_2381: [] }
+ *   4. Falls back to model.fetch() ONLY when the destination L1 group
+ *      header is not currently in the DOM (group is empty / collapsed out
+ *      of tbody) — we can't silently synthesize an L1 header row.
+ *   5. A re-entrancy guard (ownPuts) ignores any stray knack-cell-update
+ *      events that echo our own background PUTs.
  **************************************************************************************************/
-(function silentPollView3505() {
+(function silentRegroupView3505() {
   'use strict';
 
   // ======================
   // CONFIG
   // ======================
-  var VIEW_ID         = 'view_3505';
-  var TRIGGER_FIELD   = 'field_2380';   // the field the user inline-edits
-  // field_2375 = REL_mdf-idf. It is the "move:" field in device-worksheet's
-  // view_3505 config (src/features/device-worksheet.js:106) — i.e., the L1
-  // grouping key for the worksheet and the exact field the Make webhook
-  // rewrites when it moves a record between MDF/IDF groups. Do NOT confuse
-  // with field_2381 ("connections"), which is a separate read-only detail-
-  // panel field and is NOT the grouping key.
-  var GROUPING_FIELD  = 'field_2375';
-  var POLL_INTERVAL   = 1000;           // ms between polls
-  var STABLE_CYCLES   = 2;              // consecutive unchanged cycles → webhook done
-  var MAX_POLLS       = 12;             // hard cap (~14s)
-  var START_DELAY     = 250;            // ms to wait after trigger before first poll
-  var LOG_PREFIX      = '[scw-silent-poll.' + VIEW_ID + ']';
+  var VIEW_ID           = 'view_3505';
+  var TRIGGER_FIELD     = 'field_2380';  // children-connection on the edited record
+  var GROUPING_FIELD    = 'field_2375';  // REL_mdf-idf (L1 group key)
+  var CONNECTIONS_FIELD = 'field_2381';  // back-connection to parent (detail-panel)
+  var SETTLE_MS         = 400;
+  var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
 
   var HEX24 = /^[0-9a-f]{24}$/i;
 
-  // ======================
-  // STATE
-  // ======================
-  var pollTimer       = null;
-  var pollsRemaining  = 0;
-  var stableStreak    = 0;
-  var lastSnapshot    = null;   // snapshot from previous poll (for stability check)
-  var domBaseline     = null;   // snapshot captured at trigger time (for dirty check)
-  var inFlight        = false;
-  var active          = false;
-
   function log() {
-    // Always-on lifecycle logging while we're diagnosing. Cheap and low-volume.
     try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
-  }
-  function debug() {
-    if (!window.SCW || !window.SCW.DEBUG_SILENT_POLL) return;
-    try { console.log.apply(console, [LOG_PREFIX + '[dbg]'].concat([].slice.call(arguments))); } catch (e) {}
   }
 
   // ======================================================================
-  // DOM helpers — reading the grouping field out of the triple-row card
+  // DOM helpers — reading field cells out of the triple-row card layout.
   // ----------------------------------------------------------------------
-  // For view_3505 the device-worksheet feature lays each record out as
-  //    sourceTr [data-scw-worksheet="1"]  (hidden original Knack tr, has td.field_2375)
-  //    wsTr    .scw-ws-row                (visible, id=RECORD_ID, wraps card)
+  // For view_3505 each record is rendered as:
+  //    sourceTr [data-scw-worksheet="1"]  (hidden original Knack tr, all field cells live here)
+  //    wsTr    .scw-ws-row                (visible, id=RECORD_ID, wraps the card)
   //    photoRow .scw-inline-photo-row     (optional trailing photo strip)
-  // All field cells live on sourceTr; wsTr only has one <td colspan> with
-  // the card inside it. So to read field_2375 we look at wsTr's PREVIOUS
-  // sibling.
   // ======================================================================
 
   function getSourceTr(wsTr) {
@@ -130,10 +95,9 @@
     return null;
   }
 
-  function extractGroupingIds(tr) {
+  /** Read connection-value ids out of a given td cell. */
+  function readConnectionIdsFromCell(cell) {
     var ids = [];
-    if (!tr) return ids;
-    var cell = tr.querySelector('td.' + GROUPING_FIELD);
     if (!cell) return ids;
     var spans = cell.querySelectorAll('span[data-kn="connection-value"]');
     for (var s = 0; s < spans.length; s++) {
@@ -145,85 +109,37 @@
     return ids;
   }
 
-  function sortedIdString(ids) {
-    if (!ids || !ids.length) return '';
-    var copy = ids.slice();
-    copy.sort();
-    return copy.join(',');
-  }
-
-  /** Build { recordId → sortedJoinedParentIds } from the current DOM. */
-  function captureDomSnapshot() {
-    var snap = {};
+  /** Scan every visible worksheet row for one whose td.field_2381 points to parentId. */
+  function findRowsPointingTo(parentId) {
+    var results = [];
     var view = document.getElementById(VIEW_ID);
-    if (!view) return snap;
+    if (!view || !parentId) return results;
     var rows = view.querySelectorAll('tr.scw-ws-row[id]');
     for (var i = 0; i < rows.length; i++) {
       var wsTr = rows[i];
       if (!HEX24.test(wsTr.id)) continue;
-      snap[wsTr.id] = sortedIdString(extractGroupingIds(getSourceTr(wsTr)));
+      var sourceTr = getSourceTr(wsTr);
+      if (!sourceTr) continue;
+      var cell = sourceTr.querySelector('td.' + CONNECTIONS_FIELD);
+      if (!cell) continue;
+      var ids = readConnectionIdsFromCell(cell);
+      if (ids.indexOf(parentId) !== -1) results.push(wsTr.id);
     }
-    return snap;
+    return results;
   }
 
-  /** Build the same shape from an API records response. */
-  function snapshotFromResponse(records) {
-    var snap = {};
-    if (!records || !records.length) return snap;
-    for (var i = 0; i < records.length; i++) {
-      var r = records[i];
-      if (!r || !r.id) continue;
-      var ids = [];
-      var raw = r[GROUPING_FIELD + '_raw'];
-      if (Array.isArray(raw)) {
-        for (var k = 0; k < raw.length; k++) {
-          var entry = raw[k];
-          if (entry && typeof entry === 'object' && entry.id && HEX24.test(entry.id)) {
-            ids.push(entry.id);
-          } else if (typeof entry === 'string' && HEX24.test(entry)) {
-            ids.push(entry);
-          }
-        }
-      } else if (typeof r[GROUPING_FIELD] === 'string') {
-        var m = r[GROUPING_FIELD].match(/[0-9a-f]{24}/gi);
-        if (m) ids = m;
-      }
-      snap[r.id] = sortedIdString(ids);
-    }
-    return snap;
-  }
-
-  function snapshotsEqual(a, b) {
-    if (a === b) return true;
-    if (!a || !b) return false;
-    var ka = Object.keys(a), kb = Object.keys(b);
-    if (ka.length !== kb.length) return false;
-    for (var i = 0; i < ka.length; i++) {
-      var key = ka[i];
-      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-      if (a[key] !== b[key]) return false;
-    }
-    return true;
-  }
-
-  function isDirty(baseline, current) {
-    if (!baseline || !current) return false;
-    var bk = Object.keys(baseline), ck = Object.keys(current);
-    if (bk.length !== ck.length) return true;
-    for (var i = 0; i < bk.length; i++) {
-      var key = bk[i];
-      if (!Object.prototype.hasOwnProperty.call(current, key)) return true;
-      if (baseline[key] !== current[key]) return true;
-    }
-    return false;
+  /** Copy display text for parentId from any sibling span that currently shows it. */
+  function sampleIdentifierForParent(parentId) {
+    var view = document.getElementById(VIEW_ID);
+    if (!view || !parentId) return '';
+    var span = view.querySelector(
+      'td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"].' + parentId
+    );
+    return span ? (span.textContent || '') : '';
   }
 
   // ======================================================================
-  // Group header index
-  // ----------------------------------------------------------------------
-  // Walk the tbody, identify every L1 group header, and for each header
-  // record the parent device ID shared by its child rows (read from their
-  // td.field_2375 spans). Returns { mdfIdfRecordId → headerTr }.
+  // Group header index — {mdfIdfRecordId → L1 header tr}
   // ======================================================================
 
   function buildGroupHeaderMap() {
@@ -243,7 +159,6 @@
                       row.classList.contains('kn-group-level-1');
 
       if (isL1Group) {
-        // Commit previous group
         if (curHeader && curParentId && !map[curParentId]) {
           map[curParentId] = curHeader;
         }
@@ -253,13 +168,12 @@
       }
       if (row.classList.contains('kn-table-group')) continue; // L2+ subgroup header
 
-      // Data row — only read parent id from hidden originals (sourceTr)
       if (curParentId == null && row.getAttribute && row.getAttribute('data-scw-worksheet') === '1') {
-        var ids = extractGroupingIds(row);
+        var cell = row.querySelector('td.' + GROUPING_FIELD);
+        var ids = readConnectionIdsFromCell(cell);
         if (ids.length) curParentId = ids[0];
       }
     }
-    // Commit trailing group
     if (curHeader && curParentId && !map[curParentId]) {
       map[curParentId] = curHeader;
     }
@@ -279,13 +193,7 @@
     return cur;
   }
 
-  // ======================================================================
-  // Row moving
-  // ----------------------------------------------------------------------
-  // Move the full triple (sourceTr + wsTr + optional photoRow) to the
-  // tail of the destination group, preserving relative order.
-  // ======================================================================
-
+  /** Move the full triple (sourceTr + wsTr + optional photoRow) to the tail of destHeader's group. */
   function moveRowTriple(wsTr, destHeader) {
     var sourceTr = getSourceTr(wsTr);
     if (!sourceTr) {
@@ -297,8 +205,7 @@
     var parent = destHeader.parentNode;
     if (!parent) return false;
 
-    // Guard: if we're already at the tail of the right group, no-op.
-    if (anchor === (photoRow || wsTr)) return true;
+    if (anchor === (photoRow || wsTr)) return true; // already at tail of the right group
 
     var cursor = anchor;
     parent.insertBefore(sourceTr, cursor.nextSibling);  cursor = sourceTr;
@@ -308,7 +215,7 @@
   }
 
   // ======================================================================
-  // Update td.field_2375 in-place on the hidden sourceTr
+  // Cell rewriters (operate on the hidden sourceTr)
   // ======================================================================
 
   function escapeHtml(s) {
@@ -320,17 +227,14 @@
       .replace(/'/g, '&#39;');
   }
 
-  function updateGroupingCell(wsTr, record) {
+  function writeConnectionCell(wsTr, fieldKey, rawArr) {
     var sourceTr = getSourceTr(wsTr);
     if (!sourceTr) return;
-    var cell = sourceTr.querySelector('td.' + GROUPING_FIELD);
+    var cell = sourceTr.querySelector('td.' + fieldKey);
     if (!cell) return;
-    var raw = record[GROUPING_FIELD + '_raw'];
-    if (!Array.isArray(raw)) return;
-
     var parts = [];
-    for (var i = 0; i < raw.length; i++) {
-      var entry = raw[i];
+    for (var i = 0; i < (rawArr || []).length; i++) {
+      var entry = rawArr[i];
       if (!entry || !entry.id || !HEX24.test(entry.id)) continue;
       parts.push(
         '<span class="' + entry.id + '" data-kn="connection-value">' +
@@ -342,17 +246,15 @@
   }
 
   // ======================================================================
-  // Update the Backbone model record's attributes so the next inline-edit
-  // PUT carries the new parent. Pattern borrowed from device-worksheet.js
-  // syncKnackModel (src/features/device-worksheet.js:3314).
+  // Backbone model sync. Pattern borrowed from device-worksheet.js syncKnackModel.
   // ======================================================================
 
-  function syncModelRecord(recordId, record) {
+  function syncModelChild(recordId, attrsPatch) {
     try {
       if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[VIEW_ID]) return;
-      var view = Knack.views[VIEW_ID];
-      if (!view.model) return;
-      var m = view.model;
+      var v = Knack.views[VIEW_ID];
+      if (!v.model) return;
+      var m = v.model;
 
       var entry = (typeof m.get === 'function') ? m.get(recordId) : null;
       if (!entry && m.data && typeof m.data.get === 'function') entry = m.data.get(recordId);
@@ -365,18 +267,42 @@
       if (!entry) return;
 
       var attrs = entry.attributes || entry;
-      var raw = record[GROUPING_FIELD + '_raw'];
-      if (raw != null) {
-        attrs[GROUPING_FIELD] = raw;
-        attrs[GROUPING_FIELD + '_raw'] = raw;
-      }
-    } catch (ex) {
-      // best-effort
-    }
+      Object.keys(attrsPatch).forEach(function (k) { attrs[k] = attrsPatch[k]; });
+    } catch (ex) { /* best-effort */ }
   }
 
   // ======================================================================
-  // Silent regroup — the main payoff
+  // Background PUTs via SCW.knackAjax (auto-adds auth headers).
+  // ownPuts tracks in-flight ids so we can ignore echo cell-update events.
+  // ======================================================================
+
+  var ownPuts = {};
+
+  function firePut(recordId, body) {
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      console.warn(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable — skipping PUT for ' + recordId);
+      return;
+    }
+    ownPuts[recordId] = true;
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: window.SCW.knackRecordUrl(VIEW_ID, recordId),
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function () {
+        delete ownPuts[recordId];
+        log('PUT ok ' + recordId);
+      },
+      error: function (xhr) {
+        delete ownPuts[recordId];
+        console.warn(LOG_PREFIX, 'PUT failed ' + recordId, xhr && xhr.status, xhr && xhr.responseText);
+      }
+    });
+  }
+
+  // ======================================================================
+  // Fallback: full model.fetch when destination group isn't in the DOM.
   // ======================================================================
 
   function fallbackFetch(reason) {
@@ -388,208 +314,161 @@
       }
     } catch (e) { /* ignore */ }
     try {
-      var view = Knack.views && Knack.views[VIEW_ID];
-      if (view && view.model && typeof view.model.fetch === 'function') {
-        view.model.fetch();
+      var v = Knack.views && Knack.views[VIEW_ID];
+      if (v && v.model && typeof v.model.fetch === 'function') {
+        v.model.fetch();
       }
     } catch (e) {
       console.warn(LOG_PREFIX, 'fallback fetch threw', e);
     }
   }
 
-  function applySilentRegroup(records) {
-    var groupMap = buildGroupHeaderMap();
-    var domNow = captureDomSnapshot();
-    var apiNow = snapshotFromResponse(records);
-    var moves = 0;
-    var skipped = 0;
+  // ======================================================================
+  // Deterministic regroup — the main payoff.
+  // ======================================================================
 
+  function applyDeterministicRegroup(R) {
+    if (!R || !R.id) return;
+
+    // --- 1. New children from the event record --------------------------
+    var newChildrenRaw = R[TRIGGER_FIELD + '_raw'] || [];
+    var newChildIds = [];
+    for (var i = 0; i < newChildrenRaw.length; i++) {
+      var entry = newChildrenRaw[i];
+      var id = entry && entry.id;
+      if (id && HEX24.test(id)) newChildIds.push(id);
+    }
+    var newChildSet = {};
+    newChildIds.forEach(function (id) { newChildSet[id] = true; });
+
+    // --- 2. Current children from the DOM --------------------------------
+    var currentChildIds = findRowsPointingTo(R.id);
+    var currentChildSet = {};
+    currentChildIds.forEach(function (id) { currentChildSet[id] = true; });
+
+    // --- 3. Diff ---------------------------------------------------------
+    var added = newChildIds.filter(function (id) { return !currentChildSet[id]; });
+    var removed = currentChildIds.filter(function (id) { return !newChildSet[id]; });
+
+    log('regroup R=' + R.id +
+        ' new=' + newChildIds.length +
+        ' cur=' + currentChildIds.length +
+        ' added=' + added.length +
+        ' removed=' + removed.length);
+
+    if (!added.length && !removed.length) return;
+
+    // --- 4. Resolve destination group for added children ---------------
+    var rGroupRaw = R[GROUPING_FIELD + '_raw'];
+    var rGroupId = (Array.isArray(rGroupRaw) && rGroupRaw[0] && rGroupRaw[0].id) ? rGroupRaw[0].id : null;
+    var rIdentifier = sampleIdentifierForParent(R.id);
     var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
 
-    // First pass: validate that all moving rows have a destination group
-    // in the current DOM. If even one destination is missing, bail to
-    // model.fetch — we can't silently construct new L1 group headers.
-    for (var i = 0; i < records.length; i++) {
-      var r = records[i];
-      if (!r || !r.id) continue;
-      var wsTr = document.getElementById(r.id);
-      if (!wsTr || !wsTr.classList.contains('scw-ws-row')) continue;
-      var cur = domNow[r.id] || '';
-      var want = apiNow[r.id] || '';
-      if (cur === want) continue;
-
-      var rawArr = r[GROUPING_FIELD + '_raw'];
-      var newParentId = (Array.isArray(rawArr) && rawArr[0] && rawArr[0].id) ? rawArr[0].id : null;
-      if (!newParentId) {
-        fallbackFetch('record ' + r.id + ' has no parent id in response');
+    if (added.length) {
+      if (!rGroupId) {
+        fallbackFetch('R has no ' + GROUPING_FIELD + ' — cannot place added children');
+        // Still fire PUTs so the backend eventually converges.
+        added.forEach(function (cid) { firePut(cid, buildAddedPut(null, R.id)); });
+        removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
         return;
       }
-      if (!groupMap[newParentId]) {
-        fallbackFetch('destination group ' + newParentId + ' not in DOM (group currently empty)');
+      var groupMap = buildGroupHeaderMap();
+      var destHeader = groupMap[rGroupId];
+      if (!destHeader) {
+        // Fire the PUTs and fall back to a visual refresh — we can't
+        // silently synthesize a new L1 header for an empty group.
+        added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id)); });
+        removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
+        fallbackFetch('destination group ' + rGroupId + ' not in visible DOM');
         return;
       }
+
+      for (var a = 0; a < added.length; a++) {
+        var cid = added[a];
+        var wsTr = document.getElementById(cid);
+        if (!wsTr || !wsTr.classList.contains('scw-ws-row')) {
+          log('added child ' + cid + ' not visible in view — PUT only');
+          firePut(cid, buildAddedPut(rGroupId, R.id));
+          continue;
+        }
+
+        moveRowTriple(wsTr, destHeader);
+        writeConnectionCell(wsTr, GROUPING_FIELD, rGroupRaw);
+        writeConnectionCell(wsTr, CONNECTIONS_FIELD, [{ id: R.id, identifier: rIdentifier }]);
+
+        syncModelChild(cid, (function () {
+          var p = {};
+          p[GROUPING_FIELD] = rGroupRaw;
+          p[GROUPING_FIELD + '_raw'] = rGroupRaw;
+          p[CONNECTIONS_FIELD] = [{ id: R.id, identifier: rIdentifier }];
+          p[CONNECTIONS_FIELD + '_raw'] = [{ id: R.id, identifier: rIdentifier }];
+          return p;
+        })());
+
+        if (typeof patchFn === 'function') {
+          var resp = { id: cid };
+          resp[GROUPING_FIELD] = (rGroupRaw[0] && rGroupRaw[0].identifier) || '';
+          resp[GROUPING_FIELD + '_raw'] = rGroupRaw;
+          resp[CONNECTIONS_FIELD] = rIdentifier;
+          resp[CONNECTIONS_FIELD + '_raw'] = [{ id: R.id, identifier: rIdentifier }];
+          try { patchFn(VIEW_ID, cid, resp, { skipFocused: true }); }
+          catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + cid, e); }
+        }
+
+        firePut(cid, buildAddedPut(rGroupId, R.id));
+      }
     }
 
-    // Second pass: apply moves + cell rewrites + model sync
-    for (var j = 0; j < records.length; j++) {
-      var rec = records[j];
-      if (!rec || !rec.id) continue;
-      var row = document.getElementById(rec.id);
-      if (!row || !row.classList.contains('scw-ws-row')) { skipped++; continue; }
-
-      var current = domNow[rec.id] || '';
-      var target  = apiNow[rec.id] || '';
-
-      if (current !== target) {
-        var rawA = rec[GROUPING_FIELD + '_raw'];
-        var destId = (Array.isArray(rawA) && rawA[0] && rawA[0].id) ? rawA[0].id : null;
-        var destHeader = destId ? groupMap[destId] : null;
-        if (destHeader) {
-          if (moveRowTriple(row, destHeader)) moves++;
-          updateGroupingCell(row, rec);
-          syncModelRecord(rec.id, rec);
+    // --- 5. Removed children: clear field_2381 only ----------------------
+    for (var r = 0; r < removed.length; r++) {
+      var rid = removed[r];
+      var rowTr = document.getElementById(rid);
+      if (rowTr && rowTr.classList.contains('scw-ws-row')) {
+        writeConnectionCell(rowTr, CONNECTIONS_FIELD, []);
+        syncModelChild(rid, (function () {
+          var p = {};
+          p[CONNECTIONS_FIELD] = [];
+          p[CONNECTIONS_FIELD + '_raw'] = [];
+          return p;
+        })());
+        if (typeof patchFn === 'function') {
+          var resp2 = { id: rid };
+          resp2[CONNECTIONS_FIELD] = '';
+          resp2[CONNECTIONS_FIELD + '_raw'] = [];
+          try { patchFn(VIEW_ID, rid, resp2, { skipFocused: true }); }
+          catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + rid, e); }
         }
       }
-
-      // Always sync other cell contents (fees, labels, calcs, inputs)
-      if (typeof patchFn === 'function') {
-        try { patchFn(VIEW_ID, rec.id, rec, { skipFocused: true }); }
-        catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + rec.id, e); }
-      }
+      firePut(rid, buildRemovedPut());
     }
 
-    log('silent regroup: ' + moves + ' moved, ' + skipped + ' skipped, ' + records.length + ' total');
+    log('regroup done: ' + added.length + ' added, ' + removed.length + ' removed');
+  }
+
+  function buildAddedPut(rGroupId, rId) {
+    var body = {};
+    if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
+    body[CONNECTIONS_FIELD] = [rId];
+    return body;
+  }
+
+  function buildRemovedPut() {
+    var body = {};
+    body[CONNECTIONS_FIELD] = [];
+    return body;
   }
 
   // ======================================================================
-  // Polling core
-  // ======================================================================
-
-  function buildRecordsUrl() {
-    if (typeof Knack === 'undefined' || !Knack.router || !Knack.router.current_scene_key) return null;
-    return Knack.api_url +
-      '/v1/pages/' + Knack.router.current_scene_key +
-      '/views/' + VIEW_ID + '/records?rows_per_page=1000';
-  }
-
-  function poll() {
-    pollTimer = null;
-    if (!active) return;
-    if (pollsRemaining <= 0) { log('max polls reached — stop'); return stop(); }
-    if (inFlight)            { log('previous request still in flight — skip'); return scheduleNext(); }
-
-    var url = buildRecordsUrl();
-    if (!url) { log('no URL — stop'); return stop(); }
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function') {
-      log('SCW.knackAjax unavailable — stop');
-      return stop();
-    }
-    if (!document.getElementById(VIEW_ID)) { log('view gone — stop'); return stop(); }
-
-    inFlight = true;
-    pollsRemaining--;
-
-    window.SCW.knackAjax({
-      type: 'GET',
-      url: url,
-      dataType: 'json',
-      success: function (resp) {
-        inFlight = false;
-        if (!active) return;
-
-        var records = (resp && resp.records) || [];
-        var snap = snapshotFromResponse(records);
-
-        var stableNow = snapshotsEqual(snap, lastSnapshot);
-        var dirtyNow  = isDirty(domBaseline, snap);
-
-        log('poll ok — ' + records.length + ' records, dirty=' + dirtyNow + ', stable=' + stableNow);
-
-        if (stableNow) stableStreak++;
-        else           stableStreak = 0;
-        lastSnapshot = snap;
-
-        if (stableStreak >= STABLE_CYCLES) {
-          if (dirtyNow) {
-            log('webhook done — applying silent regroup');
-            applySilentRegroup(records);
-          } else {
-            log('webhook done — no DOM changes needed');
-          }
-          return stop();
-        }
-        scheduleNext();
-      },
-      error: function (xhr) {
-        inFlight = false;
-        if (!active) return;
-        log('poll error ' + (xhr && xhr.status));
-        scheduleNext();
-      }
-    });
-  }
-
-  function scheduleNext() {
-    if (!active) return;
-    if (pollsRemaining <= 0) return stop();
-    if (pollTimer) clearTimeout(pollTimer);
-    pollTimer = setTimeout(poll, POLL_INTERVAL);
-  }
-
-  function stop() {
-    active         = false;
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-    pollsRemaining = 0;
-    stableStreak   = 0;
-    lastSnapshot   = null;
-    domBaseline    = null;
-    inFlight       = false;
-  }
-
-  function startPolling(preservedBaseline) {
-    domBaseline = preservedBaseline || captureDomSnapshot();
-    log('start polling (' + MAX_POLLS + ' polls @ ' + POLL_INTERVAL + 'ms), baseline rows=' + Object.keys(domBaseline).length);
-    active         = true;
-    pollsRemaining = MAX_POLLS;
-    stableStreak   = 0;
-    lastSnapshot   = null;
-    if (pollTimer) clearTimeout(pollTimer);
-    pollTimer = setTimeout(poll, START_DELAY);
-  }
-  // Legacy alias used by the DevTools debug hook
-  var start = startPolling;
-
-  // ======================================================================
-  // Trigger + settle coordinator
+  // Event coordinator
   // ----------------------------------------------------------------------
-  // Observed timing (from the diagnostic run):
-  //   1. User confirms field_2380 inline-edit
-  //   2. device-worksheet patches card display
-  //   3. knack-cell-update.view_3505 fires with the record (field_2375 STILL OLD
-  //      because the Make webhook is async)
-  //   4. Knack natively re-renders view_3505 within ~50-250ms from its cached
-  //      model data → old knack-view-render handler used to call stop() here
-  //      and killed the poll loop before a single poll could fire
-  //   5. Make webhook finishes over the next N seconds and rewrites field_2375
-  //      on one or more records in the database
-  //
-  // We cannot prevent step 4 — it's Knack's native post-edit behavior.
-  // Instead, we use a debounced settle detector:
-  //   - On knack-cell-update we snapshot the PRE-render DOM baseline
-  //     synchronously (before step 4 wipes the DOM nodes) and arm the
-  //     settle timer.
-  //   - Every subsequent knack-view-render.view_3505 RESETS the settle
-  //     timer rather than killing it. After SETTLE_MS of render silence,
-  //     the poll loop starts with the captured pre-render baseline.
-  //   - A re-render that happens DURING active polling means our in-progress
-  //     moves may have been wiped by Knack. Save the baseline, stop the
-  //     poll loop, and restart the settle cycle.
+  // Knack natively re-renders view_3505 within ~50ms of knack-cell-update
+  // (device-worksheet.js:5721 patches the card off the same event). Any
+  // DOM changes we make synchronously get wiped by that re-render, so we
+  // defer the regroup until a debounced settle window passes.
   // ======================================================================
 
-  var SETTLE_MS = 400;
+  var pendingRecord = null;
   var settleTimer = null;
-  var pendingBaseline = null;
-  var inEditCycle = false;
 
   function armSettle() {
     if (settleTimer) clearTimeout(settleTimer);
@@ -598,92 +477,60 @@
 
   function onSettled() {
     settleTimer = null;
-    var baseline = pendingBaseline;
-    pendingBaseline = null;
-    inEditCycle = false;
-    if (!baseline) return;
-    log('settled — starting poll loop');
-    startPolling(baseline);
+    var R = pendingRecord;
+    pendingRecord = null;
+    if (!R) return;
+    log('settled — applying deterministic regroup for R=' + R.id);
+    try { applyDeterministicRegroup(R); }
+    catch (e) { console.warn(LOG_PREFIX, 'applyDeterministicRegroup threw', e); }
   }
 
-  function beginEditCycle() {
-    if (!inEditCycle) {
-      pendingBaseline = captureDomSnapshot();
-      inEditCycle = true;
-      log('captured pre-render baseline (rows=' + Object.keys(pendingBaseline).length + ')');
-    }
-    armSettle();
-  }
-
-  $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentPoll', function (event, view, record) {
+  $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentRegroup', function (event, view, record) {
     try {
-      log('knack-cell-update fired', { recordId: record && record.id });
-
-      // Fast path: if the event record already has a new field_2375 (some
-      // server-side record rule fired synchronously), apply it immediately.
-      // For the async Make-webhook case this branch is a no-op.
-      if (record && record.id) {
-        var nowSnap = captureDomSnapshot();
-        var eventSnap = snapshotFromResponse([record]);
-        var eventKey = eventSnap[record.id];
-        if (eventKey != null && eventKey !== (nowSnap[record.id] || '')) {
-          log('event record has dirty ' + GROUPING_FIELD +
-              ' (DOM="' + (nowSnap[record.id] || '') + '" → event="' + eventKey + '") — immediate regroup');
-          applySilentRegroup([record]);
-        }
+      if (!record || !record.id) return;
+      // Re-entrancy: ignore echoes from our own background PUTs.
+      if (ownPuts[record.id]) {
+        log('ignoring cell-update echo for own PUT ' + record.id);
+        return;
       }
-
-      beginEditCycle();
+      log('knack-cell-update received', { recordId: record.id });
+      // If a later edit arrives before we've settled, the newest record wins —
+      // Knack always provides the full record snapshot, so we don't lose data.
+      pendingRecord = record;
+      armSettle();
     } catch (e) {
       console.warn(LOG_PREFIX, 'knack-cell-update handler threw', e);
     }
   });
 
-  // Re-render coordination: DO NOT stop polling on a stray render. If we
-  // are still in an edit cycle (waiting to settle), reset the timer. If
-  // polling is active, assume our moves were wiped by the render, stash
-  // the baseline, stop the loop, and re-arm the settle cycle.
-  $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentPoll', function () {
-    if (inEditCycle) {
+  // Re-renders during the edit cycle reset the settle timer rather than
+  // aborting, so Knack's native post-edit re-render doesn't kill us.
+  $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentRegroup', function () {
+    if (pendingRecord || settleTimer) {
       log('view re-rendered during edit cycle — resetting settle timer');
       armSettle();
-      return;
     }
-    if (active) {
-      log('view re-rendered mid-poll — saving baseline, stopping poll, re-arming settle');
-      var saved = domBaseline;
-      stop();
-      pendingBaseline = saved;
-      inEditCycle = true;
-      armSettle();
-      return;
-    }
-    // Unrelated render (e.g. navigating to the scene) — nothing to do.
   });
 
-  // Public debug hooks — poke these from DevTools to force-run without
-  // needing to reproduce an inline edit.
+  // ======================================================================
+  // Public debug hooks — poke from DevTools.
+  // ======================================================================
   window.SCW = window.SCW || {};
-  window.SCW.silentPollView3505 = {
-    start: startPolling,
-    stop: stop,
-    captureDomSnapshot: captureDomSnapshot,
+  window.SCW.silentRegroupView3505 = {
+    applyDeterministicRegroup: applyDeterministicRegroup,
+    findRowsPointingTo: findRowsPointingTo,
     buildGroupHeaderMap: buildGroupHeaderMap,
-    applySilentRegroup: applySilentRegroup,
-    beginEditCycle: beginEditCycle,
     inspectState: function () {
       return {
-        active: active,
-        inEditCycle: inEditCycle,
-        pollsRemaining: pollsRemaining,
-        stableStreak: stableStreak,
-        hasPendingBaseline: pendingBaseline != null,
-        hasDomBaseline: domBaseline != null,
+        hasPendingRecord: pendingRecord != null,
         hasSettleTimer: settleTimer != null,
-        hasPollTimer: pollTimer != null
+        ownPutsInFlight: Object.keys(ownPuts)
       };
     }
   };
+  // Backward-compat alias for any lingering DevTools snippets.
+  window.SCW.silentPollView3505 = window.SCW.silentRegroupView3505;
+
   log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
 })();
-/*** END FEATURE: Silent poll + silent regroup after field_2380 inline-edit on view_3505 ************/
+/*** END FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505 *************/
