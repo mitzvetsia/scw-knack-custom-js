@@ -173,7 +173,7 @@
   }
 
   // ── Frontend calculation config ──
-  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];   // device line-item grids
+  var EQUIPMENT_VIEWS = ['view_3586'];                 // device line-item grids
   var HARDWARE_VIEWS  = ['view_3604'];                 // mounting hardware grid
   var ALL_VIEWS       = EQUIPMENT_VIEWS.concat(HARDWARE_VIEWS);
   var LUMP_DISCOUNT_FIELD = 'field_2290';              // additional lump sum discount (view_3490 form)

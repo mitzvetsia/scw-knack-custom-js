@@ -1293,7 +1293,7 @@ window.SCW = window.SCW || {};
   }
 
   // ── Frontend calculation config ──
-  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];   // device line-item grids
+  var EQUIPMENT_VIEWS = ['view_3586'];                 // device line-item grids
   var HARDWARE_VIEWS  = ['view_3604'];                 // mounting hardware grid
   var ALL_VIEWS       = EQUIPMENT_VIEWS.concat(HARDWARE_VIEWS);
   var LUMP_DISCOUNT_FIELD = 'field_2290';              // additional lump sum discount (view_3490 form)
@@ -3620,7 +3620,10 @@ window.SCW = window.SCW || {};
         menuView = prevSibling;
       }
 
-      // --- Strategy 2 (original): menu lives in the preceding view-group
+      // --- Strategy 2 (original): menu lives in the preceding view-group,
+      //     but ONLY if that preceding view-group has no accordion of its
+      //     own (if it does, the menu belongs to that group's accordion and
+      //     must not leak forward into this one — see view_3477 / view_3787).
       var prevGroup = null;
       if (!menuView) {
         var viewGroup = accordion.parentElement;
@@ -3630,12 +3633,18 @@ window.SCW = window.SCW || {};
         if (!viewGroup) continue;
 
         prevGroup = viewGroup.previousElementSibling;
-        if (prevGroup && prevGroup.classList.contains('view-group')) {
+        if (prevGroup &&
+            prevGroup.classList.contains('view-group') &&
+            !prevGroup.querySelector('.scw-ktl-accordion')) {
           menuView = prevGroup.querySelector('.kn-view.kn-menu');
         }
       }
 
       if (!menuView) continue;
+
+      // Skip if this menu has already been claimed by another accordion
+      // (Strategy 1 hides it with HIDDEN_CLASS on first claim).
+      if (menuView.classList.contains(HIDDEN_CLASS)) continue;
 
       // Collect action links
       var links = menuView.querySelectorAll('a');
@@ -12131,7 +12140,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
     view_3586: { defaultOpen: true },
-    view_3588: { defaultOpen: true },
     view_3608: { defaultOpen: true },
   };
 
@@ -16300,7 +16308,7 @@ $(".kn-navigation-bar").hide();
   var TARGET_VIEW = 'view_3418';
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   // Source grid views whose data feeds the totals panel
-  var SOURCE_VIEWS = ['view_3586', 'view_3588', 'view_3604'];
+  var SOURCE_VIEWS = ['view_3586', 'view_3604'];
   var NS = '.scwRefreshTarget';
   var OVERLAY_ID = 'scw-totals-refresh-overlay';
 
@@ -16472,7 +16480,7 @@ $(".kn-navigation-bar").hide();
   // new records appear or the timeout expires.
 
   var DTO_FORM = 'view_3748';
-  var DTO_GRIDS = ['view_3588', 'view_3586'];
+  var DTO_GRIDS = ['view_3586'];
   var DTO_POLL_MS = 4000;       // poll every 4 s
   var DTO_TIMEOUT_MS = 60000;   // stop after 60 s
   var DTO_NS = '.scwDtoPoll';
@@ -17689,7 +17697,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3588', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -17720,7 +17728,6 @@ $(".kn-navigation-bar").hide();
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
-    'view_3588': 'add-photo-to-sow-line-item2',
     'view_3596': 'add-photo-to-sow-line-item3',
     'view_3608': 'add-photo-to-sow-line-item2',
     'view_3617': 'add-photo-to-mdf-idf4'
@@ -18107,15 +18114,7 @@ $(".kn-navigation-bar").hide();
       '#view_3586 th.field_2446,',
       '#view_3586 td.field_2446,',
       '#view_3586 th.field_2447,',
-      '#view_3586 td.field_2447,',
-      '#view_3588 th.field_114,',
-      '#view_3588 td.field_114,',
-      '#view_3588 th.field_2445,',
-      '#view_3588 td.field_2445,',
-      '#view_3588 th.field_2446,',
-      '#view_3588 td.field_2446,',
-      '#view_3588 th.field_2447,',
-      '#view_3588 td.field_2447 {',
+      '#view_3586 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -18173,7 +18172,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true, 'view_3596': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3596': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -19395,16 +19394,6 @@ $(".kn-navigation-bar").hide();
         itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
-      },
-      {
-        parentViewId: 'view_3588',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item2',
-        editSlug: 'add-photo-to-sow-line-item2',
-        itemSlug: 'edit-accessory-line-item2',
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
       }
     ]
   };
@@ -20370,21 +20359,19 @@ $(".kn-navigation-bar").hide();
             product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
             laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
             labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
             extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
             warningCount:     { key: 'field_2454', type: 'warningChit' },
 
             mounting:         { key: 'field_2463', type: 'readOnly' },
             connections:      { key: 'field_2380', type: 'readOnly' },
             scwNotes:         { key: 'field_2418', type: 'readOnly' },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
-            exterior:         { key: 'field_2372', type: 'chipStack' },
-            plenum:           { key: 'field_2371', type: 'readOnly' }
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true }
           },
           summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
           detailLayout: {
             left:  ['mounting', 'scwNotes'],
-            right: ['connections', 'exterior', 'surveyNotes']
+            right: ['connections', 'surveyNotes']
           }
         },
         bucketRules: {
@@ -20590,7 +20577,6 @@ $(".kn-navigation-bar").hide();
         stackedSummary: false,
         fields: {
           // ── Summary row ──
-          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
           lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
@@ -20602,14 +20588,15 @@ $(".kn-navigation-bar").hide();
           customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_2269', type: 'readOnly' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
         detailLayout: {
-          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'connectedDevice', 'mountingHardware'],
-          right: ['laborDescription']
+          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
+          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
         },
         bucketField: 'field_2219',
         bucketRules: {
@@ -20633,40 +20620,39 @@ $(".kn-navigation-bar").hide();
         syntheticBucketGroups: [
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
-      },
-      {
-        viewId: 'view_3588',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
-        stackedSummary: false,
-        fields: {
-          // ── Summary row ──
-          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
-          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+        ],
+        // ── Override: cameras/readers rows use a dedicated field set ──
+        bucketOverride: {
+          overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            // ── Summary row ──
+            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+            lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+            move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
-          // ── Detail panel – left ──
-          retailPrice:      { key: 'field_1960', type: 'readOnly' },
-          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_2269', type: 'readOnly' },
-          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
-          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+            // ── Detail panel – left ──
+            retailPrice:      { key: 'field_1960', type: 'readOnly' },
+            discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+            appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+            total:            { key: 'field_2269', type: 'readOnly' },
+            dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
+            dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
-          // ── Detail panel – right ──
-          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
-          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
-        },
-        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
-        detailLayout: {
-          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
-          right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
+            // ── Detail panel – right ──
+            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+            mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+            dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
+            laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
+          },
+          summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+          detailLayout: {
+            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
+            right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
+          }
         }
       },
       {
@@ -25166,8 +25152,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
       var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
       if (guardVal !== 'yes' && guardVal !== 'true') {
-        var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
-        if (targetGroup) targetGroup.style.display = 'none';
+        // Optional secondary guard: still show if orShowWhenFieldIsNo is "no"
+        var allowShow = false;
+        if (swDesc.orShowWhenFieldIsNo) {
+          var orTd = tr.querySelector('td.' + swDesc.orShowWhenFieldIsNo)
+                  || card.querySelector('td[data-field-key="' + swDesc.orShowWhenFieldIsNo + '"]');
+          var orVal = orTd ? (orTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
+          if (orVal === 'no' || orVal === 'false') allowShow = true;
+        }
+        if (!allowShow) {
+          var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+          if (targetGroup) targetGroup.style.display = 'none';
+        }
       }
     }
 
@@ -25441,12 +25437,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var tr = entry.tr;
 
       // Per-row bucket override: swap fields/layouts when row's bucket
-      // doesn't match the keepBuckets whitelist (e.g. cameras/readers).
+      // doesn't match the keepBuckets whitelist (e.g. cameras/readers),
+      // or when it matches the overrideBuckets whitelist.
       var effectiveCfg = viewCfg;
       if (viewCfg.bucketOverride && viewCfg.bucketField) {
         var rowBucket = readBucketId(tr, viewCfg.bucketField);
-        var keep = viewCfg.bucketOverride.keepBuckets || [];
-        if (rowBucket && keep.indexOf(rowBucket) === -1) {
+        var keep = viewCfg.bucketOverride.keepBuckets || null;
+        var only = viewCfg.bucketOverride.overrideBuckets || null;
+        var applyOverride = false;
+        if (rowBucket) {
+          if (only) {
+            applyOverride = only.indexOf(rowBucket) !== -1;
+          } else if (keep) {
+            applyOverride = keep.indexOf(rowBucket) === -1;
+          }
+        }
+        if (applyOverride) {
           // Build a shallow copy with overridden fields/layouts
           effectiveCfg = {};
           for (var ck in viewCfg) {

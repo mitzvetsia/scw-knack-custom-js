@@ -44,7 +44,6 @@
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
     view_3586: { defaultOpen: true },
-    view_3588: { defaultOpen: true },
     view_3608: { defaultOpen: true },
   };
 

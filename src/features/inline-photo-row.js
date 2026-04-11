@@ -30,7 +30,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3588', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -61,7 +61,6 @@
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
-    'view_3588': 'add-photo-to-sow-line-item2',
     'view_3596': 'add-photo-to-sow-line-item3',
     'view_3608': 'add-photo-to-sow-line-item2',
     'view_3617': 'add-photo-to-mdf-idf4'
@@ -448,15 +447,7 @@
       '#view_3586 th.field_2446,',
       '#view_3586 td.field_2446,',
       '#view_3586 th.field_2447,',
-      '#view_3586 td.field_2447,',
-      '#view_3588 th.field_114,',
-      '#view_3588 td.field_114,',
-      '#view_3588 th.field_2445,',
-      '#view_3588 td.field_2445,',
-      '#view_3588 th.field_2446,',
-      '#view_3588 td.field_2446,',
-      '#view_3588 th.field_2447,',
-      '#view_3588 td.field_2447 {',
+      '#view_3586 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -514,7 +505,7 @@
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true, 'view_3596': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3596': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {

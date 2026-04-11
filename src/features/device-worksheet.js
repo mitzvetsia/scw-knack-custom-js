@@ -138,21 +138,19 @@
             product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
             laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
             labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
+            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
             extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
             warningCount:     { key: 'field_2454', type: 'warningChit' },
 
             mounting:         { key: 'field_2463', type: 'readOnly' },
             connections:      { key: 'field_2380', type: 'readOnly' },
             scwNotes:         { key: 'field_2418', type: 'readOnly' },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
-            exterior:         { key: 'field_2372', type: 'chipStack' },
-            plenum:           { key: 'field_2371', type: 'readOnly' }
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true }
           },
           summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
           detailLayout: {
             left:  ['mounting', 'scwNotes'],
-            right: ['connections', 'exterior', 'surveyNotes']
+            right: ['connections', 'surveyNotes']
           }
         },
         bucketRules: {
@@ -358,7 +356,6 @@
         stackedSummary: false,
         fields: {
           // ── Summary row ──
-          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
           lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
@@ -370,14 +367,15 @@
           customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_2269', type: 'readOnly' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
         detailLayout: {
-          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'connectedDevice', 'mountingHardware'],
-          right: ['laborDescription']
+          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
+          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
         },
         bucketField: 'field_2219',
         bucketRules: {
@@ -401,40 +399,39 @@
         syntheticBucketGroups: [
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
-      },
-      {
-        viewId: 'view_3588',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
-        stackedSummary: false,
-        fields: {
-          // ── Summary row ──
-          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
-          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+        ],
+        // ── Override: cameras/readers rows use a dedicated field set ──
+        bucketOverride: {
+          overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            // ── Summary row ──
+            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+            lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+            move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
 
-          // ── Detail panel – left ──
-          retailPrice:      { key: 'field_1960', type: 'readOnly' },
-          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_2269', type: 'readOnly' },
-          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
-          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+            // ── Detail panel – left ──
+            retailPrice:      { key: 'field_1960', type: 'readOnly' },
+            discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+            appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+            total:            { key: 'field_2269', type: 'readOnly' },
+            dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
+            dropNumber:       { key: 'field_1951', type: 'directEdit' },
 
-          // ── Detail panel – right ──
-          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
-          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
-        },
-        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
-        detailLayout: {
-          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
-          right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
+            // ── Detail panel – right ──
+            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+            mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+            dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
+            laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
+          },
+          summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+          detailLayout: {
+            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
+            right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
+          }
         }
       },
       {
@@ -4934,8 +4931,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
       var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
       if (guardVal !== 'yes' && guardVal !== 'true') {
-        var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
-        if (targetGroup) targetGroup.style.display = 'none';
+        // Optional secondary guard: still show if orShowWhenFieldIsNo is "no"
+        var allowShow = false;
+        if (swDesc.orShowWhenFieldIsNo) {
+          var orTd = tr.querySelector('td.' + swDesc.orShowWhenFieldIsNo)
+                  || card.querySelector('td[data-field-key="' + swDesc.orShowWhenFieldIsNo + '"]');
+          var orVal = orTd ? (orTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
+          if (orVal === 'no' || orVal === 'false') allowShow = true;
+        }
+        if (!allowShow) {
+          var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+          if (targetGroup) targetGroup.style.display = 'none';
+        }
       }
     }
 
@@ -5209,12 +5216,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var tr = entry.tr;
 
       // Per-row bucket override: swap fields/layouts when row's bucket
-      // doesn't match the keepBuckets whitelist (e.g. cameras/readers).
+      // doesn't match the keepBuckets whitelist (e.g. cameras/readers),
+      // or when it matches the overrideBuckets whitelist.
       var effectiveCfg = viewCfg;
       if (viewCfg.bucketOverride && viewCfg.bucketField) {
         var rowBucket = readBucketId(tr, viewCfg.bucketField);
-        var keep = viewCfg.bucketOverride.keepBuckets || [];
-        if (rowBucket && keep.indexOf(rowBucket) === -1) {
+        var keep = viewCfg.bucketOverride.keepBuckets || null;
+        var only = viewCfg.bucketOverride.overrideBuckets || null;
+        var applyOverride = false;
+        if (rowBucket) {
+          if (only) {
+            applyOverride = only.indexOf(rowBucket) !== -1;
+          } else if (keep) {
+            applyOverride = keep.indexOf(rowBucket) === -1;
+          }
+        }
+        if (applyOverride) {
           // Build a shallow copy with overridden fields/layouts
           effectiveCfg = {};
           for (var ck in viewCfg) {
