@@ -174,6 +174,35 @@ The `preserve-scroll-on-refresh.js` module acts as a post-edit coordinator:
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`
 - Config objects at the top of each file — keep logic generic, keep config specific
 
+## Context Hygiene (Read This First)
+
+**Never `Read` `dist/knack-bundle.js` in full.** The built bundle is ~1 MB / ~28 k lines and is nothing more than a `cat`-concatenation of every `src/` file in `build.sh` order. Reading it end-to-end wastes a huge amount of context for zero additional information vs. reading the source.
+
+- **To understand a feature:** open the relevant `src/features/*.js` file directly. Use `Grep` over `src/` to locate a symbol, then `Read` the specific source file it lives in.
+- **If you genuinely need to inspect the built artifact** (e.g. verifying a release build): use `Read` with a narrow `offset`/`limit`, or `Grep` with `dist/knack-bundle.js` as the path. Do not `Read` it without a limit.
+- **Never** dump `dist/knack-bundle.js` into a subagent prompt or pipe it through `cat`/`Bash`. Treat it as a binary build artifact.
+- **To diff built vs. source:** don't. Rebuild with `bash build.sh` and check `git status` / `git diff -- dist/knack-bundle.js`.
+
+The same principle applies to **git history** on this repo — it can dump enormous amounts of text into context if invoked carelessly:
+
+- `git log -p` with no path filter or `-n` limit produces **~20 MB** of output on this repo. Never run it unscoped.
+- To find a commit: `git log --all --oneline | grep <term>` (~40 KB total, instant).
+- To inspect a specific commit: `git show --stat <sha>` first, then `git show <sha> -- <path>` for a targeted diff.
+- To search history for a string: `git log --all -S '<string>' --oneline` — stays small.
+- Always exclude `dist/knack-bundle.js` from history-wide diffs: append `-- . ':(exclude)dist/knack-bundle.js'`.
+
+## Work Fast (Avoid Design Thrash)
+
+This is a **copy-paste-and-modify codebase, not a design space.** Every feature follows the same skeleton: IIFE wrapper + `CONFIG`/`VIEWS` constant at top + `SCW.onViewRender` / `SCW.onSceneRender` binding + idempotent init + unique-ID CSS injection. There is no test framework, no linter, and no type system. Planning phases do not catch bugs here — manual testing against the live Knack app does. **Bias hard toward producing a diff the user can look at.**
+
+1. **Copy the closest sibling feature.** Grid work → start from `bid-items-grid.js` or `proposal-grid.js`. Worksheet work → `device-worksheet.js`. Collapsible-table work → `group-collapse.js`. Match file layout, naming, event namespacing, and the CSS injection idiom. Do not redesign the module shape — it's already decided.
+2. **Read each file once, in full.** For files under ~1500 lines, call `Read` with no `offset`/`limit` and be done. Reading overlapping chunks of the same file wastes context and usually means you're re-searching instead of building a mental model. (The explicit exception is `dist/knack-bundle.js` — see Context Hygiene.)
+3. **Commit to one approach before you write code.** Do not enumerate alternatives in assistant text ("we could do X, or Y, or Z…"). Pick the option with the smallest diff against existing code and write it. If two approaches look equal, the one that matches the nearest sibling feature wins by default.
+4. **Refactor with `Write`, not a chain of `Edit`s.** For anything larger than a couple of lines, produce the finished source in one `Write`, then `bash build.sh`, then commit. Don't narrate the design — write the code.
+5. **Don't ask questions the codebase already answers.** "Where should X live?" is almost always "a new file under `src/features/`, wired into `build.sh` in dependency order, matching the nearest sibling." "What should the API look like?" is almost always "whatever the sibling feature exposes on `window.SCW`." Check before asking.
+6. **When stuck, ship the smaller version.** A real visible diff beats a perfect plan. Land the obvious 80% behind the same `CONFIG` shape and stop. You can expand it in a follow-up once the user has seen it working.
+7. **Status updates live inside a turn, not across turns.** There is no background timer and no way to wake yourself between user messages. If you need to give progress signals, interleave them with tool calls in a single turn — don't promise to "check back in five minutes."
+
 ## Common Pitfalls
 
 - **dist/knack-bundle.js must be rebuilt** after any source change. Run `bash build.sh`.
