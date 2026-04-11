@@ -20607,8 +20607,8 @@ $(".kn-navigation-bar").hide();
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
         detailLayout: {
-          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total', 'mountingHardware', 'laborDescription'],
-          right: ['connectedDevice']
+          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
+          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
         },
         bucketField: 'field_2219',
         bucketRules: {
@@ -20662,8 +20662,8 @@ $(".kn-navigation-bar").hide();
           },
           summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
           detailLayout: {
-            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'mountingHardware', 'laborDescription'],
-            right:  ['connectedDevice', 'dropLength']
+            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
+            right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
           }
         }
       },
@@ -20697,8 +20697,8 @@ $(".kn-navigation-bar").hide();
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
-          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'mountingHardware', 'laborDescription'],
-          right:  ['connectedDevice', 'dropLength']
+          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
+          right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
         }
       },
       {
