@@ -20813,11 +20813,11 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_2365', type: 'readOnly',    summary: true },
           product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
           surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
+          connections:      { key: 'field_2381', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           // Yes/No survey flags — rendered as segmented chips so each row shows
           // a clear two-button toggle. Unselected = neither button lit, which
@@ -20830,9 +20830,9 @@ $(".kn-navigation-bar").hide();
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['surveyNotes'],
+        summaryLayout: ['surveyNotes', 'connections'],
         detailLayout: {
-          left:  ['mounting', 'connections', 'scwNotes'],
+          left:  ['mounting', 'scwNotes'],
           right: ['existingCabling', 'exterior', 'plenum', 'mountingHeight', 'dropLength', 'conduitFeet']
         },
         syntheticGroupsPosition: 'bottom',
