@@ -50,6 +50,12 @@
  *        - patch D's Backbone model (field_2381 = [])
  *        - patch D's visible card
  *        - fire background PUT { field_2381: [] }
+ *      When ALL PUTs have landed on the server (success or failure), fire
+ *      a real `view.model.fetch()` to resync Knack's model with the true
+ *      server state. This replaces the user having to manually reload the
+ *      page after the silent regroup — by the time the fetch runs, the
+ *      child records have their new field_2375/field_2381 persisted, so
+ *      the natural re-render is correct.
  *
  *      NOTE: device-worksheet.js moves both field_2381 (readOnly) and
  *      field_2375 (moveIcon) tds out of the hidden sourceTr into the card,
@@ -307,10 +313,11 @@
 
   var ownPuts = {};
 
-  function firePut(recordId, body) {
+  function firePut(recordId, body, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
       console.warn(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable — skipping PUT for ' + recordId);
+      if (typeof onDone === 'function') onDone(new Error('knackAjax unavailable'));
       return;
     }
     var url = window.SCW.knackRecordUrl(VIEW_ID, recordId);
@@ -324,11 +331,13 @@
       success: function (resp) {
         delete ownPuts[recordId];
         log('  PUT ok ' + recordId);
+        if (typeof onDone === 'function') onDone(null, resp);
       },
       error: function (xhr) {
         delete ownPuts[recordId];
         console.warn(LOG_PREFIX, 'PUT failed ' + recordId,
           xhr && xhr.status, xhr && xhr.responseText);
+        if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed'));
       }
     });
   }
@@ -574,31 +583,68 @@
     var destHeader = findL1HeaderBefore(rWsTr);
     log('  R wsTr found=' + (!!rWsTr) + ' destHeader found=' + (!!destHeader));
 
+    // --- 7. Start the PUT-completion tracker ----------------------------
+    // When ALL of our child PUTs have landed on the server, we fire a
+    // real model.fetch() so Knack re-renders the view from fresh,
+    // now-consistent server state. This replaces the user having to hit
+    // browser-refresh manually after the silent regroup.
+    var totalPuts = added.length + removed.length;
+    var putsRemaining = totalPuts;
+    function onPutFinished() {
+      putsRemaining--;
+      if (putsRemaining > 0) return;
+      log('all ' + totalPuts + ' PUTs settled — firing real refresh (model.fetch)');
+      // Clear plan + watchdog FIRST so the incoming render isn't fought
+      // by our replay machinery.
+      pendingPlan = null;
+      stopMutGuard();
+      if (planClearTimer) { clearTimeout(planClearTimer); planClearTimer = null; }
+      try {
+        if (window.SCW && window.SCW.deviceWorksheet &&
+            typeof window.SCW.deviceWorksheet.captureState === 'function') {
+          window.SCW.deviceWorksheet.captureState();
+        }
+      } catch (e) { /* best-effort */ }
+      try {
+        var v = Knack.views && Knack.views[VIEW_ID];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch();
+        }
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'final model.fetch threw', e);
+      }
+    }
+
     if (added.length && !destHeader) {
       log('  no destHeader for R — PUT-only + fallbackFetch');
-      added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id)); });
-      removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
-      fallbackFetch('R has no visible L1 header — cannot place added children');
+      added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id), onPutFinished); });
+      removed.forEach(function (rid) { firePut(rid, buildRemovedPut(), onPutFinished); });
+      // Skip the duplicate fetch here — onPutFinished will fetch when
+      // all PUTs land.
       clearPendingPlanSoon();
       return;
     }
 
-    // --- 7. Apply plan to DOM (initial pass) ----------------------------
+    // --- 8. Apply plan to DOM (initial pass) ----------------------------
     applyPlanToDom(plan, 'initial');
 
-    // --- 8. Fire background PUTs ----------------------------------------
-    for (var a = 0; a < added.length; a++) {
-      firePut(added[a], buildAddedPut(rGroupId, R.id));
-    }
-    for (var r = 0; r < removed.length; r++) {
-      firePut(removed[r], buildRemovedPut());
+    // --- 9. Fire background PUTs with completion tracking --------------
+    if (totalPuts === 0) {
+      log('  no PUTs to fire — skipping final fetch');
+    } else {
+      for (var a = 0; a < added.length; a++) {
+        firePut(added[a], buildAddedPut(rGroupId, R.id), onPutFinished);
+      }
+      for (var r = 0; r < removed.length; r++) {
+        firePut(removed[r], buildRemovedPut(), onPutFinished);
+      }
     }
 
-    // --- 9. Schedule plan expiry (replay window) ------------------------
+    // --- 10. Schedule plan expiry as a safety net (in case a PUT hangs).
     clearPendingPlanSoon();
 
     log('  regroup done: ' + added.length + ' added, ' + removed.length + ' removed' +
-        ' (plan cached for ' + REPLAY_GRACE_MS + 'ms)');
+        ' (plan cached for up to ' + REPLAY_GRACE_MS + 'ms, final fetch on PUT completion)');
   }
 
   function buildAddedPut(rGroupId, rId) {
