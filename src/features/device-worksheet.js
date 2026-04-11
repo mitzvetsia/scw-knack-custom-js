@@ -5207,10 +5207,41 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // in order. type: 'number' | 'text' (default: 'number'). Missing values
     // always sort last regardless of order. Default keeps the historical
     // field_2218 asc / field_1960 desc behavior.
-    var rowSortRules = viewCfg.rowSort || [
-      { field: 'field_2218', order: 'asc',  type: 'number' },
-      { field: 'field_1960', order: 'desc', type: 'number' }
-    ];
+    //
+    // When the user clicks a column header, Knack marks that <th> with
+    // .sorted-asc / .sorted-desc. In that case we defer to Knack's sort
+    // and use the clicked column as the sole rule, otherwise every click
+    // would be visually reset by the hard-coded default here.
+    var rowSortRules;
+    var _sortedTh = thead && thead.querySelector('th.sorted-asc, th.sorted-desc');
+    if (_sortedTh) {
+      var _sFk = null;
+      var _sClasses = _sortedTh.className.split(/\s+/);
+      for (var _sc = 0; _sc < _sClasses.length; _sc++) {
+        var _cc = _sClasses[_sc];
+        if (_cc.indexOf('field_') === 0) {
+          _sFk = _cc.indexOf(':') !== -1 ? _cc.substring(0, _cc.indexOf(':')) : _cc;
+          break;
+        }
+      }
+      var _sOrder = _sortedTh.classList.contains('sorted-desc') ? 'desc' : 'asc';
+      // Guess type: if any td in that column parses as a finite number, treat
+      // as number; else text. Prevents alphabetic sort of dollar amounts.
+      var _sType = 'text';
+      if (_sFk) {
+        var _probe = table.querySelector('tbody td.' + _sFk);
+        if (_probe) {
+          var _raw = (_probe.textContent || '').replace(/[^0-9.\-]/g, '');
+          if (_raw && isFinite(parseFloat(_raw))) _sType = 'number';
+        }
+      }
+      rowSortRules = _sFk ? [{ field: _sFk, order: _sOrder, type: _sType }] : [];
+    } else {
+      rowSortRules = viewCfg.rowSort || [
+        { field: 'field_2218', order: 'asc',  type: 'number' },
+        { field: 'field_1960', order: 'desc', type: 'number' }
+      ];
+    }
 
     function _scwCellValue(tr, fieldKey, type) {
       var td = tr.querySelector('td.' + fieldKey);
