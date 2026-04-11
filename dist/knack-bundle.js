@@ -26164,12 +26164,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var view = document.getElementById(VIEW_ID);
     if (!view) return results;
 
-    // CSS escape the id just in case — 24-hex is already safe but be defensive.
-    var safeId = parentId.replace(/[^a-zA-Z0-9_-]/g, '');
-    var sel = 'tr.scw-ws-row td.' + CONNECTIONS_FIELD +
-              ' span[data-kn="connection-value"].' + safeId;
-    var spans = view.querySelectorAll(sel);
+    // NOTE: Knack stores the connected record's 24-hex id as the class
+    // attribute of the span. We CANNOT use a `.<id>` CSS class selector here
+    // because CSS class tokens cannot start with a digit — ~60% of hex ids
+    // start with a digit, and `querySelectorAll('span.6abc...')` is invalid.
+    // Instead we select all connection-value spans in td.field_2381 and
+    // compare their class attribute programmatically.
+    var spans = view.querySelectorAll(
+      'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"]'
+    );
     for (var i = 0; i < spans.length; i++) {
+      var cls = (spans[i].getAttribute('class') || '').trim();
+      if (cls !== parentId) continue;
       var tr = spans[i].closest('tr.scw-ws-row');
       if (tr && tr.id && HEX24.test(tr.id)) {
         if (results.indexOf(tr.id) === -1) results.push(tr.id);
@@ -26187,11 +26193,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!parentId) return '';
     var view = document.getElementById(VIEW_ID);
     if (view) {
-      var safeId = parentId.replace(/[^a-zA-Z0-9_-]/g, '');
-      var span = view.querySelector(
-        'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"].' + safeId
+      // Same CSS-class-starts-with-digit gotcha as findRowsPointingTo —
+      // iterate all spans and compare class attribute manually.
+      var spans = view.querySelectorAll(
+        'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"]'
       );
-      if (span) return (span.textContent || '').trim();
+      for (var si = 0; si < spans.length; si++) {
+        var cls = (spans[si].getAttribute('class') || '').trim();
+        if (cls === parentId) return (spans[si].textContent || '').trim();
+      }
     }
     // Last-ditch: model
     var arr = getModelRecords();
