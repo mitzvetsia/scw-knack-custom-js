@@ -3620,7 +3620,10 @@ window.SCW = window.SCW || {};
         menuView = prevSibling;
       }
 
-      // --- Strategy 2 (original): menu lives in the preceding view-group
+      // --- Strategy 2 (original): menu lives in the preceding view-group,
+      //     but ONLY if that preceding view-group has no accordion of its
+      //     own (if it does, the menu belongs to that group's accordion and
+      //     must not leak forward into this one — see view_3477 / view_3787).
       var prevGroup = null;
       if (!menuView) {
         var viewGroup = accordion.parentElement;
@@ -3630,12 +3633,18 @@ window.SCW = window.SCW || {};
         if (!viewGroup) continue;
 
         prevGroup = viewGroup.previousElementSibling;
-        if (prevGroup && prevGroup.classList.contains('view-group')) {
+        if (prevGroup &&
+            prevGroup.classList.contains('view-group') &&
+            !prevGroup.querySelector('.scw-ktl-accordion')) {
           menuView = prevGroup.querySelector('.kn-view.kn-menu');
         }
       }
 
       if (!menuView) continue;
+
+      // Skip if this menu has already been claimed by another accordion
+      // (Strategy 1 hides it with HIDDEN_CLASS on first claim).
+      if (menuView.classList.contains(HIDDEN_CLASS)) continue;
 
       // Collect action links
       var links = menuView.querySelectorAll('a');
