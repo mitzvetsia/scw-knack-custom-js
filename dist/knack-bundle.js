@@ -20368,10 +20368,10 @@ $(".kn-navigation-bar").hide();
             bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
             move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
             product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
-            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
-            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
+            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
+            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
+            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
+            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
             warningCount:     { key: 'field_2454', type: 'warningChit' },
 
             mounting:         { key: 'field_2463', type: 'readOnly' },
@@ -25164,8 +25164,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
       var guardVal = guardTd ? (guardTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
       if (guardVal !== 'yes' && guardVal !== 'true') {
-        var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
-        if (targetGroup) targetGroup.style.display = 'none';
+        // Optional secondary guard: still show if orShowWhenFieldIsNo is "no"
+        var allowShow = false;
+        if (swDesc.orShowWhenFieldIsNo) {
+          var orTd = tr.querySelector('td.' + swDesc.orShowWhenFieldIsNo)
+                  || card.querySelector('td[data-field-key="' + swDesc.orShowWhenFieldIsNo + '"]');
+          var orVal = orTd ? (orTd.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase() : '';
+          if (orVal === 'no' || orVal === 'false') allowShow = true;
+        }
+        if (!allowShow) {
+          var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+          if (targetGroup) targetGroup.style.display = 'none';
+        }
       }
     }
 
