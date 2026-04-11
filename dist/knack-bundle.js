@@ -26035,8 +26035,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *      settle timer. After SETTLE_MS of render silence, apply the regroup.
  *   3. Deterministic regroup:
  *        newChildren     = R.field_2380_raw (event payload)
- *        currentChildren = scan Knack.views[view_3505].model.data.models
- *                          for records whose field_2381_raw contains R.id
+ *        currentChildren = DOM-scan every visible card's td.field_2381 for
+ *                          a `<span data-kn="connection-value">` whose class
+ *                          list contains R.id — device-worksheet.js renders
+ *                          field_2381 as a readOnly detail field which MOVES
+ *                          the original Knack-rendered td (with its spans
+ *                          intact) from sourceTr into the card's detail
+ *                          panel, so the DOM is the ground truth here.
  *        added   = newChildren ∖ currentChildren
  *        removed = currentChildren ∖ newChildren
  *      For each added child D:
@@ -26049,13 +26054,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *        - patch D's visible card
  *        - fire background PUT { field_2381: [] }
  *
- *      NOTE: The hidden sourceTr ([data-scw-worksheet="1"]) has an empty
- *      td.field_2381 and no td.field_2375 at all — both fields are only
- *      meaningful in the Backbone model, so all reads/writes of those
- *      two fields go through the model, never the sourceTr DOM.
- *   4. Falls back to model.fetch() ONLY when the destination L1 group
- *      header is not currently in the DOM (group is empty / collapsed out
- *      of tbody) — we can't silently synthesize an L1 header row.
+ *      NOTE: device-worksheet.js moves both field_2381 (readOnly) and
+ *      field_2375 (moveIcon) tds out of the hidden sourceTr into the card,
+ *      but the moveIcon td has its innerHTML replaced with an icon (the
+ *      original connection-value span is destroyed), whereas readOnly tds
+ *      preserve their contents. So field_2381 is DOM-readable, field_2375
+ *      is not. For destination group resolution we walk backward from R's
+ *      own wsTr to the nearest L1 group header — R is itself a view_3505
+ *      record, so its current L1 group IS the destination.
+ *   4. Falls back to model.fetch() ONLY when R's wsTr has no L1 header
+ *      before it (R was just moved into an empty group, or R is not
+ *      visible) — we can't silently synthesize an L1 header row.
  *   5. A re-entrancy guard (ownPuts) ignores any stray knack-cell-update
  *      events that echo our own background PUTs.
  **************************************************************************************************/
@@ -26082,17 +26091,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // DOM helpers — reading field cells out of the triple-row card layout.
   // ----------------------------------------------------------------------
   // For view_3505 each record is rendered as:
-  //    sourceTr [data-scw-worksheet="1"]  (hidden original Knack tr — NOTE: its
-  //                                        td.field_2381 is always empty and it
-  //                                        has no td.field_2375 at all, so we
-  //                                        cannot read either from the DOM)
+  //    sourceTr [data-scw-worksheet="1"]  (hidden, original Knack tr — most
+  //                                        of its tds have been moved OUT
+  //                                        into the card below)
   //    wsTr    .scw-ws-row                (visible, id=RECORD_ID, wraps the card)
   //    photoRow .scw-inline-photo-row     (optional trailing photo strip)
   //
-  // Because the hidden sourceTr is unreliable/unavailable for field_2375
-  // and field_2381, all reads of those values go through the Backbone model
-  // (Knack.views[view_3505].model.data.models[*].attributes) which is the
-  // canonical source of truth. Writes flow through:
+  // device-worksheet.js moves the original field_2381 td into the card's
+  // detail panel with its contents intact, so:
+  //   - field_2381 → DOM-readable via `tr.scw-ws-row td.field_2381 span[data-kn="connection-value"]`
+  //   - field_2375 → NOT DOM-readable (moveIcon rewrites innerHTML)
+  //
+  // Writes to field_2381/field_2375 flow through:
   //   - syncModelChild()                 → Backbone attrs
   //   - SCW.deviceWorksheet.patchCard()  → the visible card td text
   // No sourceTr cell is ever written — there's nothing to write to.
@@ -26113,7 +26123,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ----------------------------------------------------------------------
-  // Backbone model access — the only reliable source for field_2375/2381.
+  // Backbone model access — used only as a fallback for R's field_2375_raw
+  // when the event payload doesn't include it (the DOM can't tell us because
+  // moveIcon rewrites R's field_2375 td).
   // ----------------------------------------------------------------------
 
   function getModelRecords() {
@@ -26134,41 +26146,57 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return null;
   }
 
-  /** Return ids of every model record whose field_2381_raw contains parentId. */
+  /**
+   * Return ids of every visible wsTr whose td.field_2381 contains a
+   * connection-value span pointing to parentId.
+   *
+   * We scan the DOM (not the Backbone model) because device-worksheet.js
+   * renders field_2381 as a readOnly detail field — it MOVES the original
+   * Knack-rendered td (with its `<span class="RECORD_ID" data-kn="connection-value">IDENTIFIER</span>`
+   * children fully intact) from the hidden sourceTr into the card's detail
+   * panel (see buildFieldRow: `row.appendChild(td)`). The data is guaranteed
+   * to be in the DOM after the card builds, whereas the Backbone model
+   * `attributes[field_2381_raw]` shape has historically been inconsistent.
+   */
   function findRowsPointingTo(parentId) {
     var results = [];
     if (!parentId) return results;
-    var arr = getModelRecords();
-    for (var i = 0; i < arr.length; i++) {
-      var m = arr[i];
-      if (!m || !m.id) continue;
-      var attrs = m.attributes || {};
-      var raw = attrs[CONNECTIONS_FIELD + '_raw'];
-      if (!Array.isArray(raw)) continue;
-      for (var j = 0; j < raw.length; j++) {
-        if (raw[j] && raw[j].id === parentId) {
-          results.push(m.id);
-          break;
-        }
+    var view = document.getElementById(VIEW_ID);
+    if (!view) return results;
+
+    // CSS escape the id just in case — 24-hex is already safe but be defensive.
+    var safeId = parentId.replace(/[^a-zA-Z0-9_-]/g, '');
+    var sel = 'tr.scw-ws-row td.' + CONNECTIONS_FIELD +
+              ' span[data-kn="connection-value"].' + safeId;
+    var spans = view.querySelectorAll(sel);
+    for (var i = 0; i < spans.length; i++) {
+      var tr = spans[i].closest('tr.scw-ws-row');
+      if (tr && tr.id && HEX24.test(tr.id)) {
+        if (results.indexOf(tr.id) === -1) results.push(tr.id);
       }
     }
     return results;
   }
 
   /**
-   * Look up the display identifier for parentId. Prefer the model entry
-   * (if R lives in this view's collection, which it does — R is a view_3505
-   * record). Fall back to scraping any existing card td.field_2381 span.
+   * Look up the display identifier for parentId. We scrape any existing
+   * card td.field_2381 span that points to parentId — the identifier text
+   * is the span's textContent. Falls back to an empty string.
    */
   function sampleIdentifierForParent(parentId) {
     if (!parentId) return '';
-    // 1. The parent's own model record usually carries its display identifier
-    //    inside a connection-ish attribute. Scan its attrs for a string that
-    //    looks like an identifier — but simpler: pull from any child's
-    //    field_2381_raw where one of the entries matches parentId.
+    var view = document.getElementById(VIEW_ID);
+    if (view) {
+      var safeId = parentId.replace(/[^a-zA-Z0-9_-]/g, '');
+      var span = view.querySelector(
+        'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"].' + safeId
+      );
+      if (span) return (span.textContent || '').trim();
+    }
+    // Last-ditch: model
     var arr = getModelRecords();
     for (var i = 0; i < arr.length; i++) {
-      var attrs = arr[i] && arr[i].attributes;
+      var attrs = arr[i] && (arr[i].attributes || arr[i]);
       var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {
@@ -26177,63 +26205,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
     }
-    // 2. Fallback — scrape any rendered card td.field_2381 span that shows it.
-    var view = document.getElementById(VIEW_ID);
-    if (view) {
-      var span = view.querySelector(
-        'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"].' + parentId
-      );
-      if (span) return span.textContent || '';
-    }
     return '';
   }
 
   // ======================================================================
-  // Group header index — {mdfIdfRecordId → L1 header tr}
+  // L1 group header lookup.
+  // ----------------------------------------------------------------------
+  // R (the edited parent) is itself a view_3505 record and lives in exactly
+  // the L1 group we want added children to land in. We walk backward from
+  // R's wsTr to find the nearest preceding `.kn-table-group.kn-group-level-1`
+  // row — that's the destination header. This is more reliable than trying
+  // to read field_2375 off any card, because the moveIcon td has its
+  // innerHTML rewritten (the original connection-value span is destroyed).
   // ======================================================================
 
-  function buildGroupHeaderMap() {
-    var map = {};
-    var view = document.getElementById(VIEW_ID);
-    if (!view) return map;
-    var tbody = view.querySelector('tbody');
-    if (!tbody) return map;
-
-    var kids = tbody.children;
-    var curHeader = null;
-    var curParentId = null;
-
-    for (var i = 0; i < kids.length; i++) {
-      var row = kids[i];
-      var isL1Group = row.classList.contains('kn-table-group') &&
-                      row.classList.contains('kn-group-level-1');
-
-      if (isL1Group) {
-        if (curHeader && curParentId && !map[curParentId]) {
-          map[curParentId] = curHeader;
-        }
-        curHeader = row;
-        curParentId = null;
-        continue;
+  /** Walk backward from wsTr until we hit an L1 group header row. */
+  function findL1HeaderBefore(wsTr) {
+    if (!wsTr) return null;
+    var cur = wsTr.previousElementSibling;
+    while (cur) {
+      if (cur.classList.contains('kn-table-group') &&
+          cur.classList.contains('kn-group-level-1')) {
+        return cur;
       }
-      if (row.classList.contains('kn-table-group')) continue; // L2+ subgroup header
-
-      // The sourceTr has no td.field_2375, so we can't read the group from the
-      // DOM. When we hit a visible wsTr (.scw-ws-row) we look up that record's
-      // field_2375_raw in the Backbone model instead.
-      if (curParentId == null && row.classList.contains('scw-ws-row') &&
-          row.id && HEX24.test(row.id)) {
-        var attrs = getModelAttrs(row.id);
-        var raw = attrs && attrs[GROUPING_FIELD + '_raw'];
-        if (Array.isArray(raw) && raw[0] && raw[0].id) {
-          curParentId = raw[0].id;
-        }
-      }
+      cur = cur.previousElementSibling;
     }
-    if (curHeader && curParentId && !map[curParentId]) {
-      map[curParentId] = curHeader;
-    }
-    return map;
+    return null;
   }
 
   /** Walk forward from a group header to the last row in its section. */
@@ -26374,7 +26371,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var newChildSet = {};
     newChildIds.forEach(function (id) { newChildSet[id] = true; });
 
-    // --- 2. Current children from the Backbone model --------------------
+    // --- 2. Current children — DOM-scan every visible card's td.field_2381.
     var currentChildIds = findRowsPointingTo(R.id);
     log('  findRowsPointingTo(' + R.id + ') →', currentChildIds);
     var currentChildSet = {};
@@ -26410,25 +26407,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     log('  R group raw=', rGroupRaw, ' id=' + rGroupId + ' identifier="' + rIdentifier + '"');
     var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
 
+    // Destination L1 header for added children = R's own current L1 header.
+    // R is a view_3505 record and its card is visible (it's the one the user
+    // just edited), so walking backward from R's wsTr finds the header.
+    var rWsTr = document.getElementById(R.id);
+    var destHeader = findL1HeaderBefore(rWsTr);
+    log('  R wsTr found=' + (!!rWsTr) + ' destHeader found=' + (!!destHeader));
+
     if (added.length) {
-      if (!rGroupId) {
-        log('  no rGroupId — fallbackFetch + PUT-only for all');
-        fallbackFetch('R has no ' + GROUPING_FIELD + ' — cannot place added children');
-        // Still fire PUTs so the backend eventually converges.
-        added.forEach(function (cid) { firePut(cid, buildAddedPut(null, R.id)); });
-        removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
-        return;
-      }
-      var groupMap = buildGroupHeaderMap();
-      log('  buildGroupHeaderMap keys=', Object.keys(groupMap));
-      var destHeader = groupMap[rGroupId];
       if (!destHeader) {
-        log('  destination group ' + rGroupId + ' not visible — PUT + fallbackFetch');
-        // Fire the PUTs and fall back to a visual refresh — we can't
-        // silently synthesize a new L1 header for an empty group.
+        log('  no destHeader for R — PUT-only + fallbackFetch');
+        // Fire PUTs so the backend eventually converges.
         added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id)); });
         removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
-        fallbackFetch('destination group ' + rGroupId + ' not in visible DOM');
+        fallbackFetch('R has no visible L1 header — cannot place added children');
         return;
       }
 
@@ -26564,7 +26556,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   window.SCW.silentRegroupView3505 = {
     applyDeterministicRegroup: applyDeterministicRegroup,
     findRowsPointingTo: findRowsPointingTo,
-    buildGroupHeaderMap: buildGroupHeaderMap,
+    findL1HeaderBefore: findL1HeaderBefore,
     inspectState: function () {
       return {
         hasPendingRecord: pendingRecord != null,
