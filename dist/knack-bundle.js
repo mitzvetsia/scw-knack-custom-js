@@ -26372,9 +26372,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // converges and Knack starts rendering the correct group naturally.
   // ======================================================================
 
-  var REPLAY_GRACE_MS = 6000; // window during which we replay moves on re-render
-  var pendingPlan = null;     // { R_id, rGroupRaw, rGroupId, rIdentifier, added, removed, expiresAt }
+  var REPLAY_GRACE_MS = 8000; // window during which we replay moves on re-render
+  var pendingPlan = null;     // { R_id, rGroupRaw, rGroupId, rIdentifier, added, removed }
   var planClearTimer = null;
+  var mutObserver = null;     // tbody watchdog
+  var mutSuppressed = false;  // re-entrance guard during our own DOM mutations
+  var mutDebounceTimer = null;
 
   function clearPendingPlanSoon() {
     if (planClearTimer) clearTimeout(planClearTimer);
@@ -26382,11 +26385,70 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       log('plan expired — clearing pendingPlan');
       pendingPlan = null;
       planClearTimer = null;
+      stopMutGuard();
     }, REPLAY_GRACE_MS);
+  }
+
+  // ----------------------------------------------------------------------
+  // Plan drift detector: returns true if any added child is NOT currently
+  // beneath R's L1 header in the tbody. Used by both the mutation observer
+  // and the view-render replay to decide whether a reapply is needed.
+  // ----------------------------------------------------------------------
+  function planHasDrifted(plan) {
+    if (!plan) return false;
+    var rWsTr = document.getElementById(plan.R_id);
+    if (!rWsTr) return false;
+    var destHeader = findL1HeaderBefore(rWsTr);
+    if (!destHeader) return false;
+    for (var i = 0; i < plan.added.length; i++) {
+      var cid = plan.added[i];
+      var cWsTr = document.getElementById(cid);
+      if (!cWsTr) continue; // not visible — nothing to check
+      if (findL1HeaderBefore(cWsTr) !== destHeader) return true;
+    }
+    return false;
+  }
+
+  // ----------------------------------------------------------------------
+  // Mutation observer watchdog on the view's tbody. Catches any DOM
+  // change — whether Knack fires knack-view-render or not — and re-applies
+  // the cached plan whenever drift is detected. Auto-reattaches if the
+  // tbody element itself is replaced by Knack's renderer.
+  // ----------------------------------------------------------------------
+  function startMutGuard() {
+    stopMutGuard();
+    var view = document.getElementById(VIEW_ID);
+    if (!view) return;
+    mutObserver = new MutationObserver(function () {
+      if (mutSuppressed) return;
+      if (!pendingPlan) { stopMutGuard(); return; }
+      clearTimeout(mutDebounceTimer);
+      mutDebounceTimer = setTimeout(function () {
+        if (!pendingPlan || mutSuppressed) return;
+        if (!planHasDrifted(pendingPlan)) return;
+        log('mut-guard: drift detected — replaying plan');
+        mutSuppressed = true;
+        try { applyPlanToDom(pendingPlan, 'mut-guard'); }
+        catch (e) { console.warn(LOG_PREFIX, 'mut-guard replay threw', e); }
+        // Keep suppression active briefly so our own reapply doesn't
+        // retrigger the observer in an infinite loop.
+        setTimeout(function () { mutSuppressed = false; }, 80);
+      }, 40);
+    });
+    // Observe the whole view subtree so we catch both tbody-internal row
+    // rearrangements AND full tbody replacement (childList on table).
+    mutObserver.observe(view, { childList: true, subtree: true });
+    log('mut-guard: installed on ' + VIEW_ID);
+  }
+
+  function stopMutGuard() {
+    if (mutDebounceTimer) { clearTimeout(mutDebounceTimer); mutDebounceTimer = null; }
+    if (mutObserver) { mutObserver.disconnect(); mutObserver = null; log('mut-guard: stopped'); }
   }
 
   function applyPlanToDom(plan, reason) {
     if (!plan) return;
+    mutSuppressed = true; // don't retrigger the watchdog from our own writes
     var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
     var rWsTr = document.getElementById(plan.R_id);
     var destHeader = findL1HeaderBefore(rWsTr);
@@ -26441,6 +26503,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + rid, e); }
       }
     }
+
+    // Release the mutation-observer suppression on the next tick so our
+    // own writes have all been queued before we start listening again.
+    setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
   function applyDeterministicRegroup(R) {
@@ -26504,6 +26570,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       removed: removed
     };
     pendingPlan = plan;
+    startMutGuard(); // watchdog catches any DOM rebuild from here on out
 
     // --- 6. Check destination header ------------------------------------
     var rWsTr = document.getElementById(R.id);
@@ -26597,10 +26664,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
-  // After the initial regroup has run, we REPLAY the cached plan on every
-  // re-render until REPLAY_GRACE_MS has elapsed — this defeats the race
-  // where Knack re-fetches stale server data (before the child PUTs or
-  // Make webhook have landed) and wipes our local DOM moves.
+  // After the initial regroup has run, the MutationObserver watchdog is
+  // the primary reapply path, but we also hook view-render as a secondary
+  // path with a longer defer (the observer fires immediately on childList
+  // changes; view-render may fire later after Knack finishes its render
+  // cycle — we want to catch both).
   $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentRegroup', function () {
     if (pendingRecord || settleTimer) {
       log('view re-rendered during edit cycle — resetting settle timer');
@@ -26608,11 +26676,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return;
     }
     if (pendingPlan) {
-      // Defer to the end of the render tick so Knack's DOM rebuild has
-      // actually finished replacing rows before we reach in and move them.
-      setTimeout(function () {
-        if (pendingPlan) applyPlanToDom(pendingPlan, 'replay');
-      }, 0);
+      log('view re-rendered during replay window — scheduling replay checks');
+      // Re-attach the mutation observer in case the tbody element was
+      // replaced (the old observer is bound to the defunct tbody).
+      startMutGuard();
+      // Run multiple replay checks at increasing delays so we catch both
+      // immediate render commits and any tail-end re-sorts Knack does
+      // after emitting view-render.
+      [50, 200, 500].forEach(function (delay) {
+        setTimeout(function () {
+          if (!pendingPlan) return;
+          if (planHasDrifted(pendingPlan)) {
+            log('view-render replay @' + delay + 'ms: drift detected');
+            applyPlanToDom(pendingPlan, 'view-render@' + delay);
+          }
+        }, delay);
+      });
     }
   });
 
