@@ -26482,49 +26482,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     // ── Detail panel ─────────────────────────────────────────────
-    var detailFields = [];
-    var hasPopulatedReadOnly = false;
-    var hasPopulatedEditable = false;
+    // Collect every .scw-ws-field present in the detail panel, keyed
+    // by its field_XXXX identifier. The PDF renderer uses a static
+    // left/right layout (below) and looks up values from this map.
+    var detailValues = {};
+    var detailHasAnyField = false;
 
     var detail = card.querySelector('.scw-ws-detail');
     if (detail) {
-      var fields = detail.querySelectorAll('.scw-ws-field');
+      var fields = detail.querySelectorAll('.scw-ws-field[data-scw-field]');
       for (var f = 0; f < fields.length; f++) {
         var fEl = fields[f];
-        var flblEl = fEl.querySelector('.scw-ws-field-label');
-        var flbl = flblEl ? textOf(flblEl) : '';
+        var key = fEl.getAttribute('data-scw-field');
+        if (!key) continue;
+        detailHasAnyField = true;
         var valEl = fEl.querySelector('.scw-ws-field-value');
-        if (!valEl) continue;
-
+        if (!valEl) { detailValues[key] = ''; continue; }
         var isEmpty = valEl.classList.contains('scw-ws-field-value--empty');
-        var val2 = cellValue(valEl);
-
-        // Determine whether this is an editable input (textarea/input/radio chips)
-        var isEditable = !!valEl.querySelector('textarea, input, select, .scw-ws-radio-chips');
-        var populated = !!val2 && !isEmpty;
-
-        if (populated) {
-          if (isEditable) hasPopulatedEditable = true;
-          else hasPopulatedReadOnly = true;
-        }
-
-        detailFields.push({
-          label: flbl,
-          value: val2,
-          empty: !populated,
-          editable: isEditable
-        });
+        detailValues[key] = isEmpty ? '' : cellValue(valEl);
       }
     }
 
-    // Collapse-to-header-only rule:
-    //   drop the detail panel when there's no populated readOnly content
-    //   AND no populated editable content.
-    var showDetail = hasPopulatedReadOnly || hasPopulatedEditable;
-    // When collapsing, only keep fields that are populated (none, if neither rule triggered)
-    var renderedDetailFields = showDetail
-      ? detailFields.filter(function (f) { return !f.empty; })
-      : [];
+    // Collapse rule: drop the detail panel entirely when the card has
+    // NO detail fields in the live DOM (services / assumptions rows).
+    // Cards that have detail fields are always expanded so the tech has
+    // space to fill in blanks in the field.
+    var showDetail = detailHasAnyField;
 
     // ── Photos ───────────────────────────────────────────────────
     var photos = [];
@@ -26552,12 +26535,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       product: product,
       warnCount: warnCount,
       summaryFields: summaryFields,
-      detailFields: renderedDetailFields,
+      detailValues: detailValues,
       photos: photos,
-      showDetail: showDetail && renderedDetailFields.length > 0,
+      showDetail: showDetail,
       showPhotos: photos.length > 0
     };
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // PDF PRINT LAYOUT
+  // Static definition of which fields appear where in the printable
+  // form, regardless of how the device-worksheet renders them on the
+  // screen. "text" → read-only value; "fill" → value-or-blank-line;
+  // "yesno" → checkbox pair for Yes / No.
+  // ══════════════════════════════════════════════════════════════
+
+  var PDF_DETAIL_LAYOUT = {
+    left: [
+      { key: 'field_2463', label: 'Mounting Hardware', kind: 'text' },
+      { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
+      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill' }
+    ],
+    right: [
+      { key: 'field_2370', label: 'Existing Cabling',  kind: 'yesno' },
+      { key: 'field_2371', label: 'Plenum',            kind: 'yesno' }
+    ]
+  };
 
   // ══════════════════════════════════════════════════════════════
   // HTML BUILDER
@@ -26595,6 +26598,40 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return '<div class="' + cls + '">' + esc(row.label) + '</div>';
   }
 
+  function renderDetailColumn(card, specs) {
+    var h = [];
+    for (var i = 0; i < specs.length; i++) {
+      var spec = specs[i];
+      // Only render fields that actually exist on this card's detail panel.
+      // (Some buckets — e.g. subcontractor override — use a narrower set.)
+      if (!(spec.key in card.detailValues)) continue;
+      var value = card.detailValues[spec.key] || '';
+
+      h.push('<div class="ws-detail-field ws-detail-field--' + spec.kind + '">');
+      h.push('<span class="ws-detail-label">' + esc(spec.label) + '</span>');
+
+      if (spec.kind === 'yesno') {
+        var v = value.toLowerCase();
+        var yesOn = v === 'yes' || v === 'true';
+        var noOn  = v === 'no'  || v === 'false';
+        h.push('<span class="ws-detail-value ws-yesno">');
+        h.push('<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '\u2612' : '\u2610') + '</span> Yes');
+        h.push('<span class="ws-box' + (noOn ? ' is-on' : '') + '">' + (noOn ? '\u2612' : '\u2610') + '</span> No');
+        h.push('</span>');
+      } else if (spec.kind === 'fill') {
+        // Value-or-blank-line: show the value if present, otherwise a
+        // bottom-ruled span wide enough to write on.
+        h.push('<span class="ws-detail-value ws-fill">' + esc(value) + '</span>');
+      } else {
+        // Plain text (read-only data field)
+        h.push('<span class="ws-detail-value">' + esc(value) + '</span>');
+      }
+
+      h.push('</div>');
+    }
+    return h.join('');
+  }
+
   function renderCard(card) {
     var h = [];
     h.push('<section class="ws-card' + (card.showDetail ? '' : ' ws-card--header-only') + '">');
@@ -26623,18 +26660,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     h.push('</header>');
 
-    // ── Detail grid ──
+    // ── Detail grid (static left/right layout + fillable blanks) ──
     if (card.showDetail) {
       h.push('<div class="ws-detail">');
-      for (var d = 0; d < card.detailFields.length; d++) {
-        var df = card.detailFields[d];
-        h.push('<div class="ws-detail-field">');
-        if (df.label) {
-          h.push('<span class="ws-detail-label">' + esc(df.label) + '</span>');
-        }
-        h.push('<span class="ws-detail-value">' + esc(df.value) + '</span>');
-        h.push('</div>');
-      }
+      h.push('<div class="ws-detail-col">');
+      h.push(renderDetailColumn(card, PDF_DETAIL_LAYOUT.left));
+      h.push('</div>');
+      h.push('<div class="ws-detail-col">');
+      h.push(renderDetailColumn(card, PDF_DETAIL_LAYOUT.right));
+      h.push('</div>');
+      h.push('</div>');
+
+      // ── Blank notes area ──
+      h.push('<div class="ws-notes">');
+      h.push('<div class="ws-notes-label">Notes</div>');
+      h.push('<div class="ws-notes-lines">');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('</div>');
       h.push('</div>');
     }
 
@@ -26729,22 +26773,55 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '',
       '.ws-detail {',
       '  display: grid; grid-template-columns: 1fr 1fr;',
-      '  column-gap: 18px; row-gap: 3px;',
+      '  column-gap: 24px; row-gap: 4px;',
       '  margin-top: 8px; padding-top: 6px;',
       '  border-top: 1px dashed #e5e7eb;',
       '}',
+      '.ws-detail-col { display: flex; flex-direction: column; gap: 4px; }',
       '.ws-detail-field {',
-      '  display: flex; gap: 6px; align-items: baseline;',
-      '  font-size: 10.5px; padding: 1px 0;',
+      '  display: flex; gap: 8px; align-items: baseline;',
+      '  font-size: 10.5px; padding: 2px 0;',
       '}',
       '.ws-detail-label {',
       '  font-weight: 600; color: #07467c;',
-      '  min-width: 95px; flex: 0 0 auto;',
-      '  white-space: pre-line;',
+      '  min-width: 110px; flex: 0 0 110px;',
+      '  white-space: normal;',
       '}',
       '.ws-detail-value {',
       '  color: #111827; flex: 1 1 auto;',
       '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '',
+      '/* Fill-in-the-blank value: underline, taller for writing */',
+      '.ws-detail-field--fill .ws-detail-value.ws-fill {',
+      '  border-bottom: 1px solid #4b5563;',
+      '  min-height: 16px; padding-bottom: 1px;',
+      '}',
+      '',
+      '/* Yes / No checkbox pair */',
+      '.ws-yesno {',
+      '  display: inline-flex; gap: 14px; align-items: baseline;',
+      '  font-size: 11px;',
+      '}',
+      '.ws-box {',
+      '  display: inline-block; font-size: 14px; line-height: 1;',
+      '  margin-right: 3px; color: #111827;',
+      '}',
+      '.ws-box.is-on { color: #07467c; font-weight: 700; }',
+      '',
+      '/* Field Notes — blank lined writing area */',
+      '.ws-notes {',
+      '  margin-top: 10px; padding-top: 6px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '}',
+      '.ws-notes-label {',
+      '  font-size: 9px; font-weight: 700; color: #6b7280;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.ws-notes-lines { display: flex; flex-direction: column; gap: 12px; }',
+      '.ws-notes-line {',
+      '  height: 14px; border-bottom: 1px solid #9ca3af;',
       '}',
       '',
       '.ws-photos {',
