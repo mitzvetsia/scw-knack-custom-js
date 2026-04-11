@@ -26314,6 +26314,523 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 // ============================================================
 // End Device Worksheet
 // ============================================================
+/*** SCW SURVEY WORKSHEET — PDF EXPORT (view_3800) ***/
+/*
+ * Scrapes the live device-worksheet DOM (tr.scw-ws-row) into a printable
+ * HTML payload suitable for:
+ *   a) immediate preview via window.open + print
+ *   b) forwarding to the Make.com PDF webhook
+ *
+ * Rules implemented here:
+ *   • All sections are expanded in the output.
+ *   • Photo strip is omitted when no real (uploaded) photos exist —
+ *     "required but missing" placeholder slots do not count.
+ *   • A card collapses to header-only when the detail panel has no
+ *     populated readOnly content AND no populated directEdit content.
+ *
+ * Public API (exposed on window.SCW.surveyWorksheetPdf):
+ *   scrape(viewId?)          → structured payload object
+ *   buildHtml(payload)       → full HTML document string
+ *   preview(viewId?)         → scrape + buildHtml + open print window
+ *   sendToWebhook(viewId?)   → scrape + buildHtml + POST to Make.com
+ *   generate(viewId?)        → preview() (alias, matches proposal-pdf-export)
+ *
+ * Default viewId = 'view_3800'.
+ */
+(function () {
+  'use strict';
+
+  var DEFAULT_VIEW_ID = 'view_3800';
+  var WEBHOOK_URL     = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
+
+  // ── shared helpers ───────────────────────────────────────────────
+
+  function norm(s) {
+    return String(s == null ? '' : s).replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(String(s == null ? '' : s)));
+    return d.innerHTML;
+  }
+
+  function textOf(el) {
+    if (!el) return '';
+    return norm(el.textContent || '');
+  }
+
+  /** Read the effective value of a detail/summary field cell. Handles
+   *  <input>/<textarea>/<select> inside the td as well as plain text. */
+  function cellValue(td) {
+    if (!td) return '';
+    var input = td.querySelector('textarea, input[type="text"], input[type="number"], input:not([type]), select');
+    if (input) {
+      if (input.tagName === 'SELECT') {
+        var opt = input.options[input.selectedIndex];
+        return norm(opt ? opt.textContent : '');
+      }
+      return norm(input.value || '');
+    }
+    // Radio chips — read the selected chip
+    var selChip = td.querySelector('.scw-ws-radio-chip.is-selected');
+    if (selChip) return norm(selChip.textContent);
+    // Multi-chip selection
+    var selChips = td.querySelectorAll('.scw-ws-radio-chip.is-selected');
+    if (selChips && selChips.length > 1) {
+      var vals = [];
+      for (var i = 0; i < selChips.length; i++) vals.push(norm(selChips[i].textContent));
+      return vals.join(', ');
+    }
+    // Boolean chit
+    var chit = td.querySelector('.scw-ws-cabling-chit.is-yes, .scw-ws-cabling-chit.is-no');
+    if (chit) return chit.classList.contains('is-yes') ? 'Yes' : 'No';
+    return norm(td.textContent || '');
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // SCRAPER
+  // ══════════════════════════════════════════════════════════════
+
+  function scrape(viewId) {
+    viewId = viewId || DEFAULT_VIEW_ID;
+    var root = document.getElementById(viewId);
+    if (!root) return { viewId: viewId, title: '', rows: [] };
+
+    var title = '';
+    var h2 = root.querySelector('.view-header h2, .view-header h1');
+    if (h2) title = textOf(h2);
+
+    var tbody = root.querySelector('table tbody');
+    if (!tbody) return { viewId: viewId, title: title, rows: [] };
+
+    var out = [];
+    var kids = tbody.children;
+
+    for (var i = 0; i < kids.length; i++) {
+      var tr = kids[i];
+      if (tr.style && tr.style.display === 'none') continue;
+
+      // ── group header rows ──
+      if (tr.classList.contains('kn-table-group')) {
+        var level = tr.classList.contains('kn-group-level-1') ? 1
+                  : tr.classList.contains('kn-group-level-2') ? 2
+                  : tr.classList.contains('kn-group-level-3') ? 3 : 1;
+        var label = textOf(tr.querySelector('td'));
+        if (!label) continue;
+        out.push({ type: 'group', level: level, label: label });
+        continue;
+      }
+
+      // ── worksheet card rows ──
+      if (!tr.classList.contains('scw-ws-row')) continue;
+      var card = tr.querySelector('.scw-ws-card');
+      if (!card) continue;
+
+      var rowObj = scrapeCard(card);
+      if (rowObj) out.push(rowObj);
+    }
+
+    return { viewId: viewId, title: title, rows: out };
+  }
+
+  function scrapeCard(card) {
+    // ── Summary / header ─────────────────────────────────────────
+    var summary = card.querySelector('.scw-ws-summary');
+    var label   = '';
+    var product = '';
+
+    if (summary) {
+      var labelCell = summary.querySelector('.scw-ws-sum-label-cell');
+      if (labelCell) label = textOf(labelCell);
+
+      var productCell = summary.querySelector('.scw-ws-sum-product');
+      if (productCell) product = textOf(productCell);
+    }
+
+    // Warning count (visible chit, not the hidden spacer)
+    var warnCount = 0;
+    if (summary) {
+      var warnChit = summary.querySelector('.scw-ws-warn-chit');
+      if (warnChit && warnChit.style.visibility !== 'hidden') {
+        var n = parseInt(norm(warnChit.textContent).replace(/[^0-9]/g, ''), 10);
+        if (n > 0) warnCount = n;
+      }
+    }
+
+    // Summary fields (right bar + "fill" fields like Survey Notes)
+    // Each .scw-ws-sum-group has a .scw-ws-sum-label + the field td.
+    var summaryFields = [];
+    if (summary) {
+      var groups = summary.querySelectorAll('.scw-ws-sum-group');
+      for (var g = 0; g < groups.length; g++) {
+        var grp = groups[g];
+        // Skip structural groups (move icon, delete, qty badge, checkbox spacers)
+        if (grp.classList.contains('scw-ws-sum-group--move')) continue;
+        if (grp.classList.contains('scw-ws-sum-group--qty-badge')) continue;
+        var lblEl = grp.querySelector('.scw-ws-sum-label');
+        var fieldTd = grp.querySelector(
+          'td.scw-ws-sum-field, td.scw-ws-sum-field-ro, td.scw-ws-sum-direct-edit, td.scw-ws-sum-chip-host'
+        );
+        if (!fieldTd) continue;
+        var val = cellValue(fieldTd);
+        if (!val) continue;
+        var lbl = lblEl ? textOf(lblEl) : '';
+        summaryFields.push({ label: lbl, value: val });
+      }
+    }
+
+    // ── Detail panel ─────────────────────────────────────────────
+    var detailFields = [];
+    var hasPopulatedReadOnly = false;
+    var hasPopulatedEditable = false;
+
+    var detail = card.querySelector('.scw-ws-detail');
+    if (detail) {
+      var fields = detail.querySelectorAll('.scw-ws-field');
+      for (var f = 0; f < fields.length; f++) {
+        var fEl = fields[f];
+        var flblEl = fEl.querySelector('.scw-ws-field-label');
+        var flbl = flblEl ? textOf(flblEl) : '';
+        var valEl = fEl.querySelector('.scw-ws-field-value');
+        if (!valEl) continue;
+
+        var isEmpty = valEl.classList.contains('scw-ws-field-value--empty');
+        var val2 = cellValue(valEl);
+
+        // Determine whether this is an editable input (textarea/input/radio chips)
+        var isEditable = !!valEl.querySelector('textarea, input, select, .scw-ws-radio-chips');
+        var populated = !!val2 && !isEmpty;
+
+        if (populated) {
+          if (isEditable) hasPopulatedEditable = true;
+          else hasPopulatedReadOnly = true;
+        }
+
+        detailFields.push({
+          label: flbl,
+          value: val2,
+          empty: !populated,
+          editable: isEditable
+        });
+      }
+    }
+
+    // Collapse-to-header-only rule:
+    //   drop the detail panel when there's no populated readOnly content
+    //   AND no populated editable content.
+    var showDetail = hasPopulatedReadOnly || hasPopulatedEditable;
+    // When collapsing, only keep fields that are populated (none, if neither rule triggered)
+    var renderedDetailFields = showDetail
+      ? detailFields.filter(function (f) { return !f.empty; })
+      : [];
+
+    // ── Photos ───────────────────────────────────────────────────
+    var photos = [];
+    var photoWrap = card.querySelector('.scw-ws-photo-wrap');
+    if (photoWrap && !photoWrap.classList.contains('scw-ws-photo-hidden')) {
+      var photoCards = photoWrap.querySelectorAll('.scw-inline-photo-card[data-photo-has-image="true"]');
+      for (var p = 0; p < photoCards.length; p++) {
+        var pc = photoCards[p];
+        var img = pc.querySelector('img');
+        if (!img) continue;
+        var src = img.getAttribute('src') || '';
+        if (!src) continue;
+        photos.push({
+          src: src,
+          alt: img.getAttribute('alt') || '',
+          type: pc.getAttribute('data-photo-type') || '',
+          notes: pc.getAttribute('data-photo-notes') || ''
+        });
+      }
+    }
+
+    return {
+      type: 'card',
+      label: label,
+      product: product,
+      warnCount: warnCount,
+      summaryFields: summaryFields,
+      detailFields: renderedDetailFields,
+      photos: photos,
+      showDetail: showDetail && renderedDetailFields.length > 0,
+      showPhotos: photos.length > 0
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // HTML BUILDER
+  // ══════════════════════════════════════════════════════════════
+
+  function buildHtml(payload) {
+    var html = [];
+    html.push('<!DOCTYPE html>');
+    html.push('<html><head><meta charset="utf-8">');
+    html.push('<title>' + esc(payload.title || 'Survey Worksheet') + '</title>');
+    html.push('<style>');
+    html.push(getCss());
+    html.push('</style>');
+    html.push('</head><body>');
+
+    if (payload.title) {
+      html.push('<h1 class="doc-title">' + esc(payload.title) + '</h1>');
+    }
+
+    for (var i = 0; i < payload.rows.length; i++) {
+      var row = payload.rows[i];
+      if (row.type === 'group') {
+        html.push(renderGroupHeader(row));
+      } else if (row.type === 'card') {
+        html.push(renderCard(row));
+      }
+    }
+
+    html.push('</body></html>');
+    return html.join('\n');
+  }
+
+  function renderGroupHeader(row) {
+    var cls = 'group-header group-level-' + (row.level || 1);
+    return '<div class="' + cls + '">' + esc(row.label) + '</div>';
+  }
+
+  function renderCard(card) {
+    var h = [];
+    h.push('<section class="ws-card' + (card.showDetail ? '' : ' ws-card--header-only') + '">');
+
+    // ── Header row ──
+    h.push('<header class="ws-header">');
+    h.push('<div class="ws-identity">');
+    if (card.label) h.push('<span class="ws-label">' + esc(card.label) + '</span>');
+    if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
+    if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+    if (card.warnCount > 0) {
+      h.push('<span class="ws-warn">&#9888; ' + card.warnCount + '</span>');
+    }
+    h.push('</div>');
+
+    if (card.summaryFields.length) {
+      h.push('<div class="ws-summary-fields">');
+      for (var s = 0; s < card.summaryFields.length; s++) {
+        var sf = card.summaryFields[s];
+        h.push('<div class="ws-sum-field">');
+        if (sf.label) h.push('<span class="ws-sum-label">' + esc(sf.label) + '</span>');
+        h.push('<span class="ws-sum-value">' + esc(sf.value) + '</span>');
+        h.push('</div>');
+      }
+      h.push('</div>');
+    }
+    h.push('</header>');
+
+    // ── Detail grid ──
+    if (card.showDetail) {
+      h.push('<div class="ws-detail">');
+      for (var d = 0; d < card.detailFields.length; d++) {
+        var df = card.detailFields[d];
+        h.push('<div class="ws-detail-field">');
+        if (df.label) {
+          h.push('<span class="ws-detail-label">' + esc(df.label) + '</span>');
+        }
+        h.push('<span class="ws-detail-value">' + esc(df.value) + '</span>');
+        h.push('</div>');
+      }
+      h.push('</div>');
+    }
+
+    // ── Photo strip ──
+    if (card.showPhotos) {
+      h.push('<div class="ws-photos">');
+      for (var p = 0; p < card.photos.length; p++) {
+        var ph = card.photos[p];
+        h.push('<figure class="ws-photo">');
+        h.push('<img src="' + esc(ph.src) + '" alt="' + esc(ph.alt) + '" />');
+        if (ph.type) h.push('<figcaption>' + esc(ph.type) + '</figcaption>');
+        h.push('</figure>');
+      }
+      h.push('</div>');
+    }
+
+    h.push('</section>');
+    return h.join('');
+  }
+
+  function getCss() {
+    return [
+      '@page { size: letter; margin: 0.4in 0.45in; }',
+      '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
+      '',
+      '*, *::before, *::after { box-sizing: border-box; }',
+      'body {',
+      '  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '  color: #1f2937; font-size: 11px; line-height: 1.4;',
+      '  margin: 0; padding: 16px;',
+      '}',
+      '.doc-title {',
+      '  font-size: 20px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 12px 0; padding-bottom: 6px;',
+      '  border-bottom: 3px solid #07467c;',
+      '}',
+      '.group-header {',
+      '  font-size: 13px; font-weight: 600; color: #07467c;',
+      '  background: #eef5fb; padding: 6px 10px;',
+      '  margin: 14px 0 6px 0; border-left: 3px solid #5b9bd5;',
+      '  page-break-after: avoid;',
+      '}',
+      '.group-header.group-level-1 {',
+      '  font-size: 14px; font-weight: 700;',
+      '  background: #dbeafe; border-left-color: #07467c;',
+      '}',
+      '',
+      '.ws-card {',
+      '  border: 1px solid #d0d7de; border-radius: 6px;',
+      '  margin: 6px 0; padding: 8px 10px;',
+      '  page-break-inside: avoid; background: #fff;',
+      '}',
+      '.ws-card--header-only { padding: 6px 10px; }',
+      '',
+      '.ws-header {',
+      '  display: flex; flex-wrap: wrap; justify-content: space-between;',
+      '  align-items: baseline; gap: 12px;',
+      '}',
+      '.ws-identity {',
+      '  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;',
+      '  min-width: 0; flex: 1 1 auto;',
+      '}',
+      '.ws-label {',
+      '  font-size: 13px; font-weight: 700; color: #07467c;',
+      '}',
+      '.ws-sep { color: #94a3b8; }',
+      '.ws-product {',
+      '  font-size: 12px; font-weight: 500; color: #374151;',
+      '}',
+      '.ws-warn {',
+      '  font-size: 10px; font-weight: 700; color: #b45309;',
+      '  background: #fef3c7; border-radius: 999px;',
+      '  padding: 1px 7px; margin-left: 4px;',
+      '}',
+      '',
+      '.ws-summary-fields {',
+      '  display: flex; flex-wrap: wrap; gap: 4px 14px;',
+      '  flex: 0 1 auto; max-width: 60%;',
+      '}',
+      '.ws-sum-field {',
+      '  display: inline-flex; gap: 4px; align-items: baseline;',
+      '  font-size: 10.5px;',
+      '}',
+      '.ws-sum-label {',
+      '  font-weight: 600; color: #6b7280; text-transform: uppercase;',
+      '  font-size: 9px; letter-spacing: 0.3px;',
+      '}',
+      '.ws-sum-value {',
+      '  color: #111827; font-weight: 500;',
+      '  white-space: pre-wrap;',
+      '}',
+      '',
+      '.ws-detail {',
+      '  display: grid; grid-template-columns: 1fr 1fr;',
+      '  column-gap: 18px; row-gap: 3px;',
+      '  margin-top: 8px; padding-top: 6px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '}',
+      '.ws-detail-field {',
+      '  display: flex; gap: 6px; align-items: baseline;',
+      '  font-size: 10.5px; padding: 1px 0;',
+      '}',
+      '.ws-detail-label {',
+      '  font-weight: 600; color: #07467c;',
+      '  min-width: 95px; flex: 0 0 auto;',
+      '  white-space: pre-line;',
+      '}',
+      '.ws-detail-value {',
+      '  color: #111827; flex: 1 1 auto;',
+      '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '',
+      '.ws-photos {',
+      '  display: flex; flex-wrap: wrap; gap: 6px;',
+      '  margin-top: 8px; padding-top: 6px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '}',
+      '.ws-photo {',
+      '  margin: 0; width: 110px;',
+      '  border: 1px solid #d0d7de; border-radius: 4px;',
+      '  padding: 2px; text-align: center; background: #f8fafc;',
+      '}',
+      '.ws-photo img {',
+      '  width: 100%; height: 80px; object-fit: cover; display: block;',
+      '  border-radius: 2px;',
+      '}',
+      '.ws-photo figcaption {',
+      '  font-size: 8px; color: #6b7280; margin-top: 2px;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}'
+    ].join('\n');
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // ACTIONS
+  // ══════════════════════════════════════════════════════════════
+
+  function openPreview(htmlStr) {
+    var win = window.open('', '_blank');
+    if (!win) {
+      alert('Popup blocked — please allow popups for this site and try again.');
+      return;
+    }
+    win.document.write(htmlStr);
+    win.document.close();
+    setTimeout(function () { try { win.print(); } catch (e) {} }, 600);
+  }
+
+  function postToWebhook(data) {
+    if (typeof $ === 'undefined') return;
+    $.ajax({
+      url: WEBHOOK_URL,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      crossDomain: true
+    });
+  }
+
+  function preview(viewId) {
+    var payload = scrape(viewId);
+    if (!payload.rows.length) {
+      alert('No survey worksheet data found on this page.');
+      return null;
+    }
+    var htmlStr = buildHtml(payload);
+    openPreview(htmlStr);
+    return { payload: payload, html: htmlStr };
+  }
+
+  function sendToWebhook(viewId) {
+    var payload = scrape(viewId);
+    if (!payload.rows.length) return null;
+    var htmlStr = buildHtml(payload);
+    var wire = {
+      viewId: payload.viewId,
+      title: payload.title,
+      html: htmlStr,
+      rowCount: payload.rows.length
+    };
+    postToWebhook(wire);
+    return wire;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // PUBLIC API
+  // ══════════════════════════════════════════════════════════════
+
+  window.SCW = window.SCW || {};
+  window.SCW.surveyWorksheetPdf = {
+    scrape: scrape,
+    buildHtml: buildHtml,
+    preview: preview,
+    generate: preview,
+    sendToWebhook: sendToWebhook
+  };
+})();
 /*** FEATURE: Default Sort Override ********************************************
  *
  * Sets a default sort on specified Knack views the first time they render in

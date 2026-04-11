@@ -64,6 +64,7 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/survey-worksheet-pdf-export.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/grid-direct-edit.js \
