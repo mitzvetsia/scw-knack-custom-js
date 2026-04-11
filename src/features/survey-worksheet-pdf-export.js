@@ -244,7 +244,10 @@
     left: [
       // Mounting Hardware is reference data — only show if populated.
       { key: 'field_2463', label: 'Mounting Hardware', kind: 'text', onlyIfValue: true },
-      { key: 'field_2455', label: 'Mounting Height',   kind: 'fill' },
+      // Mounting Height is always printed BLANK — checkboxes for each of
+      // the multi-select options, regardless of what's currently saved.
+      { key: 'field_2455', label: 'Mounting Height',   kind: 'choices',
+        options: ["Under 16'", "16' - 24'", "Over 24'"] },
       { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
       { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill' }
     ],
@@ -321,7 +324,17 @@
       h.push('<div class="ws-detail-field ws-detail-field--' + spec.kind + '">');
       h.push('<span class="ws-detail-label">' + esc(spec.label) + '</span>');
 
-      if (spec.kind === 'yesno') {
+      if (spec.kind === 'choices') {
+        // Always-blank checkbox row (options from spec.options)
+        h.push('<span class="ws-detail-value ws-choices">');
+        var opts = spec.options || [];
+        for (var oi = 0; oi < opts.length; oi++) {
+          h.push('<span class="ws-choice">');
+          h.push('<span class="ws-box">\u2610</span> ' + esc(opts[oi]));
+          h.push('</span>');
+        }
+        h.push('</span>');
+      } else if (spec.kind === 'yesno') {
         var v = value.toLowerCase();
         var yesOn = v === 'yes' || v === 'true';
         var noOn  = v === 'no'  || v === 'false';
@@ -362,8 +375,14 @@
       h.push('<div class="ws-summary-fields">');
       for (var s = 0; s < card.summaryFields.length; s++) {
         var sf = card.summaryFields[s];
+        // Rename "Survey Notes" → "Other Notes" when populated (only
+        // populated summary fields make it into this array).
+        var sfLabel = sf.label;
+        if (sfLabel && sfLabel.toLowerCase().replace(/\s+/g, ' ').trim() === 'survey notes') {
+          sfLabel = 'Other Notes';
+        }
         h.push('<div class="ws-sum-field">');
-        if (sf.label) h.push('<span class="ws-sum-label">' + esc(sf.label) + '</span>');
+        if (sfLabel) h.push('<span class="ws-sum-label">' + esc(sfLabel) + '</span>');
         h.push('<span class="ws-sum-value">' + esc(sf.value) + '</span>');
         h.push('</div>');
       }
@@ -422,14 +441,14 @@
 
   function getCss() {
     return [
-      '@page { size: letter; margin: 0.4in 0.45in; }',
+      '@page { size: letter; margin: 0.2in 0.225in; }',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
       'body {',
       '  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
       '  color: #1f2937; font-size: 11px; line-height: 1.4;',
-      '  margin: 0; padding: 16px;',
+      '  margin: 0; padding: 8px;',
       '}',
       '.doc-title {',
       '  font-size: 20px; font-weight: 800; color: #07467c;',
@@ -536,6 +555,13 @@
       '  border-bottom: 1px solid #4b5563;',
       '  min-height: 16px; padding-bottom: 1px;',
       '}',
+      '',
+      '/* Multi-option checkbox row (e.g. Mounting Height) */',
+      '.ws-choices {',
+      '  display: inline-flex; flex-wrap: wrap; gap: 12px;',
+      '  align-items: baseline; font-size: 11px;',
+      '}',
+      '.ws-choice { white-space: nowrap; }',
       '',
       '/* Yes / No checkbox pair */',
       '.ws-yesno {',
