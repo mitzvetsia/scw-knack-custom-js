@@ -64,6 +64,7 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/silent-poll-view-3505.js \
   src/features/grid-direct-edit.js \
   src/features/dynamic-cell-colors.js \
   src/features/revenue-tier-progress.js \

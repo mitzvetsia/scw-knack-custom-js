@@ -309,6 +309,7 @@
           selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
                               linkField: 'field_2360',
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+          surveyNotes:      { key: 'field_2412', type: 'readOnly', label: 'Survey Notes' },
           subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
@@ -316,7 +317,7 @@
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid', 'subBidLock']
+          right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
         },
         recordLockField: 'field_2634',
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
@@ -2901,8 +2902,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * PUT response.  Updates readOnly summary fields, directEdit inputs
    * & textareas, toggle chits, and detail-panel cells.
    */
-  function patchCardFromResponse(viewId, recordId, resp) {
+  function patchCardFromResponse(viewId, recordId, resp, opts) {
     if (!resp) return;
+    opts = opts || {};
     var cfg = viewCfgFor(viewId);
     if (!cfg) return;
 
@@ -3002,6 +3004,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var ii = 0; ii < inputs.length; ii++) {
           var inp = inputs[ii];
           if (inp.tagName === 'INPUT' || inp.tagName === 'TEXTAREA') {
+            // Silent polls: never clobber a field the user is actively editing.
+            if (opts.skipFocused && document.activeElement === inp) continue;
             inp.value = txt;
             inp._scwPrev = txt;
             refreshInputConditionalColor(inp);
@@ -5754,7 +5758,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           transformView(viewCfg);
         }
       });
-    }
+    },
+    /** Silent in-place patch of a single worksheet card.
+     *  opts.skipFocused — don't clobber inputs that currently have focus.
+     *  Used by silent-poll-view-3505 to reflect webhook-driven record
+     *  updates without re-rendering the view. */
+    patchCard: patchCardFromResponse
   };
 })();
 // ============================================================
