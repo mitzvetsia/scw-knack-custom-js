@@ -373,6 +373,9 @@
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
+        // Extra <th> columns to expose as sortable in the thead (without
+        // touching the summary row). Keys are raw Knack field keys.
+        extraSortFields: ['field_1949'],
         detailLayout: {
           left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
           right: ['connectedDevice', 'mountingHardware', 'laborDescription']
@@ -5022,6 +5025,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
         desiredFields.push(_qtyDesc.key);
         if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+      }
+
+      // Append any explicit extra sort columns requested by the view config.
+      // These are raw field keys that get a visible <th> (and Knack's sort
+      // anchor) without being part of the summary row layout.
+      var _extraSorts = viewCfg.extraSortFields || [];
+      for (var xi = 0; xi < _extraSorts.length; xi++) {
+        var _xk = _extraSorts[xi];
+        if (_xk && desiredFields.indexOf(_xk) === -1) desiredFields.push(_xk);
       }
 
       // Index <th> elements by field key
