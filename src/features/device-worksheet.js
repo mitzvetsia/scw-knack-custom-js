@@ -368,14 +368,15 @@
           customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
           customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
           appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_2269', type: 'readOnly' },
           connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
         detailLayout: {
-          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'connectedDevice', 'mountingHardware'],
-          right: ['laborDescription']
+          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total', 'mountingHardware', 'laborDescription'],
+          right: ['connectedDevice']
         },
         bucketField: 'field_2219',
         bucketRules: {
@@ -429,8 +430,8 @@
           },
           summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
           detailLayout: {
-            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
-            right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
+            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'mountingHardware', 'laborDescription'],
+            right:  ['connectedDevice', 'dropLength']
           }
         }
       },
@@ -464,8 +465,8 @@
         },
         summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
         detailLayout: {
-          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total'],
-          right:  ['connectedDevice', 'mountingHardware', 'dropLength', 'laborDescription']
+          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'mountingHardware', 'laborDescription'],
+          right:  ['connectedDevice', 'dropLength']
         }
       },
       {
