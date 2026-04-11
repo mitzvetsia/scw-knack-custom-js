@@ -26551,13 +26551,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ══════════════════════════════════════════════════════════════
 
   var PDF_DETAIL_LAYOUT = {
+    // Full-width context rows rendered above the grid. Each is shown
+    // only when the field actually has a value on this card.
+    context: [
+      { key: 'field_2409', label: 'Labor Description', kind: 'text' },
+      { key: 'field_2418', label: 'SCW Notes',         kind: 'text' }
+    ],
     left: [
-      { key: 'field_2463', label: 'Mounting Hardware', kind: 'text' },
+      // Mounting Hardware is reference data — only show if populated.
+      { key: 'field_2463', label: 'Mounting Hardware', kind: 'text', onlyIfValue: true },
+      { key: 'field_2455', label: 'Mounting Height',   kind: 'fill' },
       { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
       { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill' }
     ],
     right: [
       { key: 'field_2370', label: 'Existing Cabling',  kind: 'yesno' },
+      { key: 'field_2372', label: 'Exterior',          kind: 'yesno' },
       { key: 'field_2371', label: 'Plenum',            kind: 'yesno' }
     ]
   };
@@ -26598,6 +26607,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return '<div class="' + cls + '">' + esc(row.label) + '</div>';
   }
 
+  function renderContextRows(card, specs) {
+    var h = [];
+    for (var i = 0; i < specs.length; i++) {
+      var spec = specs[i];
+      if (!(spec.key in card.detailValues)) continue;
+      var value = card.detailValues[spec.key] || '';
+      if (!value) continue; // context rows are always onlyIfValue
+      h.push('<div class="ws-context-row">');
+      h.push('<span class="ws-context-label">' + esc(spec.label) + '</span>');
+      h.push('<span class="ws-context-value">' + esc(value) + '</span>');
+      h.push('</div>');
+    }
+    return h.join('');
+  }
+
   function renderDetailColumn(card, specs) {
     var h = [];
     for (var i = 0; i < specs.length; i++) {
@@ -26606,6 +26630,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // (Some buckets — e.g. subcontractor override — use a narrower set.)
       if (!(spec.key in card.detailValues)) continue;
       var value = card.detailValues[spec.key] || '';
+      // Fields flagged onlyIfValue are hidden when blank — used for
+      // reference-only data that shouldn't show a blank line.
+      if (spec.onlyIfValue && !value) continue;
 
       h.push('<div class="ws-detail-field ws-detail-field--' + spec.kind + '">');
       h.push('<span class="ws-detail-label">' + esc(spec.label) + '</span>');
@@ -26659,6 +26686,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       h.push('</div>');
     }
     h.push('</header>');
+
+    // ── Full-width context rows (labor desc, scw notes) ──
+    if (card.showDetail && PDF_DETAIL_LAYOUT.context) {
+      var ctxHtml = renderContextRows(card, PDF_DETAIL_LAYOUT.context);
+      if (ctxHtml) {
+        h.push('<div class="ws-context">');
+        h.push(ctxHtml);
+        h.push('</div>');
+      }
+    }
 
     // ── Detail grid (static left/right layout + fillable blanks) ──
     if (card.showDetail) {
@@ -26769,6 +26806,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.ws-sum-value {',
       '  color: #111827; font-weight: 500;',
       '  white-space: pre-wrap;',
+      '}',
+      '',
+      '.ws-context {',
+      '  margin-top: 6px; padding-top: 5px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '  display: flex; flex-direction: column; gap: 2px;',
+      '}',
+      '.ws-context-row {',
+      '  display: flex; gap: 8px; align-items: baseline;',
+      '  font-size: 10.5px;',
+      '}',
+      '.ws-context-label {',
+      '  font-weight: 600; color: #07467c;',
+      '  min-width: 110px; flex: 0 0 110px;',
+      '}',
+      '.ws-context-value {',
+      '  color: #111827; flex: 1 1 auto;',
+      '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '',
       '.ws-detail {',
