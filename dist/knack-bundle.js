@@ -12150,6 +12150,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3575: { defaultOpen: true },
     view_3586: { defaultOpen: true },
     view_3608: { defaultOpen: true },
+    view_3800: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -17706,7 +17707,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617', 'view_3800'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -20795,6 +20796,86 @@ $(".kn-navigation-bar").hide();
         }
       },
       {
+        // ── Field Tech Survey Worksheet ──
+        // view_3800 is the on-site survey entry worksheet. Same general
+        // UX as view_3596 (photoAlwaysVisible, bucket-driven row variants,
+        // synthetic services/assumptions groups) but field keys come from
+        // the Survey Line Item schema (field_23XX) and most fields are
+        // directEdit so field techs can capture data from the job site.
+        viewId: 'view_3800',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px', detailGrid: '455px 1fr' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        qtyBadgeField: 'field_2399',
+        bucketField: 'field_2366',
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_2365', type: 'readOnly',    summary: true },
+          product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
+          surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2370', type: 'toggleChit',  summary: true },
+          warningCount:     { key: 'field_2454', type: 'warningChit' },
+
+          // ── Detail panel ──
+          mounting:         { key: 'field_2463', type: 'readOnly' },
+          connections:      { key: 'field_2381', type: 'readOnly' },
+          scwNotes:         { key: 'field_2418', type: 'readOnly' },
+          exterior:         { key: 'field_2372', type: 'chipStack' },
+          plenum:           { key: 'field_2371', type: 'readOnly' },
+          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
+          dropLength:       { key: 'field_2367', type: 'directEdit' },
+          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
+        },
+        summaryLayout: ['surveyNotes', 'existingCabling'],
+        detailLayout: {
+          left:  ['mounting', 'scwNotes'],
+          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet']
+        },
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {           // Other Services
+            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
+            label: 'SERVICE',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {           // Assumptions
+            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ],
+        // When bucket is NOT cameras/readers (networking, other equip, etc.),
+        // hide survey-specific mounting/drop/conduit fields that don't apply
+        // and keep the row compact.
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          fields: {
+            label:            { key: 'field_2365', type: 'readOnly',    summary: true },
+            product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
+            surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
+            connections:      { key: 'field_2380', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
+            warningCount:     { key: 'field_2454', type: 'warningChit' },
+            mounting:         { key: 'field_2463', type: 'readOnly' },
+            scwNotes:         { key: 'field_2418', type: 'readOnly',    notes: true }
+          },
+          summaryLayout: ['surveyNotes', 'connections'],
+          detailLayout: {
+            left:  ['scwNotes'],
+            right: ['mounting']
+          }
+        }
+      },
+      {
         viewId: 'view_3608',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
@@ -22320,6 +22401,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   cursor: default;
   color: inherit;
   text-decoration: none;
+}
+
+/* ── view_3800: summary border on top, not bottom (field tech survey worksheet) ── */
+#view_3800 .${P}-summary {
+  border-bottom: none;
+  border-top: 1px solid #e5e7eb;
+}
+#view_3800 .${P}-sum-group--fill .${P}-sum-label {
+  display: none;
+}
+#view_3800 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
+  display: block;
+}
+#view_3800 .${P}-bucket-override .${P}-identity {
+  gap: 0;
+}
+#view_3800 .${P}-bucket-override .${P}-sum-sep {
+  display: none !important;
+}
+#view_3800 .${P}-bucket-override td.${P}-sum-field-ro {
+  padding-left: 0 !important;
+}
+#view_3800 .scw-inline-photo-label {
+  display: none;
 }
 
 /* ── view_3608: summary border on top, not bottom ── */
