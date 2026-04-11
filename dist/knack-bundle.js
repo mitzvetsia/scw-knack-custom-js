@@ -26341,7 +26341,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   'use strict';
 
   var DEFAULT_VIEW_ID = 'view_3800';
-  var WEBHOOK_URL     = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
+  var WEBHOOK_URL     = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
+  var FORM_VIEW_ID    = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
 
   // ── shared helpers ───────────────────────────────────────────────
 
@@ -26817,6 +26818,62 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     postToWebhook(wire);
     return wire;
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // FORM SUBMIT TRIGGER
+  // ══════════════════════════════════════════════════════════════
+  // When the "Update SITE SURVEY_request" form (view_3809) is submitted,
+  // scrape view_3800, build the HTML, and POST the payload to the
+  // Make.com webhook. The form's native submit proceeds in parallel;
+  // the webhook call is fire-and-forget.
+
+  function handleFormSubmit() {
+    var payload = scrape(DEFAULT_VIEW_ID);
+    if (!payload.rows.length) {
+      console.log('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
+      return;
+    }
+    var htmlStr = buildHtml(payload);
+
+    // Pull the record ID out of the form's hidden input
+    var recordId = '';
+    var idInput = document.querySelector('#' + FORM_VIEW_ID + ' input[name="id"]');
+    if (idInput) recordId = idInput.value || '';
+
+    var wire = {
+      viewId: payload.viewId,
+      formViewId: FORM_VIEW_ID,
+      recordId: recordId,
+      title: payload.title,
+      rowCount: payload.rows.length,
+      html: htmlStr
+    };
+
+    console.log('[SCW survey-pdf] posting to webhook', {
+      recordId: recordId,
+      rowCount: wire.rowCount
+    });
+    postToWebhook(wire);
+  }
+
+  function setupFormSubmitTrigger() {
+    if (typeof $ === 'undefined') return;
+    var ns = '.scwSurveyPdf';
+
+    $(document).on('knack-view-render.' + FORM_VIEW_ID, function () {
+      var $form = $('#' + FORM_VIEW_ID + ' form');
+      if (!$form.length) return;
+      $form.off('submit' + ns).on('submit' + ns, function () {
+        try {
+          handleFormSubmit();
+        } catch (e) {
+          console.warn('[SCW survey-pdf] submit handler failed', e);
+        }
+      });
+    });
+  }
+
+  setupFormSubmitTrigger();
 
   // ══════════════════════════════════════════════════════════════
   // PUBLIC API
