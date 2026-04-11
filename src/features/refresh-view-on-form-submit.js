@@ -6,7 +6,7 @@
   var TARGET_VIEW = 'view_3418';
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   // Source grid views whose data feeds the totals panel
-  var SOURCE_VIEWS = ['view_3586', 'view_3588', 'view_3604'];
+  var SOURCE_VIEWS = ['view_3586', 'view_3604'];
   var NS = '.scwRefreshTarget';
   var OVERLAY_ID = 'scw-totals-refresh-overlay';
 
@@ -178,7 +178,7 @@
   // new records appear or the timeout expires.
 
   var DTO_FORM = 'view_3748';
-  var DTO_GRIDS = ['view_3588', 'view_3586'];
+  var DTO_GRIDS = ['view_3586'];
   var DTO_POLL_MS = 4000;       // poll every 4 s
   var DTO_TIMEOUT_MS = 60000;   // stop after 60 s
   var DTO_NS = '.scwDtoPoll';

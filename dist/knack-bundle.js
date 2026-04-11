@@ -1293,7 +1293,7 @@ window.SCW = window.SCW || {};
   }
 
   // ── Frontend calculation config ──
-  var EQUIPMENT_VIEWS = ['view_3586', 'view_3588'];   // device line-item grids
+  var EQUIPMENT_VIEWS = ['view_3586'];                 // device line-item grids
   var HARDWARE_VIEWS  = ['view_3604'];                 // mounting hardware grid
   var ALL_VIEWS       = EQUIPMENT_VIEWS.concat(HARDWARE_VIEWS);
   var LUMP_DISCOUNT_FIELD = 'field_2290';              // additional lump sum discount (view_3490 form)
@@ -12131,7 +12131,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
     view_3586: { defaultOpen: true },
-    view_3588: { defaultOpen: true },
     view_3608: { defaultOpen: true },
   };
 
@@ -16300,7 +16299,7 @@ $(".kn-navigation-bar").hide();
   var TARGET_VIEW = 'view_3418';
   var FORM_VIEWS = ['view_3492', 'view_3490'];
   // Source grid views whose data feeds the totals panel
-  var SOURCE_VIEWS = ['view_3586', 'view_3588', 'view_3604'];
+  var SOURCE_VIEWS = ['view_3586', 'view_3604'];
   var NS = '.scwRefreshTarget';
   var OVERLAY_ID = 'scw-totals-refresh-overlay';
 
@@ -16472,7 +16471,7 @@ $(".kn-navigation-bar").hide();
   // new records appear or the timeout expires.
 
   var DTO_FORM = 'view_3748';
-  var DTO_GRIDS = ['view_3588', 'view_3586'];
+  var DTO_GRIDS = ['view_3586'];
   var DTO_POLL_MS = 4000;       // poll every 4 s
   var DTO_TIMEOUT_MS = 60000;   // stop after 60 s
   var DTO_NS = '.scwDtoPoll';
@@ -17689,7 +17688,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3588', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -17720,7 +17719,6 @@ $(".kn-navigation-bar").hide();
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
-    'view_3588': 'add-photo-to-sow-line-item2',
     'view_3596': 'add-photo-to-sow-line-item3',
     'view_3608': 'add-photo-to-sow-line-item2',
     'view_3617': 'add-photo-to-mdf-idf4'
@@ -18107,15 +18105,7 @@ $(".kn-navigation-bar").hide();
       '#view_3586 th.field_2446,',
       '#view_3586 td.field_2446,',
       '#view_3586 th.field_2447,',
-      '#view_3586 td.field_2447,',
-      '#view_3588 th.field_114,',
-      '#view_3588 td.field_114,',
-      '#view_3588 th.field_2445,',
-      '#view_3588 td.field_2445,',
-      '#view_3588 th.field_2446,',
-      '#view_3588 td.field_2446,',
-      '#view_3588 th.field_2447,',
-      '#view_3588 td.field_2447 {',
+      '#view_3586 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -18173,7 +18163,7 @@ $(".kn-navigation-bar").hide();
   }
 
   // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3588': true, 'view_3610': true, 'view_3596': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3596': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -19392,16 +19382,6 @@ $(".kn-navigation-bar").hide();
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
-        itemSlug: 'edit-accessory-line-item2',
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
-      },
-      {
-        parentViewId: 'view_3588',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item2',
-        editSlug: 'add-photo-to-sow-line-item2',
         itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
@@ -20632,7 +20612,7 @@ $(".kn-navigation-bar").hide();
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ],
-        // ── Override: cameras/readers rows use view_3588-style config ──
+        // ── Override: cameras/readers rows use a dedicated field set ──
         bucketOverride: {
           overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
           fields: {
@@ -20664,40 +20644,6 @@ $(".kn-navigation-bar").hide();
             left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
             right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
           }
-        }
-      },
-      {
-        viewId: 'view_3588',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
-        stackedSummary: false,
-        fields: {
-          // ── Summary row ──
-          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
-          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
-          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
-
-          // ── Detail panel – left ──
-          retailPrice:      { key: 'field_1960', type: 'readOnly' },
-          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_2269', type: 'readOnly' },
-          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
-          dropNumber:       { key: 'field_1951', type: 'directEdit' },
-
-          // ── Detail panel – right ──
-          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
-          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
-        },
-        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
-        detailLayout: {
-          left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
-          right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
         }
       },
       {
