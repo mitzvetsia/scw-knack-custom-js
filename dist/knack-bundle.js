@@ -1072,6 +1072,15 @@ window.SCW = window.SCW || {};
       display: none !important;
     }
 
+    /* Hide KTL filter controls globally, except on scene_1085 and scene_190 */
+    .filterCtrlDiv {
+      display: none !important;
+    }
+    #kn-scene_1085 .filterCtrlDiv,
+    #kn-scene_190 .filterCtrlDiv {
+      display: flex !important;
+    }
+
     /* Hide view_3770 visually but keep it in the DOM */
     #view_3770 {
       position: absolute !important;
@@ -20594,6 +20603,22 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
+        // Explicit thead column order. Raw field keys, left-to-right.
+        // Overrides the usual label/summaryLayout/quantity auto-build.
+        theadOrder: [
+          'field_1950', // Label
+          'field_1949', // Product
+          'field_1953', // SCW Notes
+          'field_2269'  // Total
+        ],
+        // Client-side row sort — device-worksheet always re-sorts rows at
+        // render time, so this dictates the visible order regardless of
+        // any server-side sort. field_2240 (drop prefix) is a text field
+        // with natural numeric compare; field_1951 (drop number) is numeric.
+        rowSort: [
+          { field: 'field_2240', order: 'asc', type: 'text'   },
+          { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
         detailLayout: {
           left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
           right: ['connectedDevice', 'mountingHardware', 'laborDescription']
@@ -20653,6 +20678,56 @@ $(".kn-navigation-bar").hide();
             left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
             right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
           }
+        }
+      },
+      {
+        // ── view_3450 — drops/cameras device worksheet (mirrors the
+        //    cameras/readers shape from view_3586's bucketOverride). ──
+        viewId: 'view_3450',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel – left ──
+          retailPrice:      { key: 'field_1960', type: 'readOnly' },
+          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_2269', type: 'readOnly' },
+          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
+          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+
+          // ── Detail panel – right ──
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
+        },
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+        // Explicit thead column order. Raw field keys, left-to-right.
+        theadOrder: [
+          'field_1950', // Label
+          'field_1953', // SCW Notes
+          'field_2461', // Existing cabling
+          'field_1984', // Exterior
+          'field_2269'  // Total
+        ],
+        // Client-side row sort. Drop prefix (text, natural compare) then
+        // drop number (numeric). Missing values trail.
+        rowSort: [
+          { field: 'field_2240', order: 'asc', type: 'text'   },
+          { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
+        detailLayout: {
+          left:  ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
+          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
         }
       },
       {
@@ -25226,23 +25301,55 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var desiredFields = [];
       var thLabels = {};   // field_key → display label
 
-      var _labelDesc = fieldDesc(viewCfg, 'label');
-      if (_labelDesc) desiredFields.push(_labelDesc.key);
+      // Explicit thead override: if the view config provides theadOrder,
+      // that array (of raw field keys) IS the thead column order, and the
+      // usual label/summaryLayout/quantity/extraSortFields logic is skipped.
+      var _theadOrder = viewCfg.theadOrder || null;
+      if (_theadOrder && _theadOrder.length) {
+        // Build a key → label lookup from every named fieldDesc so
+        // theadOrder entries pick up the same display labels the summary
+        // row uses (e.g. "Total", "SCW Notes").
+        if (viewCfg.fields) {
+          for (var _fn in viewCfg.fields) {
+            if (!viewCfg.fields.hasOwnProperty(_fn)) continue;
+            var _fd = viewCfg.fields[_fn];
+            if (_fd && _fd.key && _fd.label && !thLabels[_fd.key]) {
+              thLabels[_fd.key] = _fd.label;
+            }
+          }
+        }
+        for (var _to = 0; _to < _theadOrder.length; _to++) {
+          var _tk = _theadOrder[_to];
+          if (_tk && desiredFields.indexOf(_tk) === -1) desiredFields.push(_tk);
+        }
+      } else {
+        var _labelDesc = fieldDesc(viewCfg, 'label');
+        if (_labelDesc) desiredFields.push(_labelDesc.key);
 
-      var _summaryLayout = viewCfg.summaryLayout || [];
-      for (var si = 0; si < _summaryLayout.length; si++) {
-        var _name = _summaryLayout[si];
-        var _desc = fieldDesc(viewCfg, _name);
-        if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
-        desiredFields.push(_desc.key);
-        if (_desc.label) thLabels[_desc.key] = _desc.label;
-      }
+        var _summaryLayout = viewCfg.summaryLayout || [];
+        for (var si = 0; si < _summaryLayout.length; si++) {
+          var _name = _summaryLayout[si];
+          var _desc = fieldDesc(viewCfg, _name);
+          if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
+          desiredFields.push(_desc.key);
+          if (_desc.label) thLabels[_desc.key] = _desc.label;
+        }
 
-      // Add quantity if it exists in config but isn't already included
-      var _qtyDesc = fieldDesc(viewCfg, 'quantity');
-      if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
-        desiredFields.push(_qtyDesc.key);
-        if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+        // Add quantity if it exists in config but isn't already included
+        var _qtyDesc = fieldDesc(viewCfg, 'quantity');
+        if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
+          desiredFields.push(_qtyDesc.key);
+          if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+        }
+
+        // Append any explicit extra sort columns requested by the view config.
+        // These are raw field keys that get a visible <th> (and Knack's sort
+        // anchor) without being part of the summary row layout.
+        var _extraSorts = viewCfg.extraSortFields || [];
+        for (var xi = 0; xi < _extraSorts.length; xi++) {
+          var _xk = _extraSorts[xi];
+          if (_xk && desiredFields.indexOf(_xk) === -1) desiredFields.push(_xk);
+        }
       }
 
       // Index <th> elements by field key
@@ -25403,24 +25510,77 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
-    // ── Sort eligible rows by field_2218 (ascending), then field_1960 (descending) ──
-    eligible.sort(function (a, b) {
-      var tdA = a.tr.querySelector('td.field_2218');
-      var tdB = b.tr.querySelector('td.field_2218');
-      var vA = tdA ? parseFloat((tdA.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
-      var vB = tdB ? parseFloat((tdB.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
-      if (isNaN(vA)) vA = Infinity;
-      if (isNaN(vB)) vB = Infinity;
-      if (vA !== vB) return vA - vB;
+    // ── Sort eligible rows ──
+    // viewCfg.rowSort is an array of { field, order, type } rules applied
+    // in order. type: 'number' | 'text' (default: 'number'). Missing values
+    // always sort last regardless of order. Default keeps the historical
+    // field_2218 asc / field_1960 desc behavior.
+    //
+    // When the user clicks a column header, Knack marks that <th> with
+    // .sorted-asc / .sorted-desc. In that case we defer to Knack's sort
+    // and use the clicked column as the sole rule, otherwise every click
+    // would be visually reset by the hard-coded default here.
+    var rowSortRules;
+    var _sortedTh = thead && thead.querySelector('th.sorted-asc, th.sorted-desc');
+    if (_sortedTh) {
+      var _sFk = null;
+      var _sClasses = _sortedTh.className.split(/\s+/);
+      for (var _sc = 0; _sc < _sClasses.length; _sc++) {
+        var _cc = _sClasses[_sc];
+        if (_cc.indexOf('field_') === 0) {
+          _sFk = _cc.indexOf(':') !== -1 ? _cc.substring(0, _cc.indexOf(':')) : _cc;
+          break;
+        }
+      }
+      var _sOrder = _sortedTh.classList.contains('sorted-desc') ? 'desc' : 'asc';
+      // Guess type: if any td in that column parses as a finite number, treat
+      // as number; else text. Prevents alphabetic sort of dollar amounts.
+      var _sType = 'text';
+      if (_sFk) {
+        var _probe = table.querySelector('tbody td.' + _sFk);
+        if (_probe) {
+          var _raw = (_probe.textContent || '').replace(/[^0-9.\-]/g, '');
+          if (_raw && isFinite(parseFloat(_raw))) _sType = 'number';
+        }
+      }
+      rowSortRules = _sFk ? [{ field: _sFk, order: _sOrder, type: _sType }] : [];
+    } else {
+      rowSortRules = viewCfg.rowSort || [
+        { field: 'field_2218', order: 'asc',  type: 'number' },
+        { field: 'field_1960', order: 'desc', type: 'number' }
+      ];
+    }
 
-      // Tiebreaker: field_1960 descending (highest first)
-      var pA = a.tr.querySelector('td.field_1960');
-      var pB = b.tr.querySelector('td.field_1960');
-      var pVA = pA ? parseFloat((pA.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
-      var pVB = pB ? parseFloat((pB.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
-      if (isNaN(pVA)) pVA = -Infinity;
-      if (isNaN(pVB)) pVB = -Infinity;
-      return pVB - pVA;
+    function _scwCellValue(tr, fieldKey, type) {
+      var td = tr.querySelector('td.' + fieldKey);
+      var text = td ? (td.textContent || '').trim() : '';
+      if (!text) return null;
+      if (type === 'text') return text;
+      // Numeric (default)
+      var n = parseFloat(text.replace(/[^0-9.\-]/g, ''));
+      return isFinite(n) ? n : null;
+    }
+
+    eligible.sort(function (a, b) {
+      for (var si = 0; si < rowSortRules.length; si++) {
+        var rule = rowSortRules[si];
+        var type = rule.type || 'number';
+        var vA = _scwCellValue(a.tr, rule.field, type);
+        var vB = _scwCellValue(b.tr, rule.field, type);
+        var missA = (vA === null);
+        var missB = (vB === null);
+        if (missA && missB) continue;
+        if (missA) return 1;
+        if (missB) return -1;
+        var cmp;
+        if (type === 'text') {
+          cmp = vA.localeCompare(vB, undefined, { numeric: true, sensitivity: 'base' });
+        } else {
+          cmp = vA - vB;
+        }
+        if (cmp !== 0) return rule.order === 'desc' ? -cmp : cmp;
+      }
+      return 0;
     });
 
     // ── PHASE 2: BUILD — construct cards from collected data ──
@@ -26007,6 +26167,96 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 // ============================================================
 // End Device Worksheet
 // ============================================================
+/*** FEATURE: Default Sort Override ********************************************
+ *
+ * Sets a default sort on specified Knack views the first time they render in
+ * a session. After the initial override the feature stays out of the way so
+ * the user can freely click column headers to re-sort.
+ *
+ *   Config shape:
+ *     { viewId: 'view_3586',
+ *       sort: [{ field: 'field_2240', order: 'asc' },
+ *              { field: 'field_1951', order: 'asc' }] }
+ *
+ * Note: device-worksheet views also apply a client-side sort at render time
+ * (see rowSort in device-worksheet.js). This feature only affects the
+ * server-side query; keep the two in sync if you want pagination and display
+ * order to match.
+ *
+ *******************************************************************************/
+(function () {
+  'use strict';
+
+  var NS = '.scwDefaultSort';
+
+  var DEFAULT_SORTS = [
+    {
+      viewId: 'view_3586',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    },
+    {
+      viewId: 'view_3450',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    }
+  ];
+
+  // Track which views we've already applied the default sort for so we don't
+  // fight the user after they click a column header to re-sort.
+  var _applied = {};
+
+  function sortsMatch(current, target) {
+    if (!current) return false;
+    var arr = Array.isArray(current) ? current : [current];
+    if (arr.length !== target.length) return false;
+    for (var i = 0; i < target.length; i++) {
+      if (!arr[i] || arr[i].field !== target[i].field || arr[i].order !== target[i].order) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function applyDefault(cfg) {
+    if (_applied[cfg.viewId]) return;
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[cfg.viewId];
+    if (!view || !view.model) return;
+
+    var modelView = view.model.view;
+    if (!modelView) return;
+
+    var current = (modelView.source && modelView.source.sort) || modelView.sort;
+    if (sortsMatch(current, cfg.sort)) {
+      _applied[cfg.viewId] = true;
+      return;
+    }
+
+    _applied[cfg.viewId] = true;
+
+    var sortArr = cfg.sort.slice();
+    if (modelView.source) modelView.source.sort = sortArr;
+    modelView.sort = sortArr;
+
+    if (typeof view.model.fetch === 'function') {
+      view.model.fetch();
+    }
+  }
+
+  DEFAULT_SORTS.forEach(function (cfg) {
+    $(document)
+      .off('knack-view-render.' + cfg.viewId + NS)
+      .on('knack-view-render.' + cfg.viewId + NS, function () {
+        applyDefault(cfg);
+      });
+  });
+})();
+/*** END FEATURE: Default Sort Override ****************************************/
 /**************************************************************************************************
  * FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505
  *
