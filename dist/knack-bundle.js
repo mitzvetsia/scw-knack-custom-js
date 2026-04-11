@@ -20377,14 +20377,12 @@ $(".kn-navigation-bar").hide();
             mounting:         { key: 'field_2463', type: 'readOnly' },
             connections:      { key: 'field_2380', type: 'readOnly' },
             scwNotes:         { key: 'field_2418', type: 'readOnly' },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
-            exterior:         { key: 'field_2372', type: 'chipStack' },
-            plenum:           { key: 'field_2371', type: 'readOnly' }
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true }
           },
           summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
           detailLayout: {
             left:  ['mounting', 'scwNotes'],
-            right: ['connections', 'exterior', 'surveyNotes']
+            right: ['connections', 'surveyNotes']
           }
         },
         bucketRules: {
