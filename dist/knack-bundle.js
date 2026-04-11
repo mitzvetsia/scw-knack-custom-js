@@ -20603,9 +20603,14 @@ $(".kn-navigation-bar").hide();
           laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
         },
         summaryLayout: ['scwNotes', 'lineItemTotal'],
-        // Extra <th> columns to expose as sortable in the thead (without
-        // touching the summary row). Keys are raw Knack field keys.
-        extraSortFields: ['field_1950', 'field_1949'],
+        // Explicit thead column order. Raw field keys, left-to-right.
+        // Overrides the usual label/summaryLayout/quantity auto-build.
+        theadOrder: [
+          'field_1950', // Label
+          'field_1949', // Product
+          'field_1953', // SCW Notes
+          'field_2269'  // Total
+        ],
         // Client-side row sort — device-worksheet always re-sorts rows at
         // render time, so this dictates the visible order regardless of
         // any server-side sort. field_2240 (drop prefix) is a text field
@@ -25246,32 +25251,55 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var desiredFields = [];
       var thLabels = {};   // field_key → display label
 
-      var _labelDesc = fieldDesc(viewCfg, 'label');
-      if (_labelDesc) desiredFields.push(_labelDesc.key);
+      // Explicit thead override: if the view config provides theadOrder,
+      // that array (of raw field keys) IS the thead column order, and the
+      // usual label/summaryLayout/quantity/extraSortFields logic is skipped.
+      var _theadOrder = viewCfg.theadOrder || null;
+      if (_theadOrder && _theadOrder.length) {
+        // Build a key → label lookup from every named fieldDesc so
+        // theadOrder entries pick up the same display labels the summary
+        // row uses (e.g. "Total", "SCW Notes").
+        if (viewCfg.fields) {
+          for (var _fn in viewCfg.fields) {
+            if (!viewCfg.fields.hasOwnProperty(_fn)) continue;
+            var _fd = viewCfg.fields[_fn];
+            if (_fd && _fd.key && _fd.label && !thLabels[_fd.key]) {
+              thLabels[_fd.key] = _fd.label;
+            }
+          }
+        }
+        for (var _to = 0; _to < _theadOrder.length; _to++) {
+          var _tk = _theadOrder[_to];
+          if (_tk && desiredFields.indexOf(_tk) === -1) desiredFields.push(_tk);
+        }
+      } else {
+        var _labelDesc = fieldDesc(viewCfg, 'label');
+        if (_labelDesc) desiredFields.push(_labelDesc.key);
 
-      var _summaryLayout = viewCfg.summaryLayout || [];
-      for (var si = 0; si < _summaryLayout.length; si++) {
-        var _name = _summaryLayout[si];
-        var _desc = fieldDesc(viewCfg, _name);
-        if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
-        desiredFields.push(_desc.key);
-        if (_desc.label) thLabels[_desc.key] = _desc.label;
-      }
+        var _summaryLayout = viewCfg.summaryLayout || [];
+        for (var si = 0; si < _summaryLayout.length; si++) {
+          var _name = _summaryLayout[si];
+          var _desc = fieldDesc(viewCfg, _name);
+          if (!_desc || desiredFields.indexOf(_desc.key) !== -1) continue;
+          desiredFields.push(_desc.key);
+          if (_desc.label) thLabels[_desc.key] = _desc.label;
+        }
 
-      // Add quantity if it exists in config but isn't already included
-      var _qtyDesc = fieldDesc(viewCfg, 'quantity');
-      if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
-        desiredFields.push(_qtyDesc.key);
-        if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
-      }
+        // Add quantity if it exists in config but isn't already included
+        var _qtyDesc = fieldDesc(viewCfg, 'quantity');
+        if (_qtyDesc && desiredFields.indexOf(_qtyDesc.key) === -1) {
+          desiredFields.push(_qtyDesc.key);
+          if (_qtyDesc.label) thLabels[_qtyDesc.key] = _qtyDesc.label;
+        }
 
-      // Append any explicit extra sort columns requested by the view config.
-      // These are raw field keys that get a visible <th> (and Knack's sort
-      // anchor) without being part of the summary row layout.
-      var _extraSorts = viewCfg.extraSortFields || [];
-      for (var xi = 0; xi < _extraSorts.length; xi++) {
-        var _xk = _extraSorts[xi];
-        if (_xk && desiredFields.indexOf(_xk) === -1) desiredFields.push(_xk);
+        // Append any explicit extra sort columns requested by the view config.
+        // These are raw field keys that get a visible <th> (and Knack's sort
+        // anchor) without being part of the summary row layout.
+        var _extraSorts = viewCfg.extraSortFields || [];
+        for (var xi = 0; xi < _extraSorts.length; xi++) {
+          var _xk = _extraSorts[xi];
+          if (_xk && desiredFields.indexOf(_xk) === -1) desiredFields.push(_xk);
+        }
       }
 
       // Index <th> elements by field key
