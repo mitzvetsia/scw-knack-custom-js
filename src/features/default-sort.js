@@ -27,6 +27,13 @@
         { field: 'field_2240', order: 'asc' },
         { field: 'field_1951', order: 'asc' }
       ]
+    },
+    {
+      viewId: 'view_3450',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
     }
   ];
 

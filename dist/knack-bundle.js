@@ -20681,6 +20681,56 @@ $(".kn-navigation-bar").hide();
         }
       },
       {
+        // ── view_3450 — drops/cameras device worksheet (mirrors the
+        //    cameras/readers shape from view_3586's bucketOverride). ──
+        viewId: 'view_3450',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
+        stackedSummary: false,
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+          exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
+          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+          // ── Detail panel – left ──
+          retailPrice:      { key: 'field_1960', type: 'readOnly' },
+          discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
+          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
+          total:            { key: 'field_2269', type: 'readOnly' },
+          dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
+          dropNumber:       { key: 'field_1951', type: 'directEdit' },
+
+          // ── Detail panel – right ──
+          connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+          dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
+        },
+        summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
+        // Explicit thead column order. Raw field keys, left-to-right.
+        theadOrder: [
+          'field_1950', // Label
+          'field_1953', // SCW Notes
+          'field_2461', // Existing cabling
+          'field_1984', // Exterior
+          'field_2269'  // Total
+        ],
+        // Client-side row sort. Drop prefix (text, natural compare) then
+        // drop number (numeric). Missing values trail.
+        rowSort: [
+          { field: 'field_2240', order: 'asc', type: 'text'   },
+          { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
+        detailLayout: {
+          left:  ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
+          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
+        }
+      },
+      {
         viewId: 'view_3596',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
@@ -26142,6 +26192,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var DEFAULT_SORTS = [
     {
       viewId: 'view_3586',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    },
+    {
+      viewId: 'view_3450',
       sort: [
         { field: 'field_2240', order: 'asc' },
         { field: 'field_1951', order: 'asc' }
