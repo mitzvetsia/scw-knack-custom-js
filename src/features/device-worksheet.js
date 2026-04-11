@@ -581,7 +581,7 @@
           // ── Summary row ──
           label:            { key: 'field_2365', type: 'readOnly',    summary: true },
           product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
-          surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
+          surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true, rows: 4 },
           connections:      { key: 'field_2381', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
@@ -636,7 +636,7 @@
           fields: {
             // No `label` — hidden for non camera/reader buckets by request.
             product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
+            surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true, rows: 4 },
             connections:      { key: 'field_2380', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
             warningCount:     { key: 'field_2454', type: 'warningChit' },
             mounting:         { key: 'field_2463', type: 'readOnly' },
@@ -2180,16 +2180,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   text-decoration: none;
 }
 
-/* ── view_3800: summary border on top, not bottom (field tech survey worksheet) ── */
+/* ── view_3800: field tech survey worksheet ── */
 #view_3800 .${P}-summary {
   border-bottom: none;
   border-top: 1px solid #e5e7eb;
 }
-#view_3800 .${P}-sum-group--fill .${P}-sum-label {
-  display: none;
-}
-#view_3800 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
-  display: block;
+/* Survey Notes: keep the label visible, and default the textarea to
+   ~4 lines tall. autoGrow still handles content that exceeds that. */
+#view_3800 .${P}-sum-group--fill .${P}-sum-direct-edit textarea.${P}-direct-textarea {
+  min-height: 5.6em;
 }
 #view_3800 .${P}-bucket-override .${P}-identity {
   gap: 0;
@@ -2202,6 +2201,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }
 #view_3800 .scw-inline-photo-label {
   display: none;
+}
+
+/* Detail sections: flex-wrap so specific fields can share a row.
+   Rows default to full-width; the yes/no chip trio and the drop/conduit
+   pair below opt into narrower flex-basis to sit side-by-side. */
+#view_3800 .${P}-section {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 0;
+}
+#view_3800 .${P}-section > .${P}-field {
+  flex: 1 1 100%;
+}
+/* Existing Cabling + Exterior + Plenum on one line */
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2370"],
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2372"],
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2371"] {
+  flex: 1 1 calc(33.33% - 16px);
+  min-width: 150px;
+}
+/* Drop Length + Conduit Feet on one line */
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2367"],
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2368"] {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 180px;
+}
+/* Tighter labels for the paired-row fields so the value gets room */
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2370"] .${P}-field-label,
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2372"] .${P}-field-label,
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2371"] .${P}-field-label,
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2367"] .${P}-field-label,
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2368"] .${P}-field-label {
+  flex: 0 0 auto;
+  width: auto;
+  padding-right: 4px;
 }
 
 /* ── view_3608: summary border on top, not bottom ── */
@@ -4028,7 +4063,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (_knackEditable) {
             td.classList.add(P + '-sum-field');
             td.classList.add(P + '-sum-field--desc');
-            injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: 1 });
+            injectSummaryDirectEdit(td, desc.key, { multiline: !!desc.multiline, rows: desc.rows || 1 });
           } else {
             td.classList.add(P + '-sum-field-ro');
             if (desc.multiline) td.classList.add(P + '-sum-field--desc');
@@ -4485,21 +4520,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var td = findCell(tr, desc.key, desc.columnIndex);
     var label = DETAIL_LABELS[name] || desc.label || name;
 
+    // Tag each appended row with data-scw-field so CSS (and other code)
+    // can target specific fields inside the detail panel — e.g. for
+    // multi-field-per-line layouts in view_3800.
+    function addRow(row) {
+      if (!row) return;
+      if (desc && desc.key) row.setAttribute('data-scw-field', desc.key);
+      section.appendChild(row);
+    }
+
     switch (desc.type) {
       case 'readOnly':
         // Strip inline-edit affordance — this field is read-only
         if (td) {
           td.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
         }
-        var row = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
-        if (row) section.appendChild(row);
+        addRow(buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes }));
         break;
 
       case 'nativeEdit':
         // Preserve Knack's native inline-edit (cell-edit class stays).
         // Used for connection fields that open Knack's modal picker.
-        var neRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
-        if (neRow) section.appendChild(neRow);
+        addRow(buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes }));
         break;
 
       case 'directEdit':
@@ -4508,19 +4550,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var _detailEditable = isCellEditable(td)
           || (desc.alwaysEditable && td && !isCellLocked(td));
         if (!_detailEditable) {
-          var roRow = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes });
-          if (roRow) section.appendChild(roRow);
+          addRow(buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty, notes: !!desc.notes }));
         } else {
           if (desc.skipEmpty && (!td || isCellEmpty(td))) break;
-          var editRow = buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes });
-          if (editRow) section.appendChild(editRow);
+          addRow(buildEditableFieldRow(label, td, desc.key, { notes: !!desc.notes }));
         }
         break;
 
       case 'singleChip':
       case 'multiChip':
-        var chipRow = buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip', { segmented: !!desc.segmented });
-        if (chipRow) section.appendChild(chipRow);
+        addRow(buildRadioChipRow(label, td, desc.key, desc.options || [], desc.type === 'multiChip', { segmented: !!desc.segmented }));
         break;
 
       case 'connectedRecords':
@@ -4529,14 +4568,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           var recordId = getRecordId(tr);
           var crWidget = SCW.connectedRecords.buildWidget(viewId, recordId, desc.key, tr);
           if (crWidget) {
-            section.appendChild(crWidget);
+            addRow(crWidget);
           } else {
-            var crFallback = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty });
-            if (crFallback) section.appendChild(crFallback);
+            addRow(buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty }));
           }
         } else {
-          var crFallback2 = buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty });
-          if (crFallback2) section.appendChild(crFallback2);
+          addRow(buildFieldRow(label, td, { skipEmpty: !!desc.skipEmpty }));
         }
         break;
 
@@ -4658,7 +4695,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
 
           linkRow.appendChild(linkVal);
-          section.appendChild(linkRow);
+          addRow(linkRow);
         }
         break;
 
@@ -4685,10 +4722,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
           td.appendChild(chipsRow);
           chipFieldRow.appendChild(td);
-          section.appendChild(chipFieldRow);
+          addRow(chipFieldRow);
         } else {
-          var fallbackRow = buildFieldRow(label, td);
-          if (fallbackRow) section.appendChild(fallbackRow);
+          addRow(buildFieldRow(label, td));
         }
         break;
     }
