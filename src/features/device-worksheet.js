@@ -586,6 +586,7 @@
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
+          laborDescription: { key: 'field_2409', type: 'readOnly',    label: 'Labor Desc' },
           mounting:         { key: 'field_2463', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           // Yes/No survey flags — rendered as segmented chips so each row shows
@@ -601,7 +602,7 @@
         },
         summaryLayout: ['surveyNotes', 'connections'],
         detailLayout: {
-          left:  ['mounting', 'scwNotes'],
+          left:  ['laborDescription', 'mounting', 'scwNotes'],
           right: ['existingCabling', 'exterior', 'plenum', 'mountingHeight', 'dropLength', 'conduitFeet']
         },
         syntheticGroupsPosition: 'bottom',
@@ -629,8 +630,8 @@
         ],
         // When bucket is NOT cameras/readers (networking, other equip, etc.),
         // hide the Label and the camera-only mounting/drop/conduit fields.
-        // Placement of shared fields (mounting, scwNotes on left; yes/no
-        // chips on right) stays consistent with the main config.
+        // Yes/No survey flags (existing cabling, exterior, plenum) are also
+        // dropped — those questions only apply to cameras/readers.
         bucketOverride: {
           keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
           fields: {
@@ -639,16 +640,14 @@
             surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true, rows: 4 },
             connections:      { key: 'field_2380', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
             warningCount:     { key: 'field_2454', type: 'warningChit' },
+            laborDescription: { key: 'field_2409', type: 'readOnly',    label: 'Labor Desc' },
             mounting:         { key: 'field_2463', type: 'readOnly' },
-            scwNotes:         { key: 'field_2418', type: 'readOnly',    notes: true },
-            existingCabling:  { key: 'field_2370', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Existing Cabling' },
-            exterior:         { key: 'field_2372', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Exterior' },
-            plenum:           { key: 'field_2371', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Plenum' }
+            scwNotes:         { key: 'field_2418', type: 'readOnly',    notes: true }
           },
           summaryLayout: ['surveyNotes', 'connections'],
           detailLayout: {
-            left:  ['mounting', 'scwNotes'],
-            right: ['existingCabling', 'exterior', 'plenum']
+            left:  ['laborDescription', 'mounting', 'scwNotes'],
+            right: []
           }
         }
       },
@@ -2205,7 +2204,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
 /* Detail sections: flex-wrap so specific fields can share a row.
    Rows default to full-width; the yes/no chip trio and the drop/conduit
-   pair below opt into narrower flex-basis to sit side-by-side. */
+   pair below opt into narrower flex-basis to sit side-by-side. All
+   field labels keep the default 100px fixed width so the first column
+   of chips/inputs lines up vertically across every row. */
 #view_3800 .${P}-section {
   display: flex;
   flex-wrap: wrap;
@@ -2220,23 +2221,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2372"],
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2371"] {
   flex: 1 1 calc(33.33% - 16px);
-  min-width: 150px;
+  min-width: 220px;
 }
 /* Drop Length + Conduit Feet on one line */
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2367"],
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2368"] {
   flex: 1 1 calc(50% - 8px);
-  min-width: 180px;
-}
-/* Tighter labels for the paired-row fields so the value gets room */
-#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2370"] .${P}-field-label,
-#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2372"] .${P}-field-label,
-#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2371"] .${P}-field-label,
-#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2367"] .${P}-field-label,
-#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2368"] .${P}-field-label {
-  flex: 0 0 auto;
-  width: auto;
-  padding-right: 4px;
+  min-width: 240px;
 }
 
 /* ── view_3608: summary border on top, not bottom ── */
