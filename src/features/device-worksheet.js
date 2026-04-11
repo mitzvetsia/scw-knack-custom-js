@@ -582,28 +582,32 @@
           label:            { key: 'field_2365', type: 'readOnly',    summary: true },
           product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
           surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2370', type: 'toggleChit',  summary: true },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
           connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
-          exterior:         { key: 'field_2372', type: 'chipStack' },
-          plenum:           { key: 'field_2371', type: 'readOnly' },
+          // Yes/No survey flags — rendered as segmented chips so each row shows
+          // a clear two-button toggle. Unselected = neither button lit, which
+          // signals "needs input" to the field tech and reads the same way in
+          // the eventual PDF export.
+          existingCabling:  { key: 'field_2370', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Existing Cabling' },
+          exterior:         { key: 'field_2372', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Exterior' },
+          plenum:           { key: 'field_2371', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Plenum' },
           mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['surveyNotes', 'existingCabling'],
+        summaryLayout: ['surveyNotes'],
         detailLayout: {
-          left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet']
+          left:  ['mounting', 'connections', 'scwNotes'],
+          right: ['existingCabling', 'exterior', 'plenum', 'mountingHeight', 'dropLength', 'conduitFeet']
         },
         syntheticGroupsPosition: 'bottom',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
+            hideFields: ['field_2379', 'field_2463', 'field_2370', 'field_2372', 'field_2371'],
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
@@ -611,7 +615,7 @@
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
+            hideFields: ['field_2379', 'field_2463', 'field_2370', 'field_2372', 'field_2371'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
@@ -624,23 +628,27 @@
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ],
         // When bucket is NOT cameras/readers (networking, other equip, etc.),
-        // hide survey-specific mounting/drop/conduit fields that don't apply
-        // and keep the row compact.
+        // hide the Label and the camera-only mounting/drop/conduit fields.
+        // Placement of shared fields (mounting, scwNotes on left; yes/no
+        // chips on right) stays consistent with the main config.
         bucketOverride: {
           keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
           fields: {
-            label:            { key: 'field_2365', type: 'readOnly',    summary: true },
+            // No `label` — hidden for non camera/reader buckets by request.
             product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
             surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
             connections:      { key: 'field_2380', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
             warningCount:     { key: 'field_2454', type: 'warningChit' },
             mounting:         { key: 'field_2463', type: 'readOnly' },
-            scwNotes:         { key: 'field_2418', type: 'readOnly',    notes: true }
+            scwNotes:         { key: 'field_2418', type: 'readOnly',    notes: true },
+            existingCabling:  { key: 'field_2370', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Existing Cabling' },
+            exterior:         { key: 'field_2372', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Exterior' },
+            plenum:           { key: 'field_2371', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Plenum' }
           },
           summaryLayout: ['surveyNotes', 'connections'],
           detailLayout: {
-            left:  ['scwNotes'],
-            right: ['mounting']
+            left:  ['mounting', 'scwNotes'],
+            right: ['existingCabling', 'exterior', 'plenum']
           }
         }
       },
