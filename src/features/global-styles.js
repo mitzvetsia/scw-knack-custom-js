@@ -142,6 +142,15 @@
       display: none !important;
     }
 
+    /* Hide KTL filter controls globally, except on scene_1085 and scene_190 */
+    .filterCtrlDiv {
+      display: none !important;
+    }
+    #kn-scene_1085 .filterCtrlDiv,
+    #kn-scene_190 .filterCtrlDiv {
+      display: flex !important;
+    }
+
     /* Hide view_3770 visually but keep it in the DOM */
     #view_3770 {
       position: absolute !important;
