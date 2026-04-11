@@ -582,7 +582,7 @@
           label:            { key: 'field_2365', type: 'readOnly',    summary: true },
           product:          { key: 'field_2379', type: 'readOnly',    summary: true, productStyle: true },
           surveyNotes:      { key: 'field_2412', type: 'directEdit',  summary: true, label: 'Survey Notes', group: 'fill', multiline: true, rows: 4 },
-          connections:      { key: 'field_2381', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2374' },
+          connections:      { key: 'field_2381', type: 'readOnly',    summary: true, label: 'Connected Devices' },
           warningCount:     { key: 'field_2454', type: 'warningChit' },
 
           // ── Detail panel ──
@@ -2210,23 +2210,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 #view_3800 .${P}-section {
   display: flex;
   flex-wrap: wrap;
-  column-gap: 16px;
+  column-gap: 12px;
   row-gap: 0;
 }
 #view_3800 .${P}-section > .${P}-field {
   flex: 1 1 100%;
 }
-/* Existing Cabling + Exterior + Plenum on one line */
+/* Existing Cabling + Exterior + Plenum on one line — each sized to
+   content so the chips sit close together instead of stretching to
+   fill the column. */
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2370"],
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2372"],
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2371"] {
-  flex: 1 1 calc(33.33% - 16px);
-  min-width: 220px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2370"] .${P}-field-value,
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2372"] .${P}-field-value,
+#view_3800 .${P}-section > .${P}-field[data-scw-field="field_2371"] .${P}-field-value {
+  flex: 0 0 auto;
 }
 /* Drop Length + Conduit Feet on one line */
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2367"],
 #view_3800 .${P}-section > .${P}-field[data-scw-field="field_2368"] {
-  flex: 1 1 calc(50% - 8px);
+  flex: 1 1 calc(50% - 6px);
   min-width: 240px;
 }
 
