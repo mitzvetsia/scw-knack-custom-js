@@ -357,7 +357,88 @@
 
   // ======================================================================
   // Deterministic regroup — the main payoff.
+  // ----------------------------------------------------------------------
+  // Plan cache: after we compute a regroup plan, we keep it around for
+  // REPLAY_GRACE_MS so that any subsequent view re-render (either the
+  // Make webhook's child PUTs echoing back, or Knack re-fetching after
+  // its native post-edit cycle) can re-apply the moves. This is the fix
+  // for "items visually snap back to old group after a brief move" — the
+  // DOM-level moves get wiped by Knack's re-render-from-fresh-fetch
+  // (which sees stale server data because the Make webhook / our own
+  // child PUTs haven't landed yet), so we replay them until the server
+  // converges and Knack starts rendering the correct group naturally.
   // ======================================================================
+
+  var REPLAY_GRACE_MS = 6000; // window during which we replay moves on re-render
+  var pendingPlan = null;     // { R_id, rGroupRaw, rGroupId, rIdentifier, added, removed, expiresAt }
+  var planClearTimer = null;
+
+  function clearPendingPlanSoon() {
+    if (planClearTimer) clearTimeout(planClearTimer);
+    planClearTimer = setTimeout(function () {
+      log('plan expired — clearing pendingPlan');
+      pendingPlan = null;
+      planClearTimer = null;
+    }, REPLAY_GRACE_MS);
+  }
+
+  function applyPlanToDom(plan, reason) {
+    if (!plan) return;
+    var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
+    var rWsTr = document.getElementById(plan.R_id);
+    var destHeader = findL1HeaderBefore(rWsTr);
+    log('applyPlanToDom (' + reason + '): R wsTr=' + (!!rWsTr) +
+        ' destHeader=' + (!!destHeader) +
+        ' added=' + plan.added.length + ' removed=' + plan.removed.length);
+
+    // Added children → move into R's L1 group + patch
+    if (destHeader) {
+      for (var a = 0; a < plan.added.length; a++) {
+        var cid = plan.added[a];
+        var wsTr = document.getElementById(cid);
+        if (!wsTr || !wsTr.classList.contains('scw-ws-row')) continue;
+
+        moveRowTriple(wsTr, destHeader);
+
+        syncModelChild(cid, (function (rGroupRaw, rId, rIdentifier) {
+          var p = {};
+          p[GROUPING_FIELD] = rGroupRaw;
+          p[GROUPING_FIELD + '_raw'] = rGroupRaw;
+          p[CONNECTIONS_FIELD] = [{ id: rId, identifier: rIdentifier }];
+          p[CONNECTIONS_FIELD + '_raw'] = [{ id: rId, identifier: rIdentifier }];
+          return p;
+        })(plan.rGroupRaw, plan.R_id, plan.rIdentifier));
+
+        if (typeof patchFn === 'function') {
+          var resp = { id: cid };
+          resp[GROUPING_FIELD] = (plan.rGroupRaw && plan.rGroupRaw[0] && plan.rGroupRaw[0].identifier) || '';
+          resp[GROUPING_FIELD + '_raw'] = plan.rGroupRaw;
+          resp[CONNECTIONS_FIELD] = plan.rIdentifier;
+          resp[CONNECTIONS_FIELD + '_raw'] = [{ id: plan.R_id, identifier: plan.rIdentifier }];
+          try { patchFn(VIEW_ID, cid, resp, { skipFocused: true }); }
+          catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + cid, e); }
+        }
+      }
+    }
+
+    // Removed children → clear field_2381 on the card + model
+    for (var r = 0; r < plan.removed.length; r++) {
+      var rid = plan.removed[r];
+      syncModelChild(rid, (function () {
+        var p = {};
+        p[CONNECTIONS_FIELD] = [];
+        p[CONNECTIONS_FIELD + '_raw'] = [];
+        return p;
+      })());
+      if (typeof patchFn === 'function') {
+        var resp2 = { id: rid };
+        resp2[CONNECTIONS_FIELD] = '';
+        resp2[CONNECTIONS_FIELD + '_raw'] = [];
+        try { patchFn(VIEW_ID, rid, resp2, { skipFocused: true }); }
+        catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + rid, e); }
+      }
+    }
+  }
 
   function applyDeterministicRegroup(R) {
     if (!R || !R.id) {
@@ -399,9 +480,6 @@
     }
 
     // --- 4. Resolve destination group for added children ---------------
-    // R.field_2375_raw isn't always on the event payload — fall back to the
-    // model entry for R (R IS a view_3505 record so it lives in this view's
-    // collection).
     var rGroupRaw = R[GROUPING_FIELD + '_raw'];
     if (!Array.isArray(rGroupRaw) || !rGroupRaw.length) {
       var rAttrs = getModelAttrs(R.id);
@@ -412,81 +490,48 @@
     var rGroupId = (Array.isArray(rGroupRaw) && rGroupRaw[0] && rGroupRaw[0].id) ? rGroupRaw[0].id : null;
     var rIdentifier = sampleIdentifierForParent(R.id);
     log('  R group raw=', rGroupRaw, ' id=' + rGroupId + ' identifier="' + rIdentifier + '"');
-    var patchFn = window.SCW && window.SCW.deviceWorksheet && window.SCW.deviceWorksheet.patchCard;
 
-    // Destination L1 header for added children = R's own current L1 header.
-    // R is a view_3505 record and its card is visible (it's the one the user
-    // just edited), so walking backward from R's wsTr finds the header.
+    // --- 5. Build and cache plan so subsequent re-renders can replay it.
+    var plan = {
+      R_id: R.id,
+      rGroupRaw: rGroupRaw,
+      rGroupId: rGroupId,
+      rIdentifier: rIdentifier,
+      added: added,
+      removed: removed
+    };
+    pendingPlan = plan;
+
+    // --- 6. Check destination header ------------------------------------
     var rWsTr = document.getElementById(R.id);
     var destHeader = findL1HeaderBefore(rWsTr);
     log('  R wsTr found=' + (!!rWsTr) + ' destHeader found=' + (!!destHeader));
 
-    if (added.length) {
-      if (!destHeader) {
-        log('  no destHeader for R — PUT-only + fallbackFetch');
-        // Fire PUTs so the backend eventually converges.
-        added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id)); });
-        removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
-        fallbackFetch('R has no visible L1 header — cannot place added children');
-        return;
-      }
-
-      for (var a = 0; a < added.length; a++) {
-        var cid = added[a];
-        var wsTr = document.getElementById(cid);
-        if (!wsTr || !wsTr.classList.contains('scw-ws-row')) {
-          log('  added child ' + cid + ' not visible in view — PUT only');
-          firePut(cid, buildAddedPut(rGroupId, R.id));
-          continue;
-        }
-
-        log('  + add ' + cid + ' → move into group ' + rGroupId);
-        moveRowTriple(wsTr, destHeader);
-
-        syncModelChild(cid, (function () {
-          var p = {};
-          p[GROUPING_FIELD] = rGroupRaw;
-          p[GROUPING_FIELD + '_raw'] = rGroupRaw;
-          p[CONNECTIONS_FIELD] = [{ id: R.id, identifier: rIdentifier }];
-          p[CONNECTIONS_FIELD + '_raw'] = [{ id: R.id, identifier: rIdentifier }];
-          return p;
-        })());
-
-        if (typeof patchFn === 'function') {
-          var resp = { id: cid };
-          resp[GROUPING_FIELD] = (rGroupRaw[0] && rGroupRaw[0].identifier) || '';
-          resp[GROUPING_FIELD + '_raw'] = rGroupRaw;
-          resp[CONNECTIONS_FIELD] = rIdentifier;
-          resp[CONNECTIONS_FIELD + '_raw'] = [{ id: R.id, identifier: rIdentifier }];
-          try { patchFn(VIEW_ID, cid, resp, { skipFocused: true }); }
-          catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + cid, e); }
-        }
-
-        firePut(cid, buildAddedPut(rGroupId, R.id));
-      }
+    if (added.length && !destHeader) {
+      log('  no destHeader for R — PUT-only + fallbackFetch');
+      added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id)); });
+      removed.forEach(function (rid) { firePut(rid, buildRemovedPut()); });
+      fallbackFetch('R has no visible L1 header — cannot place added children');
+      clearPendingPlanSoon();
+      return;
     }
 
-    // --- 5. Removed children: clear field_2381 only ----------------------
+    // --- 7. Apply plan to DOM (initial pass) ----------------------------
+    applyPlanToDom(plan, 'initial');
+
+    // --- 8. Fire background PUTs ----------------------------------------
+    for (var a = 0; a < added.length; a++) {
+      firePut(added[a], buildAddedPut(rGroupId, R.id));
+    }
     for (var r = 0; r < removed.length; r++) {
-      var rid = removed[r];
-      log('  - remove ' + rid + ' (clear ' + CONNECTIONS_FIELD + ')');
-      syncModelChild(rid, (function () {
-        var p = {};
-        p[CONNECTIONS_FIELD] = [];
-        p[CONNECTIONS_FIELD + '_raw'] = [];
-        return p;
-      })());
-      if (typeof patchFn === 'function') {
-        var resp2 = { id: rid };
-        resp2[CONNECTIONS_FIELD] = '';
-        resp2[CONNECTIONS_FIELD + '_raw'] = [];
-        try { patchFn(VIEW_ID, rid, resp2, { skipFocused: true }); }
-        catch (e) { console.warn(LOG_PREFIX, 'patchCard threw for ' + rid, e); }
-      }
-      firePut(rid, buildRemovedPut());
+      firePut(removed[r], buildRemovedPut());
     }
 
-    log('  regroup done: ' + added.length + ' added, ' + removed.length + ' removed');
+    // --- 9. Schedule plan expiry (replay window) ------------------------
+    clearPendingPlanSoon();
+
+    log('  regroup done: ' + added.length + ' added, ' + removed.length + ' removed' +
+        ' (plan cached for ' + REPLAY_GRACE_MS + 'ms)');
   }
 
   function buildAddedPut(rGroupId, rId) {
@@ -549,10 +594,22 @@
 
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
+  // After the initial regroup has run, we REPLAY the cached plan on every
+  // re-render until REPLAY_GRACE_MS has elapsed — this defeats the race
+  // where Knack re-fetches stale server data (before the child PUTs or
+  // Make webhook have landed) and wipes our local DOM moves.
   $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentRegroup', function () {
     if (pendingRecord || settleTimer) {
       log('view re-rendered during edit cycle — resetting settle timer');
       armSettle();
+      return;
+    }
+    if (pendingPlan) {
+      // Defer to the end of the render tick so Knack's DOM rebuild has
+      // actually finished replacing rows before we reach in and move them.
+      setTimeout(function () {
+        if (pendingPlan) applyPlanToDom(pendingPlan, 'replay');
+      }, 0);
     }
   });
 
@@ -562,12 +619,15 @@
   window.SCW = window.SCW || {};
   window.SCW.silentRegroupView3505 = {
     applyDeterministicRegroup: applyDeterministicRegroup,
+    applyPlanToDom: applyPlanToDom,
     findRowsPointingTo: findRowsPointingTo,
     findL1HeaderBefore: findL1HeaderBefore,
     inspectState: function () {
       return {
         hasPendingRecord: pendingRecord != null,
         hasSettleTimer: settleTimer != null,
+        hasPendingPlan: pendingPlan != null,
+        pendingPlan: pendingPlan,
         ownPutsInFlight: Object.keys(ownPuts)
       };
     }
