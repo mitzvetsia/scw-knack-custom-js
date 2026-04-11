@@ -20605,7 +20605,15 @@ $(".kn-navigation-bar").hide();
         summaryLayout: ['scwNotes', 'lineItemTotal'],
         // Extra <th> columns to expose as sortable in the thead (without
         // touching the summary row). Keys are raw Knack field keys.
-        extraSortFields: ['field_1949'],
+        extraSortFields: ['field_1950', 'field_1949'],
+        // Client-side row sort — device-worksheet always re-sorts rows at
+        // render time, so this dictates the visible order regardless of
+        // any server-side sort. field_2240 (drop prefix) is a text field
+        // with natural numeric compare; field_1951 (drop number) is numeric.
+        rowSort: [
+          { field: 'field_2240', order: 'asc', type: 'text'   },
+          { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
         detailLayout: {
           left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
           right: ['connectedDevice', 'mountingHardware', 'laborDescription']
@@ -25424,24 +25432,46 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       eligible.push({ tr: tr, bucketCls: preBucketRowClass, hasNoMove: hasNoMove });
     });
 
-    // ── Sort eligible rows by field_2218 (ascending), then field_1960 (descending) ──
-    eligible.sort(function (a, b) {
-      var tdA = a.tr.querySelector('td.field_2218');
-      var tdB = b.tr.querySelector('td.field_2218');
-      var vA = tdA ? parseFloat((tdA.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
-      var vB = tdB ? parseFloat((tdB.textContent || '').replace(/[^0-9.\-]/g, '')) : Infinity;
-      if (isNaN(vA)) vA = Infinity;
-      if (isNaN(vB)) vB = Infinity;
-      if (vA !== vB) return vA - vB;
+    // ── Sort eligible rows ──
+    // viewCfg.rowSort is an array of { field, order, type } rules applied
+    // in order. type: 'number' | 'text' (default: 'number'). Missing values
+    // always sort last regardless of order. Default keeps the historical
+    // field_2218 asc / field_1960 desc behavior.
+    var rowSortRules = viewCfg.rowSort || [
+      { field: 'field_2218', order: 'asc',  type: 'number' },
+      { field: 'field_1960', order: 'desc', type: 'number' }
+    ];
 
-      // Tiebreaker: field_1960 descending (highest first)
-      var pA = a.tr.querySelector('td.field_1960');
-      var pB = b.tr.querySelector('td.field_1960');
-      var pVA = pA ? parseFloat((pA.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
-      var pVB = pB ? parseFloat((pB.textContent || '').replace(/[^0-9.\-]/g, '')) : -Infinity;
-      if (isNaN(pVA)) pVA = -Infinity;
-      if (isNaN(pVB)) pVB = -Infinity;
-      return pVB - pVA;
+    function _scwCellValue(tr, fieldKey, type) {
+      var td = tr.querySelector('td.' + fieldKey);
+      var text = td ? (td.textContent || '').trim() : '';
+      if (!text) return null;
+      if (type === 'text') return text;
+      // Numeric (default)
+      var n = parseFloat(text.replace(/[^0-9.\-]/g, ''));
+      return isFinite(n) ? n : null;
+    }
+
+    eligible.sort(function (a, b) {
+      for (var si = 0; si < rowSortRules.length; si++) {
+        var rule = rowSortRules[si];
+        var type = rule.type || 'number';
+        var vA = _scwCellValue(a.tr, rule.field, type);
+        var vB = _scwCellValue(b.tr, rule.field, type);
+        var missA = (vA === null);
+        var missB = (vB === null);
+        if (missA && missB) continue;
+        if (missA) return 1;
+        if (missB) return -1;
+        var cmp;
+        if (type === 'text') {
+          cmp = vA.localeCompare(vB, undefined, { numeric: true, sensitivity: 'base' });
+        } else {
+          cmp = vA - vB;
+        }
+        if (cmp !== 0) return rule.order === 'desc' ? -cmp : cmp;
+      }
+      return 0;
     });
 
     // ── PHASE 2: BUILD — construct cards from collected data ──
@@ -26035,7 +26065,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  * the user can freely click column headers to re-sort.
  *
  *   Config shape:
- *     { viewId: 'view_3586', field: 'field_1953', order: 'asc' }
+ *     { viewId: 'view_3586',
+ *       sort: [{ field: 'field_2240', order: 'asc' },
+ *              { field: 'field_1951', order: 'asc' }] }
+ *
+ * Note: device-worksheet views also apply a client-side sort at render time
+ * (see rowSort in device-worksheet.js). This feature only affects the
+ * server-side query; keep the two in sync if you want pagination and display
+ * order to match.
  *
  *******************************************************************************/
 (function () {
@@ -26044,21 +26081,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var NS = '.scwDefaultSort';
 
   var DEFAULT_SORTS = [
-    { viewId: 'view_3586', field: 'field_1953', order: 'asc' }
+    {
+      viewId: 'view_3586',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    }
   ];
 
   // Track which views we've already applied the default sort for so we don't
   // fight the user after they click a column header to re-sort.
   var _applied = {};
 
-  function sortsMatch(current, field, order) {
+  function sortsMatch(current, target) {
     if (!current) return false;
-    if (Array.isArray(current)) {
-      if (!current.length) return false;
-      var first = current[0];
-      return first && first.field === field && first.order === order;
+    var arr = Array.isArray(current) ? current : [current];
+    if (arr.length !== target.length) return false;
+    for (var i = 0; i < target.length; i++) {
+      if (!arr[i] || arr[i].field !== target[i].field || arr[i].order !== target[i].order) {
+        return false;
+      }
     }
-    return current.field === field && current.order === order;
+    return true;
   }
 
   function applyDefault(cfg) {
@@ -26071,14 +26116,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!modelView) return;
 
     var current = (modelView.source && modelView.source.sort) || modelView.sort;
-    if (sortsMatch(current, cfg.field, cfg.order)) {
+    if (sortsMatch(current, cfg.sort)) {
       _applied[cfg.viewId] = true;
       return;
     }
 
     _applied[cfg.viewId] = true;
 
-    var sortArr = [{ field: cfg.field, order: cfg.order }];
+    var sortArr = cfg.sort.slice();
     if (modelView.source) modelView.source.sort = sortArr;
     modelView.sort = sortArr;
 

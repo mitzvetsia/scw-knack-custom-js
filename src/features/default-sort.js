@@ -5,7 +5,14 @@
  * the user can freely click column headers to re-sort.
  *
  *   Config shape:
- *     { viewId: 'view_3586', field: 'field_1953', order: 'asc' }
+ *     { viewId: 'view_3586',
+ *       sort: [{ field: 'field_2240', order: 'asc' },
+ *              { field: 'field_1951', order: 'asc' }] }
+ *
+ * Note: device-worksheet views also apply a client-side sort at render time
+ * (see rowSort in device-worksheet.js). This feature only affects the
+ * server-side query; keep the two in sync if you want pagination and display
+ * order to match.
  *
  *******************************************************************************/
 (function () {
@@ -14,21 +21,29 @@
   var NS = '.scwDefaultSort';
 
   var DEFAULT_SORTS = [
-    { viewId: 'view_3586', field: 'field_1953', order: 'asc' }
+    {
+      viewId: 'view_3586',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    }
   ];
 
   // Track which views we've already applied the default sort for so we don't
   // fight the user after they click a column header to re-sort.
   var _applied = {};
 
-  function sortsMatch(current, field, order) {
+  function sortsMatch(current, target) {
     if (!current) return false;
-    if (Array.isArray(current)) {
-      if (!current.length) return false;
-      var first = current[0];
-      return first && first.field === field && first.order === order;
+    var arr = Array.isArray(current) ? current : [current];
+    if (arr.length !== target.length) return false;
+    for (var i = 0; i < target.length; i++) {
+      if (!arr[i] || arr[i].field !== target[i].field || arr[i].order !== target[i].order) {
+        return false;
+      }
     }
-    return current.field === field && current.order === order;
+    return true;
   }
 
   function applyDefault(cfg) {
@@ -41,14 +56,14 @@
     if (!modelView) return;
 
     var current = (modelView.source && modelView.source.sort) || modelView.sort;
-    if (sortsMatch(current, cfg.field, cfg.order)) {
+    if (sortsMatch(current, cfg.sort)) {
       _applied[cfg.viewId] = true;
       return;
     }
 
     _applied[cfg.viewId] = true;
 
-    var sortArr = [{ field: cfg.field, order: cfg.order }];
+    var sortArr = cfg.sort.slice();
     if (modelView.source) modelView.source.sort = sortArr;
     modelView.sort = sortArr;
 
