@@ -27184,12 +27184,35 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // not a reliable source.
 
   function isCamerasReadersBucket(card) {
-    if (!card || !card.raw) return false;
-    var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
-    if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
-    // Fallback: display value like "Cameras or Readers"
-    var disp = card.raw[BUCKET_FIELD];
-    if (typeof disp === 'string' && /cameras|readers/i.test(disp)) return true;
+    if (!card) return false;
+    // 1) Raw bucket connection (when field_2223 exists on the record)
+    if (card.raw) {
+      var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
+      if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
+      var disp = card.raw[BUCKET_FIELD];
+      if (typeof disp === 'string' && /camera|reader/i.test(disp)) return true;
+      // 2) Scan every field on the record for the bucket ID or name
+      //    (covers the case where view_3800 surfaces the bucket under
+      //     a different field key than the SOW bid-item form uses).
+      for (var key in card.raw) {
+        if (!card.raw.hasOwnProperty(key)) continue;
+        var v = card.raw[key];
+        if (typeof v === 'string' && /camera|reader/i.test(v) && /bucket|category|group|type/i.test(key) === false) {
+          // Only count short, label-ish strings so we don't match
+          // on notes / descriptions.
+          if (v.length <= 40) return true;
+        }
+        // Connection _raw: array of {id, identifier}
+        if (Array.isArray(v) && v.length && v[0] && typeof v[0] === 'object') {
+          if (v[0].id === CAMERAS_READERS_BUCKET) return true;
+          if (typeof v[0].identifier === 'string' && /camera|reader/i.test(v[0].identifier) && v[0].identifier.length <= 40) return true;
+        }
+      }
+    }
+    // 3) Group path fallback — view_3800 is grouped by bucket, so the
+    //    L1/L2 label above each card is already the bucket name.
+    var groupText = ((card.groupL1 || '') + ' ' + (card.groupL2 || '')).toLowerCase();
+    if (/camera|reader/.test(groupText)) return true;
     return false;
   }
 
@@ -27212,6 +27235,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         rowCount: rows.length,
         colCount: cols.length
       });
+      // Diagnostic: if we have columns but no rows, dump one card's
+      // raw attrs so we can see where the bucket value actually lives.
+      if (!rows.length && cols.length && payload.rows.length) {
+        for (var d = 0; d < payload.rows.length; d++) {
+          var dc = payload.rows[d];
+          if (dc && dc.type === 'card' && dc.raw) {
+            var sample = {};
+            for (var k in dc.raw) {
+              if (!dc.raw.hasOwnProperty(k)) continue;
+              var val = dc.raw[k];
+              if (val == null || val === '') continue;
+              sample[k] = typeof val === 'string' && val.length > 80
+                ? val.slice(0, 80) + '\u2026'
+                : val;
+            }
+            console.log('[SCW survey-pdf] sample card raw attrs', {
+              label: dc.label,
+              product: dc.product,
+              groupL1: dc.groupL1,
+              groupL2: dc.groupL2,
+              attrs: sample
+            });
+            break;
+          }
+        }
+      }
       return '';
     }
 
