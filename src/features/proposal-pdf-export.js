@@ -16,6 +16,7 @@
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
+      recurringGrids: ['view_3371'],
       payloadType: 'proposal',
       saveHtml: true,
     },
@@ -65,7 +66,12 @@
 
   function groupLabelText(tr) {
     var td = tr.querySelector('td:first-child');
-    return td ? norm(td.textContent) : '';
+    if (!td) return '';
+    // Clone and strip injected spans so label doesn't include connected-devices or field_2019 text
+    var clone = td.cloneNode(true);
+    var injected = clone.querySelectorAll('.scw-l3-connected-devices, br.scw-l3-connected-br, .scw-l4-2019, br.scw-l4-2019-br, .scw-concat-cameras');
+    for (var ci = 0; ci < injected.length; ci++) injected[ci].remove();
+    return norm(clone.textContent);
   }
 
   function isVisibleRow(tr) {
@@ -404,6 +410,9 @@
           continue;
         }
         data = scrapeGridView(viewId, cfg.gridKeys);
+        if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
+          data.isRecurring = true;
+        }
       } else if (viewType === 'detail') {
         data = scrapeDetailView(viewId);
       } else if (viewType === 'richtext') {
@@ -576,18 +585,31 @@
     html.push('</style>');
     html.push('</head><body>');
 
+    // Split views into project vs. recurring
+    var projectViews = [];
+    var recurringViews = [];
     for (var v = 0; v < payload.views.length; v++) {
       var view = payload.views[v];
-
-      if (view.type === 'detail') {
-        renderDetailView(view, html);
-      } else if (view.type === 'richtext') {
-        renderRichTextView(view, html);
-      } else if (view.type === 'grid') {
-        renderGridSections(view, html);
+      if (view.type === 'grid' && view.isRecurring) {
+        recurringViews.push(view);
+      } else {
+        projectViews.push(view);
       }
     }
 
+    // Render project views
+    for (var pv = 0; pv < projectViews.length; pv++) {
+      var pView = projectViews[pv];
+      if (pView.type === 'detail') {
+        renderDetailView(pView, html);
+      } else if (pView.type === 'richtext') {
+        renderRichTextView(pView, html);
+      } else if (pView.type === 'grid') {
+        renderGridSections(pView, html);
+      }
+    }
+
+    // Project totals
     var pt = payload.projectTotals;
     if (!pt) {
       for (var j = 0; j < payload.views.length; j++) {
@@ -603,6 +625,16 @@
         html.push('<span class="pt-label">' + esc(tline.label) + '</span>');
         html.push('<span class="pt-value">' + esc(tline.value) + '</span>');
         html.push('</div>');
+      }
+      html.push('</div>');
+    }
+
+    // Recurring services section (below project totals)
+    if (recurringViews.length) {
+      html.push('<div class="recurring-section">');
+      html.push('<div class="recurring-header">Recurring Services</div>');
+      for (var rv = 0; rv < recurringViews.length; rv++) {
+        renderGridSections(recurringViews[rv], html);
       }
       html.push('</div>');
     }
@@ -740,6 +772,14 @@
       '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
       '.pt-line--final:last-child .pt-label { font-size: 17px; }',
       '.pt-line--final:last-child .pt-value { font-size: 19px; }',
+      '',
+      '/* ── Recurring Services ── */',
+      '.recurring-section { margin-top: 40px; }',
+      '.recurring-header {',
+      '  font-size: 20px; font-weight: 800; color: #07467c;',
+      '  margin-bottom: 8px; padding-bottom: 4px;',
+      '  border-bottom: 3px solid #07467c;',
+      '}',
     ].join('\n');
   }
 
