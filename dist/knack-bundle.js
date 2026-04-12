@@ -27280,11 +27280,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (isDistributionDevice(r)) cols.push(r);
       if (isCamerasReadersBucket(r)) rows.push(r);
     }
-    if (!rows.length) {
-      console.log('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
-      return '';
-    }
-
     var blankColCount = Math.max(0, TARGET_PIVOT_COLS - cols.length);
     var blankRowCount = Math.max(0, TARGET_PIVOT_ROWS - rows.length);
     var totalCols = cols.length + blankColCount;
