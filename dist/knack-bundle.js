@@ -7578,7 +7578,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 (function () {
   'use strict';
 
-  var SCENE_ID   = 'scene_1279';
+  var SCENE_ID    = 'scene_1279';
+  var VIEW_ID     = 'view_3813';
   var HTML_FIELD  = 'field_2680';
   var STYLE_ID    = 'scw-published-proposal-css';
   var IFRAME_ID   = 'scw-published-proposal-frame';
@@ -7592,6 +7593,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = [
+      '/* Hide all native detail fields in the published proposal view */',
+      '#' + VIEW_ID + ' .kn-details-group { display: none !important; }',
+      '',
       '#' + IFRAME_ID + ' {',
       '  width: 100%; border: 1px solid #e0e0e0; border-radius: 6px;',
       '  background: #fff; min-height: 400px;',
@@ -7612,27 +7616,19 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function getStoredHtml() {
     if (typeof Knack === 'undefined' || !Knack.views) return '';
 
-    var sceneEl = document.getElementById('kn-' + SCENE_ID);
-    if (!sceneEl) return '';
-
-    var viewEls = sceneEl.querySelectorAll('[id^="view_"]');
-    for (var i = 0; i < viewEls.length; i++) {
-      var viewId = viewEls[i].id;
-      var view = Knack.views[viewId];
-      if (!view || !view.model) continue;
-
+    var view = Knack.views[VIEW_ID];
+    if (view && view.model) {
       var attrs = view.model.attributes
                || (view.model.data && view.model.data.attributes)
                || null;
-      if (!attrs) continue;
-
-      // Prefer _raw (unformatted) if available
-      var html = attrs[HTML_FIELD + '_raw'] || attrs[HTML_FIELD] || '';
-      if (html) return html;
+      if (attrs) {
+        var html = attrs[HTML_FIELD + '_raw'] || attrs[HTML_FIELD] || '';
+        if (html) return html;
+      }
     }
 
     // Fallback: read from DOM
-    var domEl = sceneEl.querySelector('.kn-detail.' + HTML_FIELD + ' .kn-detail-body');
+    var domEl = document.querySelector('#' + VIEW_ID + ' .kn-detail.' + HTML_FIELD + ' .kn-detail-body');
     if (domEl) return domEl.innerHTML || '';
 
     return '';
@@ -7643,17 +7639,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function renderProposal(html) {
     injectStyles();
 
-    // Find the field's detail container and inject iframe after it
-    var sceneEl = document.getElementById('kn-' + SCENE_ID);
-    if (!sceneEl) return;
+    var viewEl = document.getElementById(VIEW_ID);
+    if (!viewEl) return;
 
     // Remove existing iframe if re-rendering
     var existing = document.getElementById(IFRAME_ID);
     if (existing) existing.remove();
-
-    // Hide the raw field display
-    var fieldEl = sceneEl.querySelector('.kn-detail.' + HTML_FIELD);
-    if (fieldEl) fieldEl.style.display = 'none';
 
     // Create iframe
     var iframe = document.createElement('iframe');
@@ -7661,11 +7652,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('scrolling', 'no');
 
-    // Insert iframe where the field was, or at top of scene
-    if (fieldEl && fieldEl.parentNode) {
-      fieldEl.parentNode.insertBefore(iframe, fieldEl.nextSibling);
+    // Insert iframe inside the view, after the columns section
+    var columns = viewEl.querySelector('section.columns');
+    if (columns) {
+      columns.parentNode.insertBefore(iframe, columns.nextSibling);
     } else {
-      sceneEl.insertBefore(iframe, sceneEl.firstChild);
+      viewEl.appendChild(iframe);
     }
 
     // Write HTML into iframe
@@ -7686,7 +7678,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       } catch (e) {}
     }
 
-    // Resize after content loads and images render
     setTimeout(resizeIframe, 300);
     setTimeout(resizeIframe, 1000);
     setTimeout(resizeIframe, 3000);
