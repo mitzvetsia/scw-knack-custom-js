@@ -23,7 +23,7 @@
       'body.scw-hide-crumbtrail .kn-crumbtrail { display: none !important; }',
       '',
       '#' + IFRAME_ID + ' {',
-      '  width: 100%; border: 1px solid #e0e0e0; border-radius: 6px;',
+      '  width: 100%; border: none;',
       '  background: #fff; min-height: 400px;',
       '}',
       '#' + BTN_ID + ' {',
