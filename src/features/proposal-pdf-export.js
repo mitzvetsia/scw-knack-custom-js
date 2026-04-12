@@ -719,6 +719,40 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // EXTRACT SUMMARY FIELDS from scraped payload
+  // ══════════════════════════════════════════════════════════════
+
+  function findDetailField(payload, labelPattern) {
+    for (var v = 0; v < payload.views.length; v++) {
+      var view = payload.views[v];
+      if (view.type !== 'detail' || !view.fields) continue;
+      for (var f = 0; f < view.fields.length; f++) {
+        if (labelPattern.test(view.fields[f].label)) return view.fields[f].value;
+      }
+    }
+    return '';
+  }
+
+  function findTotalLine(payload, labelPattern) {
+    var pt = payload.projectTotals;
+    if (!pt || !pt.lines) return '';
+    for (var i = 0; i < pt.lines.length; i++) {
+      if (labelPattern.test(pt.lines[i].label)) return pt.lines[i].value;
+    }
+    return '';
+  }
+
+  function extractSummaryFields(payload) {
+    return {
+      sowId:              findDetailField(payload, /sow\s*id/i),
+      expirationDate:     findDetailField(payload, /expir/i),
+      equipmentTotal:     findTotalLine(payload, /equipment\s*total/i),
+      installationTotal:  findTotalLine(payload, /installation\s*total/i),
+      grandTotal:         findTotalLine(payload, /grand\s*total/i)
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SHARED ACTIONS
   // ══════════════════════════════════════════════════════════════
 
@@ -824,14 +858,26 @@
 
           if (cfg.saveHtml) {
             var pageRecordId = getPageRecordId();
+            var summary = extractSummaryFields(payload);
+
+            // JSON snapshot — full scraped data without the html string
+            var jsonSnapshot = JSON.parse(JSON.stringify(payload));
+            delete jsonSnapshot.html;
+
             var savePayload = {
               recordId: pageRecordId || '',
               hash: window.location.hash || '',
-              html: htmlStr,
               sceneId: cfg.sceneId,
-              type: cfg.payloadType
+              type: cfg.payloadType,
+              sowId: summary.sowId,
+              equipmentTotal: summary.equipmentTotal,
+              installationTotal: summary.installationTotal,
+              grandTotal: summary.grandTotal,
+              expirationDate: summary.expirationDate,
+              html: htmlStr,
+              json: jsonSnapshot
             };
-            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId || '(no record ID)', savePayload.hash);
+            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
               type: 'POST',
