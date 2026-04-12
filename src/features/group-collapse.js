@@ -45,6 +45,7 @@
     view_3575: { defaultOpen: true },
     view_3586: { defaultOpen: true },
     view_3608: { defaultOpen: true },
+    view_3800: { defaultOpen: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
