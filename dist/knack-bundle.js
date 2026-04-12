@@ -6345,7 +6345,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   'use strict';
 
   var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
-  var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/PLACEHOLDER_SAVE_PDF_HTML';
+  var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/fvop4hwz5gn2lujroky2vsuy4ddsamyx';
 
   // ══════════════════════════════════════════════════════════════
   // SCENE CONFIGS — add new scenes here
