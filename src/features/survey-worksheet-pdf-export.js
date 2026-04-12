@@ -43,7 +43,7 @@
   // Matching is case-insensitive substring; first match wins.
   var TITLE_CLIENT_LABEL_HINTS = ['client', 'customer', 'company', 'account'];
   var TITLE_SITE_LABEL_HINTS   = ['site name', 'location name', 'site', 'location', 'property', 'project name', 'project'];
-  var SURVEY_ID_LABEL_HINTS    = ['survey id', 'survey #', 'survey number', 'survey name', 'survey record', 'record id', 'id'];
+  var SURVEY_ID_FIELD          = 'field_2345';
 
   // Worksheet bucket field on the survey line item object (view_3800).
   // The bucket record ID matches the SOW bid-item schema (same bucket
@@ -281,7 +281,7 @@
     // Main document title is now derived from the page-1 detail
     // views (client + site) rather than view_3800's own header.
     var title = buildSurveyTitle(page1Sections);
-    var surveyId = findFieldByLabelHints(page1Sections, SURVEY_ID_LABEL_HINTS);
+    var surveyId = getPage1FieldValue(SURVEY_ID_FIELD);
 
     var tbody = root.querySelector('table tbody');
     if (!tbody) {
@@ -552,6 +552,38 @@
   // views. Runs synchronously at form-submit time against the live
   // DOM (no preload required — detail views render their values
   // directly in the page).
+
+  // Read a field value directly off one of the page-1 detail views'
+  // Knack model. Used for fields we know by key (e.g. Survey ID)
+  // where we don't want to depend on the label text.
+  function getPage1FieldValue(fieldKey) {
+    if (typeof Knack === 'undefined' || !Knack.views) return '';
+    for (var i = 0; i < PAGE1_DETAIL_VIEWS.length; i++) {
+      var viewId = PAGE1_DETAIL_VIEWS[i].viewId;
+      var view = Knack.views[viewId];
+      if (!view || !view.model) continue;
+      var attrs = (view.model.attributes)
+                || (view.model.data && view.model.data.attributes)
+                || null;
+      if (!attrs) continue;
+      var raw = attrs[fieldKey + '_raw'];
+      if (raw != null && typeof raw === 'object' && !Array.isArray(raw)) {
+        if (raw.identifier) return String(raw.identifier);
+      }
+      if (Array.isArray(raw) && raw.length) {
+        if (raw[0] && raw[0].identifier) return String(raw[0].identifier);
+      }
+      var plain = attrs[fieldKey];
+      if (plain != null && plain !== '') {
+        // Strip HTML if Knack returned a formatted string.
+        var tmp = document.createElement('div');
+        tmp.innerHTML = String(plain);
+        var text = norm(tmp.textContent || '');
+        if (text) return text;
+      }
+    }
+    return '';
+  }
 
   function scrapeDetailViewFields(viewId) {
     var root = document.getElementById(viewId);
@@ -1297,27 +1329,28 @@
       '/* Cover pages rendered before the survey items */',
       '.cover-page {',
       '  page-break-after: always; break-after: page;',
-      '  display: flex; flex-direction: column;',
-      '  align-items: stretch;',
       '  text-align: center;',
-      '  height: 10.3in; box-sizing: border-box;',
+      '  box-sizing: border-box;',
+      '  width: 100%;',
       '}',
       '.cover-page:last-of-type { page-break-after: always; }',
       '.cover-section-label {',
       '  font-size: 14px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.6px;',
-      '  margin: 0 0 10px 0; padding: 4px 0 6px 0;',
+      '  margin: 0 0 6px 0; padding: 4px 0 6px 0;',
       '  border-bottom: 2px solid #07467c; width: 100%;',
-      '  flex: 0 0 auto;',
       '}',
       '.cover-img-wrap {',
-      '  flex: 1 1 auto; min-height: 0; min-width: 0;',
-      '  display: flex; align-items: center; justify-content: center;',
+      '  width: 100%;',
+      '  height: 9.3in;',
+      '  display: block;',
       '  overflow: hidden;',
+      '  text-align: center;',
       '}',
       '.cover-img {',
       '  width: 100%; height: 100%;',
       '  object-fit: contain; display: block;',
+      '  margin: 0 auto;',
       '}',
       '',
       '/* Trailing photo grid (e.g. Additional Photos) */',
