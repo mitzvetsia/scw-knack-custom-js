@@ -3,6 +3,7 @@
   'use strict';
 
   var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
+  var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/PLACEHOLDER_SAVE_PDF_HTML';
 
   // ══════════════════════════════════════════════════════════════
   // SCENE CONFIGS — add new scenes here
@@ -16,6 +17,7 @@
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203' },
       payloadType: 'proposal',
+      saveHtml: true,
     },
     {
       sceneId: 'scene_1149',
@@ -39,6 +41,13 @@
   // ══════════════════════════════════════════════════════════════
   // HELPERS
   // ══════════════════════════════════════════════════════════════
+
+  function getPageRecordId() {
+    var match = (window.location.hash || '').match(
+      /(?:scope-of-work-details|scope-of-work)\/([a-f0-9]{24})/
+    );
+    return match ? match[1] : '';
+  }
 
   function norm(s) {
     return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
@@ -814,6 +823,27 @@
           openPdfPreview(htmlStr);
           payload.html = htmlStr;
           sendToWebhook(payload);
+
+          if (cfg.saveHtml) {
+            var pageRecordId = getPageRecordId();
+            if (pageRecordId) {
+              $.ajax({
+                url: SAVE_HTML_WEBHOOK,
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                  recordId: pageRecordId,
+                  html: htmlStr,
+                  sceneId: cfg.sceneId,
+                  type: cfg.payloadType
+                }),
+                crossDomain: true,
+              });
+              console.log('[SCW PDF Export] Sent HTML to save webhook for record', pageRecordId);
+            } else {
+              console.warn('[SCW PDF Export] Could not extract record ID from hash:', window.location.hash);
+            }
+          }
         });
 
         $(sceneEl).append($btn);
