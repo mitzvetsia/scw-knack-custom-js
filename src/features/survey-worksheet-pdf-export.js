@@ -1050,18 +1050,25 @@
   }
 
   // ── Cover image section renderer (one full-page image per entry) ──
+  // We render the image as a background-image on a fixed-size div
+  // instead of an <img> tag. Chrome's print engine doesn't reliably
+  // honor `height: 100%` + `object-fit: contain` on an <img> inside a
+  // block box with an explicit height — the img falls back to its
+  // intrinsic size and ignores the container. Background-size: contain
+  // on a sized div always scales to fill the box.
   function renderImageCoverSection(section) {
     var h = [];
     var label = section.label || '';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
+      var url = String(img.src || '').replace(/"/g, '%22');
       h.push('<section class="cover-page">');
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
-      h.push('<div class="cover-img-wrap">');
-      h.push('<img class="cover-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || label) + '" />');
-      h.push('</div>');
+      h.push('<div class="cover-img-wrap" role="img" aria-label="' +
+             esc(img.alt || label) +
+             '" style="background-image: url(&quot;' + url + '&quot;);"></div>');
       h.push('</section>');
     }
     return h.join('');
@@ -1345,13 +1352,12 @@
       '  width: 100%;',
       '  height: 9.7in;',
       '  display: block;',
-      '  overflow: hidden;',
-      '  text-align: center;',
-      '}',
-      '.cover-img {',
-      '  width: 100%; height: 100%;',
-      '  object-fit: contain; display: block;',
-      '  margin: 0 auto;',
+      '  background-color: transparent;',
+      '  background-repeat: no-repeat;',
+      '  background-position: center center;',
+      '  background-size: contain;',
+      '  -webkit-print-color-adjust: exact;',
+      '  print-color-adjust: exact;',
       '}',
       '',
       '/* Trailing photo grid (e.g. Additional Photos) */',
