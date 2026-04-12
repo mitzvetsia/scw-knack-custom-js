@@ -6850,7 +6850,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
         if (bucket.products.length) {
           html.push('<table class="product-table">');
-          html.push('<thead><tr><th class="col-desc">Description</th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
+          html.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
           html.push('<tbody>');
 
           for (var p = 0; p < bucket.products.length; p++) {
@@ -6884,7 +6884,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
                     .replace(/<\/p>/gi, '</div>')
                 : esc(item.label);
               if (item.cameraList) {
-                l4Content += '<span class="connected-devices">(' + esc(item.cameraList) + ')</span>';
+                l4Content += '<br><span class="connected-devices">(' + esc(item.cameraList) + ')</span>';
               }
               html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
@@ -6988,7 +6988,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     // Recurring services section (below project totals)
     if (recurringViews.length) {
       html.push('<div class="recurring-section">');
-      html.push('<div class="recurring-header">Recurring Services</div>');
       for (var rv = 0; rv < recurringViews.length; rv++) {
         renderGridSections(recurringViews[rv], html);
       }
