@@ -73,6 +73,40 @@
     return norm(td.textContent || '');
   }
 
+  // ── Image downsampling ───────────────────────────────────────────
+  //
+  // Given an already-loaded <img> element, draw it to a canvas at a
+  // reduced max-dimension and return a JPEG data URL. Falls back to
+  // the original src when the canvas taints (cross-origin without
+  // CORS headers) or the image isn't fully loaded yet.
+  var _dsWarned = false;
+
+  function downsampleImage(imgEl, maxDim, quality) {
+    if (!imgEl) return '';
+    var fallback = imgEl.getAttribute('src') || '';
+    try {
+      if (!imgEl.complete || !imgEl.naturalWidth) return fallback;
+      var w = imgEl.naturalWidth;
+      var h = imgEl.naturalHeight;
+      var scale = Math.min(1, maxDim / Math.max(w, h));
+      var cw = Math.max(1, Math.round(w * scale));
+      var ch = Math.max(1, Math.round(h * scale));
+      var canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0, cw, ch);
+      // toDataURL throws SecurityError if the canvas is tainted.
+      return canvas.toDataURL('image/jpeg', quality);
+    } catch (e) {
+      if (!_dsWarned) {
+        console.warn('[SCW survey-pdf] photo downsample failed (likely cross-origin canvas taint); falling back to original URLs', e);
+        _dsWarned = true;
+      }
+      return fallback;
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════
   // SCRAPER
   // ══════════════════════════════════════════════════════════════
@@ -194,6 +228,11 @@
     var showDetail = detailHasAnyField;
 
     // ── Photos ───────────────────────────────────────────────────
+    // Photos are already rendered in the DOM by inline-photo-row, so
+    // their <img> elements are fully loaded. We draw each one onto a
+    // canvas at a reduced max dimension and re-encode as JPEG before
+    // handing off to the PDF — this shrinks Knack's 2–5 MB originals
+    // to ~30–50 KB and dramatically speeds up PDF generation.
     var photos = [];
     var photoWrap = card.querySelector('.scw-ws-photo-wrap');
     if (photoWrap && !photoWrap.classList.contains('scw-ws-photo-hidden')) {
@@ -202,7 +241,7 @@
         var pc = photoCards[p];
         var img = pc.querySelector('img');
         if (!img) continue;
-        var src = img.getAttribute('src') || '';
+        var src = downsampleImage(img, 480, 0.7);
         if (!src) continue;
         photos.push({
           src: src,
