@@ -15,7 +15,7 @@
       trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
-      gridKeys: { qty: 'field_1964', cost: 'field_2203' },
+      gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       payloadType: 'proposal',
       saveHtml: true,
     },
@@ -272,6 +272,23 @@
         var descSpan = tr.querySelector('.scw-l4-2019');
         var description = '';
         if (descSpan) description = descSpan.innerHTML || '';
+
+        // Fallback: read field_2019 directly from the first data row under this L4 group
+        if (!description && keys.field2019) {
+          var nextSib = tr.nextElementSibling;
+          while (nextSib && nextSib.classList.contains('kn-table-group')) nextSib = nextSib.nextElementSibling;
+          if (nextSib && nextSib.id && nextSib.tagName === 'TR') {
+            var f2019Cell = nextSib.querySelector('td.' + keys.field2019);
+            if (f2019Cell) {
+              var rawDesc = f2019Cell.innerHTML || '';
+              // Sanitize: keep only <br> and <b>/<strong> tags, strip everything else
+              rawDesc = rawDesc.replace(/<strong>/gi, '<b>').replace(/<\/strong>/gi, '</b>');
+              rawDesc = rawDesc.replace(/<(?!\/?b\s*\/?>|br\s*\/?>)[^>]*>/gi, '');
+              rawDesc = rawDesc.replace(/&nbsp;/gi, ' ').replace(/^\s+|\s+$/g, '');
+              if (rawDesc) description = rawDesc;
+            }
+          }
+        }
 
         var camB = tr.querySelector('.scw-concat-cameras b');
         var cameraList = '';
@@ -904,7 +921,8 @@
   function hideEmptyGridViews(viewIds) {
     for (var i = 0; i < viewIds.length; i++) {
       var el = document.getElementById(viewIds[i]);
-      if (el && !viewHasDataRows(viewIds[i])) el.style.display = 'none';
+      if (!el) continue;
+      el.style.display = viewHasDataRows(viewIds[i]) ? '' : 'none';
     }
   }
 
