@@ -192,6 +192,27 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // SCRAPER: Report / pivot views
+  // ══════════════════════════════════════════════════════════════
+
+  function scrapeReportView(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return null;
+
+    var rendered = root.querySelector('.kn-report-rendered');
+    if (!rendered) return null;
+
+    var title = getViewTitle(viewId);
+
+    // Grab the table HTML directly — it's already well-structured
+    var tableEl = rendered.querySelector('table');
+    var tableHtml = tableEl ? tableEl.outerHTML : '';
+    if (!tableHtml) return null;
+
+    return { viewId: viewId, type: 'report', title: title, tableHtml: tableHtml };
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPER: Grid views (parameterized by keys)
   // ══════════════════════════════════════════════════════════════
 
@@ -425,6 +446,12 @@
         if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
           data.isRecurring = true;
         }
+      } else if (viewType === 'report') {
+        if (!viewHasDataRows(viewId)) {
+          console.log('[SCW PDF Export]', viewId, '→ empty report, skipping');
+          continue;
+        }
+        data = scrapeReportView(viewId);
       } else if (viewType === 'detail') {
         data = scrapeDetailView(viewId);
       } else if (viewType === 'richtext') {
@@ -482,6 +509,15 @@
     }
   }
 
+  function renderReportView(view, html) {
+    if (view.title) {
+      html.push('<div class="view-title">' + esc(view.title) + '</div>');
+    }
+    if (view.tableHtml) {
+      html.push('<div class="report-table-wrap">' + view.tableHtml + '</div>');
+    }
+  }
+
   function renderGridSections(view, html) {
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
@@ -495,7 +531,7 @@
 
       html.push('<div class="l1-section">');
 
-      if (section.label) {
+      if (section.label && !view.isRecurring) {
         html.push('<div class="l1-header">' + esc(section.label) + '</div>');
       }
 
@@ -600,12 +636,15 @@
     html.push('</style>');
     html.push('</head><body>');
 
-    // Split views into project vs. recurring
+    // Split views into project vs. recurring vs. report
     var projectViews = [];
     var recurringViews = [];
+    var reportViews = [];
     for (var v = 0; v < payload.views.length; v++) {
       var view = payload.views[v];
-      if (view.type === 'grid' && view.isRecurring) {
+      if (view.type === 'report') {
+        reportViews.push(view);
+      } else if (view.type === 'grid' && view.isRecurring) {
         recurringViews.push(view);
       } else {
         projectViews.push(view);
@@ -651,6 +690,13 @@
         renderGridSections(recurringViews[rv], html);
       }
       html.push('</div>');
+    }
+
+    // Report views (e.g. BOM) at the bottom
+    if (reportViews.length) {
+      for (var rp = 0; rp < reportViews.length; rp++) {
+        renderReportView(reportViews[rp], html);
+      }
     }
 
     html.push('</body></html>');
@@ -793,6 +839,23 @@
       '  font-size: 20px; font-weight: 800; color: #07467c;',
       '  margin-bottom: 8px; padding-bottom: 4px;',
       '  border-bottom: 3px solid #07467c;',
+      '}',
+      '',
+      '/* ── Report / BOM Table ── */',
+      '.report-table-wrap { margin-top: 30px; }',
+      '.report-table-wrap table { width: 100%; border-collapse: collapse; }',
+      '.report-table-wrap thead th {',
+      '  font-size: 10px; font-weight: 600; color: #07467c; text-transform: uppercase;',
+      '  letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 2px solid #07467c;',
+      '  text-align: left;',
+      '}',
+      '.report-table-wrap tbody td {',
+      '  padding: 5px 8px; font-size: 11px; color: #333;',
+      '  border-bottom: 1px solid #f0f0f0;',
+      '}',
+      '.report-table-wrap .kn-table_summary td {',
+      '  font-weight: 700; color: #07467c; border-top: 2px solid #07467c;',
+      '  padding-top: 8px;',
       '}',
     ].join('\n');
   }
