@@ -7398,6 +7398,33 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   });
 
   // ══════════════════════════════════════════════════════════════
+  // REMOTE API — expose scrape+render for headless/Puppeteer callers
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Entry point for driving the PDF export from outside the user's UI
+  // (e.g. a Make "Custom JS" / Puppeteer module). Does NOT post to the
+  // webhook and does NOT open a preview window — the caller decides what
+  // to do with the returned payload. Requires the target scene to be
+  // fully rendered and all SCW feature modules to have run; wait for a
+  // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
+  // before calling.
+
+  window.SCW = window.SCW || {};
+  window.SCW.pdfExport = {
+    run: function (sceneId) {
+      var cfg = null;
+      for (var si = 0; si < SCENES.length; si++) {
+        if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
+      }
+      if (!cfg) return null;
+      var payload = scrapeAllViews(cfg);
+      if (!payload.views.length) return payload;
+      payload.html = buildPdfHtml(payload);
+      return payload;
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════
   // INIT — wire up all scenes
   // ══════════════════════════════════════════════════════════════
 
