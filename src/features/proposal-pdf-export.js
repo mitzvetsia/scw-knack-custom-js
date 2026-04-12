@@ -12,7 +12,7 @@
   var SCENES = [
     {
       sceneId: 'scene_1096',
-      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false },
+      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203' },
@@ -892,7 +892,7 @@
 
         var $btn = $('<button></button>')
           .attr('id', btnId)
-          .text('Generate PDF')
+          .text(cfg.trigger.buttonText || 'Generate PDF')
           .css({
             position: 'fixed',
             bottom: '24px',
