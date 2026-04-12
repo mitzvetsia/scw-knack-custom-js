@@ -19,6 +19,8 @@
     style.textContent = [
       '/* Hide all native detail fields in the published proposal view */',
       '#' + VIEW_ID + ' .kn-details-group { display: none !important; }',
+      '/* Hide breadcrumb trail when this scene is active */',
+      'body.scw-hide-crumbtrail .kn-crumbtrail { display: none !important; }',
       '',
       '#' + IFRAME_ID + ' {',
       '  width: 100%; border: 1px solid #e0e0e0; border-radius: 6px;',
@@ -177,7 +179,15 @@
 
   // ── Init ─────────────────────────────────────────────────────
 
+  // Remove breadcrumb class when navigating away
+  $(document).on('knack-scene-render.any' + NS, function (event, scene) {
+    if (scene.key !== SCENE_ID) {
+      document.body.classList.remove('scw-hide-crumbtrail');
+    }
+  });
+
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
+    document.body.classList.add('scw-hide-crumbtrail');
     setTimeout(function () {
       var raw = getStoredHtml();
       if (!raw) {
