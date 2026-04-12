@@ -63,7 +63,8 @@
     'view_3602': 'add-photo-to-mdf-idf2',
     'view_3596': 'add-photo-to-sow-line-item3',
     'view_3608': 'add-photo-to-sow-line-item2',
-    'view_3617': 'add-photo-to-mdf-idf4'
+    'view_3617': 'add-photo-to-mdf-idf4',
+    'view_3803': 'add-photo-to-mdf-idf'
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
