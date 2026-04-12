@@ -6354,7 +6354,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   var SCENES = [
     {
       sceneId: 'scene_1096',
-      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: true },
+      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false },
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203' },
@@ -6385,9 +6385,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ══════════════════════════════════════════════════════════════
 
   function getPageRecordId() {
-    var match = (window.location.hash || '').match(
-      /(?:scope-of-work-details|scope-of-work)\/([a-f0-9]{24})/
-    );
+    var match = (window.location.hash || '').match(/\/([a-f0-9]{24})\/?$/);
     return match ? match[1] : '';
   }
 
