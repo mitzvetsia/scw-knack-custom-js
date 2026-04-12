@@ -26372,6 +26372,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // with this field truthy become columns in the connection-map pivot.
   var DISTRIBUTION_DEVICE_FIELD = 'field_2374';
 
+  // Pivot padding targets — the connection map lives on its own page
+  // and we want it to feel like a full worksheet: blank checkbox
+  // columns and blank rows are padded in to fill remaining space.
+  var TARGET_PIVOT_COLS = 22;
+  var TARGET_PIVOT_ROWS = 28;
+
   // Views whose image attachments render as full-page covers
   // BEFORE the survey worksheet items. Each image is labeled with
   // the section label (regardless of Knack field values).
@@ -27244,17 +27250,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return '';
     }
 
+    var blankColCount = Math.max(0, TARGET_PIVOT_COLS - cols.length);
+    var blankRowCount = Math.max(0, TARGET_PIVOT_ROWS - rows.length);
+    var totalCols = cols.length + blankColCount;
+
     var h = [];
     h.push('<section class="pivot">');
     h.push('<h2 class="pivot-title">Connection Map</h2>');
-    h.push('<div class="pivot-hint">Check the box for each camera/reader that connects to the respective distribution device.</div>');
     h.push('<table class="pivot-table"><thead><tr>');
     h.push('<th class="pivot-corner pivot-corner--label">Label</th>');
     h.push('<th class="pivot-corner pivot-corner--product">Product</th>');
     for (var c = 0; c < cols.length; c++) {
       var col = cols[c];
       var colHead = col.product || col.label || '';
-      h.push('<th class="pivot-col"><span class="pivot-col-text">' + esc(colHead) + '</span></th>');
+      h.push('<th class="pivot-col"><div class="pivot-col-text">' + esc(colHead) + '</div></th>');
+    }
+    for (var bc = 0; bc < blankColCount; bc++) {
+      h.push('<th class="pivot-col pivot-col--blank"><div class="pivot-col-text">&nbsp;</div></th>');
     }
     h.push('</tr></thead><tbody>');
     for (var r2 = 0; r2 < rows.length; r2++) {
@@ -27262,7 +27274,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       h.push('<tr>');
       h.push('<th class="pivot-row pivot-row--label" scope="row">' + esc(row.label || '') + '</th>');
       h.push('<td class="pivot-row pivot-row--product">' + esc(row.product || '') + '</td>');
-      for (var c2 = 0; c2 < cols.length; c2++) {
+      for (var c2 = 0; c2 < totalCols; c2++) {
+        h.push('<td class="pivot-cell">\u2610</td>');
+      }
+      h.push('</tr>');
+    }
+    for (var br = 0; br < blankRowCount; br++) {
+      h.push('<tr class="pivot-blank-row">');
+      h.push('<th class="pivot-row pivot-row--label" scope="row">&nbsp;</th>');
+      h.push('<td class="pivot-row pivot-row--product">&nbsp;</td>');
+      for (var c3 = 0; c3 < totalCols; c3++) {
         h.push('<td class="pivot-cell">\u2610</td>');
       }
       h.push('</tr>');
@@ -27775,21 +27796,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '',
       '/* Connection Map pivot table */',
       '.pivot {',
-      '  margin-top: 14px; padding-top: 10px;',
-      '  border-top: 2px solid #07467c;',
-      '  page-break-before: auto;',
+      '  margin-top: 0; padding-top: 0;',
+      '  page-break-before: always; page-break-after: always;',
+      '  break-before: page; break-after: page;',
       '}',
       '.pivot-title {',
       '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 4px 0;',
+      '  margin: 0 0 6px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
-      '.pivot-hint {',
-      '  font-size: 9.5px; color: #6b7280; margin: 0 0 6px 0;',
-      '  font-style: italic;',
-      '}',
       '.pivot-table {',
-      '  border-collapse: collapse; table-layout: fixed;',
+      '  border-collapse: collapse; table-layout: auto;',
       '  width: 100%; font-size: 9.5px;',
       '}',
       '.pivot-table th, .pivot-table td {',
@@ -27799,32 +27816,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.pivot-corner {',
       '  background: #eef5fb; vertical-align: bottom; padding: 4px 6px;',
       '  font-weight: 700; color: #07467c; text-align: left;',
+      '  white-space: nowrap; width: 1%;',
       '}',
-      '.pivot-corner--label   { width: 90px;  min-width: 90px;  }',
-      '.pivot-corner--product { width: 130px; min-width: 130px; }',
       '.pivot-col {',
       '  background: #eef5fb; text-align: center;',
-      '  height: 110px; vertical-align: bottom; padding: 4px 2px;',
-      '  width: 26px; max-width: 26px;',
+      '  height: 140px; vertical-align: bottom; padding: 4px 2px;',
+      '  width: auto;',
       '}',
       '.pivot-col-text {',
-      '  display: inline-block;',
       '  writing-mode: vertical-rl; transform: rotate(180deg);',
-      '  white-space: nowrap;',
-      '  font-weight: 700; color: #07467c;',
-      '  max-height: 100px; overflow: hidden; text-overflow: ellipsis;',
+      '  display: inline-block;',
+      '  height: 132px;',
+      '  font-weight: 700; color: #07467c; font-size: 9px;',
+      '  line-height: 1.15;',
+      '  white-space: normal; word-break: break-word; overflow-wrap: break-word;',
       '}',
+      '.pivot-col--blank { background: #f8fafc; }',
       '.pivot-row {',
       '  background: #f8fafc; text-align: left;',
-      '  white-space: normal; word-break: break-word;',
+      '  white-space: nowrap; width: 1%;',
       '  padding: 3px 6px;',
       '}',
       '.pivot-row--label   { font-weight: 700; color: #07467c; }',
       '.pivot-row--product { font-weight: 400; color: #374151; }',
       '.pivot-cell {',
       '  text-align: center; font-size: 13px; color: #111827;',
-      '  height: 20px;',
-      '}'
+      '  height: 22px;',
+      '}',
+      '.pivot-blank-row .pivot-row { background: #fff; }'
     ].join('\n');
   }
 
