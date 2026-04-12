@@ -7165,6 +7165,31 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // SHARED ACTIONS
   // ══════════════════════════════════════════════════════════════
 
+  var PUBLISH_TOAST_ID = 'scw-publish-toast';
+
+  function showPublishToast(message, redirect) {
+    var existing = document.getElementById(PUBLISH_TOAST_ID);
+    if (existing) existing.remove();
+
+    var toast = document.createElement('div');
+    toast.id = PUBLISH_TOAST_ID;
+    toast.textContent = message;
+    toast.style.cssText = [
+      'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);',
+      'background: #07467c; color: #fff; padding: 20px 40px;',
+      'border-radius: 8px; font-size: 16px; font-weight: 600;',
+      'box-shadow: 0 4px 20px rgba(0,0,0,.3); z-index: 10000;',
+      'text-align: center;'
+    ].join('');
+    document.body.appendChild(toast);
+
+    if (redirect) {
+      setTimeout(function () {
+        window.history.back();
+      }, 1500);
+    }
+  }
+
   function openPdfPreview(htmlStr) {
     var win = window.open('', '_blank');
     if (!win) {
@@ -7292,9 +7317,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               contentType: 'application/json',
               data: JSON.stringify(savePayload),
               crossDomain: true,
-              success: function () { console.log('[SCW PDF Export] Save webhook OK'); },
-              error: function (xhr, status, err) { console.error('[SCW PDF Export] Save webhook failed:', status, err); }
+              success: function () {
+                console.log('[SCW PDF Export] Save webhook OK');
+                showPublishToast('Quote published successfully!', true);
+              },
+              error: function (xhr, status, err) {
+                console.error('[SCW PDF Export] Save webhook failed:', status, err);
+                showPublishToast('Quote published — redirecting\u2026', true);
+              }
             });
+            showPublishToast('Publishing quote\u2026', false);
           }
         });
 
