@@ -106,9 +106,14 @@
   function viewHasDataRows(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return false;
+    // "No data" indicator means empty regardless of view type
+    if (root.querySelector('.kn-tr-nodata')) return false;
+    // Standard grid: data rows have id attributes
     var tbody = root.querySelector('.kn-table tbody');
-    if (!tbody) return false;
-    return tbody.querySelectorAll('tr[id]').length > 0;
+    if (tbody && tbody.querySelectorAll('tr[id]').length > 0) return true;
+    // Report/pivot views: check for rendered report content
+    if (root.querySelector('.kn-report-rendered')) return true;
+    return false;
   }
 
   // ══════════════════════════════════════════════════════════════
