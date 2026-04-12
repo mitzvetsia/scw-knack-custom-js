@@ -296,9 +296,15 @@
           }
         }
 
-        var camB = tr.querySelector('.scw-concat-cameras b');
         var cameraList = '';
-        if (camB) cameraList = norm(camB.textContent).replace(/^\(/, '').replace(/\)$/, '');
+        var camBs = tr.querySelectorAll('.scw-concat-cameras b');
+        for (var cb = camBs.length - 1; cb >= 0; cb--) {
+          var camText = norm(camBs[cb].textContent);
+          if (/^\(.*\)$/.test(camText)) {
+            cameraList = camText.replace(/^\(/, '').replace(/\)$/, '').trim();
+            break;
+          }
+        }
 
         var l4Qty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l4Cost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
@@ -530,6 +536,9 @@
                     .replace(/<p>/gi, '<div>')
                     .replace(/<\/p>/gi, '</div>')
                 : esc(item.label);
+              if (item.cameraList) {
+                l4Content += '<span class="connected-devices">(' + esc(item.cameraList) + ')</span>';
+              }
               html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
                 html.push('<td class="col-qty">' + item.qty + '</td>');
