@@ -17,8 +17,8 @@
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = [
-      '/* Hide all native detail fields in the published proposal view */',
-      '#' + VIEW_ID + ' .kn-details-group { display: none !important; }',
+      '/* Hide the entire detail view */',
+      '#' + VIEW_ID + ' { display: none !important; }',
       '/* Hide breadcrumb trail when this scene is active */',
       'body.scw-hide-crumbtrail .kn-crumbtrail { display: none !important; }',
       '',
@@ -90,12 +90,26 @@
       css = window.SCW.pdfExport.getCss();
     }
 
+    // Scale up font sizes for comfortable on-screen reading
+    // (the base CSS targets print at 11px body / 10px L4)
+    var overrides = [
+      'body { font-size: 14px; }',
+      '.detail-label, .detail-value { font-size: 14px; }',
+      '.richtext-content { font-size: 14px; }',
+      '.l3-row td:first-child { font-size: 15px; }',
+      '.l4-row td { font-size: 13px; padding-left: 40px; }',
+      '.l4-row td.col-qty, .l4-row td.col-cost { font-size: 13px; }',
+      '.product-table thead th { font-size: 11px; }',
+      '.l2-header { font-size: 15px; }',
+    ].join('\n');
+
     var html = [];
     html.push('<!DOCTYPE html>');
     html.push('<html><head><meta charset="utf-8">');
     html.push('<title>Proposal</title>');
     html.push('<style>');
     html.push(css);
+    html.push(overrides);
     html.push('</style>');
     html.push('</head><body>');
     html.push(fragment);
@@ -121,13 +135,8 @@
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('scrolling', 'no');
 
-    // Insert iframe inside the view, after the columns section
-    var columns = viewEl.querySelector('section.columns');
-    if (columns) {
-      columns.parentNode.insertBefore(iframe, columns.nextSibling);
-    } else {
-      viewEl.appendChild(iframe);
-    }
+    // Insert iframe after the hidden view element
+    viewEl.parentNode.insertBefore(iframe, viewEl.nextSibling);
 
     // Write HTML into iframe
     var doc = iframe.contentDocument || iframe.contentWindow.document;
