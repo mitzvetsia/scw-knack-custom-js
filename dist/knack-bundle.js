@@ -7095,6 +7095,71 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ══════════════════════════════════════════════════════════════
+  // JSON SNAPSHOT — raw Knack records for line items + header
+  // ══════════════════════════════════════════════════════════════
+
+  function extractGridRecords(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views) return [];
+    var view = Knack.views[viewId];
+    if (!view || !view.model || !view.model.data) return [];
+    var data = view.model.data;
+    if (Array.isArray(data)) {
+      return data.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+      });
+    }
+    if (data.models && Array.isArray(data.models)) {
+      return data.models.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+      });
+    }
+    return [];
+  }
+
+  function extractDetailRecord(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views) return null;
+    var view = Knack.views[viewId];
+    if (!view || !view.model) return null;
+    var attrs = view.model.attributes
+             || (view.model.data && view.model.data.attributes)
+             || null;
+    if (!attrs) return null;
+    return typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+  }
+
+  function buildJsonSnapshot(sceneId) {
+    var sceneEl = document.getElementById('kn-' + sceneId);
+    if (!sceneEl) return [];
+
+    // Collect line item records from grid views
+    var lineItems = [];
+    var gridViewIds = ['view_3341', 'view_3371'];
+    for (var g = 0; g < gridViewIds.length; g++) {
+      var records = extractGridRecords(gridViewIds[g]);
+      for (var r = 0; r < records.length; r++) {
+        lineItems.push({ _source: gridViewIds[g], record: records[r] });
+      }
+    }
+
+    // Collect SOW header from all detail views on the scene
+    var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
+    var header = null;
+    for (var d = 0; d < allViewEls.length; d++) {
+      var viewId = allViewEls[d].id;
+      if (detectViewType(viewId) !== 'detail') continue;
+      var rec = extractDetailRecord(viewId);
+      if (rec) {
+        header = { _source: viewId, record: rec };
+        break;
+      }
+    }
+
+    var snapshot = lineItems.slice();
+    if (header) snapshot.unshift(header);
+    return snapshot;
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SHARED ACTIONS
   // ══════════════════════════════════════════════════════════════
 
@@ -7201,10 +7266,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           if (cfg.saveHtml) {
             var pageRecordId = getPageRecordId();
             var summary = extractSummaryFields(payload);
-
-            // JSON snapshot — full scraped data without the html string
-            var jsonSnapshot = JSON.parse(JSON.stringify(payload));
-            delete jsonSnapshot.html;
+            var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
 
             var savePayload = {
               recordId: pageRecordId || '',
@@ -7219,7 +7281,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               html: htmlStr,
               json: jsonSnapshot
             };
-            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary);
+            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
               type: 'POST',
