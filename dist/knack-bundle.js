@@ -26361,13 +26361,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var TITLE_CLIENT_LABEL_HINTS = ['client', 'customer', 'company', 'account'];
   var TITLE_SITE_LABEL_HINTS   = ['site name', 'location name', 'site', 'location', 'property', 'project name', 'project'];
 
-  // Number of blank fillable device entries to append at the end of
-  // each L1 (MDF/IDF) group in the printed worksheet.
-  var BLANK_DEVICE_ENTRIES_PER_L1 = 2;
+  // Worksheet bucket field and the Cameras/Readers bucket record ID.
+  // Both taken from src/features/bucket-field-visibility_add-survey-bid-item.js.
+  var BUCKET_FIELD             = 'field_2223';
+  var CAMERAS_READERS_BUCKET   = '6481e5ba38f283002898113c';
 
-  // Field that marks a worksheet card as a distribution device (MDF/
-  // IDF switch). Cards with field_2374 = yes become columns in the
-  // connection-map pivot at the end of the PDF.
+  // Distribution-device flag on a survey line item. Cards/records
+  // with this field truthy become columns in the connection-map pivot.
   var DISTRIBUTION_DEVICE_FIELD = 'field_2374';
 
   // Views whose image attachments render as full-page covers
@@ -26499,6 +26499,72 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ══════════════════════════════════════════════════════════════
+  // Knack model helpers — pull raw record data by ID
+  // ══════════════════════════════════════════════════════════════
+
+  // Grab the 24-char Mongo-style record ID out of a <tr id="…">.
+  function recordIdFromTr(tr) {
+    if (!tr || !tr.id) return '';
+    var m = tr.id.match(/[0-9a-f]{24}/i);
+    return m ? m[0] : '';
+  }
+
+  // Build a { recordId: attributes } map from a view's Knack model.
+  function buildRecordMap(viewId) {
+    var map = {};
+    try {
+      var view = window.Knack && Knack.views && Knack.views[viewId];
+      if (!view || !view.model) return map;
+      var m = view.model;
+      var records = [];
+      if (m.models && m.models.length) records = m.models;
+      else if (m.data && m.data.models && m.data.models.length) records = m.data.models;
+      else if (Array.isArray(m.data)) records = m.data;
+      for (var i = 0; i < records.length; i++) {
+        var rec = records[i];
+        var attrs = rec && (rec.attributes || rec);
+        if (!attrs) continue;
+        var id = rec.id || attrs.id || '';
+        if (id) map[id] = attrs;
+      }
+    } catch (e) {
+      console.warn('[SCW survey-pdf] buildRecordMap failed for ' + viewId, e);
+    }
+    return map;
+  }
+
+  // Read a bucket ID out of a record's field_XXX_raw connection
+  // value. Knack renders these as arrays of {id, identifier}.
+  function bucketIdOf(record, fieldKey) {
+    if (!record) return '';
+    var raw = record[fieldKey + '_raw'];
+    if (raw && raw.length) return raw[0].id || '';
+    // Some views return a plain string ID.
+    var plain = record[fieldKey];
+    if (typeof plain === 'string' && /^[0-9a-f]{24}$/i.test(plain)) return plain;
+    return '';
+  }
+
+  // Flexible yes/true detection that looks at both display value
+  // and _raw form. Works for Knack "Yes/No", boolean, and enum fields.
+  function isYesish(record, fieldKey) {
+    if (!record) return false;
+    var v = record[fieldKey];
+    if (v === true || v === 1) return true;
+    if (typeof v === 'string') {
+      var s = v.toLowerCase().trim();
+      if (s === 'yes' || s === 'true' || s === '1' || s === 'on') return true;
+    }
+    var raw = record[fieldKey + '_raw'];
+    if (raw === true || raw === 1) return true;
+    if (typeof raw === 'string') {
+      var sr = raw.toLowerCase().trim();
+      if (sr === 'yes' || sr === 'true' || sr === '1' || sr === 'on') return true;
+    }
+    return false;
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPER
   // ══════════════════════════════════════════════════════════════
 
@@ -26541,6 +26607,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var currentL1 = '';
     var currentL2 = '';
 
+    // Pull raw record attributes so the pivot / bucket logic can
+    // read fields that aren't in the detail panel (bucket, field_2374).
+    var recordMap = buildRecordMap(viewId);
+
     for (var i = 0; i < kids.length; i++) {
       var tr = kids[i];
       if (tr.style && tr.style.display === 'none') continue;
@@ -26567,13 +26637,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (rowObj) {
         rowObj.groupL1 = currentL1;
         rowObj.groupL2 = currentL2;
+        rowObj.recordId = recordIdFromTr(tr);
+        rowObj.raw = rowObj.recordId ? (recordMap[rowObj.recordId] || null) : null;
         out.push(rowObj);
       }
     }
 
-    // Insert N blank fillable device entries after each L1 group so
-    // the tech has space to add devices that weren't pre-provisioned.
-    out = insertBlankDeviceEntries(out, BLANK_DEVICE_ENTRIES_PER_L1);
+    // Append an "Additional Notes" space at the end of each L1
+    // (MDF/IDF) group so the tech can jot down anything that didn't
+    // fit the structured fields.
+    out = insertL1NotesBlocks(out);
 
     return {
       viewId: viewId,
@@ -26586,29 +26659,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // Walks the row list and, after each L1 group's cards, appends
-  // `count` synthetic {type:'blank'} entries tagged with that L1's
-  // label. Blanks go just BEFORE the next L1 group (or at the end).
-  function insertBlankDeviceEntries(rows, count) {
-    if (!count) return rows;
+  // a single {type:'l1-notes'} entry tagged with that L1's label.
+  // The renderer turns this into a blank "Additional Notes" block.
+  function insertL1NotesBlocks(rows) {
     var out = [];
     var inL1 = false;
     var currentL1 = '';
-    function flushBlanks() {
+    function flushNotes() {
       if (!inL1) return;
-      for (var b = 0; b < count; b++) {
-        out.push({ type: 'blank', groupL1: currentL1 });
-      }
+      out.push({ type: 'l1-notes', groupL1: currentL1 });
     }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       if (r.type === 'group' && r.level === 1) {
-        flushBlanks();
+        flushNotes();
         inL1 = true;
         currentL1 = r.label;
       }
       out.push(r);
     }
-    flushBlanks();
+    flushNotes();
     return out;
   }
 
@@ -27060,8 +27130,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         html.push(renderGroupHeader(row));
       } else if (row.type === 'card') {
         html.push(renderCard(row));
-      } else if (row.type === 'blank') {
-        html.push(renderBlankCard(row));
+      } else if (row.type === 'l1-notes') {
+        html.push(renderL1Notes(row));
       }
     }
 
@@ -27080,23 +27150,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return html.join('\n');
   }
 
-  // ── Blank fillable device entry (appended after each L1 group) ──
-  function renderBlankCard(row) {
+  // ── Additional Notes block (appended at the end of each L1 group) ──
+  function renderL1Notes(row) {
     var h = [];
-    h.push('<section class="ws-card ws-card--blank">');
-    h.push('<div class="ws-blank-row">');
-    h.push('<span class="ws-blank-field">');
-    h.push('<span class="ws-blank-label">Label:</span>');
-    h.push('<span class="ws-blank-line"></span>');
-    h.push('</span>');
-    h.push('<span class="ws-blank-field">');
-    h.push('<span class="ws-blank-label">Product:</span>');
-    h.push('<span class="ws-blank-line"></span>');
-    h.push('</span>');
+    h.push('<section class="ws-card ws-card--notes">');
+    h.push('<div class="ws-notes-heading">Additional Notes');
+    if (row && row.groupL1) {
+      h.push(' <span class="ws-notes-scope">\u2014 ' + esc(row.groupL1) + '</span>');
+    }
     h.push('</div>');
-    h.push('<div class="ws-blank-notes">');
-    h.push('<span class="ws-blank-label">Notes:</span>');
-    h.push('<span class="ws-blank-line"></span>');
+    h.push('<div class="ws-notes-lines ws-notes-lines--l1">');
+    for (var i = 0; i < 5; i++) {
+      h.push('<div class="ws-notes-line"></div>');
+    }
     h.push('</div>');
     h.push('</section>');
     return h.join('');
@@ -27105,27 +27171,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ══════════════════════════════════════════════════════════════
   // CONNECTION MAP — pivot table
   // ══════════════════════════════════════════════════════════════
-  // Columns: every card flagged as a distribution device
-  //          (detailValues[field_2374] === 'yes')
-  // Rows:    every card whose group path or label/product contains
-  //          "camera" or "reader" (case-insensitive) AND isn't itself
-  //          a distribution device
-  // Cell:    empty checkbox for the tech to mark the connection
+  //
+  //   Rows    = every line item whose bucket (field_2223) is the
+  //             "Cameras or Readers" bucket.
+  //   Columns = every line item where field_2374 is YES (a product
+  //             flagged as a distribution device).
+  //   Cells   = empty checkbox for the tech to mark the connection.
+  //
+  // All classification reads the raw Knack record attributes that
+  // we attached to each card during scrape(). The detail panel
+  // doesn't render the bucket or field_2374, so detailValues is
+  // not a reliable source.
 
-  function isDistributionDevice(card) {
-    if (!card || !card.detailValues) return false;
-    var v = card.detailValues[DISTRIBUTION_DEVICE_FIELD];
-    if (!v) return false;
-    var s = String(v).toLowerCase().trim();
-    return s === 'yes' || s === 'true' || s === '1';
+  function isCamerasReadersBucket(card) {
+    if (!card || !card.raw) return false;
+    var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
+    if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
+    // Fallback: display value like "Cameras or Readers"
+    var disp = card.raw[BUCKET_FIELD];
+    if (typeof disp === 'string' && /cameras|readers/i.test(disp)) return true;
+    return false;
   }
 
-  function isCameraOrReader(card) {
-    var parts = [
-      card.groupL1 || '', card.groupL2 || '',
-      card.label || '', card.product || ''
-    ].join(' ').toLowerCase();
-    return /camera|reader/.test(parts);
+  function isDistributionDevice(card) {
+    if (!card || !card.raw) return false;
+    return isYesish(card.raw, DISTRIBUTION_DEVICE_FIELD);
   }
 
   function renderConnectionPivot(payload) {
@@ -27134,32 +27204,35 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var i = 0; i < payload.rows.length; i++) {
       var r = payload.rows[i];
       if (!r || r.type !== 'card') continue;
-      if (isDistributionDevice(r)) {
-        cols.push(r);
-      } else if (isCameraOrReader(r)) {
-        rows.push(r);
-      }
+      if (isDistributionDevice(r)) cols.push(r);
+      if (isCamerasReadersBucket(r)) rows.push(r);
     }
-    if (!rows.length || !cols.length) return '';
+    if (!rows.length || !cols.length) {
+      console.log('[SCW survey-pdf] connection pivot: skipped', {
+        rowCount: rows.length,
+        colCount: cols.length
+      });
+      return '';
+    }
 
     var h = [];
     h.push('<section class="pivot">');
     h.push('<h2 class="pivot-title">Connection Map</h2>');
     h.push('<div class="pivot-hint">Check the box for each camera/reader that connects to the respective distribution device.</div>');
     h.push('<table class="pivot-table"><thead><tr>');
-    h.push('<th class="pivot-corner"></th>');
+    h.push('<th class="pivot-corner pivot-corner--label">Label</th>');
+    h.push('<th class="pivot-corner pivot-corner--product">Product</th>');
     for (var c = 0; c < cols.length; c++) {
       var col = cols[c];
-      var colLabel = col.label || col.product || '';
-      h.push('<th class="pivot-col"><span class="pivot-col-text">' + esc(colLabel) + '</span></th>');
+      var colHead = col.product || col.label || '';
+      h.push('<th class="pivot-col"><span class="pivot-col-text">' + esc(colHead) + '</span></th>');
     }
     h.push('</tr></thead><tbody>');
     for (var r2 = 0; r2 < rows.length; r2++) {
       var row = rows[r2];
-      var rowLabel = row.label || '';
-      if (row.product) rowLabel += (rowLabel ? ' · ' : '') + row.product;
       h.push('<tr>');
-      h.push('<th class="pivot-row" scope="row">' + esc(rowLabel) + '</th>');
+      h.push('<th class="pivot-row pivot-row--label" scope="row">' + esc(row.label || '') + '</th>');
+      h.push('<td class="pivot-row pivot-row--product">' + esc(row.product || '') + '</td>');
       for (var c2 = 0; c2 < cols.length; c2++) {
         h.push('<td class="pivot-cell">\u2610</td>');
       }
@@ -27655,32 +27728,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
       '}',
       '',
-      '/* Blank fillable device entry (one per missing device) */',
-      '.ws-card--blank {',
+      '/* Additional Notes block appended at the end of each L1 group */',
+      '.ws-card--notes {',
       '  border: 1px dashed #94a3b8;',
-      '  background: repeating-linear-gradient(',
-      '    135deg, #ffffff 0 8px, #f4f7fb 8px 16px);',
+      '  background: #fbfdff;',
       '}',
-      '.ws-blank-row {',
-      '  display: flex; gap: 16px; align-items: baseline;',
+      '.ws-notes-heading {',
+      '  font-size: 10px; font-weight: 800; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '  margin-bottom: 6px;',
       '}',
-      '.ws-blank-field {',
-      '  display: flex; flex: 1 1 0; align-items: baseline; gap: 6px;',
+      '.ws-notes-scope {',
+      '  color: #6b7280; font-weight: 600;',
+      '  letter-spacing: 0.3px;',
       '}',
-      '.ws-blank-label {',
-      '  font-size: 10.5px; font-weight: 700; color: #07467c;',
-      '  text-transform: uppercase; letter-spacing: 0.4px;',
-      '  flex: 0 0 auto;',
-      '}',
-      '.ws-blank-line {',
-      '  flex: 1 1 auto; display: inline-block;',
-      '  min-height: 16px;',
-      '  border-bottom: 1px solid #4b5563;',
-      '}',
-      '.ws-blank-notes {',
-      '  display: flex; gap: 6px; align-items: baseline;',
-      '  margin-top: 8px;',
-      '}',
+      '.ws-notes-lines--l1 { gap: 14px; }',
       '',
       '/* Connection Map pivot table */',
       '.pivot {',
@@ -27706,24 +27768,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  vertical-align: middle;',
       '}',
       '.pivot-corner {',
-      '  background: #eef5fb; width: 120px; min-width: 120px;',
+      '  background: #eef5fb; vertical-align: bottom; padding: 4px 6px;',
+      '  font-weight: 700; color: #07467c; text-align: left;',
       '}',
+      '.pivot-corner--label   { width: 90px;  min-width: 90px;  }',
+      '.pivot-corner--product { width: 130px; min-width: 130px; }',
       '.pivot-col {',
       '  background: #eef5fb; text-align: center;',
-      '  height: 90px; vertical-align: bottom; padding: 4px 2px;',
+      '  height: 110px; vertical-align: bottom; padding: 4px 2px;',
+      '  width: 26px; max-width: 26px;',
       '}',
       '.pivot-col-text {',
       '  display: inline-block;',
       '  writing-mode: vertical-rl; transform: rotate(180deg);',
       '  white-space: nowrap;',
       '  font-weight: 700; color: #07467c;',
-      '  max-height: 80px; overflow: hidden; text-overflow: ellipsis;',
+      '  max-height: 100px; overflow: hidden; text-overflow: ellipsis;',
       '}',
       '.pivot-row {',
       '  background: #f8fafc; text-align: left;',
-      '  font-weight: 600; color: #07467c;',
       '  white-space: normal; word-break: break-word;',
+      '  padding: 3px 6px;',
       '}',
+      '.pivot-row--label   { font-weight: 700; color: #07467c; }',
+      '.pivot-row--product { font-weight: 400; color: #374151; }',
       '.pivot-cell {',
       '  text-align: center; font-size: 13px; color: #111827;',
       '  height: 20px;',
