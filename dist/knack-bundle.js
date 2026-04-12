@@ -7261,7 +7261,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             return;
           }
           var htmlStr = buildPdfHtml(payload);
-          openPdfPreview(htmlStr);
+          if (cfg.trigger.openPreview) {
+            openPdfPreview(htmlStr);
+          }
           payload.html = htmlStr;
           sendToWebhook(payload);
 
