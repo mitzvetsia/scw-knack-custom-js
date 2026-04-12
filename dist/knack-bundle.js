@@ -26346,8 +26346,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var FORM_VIEW_ID           = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
 
   // Detail views that contribute to the page-1 info cover (rendered
-  // before any image covers or worksheet items).
-  var PAGE1_DETAIL_VIEWS = ['view_3796', 'view_3795', 'view_3798'];
+  // before any image covers or worksheet items). Each entry is
+  // { viewId, label? } — if `label` is set it replaces the view's
+  // own header as the section title.
+  var PAGE1_DETAIL_VIEWS = [
+    { viewId: 'view_3796' },
+    { viewId: 'view_3795' },
+    { viewId: 'view_3798', label: 'Survey Contact(s)' }
+  ];
+
+  // Label substrings used to pick the client and site names out of
+  // the page-1 detail-view fields when building the doc title.
+  // Matching is case-insensitive substring; first match wins.
+  var TITLE_CLIENT_LABEL_HINTS = ['client', 'customer', 'company', 'account'];
+  var TITLE_SITE_LABEL_HINTS   = ['site name', 'location name', 'site', 'location', 'property', 'project name', 'project'];
+
+  // Number of blank fillable device entries to append at the end of
+  // each L1 (MDF/IDF) group in the printed worksheet.
+  var BLANK_DEVICE_ENTRIES_PER_L1 = 2;
+
+  // Field that marks a worksheet card as a distribution device (MDF/
+  // IDF switch). Cards with field_2374 = yes become columns in the
+  // connection-map pivot at the end of the PDF.
+  var DISTRIBUTION_DEVICE_FIELD = 'field_2374';
 
   // Views whose image attachments render as full-page covers
   // BEFORE the survey worksheet items. Each image is labeled with
@@ -26366,6 +26387,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function norm(s) {
     return String(s == null ? '' : s).replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  // Like norm, but preserves newlines. Collapses only runs of spaces
+  // and tabs within each line so multi-line detail values (e.g. an
+  // "Additional Instructions" blob) keep their line breaks.
+  function normMultiline(s) {
+    var str = String(s == null ? '' : s).replace(/\u00A0/g, ' ');
+    var lines = str.split(/\r?\n/);
+    var cleaned = [];
+    var blankRun = false;
+    for (var i = 0; i < lines.length; i++) {
+      var ln = lines[i].replace(/[ \t]+/g, ' ').trim();
+      if (!ln) {
+        if (blankRun) continue;
+        blankRun = true;
+      } else {
+        blankRun = false;
+      }
+      cleaned.push(ln);
+    }
+    while (cleaned.length && !cleaned[0]) cleaned.shift();
+    while (cleaned.length && !cleaned[cleaned.length - 1]) cleaned.pop();
+    return cleaned.join('\n');
+  }
+
+  // Walks an element and returns its text with <br>/block-tag breaks
+  // converted to \n, so downstream normMultiline can keep real line
+  // boundaries that textContent would otherwise collapse.
+  function multilineTextOf(el) {
+    if (!el) return '';
+    var html = el.innerHTML || '';
+    html = html.replace(/<br\s*\/?>/gi, '\n');
+    html = html.replace(/<\/(p|div|li|h[1-6])>/gi, '\n');
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return normMultiline(tmp.textContent || '');
   }
 
   function esc(s) {
@@ -26458,13 +26515,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     };
     if (!root) return emptyPayload;
 
-    var title = '';
-    var h2 = root.querySelector('.view-header h2, .view-header h1');
-    if (h2) title = textOf(h2);
-
     var page1Sections         = scrapePage1Cover();
     var coverImageSections    = getImageSections(COVER_IMAGE_VIEWS);
     var trailingImageSections = getImageSections(TRAILING_IMAGE_VIEWS);
+
+    // Main document title is now derived from the page-1 detail
+    // views (client + site) rather than view_3800's own header.
+    var title = buildSurveyTitle(page1Sections);
 
     var tbody = root.querySelector('table tbody');
     if (!tbody) {
@@ -26481,6 +26538,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var out = [];
     var kids = tbody.children;
 
+    var currentL1 = '';
+    var currentL2 = '';
+
     for (var i = 0; i < kids.length; i++) {
       var tr = kids[i];
       if (tr.style && tr.style.display === 'none') continue;
@@ -26492,6 +26552,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                   : tr.classList.contains('kn-group-level-3') ? 3 : 1;
         var label = textOf(tr.querySelector('td'));
         if (!label) continue;
+        if (level === 1) { currentL1 = label; currentL2 = ''; }
+        else if (level === 2) { currentL2 = label; }
         out.push({ type: 'group', level: level, label: label });
         continue;
       }
@@ -26502,8 +26564,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!card) continue;
 
       var rowObj = scrapeCard(card);
-      if (rowObj) out.push(rowObj);
+      if (rowObj) {
+        rowObj.groupL1 = currentL1;
+        rowObj.groupL2 = currentL2;
+        out.push(rowObj);
+      }
     }
+
+    // Insert N blank fillable device entries after each L1 group so
+    // the tech has space to add devices that weren't pre-provisioned.
+    out = insertBlankDeviceEntries(out, BLANK_DEVICE_ENTRIES_PER_L1);
 
     return {
       viewId: viewId,
@@ -26513,6 +26583,33 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       coverImageSections: coverImageSections,
       trailingImageSections: trailingImageSections
     };
+  }
+
+  // Walks the row list and, after each L1 group's cards, appends
+  // `count` synthetic {type:'blank'} entries tagged with that L1's
+  // label. Blanks go just BEFORE the next L1 group (or at the end).
+  function insertBlankDeviceEntries(rows, count) {
+    if (!count) return rows;
+    var out = [];
+    var inL1 = false;
+    var currentL1 = '';
+    function flushBlanks() {
+      if (!inL1) return;
+      for (var b = 0; b < count; b++) {
+        out.push({ type: 'blank', groupL1: currentL1 });
+      }
+    }
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r.type === 'group' && r.level === 1) {
+        flushBlanks();
+        inL1 = true;
+        currentL1 = r.label;
+      }
+      out.push(r);
+    }
+    flushBlanks();
+    return out;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -26705,7 +26802,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var labelEl = item.querySelector('.kn-detail-label');
       var valueEl = item.querySelector('.kn-detail-body');
       if (!valueEl) continue;
-      var value = norm(valueEl.textContent || '');
+      // Preserve line breaks for long-text fields like "Additional
+      // Instructions" by walking <br>/block tags into \n.
+      var value = multilineTextOf(valueEl);
       if (!value || value === '-' || value === '—') continue;
       var label = '';
       if (labelEl && !item.classList.contains('kn-label-none')) {
@@ -26719,11 +26818,62 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function scrapePage1Cover() {
     var sections = [];
+    var seenValues = {};
     for (var i = 0; i < PAGE1_DETAIL_VIEWS.length; i++) {
-      var sec = scrapeDetailViewFields(PAGE1_DETAIL_VIEWS[i]);
-      if (sec && sec.fields.length) sections.push(sec);
+      var cfg = PAGE1_DETAIL_VIEWS[i];
+      var sec = scrapeDetailViewFields(cfg.viewId);
+      if (!sec) continue;
+      // Label override (e.g. view_3798 → "Survey Contact(s)")
+      if (cfg.label) sec.title = cfg.label;
+      // Dedupe across sections by normalized value — the same address
+      // can show up in multiple detail views, and we only want it
+      // printed once on the info cover.
+      var uniqueFields = [];
+      for (var f = 0; f < sec.fields.length; f++) {
+        var fld = sec.fields[f];
+        var key = norm(fld.value).toLowerCase();
+        if (!key) continue;
+        if (seenValues[key]) continue;
+        seenValues[key] = true;
+        uniqueFields.push(fld);
+      }
+      if (!uniqueFields.length) continue;
+      sec.fields = uniqueFields;
+      sections.push(sec);
     }
     return sections;
+  }
+
+  // ── Title builder ──────────────────────────────────────────────
+  // Build a "Survey: {client} — {site}" string from the detail-view
+  // sections on the page-1 cover. Falls back to a shorter variant
+  // when only one of client/site can be found.
+
+  function findFieldByLabelHints(sections, hints) {
+    var hintsLower = hints.map(function (h) { return h.toLowerCase(); });
+    for (var s = 0; s < sections.length; s++) {
+      var flds = sections[s].fields || [];
+      for (var f = 0; f < flds.length; f++) {
+        var lbl = norm(flds[f].label || '').toLowerCase();
+        if (!lbl) continue;
+        for (var h = 0; h < hintsLower.length; h++) {
+          if (lbl.indexOf(hintsLower[h]) !== -1) {
+            return norm(flds[f].value || '');
+          }
+        }
+      }
+    }
+    return '';
+  }
+
+  function buildSurveyTitle(sections) {
+    var client = findFieldByLabelHints(sections, TITLE_CLIENT_LABEL_HINTS);
+    var site   = findFieldByLabelHints(sections, TITLE_SITE_LABEL_HINTS);
+    var parts = [];
+    if (client) parts.push(client);
+    if (site && site !== client) parts.push(site);
+    if (!parts.length) return 'Survey';
+    return 'Survey: ' + parts.join(' — ');
   }
 
   function scrapeCard(card) {
@@ -26900,9 +27050,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    if (payload.title) {
-      html.push('<h1 class="doc-title">' + esc(payload.title) + '</h1>');
-    }
+    // Note: the doc-title used to print here as an <h1> before the
+    // first worksheet row, but it's now redundant with the page-1
+    // info cover's <h1>. The info cover is the title page.
 
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
@@ -26910,8 +27060,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         html.push(renderGroupHeader(row));
       } else if (row.type === 'card') {
         html.push(renderCard(row));
+      } else if (row.type === 'blank') {
+        html.push(renderBlankCard(row));
       }
     }
+
+    // ── Connection Map pivot (cameras/readers × distribution devices) ──
+    var pivotHtml = renderConnectionPivot(payload);
+    if (pivotHtml) html.push(pivotHtml);
 
     // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
     if (payload.trailingImageSections && payload.trailingImageSections.length) {
@@ -26922,6 +27078,96 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     html.push('</body></html>');
     return html.join('\n');
+  }
+
+  // ── Blank fillable device entry (appended after each L1 group) ──
+  function renderBlankCard(row) {
+    var h = [];
+    h.push('<section class="ws-card ws-card--blank">');
+    h.push('<div class="ws-blank-row">');
+    h.push('<span class="ws-blank-field">');
+    h.push('<span class="ws-blank-label">Label:</span>');
+    h.push('<span class="ws-blank-line"></span>');
+    h.push('</span>');
+    h.push('<span class="ws-blank-field">');
+    h.push('<span class="ws-blank-label">Product:</span>');
+    h.push('<span class="ws-blank-line"></span>');
+    h.push('</span>');
+    h.push('</div>');
+    h.push('<div class="ws-blank-notes">');
+    h.push('<span class="ws-blank-label">Notes:</span>');
+    h.push('<span class="ws-blank-line"></span>');
+    h.push('</div>');
+    h.push('</section>');
+    return h.join('');
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // CONNECTION MAP — pivot table
+  // ══════════════════════════════════════════════════════════════
+  // Columns: every card flagged as a distribution device
+  //          (detailValues[field_2374] === 'yes')
+  // Rows:    every card whose group path or label/product contains
+  //          "camera" or "reader" (case-insensitive) AND isn't itself
+  //          a distribution device
+  // Cell:    empty checkbox for the tech to mark the connection
+
+  function isDistributionDevice(card) {
+    if (!card || !card.detailValues) return false;
+    var v = card.detailValues[DISTRIBUTION_DEVICE_FIELD];
+    if (!v) return false;
+    var s = String(v).toLowerCase().trim();
+    return s === 'yes' || s === 'true' || s === '1';
+  }
+
+  function isCameraOrReader(card) {
+    var parts = [
+      card.groupL1 || '', card.groupL2 || '',
+      card.label || '', card.product || ''
+    ].join(' ').toLowerCase();
+    return /camera|reader/.test(parts);
+  }
+
+  function renderConnectionPivot(payload) {
+    var cols = [];
+    var rows = [];
+    for (var i = 0; i < payload.rows.length; i++) {
+      var r = payload.rows[i];
+      if (!r || r.type !== 'card') continue;
+      if (isDistributionDevice(r)) {
+        cols.push(r);
+      } else if (isCameraOrReader(r)) {
+        rows.push(r);
+      }
+    }
+    if (!rows.length || !cols.length) return '';
+
+    var h = [];
+    h.push('<section class="pivot">');
+    h.push('<h2 class="pivot-title">Connection Map</h2>');
+    h.push('<div class="pivot-hint">Check the box for each camera/reader that connects to the respective distribution device.</div>');
+    h.push('<table class="pivot-table"><thead><tr>');
+    h.push('<th class="pivot-corner"></th>');
+    for (var c = 0; c < cols.length; c++) {
+      var col = cols[c];
+      var colLabel = col.label || col.product || '';
+      h.push('<th class="pivot-col"><span class="pivot-col-text">' + esc(colLabel) + '</span></th>');
+    }
+    h.push('</tr></thead><tbody>');
+    for (var r2 = 0; r2 < rows.length; r2++) {
+      var row = rows[r2];
+      var rowLabel = row.label || '';
+      if (row.product) rowLabel += (rowLabel ? ' · ' : '') + row.product;
+      h.push('<tr>');
+      h.push('<th class="pivot-row" scope="row">' + esc(rowLabel) + '</th>');
+      for (var c2 = 0; c2 < cols.length; c2++) {
+        h.push('<td class="pivot-cell">\u2610</td>');
+      }
+      h.push('</tr>');
+    }
+    h.push('</tbody></table>');
+    h.push('</section>');
+    return h.join('');
   }
 
   // ── Page 1 info cover renderer ──
@@ -26942,7 +27188,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       h.push('<dl class="info-cover-fields">');
       for (var f = 0; f < sec.fields.length; f++) {
         var fld = sec.fields[f];
-        h.push('<div class="info-cover-field">');
+        // Long / multiline values span both columns so line breaks
+        // have room to render without crushing sibling fields.
+        var isWide = /\n/.test(fld.value) || fld.value.length > 80;
+        var cls = 'info-cover-field' + (isWide ? ' info-cover-field--wide' : '');
+        h.push('<div class="' + cls + '">');
         if (fld.label) {
           h.push('<dt>' + esc(fld.label) + '</dt>');
         }
@@ -27198,6 +27448,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  margin: 0; color: #111827; flex: 1 1 auto;',
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
+      '.info-cover-field--wide {',
+      '  grid-column: 1 / -1;',
+      '  flex-direction: column; align-items: stretch; gap: 2px;',
+      '}',
+      '.info-cover-field--wide dt {',
+      '  min-width: 0; flex: 0 0 auto;',
+      '}',
       '',
       '/* Cover pages rendered before the survey items */',
       '.cover-page {',
@@ -27396,6 +27653,80 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.ws-photo figcaption {',
       '  font-size: 8px; color: #6b7280; margin-top: 2px;',
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '',
+      '/* Blank fillable device entry (one per missing device) */',
+      '.ws-card--blank {',
+      '  border: 1px dashed #94a3b8;',
+      '  background: repeating-linear-gradient(',
+      '    135deg, #ffffff 0 8px, #f4f7fb 8px 16px);',
+      '}',
+      '.ws-blank-row {',
+      '  display: flex; gap: 16px; align-items: baseline;',
+      '}',
+      '.ws-blank-field {',
+      '  display: flex; flex: 1 1 0; align-items: baseline; gap: 6px;',
+      '}',
+      '.ws-blank-label {',
+      '  font-size: 10.5px; font-weight: 700; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.4px;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.ws-blank-line {',
+      '  flex: 1 1 auto; display: inline-block;',
+      '  min-height: 16px;',
+      '  border-bottom: 1px solid #4b5563;',
+      '}',
+      '.ws-blank-notes {',
+      '  display: flex; gap: 6px; align-items: baseline;',
+      '  margin-top: 8px;',
+      '}',
+      '',
+      '/* Connection Map pivot table */',
+      '.pivot {',
+      '  margin-top: 14px; padding-top: 10px;',
+      '  border-top: 2px solid #07467c;',
+      '  page-break-before: auto;',
+      '}',
+      '.pivot-title {',
+      '  font-size: 14px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 4px 0;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '}',
+      '.pivot-hint {',
+      '  font-size: 9.5px; color: #6b7280; margin: 0 0 6px 0;',
+      '  font-style: italic;',
+      '}',
+      '.pivot-table {',
+      '  border-collapse: collapse; table-layout: fixed;',
+      '  width: 100%; font-size: 9.5px;',
+      '}',
+      '.pivot-table th, .pivot-table td {',
+      '  border: 1px solid #94a3b8; padding: 2px 4px;',
+      '  vertical-align: middle;',
+      '}',
+      '.pivot-corner {',
+      '  background: #eef5fb; width: 120px; min-width: 120px;',
+      '}',
+      '.pivot-col {',
+      '  background: #eef5fb; text-align: center;',
+      '  height: 90px; vertical-align: bottom; padding: 4px 2px;',
+      '}',
+      '.pivot-col-text {',
+      '  display: inline-block;',
+      '  writing-mode: vertical-rl; transform: rotate(180deg);',
+      '  white-space: nowrap;',
+      '  font-weight: 700; color: #07467c;',
+      '  max-height: 80px; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.pivot-row {',
+      '  background: #f8fafc; text-align: left;',
+      '  font-weight: 600; color: #07467c;',
+      '  white-space: normal; word-break: break-word;',
+      '}',
+      '.pivot-cell {',
+      '  text-align: center; font-size: 13px; color: #111827;',
+      '  height: 20px;',
       '}'
     ].join('\n');
   }
