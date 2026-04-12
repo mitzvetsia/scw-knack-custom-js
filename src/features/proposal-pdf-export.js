@@ -826,23 +826,23 @@
 
           if (cfg.saveHtml) {
             var pageRecordId = getPageRecordId();
-            if (pageRecordId) {
-              $.ajax({
-                url: SAVE_HTML_WEBHOOK,
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({
-                  recordId: pageRecordId,
-                  html: htmlStr,
-                  sceneId: cfg.sceneId,
-                  type: cfg.payloadType
-                }),
-                crossDomain: true,
-              });
-              console.log('[SCW PDF Export] Sent HTML to save webhook for record', pageRecordId);
-            } else {
-              console.warn('[SCW PDF Export] Could not extract record ID from hash:', window.location.hash);
-            }
+            var savePayload = {
+              recordId: pageRecordId || '',
+              hash: window.location.hash || '',
+              html: htmlStr,
+              sceneId: cfg.sceneId,
+              type: cfg.payloadType
+            };
+            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId || '(no record ID)', savePayload.hash);
+            $.ajax({
+              url: SAVE_HTML_WEBHOOK,
+              type: 'POST',
+              contentType: 'application/json',
+              data: JSON.stringify(savePayload),
+              crossDomain: true,
+              success: function () { console.log('[SCW PDF Export] Save webhook OK'); },
+              error: function (xhr, status, err) { console.error('[SCW PDF Export] Save webhook failed:', status, err); }
+            });
           }
         });
 
