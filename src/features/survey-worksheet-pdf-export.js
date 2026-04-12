@@ -27,8 +27,23 @@
   var DEFAULT_VIEW_ID        = 'view_3800';
   var WEBHOOK_URL            = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
   var FORM_VIEW_ID           = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
-  var COVER_PAGES_VIEW       = 'view_3808'; // files grid — images render as full-page covers before the worksheet items
-  var COVER_PAGE_LABEL_FIELD = 'field_67';  // TYPE column in view_3808 (used as the cover caption)
+
+  // Detail views that contribute to the page-1 info cover (rendered
+  // before any image covers or worksheet items).
+  var PAGE1_DETAIL_VIEWS = ['view_3796', 'view_3795', 'view_3798'];
+
+  // Views whose image attachments render as full-page covers
+  // BEFORE the survey worksheet items. Each image is labeled with
+  // the section label (regardless of Knack field values).
+  var COVER_IMAGE_VIEWS = [
+    { viewId: 'view_3808', label: 'Site Map(s)' }
+  ];
+
+  // Views whose image attachments render at the BOTTOM of the PDF
+  // under a section header.
+  var TRAILING_IMAGE_VIEWS = [
+    { viewId: 'view_3805', label: 'Additional Photos' }
+  ];
 
   // ── shared helpers ───────────────────────────────────────────────
 
@@ -116,16 +131,35 @@
   function scrape(viewId) {
     viewId = viewId || DEFAULT_VIEW_ID;
     var root = document.getElementById(viewId);
-    if (!root) return { viewId: viewId, title: '', rows: [], coverPages: [] };
+    var emptyPayload = {
+      viewId: viewId,
+      title: '',
+      rows: [],
+      page1Sections: [],
+      coverImageSections: [],
+      trailingImageSections: []
+    };
+    if (!root) return emptyPayload;
 
     var title = '';
     var h2 = root.querySelector('.view-header h2, .view-header h1');
     if (h2) title = textOf(h2);
 
-    var coverPages = getCoverPages();
+    var page1Sections         = scrapePage1Cover();
+    var coverImageSections    = getImageSections(COVER_IMAGE_VIEWS);
+    var trailingImageSections = getImageSections(TRAILING_IMAGE_VIEWS);
 
     var tbody = root.querySelector('table tbody');
-    if (!tbody) return { viewId: viewId, title: title, rows: [], coverPages: coverPages };
+    if (!tbody) {
+      return {
+        viewId: viewId,
+        title: title,
+        rows: [],
+        page1Sections: page1Sections,
+        coverImageSections: coverImageSections,
+        trailingImageSections: trailingImageSections
+      };
+    }
 
     var out = [];
     var kids = tbody.children;
@@ -154,27 +188,34 @@
       if (rowObj) out.push(rowObj);
     }
 
-    return { viewId: viewId, title: title, rows: out, coverPages: coverPages };
+    return {
+      viewId: viewId,
+      title: title,
+      rows: out,
+      page1Sections: page1Sections,
+      coverImageSections: coverImageSections,
+      trailingImageSections: trailingImageSections
+    };
   }
 
   // ══════════════════════════════════════════════════════════════
-  // COVER PAGE PRELOAD (view_3808)
+  // IMAGE SECTION PRELOAD
   // ══════════════════════════════════════════════════════════════
   //
-  // view_3808 is a grid of attached files. Each image file is fetched
-  // in the background, drawn to a canvas at a large max dimension, and
-  // cached as a JPEG data URL. On form submit, getCoverPages() returns
-  // the cached entries so the full-page covers can be rendered BEFORE
-  // the survey worksheet items.
+  // Any Knack view that holds file attachments can contribute image
+  // pages to the PDF — either as full-page covers (view_3808) or as
+  // a photo strip at the bottom (view_3805).
   //
-  // The raw CDN URLs in the Knack model are NOT pre-loaded in the DOM
-  // (the grid only renders an <a class="kn-view-asset"> anchor), so we
-  // have to proactively fetch them via new Image() and downsample.
-  // Non-image file attachments (PDFs, docs, etc.) are skipped — they
-  // can't be reliably inlined in printable HTML.
+  // For each such view we walk Knack.views[viewId].model.data.models,
+  // find every field_XX_raw file descriptor, filter to images, then
+  // preload each raw CDN URL via new Image() and downsample the
+  // result to a JPEG data URL. The preload runs on every render of
+  // the source view so the cache is hot by the time the form is
+  // submitted. If an image hasn't finished downsampling yet, its
+  // entry still contains the raw URL as a usable fallback.
 
-  // ordered array: { assetId, src, filename, label, alt, loaded }
-  var coverPageCache = [];
+  // imageCache[viewId] = [{ assetId, src, filename, label, alt, loaded }]
+  var imageCache = {};
 
   function isImageFile(file) {
     if (!file) return false;
@@ -246,10 +287,10 @@
     img.src = url;
   }
 
-  function refreshCoverPageCache() {
+  function refreshImageCacheForView(viewId, sectionLabel, maxDim, quality) {
     try {
-      var view = window.Knack && Knack.views && Knack.views[COVER_PAGES_VIEW];
-      if (!view) { coverPageCache = []; return; }
+      var view = window.Knack && Knack.views && Knack.views[viewId];
+      if (!view) { imageCache[viewId] = []; return; }
       var records = extractViewRecords(view);
       var nextCache = [];
       for (var r = 0; r < records.length; r++) {
@@ -260,55 +301,112 @@
           if (!isImageFile(file)) continue;
           var rawUrl = file.url || file.public_url || '';
           if (!rawUrl) continue;
-          var label = '';
-          var lblRaw = rec[COVER_PAGE_LABEL_FIELD];
-          if (lblRaw != null) label = norm(String(lblRaw));
-          if (!label) {
-            var lblRawRaw = rec[COVER_PAGE_LABEL_FIELD + '_raw'];
-            if (lblRawRaw != null) label = norm(String(lblRawRaw));
-          }
           var entry = {
             assetId: file.id || rawUrl,
             src: rawUrl, // fallback until downsample completes
             filename: file.filename || '',
-            label: label,
-            alt: label || file.filename || 'Attachment',
+            label: sectionLabel || '',
+            alt: sectionLabel || file.filename || 'Attachment',
             loaded: false
           };
           nextCache.push(entry);
           (function (e, u) {
-            preloadAndDownsample(u, 1400, 0.8, function (dataUrl) {
+            preloadAndDownsample(u, maxDim, quality, function (dataUrl) {
               if (dataUrl) e.src = dataUrl;
               e.loaded = true;
             });
           })(entry, rawUrl);
         }
       }
-      coverPageCache = nextCache;
-      console.log('[SCW survey-pdf] cover page cache primed', {
-        count: coverPageCache.length
+      imageCache[viewId] = nextCache;
+      console.log('[SCW survey-pdf] image cache primed for ' + viewId, {
+        count: nextCache.length
       });
     } catch (e) {
-      console.warn('[SCW survey-pdf] cover page preload failed', e);
-      coverPageCache = [];
+      console.warn('[SCW survey-pdf] image preload failed for ' + viewId, e);
+      imageCache[viewId] = [];
     }
   }
 
-  function getCoverPages() {
-    // Return a shallow copy so the scrape payload is stable.
+  function getImagesForView(viewId) {
+    var entries = imageCache[viewId] || [];
     var out = [];
-    for (var i = 0; i < coverPageCache.length; i++) {
-      var c = coverPageCache[i];
+    for (var i = 0; i < entries.length; i++) {
+      var c = entries[i];
       out.push({ src: c.src, label: c.label, alt: c.alt });
     }
     return out;
   }
 
-  function setupCoverPagesPreload() {
+  function getImageSections(viewConfigs) {
+    var out = [];
+    for (var i = 0; i < viewConfigs.length; i++) {
+      var cfg = viewConfigs[i];
+      var images = getImagesForView(cfg.viewId);
+      if (!images.length) continue;
+      out.push({ viewId: cfg.viewId, label: cfg.label, images: images });
+    }
+    return out;
+  }
+
+  function setupImagePreloads() {
     if (typeof $ === 'undefined') return;
-    $(document).on('knack-view-render.' + COVER_PAGES_VIEW + '.scwSurveyPdf', function () {
-      refreshCoverPageCache();
-    });
+    var all = COVER_IMAGE_VIEWS.concat(TRAILING_IMAGE_VIEWS);
+    for (var i = 0; i < all.length; i++) {
+      (function (cfg) {
+        $(document).on('knack-view-render.' + cfg.viewId + '.scwSurveyPdf', function () {
+          // Covers use a larger max-dim than trailing photos.
+          var isCover = COVER_IMAGE_VIEWS.indexOf(cfg) !== -1;
+          var maxDim  = isCover ? 1400 : 600;
+          var quality = isCover ? 0.8  : 0.65;
+          refreshImageCacheForView(cfg.viewId, cfg.label, maxDim, quality);
+        });
+      })(all[i]);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // PAGE 1 INFO COVER — detail-view scrape
+  // ══════════════════════════════════════════════════════════════
+  // Reads every populated .kn-detail label/value pair from the named
+  // views. Runs synchronously at form-submit time against the live
+  // DOM (no preload required — detail views render their values
+  // directly in the page).
+
+  function scrapeDetailViewFields(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return null;
+    var title = '';
+    var h2 = root.querySelector('.view-header h2, .view-header h1');
+    if (h2) title = textOf(h2);
+
+    var fields = [];
+    var items = root.querySelectorAll('.kn-detail');
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (item.id === viewId) continue;
+      var labelEl = item.querySelector('.kn-detail-label');
+      var valueEl = item.querySelector('.kn-detail-body');
+      if (!valueEl) continue;
+      var value = norm(valueEl.textContent || '');
+      if (!value || value === '-' || value === '—') continue;
+      var label = '';
+      if (labelEl && !item.classList.contains('kn-label-none')) {
+        label = norm(labelEl.textContent || '');
+      }
+      fields.push({ label: label, value: value });
+    }
+    if (!fields.length && !title) return null;
+    return { viewId: viewId, title: title, fields: fields };
+  }
+
+  function scrapePage1Cover() {
+    var sections = [];
+    for (var i = 0; i < PAGE1_DETAIL_VIEWS.length; i++) {
+      var sec = scrapeDetailViewFields(PAGE1_DETAIL_VIEWS[i]);
+      if (sec && sec.fields.length) sections.push(sec);
+    }
+    return sections;
   }
 
   function scrapeCard(card) {
@@ -449,9 +547,13 @@
       { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill' }
     ],
     right: [
-      { key: 'field_2370', label: 'Existing Cabling',  kind: 'yesno' },
-      { key: 'field_2372', label: 'Exterior',          kind: 'yesno' },
-      { key: 'field_2371', label: 'Plenum',            kind: 'yesno' }
+      // Yes = Existing Cabling, No = New Cabling
+      { key: 'field_2370', label: 'Cabling', kind: 'yesno',
+        yesLabel: 'Existing Cabling', noLabel: 'New Cabling' },
+      // Yes = Exterior, No = Interior
+      { key: 'field_2372', label: 'Location', kind: 'yesno',
+        yesLabel: 'Exterior', noLabel: 'Interior' },
+      { key: 'field_2371', label: 'Plenum',  kind: 'yesno' }
     ]
   };
 
@@ -469,16 +571,15 @@
     html.push('</style>');
     html.push('</head><body>');
 
-    // ── Cover pages: full-page images from view_3808 ──
-    if (payload.coverPages && payload.coverPages.length) {
-      for (var c = 0; c < payload.coverPages.length; c++) {
-        var cp = payload.coverPages[c];
-        html.push('<section class="cover-page">');
-        html.push('<img class="cover-img" src="' + esc(cp.src) + '" alt="' + esc(cp.alt) + '" />');
-        if (cp.label) {
-          html.push('<div class="cover-caption">' + esc(cp.label) + '</div>');
-        }
-        html.push('</section>');
+    // ── Page 1: info cover (view_3796 + view_3795 + view_3798) ──
+    if (payload.page1Sections && payload.page1Sections.length) {
+      html.push(renderPage1Cover(payload));
+    }
+
+    // ── Cover image pages (e.g. Site Map(s) from view_3808) ──
+    if (payload.coverImageSections && payload.coverImageSections.length) {
+      for (var cs = 0; cs < payload.coverImageSections.length; cs++) {
+        html.push(renderImageCoverSection(payload.coverImageSections[cs]));
       }
     }
 
@@ -495,8 +596,80 @@
       }
     }
 
+    // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
+    if (payload.trailingImageSections && payload.trailingImageSections.length) {
+      for (var ts = 0; ts < payload.trailingImageSections.length; ts++) {
+        html.push(renderTrailingImageSection(payload.trailingImageSections[ts]));
+      }
+    }
+
     html.push('</body></html>');
     return html.join('\n');
+  }
+
+  // ── Page 1 info cover renderer ──
+  function renderPage1Cover(payload) {
+    var h = [];
+    h.push('<section class="info-cover">');
+    if (payload.title) {
+      h.push('<h1 class="info-cover-title">' + esc(payload.title) + '</h1>');
+    } else {
+      h.push('<h1 class="info-cover-title">Site Survey</h1>');
+    }
+    for (var i = 0; i < payload.page1Sections.length; i++) {
+      var sec = payload.page1Sections[i];
+      h.push('<div class="info-cover-section">');
+      if (sec.title) {
+        h.push('<h2 class="info-cover-section-title">' + esc(sec.title) + '</h2>');
+      }
+      h.push('<dl class="info-cover-fields">');
+      for (var f = 0; f < sec.fields.length; f++) {
+        var fld = sec.fields[f];
+        h.push('<div class="info-cover-field">');
+        if (fld.label) {
+          h.push('<dt>' + esc(fld.label) + '</dt>');
+        }
+        h.push('<dd>' + esc(fld.value) + '</dd>');
+        h.push('</div>');
+      }
+      h.push('</dl>');
+      h.push('</div>');
+    }
+    h.push('</section>');
+    return h.join('');
+  }
+
+  // ── Cover image section renderer (one full-page image per entry) ──
+  function renderImageCoverSection(section) {
+    var h = [];
+    var label = section.label || '';
+    for (var i = 0; i < section.images.length; i++) {
+      var img = section.images[i];
+      h.push('<section class="cover-page">');
+      if (label) {
+        h.push('<div class="cover-section-label">' + esc(label) + '</div>');
+      }
+      h.push('<img class="cover-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || label) + '" />');
+      h.push('</section>');
+    }
+    return h.join('');
+  }
+
+  // ── Trailing image section renderer (compact grid at end) ──
+  function renderTrailingImageSection(section) {
+    var h = [];
+    h.push('<section class="trailing-photos">');
+    h.push('<h2 class="trailing-photos-title">' + esc(section.label || '') + '</h2>');
+    h.push('<div class="trailing-photos-grid">');
+    for (var i = 0; i < section.images.length; i++) {
+      var img = section.images[i];
+      h.push('<figure class="trailing-photo">');
+      h.push('<img src="' + esc(img.src) + '" alt="' + esc(img.alt || '') + '" />');
+      h.push('</figure>');
+    }
+    h.push('</div>');
+    h.push('</section>');
+    return h.join('');
   }
 
   function renderGroupHeader(row) {
@@ -546,11 +719,13 @@
         h.push('</span>');
       } else if (spec.kind === 'yesno') {
         var v = value.toLowerCase();
-        var yesOn = v === 'yes' || v === 'true';
-        var noOn  = v === 'no'  || v === 'false';
+        var yesOn   = v === 'yes' || v === 'true';
+        var noOn    = v === 'no'  || v === 'false';
+        var yesText = spec.yesLabel || 'Yes';
+        var noText  = spec.noLabel  || 'No';
         h.push('<span class="ws-detail-value ws-yesno">');
-        h.push('<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '\u2612' : '\u2610') + '</span> Yes');
-        h.push('<span class="ws-box' + (noOn ? ' is-on' : '') + '">' + (noOn ? '\u2612' : '\u2610') + '</span> No');
+        h.push('<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '\u2612' : '\u2610') + '</span> ' + esc(yesText));
+        h.push('<span class="ws-box' + (noOn  ? ' is-on' : '') + '">' + (noOn  ? '\u2612' : '\u2610') + '</span> ' + esc(noText));
         h.push('</span>');
       } else if (spec.kind === 'fill') {
         // Value-or-blank-line: show the value if present, otherwise a
@@ -666,22 +841,92 @@
       '  border-bottom: 3px solid #07467c;',
       '}',
       '',
+      '/* Page 1 info cover (detail views: view_3796/3795/3798) */',
+      '.info-cover {',
+      '  page-break-after: always; break-after: page;',
+      '  padding: 0.2in 0.15in; min-height: 10.3in;',
+      '}',
+      '.info-cover-title {',
+      '  font-size: 22px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 14px 0; padding-bottom: 6px;',
+      '  border-bottom: 3px solid #07467c; text-align: center;',
+      '}',
+      '.info-cover-section {',
+      '  margin-bottom: 16px; padding: 10px 12px;',
+      '  border: 1px solid #d0d7de; border-radius: 6px;',
+      '  background: #f8fafc; page-break-inside: avoid;',
+      '}',
+      '.info-cover-section-title {',
+      '  font-size: 13px; font-weight: 700; color: #07467c;',
+      '  margin: 0 0 8px 0; padding-bottom: 4px;',
+      '  border-bottom: 1px dashed #c9d4de;',
+      '  text-transform: uppercase; letter-spacing: 0.4px;',
+      '}',
+      '.info-cover-fields {',
+      '  margin: 0; padding: 0;',
+      '  display: grid; grid-template-columns: 1fr 1fr;',
+      '  column-gap: 20px; row-gap: 4px;',
+      '}',
+      '.info-cover-field {',
+      '  display: flex; gap: 6px; align-items: baseline;',
+      '  font-size: 11px; padding: 2px 0;',
+      '  break-inside: avoid;',
+      '}',
+      '.info-cover-field dt {',
+      '  font-weight: 600; color: #07467c;',
+      '  min-width: 110px; flex: 0 0 110px;',
+      '  margin: 0;',
+      '}',
+      '.info-cover-field dd {',
+      '  margin: 0; color: #111827; flex: 1 1 auto;',
+      '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '',
       '/* Cover pages rendered before the survey items */',
       '.cover-page {',
       '  page-break-after: always; break-after: page;',
       '  display: flex; flex-direction: column;',
-      '  align-items: center; justify-content: center;',
+      '  align-items: center; justify-content: flex-start;',
       '  text-align: center;',
       '  min-height: 10.3in;',
       '}',
       '.cover-page:last-of-type { page-break-after: always; }',
-      '.cover-img {',
-      '  max-width: 100%; max-height: 9.8in;',
-      '  object-fit: contain; display: block;',
+      '.cover-section-label {',
+      '  font-size: 14px; font-weight: 800; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.6px;',
+      '  margin: 0 0 10px 0; padding: 4px 0 6px 0;',
+      '  border-bottom: 2px solid #07467c; width: 100%;',
       '}',
-      '.cover-caption {',
-      '  margin-top: 10px; font-size: 11px; color: #6b7280;',
-      '  font-weight: 500;',
+      '.cover-img {',
+      '  max-width: 100%; max-height: 9.5in;',
+      '  object-fit: contain; display: block; margin: auto 0;',
+      '}',
+      '',
+      '/* Trailing photo grid (e.g. Additional Photos) */',
+      '.trailing-photos {',
+      '  margin-top: 16px; padding-top: 10px;',
+      '  border-top: 2px solid #07467c;',
+      '  page-break-before: auto;',
+      '}',
+      '.trailing-photos-title {',
+      '  font-size: 14px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 8px 0;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '}',
+      '.trailing-photos-grid {',
+      '  display: grid;',
+      '  grid-template-columns: repeat(4, 1fr);',
+      '  gap: 6px;',
+      '}',
+      '.trailing-photo {',
+      '  margin: 0;',
+      '  border: 1px solid #d0d7de; border-radius: 4px;',
+      '  padding: 2px; background: #f8fafc;',
+      '  page-break-inside: avoid;',
+      '}',
+      '.trailing-photo img {',
+      '  width: 100%; height: 120px; object-fit: cover;',
+      '  display: block; border-radius: 2px;',
       '}',
       '.group-header {',
       '  font-size: 13px; font-weight: 600; color: #07467c;',
@@ -944,7 +1189,7 @@
   }
 
   setupFormSubmitTrigger();
-  setupCoverPagesPreload();
+  setupImagePreloads();
 
   // ══════════════════════════════════════════════════════════════
   // PUBLIC API
@@ -957,7 +1202,8 @@
     preview: preview,
     generate: preview,
     sendToWebhook: sendToWebhook,
-    refreshCoverPages: refreshCoverPageCache,
-    getCoverPages: getCoverPages
+    refreshImageCache: refreshImageCacheForView,
+    getImagesForView: getImagesForView,
+    scrapePage1Cover: scrapePage1Cover
   };
 })();
