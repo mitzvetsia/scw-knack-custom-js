@@ -7310,26 +7310,45 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   var PUBLISH_TOAST_ID = 'scw-publish-toast';
 
-  function showPublishToast(message, redirect) {
+  function dismissPublishToast() {
+    var el = document.getElementById(PUBLISH_TOAST_ID);
+    if (el) el.remove();
+  }
+
+  function showPublishToast(message, autoClose) {
     var existing = document.getElementById(PUBLISH_TOAST_ID);
     if (existing) existing.remove();
 
     var toast = document.createElement('div');
     toast.id = PUBLISH_TOAST_ID;
-    toast.textContent = message;
     toast.style.cssText = [
       'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);',
-      'background: #07467c; color: #fff; padding: 20px 40px;',
+      'background: #07467c; color: #fff; padding: 20px 50px 20px 40px;',
       'border-radius: 8px; font-size: 16px; font-weight: 600;',
       'box-shadow: 0 4px 20px rgba(0,0,0,.3); z-index: 10000;',
-      'text-align: center;'
+      'text-align: center; min-width: 260px;'
     ].join('');
+
+    var span = document.createElement('span');
+    span.textContent = message;
+    toast.appendChild(span);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u00D7';
+    closeBtn.style.cssText = [
+      'position: absolute; top: 6px; right: 10px;',
+      'background: none; border: none; color: #fff; font-size: 22px;',
+      'cursor: pointer; line-height: 1; padding: 0; opacity: 0.8;'
+    ].join('');
+    closeBtn.addEventListener('mouseenter', function () { closeBtn.style.opacity = '1'; });
+    closeBtn.addEventListener('mouseleave', function () { closeBtn.style.opacity = '0.8'; });
+    closeBtn.addEventListener('click', dismissPublishToast);
+    toast.appendChild(closeBtn);
+
     document.body.appendChild(toast);
 
-    if (redirect) {
-      setTimeout(function () {
-        window.history.back();
-      }, 1500);
+    if (autoClose) {
+      setTimeout(dismissPublishToast, 3000);
     }
   }
 
