@@ -936,37 +936,8 @@
       if (isDistributionDevice(r)) cols.push(r);
       if (isCamerasReadersBucket(r)) rows.push(r);
     }
-    if (!rows.length || !cols.length) {
-      console.log('[SCW survey-pdf] connection pivot: skipped', {
-        rowCount: rows.length,
-        colCount: cols.length
-      });
-      // Diagnostic: if we have columns but no rows, dump one card's
-      // raw attrs so we can see where the bucket value actually lives.
-      if (!rows.length && cols.length && payload.rows.length) {
-        for (var d = 0; d < payload.rows.length; d++) {
-          var dc = payload.rows[d];
-          if (dc && dc.type === 'card' && dc.raw) {
-            var sample = {};
-            for (var k in dc.raw) {
-              if (!dc.raw.hasOwnProperty(k)) continue;
-              var val = dc.raw[k];
-              if (val == null || val === '') continue;
-              sample[k] = typeof val === 'string' && val.length > 80
-                ? val.slice(0, 80) + '\u2026'
-                : val;
-            }
-            console.log('[SCW survey-pdf] sample card raw attrs', {
-              label: dc.label,
-              product: dc.product,
-              groupL1: dc.groupL1,
-              groupL2: dc.groupL2,
-              attrs: sample
-            });
-            break;
-          }
-        }
-      }
+    if (!rows.length) {
+      console.log('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
       return '';
     }
 
@@ -1714,6 +1685,55 @@
   setupImagePreloads();
 
   // ══════════════════════════════════════════════════════════════
+  // READINESS CHECK — for headless/Puppeteer callers
+  // ══════════════════════════════════════════════════════════════
+  //
+  // A single probe that returns `true` once everything the export
+  // needs is actually on the page and loaded:
+  //   1. view_3800 has rendered at least one .scw-ws-row (custom JS
+  //      has finished transforming the table)
+  //   2. every image view configured for cover / trailing photos
+  //      has been primed in imageCache, and every entry has finished
+  //      its async preload + downsample
+  //
+  // `whenReady()` polls that probe on a short tick and resolves when
+  // it returns true, or with `false` on timeout. Puppeteer can await
+  // it instead of sleeping a fixed amount of time.
+
+  function isReady() {
+    var root = document.getElementById(DEFAULT_VIEW_ID);
+    if (!root) return false;
+    if (!root.querySelectorAll('tr.scw-ws-row').length) return false;
+
+    var allViews = COVER_IMAGE_VIEWS.concat(TRAILING_IMAGE_VIEWS);
+    for (var i = 0; i < allViews.length; i++) {
+      var vid = allViews[i].viewId;
+      if (!(vid in imageCache)) return false;
+      var entries = imageCache[vid] || [];
+      for (var j = 0; j < entries.length; j++) {
+        if (!entries[j].loaded) return false;
+      }
+    }
+    return true;
+  }
+
+  function whenReady(opts) {
+    opts = opts || {};
+    var timeoutMs = typeof opts.timeout === 'number' ? opts.timeout : 20000;
+    var tickMs    = typeof opts.tick    === 'number' ? opts.tick    : 150;
+    var start = Date.now();
+    return new Promise(function (resolve) {
+      (function tick() {
+        try {
+          if (isReady()) { resolve(true); return; }
+        } catch (e) {}
+        if (Date.now() - start >= timeoutMs) { resolve(false); return; }
+        setTimeout(tick, tickMs);
+      })();
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // PUBLIC API
   // ══════════════════════════════════════════════════════════════
 
@@ -1724,6 +1744,8 @@
     preview: preview,
     generate: preview,
     sendToWebhook: sendToWebhook,
+    isReady: isReady,
+    whenReady: whenReady,
     refreshImageCache: refreshImageCacheForView,
     getImagesForView: getImagesForView,
     scrapePage1Cover: scrapePage1Cover
