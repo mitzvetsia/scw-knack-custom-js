@@ -1050,25 +1050,21 @@
   }
 
   // ── Cover image section renderer (one full-page image per entry) ──
-  // We render the image as a background-image on a fixed-size div
-  // instead of an <img> tag. Chrome's print engine doesn't reliably
-  // honor `height: 100%` + `object-fit: contain` on an <img> inside a
-  // block box with an explicit height — the img falls back to its
-  // intrinsic size and ignores the container. Background-size: contain
-  // on a sized div always scales to fill the box.
+  // The image element itself gets absolute-inch width/height so its
+  // rendered box is deterministic regardless of intrinsic pixel size.
+  // object-fit: contain then scales the bitmap to fit the box.
+  // Percentage-based sizes on an <img> inside a print-flow block don't
+  // reliably resolve in Chrome's print engine — absolute units do.
   function renderImageCoverSection(section) {
     var h = [];
     var label = section.label || '';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
-      var url = String(img.src || '').replace(/"/g, '%22');
       h.push('<section class="cover-page">');
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
-      h.push('<div class="cover-img-wrap" role="img" aria-label="' +
-             esc(img.alt || label) +
-             '" style="background-image: url(&quot;' + url + '&quot;);"></div>');
+      h.push('<img class="cover-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || label) + '" />');
       h.push('</section>');
     }
     return h.join('');
@@ -1348,14 +1344,15 @@
       '  margin: 0 0 6px 0; padding: 4px 0 6px 0;',
       '  border-bottom: 2px solid #07467c; width: 100%;',
       '}',
-      '.cover-img-wrap {',
-      '  width: 100%;',
-      '  height: 9.7in;',
+      '.cover-img-wrap { display: none; }',
+      '.cover-img {',
       '  display: block;',
-      '  background-color: transparent;',
-      '  background-repeat: no-repeat;',
-      '  background-position: center center;',
-      '  background-size: contain;',
+      '  width: 8in !important;',
+      '  height: 9.7in !important;',
+      '  max-width: none !important;',
+      '  max-height: none !important;',
+      '  object-fit: contain;',
+      '  margin: 0 auto;',
       '  -webkit-print-color-adjust: exact;',
       '  print-color-adjust: exact;',
       '}',
