@@ -6439,6 +6439,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function detectViewType(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return null;
+    if (root.classList.contains('kn-report')) return 'report';
     if (root.querySelector('.kn-table tbody')) return 'grid';
     if (root.querySelector('.kn-detail-body') || root.classList.contains('kn-detail') || root.querySelector('.field-list')) return 'detail';
     if (root.classList.contains('kn-rich_text') || root.querySelector('.kn-rich-text-content')) return 'richtext';
@@ -7729,6 +7730,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     ].join('\n');
     document.head.appendChild(style);
   }
+
+  // Inject immediately so view_3813 is hidden before Knack renders it
+  injectStyles();
 
   // ── Extract raw HTML from Knack model ────────────────────────
 

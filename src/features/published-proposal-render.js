@@ -37,6 +37,9 @@
     document.head.appendChild(style);
   }
 
+  // Inject immediately so view_3813 is hidden before Knack renders it
+  injectStyles();
+
   // ── Extract raw HTML from Knack model ────────────────────────
 
   function getStoredHtml() {
