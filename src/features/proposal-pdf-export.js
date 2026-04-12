@@ -1215,7 +1215,8 @@
       if (!payload.views.length) return payload;
       payload.html = buildPdfHtml(payload);
       return payload;
-    }
+    },
+    getCss: getPdfCss
   };
 
   // ══════════════════════════════════════════════════════════════

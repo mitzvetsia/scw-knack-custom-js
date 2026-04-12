@@ -58,9 +58,52 @@
     return '';
   }
 
+  // ── Clean up Knack's mangled HTML and re-wrap with PDF CSS ───
+
+  function buildFullHtml(fragment) {
+    // Knack's rich text field strips <style>, <head>, <body>, <!DOCTYPE>
+    // and converts newlines between block elements into <br> tags.
+
+    // Strip wrapping <span> if Knack added one
+    fragment = fragment.replace(/^<span>([\s\S]*)<\/span>$/i, '$1');
+
+    // Remove <br> tags between block-level elements
+    // These are spurious — Knack converted the \n separators from buildPdfHtml
+    fragment = fragment.replace(/<br\s*\/?>\s*(?=<(?:div|table|thead|tbody|tfoot|tr|section|\/div|\/table|\/thead|\/tbody|\/tfoot|\/tr|\/section))/gi, '');
+    fragment = fragment.replace(/(?:(?:<\/div>|<\/table>|<\/section>|<\/tr>|<\/tbody>|<\/tfoot>|<\/thead>))\s*<br\s*\/?>/gi, function (m) {
+      return m.replace(/<br\s*\/?>/gi, '');
+    });
+
+    // Remove leading/trailing <br> tags
+    fragment = fragment.replace(/^(\s*<br\s*\/?>\s*)+/i, '');
+    fragment = fragment.replace(/(\s*<br\s*\/?>\s*)+$/i, '');
+
+    // Also clean <br> right before/after closing block tags
+    fragment = fragment.replace(/<br\s*\/?>\s*<\/div>/gi, '</div>');
+    fragment = fragment.replace(/<br\s*\/?>\s*<\/td>/gi, '</td>');
+
+    // Get the CSS from the PDF export module
+    var css = '';
+    if (window.SCW && window.SCW.pdfExport && window.SCW.pdfExport.getCss) {
+      css = window.SCW.pdfExport.getCss();
+    }
+
+    var html = [];
+    html.push('<!DOCTYPE html>');
+    html.push('<html><head><meta charset="utf-8">');
+    html.push('<title>Proposal</title>');
+    html.push('<style>');
+    html.push(css);
+    html.push('</style>');
+    html.push('</head><body>');
+    html.push(fragment);
+    html.push('</body></html>');
+    return html.join('\n');
+  }
+
   // ── Render HTML in iframe ────────────────────────────────────
 
-  function renderProposal(html) {
+  function renderProposal(fullHtml) {
     injectStyles();
 
     var viewEl = document.getElementById(VIEW_ID);
@@ -87,7 +130,7 @@
     // Write HTML into iframe
     var doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open();
-    doc.write(html);
+    doc.write(fullHtml);
     doc.close();
 
     // Auto-size iframe to content height
@@ -106,12 +149,12 @@
     setTimeout(resizeIframe, 1000);
     setTimeout(resizeIframe, 3000);
 
-    return html;
+    return fullHtml;
   }
 
   // ── Print button ─────────────────────────────────────────────
 
-  function injectPrintButton(html) {
+  function injectPrintButton(fullHtml) {
     if (document.getElementById(BTN_ID)) return;
 
     var btn = document.createElement('button');
@@ -124,7 +167,7 @@
         alert('Popup blocked — please allow popups for this site and try again.');
         return;
       }
-      win.document.write(html);
+      win.document.write(fullHtml);
       win.document.close();
       setTimeout(function () { win.print(); }, 600);
     });
@@ -136,14 +179,16 @@
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
     setTimeout(function () {
-      var html = getStoredHtml();
-      if (!html) {
+      var raw = getStoredHtml();
+      if (!raw) {
         console.log('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
         return;
       }
-      console.log('[SCW Published Proposal] Rendering stored HTML (' + html.length + ' chars)');
-      renderProposal(html);
-      injectPrintButton(html);
+      console.log('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
+      var fullHtml = buildFullHtml(raw);
+      console.log('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
+      renderProposal(fullHtml);
+      injectPrintButton(fullHtml);
     }, 500);
   });
 })();
