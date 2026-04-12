@@ -17707,7 +17707,7 @@ $(".kn-navigation-bar").hide();
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617', 'view_3800'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617', 'view_3800', 'view_3803'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -20406,7 +20406,7 @@ $(".kn-navigation-bar").hide();
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577', 'view_3617'],
+        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
