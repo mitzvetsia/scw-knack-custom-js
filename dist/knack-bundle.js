@@ -3610,6 +3610,84 @@ window.SCW = window.SCW || {};
     document.head.appendChild(el);
   }
 
+  // ── Find the kn-menu view associated with an accordion ──
+
+  function findMenuForAccordion(accordion) {
+    // Strategy 1: menu is an immediate preceding sibling
+    var prevSibling = accordion.previousElementSibling;
+    if (prevSibling && prevSibling.classList.contains('kn-menu')) {
+      return prevSibling;
+    }
+    // Strategy 2: menu lives in the preceding view-group
+    var viewGroup = accordion.parentElement;
+    while (viewGroup && !viewGroup.classList.contains('view-group')) {
+      viewGroup = viewGroup.parentElement;
+    }
+    if (!viewGroup) return null;
+    var prevGroup = viewGroup.previousElementSibling;
+    if (prevGroup &&
+        prevGroup.classList.contains('view-group') &&
+        !prevGroup.querySelector('.scw-ktl-accordion')) {
+      return prevGroup.querySelector('.kn-view.kn-menu') || null;
+    }
+    return null;
+  }
+
+  // ── MutationObserver tracking for late-loading menus ──
+
+  var watchedMenus = {};
+  var enhanceDebounceTimer = null;
+
+  function debouncedEnhance() {
+    clearTimeout(enhanceDebounceTimer);
+    enhanceDebounceTimer = setTimeout(enhance, 150);
+  }
+
+  /** Disconnect all active menu observers */
+  function clearMenuWatchers() {
+    for (var id in watchedMenus) {
+      if (watchedMenus.hasOwnProperty(id)) {
+        watchedMenus[id].disconnect();
+      }
+    }
+    watchedMenus = {};
+  }
+
+  /**
+   * After enhance() runs, find accordion headers that couldn't be
+   * injected because their kn-menu view was still empty.  Set up a
+   * MutationObserver on each empty menu so we retry as soon as
+   * content appears.
+   */
+  function watchEmptyMenus() {
+    var accordions = document.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < accordions.length; i++) {
+      var header = accordions[i].querySelector('.scw-ktl-accordion__header');
+      if (!header || header.hasAttribute(INJECTED)) continue;
+
+      var menuView = findMenuForAccordion(accordions[i]);
+      if (!menuView) continue;
+      if (menuView.classList.contains(HIDDEN_CLASS)) continue;
+      if (menuView.querySelectorAll('a').length > 0) continue;
+
+      var viewId = menuView.id;
+      if (watchedMenus[viewId]) continue;
+
+      // IIFE to close over viewId and menuView for the observer callback
+      (function (id, el) {
+        var obs = new MutationObserver(function () {
+          if (el.querySelectorAll('a').length > 0) {
+            obs.disconnect();
+            delete watchedMenus[id];
+            debouncedEnhance();
+          }
+        });
+        obs.observe(el, { childList: true, subtree: true });
+        watchedMenus[id] = obs;
+      })(viewId, menuView);
+    }
+  }
+
   // ── Detect and inject ───────────────────────────────
 
   function enhance() {
@@ -3620,35 +3698,7 @@ window.SCW = window.SCW || {};
       var header = accordion.querySelector('.scw-ktl-accordion__header');
       if (!header || header.hasAttribute(INJECTED)) continue;
 
-      // --- Strategy 1: menu is an immediate preceding sibling of the
-      //     accordion inside the same view-group / view-column.
-      //     e.g. view_3774 sits right before view_3531's accordion.
-      var menuView = null;
-      var prevSibling = accordion.previousElementSibling;
-      if (prevSibling && prevSibling.classList.contains('kn-menu')) {
-        menuView = prevSibling;
-      }
-
-      // --- Strategy 2 (original): menu lives in the preceding view-group,
-      //     but ONLY if that preceding view-group has no accordion of its
-      //     own (if it does, the menu belongs to that group's accordion and
-      //     must not leak forward into this one — see view_3477 / view_3787).
-      var prevGroup = null;
-      if (!menuView) {
-        var viewGroup = accordion.parentElement;
-        while (viewGroup && !viewGroup.classList.contains('view-group')) {
-          viewGroup = viewGroup.parentElement;
-        }
-        if (!viewGroup) continue;
-
-        prevGroup = viewGroup.previousElementSibling;
-        if (prevGroup &&
-            prevGroup.classList.contains('view-group') &&
-            !prevGroup.querySelector('.scw-ktl-accordion')) {
-          menuView = prevGroup.querySelector('.kn-view.kn-menu');
-        }
-      }
-
+      var menuView = findMenuForAccordion(accordion);
       if (!menuView) continue;
 
       // Skip if this menu has already been claimed by another accordion
@@ -3724,6 +3774,9 @@ window.SCW = window.SCW || {};
       // Mark this accordion header as processed
       header.setAttribute(INJECTED, '1');
     }
+
+    // Watch any empty menus so we can retry when content arrives
+    watchEmptyMenus();
   }
 
   // ── Lifecycle ───────────────────────────────────────
@@ -3734,6 +3787,7 @@ window.SCW = window.SCW || {};
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
+      clearMenuWatchers();
       setTimeout(enhance, 200);
     });
 
