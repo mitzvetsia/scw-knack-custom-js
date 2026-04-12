@@ -24,10 +24,11 @@
 (function () {
   'use strict';
 
-  var DEFAULT_VIEW_ID   = 'view_3800';
-  var WEBHOOK_URL       = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
-  var FORM_VIEW_ID      = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
-  var COVER_PAGES_VIEW  = 'view_3522'; // any images in this view render as full-page covers before the worksheet items
+  var DEFAULT_VIEW_ID        = 'view_3800';
+  var WEBHOOK_URL            = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
+  var FORM_VIEW_ID           = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
+  var COVER_PAGES_VIEW       = 'view_3808'; // files grid — images render as full-page covers before the worksheet items
+  var COVER_PAGE_LABEL_FIELD = 'field_67';  // TYPE column in view_3808 (used as the cover caption)
 
   // ── shared helpers ───────────────────────────────────────────────
 
@@ -121,7 +122,7 @@
     var h2 = root.querySelector('.view-header h2, .view-header h1');
     if (h2) title = textOf(h2);
 
-    var coverPages = scrapeCoverPages(COVER_PAGES_VIEW);
+    var coverPages = getCoverPages();
 
     var tbody = root.querySelector('table tbody');
     if (!tbody) return { viewId: viewId, title: title, rows: [], coverPages: coverPages };
@@ -157,67 +158,157 @@
   }
 
   // ══════════════════════════════════════════════════════════════
-  // COVER PAGE SCRAPER (view_3522)
+  // COVER PAGE PRELOAD (view_3808)
   // ══════════════════════════════════════════════════════════════
   //
-  // Any <img data-kn-img-gallery> found inside the target view becomes
-  // a full-page cover rendered BEFORE the survey worksheet items. Each
-  // image is downsampled to a larger max dimension than the worksheet
-  // thumbs so it remains readable at full-page size.
-  // Non-image file attachments (PDFs, docs) are ignored here — they
+  // view_3808 is a grid of attached files. Each image file is fetched
+  // in the background, drawn to a canvas at a large max dimension, and
+  // cached as a JPEG data URL. On form submit, getCoverPages() returns
+  // the cached entries so the full-page covers can be rendered BEFORE
+  // the survey worksheet items.
+  //
+  // The raw CDN URLs in the Knack model are NOT pre-loaded in the DOM
+  // (the grid only renders an <a class="kn-view-asset"> anchor), so we
+  // have to proactively fetch them via new Image() and downsample.
+  // Non-image file attachments (PDFs, docs, etc.) are skipped — they
   // can't be reliably inlined in printable HTML.
 
-  function scrapeCoverPages(coverViewId) {
-    var out = [];
-    var root = document.getElementById(coverViewId);
-    if (!root) return out;
+  // ordered array: { assetId, src, filename, label, alt, loaded }
+  var coverPageCache = [];
 
-    var imgs = root.querySelectorAll('img[data-kn-img-gallery], img.kn-img, .kn-img-container img');
-    var seen = {};
-    for (var i = 0; i < imgs.length; i++) {
-      var img = imgs[i];
-      var key = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
-      if (!key || seen[key]) continue;
-      seen[key] = true;
+  function isImageFile(file) {
+    if (!file) return false;
+    var name = String(file.filename || '').toLowerCase();
+    var type = String(file.type || '').toLowerCase();
+    if (type && type.indexOf('image/') === 0) return true;
+    return /\.(png|jpe?g|gif|webp|bmp)$/.test(name);
+  }
 
-      // Try to find a nearby label (detail-label if in a detail view,
-      // or the closest field container class name as a fallback).
-      var label = '';
-      var detailItem = img.closest('.kn-detail');
-      if (detailItem) {
-        var lblEl = detailItem.querySelector('.kn-detail-label');
-        if (lblEl) label = textOf(lblEl);
-      }
-
-      // Downsample at a generous size for full-page display.
-      var src = downsampleImage(img, 1200, 0.8);
-      if (!src) continue;
-
-      out.push({
-        src: src,
-        label: label,
-        alt: img.getAttribute('alt') || label || 'Attachment'
+  function extractViewRecords(view) {
+    if (!view || !view.model || !view.model.data) return [];
+    var data = view.model.data;
+    if (Array.isArray(data)) return data.map(function (m) {
+      return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+    });
+    if (data.models && Array.isArray(data.models)) {
+      return data.models.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
       });
     }
+    return [];
+  }
 
-    // Also collect non-image file links so we can at least list them.
-    var fileLinks = root.querySelectorAll('a.kn-file, .kn-file-download a, a[href*="/asset/"]');
-    var fileOut = [];
-    var seenFiles = {};
-    for (var f = 0; f < fileLinks.length; f++) {
-      var a = fileLinks[f];
-      var href = a.getAttribute('href') || '';
-      if (!href || seenFiles[href]) continue;
-      // Skip if the href points at an image we already captured.
-      if (seen[href]) continue;
-      seenFiles[href] = true;
-      fileOut.push({ href: href, name: textOf(a) || href });
+  // Walks a record's field_XXX_raw attributes and returns any file
+  // descriptor objects ({filename, url, public_url, type, id}).
+  function extractFilesFromRecord(record) {
+    var files = [];
+    if (!record) return files;
+    for (var key in record) {
+      if (!record.hasOwnProperty(key)) continue;
+      if (!/^field_\d+_raw$/.test(key)) continue;
+      var val = record[key];
+      if (!val) continue;
+      if (Array.isArray(val)) {
+        for (var i = 0; i < val.length; i++) {
+          var v = val[i];
+          if (v && v.filename && (v.url || v.public_url)) files.push(v);
+        }
+      } else if (val.filename && (val.url || val.public_url)) {
+        files.push(val);
+      }
     }
-    if (fileOut.length) {
-      console.log('[SCW survey-pdf] view_3522 non-image attachments (skipped in PDF):', fileOut);
-    }
+    return files;
+  }
 
+  // Preload a URL into an <img>, downsample on load, call cb with the
+  // data URL (or the original URL if loading/canvas fails).
+  function preloadAndDownsample(url, maxDim, quality, cb) {
+    if (!url) { cb(''); return; }
+    var img = new Image();
+    var done = false;
+    function finish(result) {
+      if (done) return;
+      done = true;
+      cb(result);
+    }
+    img.onload = function () {
+      try {
+        var ds = downsampleImage(img, maxDim, quality);
+        finish(ds || url);
+      } catch (e) {
+        finish(url);
+      }
+    };
+    img.onerror = function () { finish(url); };
+    // Attempt CORS-enabled fetch so the canvas stays clean; the
+    // downsampleImage fallback handles taint gracefully either way.
+    try { img.crossOrigin = 'anonymous'; } catch (e) {}
+    img.src = url;
+  }
+
+  function refreshCoverPageCache() {
+    try {
+      var view = window.Knack && Knack.views && Knack.views[COVER_PAGES_VIEW];
+      if (!view) { coverPageCache = []; return; }
+      var records = extractViewRecords(view);
+      var nextCache = [];
+      for (var r = 0; r < records.length; r++) {
+        var rec = records[r];
+        var files = extractFilesFromRecord(rec);
+        for (var f = 0; f < files.length; f++) {
+          var file = files[f];
+          if (!isImageFile(file)) continue;
+          var rawUrl = file.url || file.public_url || '';
+          if (!rawUrl) continue;
+          var label = '';
+          var lblRaw = rec[COVER_PAGE_LABEL_FIELD];
+          if (lblRaw != null) label = norm(String(lblRaw));
+          if (!label) {
+            var lblRawRaw = rec[COVER_PAGE_LABEL_FIELD + '_raw'];
+            if (lblRawRaw != null) label = norm(String(lblRawRaw));
+          }
+          var entry = {
+            assetId: file.id || rawUrl,
+            src: rawUrl, // fallback until downsample completes
+            filename: file.filename || '',
+            label: label,
+            alt: label || file.filename || 'Attachment',
+            loaded: false
+          };
+          nextCache.push(entry);
+          (function (e, u) {
+            preloadAndDownsample(u, 1400, 0.8, function (dataUrl) {
+              if (dataUrl) e.src = dataUrl;
+              e.loaded = true;
+            });
+          })(entry, rawUrl);
+        }
+      }
+      coverPageCache = nextCache;
+      console.log('[SCW survey-pdf] cover page cache primed', {
+        count: coverPageCache.length
+      });
+    } catch (e) {
+      console.warn('[SCW survey-pdf] cover page preload failed', e);
+      coverPageCache = [];
+    }
+  }
+
+  function getCoverPages() {
+    // Return a shallow copy so the scrape payload is stable.
+    var out = [];
+    for (var i = 0; i < coverPageCache.length; i++) {
+      var c = coverPageCache[i];
+      out.push({ src: c.src, label: c.label, alt: c.alt });
+    }
     return out;
+  }
+
+  function setupCoverPagesPreload() {
+    if (typeof $ === 'undefined') return;
+    $(document).on('knack-view-render.' + COVER_PAGES_VIEW + '.scwSurveyPdf', function () {
+      refreshCoverPageCache();
+    });
   }
 
   function scrapeCard(card) {
@@ -378,7 +469,7 @@
     html.push('</style>');
     html.push('</head><body>');
 
-    // ── Cover pages: full-page images from view_3522 ──
+    // ── Cover pages: full-page images from view_3808 ──
     if (payload.coverPages && payload.coverPages.length) {
       for (var c = 0; c < payload.coverPages.length; c++) {
         var cp = payload.coverPages[c];
@@ -853,6 +944,7 @@
   }
 
   setupFormSubmitTrigger();
+  setupCoverPagesPreload();
 
   // ══════════════════════════════════════════════════════════════
   // PUBLIC API
@@ -864,6 +956,8 @@
     buildHtml: buildHtml,
     preview: preview,
     generate: preview,
-    sendToWebhook: sendToWebhook
+    sendToWebhook: sendToWebhook,
+    refreshCoverPages: refreshCoverPageCache,
+    getCoverPages: getCoverPages
   };
 })();
