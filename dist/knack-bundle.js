@@ -26341,9 +26341,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 (function () {
   'use strict';
 
-  var DEFAULT_VIEW_ID = 'view_3800';
-  var WEBHOOK_URL     = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
-  var FORM_VIEW_ID    = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
+  var DEFAULT_VIEW_ID   = 'view_3800';
+  var WEBHOOK_URL       = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
+  var FORM_VIEW_ID      = 'view_3809'; // "Update SITE SURVEY_request" — submit = trigger
+  var COVER_PAGES_VIEW  = 'view_3522'; // any images in this view render as full-page covers before the worksheet items
 
   // ── shared helpers ───────────────────────────────────────────────
 
@@ -26431,14 +26432,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function scrape(viewId) {
     viewId = viewId || DEFAULT_VIEW_ID;
     var root = document.getElementById(viewId);
-    if (!root) return { viewId: viewId, title: '', rows: [] };
+    if (!root) return { viewId: viewId, title: '', rows: [], coverPages: [] };
 
     var title = '';
     var h2 = root.querySelector('.view-header h2, .view-header h1');
     if (h2) title = textOf(h2);
 
+    var coverPages = scrapeCoverPages(COVER_PAGES_VIEW);
+
     var tbody = root.querySelector('table tbody');
-    if (!tbody) return { viewId: viewId, title: title, rows: [] };
+    if (!tbody) return { viewId: viewId, title: title, rows: [], coverPages: coverPages };
 
     var out = [];
     var kids = tbody.children;
@@ -26467,7 +26470,71 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (rowObj) out.push(rowObj);
     }
 
-    return { viewId: viewId, title: title, rows: out };
+    return { viewId: viewId, title: title, rows: out, coverPages: coverPages };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // COVER PAGE SCRAPER (view_3522)
+  // ══════════════════════════════════════════════════════════════
+  //
+  // Any <img data-kn-img-gallery> found inside the target view becomes
+  // a full-page cover rendered BEFORE the survey worksheet items. Each
+  // image is downsampled to a larger max dimension than the worksheet
+  // thumbs so it remains readable at full-page size.
+  // Non-image file attachments (PDFs, docs) are ignored here — they
+  // can't be reliably inlined in printable HTML.
+
+  function scrapeCoverPages(coverViewId) {
+    var out = [];
+    var root = document.getElementById(coverViewId);
+    if (!root) return out;
+
+    var imgs = root.querySelectorAll('img[data-kn-img-gallery], img.kn-img, .kn-img-container img');
+    var seen = {};
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      var key = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
+      if (!key || seen[key]) continue;
+      seen[key] = true;
+
+      // Try to find a nearby label (detail-label if in a detail view,
+      // or the closest field container class name as a fallback).
+      var label = '';
+      var detailItem = img.closest('.kn-detail');
+      if (detailItem) {
+        var lblEl = detailItem.querySelector('.kn-detail-label');
+        if (lblEl) label = textOf(lblEl);
+      }
+
+      // Downsample at a generous size for full-page display.
+      var src = downsampleImage(img, 1200, 0.8);
+      if (!src) continue;
+
+      out.push({
+        src: src,
+        label: label,
+        alt: img.getAttribute('alt') || label || 'Attachment'
+      });
+    }
+
+    // Also collect non-image file links so we can at least list them.
+    var fileLinks = root.querySelectorAll('a.kn-file, .kn-file-download a, a[href*="/asset/"]');
+    var fileOut = [];
+    var seenFiles = {};
+    for (var f = 0; f < fileLinks.length; f++) {
+      var a = fileLinks[f];
+      var href = a.getAttribute('href') || '';
+      if (!href || seenFiles[href]) continue;
+      // Skip if the href points at an image we already captured.
+      if (seen[href]) continue;
+      seenFiles[href] = true;
+      fileOut.push({ href: href, name: textOf(a) || href });
+    }
+    if (fileOut.length) {
+      console.log('[SCW survey-pdf] view_3522 non-image attachments (skipped in PDF):', fileOut);
+    }
+
+    return out;
   }
 
   function scrapeCard(card) {
@@ -26558,7 +26625,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var pc = photoCards[p];
         var img = pc.querySelector('img');
         if (!img) continue;
-        var src = downsampleImage(img, 480, 0.7);
+        var src = downsampleImage(img, 320, 0.55);
         if (!src) continue;
         photos.push({
           src: src,
@@ -26627,6 +26694,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     html.push(getCss());
     html.push('</style>');
     html.push('</head><body>');
+
+    // ── Cover pages: full-page images from view_3522 ──
+    if (payload.coverPages && payload.coverPages.length) {
+      for (var c = 0; c < payload.coverPages.length; c++) {
+        var cp = payload.coverPages[c];
+        html.push('<section class="cover-page">');
+        html.push('<img class="cover-img" src="' + esc(cp.src) + '" alt="' + esc(cp.alt) + '" />');
+        if (cp.label) {
+          html.push('<div class="cover-caption">' + esc(cp.label) + '</div>');
+        }
+        html.push('</section>');
+      }
+    }
 
     if (payload.title) {
       html.push('<h1 class="doc-title">' + esc(payload.title) + '</h1>');
@@ -26810,6 +26890,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  font-size: 20px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 12px 0; padding-bottom: 6px;',
       '  border-bottom: 3px solid #07467c;',
+      '}',
+      '',
+      '/* Cover pages rendered before the survey items */',
+      '.cover-page {',
+      '  page-break-after: always; break-after: page;',
+      '  display: flex; flex-direction: column;',
+      '  align-items: center; justify-content: center;',
+      '  text-align: center;',
+      '  min-height: 10.3in;',
+      '}',
+      '.cover-page:last-of-type { page-break-after: always; }',
+      '.cover-img {',
+      '  max-width: 100%; max-height: 9.8in;',
+      '  object-fit: contain; display: block;',
+      '}',
+      '.cover-caption {',
+      '  margin-top: 10px; font-size: 11px; color: #6b7280;',
+      '  font-weight: 500;',
       '}',
       '.group-header {',
       '  font-size: 13px; font-weight: 600; color: #07467c;',
