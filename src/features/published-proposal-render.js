@@ -84,6 +84,10 @@
     fragment = fragment.replace(/<br\s*\/?>\s*<\/div>/gi, '</div>');
     fragment = fragment.replace(/<br\s*\/?>\s*<\/td>/gi, '</td>');
 
+    // Re-wrap connected device lists — Knack strips class attrs from spans
+    // Matches patterns like (I-1, I-2, I-3) or (E-1) inside table cells
+    fragment = fragment.replace(/\(([A-Z]-\d+(?:,\s*[A-Z]-\d+)*)\)/g, '<span class="connected-devices">($1)</span>');
+
     // Get the CSS from the PDF export module
     var css = '';
     if (window.SCW && window.SCW.pdfExport && window.SCW.pdfExport.getCss) {
@@ -97,8 +101,9 @@
       '.detail-label, .detail-value { font-size: 14px; }',
       '.richtext-content { font-size: 14px; }',
       '.l3-row td:first-child { font-size: 15px; }',
-      '.l4-row td { font-size: 13px; padding-left: 40px; }',
-      '.l4-row td.col-qty, .l4-row td.col-cost { font-size: 13px; }',
+      '.l4-row td { font-size: 14px; padding-left: 40px; }',
+      '.l4-row td.col-qty, .l4-row td.col-cost { font-size: 14px; }',
+      '.connected-devices { font-size: 13px; }',
       '.product-table thead th { font-size: 11px; }',
       '.l2-header { font-size: 15px; }',
     ].join('\n');
