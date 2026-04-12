@@ -12,7 +12,7 @@
   var SCENES = [
     {
       sceneId: 'scene_1096',
-      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false },
+      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Proposal', buttonBar: true },
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203' },
@@ -890,26 +890,61 @@
         var sceneEl = document.getElementById('kn-' + cfg.sceneId);
         if (!sceneEl) return;
 
-        var $btn = $('<button></button>')
-          .attr('id', btnId)
-          .text('Generate PDF')
-          .css({
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            zIndex: 9999,
-            padding: '12px 24px',
-            fontSize: '15px',
-            fontWeight: 700,
-            color: '#fff',
-            background: '#07467c',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,.25)',
-          });
+        var btnText = cfg.trigger.buttonText || 'Generate PDF';
+        var $btn;
 
-        $btn.on('mouseenter', function () { $(this).css('opacity', 0.9); });
+        if (cfg.trigger.buttonBar) {
+          // Centered sticky bar at top
+          var $bar = $('<div></div>')
+            .attr('id', btnId + '-bar')
+            .css({
+              position: 'sticky',
+              top: '0',
+              zIndex: 9999,
+              background: '#07467c',
+              padding: '10px 0',
+              textAlign: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,.18)',
+            });
+          $btn = $('<button></button>')
+            .attr('id', btnId)
+            .text(btnText)
+            .css({
+              padding: '10px 48px',
+              fontSize: '15px',
+              fontWeight: 700,
+              color: '#07467c',
+              background: '#fff',
+              border: '2px solid #fff',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              letterSpacing: '0.5px',
+            });
+          $bar.append($btn);
+          $(sceneEl).prepend($bar);
+        } else {
+          $btn = $('<button></button>')
+            .attr('id', btnId)
+            .text(btnText)
+            .css({
+              position: 'fixed',
+              bottom: '24px',
+              right: '24px',
+              zIndex: 9999,
+              padding: '12px 24px',
+              fontSize: '15px',
+              fontWeight: 700,
+              color: '#fff',
+              background: '#07467c',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+            });
+          $(sceneEl).append($btn);
+        }
+
+        $btn.on('mouseenter', function () { $(this).css('opacity', 0.85); });
         $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
 
         $btn.on('click', function () {
@@ -955,8 +990,6 @@
             });
           }
         });
-
-        $(sceneEl).append($btn);
       }, 1500);
     });
 
