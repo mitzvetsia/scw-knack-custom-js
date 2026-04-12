@@ -497,7 +497,13 @@
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
               html.push('<tr class="' + l4Class + '">');
-              var l4Content = item.description ? item.description : esc(item.label);
+              var l4Content = item.description
+                ? item.description
+                    .replace(/<b>/gi, '<span style="font-weight:700">')
+                    .replace(/<\/b>/gi, '</span>')
+                    .replace(/<p>/gi, '<div>')
+                    .replace(/<\/p>/gi, '</div>')
+                : esc(item.label);
               html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
                 html.push('<td class="col-qty">' + item.qty + '</td>');
@@ -789,33 +795,36 @@
 
   function buildJsonSnapshot(sceneId) {
     var sceneEl = document.getElementById('kn-' + sceneId);
-    if (!sceneEl) return [];
+    if (!sceneEl) return {};
 
-    // Collect line item records from grid views
-    var lineItems = [];
+    var snapshot = {
+      header: null,
+      view_3341: [],
+      view_3371: []
+    };
+
+    // Collect line item records from each grid view separately
     var gridViewIds = ['view_3341', 'view_3371'];
     for (var g = 0; g < gridViewIds.length; g++) {
-      var records = extractGridRecords(gridViewIds[g]);
+      var vid = gridViewIds[g];
+      var records = extractGridRecords(vid);
       for (var r = 0; r < records.length; r++) {
-        lineItems.push({ _source: gridViewIds[g], record: records[r] });
+        snapshot[vid].push(records[r]);
       }
     }
 
-    // Collect SOW header from all detail views on the scene
+    // Collect SOW header from first detail view on the scene
     var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
-    var header = null;
     for (var d = 0; d < allViewEls.length; d++) {
       var viewId = allViewEls[d].id;
       if (detectViewType(viewId) !== 'detail') continue;
       var rec = extractDetailRecord(viewId);
       if (rec) {
-        header = { _source: viewId, record: rec };
+        snapshot.header = rec;
         break;
       }
     }
 
-    var snapshot = lineItems.slice();
-    if (header) snapshot.unshift(header);
     return snapshot;
   }
 
