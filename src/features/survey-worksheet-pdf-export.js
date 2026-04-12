@@ -936,37 +936,8 @@
       if (isDistributionDevice(r)) cols.push(r);
       if (isCamerasReadersBucket(r)) rows.push(r);
     }
-    if (!rows.length || !cols.length) {
-      console.log('[SCW survey-pdf] connection pivot: skipped', {
-        rowCount: rows.length,
-        colCount: cols.length
-      });
-      // Diagnostic: if we have columns but no rows, dump one card's
-      // raw attrs so we can see where the bucket value actually lives.
-      if (!rows.length && cols.length && payload.rows.length) {
-        for (var d = 0; d < payload.rows.length; d++) {
-          var dc = payload.rows[d];
-          if (dc && dc.type === 'card' && dc.raw) {
-            var sample = {};
-            for (var k in dc.raw) {
-              if (!dc.raw.hasOwnProperty(k)) continue;
-              var val = dc.raw[k];
-              if (val == null || val === '') continue;
-              sample[k] = typeof val === 'string' && val.length > 80
-                ? val.slice(0, 80) + '\u2026'
-                : val;
-            }
-            console.log('[SCW survey-pdf] sample card raw attrs', {
-              label: dc.label,
-              product: dc.product,
-              groupL1: dc.groupL1,
-              groupL2: dc.groupL2,
-              attrs: sample
-            });
-            break;
-          }
-        }
-      }
+    if (!rows.length) {
+      console.log('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
       return '';
     }
 
