@@ -26361,9 +26361,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var TITLE_CLIENT_LABEL_HINTS = ['client', 'customer', 'company', 'account'];
   var TITLE_SITE_LABEL_HINTS   = ['site name', 'location name', 'site', 'location', 'property', 'project name', 'project'];
 
-  // Worksheet bucket field and the Cameras/Readers bucket record ID.
-  // Both taken from src/features/bucket-field-visibility_add-survey-bid-item.js.
-  var BUCKET_FIELD             = 'field_2223';
+  // Worksheet bucket field on the survey line item object (view_3800).
+  // The bucket record ID matches the SOW bid-item schema (same bucket
+  // table), but the field key is different from the form-side
+  // field_2223 — on the worksheet it lives under field_2366.
+  var BUCKET_FIELD             = 'field_2366';
   var CAMERAS_READERS_BUCKET   = '6481e5ba38f283002898113c';
 
   // Distribution-device flag on a survey line item. Cards/records
@@ -27184,35 +27186,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // not a reliable source.
 
   function isCamerasReadersBucket(card) {
-    if (!card) return false;
-    // 1) Raw bucket connection (when field_2223 exists on the record)
-    if (card.raw) {
-      var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
-      if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
-      var disp = card.raw[BUCKET_FIELD];
-      if (typeof disp === 'string' && /camera|reader/i.test(disp)) return true;
-      // 2) Scan every field on the record for the bucket ID or name
-      //    (covers the case where view_3800 surfaces the bucket under
-      //     a different field key than the SOW bid-item form uses).
-      for (var key in card.raw) {
-        if (!card.raw.hasOwnProperty(key)) continue;
-        var v = card.raw[key];
-        if (typeof v === 'string' && /camera|reader/i.test(v) && /bucket|category|group|type/i.test(key) === false) {
-          // Only count short, label-ish strings so we don't match
-          // on notes / descriptions.
-          if (v.length <= 40) return true;
-        }
-        // Connection _raw: array of {id, identifier}
-        if (Array.isArray(v) && v.length && v[0] && typeof v[0] === 'object') {
-          if (v[0].id === CAMERAS_READERS_BUCKET) return true;
-          if (typeof v[0].identifier === 'string' && /camera|reader/i.test(v[0].identifier) && v[0].identifier.length <= 40) return true;
-        }
-      }
-    }
-    // 3) Group path fallback — view_3800 is grouped by bucket, so the
-    //    L1/L2 label above each card is already the bucket name.
-    var groupText = ((card.groupL1 || '') + ' ' + (card.groupL2 || '')).toLowerCase();
-    if (/camera|reader/.test(groupText)) return true;
+    if (!card || !card.raw) return false;
+    // Primary: connection _raw holds [{id, identifier}]
+    var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
+    if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
+    // Fallback: display string (e.g. "Cameras or Readers")
+    var disp = card.raw[BUCKET_FIELD];
+    if (typeof disp === 'string' && /camera|reader/i.test(disp)) return true;
     return false;
   }
 
