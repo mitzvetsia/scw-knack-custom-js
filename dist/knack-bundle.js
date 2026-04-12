@@ -26360,6 +26360,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // Matching is case-insensitive substring; first match wins.
   var TITLE_CLIENT_LABEL_HINTS = ['client', 'customer', 'company', 'account'];
   var TITLE_SITE_LABEL_HINTS   = ['site name', 'location name', 'site', 'location', 'property', 'project name', 'project'];
+  var SURVEY_ID_LABEL_HINTS    = ['survey id', 'survey #', 'survey number', 'survey name', 'survey record', 'record id', 'id'];
 
   // Worksheet bucket field on the survey line item object (view_3800).
   // The bucket record ID matches the SOW bid-item schema (same bucket
@@ -26582,6 +26583,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var emptyPayload = {
       viewId: viewId,
       title: '',
+      surveyId: '',
       rows: [],
       page1Sections: [],
       coverImageSections: [],
@@ -26596,12 +26598,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Main document title is now derived from the page-1 detail
     // views (client + site) rather than view_3800's own header.
     var title = buildSurveyTitle(page1Sections);
+    var surveyId = findFieldByLabelHints(page1Sections, SURVEY_ID_LABEL_HINTS);
 
     var tbody = root.querySelector('table tbody');
     if (!tbody) {
       return {
         viewId: viewId,
         title: title,
+        surveyId: surveyId,
         rows: [],
         page1Sections: page1Sections,
         coverImageSections: coverImageSections,
@@ -26659,6 +26663,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return {
       viewId: viewId,
       title: title,
+      surveyId: surveyId,
       rows: out,
       page1Sections: page1Sections,
       coverImageSections: coverImageSections,
@@ -27112,7 +27117,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     html.push('<html><head><meta charset="utf-8">');
     html.push('<title>' + esc(payload.title || 'Survey Worksheet') + '</title>');
     html.push('<style>');
-    html.push(getCss());
+    html.push(getCss(payload));
     html.push('</style>');
     html.push('</head><body>');
 
@@ -27516,9 +27521,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return h.join('');
   }
 
-  function getCss() {
+  function cssString(s) {
+    return String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\r?\n/g, ' ');
+  }
+
+  function getCss(payload) {
+    payload = payload || {};
+    var surveyId = payload.surveyId || '';
+    // Fallback: if we couldn't find a labelled Survey ID, pull the
+    // client/site off the document title so the footer still has
+    // something identifying.
+    if (!surveyId && payload.title) {
+      surveyId = String(payload.title).replace(/^Survey:\s*/i, '');
+    }
+    var footerPrefix = surveyId ? (cssString(surveyId) + '  \\2014  Page ') : 'Page ';
+
     return [
-      '@page { size: letter; margin: 0.2in 0.225in; }',
+      '@page {',
+      '  size: letter;',
+      '  margin: 0.25in 0.225in 0.55in 0.225in;',
+      '  @bottom-center {',
+      '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
+      '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '    font-size: 9pt; color: #6b7280;',
+      '  }',
+      '}',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
