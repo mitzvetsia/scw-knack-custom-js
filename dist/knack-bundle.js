@@ -6839,7 +6839,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
               html.push('<tr class="' + l4Class + '">');
-              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(item.label) + '</td>');
+              var l4Content = item.description ? item.description : esc(item.label);
+              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
                 html.push('<td class="col-qty">' + item.qty + '</td>');
                 html.push('<td class="col-cost">' + esc(item.cost) + '</td>');
@@ -7007,6 +7008,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       '',
       '/* ── L4 Line Item Row ── */',
       '.l4-row td { padding: 3px 8px 3px 40px; color: #555; font-size: 10px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
+      '.l4-row td p { margin: 0; }',
       '.l4-row td.col-qty, .l4-row td.col-cost { padding-left: 8px; font-weight: 600; color: #07467c; }',
       '',
       '/* ── L2 Footer ── */',
