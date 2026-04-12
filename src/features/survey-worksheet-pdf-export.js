@@ -1022,7 +1022,9 @@
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
+      h.push('<div class="cover-img-wrap">');
       h.push('<img class="cover-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || label) + '" />');
+      h.push('</div>');
       h.push('</section>');
     }
     return h.join('');
@@ -1266,9 +1268,9 @@
       '.cover-page {',
       '  page-break-after: always; break-after: page;',
       '  display: flex; flex-direction: column;',
-      '  align-items: center; justify-content: flex-start;',
+      '  align-items: stretch;',
       '  text-align: center;',
-      '  min-height: 10.3in;',
+      '  height: 10.3in; box-sizing: border-box;',
       '}',
       '.cover-page:last-of-type { page-break-after: always; }',
       '.cover-section-label {',
@@ -1276,10 +1278,16 @@
       '  text-transform: uppercase; letter-spacing: 0.6px;',
       '  margin: 0 0 10px 0; padding: 4px 0 6px 0;',
       '  border-bottom: 2px solid #07467c; width: 100%;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.cover-img-wrap {',
+      '  flex: 1 1 auto; min-height: 0; min-width: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  overflow: hidden;',
       '}',
       '.cover-img {',
-      '  max-width: 100%; max-height: 9.5in;',
-      '  object-fit: contain; display: block; margin: auto 0;',
+      '  width: 100%; height: 100%;',
+      '  object-fit: contain; display: block;',
       '}',
       '',
       '/* Trailing photo grid (e.g. Additional Photos) */',
