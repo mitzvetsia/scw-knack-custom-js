@@ -506,23 +506,11 @@
         current: current, requested: requested, changeNotes: cn,
       });
 
-      // Reciprocal: if Connected Devices (2380) changed, auto-create
-      // change requests on each newly-added device so its Connected To
-      // (2381) points back to this record.
-      if (requested.bidConnDeviceIds && params.gridRows) {
-        var origDevIds = cell.bidConnDeviceIds || [];
-        var origDevSet = {};
-        for (var odi = 0; odi < origDevIds.length; odi++) origDevSet[origDevIds[odi]] = true;
-        var addedDevIds = [];
-        for (var ndi = 0; ndi < requested.bidConnDeviceIds.length; ndi++) {
-          if (!origDevSet[requested.bidConnDeviceIds[ndi]]) {
-            addedDevIds.push(requested.bidConnDeviceIds[ndi]);
-          }
-        }
-        if (addedDevIds.length) {
-          createReciprocalChangeRequests(params, cell, addedDevIds);
-          ns.renderToast(addedDevIds.length + ' reciprocal change request(s) created', 'info');
-        }
+      // Reciprocal: if either connection field changed, mirror the
+      // add/remove on the other side (2380 ↔ 2381).
+      var recipCount = createReciprocalChanges(params, cell, requested);
+      if (recipCount) {
+        ns.renderToast(recipCount + ' reciprocal change(s) created', 'info');
       }
 
       closeModal();
@@ -556,17 +544,17 @@
 
   /**
    * Merge-aware add for reciprocal changes.
-   * If a pending item already exists for this row, only update
-   * bidConnTo / bidConnToIds without overwriting other requested fields.
+   * If a pending item already exists for this row, only merge the
+   * specified connection field without overwriting other requested fields.
    */
-  function addReciprocalItem(pkgId, pkgName, sowId, sowName, item) {
+  function addReciprocalItem(pkgId, pkgName, sowId, sowName, item, connKey) {
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) {
-        // Merge: keep existing requested fields, add/overwrite bidConnTo
-        items[i].requested.bidConnTo = item.requested.bidConnTo;
-        items[i].requested.bidConnToIds = item.requested.bidConnToIds;
+        // Merge: keep existing requested fields, add/overwrite the target connection
+        items[i].requested[connKey] = item.requested[connKey];
+        items[i].requested[connKey + 'Ids'] = item.requested[connKey + 'Ids'];
         if (item.changeNotes) {
           items[i].changeNotes = items[i].changeNotes
             ? items[i].changeNotes + ' | ' + item.changeNotes
@@ -583,59 +571,137 @@
   }
 
   /**
-   * When Connected Devices (2380) changes, create reciprocal change
-   * requests on each newly-added device so its Connected To (2381)
-   * points back to the source record.
+   * Reciprocal connection logic for fields 2380 / 2381.
+   *
+   * These fields are reciprocal:
+   *   field_2380 (Connected Devices) ↔ field_2381 (Connected To)
+   *
+   * When a record's 2380 changes, each affected record's 2381 must mirror:
+   *   - Device ADDED to 2380   → add source to that device's 2381
+   *   - Device REMOVED from 2380 → remove source from that device's 2381
+   *
+   * Same logic applies in reverse when 2381 changes:
+   *   - Record ADDED to 2381   → add source to that record's 2380
+   *   - Record REMOVED from 2381 → remove source from that record's 2380
    */
-  function createReciprocalChangeRequests(params, cell, addedDevIds) {
+  function createReciprocalChanges(params, cell, requested) {
+    if (!params.gridRows) return 0;
+
     var sourceId    = cell.id;
     var sourceLabel = params.displayLabel || params.productName || sourceId;
+    var count       = 0;
 
-    for (var i = 0; i < addedDevIds.length; i++) {
-      var devId = addedDevIds[i];
+    // Check both directions
+    var pairs = [
+      { changedKey: 'bidConnDevice', changedIds: 'bidConnDeviceIds',
+        mirrorKey:  'bidConnTo',     mirrorIds:  'bidConnToIds' },
+      { changedKey: 'bidConnTo',     changedIds: 'bidConnToIds',
+        mirrorKey:  'bidConnDevice', mirrorIds:  'bidConnDeviceIds' },
+    ];
 
-      // Find the row + cell in the same package
-      for (var ri = 0; ri < params.gridRows.length; ri++) {
-        var row     = params.gridRows[ri];
-        var devCell = row.cellsByPackage[params.pkgId];
-        if (!devCell || devCell.id !== devId) continue;
+    for (var pi = 0; pi < pairs.length; pi++) {
+      var pair = pairs[pi];
+      if (!requested[pair.changedIds]) continue;
 
-        // Check if source is already in this device's Connected To
-        var curToIds = devCell.bidConnToIds || [];
-        var already  = false;
-        for (var ci = 0; ci < curToIds.length; ci++) {
-          if (curToIds[ci] === sourceId) { already = true; break; }
-        }
-        if (already) break;
+      var origIds = cell[pair.changedIds] || [];
+      var newIds  = requested[pair.changedIds];
 
-        // Build new Connected To = existing + source record
-        var curToLabel = devCell.bidConnTo || '';
-        var newToIds   = curToIds.concat([sourceId]);
-        var newToLabel = curToLabel
-          ? curToLabel + ', ' + sourceLabel
-          : sourceLabel;
+      // Build lookup sets
+      var origSet = {}, newSet = {};
+      for (var oi = 0; oi < origIds.length; oi++) origSet[origIds[oi]] = true;
+      for (var ni = 0; ni < newIds.length; ni++)  newSet[newIds[ni]]   = true;
 
-        // Snapshot current values for the change summary
-        var current = {};
-        for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
-          if (hasValue(devCell[FIELD_DEFS[fi].key])) {
-            current[FIELD_DEFS[fi].key] = devCell[FIELD_DEFS[fi].key];
-          }
-        }
+      // IDs added → add source to their mirror field
+      var added = [];
+      for (var ai = 0; ai < newIds.length; ai++) {
+        if (!origSet[newIds[ai]]) added.push(newIds[ai]);
+      }
 
-        addReciprocalItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
-          rowId:        row.id,
-          bidRecordId:  devCell.id,
-          displayLabel: row.displayLabel,
-          productName:  devCell.productName,
-          current:      current,
-          requested:    { bidConnTo: newToLabel, bidConnToIds: newToIds },
-          changeNotes:  'Reciprocal: Connected Devices updated on ' + sourceLabel,
-        });
+      // IDs removed → remove source from their mirror field
+      var removed = [];
+      for (var ri = 0; ri < origIds.length; ri++) {
+        if (!newSet[origIds[ri]]) removed.push(origIds[ri]);
+      }
 
-        break; // found the matching row
+      // Process additions
+      for (var a = 0; a < added.length; a++) {
+        count += applyReciprocal(params, cell, sourceId, sourceLabel,
+          added[a], pair.mirrorKey, pair.mirrorIds, 'add');
+      }
+
+      // Process removals
+      for (var r = 0; r < removed.length; r++) {
+        count += applyReciprocal(params, cell, sourceId, sourceLabel,
+          removed[r], pair.mirrorKey, pair.mirrorIds, 'remove');
       }
     }
+
+    return count;
+  }
+
+  /**
+   * Apply a single reciprocal change: add or remove sourceId from
+   * targetRecordId's mirror connection field.
+   */
+  function applyReciprocal(params, cell, sourceId, sourceLabel,
+                           targetRecordId, mirrorKey, mirrorIds, action) {
+    for (var ri = 0; ri < params.gridRows.length; ri++) {
+      var row     = params.gridRows[ri];
+      var tgtCell = row.cellsByPackage[params.pkgId];
+      if (!tgtCell || tgtCell.id !== targetRecordId) continue;
+
+      var curIds    = tgtCell[mirrorIds] || [];
+      var curLabels = tgtCell[mirrorKey] ? String(tgtCell[mirrorKey]).split(', ') : [];
+      var resultIds = [], resultLabels = [];
+
+      if (action === 'add') {
+        // Skip if already present
+        var found = false;
+        for (var ci = 0; ci < curIds.length; ci++) {
+          if (curIds[ci] === sourceId) { found = true; break; }
+        }
+        if (found) return 0;
+        resultIds    = curIds.concat([sourceId]);
+        resultLabels = curLabels.concat([sourceLabel]);
+      } else {
+        // Remove sourceId
+        var hadIt = false;
+        for (var fi = 0; fi < curIds.length; fi++) {
+          if (curIds[fi] === sourceId) { hadIt = true; continue; }
+          resultIds.push(curIds[fi]);
+          if (curLabels[fi]) resultLabels.push(curLabels[fi]);
+        }
+        if (!hadIt) return 0;
+      }
+
+      // Snapshot current values
+      var current = {};
+      for (var di = 0; di < FIELD_DEFS.length; di++) {
+        if (hasValue(tgtCell[FIELD_DEFS[di].key])) {
+          current[FIELD_DEFS[di].key] = tgtCell[FIELD_DEFS[di].key];
+        }
+      }
+
+      var reqObj = {};
+      reqObj[mirrorKey]          = resultLabels.join(', ');
+      reqObj[mirrorKey + 'Ids'] = resultIds;
+
+      var verb = action === 'add' ? 'added to' : 'removed from';
+      var tgtLabel = row.displayLabel || tgtCell.productName || targetRecordId;
+
+      addReciprocalItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+        rowId:        row.id,
+        bidRecordId:  tgtCell.id,
+        displayLabel: row.displayLabel,
+        productName:  tgtCell.productName,
+        current:      current,
+        requested:    reqObj,
+        changeNotes:  'Reciprocal: ' + sourceLabel + ' ' + verb + ' ' + tgtLabel,
+      }, mirrorKey);
+
+      return 1;
+    }
+    return 0;
   }
 
   function removePendingItem(pkgId, rowId) {

@@ -361,7 +361,8 @@
         if (!cc.id || cc.id === cell.id) continue; // skip self
 
         var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
-        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName) {
+        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
+            && lbl.indexOf(cr.productName) === -1) {
           lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
         }
 
