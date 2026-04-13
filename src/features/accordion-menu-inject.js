@@ -144,7 +144,8 @@
     var prevGroup = viewGroup.previousElementSibling;
     if (prevGroup &&
         prevGroup.classList.contains('view-group') &&
-        !prevGroup.querySelector('.scw-ktl-accordion')) {
+        !prevGroup.querySelector('.scw-ktl-accordion') &&
+        !prevGroup.querySelector('.ktlHideShowView')) {
       var menu = prevGroup.querySelector('.kn-view.kn-menu');
       if (menu) return { menu: menu, strategy: 'prev-group' };
     }
