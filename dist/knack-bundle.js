@@ -13089,7 +13089,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ── State ──────────────────────────────────────────────
   var _pending = {};
   var _saveTimer = null;
-  var _sowObjectKey = null;   // cached Knack object key for the SOW table
   var _knownSowIds = {};      // SOW IDs we've written to (for cleanup)
 
   function pendingCount() {
@@ -13135,36 +13134,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // Connection options are built from the grid rows in init.js
   // and passed through params.connOptions — no API call needed.
 
-  // ── Knack object key discovery ─────────────────────────
-  function getSowObjectKey() {
-    if (_sowObjectKey) return _sowObjectKey;
-    try {
-      var models = Knack.objects.models || [];
-      for (var i = 0; i < models.length; i++) {
-        var obj = models[i].attributes || models[i];
-        var fields = obj.fields || [];
-        for (var f = 0; f < fields.length; f++) {
-          var fld = fields[f].attributes || fields[f];
-          if (fld.key === FK.changeRequestDraft) {
-            _sowObjectKey = obj.key;
-            if (CFG.debug) console.log('[BidReview CR] SOW object key:', _sowObjectKey);
-            return _sowObjectKey;
-          }
-        }
-      }
-    } catch (e) {
-      if (CFG.debug) console.warn('[BidReview CR] Object key discovery failed:', e);
-    }
-    return null;
-  }
-
   // ── Knack API: read / write field_2684 ─────────────────
-  function readSowField(sowId) {
-    var objKey = getSowObjectKey();
-    if (!objKey) return $.Deferred().reject('no object key').promise();
+  // Uses the scene/view record URL (via SCW.knackRecordUrl) to avoid
+  // CORS errors — the raw objects API is blocked cross-origin.
 
+  function readSowField(sowId) {
     return SCW.knackAjax({
-      url: Knack.api_url + '/v1/objects/' + objKey + '/records/' + sowId,
+      url: SCW.knackRecordUrl(CFG.sowItemsViewKey, sowId),
       type: 'GET',
     }).then(function (resp) {
       var raw = resp[FK.changeRequestDraft + '_raw'] || resp[FK.changeRequestDraft] || '';
@@ -13176,14 +13152,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   function writeSowField(sowId, data) {
-    var objKey = getSowObjectKey();
-    if (!objKey) return $.Deferred().reject('no object key').promise();
-
     var body = {};
     body[FK.changeRequestDraft] = data ? JSON.stringify(data) : '';
 
     return SCW.knackAjax({
-      url: Knack.api_url + '/v1/objects/' + objKey + '/records/' + sowId,
+      url: SCW.knackRecordUrl(CFG.sowItemsViewKey, sowId),
       type: 'PUT',
       data: JSON.stringify(body),
     });
@@ -13333,6 +13306,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-cr-modal__btn:hover { filter: brightness(.92); }',
       '.scw-bid-cr-modal__btn--cancel { background: #e2e8f0; color: #475569; }',
       '.scw-bid-cr-modal__btn--add { background: #0891b2; color: #fff; }',
+      '.scw-bid-cr-modal__checkbox-list {',
+      '  display: flex; flex-direction: column; gap: 4px;',
+      '  padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 5px;',
+      '  background: #f8fafc; max-height: 160px; overflow-y: auto;',
+      '}',
+      '.scw-bid-cr-modal__checkbox-item {',
+      '  display: flex; align-items: center; gap: 6px;',
+      '  font-size: 13px; color: #1e293b; cursor: pointer;',
+      '  padding: 3px 0;',
+      '}',
+      '.scw-bid-cr-modal__checkbox-item input { margin: 0; cursor: pointer; }',
+      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; flex: 1; }',
+      '.scw-bid-cr-modal__checkbox-empty {',
+      '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
+      '}',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -13422,30 +13410,33 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var inp;
       if (fd.type === 'connection') {
-        // Connection dropdown
-        inp = document.createElement('select');
-        inp.className = 'scw-bid-cr-modal__select';
-        var blankOpt = document.createElement('option');
-        blankOpt.value = ''; blankOpt.textContent = '\u2014 none \u2014';
-        inp.appendChild(blankOpt);
-
+        // Connection checkbox list
         var recs = connRecords[fd.key] || [];
         var currentIds = cell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
+        inp = el('div', 'scw-bid-cr-modal__checkbox-list');
+        if (!recs.length) {
+          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
+        }
         for (var ri = 0; ri < recs.length; ri++) {
           var rec = recs[ri];
-          var opt = document.createElement('option');
-          opt.value = rec.id;
-          opt.textContent = rec.identifier || rec.id;
-          // Pre-select if matches current/pending
+          var item = el('div', 'scw-bid-cr-modal__checkbox-item');
+          var cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.value = rec.id;
+          cb.id = 'scw-cr-cb-' + fd.key + '-' + ri;
+          // Pre-check if matches current/pending
           for (var pi = 0; pi < prefillIds.length; pi++) {
-            if (prefillIds[pi] === rec.id) { opt.selected = true; break; }
+            if (prefillIds[pi] === rec.id) { cb.checked = true; break; }
           }
-          inp.appendChild(opt);
+          item.appendChild(cb);
+          var cbLabel = document.createElement('label');
+          cbLabel.setAttribute('for', cb.id);
+          cbLabel.textContent = rec.identifier || rec.id;
+          item.appendChild(cbLabel);
+          inp.appendChild(item);
         }
-        inp.multiple = (currentIds.length > 1 || recs.length > 5);
-        if (inp.multiple) inp.size = Math.min(6, recs.length + 1);
       } else if (fd.type === 'select') {
         inp = document.createElement('select');
         inp.className = 'scw-bid-cr-modal__select';
@@ -13505,19 +13496,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (!inputs[d.key]) continue;
 
         if (d.type === 'connection') {
-          // For multi-select, gather selected IDs
-          var sel = inputs[d.key];
-          var selIds = [];
-          for (var si = 0; si < sel.options.length; si++) {
-            if (sel.options[si].selected && sel.options[si].value) selIds.push(sel.options[si].value);
+          // Gather checked checkbox IDs and labels
+          var container = inputs[d.key];
+          var cbs = container.querySelectorAll('input[type="checkbox"]');
+          var selIds = [], labels = [];
+          for (var si = 0; si < cbs.length; si++) {
+            if (cbs[si].checked) {
+              selIds.push(cbs[si].value);
+              var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
+              if (cbLbl) labels.push(cbLbl.textContent);
+            }
           }
           var origIds = cell[d.idsKey] || [];
           if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
-            // Build display label from selected options
-            var labels = [];
-            for (var li = 0; li < sel.options.length; li++) {
-              if (sel.options[li].selected && sel.options[li].value) labels.push(sel.options[li].textContent);
-            }
             requested[d.key] = labels.join(', ');
             requested[d.key + 'Ids'] = selIds;
             hasChange = true;
