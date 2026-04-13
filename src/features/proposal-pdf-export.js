@@ -3,6 +3,7 @@
   'use strict';
 
   var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
+  var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/fvop4hwz5gn2lujroky2vsuy4ddsamyx';
 
   // ══════════════════════════════════════════════════════════════
   // SCENE CONFIGS — add new scenes here
@@ -11,11 +12,13 @@
   var SCENES = [
     {
       sceneId: 'scene_1096',
-      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: true },
+      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
       skipViews: { view_3342: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
-      gridKeys: { qty: 'field_1964', cost: 'field_2203' },
+      gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
+      recurringGrids: ['view_3371'],
       payloadType: 'proposal',
+      saveHtml: true,
     },
     {
       sceneId: 'scene_1149',
@@ -40,6 +43,11 @@
   // HELPERS
   // ══════════════════════════════════════════════════════════════
 
+  function getPageRecordId() {
+    var match = (window.location.hash || '').match(/\/([a-f0-9]{24})\/?$/);
+    return match ? match[1] : '';
+  }
+
   function norm(s) {
     return String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
   }
@@ -58,7 +66,12 @@
 
   function groupLabelText(tr) {
     var td = tr.querySelector('td:first-child');
-    return td ? norm(td.textContent) : '';
+    if (!td) return '';
+    // Clone and strip injected spans so label doesn't include connected-devices or field_2019 text
+    var clone = td.cloneNode(true);
+    var injected = clone.querySelectorAll('.scw-l3-connected-devices, br.scw-l3-connected-br, .scw-l4-2019, br.scw-l4-2019-br, .scw-concat-cameras');
+    for (var ci = 0; ci < injected.length; ci++) injected[ci].remove();
+    return norm(clone.textContent);
   }
 
   function isVisibleRow(tr) {
@@ -84,6 +97,7 @@
   function detectViewType(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return null;
+    if (root.classList.contains('kn-report')) return 'report';
     if (root.querySelector('.kn-table tbody')) return 'grid';
     if (root.querySelector('.kn-detail-body') || root.classList.contains('kn-detail') || root.querySelector('.field-list')) return 'detail';
     if (root.classList.contains('kn-rich_text') || root.querySelector('.kn-rich-text-content')) return 'richtext';
@@ -93,9 +107,14 @@
   function viewHasDataRows(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return false;
+    // "No data" indicator means empty regardless of view type
+    if (root.querySelector('.kn-tr-nodata')) return false;
+    // Standard grid: data rows have id attributes
     var tbody = root.querySelector('.kn-table tbody');
-    if (!tbody) return false;
-    return tbody.querySelectorAll('tr[id]').length > 0;
+    if (tbody && tbody.querySelectorAll('tr[id]').length > 0) return true;
+    // Report/pivot views: check for rendered report content
+    if (root.querySelector('.kn-report-rendered')) return true;
+    return false;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -170,6 +189,27 @@
     if (!contentHtml && !title) return null;
 
     return { viewId: viewId, type: 'richtext', title: title, contentHtml: contentHtml, contentText: text };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // SCRAPER: Report / pivot views
+  // ══════════════════════════════════════════════════════════════
+
+  function scrapeReportView(viewId) {
+    var root = document.getElementById(viewId);
+    if (!root) return null;
+
+    var rendered = root.querySelector('.kn-report-rendered');
+    if (!rendered) return null;
+
+    var title = getViewTitle(viewId);
+
+    // Grab the table HTML directly — it's already well-structured
+    var tableEl = rendered.querySelector('table');
+    var tableHtml = tableEl ? tableEl.outerHTML : '';
+    if (!tableHtml) return null;
+
+    return { viewId: viewId, type: 'report', title: title, tableHtml: tableHtml };
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -266,9 +306,32 @@
         var description = '';
         if (descSpan) description = descSpan.innerHTML || '';
 
-        var camB = tr.querySelector('.scw-concat-cameras b');
+        // Fallback: read field_2019 directly from the first data row under this L4 group
+        if (!description && keys.field2019) {
+          var nextSib = tr.nextElementSibling;
+          while (nextSib && nextSib.classList.contains('kn-table-group')) nextSib = nextSib.nextElementSibling;
+          if (nextSib && nextSib.id && nextSib.tagName === 'TR') {
+            var f2019Cell = nextSib.querySelector('td.' + keys.field2019);
+            if (f2019Cell) {
+              var rawDesc = f2019Cell.innerHTML || '';
+              // Sanitize: keep only <br> and <b>/<strong> tags, strip everything else
+              rawDesc = rawDesc.replace(/<strong>/gi, '<b>').replace(/<\/strong>/gi, '</b>');
+              rawDesc = rawDesc.replace(/<(?!\/?b\s*\/?>|br\s*\/?>)[^>]*>/gi, '');
+              rawDesc = rawDesc.replace(/&nbsp;/gi, ' ').replace(/^\s+|\s+$/g, '');
+              if (rawDesc) description = rawDesc;
+            }
+          }
+        }
+
         var cameraList = '';
-        if (camB) cameraList = norm(camB.textContent).replace(/^\(/, '').replace(/\)$/, '');
+        var camBs = tr.querySelectorAll('.scw-concat-cameras b');
+        for (var cb = camBs.length - 1; cb >= 0; cb--) {
+          var camText = norm(camBs[cb].textContent);
+          if (/^\(.*\)$/.test(camText)) {
+            cameraList = camText.replace(/^\(/, '').replace(/\)$/, '').trim();
+            break;
+          }
+        }
 
         var l4Qty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l4Cost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
@@ -380,6 +443,15 @@
           continue;
         }
         data = scrapeGridView(viewId, cfg.gridKeys);
+        if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
+          data.isRecurring = true;
+        }
+      } else if (viewType === 'report') {
+        if (!viewHasDataRows(viewId)) {
+          console.log('[SCW PDF Export]', viewId, '→ empty report, skipping');
+          continue;
+        }
+        data = scrapeReportView(viewId);
       } else if (viewType === 'detail') {
         data = scrapeDetailView(viewId);
       } else if (viewType === 'richtext') {
@@ -437,6 +509,15 @@
     }
   }
 
+  function renderReportView(view, html) {
+    if (view.title) {
+      html.push('<div class="view-title">' + esc(view.title) + '</div>');
+    }
+    if (view.tableHtml) {
+      html.push('<div class="report-table-wrap">' + view.tableHtml + '</div>');
+    }
+  }
+
   function renderGridSections(view, html) {
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
@@ -450,7 +531,7 @@
 
       html.push('<div class="l1-section">');
 
-      if (section.label) {
+      if (section.label && !view.isRecurring) {
         html.push('<div class="l1-header">' + esc(section.label) + '</div>');
       }
 
@@ -464,7 +545,7 @@
 
         if (bucket.products.length) {
           html.push('<table class="product-table">');
-          html.push('<thead><tr><th class="col-desc">Description</th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
+          html.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
           html.push('<tbody>');
 
           for (var p = 0; p < bucket.products.length; p++) {
@@ -490,7 +571,17 @@
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
               html.push('<tr class="' + l4Class + '">');
-              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(item.label) + '</td>');
+              var l4Content = item.description
+                ? item.description
+                    .replace(/<b>/gi, '<span style="font-weight:700">')
+                    .replace(/<\/b>/gi, '</span>')
+                    .replace(/<p>/gi, '<div>')
+                    .replace(/<\/p>/gi, '</div>')
+                : esc(item.label);
+              if (item.cameraList) {
+                l4Content += '<br><span class="connected-devices">(' + esc(item.cameraList) + ')</span>';
+              }
+              html.push('<td' + (l4TdClass ? ' class="' + l4TdClass + '"' : '') + (prod.hideCost ? ' colspan="3"' : '') + '>' + l4Content + '</td>');
               if (!prod.hideCost) {
                 html.push('<td class="col-qty">' + item.qty + '</td>');
                 html.push('<td class="col-cost">' + esc(item.cost) + '</td>');
@@ -545,18 +636,34 @@
     html.push('</style>');
     html.push('</head><body>');
 
+    // Split views into project vs. recurring vs. report
+    var projectViews = [];
+    var recurringViews = [];
+    var reportViews = [];
     for (var v = 0; v < payload.views.length; v++) {
       var view = payload.views[v];
-
-      if (view.type === 'detail') {
-        renderDetailView(view, html);
-      } else if (view.type === 'richtext') {
-        renderRichTextView(view, html);
-      } else if (view.type === 'grid') {
-        renderGridSections(view, html);
+      if (view.type === 'report') {
+        reportViews.push(view);
+      } else if (view.type === 'grid' && view.isRecurring) {
+        recurringViews.push(view);
+      } else {
+        projectViews.push(view);
       }
     }
 
+    // Render project views
+    for (var pv = 0; pv < projectViews.length; pv++) {
+      var pView = projectViews[pv];
+      if (pView.type === 'detail') {
+        renderDetailView(pView, html);
+      } else if (pView.type === 'richtext') {
+        renderRichTextView(pView, html);
+      } else if (pView.type === 'grid') {
+        renderGridSections(pView, html);
+      }
+    }
+
+    // Project totals
     var pt = payload.projectTotals;
     if (!pt) {
       for (var j = 0; j < payload.views.length; j++) {
@@ -574,6 +681,22 @@
         html.push('</div>');
       }
       html.push('</div>');
+    }
+
+    // Recurring services section (below project totals)
+    if (recurringViews.length) {
+      html.push('<div class="recurring-section">');
+      for (var rv = 0; rv < recurringViews.length; rv++) {
+        renderGridSections(recurringViews[rv], html);
+      }
+      html.push('</div>');
+    }
+
+    // Report views (e.g. BOM) at the bottom
+    if (reportViews.length) {
+      for (var rp = 0; rp < reportViews.length; rp++) {
+        renderReportView(reportViews[rp], html);
+      }
     }
 
     html.push('</body></html>');
@@ -658,6 +781,7 @@
       '',
       '/* ── L4 Line Item Row ── */',
       '.l4-row td { padding: 3px 8px 3px 40px; color: #555; font-size: 10px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
+      '.l4-row td p { margin: 0; }',
       '.l4-row td.col-qty, .l4-row td.col-cost { padding-left: 8px; font-weight: 600; color: #07467c; }',
       '',
       '/* ── L2 Footer ── */',
@@ -708,12 +832,183 @@
       '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
       '.pt-line--final:last-child .pt-label { font-size: 17px; }',
       '.pt-line--final:last-child .pt-value { font-size: 19px; }',
+      '',
+      '/* ── Recurring Services ── */',
+      '.recurring-section { margin-top: 40px; }',
+      '.recurring-header {',
+      '  font-size: 20px; font-weight: 800; color: #07467c;',
+      '  margin-bottom: 8px; padding-bottom: 4px;',
+      '  border-bottom: 3px solid #07467c;',
+      '}',
+      '',
+      '/* ── Report / BOM Table ── */',
+      '.report-table-wrap { margin-top: 30px; }',
+      '.report-table-wrap table { width: 100%; border-collapse: collapse; }',
+      '.report-table-wrap thead th {',
+      '  font-size: 10px; font-weight: 600; color: #07467c; text-transform: uppercase;',
+      '  letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 2px solid #07467c;',
+      '  text-align: left;',
+      '}',
+      '.report-table-wrap tbody td {',
+      '  padding: 5px 8px; font-size: 11px; color: #333;',
+      '  border-bottom: 1px solid #f0f0f0;',
+      '}',
+      '.report-table-wrap .kn-table_summary td {',
+      '  font-weight: 700; color: #07467c; border-top: 2px solid #07467c;',
+      '  padding-top: 8px;',
+      '}',
     ].join('\n');
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // EXTRACT SUMMARY FIELDS from scraped payload
+  // ══════════════════════════════════════════════════════════════
+
+  function findDetailField(payload, labelPattern) {
+    for (var v = 0; v < payload.views.length; v++) {
+      var view = payload.views[v];
+      if (view.type !== 'detail' || !view.fields) continue;
+      for (var f = 0; f < view.fields.length; f++) {
+        if (labelPattern.test(view.fields[f].label)) return view.fields[f].value;
+      }
+    }
+    return '';
+  }
+
+  function findTotalLine(payload, labelPattern) {
+    var pt = payload.projectTotals;
+    if (!pt || !pt.lines) return '';
+    for (var i = 0; i < pt.lines.length; i++) {
+      if (labelPattern.test(pt.lines[i].label)) return pt.lines[i].value;
+    }
+    return '';
+  }
+
+  function extractSummaryFields(payload) {
+    return {
+      sowId:              findDetailField(payload, /sow\s*id/i),
+      expirationDate:     findDetailField(payload, /expir/i),
+      equipmentTotal:     findTotalLine(payload, /equipment\s*total/i),
+      installationTotal:  findTotalLine(payload, /installation\s*total/i),
+      grandTotal:         findTotalLine(payload, /grand\s*total/i)
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // JSON SNAPSHOT — raw Knack records for line items + header
+  // ══════════════════════════════════════════════════════════════
+
+  function extractGridRecords(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views) return [];
+    var view = Knack.views[viewId];
+    if (!view || !view.model || !view.model.data) return [];
+    var data = view.model.data;
+    if (Array.isArray(data)) {
+      return data.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+      });
+    }
+    if (data.models && Array.isArray(data.models)) {
+      return data.models.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+      });
+    }
+    return [];
+  }
+
+  function extractDetailRecord(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views) return null;
+    var view = Knack.views[viewId];
+    if (!view || !view.model) return null;
+    var attrs = view.model.attributes
+             || (view.model.data && view.model.data.attributes)
+             || null;
+    if (!attrs) return null;
+    return typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+  }
+
+  function buildJsonSnapshot(sceneId) {
+    var sceneEl = document.getElementById('kn-' + sceneId);
+    if (!sceneEl) return {};
+
+    var snapshot = {
+      header: null,
+      view_3341: [],
+      view_3371: []
+    };
+
+    // Collect line item records from each grid view separately
+    var gridViewIds = ['view_3341', 'view_3371'];
+    for (var g = 0; g < gridViewIds.length; g++) {
+      var vid = gridViewIds[g];
+      var records = extractGridRecords(vid);
+      for (var r = 0; r < records.length; r++) {
+        snapshot[vid].push(records[r]);
+      }
+    }
+
+    // Collect SOW header from first detail view on the scene
+    var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
+    for (var d = 0; d < allViewEls.length; d++) {
+      var viewId = allViewEls[d].id;
+      if (detectViewType(viewId) !== 'detail') continue;
+      var rec = extractDetailRecord(viewId);
+      if (rec) {
+        snapshot.header = rec;
+        break;
+      }
+    }
+
+    return snapshot;
   }
 
   // ══════════════════════════════════════════════════════════════
   // SHARED ACTIONS
   // ══════════════════════════════════════════════════════════════
+
+  var PUBLISH_TOAST_ID = 'scw-publish-toast';
+
+  function dismissPublishToast() {
+    var el = document.getElementById(PUBLISH_TOAST_ID);
+    if (el) el.remove();
+  }
+
+  function showPublishToast(message, autoClose) {
+    var existing = document.getElementById(PUBLISH_TOAST_ID);
+    if (existing) existing.remove();
+
+    var toast = document.createElement('div');
+    toast.id = PUBLISH_TOAST_ID;
+    toast.style.cssText = [
+      'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);',
+      'background: #07467c; color: #fff; padding: 20px 50px 20px 40px;',
+      'border-radius: 8px; font-size: 16px; font-weight: 600;',
+      'box-shadow: 0 4px 20px rgba(0,0,0,.3); z-index: 10000;',
+      'text-align: center; min-width: 260px;'
+    ].join('');
+
+    var span = document.createElement('span');
+    span.textContent = message;
+    toast.appendChild(span);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u00D7';
+    closeBtn.style.cssText = [
+      'position: absolute; top: 6px; right: 10px;',
+      'background: none; border: none; color: #fff; font-size: 22px;',
+      'cursor: pointer; line-height: 1; padding: 0; opacity: 0.8;'
+    ].join('');
+    closeBtn.addEventListener('mouseenter', function () { closeBtn.style.opacity = '1'; });
+    closeBtn.addEventListener('mouseleave', function () { closeBtn.style.opacity = '0.8'; });
+    closeBtn.addEventListener('click', dismissPublishToast);
+    toast.appendChild(closeBtn);
+
+    document.body.appendChild(toast);
+
+    if (autoClose) {
+      setTimeout(dismissPublishToast, 3000);
+    }
+  }
 
   function openPdfPreview(htmlStr) {
     var win = window.open('', '_blank');
@@ -762,7 +1057,8 @@
   function hideEmptyGridViews(viewIds) {
     for (var i = 0; i < viewIds.length; i++) {
       var el = document.getElementById(viewIds[i]);
-      if (el && !viewHasDataRows(viewIds[i])) el.style.display = 'none';
+      if (!el) continue;
+      el.style.display = viewHasDataRows(viewIds[i]) ? '' : 'none';
     }
   }
 
@@ -784,7 +1080,7 @@
 
         var $btn = $('<button></button>')
           .attr('id', btnId)
-          .text('Generate PDF')
+          .text(cfg.trigger.buttonText || 'Generate PDF')
           .css({
             position: 'fixed',
             bottom: '24px',
@@ -811,9 +1107,48 @@
             return;
           }
           var htmlStr = buildPdfHtml(payload);
-          openPdfPreview(htmlStr);
+          if (cfg.trigger.openPreview) {
+            openPdfPreview(htmlStr);
+          }
           payload.html = htmlStr;
           sendToWebhook(payload);
+
+          if (cfg.saveHtml) {
+            var pageRecordId = getPageRecordId();
+            var summary = extractSummaryFields(payload);
+            var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+
+            var savePayload = {
+              recordId: pageRecordId || '',
+              hash: window.location.hash || '',
+              sceneId: cfg.sceneId,
+              type: cfg.payloadType,
+              sowId: summary.sowId,
+              equipmentTotal: summary.equipmentTotal,
+              installationTotal: summary.installationTotal,
+              grandTotal: summary.grandTotal,
+              expirationDate: summary.expirationDate,
+              html: htmlStr,
+              json: jsonSnapshot
+            };
+            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            $.ajax({
+              url: SAVE_HTML_WEBHOOK,
+              type: 'POST',
+              contentType: 'application/json',
+              data: JSON.stringify(savePayload),
+              crossDomain: true,
+              success: function () {
+                console.log('[SCW PDF Export] Save webhook OK');
+                showPublishToast('Quote published successfully!', true);
+              },
+              error: function (xhr, status, err) {
+                console.error('[SCW PDF Export] Save webhook failed:', status, err);
+                showPublishToast('Quote published — redirecting\u2026', true);
+              }
+            });
+            showPublishToast('Publishing quote\u2026', false);
+          }
         });
 
         $(sceneEl).append($btn);
@@ -1079,7 +1414,8 @@
       if (!payload.views.length) return payload;
       payload.html = buildPdfHtml(payload);
       return payload;
-    }
+    },
+    getCss: getPdfCss
   };
 
   // ══════════════════════════════════════════════════════════════
