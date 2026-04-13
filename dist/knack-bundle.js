@@ -3765,9 +3765,26 @@ window.SCW = window.SCW || {};
       if (!viewGroup) continue;
 
       // ── Pattern B: table in the same view-group, after the menu ──
+      //    Handles both pristine DOM (table is a direct sibling) and
+      //    post-KTL DOM (table is wrapped in .scw-ktl-accordion).
       var paired = false;
       var sibling = menu.nextElementSibling;
       while (sibling) {
+        // KTL may have already wrapped the table in an accordion
+        if (sibling.classList.contains('scw-ktl-accordion')) {
+          var innerView = sibling.querySelector('[id^="view_"].kn-view');
+          if (innerView && !claimed[innerView.id] &&
+              (innerView.classList.contains('kn-table') ||
+               innerView.classList.contains('kn-list') ||
+               innerView.classList.contains('kn-report'))) {
+            _menuPairings[innerView.id] = { menuId: menu.id, strategy: 'sibling' };
+            claimed[innerView.id] = true;
+            paired = true;
+            console.log(LOG, '  pair (B-wrapped)', menu.id, '→', innerView.id);
+          }
+          break;
+        }
+        // Unwrapped view — pristine DOM
         if (sibling.id && sibling.classList.contains('kn-view')) {
           if (sibling.classList.contains('kn-table') ||
               sibling.classList.contains('kn-list') ||
@@ -3949,6 +3966,10 @@ window.SCW = window.SCW || {};
   // ══════════════════════════════════════════════════════════════
 
   function enhance() {
+    // Re-discover pairings every time — handles views that rendered after
+    // the initial scene-render, and tables already wrapped by KTL.
+    discoverMenuPairings();
+
     var accordions = document.querySelectorAll('.scw-ktl-accordion');
     console.log(LOG, 'enhance() — found', accordions.length, 'accordion(s)',
       '| pairings:', Object.keys(_menuPairings).length);
