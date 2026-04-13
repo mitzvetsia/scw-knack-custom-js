@@ -340,6 +340,26 @@
     var cell = row.cellsByPackage[pkgId];
     if (!cell) return;
 
+    // Build connection dropdown options from the grid's own rows.
+    // Both field_2380 and field_2381 connect to other records in
+    // the same table, so the grid rows ARE the possible options.
+    var connOptions = [];
+    var seenIds = {};
+    for (var ci = 0; ci < grid.rows.length; ci++) {
+      var cr = grid.rows[ci];
+      var cpkgs = Object.keys(cr.cellsByPackage);
+      for (var cp = 0; cp < cpkgs.length; cp++) {
+        var cc = cr.cellsByPackage[cpkgs[cp]];
+        if (!cc.id || seenIds[cc.id]) continue;
+        seenIds[cc.id] = true;
+        var label = cr.displayLabel || cr.productName || cc.productName || cc.id;
+        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName) {
+          label = cr.displayLabel + ' \u2014 ' + cr.productName;
+        }
+        connOptions.push({ id: cc.id, identifier: label });
+      }
+    }
+
     ns.changeRequests.open({
       rowId:        rowId,
       pkgId:        pkgId,
@@ -349,6 +369,7 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
+      connOptions:  connOptions,
       visibility: {
         qty:        button.getAttribute('data-vis-qty') === '1',
         cabling:    button.getAttribute('data-vis-cabling') === '1',

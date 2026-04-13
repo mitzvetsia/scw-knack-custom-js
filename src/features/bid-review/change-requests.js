@@ -92,31 +92,8 @@
   }
 
   // ── Connection field helpers ────────────────────────────
-
-  /**
-   * Fetch connection records for a field using Knack's scene/view
-   * connections API.  This is the same endpoint Knack's Chosen.js
-   * dropdowns call — no object-key discovery needed.
-   */
-  function fetchConnectionRecords(fieldKey) {
-    var url = Knack.api_url + '/v1/pages/' + CFG.sceneKey +
-              '/views/' + CFG.viewKey + '/connections/' + fieldKey;
-
-    if (CFG.debug) console.log('[BidReview CR] Fetching connections for', fieldKey, url);
-
-    return SCW.knackAjax({
-      url: url,
-      type: 'GET',
-      data: { rows_per_page: 1000 },
-    }).then(function (resp) {
-      var recs = (resp && resp.records) || [];
-      if (CFG.debug) console.log('[BidReview CR] Got', recs.length, 'records for', fieldKey);
-      return recs;
-    }, function () {
-      if (CFG.debug) console.warn('[BidReview CR] Connection fetch failed for', fieldKey);
-      return [];
-    });
-  }
+  // Connection options are built from the grid rows in init.js
+  // and passed through params.connOptions — no API call needed.
 
   // ── Knack object key discovery ─────────────────────────
   function getSowObjectKey() {
@@ -344,30 +321,17 @@
     var vis  = params.visibility || {};
     var existing = findPendingItem(params.pkgId, params.rowId);
 
-    // Collect connection field keys that need async loading
-    var connLoads = [];
+    // Connection options come from the grid rows (built in init.js)
+    var connRecords = {};
+    var opts = params.connOptions || [];
     for (var ci = 0; ci < FIELD_DEFS.length; ci++) {
-      var cfd = FIELD_DEFS[ci];
-      if (cfd.type === 'connection' && cfd.connection) {
-        if (cfd.visKey && !vis[cfd.visKey]) continue; // hidden
-        connLoads.push({ def: cfd, promise: fetchConnectionRecords(cfd.connection) });
+      if (FIELD_DEFS[ci].type === 'connection') {
+        connRecords[FIELD_DEFS[ci].key] = opts;
       }
     }
 
-    // Load connection records then build modal
-    var promises = [];
-    for (var cl = 0; cl < connLoads.length; cl++) promises.push(connLoads[cl].promise);
-
-    $.when.apply($, promises).always(function () {
-      var connRecords = {};
-      // $.when with 1 deferred passes the value directly; with 2+ each arg is one result
-      var args = promises.length === 1 ? [arguments[0]] : Array.prototype.slice.call(arguments);
-      for (var ri = 0; ri < connLoads.length; ri++) {
-        var recs = args[ri];
-        connRecords[connLoads[ri].def.key] = Array.isArray(recs) ? recs : [];
-      }
-      buildModal(params, cell, vis, existing, connRecords);
-    });
+    if (CFG.debug) console.log('[BidReview CR] Connection options:', opts.length, 'records');
+    buildModal(params, cell, vis, existing, connRecords);
   }
 
   function buildModal(params, cell, vis, existing, connRecords) {
