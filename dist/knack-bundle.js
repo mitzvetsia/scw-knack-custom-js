@@ -13546,6 +13546,26 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         displayLabel: params.displayLabel, productName: cell.productName,
         current: current, requested: requested, changeNotes: cn,
       });
+
+      // Reciprocal: if Connected Devices (2380) changed, auto-create
+      // change requests on each newly-added device so its Connected To
+      // (2381) points back to this record.
+      if (requested.bidConnDeviceIds && params.gridRows) {
+        var origDevIds = cell.bidConnDeviceIds || [];
+        var origDevSet = {};
+        for (var odi = 0; odi < origDevIds.length; odi++) origDevSet[origDevIds[odi]] = true;
+        var addedDevIds = [];
+        for (var ndi = 0; ndi < requested.bidConnDeviceIds.length; ndi++) {
+          if (!origDevSet[requested.bidConnDeviceIds[ndi]]) {
+            addedDevIds.push(requested.bidConnDeviceIds[ndi]);
+          }
+        }
+        if (addedDevIds.length) {
+          createReciprocalChangeRequests(params, cell, addedDevIds);
+          ns.renderToast(addedDevIds.length + ' reciprocal change request(s) created', 'info');
+        }
+      }
+
       closeModal();
       ns.renderToast(existing ? 'Change request updated' : 'Change added to request', 'success');
     });
@@ -13573,6 +13593,90 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     items.push(item);
     persist();
     triggerRerender();
+  }
+
+  /**
+   * Merge-aware add for reciprocal changes.
+   * If a pending item already exists for this row, only update
+   * bidConnTo / bidConnToIds without overwriting other requested fields.
+   */
+  function addReciprocalItem(pkgId, pkgName, sowId, sowName, item) {
+    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
+    var items = _pending[pkgId].items;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].rowId === item.rowId) {
+        // Merge: keep existing requested fields, add/overwrite bidConnTo
+        items[i].requested.bidConnTo = item.requested.bidConnTo;
+        items[i].requested.bidConnToIds = item.requested.bidConnToIds;
+        if (item.changeNotes) {
+          items[i].changeNotes = items[i].changeNotes
+            ? items[i].changeNotes + ' | ' + item.changeNotes
+            : item.changeNotes;
+        }
+        persist();
+        triggerRerender();
+        return;
+      }
+    }
+    items.push(item);
+    persist();
+    triggerRerender();
+  }
+
+  /**
+   * When Connected Devices (2380) changes, create reciprocal change
+   * requests on each newly-added device so its Connected To (2381)
+   * points back to the source record.
+   */
+  function createReciprocalChangeRequests(params, cell, addedDevIds) {
+    var sourceId    = cell.id;
+    var sourceLabel = params.displayLabel || params.productName || sourceId;
+
+    for (var i = 0; i < addedDevIds.length; i++) {
+      var devId = addedDevIds[i];
+
+      // Find the row + cell in the same package
+      for (var ri = 0; ri < params.gridRows.length; ri++) {
+        var row     = params.gridRows[ri];
+        var devCell = row.cellsByPackage[params.pkgId];
+        if (!devCell || devCell.id !== devId) continue;
+
+        // Check if source is already in this device's Connected To
+        var curToIds = devCell.bidConnToIds || [];
+        var already  = false;
+        for (var ci = 0; ci < curToIds.length; ci++) {
+          if (curToIds[ci] === sourceId) { already = true; break; }
+        }
+        if (already) break;
+
+        // Build new Connected To = existing + source record
+        var curToLabel = devCell.bidConnTo || '';
+        var newToIds   = curToIds.concat([sourceId]);
+        var newToLabel = curToLabel
+          ? curToLabel + ', ' + sourceLabel
+          : sourceLabel;
+
+        // Snapshot current values for the change summary
+        var current = {};
+        for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
+          if (hasValue(devCell[FIELD_DEFS[fi].key])) {
+            current[FIELD_DEFS[fi].key] = devCell[FIELD_DEFS[fi].key];
+          }
+        }
+
+        addReciprocalItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          rowId:        row.id,
+          bidRecordId:  devCell.id,
+          displayLabel: row.displayLabel,
+          productName:  devCell.productName,
+          current:      current,
+          requested:    { bidConnTo: newToLabel, bidConnToIds: newToIds },
+          changeNotes:  'Reciprocal: Connected Devices updated on ' + sourceLabel,
+        });
+
+        break; // found the matching row
+      }
+    }
   }
 
   function removePendingItem(pkgId, rowId) {
@@ -14054,8 +14158,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           connDevOpts.push({ id: cc.id, identifier: lbl });
         }
 
-        // Connected To: non-camera items (NVR, headend, etc.), or currently selected
-        if (!seenTo[cc.id] && (!isCamReader || curToSet[cc.id])) {
+        // Connected To: items where field_2374 (mapConnections) is Yes, or currently selected
+        if (!seenTo[cc.id] && (cc.mapConnections || curToSet[cc.id])) {
           seenTo[cc.id] = true;
           connToOpts.push({ id: cc.id, identifier: lbl });
         }
@@ -14077,6 +14181,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       productName:  row.productName,
       cell:         cell,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts },
+      gridRows:     grid.rows,
       visibility: {
         qty:        button.getAttribute('data-vis-qty') === '1',
         cabling:    button.getAttribute('data-vis-cabling') === '1',

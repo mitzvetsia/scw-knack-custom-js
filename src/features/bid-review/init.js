@@ -374,8 +374,8 @@
           connDevOpts.push({ id: cc.id, identifier: lbl });
         }
 
-        // Connected To: non-camera items (NVR, headend, etc.), or currently selected
-        if (!seenTo[cc.id] && (!isCamReader || curToSet[cc.id])) {
+        // Connected To: items where field_2374 (mapConnections) is Yes, or currently selected
+        if (!seenTo[cc.id] && (cc.mapConnections || curToSet[cc.id])) {
           seenTo[cc.id] = true;
           connToOpts.push({ id: cc.id, identifier: lbl });
         }
@@ -397,6 +397,7 @@
       productName:  row.productName,
       cell:         cell,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts },
+      gridRows:     grid.rows,
       visibility: {
         qty:        button.getAttribute('data-vis-qty') === '1',
         cabling:    button.getAttribute('data-vis-cabling') === '1',
