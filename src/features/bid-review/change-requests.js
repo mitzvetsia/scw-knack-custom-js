@@ -732,10 +732,19 @@
   }
 
   /** Build a styled card DOM element summarizing a pending change item. */
-  function buildSummaryCard(item) {
+  function buildSummaryCard(item, pkgId) {
     var card = el('div', 'scw-bid-cr-card');
 
     var header = el('div', 'scw-bid-cr-card__header', 'Pending Change');
+
+    // Dismiss button — top-right corner
+    var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
+    dismiss.title = 'Remove this change';
+    dismiss.addEventListener('click', function (e) {
+      e.stopPropagation();
+      removePendingItem(pkgId, item.rowId);
+    });
+    header.appendChild(dismiss);
     card.appendChild(header);
 
     var r = item.requested, c = item.current;

@@ -11066,7 +11066,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  letter-spacing: .4px;',
       '  color: #0891b2;',
       '  margin-bottom: 3px;',
+      '  position: relative;',
+      '  padding-right: 14px;',
       '}',
+      '.scw-bid-cr-card__dismiss {',
+      '  position: absolute; top: -2px; right: -4px;',
+      '  background: none; border: none; cursor: pointer;',
+      '  font-size: 13px; line-height: 1; color: #94a3b8;',
+      '  padding: 0 2px;',
+      '}',
+      '.scw-bid-cr-card__dismiss:hover { color: #dc2626; }',
 
       '.scw-bid-cr-card__row {',
       '  display: flex;',
@@ -12412,7 +12421,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // Show change card for pending changes
       if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem));
+        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
       }
     }
 
@@ -13772,10 +13781,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   /** Build a styled card DOM element summarizing a pending change item. */
-  function buildSummaryCard(item) {
+  function buildSummaryCard(item, pkgId) {
     var card = el('div', 'scw-bid-cr-card');
 
     var header = el('div', 'scw-bid-cr-card__header', 'Pending Change');
+
+    // Dismiss button — top-right corner
+    var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
+    dismiss.title = 'Remove this change';
+    dismiss.addEventListener('click', function (e) {
+      e.stopPropagation();
+      removePendingItem(pkgId, item.rowId);
+    });
+    header.appendChild(dismiss);
     card.appendChild(header);
 
     var r = item.requested, c = item.current;

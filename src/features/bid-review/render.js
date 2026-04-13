@@ -385,7 +385,7 @@
 
       // Show change card for pending changes
       if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem));
+        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
       }
     }
 
