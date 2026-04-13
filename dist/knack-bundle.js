@@ -757,17 +757,21 @@ window.SCW = window.SCW || {};
 //
 // Works on all pages — no per-scene configuration needed.
 //
-// Lifecycle:
-//   1. MutationObserver detects kn-modal-bg added to DOM → save scrollY
-//   2. MutationObserver detects kn-modal-bg removed from DOM → pending restore
-//   3. Debounce on knack-view-render events (parent views re-rendering)
-//   4. After settle, restore scrollY via requestAnimationFrame
-//   5. Safety timeout if no view-renders fire (modal closed without submit)
+// Detection strategies (belt-and-suspenders):
+//   A. knack-scene-render — if the scene is inside kn-page-modal,
+//      a modal just opened → save scroll.
+//   B. knack-view-render — if _modalWasOpen and the modal DOM is
+//      gone, modal just closed → start pending restore.
+//   C. MutationObserver — catches kn-modal-bg / kn-page-modal
+//      elements being added/removed from the DOM.
+//   D. Click interception — save scroll preemptively when the user
+//      clicks a kn-link-page that might open a modal.
 // ============================================================
 (function () {
   'use strict';
 
   var _savedScrollY = null;
+  var _modalWasOpen = false;
   var _pendingRestore = false;
   var _settleTimer = null;
   var _safetyTimer = null;
@@ -775,12 +779,24 @@ window.SCW = window.SCW || {};
   // ms after the last knack-view-render to consider views settled
   var SETTLE_MS = 400;
   // fallback restore if no view-renders fire after modal close
-  var SAFETY_MS = 800;
+  var SAFETY_MS = 1500;
 
-  // ── Save / Restore helpers ────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────
 
   function saveScroll() {
     _savedScrollY = window.scrollY || window.pageYOffset || 0;
+  }
+
+  function isModalPresent() {
+    var el = document.querySelector('[id^="kn-modal-bg"], [id^="kn-page-modal"]');
+    if (!el) return false;
+    // Element exists — check it's actually visible (not hidden/display:none)
+    try {
+      var s = window.getComputedStyle(el);
+      return s.display !== 'none' && s.visibility !== 'hidden';
+    } catch (e) {
+      return true; // assume present if getComputedStyle fails
+    }
   }
 
   function doRestore() {
@@ -788,6 +804,7 @@ window.SCW = window.SCW || {};
     var pos = _savedScrollY;
     _savedScrollY = null;
     _pendingRestore = false;
+    _modalWasOpen = false;
 
     if (typeof pos === 'number' && pos > 0) {
       requestAnimationFrame(function () {
@@ -804,30 +821,54 @@ window.SCW = window.SCW || {};
   }
 
   function startPendingRestore() {
+    if (_pendingRestore) return;
     _pendingRestore = true;
-    // Safety: restore even if no view-renders fire (e.g., modal closed
-    // without submitting, or Knack didn't refresh parent views).
+    _modalWasOpen = false;
     _safetyTimer = setTimeout(doRestore, SAFETY_MS);
   }
 
-  // ── View-render debounce during pending restore ───────────
+  // ── Strategy A: Scene-render hooks ────────────────────
+
+  $(document).on('knack-scene-render.any.scwModalScroll', function (event, scene) {
+    var sceneId = scene && scene.key;
+    if (!sceneId) return;
+
+    var sceneEl = document.getElementById('kn-' + sceneId);
+    var inModal = sceneEl && sceneEl.closest('[id^="kn-page-modal"]');
+
+    if (inModal) {
+      // Modal scene just rendered — save parent page scroll
+      if (!_modalWasOpen && !_pendingRestore) {
+        saveScroll();
+        _modalWasOpen = true;
+      }
+    } else if (_modalWasOpen) {
+      // Parent scene re-rendering after modal close
+      startPendingRestore();
+    }
+  });
+
+  // ── Strategy B: View-render hooks ─────────────────────
 
   $(document).on('knack-view-render.scwModalScroll', function () {
+    // Detect modal close: was open, now the DOM element is gone
+    if (_modalWasOpen && !isModalPresent()) {
+      startPendingRestore();
+    }
+
     if (!_pendingRestore) return;
-    // Reset both timers: each view-render restarts the settle window
+    // Debounce: each view-render restarts the settle window
     if (_settleTimer) clearTimeout(_settleTimer);
     if (_safetyTimer) clearTimeout(_safetyTimer);
     _settleTimer = setTimeout(doRestore, SETTLE_MS);
   });
 
-  // ── MutationObserver: detect modal open / close ───────────
+  // ── Strategy C: MutationObserver for modal add/remove ─
 
-  function isModalBg(node) {
-    if (node.nodeType !== 1) return false;
-    // Knack uses class="kn-modal-bg" with optional index suffix on the id
-    return node.id ? node.id.indexOf('kn-modal-bg') === 0
-                   : (node.className && typeof node.className === 'string' &&
-                      node.className.indexOf('kn-modal-bg') !== -1);
+  function isModalEl(node) {
+    if (node.nodeType !== 1 || !node.id) return false;
+    return node.id.indexOf('kn-modal-bg') === 0 ||
+           node.id.indexOf('kn-page-modal') === 0;
   }
 
   function initObserver() {
@@ -836,15 +877,18 @@ window.SCW = window.SCW || {};
         var m = mutations[i];
 
         for (var a = 0; a < m.addedNodes.length; a++) {
-          if (isModalBg(m.addedNodes[a])) {
-            saveScroll();
+          if (isModalEl(m.addedNodes[a])) {
+            if (!_modalWasOpen && !_pendingRestore) {
+              saveScroll();
+              _modalWasOpen = true;
+            }
             return;
           }
         }
 
         for (var r = 0; r < m.removedNodes.length; r++) {
-          if (isModalBg(m.removedNodes[r])) {
-            if (_savedScrollY !== null) {
+          if (isModalEl(m.removedNodes[r])) {
+            if (_modalWasOpen || _savedScrollY !== null) {
               startPendingRestore();
             }
             return;
@@ -856,7 +900,24 @@ window.SCW = window.SCW || {};
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  // Start observing once the body is available
+  // ── Strategy D: Click interception on modal-opening links ─
+
+  $(document).on('click.scwModalScroll', '.kn-link-page, .scw-acc-action-btn', function () {
+    if (_modalWasOpen || _pendingRestore) return;
+    // Save scroll preemptively; confirm modal opened after a short delay
+    saveScroll();
+    setTimeout(function () {
+      if (isModalPresent()) {
+        _modalWasOpen = true;
+      } else {
+        // No modal opened — navigation or inline action; clear saved scroll
+        _savedScrollY = null;
+      }
+    }, 300);
+  });
+
+  // ── Init ──────────────────────────────────────────────
+
   if (document.body) {
     initObserver();
   } else {
