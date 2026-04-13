@@ -321,16 +321,22 @@
     var vis  = params.visibility || {};
     var existing = findPendingItem(params.pkgId, params.rowId);
 
-    // Connection options come from the grid rows (built in init.js)
+    // Connection options come from the grid rows (built in init.js),
+    // keyed by FIELD_DEFS key (e.g. bidConnDevice, bidConnTo).
     var connRecords = {};
-    var opts = params.connOptions || [];
+    var opts = params.connOptions || {};
     for (var ci = 0; ci < FIELD_DEFS.length; ci++) {
       if (FIELD_DEFS[ci].type === 'connection') {
-        connRecords[FIELD_DEFS[ci].key] = opts;
+        connRecords[FIELD_DEFS[ci].key] = opts[FIELD_DEFS[ci].key] || [];
       }
     }
 
-    if (CFG.debug) console.log('[BidReview CR] Connection options:', opts.length, 'records');
+    if (CFG.debug) {
+      var keys = Object.keys(connRecords);
+      for (var ck = 0; ck < keys.length; ck++) {
+        console.log('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
+      }
+    }
     buildModal(params, cell, vis, existing, connRecords);
   }
 

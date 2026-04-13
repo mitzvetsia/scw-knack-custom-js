@@ -340,24 +340,51 @@
     var cell = row.cellsByPackage[pkgId];
     if (!cell) return;
 
-    // Build connection dropdown options from the grid's own rows.
-    // Both field_2380 and field_2381 connect to other records in
-    // the same table, so the grid rows ARE the possible options.
-    var connOptions = [];
-    var seenIds = {};
+    // Build per-field connection dropdown options from the grid rows.
+    // field_2380 (Connected Devices): cameras/readers not yet wired
+    // field_2381 (Connected To): networking / headend items
+    var connDevOpts = [], connToOpts = [];
+    var seenDev = {}, seenTo = {};
+
+    // Always include currently-connected records so they show pre-selected
+    var curDevIds = cell.bidConnDeviceIds || [];
+    var curToIds  = cell.bidConnToIds || [];
+    var curDevSet = {}, curToSet = {};
+    for (var di = 0; di < curDevIds.length; di++) curDevSet[curDevIds[di]] = true;
+    for (var ti = 0; ti < curToIds.length; ti++)  curToSet[curToIds[ti]] = true;
+
     for (var ci = 0; ci < grid.rows.length; ci++) {
       var cr = grid.rows[ci];
       var cpkgs = Object.keys(cr.cellsByPackage);
       for (var cp = 0; cp < cpkgs.length; cp++) {
         var cc = cr.cellsByPackage[cpkgs[cp]];
-        if (!cc.id || seenIds[cc.id]) continue;
-        seenIds[cc.id] = true;
-        var label = cr.displayLabel || cr.productName || cc.productName || cc.id;
+        if (!cc.id || cc.id === cell.id) continue; // skip self
+
+        var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
         if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName) {
-          label = cr.displayLabel + ' \u2014 ' + cr.productName;
+          lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
         }
-        connOptions.push({ id: cc.id, identifier: label });
+
+        var isCamReader = (cr.proposalBucket || '').toLowerCase() === 'camera or reader';
+        var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
+
+        // Connected Devices: Camera/Reader with no existing "Connected To", or currently selected
+        if (!seenDev[cc.id] && ((isCamReader && connToBlank) || curDevSet[cc.id])) {
+          seenDev[cc.id] = true;
+          connDevOpts.push({ id: cc.id, identifier: lbl });
+        }
+
+        // Connected To: non-camera items (NVR, headend, etc.), or currently selected
+        if (!seenTo[cc.id] && (!isCamReader || curToSet[cc.id])) {
+          seenTo[cc.id] = true;
+          connToOpts.push({ id: cc.id, identifier: lbl });
+        }
       }
+    }
+
+    if (CFG.debug) {
+      console.log('[BidReview] connDevOpts:', connDevOpts.length,
+                  'connToOpts:', connToOpts.length);
     }
 
     ns.changeRequests.open({
@@ -369,7 +396,7 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
-      connOptions:  connOptions,
+      connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts },
       visibility: {
         qty:        button.getAttribute('data-vis-qty') === '1',
         cabling:    button.getAttribute('data-vis-cabling') === '1',
