@@ -11,6 +11,13 @@
  *   4. Floating panel shows all pending changes
  *   5. User submits the change request per package → webhook
  *
+ * Persistence: pending changes are saved to sessionStorage so they
+ * survive page refreshes within the same tab.
+ *
+ * Field registry: FIELD_DEFS drives both the "Current Values" display
+ * and the "Requested Changes" form. To add a new field to the change
+ * request modal, add one entry to FIELD_DEFS.
+ *
  * Reads : SCW.bidReview.CONFIG, SCW.bidReview.submitAction,
  *         SCW.bidReview.renderToast
  * Writes: SCW.bidReview.changeRequests
@@ -21,9 +28,30 @@
   var ns  = (window.SCW.bidReview = window.SCW.bidReview || {});
   var CFG = ns.CONFIG;
 
-  var CR_CSS_ID  = 'scw-bid-cr-css';
-  var OVERLAY_ID = 'scw-bid-cr-overlay';
-  var PANEL_ID   = 'scw-bid-cr-panel';
+  var CR_CSS_ID    = 'scw-bid-cr-css';
+  var OVERLAY_ID   = 'scw-bid-cr-overlay';
+  var PANEL_ID     = 'scw-bid-cr-panel';
+  var STORAGE_KEY  = 'scw-bid-cr-pending';
+
+  // ── Field registry ─────────────────────────────────────
+  // Drives both the current-values display and the requested-changes
+  // form in the modal.  To show a new field, add one entry here.
+  //
+  //   key      — property name on the cell object (from transform.js)
+  //   label    — human-readable label
+  //   type     — 'text' | 'number' | 'select'
+  //   options  — (select only) array of option strings
+  //   currency — true → format as $ in current-values display
+  var FIELD_DEFS = [
+    { key: 'productName',     label: 'Product',            type: 'text' },
+    { key: 'qty',             label: 'Qty',                type: 'number' },
+    { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
+    { key: 'labor',           label: 'Extended ($)',       type: 'number',  currency: true },
+    { key: 'laborDesc',       label: 'Labor Description',  type: 'text' },
+    { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select',  options: ['Yes', 'No'] },
+    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'text' },
+    { key: 'notes',           label: 'Survey Notes',       type: 'text' },
+  ];
 
   // ── Pending changes state ──────────────────────────────
   // { pkgId: { pkgName, sowId, sowName, items: [...] } }
@@ -38,7 +66,27 @@
     return count;
   }
 
+  // ── sessionStorage persistence ─────────────────────────
+
+  function savePending() {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(_pending));
+    } catch (e) { /* quota exceeded or private browsing — ignore */ }
+  }
+
+  function loadPending() {
+    try {
+      var raw = sessionStorage.getItem(STORAGE_KEY);
+      if (raw) _pending = JSON.parse(raw);
+    } catch (e) { _pending = {}; }
+  }
+
+  function clearStorage() {
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+
   // ── HTML helpers ───────────────────────────────────────
+
   function el(tag, cls, text) {
     var node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -51,7 +99,20 @@
     return '$' + Number(val).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
+  function hasValue(val) {
+    if (val == null) return false;
+    if (typeof val === 'number') return true;
+    if (typeof val === 'string') return val.trim().length > 0;
+    return Boolean(val);
+  }
+
+  function formatDisplay(def, val) {
+    if (def.currency) return fmtCurrency(val);
+    return String(val);
+  }
+
   // ── CSS injection ──────────────────────────────────────
+
   function injectCrStyles() {
     if (document.getElementById(CR_CSS_ID)) return;
 
@@ -122,14 +183,14 @@
       '  display: block; font-size: 11px; font-weight: 600;',
       '  color: #475569; margin-bottom: 3px;',
       '}',
-      '.scw-bid-cr-modal__input, .scw-bid-cr-modal__textarea {',
+      '.scw-bid-cr-modal__input, .scw-bid-cr-modal__select, .scw-bid-cr-modal__textarea {',
       '  display: block; width: 100%; box-sizing: border-box;',
       '  padding: 7px 10px; border: 1px solid #cbd5e1;',
       '  border-radius: 5px; font: inherit; font-size: 13px;',
       '  color: #1e293b; background: #f8fafc;',
       '  transition: border-color .15s;',
       '}',
-      '.scw-bid-cr-modal__input:focus, .scw-bid-cr-modal__textarea:focus {',
+      '.scw-bid-cr-modal__input:focus, .scw-bid-cr-modal__select:focus, .scw-bid-cr-modal__textarea:focus {',
       '  outline: none; border-color: #3b82f6;',
       '  box-shadow: 0 0 0 2px rgba(59,130,246,.15);',
       '}',
@@ -288,48 +349,62 @@
     // ── body ──
     var body = el('div', 'scw-bid-cr-modal__body');
 
-    // Current values section
+    // ── Current values — driven by FIELD_DEFS ──
     var curSection = el('div', 'scw-bid-cr-modal__section');
     curSection.appendChild(el('div', 'scw-bid-cr-modal__section-title', 'Current Bid Values'));
     var curGrid = el('div', 'scw-bid-cr-modal__current');
-    if (cell.productName)  addCurrentRow(curGrid, 'Product', cell.productName);
-    if (cell.qty)          addCurrentRow(curGrid, 'Qty', String(cell.qty));
-    if (cell.rate)         addCurrentRow(curGrid, 'Rate', fmtCurrency(cell.rate));
-    if (cell.labor)        addCurrentRow(curGrid, 'Extended', fmtCurrency(cell.labor));
-    if (cell.laborDesc)    addCurrentRow(curGrid, 'Labor Desc', cell.laborDesc);
+    for (var ci = 0; ci < FIELD_DEFS.length; ci++) {
+      var cd = FIELD_DEFS[ci];
+      if (hasValue(cell[cd.key])) {
+        curGrid.appendChild(el('span', 'scw-bid-cr-modal__current-label', cd.label + ':'));
+        curGrid.appendChild(el('span', 'scw-bid-cr-modal__current-value', formatDisplay(cd, cell[cd.key])));
+      }
+    }
     curSection.appendChild(curGrid);
     body.appendChild(curSection);
 
-    // Requested changes section
+    // ── Requested changes — driven by FIELD_DEFS ──
     var reqSection = el('div', 'scw-bid-cr-modal__section');
     reqSection.appendChild(el('div', 'scw-bid-cr-modal__section-title', 'Requested Changes'));
     reqSection.appendChild(el('div', 'scw-bid-cr-modal__hint',
       'Leave blank for no change. Fill in only the fields you want updated.'));
 
-    var fields = [
-      { key: 'qty',         label: 'Qty',               type: 'number', current: cell.qty },
-      { key: 'rate',        label: 'Rate ($)',           type: 'number', current: cell.rate },
-      { key: 'productName', label: 'Product',            type: 'text',   current: cell.productName },
-      { key: 'laborDesc',   label: 'Labor Description',  type: 'text',   current: cell.laborDesc },
-    ];
-
     var inputs = {};
-    for (var i = 0; i < fields.length; i++) {
-      var f = fields[i];
-      var row = el('div', 'scw-bid-cr-modal__field');
-      row.appendChild(el('label', 'scw-bid-cr-modal__label', f.label));
-      var input = document.createElement('input');
-      input.type = f.type;
-      input.className = 'scw-bid-cr-modal__input';
-      input.placeholder = f.current ? String(f.current) : '';
-      input.setAttribute('data-field', f.key);
-      if (f.type === 'number') input.setAttribute('step', 'any');
-      inputs[f.key] = input;
-      row.appendChild(input);
-      reqSection.appendChild(row);
+    for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
+      var fd = FIELD_DEFS[fi];
+      var fieldRow = el('div', 'scw-bid-cr-modal__field');
+      fieldRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
+
+      var input;
+      if (fd.type === 'select') {
+        input = document.createElement('select');
+        input.className = 'scw-bid-cr-modal__select';
+        // Blank "no change" option
+        var blankOpt = document.createElement('option');
+        blankOpt.value = '';
+        blankOpt.textContent = '\u2014 no change \u2014';
+        input.appendChild(blankOpt);
+        for (var oi = 0; oi < fd.options.length; oi++) {
+          var opt = document.createElement('option');
+          opt.value = fd.options[oi];
+          opt.textContent = fd.options[oi];
+          input.appendChild(opt);
+        }
+      } else {
+        input = document.createElement('input');
+        input.type = fd.type;
+        input.className = 'scw-bid-cr-modal__input';
+        input.placeholder = hasValue(cell[fd.key]) ? String(cell[fd.key]) : '';
+        if (fd.type === 'number') input.setAttribute('step', 'any');
+      }
+
+      input.setAttribute('data-field', fd.key);
+      inputs[fd.key] = input;
+      fieldRow.appendChild(input);
+      reqSection.appendChild(fieldRow);
     }
 
-    // Notes
+    // Change Notes — free-text (separate from any bid field)
     var notesRow = el('div', 'scw-bid-cr-modal__field');
     notesRow.appendChild(el('label', 'scw-bid-cr-modal__label', 'Change Notes'));
     var textarea = document.createElement('textarea');
@@ -353,23 +428,30 @@
     addBtn.addEventListener('click', function () {
       var requested = {};
       var hasChange = false;
-      var fieldKeys = Object.keys(inputs);
 
-      for (var k = 0; k < fieldKeys.length; k++) {
-        var key = fieldKeys[k];
-        var val = inputs[key].value.trim();
+      for (var k = 0; k < FIELD_DEFS.length; k++) {
+        var def = FIELD_DEFS[k];
+        var inp = inputs[def.key];
+        var val = (inp.value || '').trim();
         if (val) {
-          requested[key] = (inputs[key].type === 'number') ? parseFloat(val) : val;
+          requested[def.key] = (def.type === 'number') ? parseFloat(val) : val;
           hasChange = true;
         }
       }
 
-      var notes = textarea.value.trim();
-      if (notes) hasChange = true;
+      var changeNotes = textarea.value.trim();
+      if (changeNotes) hasChange = true;
 
       if (!hasChange) {
         ns.renderToast('Please specify at least one change or add notes', 'info');
         return;
+      }
+
+      // Snapshot current values for every FIELD_DEF that has data
+      var current = {};
+      for (var ci2 = 0; ci2 < FIELD_DEFS.length; ci2++) {
+        var cd2 = FIELD_DEFS[ci2];
+        if (hasValue(cell[cd2.key])) current[cd2.key] = cell[cd2.key];
       }
 
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
@@ -377,15 +459,9 @@
         bidRecordId:  cell.id,
         displayLabel: params.displayLabel,
         productName:  cell.productName,
-        current: {
-          qty:         cell.qty,
-          rate:        cell.rate,
-          labor:       cell.labor,
-          laborDesc:   cell.laborDesc,
-          productName: cell.productName,
-        },
-        requested: requested,
-        notes:     notes,
+        current:      current,
+        requested:    requested,
+        changeNotes:  changeNotes,
       });
 
       closeModal();
@@ -398,13 +474,8 @@
     document.body.appendChild(overlay);
 
     // Focus first input
-    var firstInput = modal.querySelector('input');
+    var firstInput = modal.querySelector('input, select');
     if (firstInput) setTimeout(function () { firstInput.focus(); }, 50);
-  }
-
-  function addCurrentRow(grid, label, value) {
-    grid.appendChild(el('span', 'scw-bid-cr-modal__current-label', label + ':'));
-    grid.appendChild(el('span', 'scw-bid-cr-modal__current-value', value));
   }
 
   function closeModal() {
@@ -429,12 +500,14 @@
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) {
         items[i] = item;
+        savePending();
         renderPanel();
         return;
       }
     }
 
     items.push(item);
+    savePending();
     renderPanel();
   }
 
@@ -448,6 +521,7 @@
       }
     }
     if (!items.length) delete _pending[pkgId];
+    savePending();
     renderPanel();
   }
 
@@ -476,6 +550,7 @@
     clearBtn.addEventListener('click', function () {
       if (window.confirm('Clear all pending change requests?')) {
         _pending = {};
+        savePending();
         renderPanel();
       }
     });
@@ -534,7 +609,7 @@
 
     var changes = summarizeChanges(item);
     if (changes) text.appendChild(el('span', 'scw-bid-cr-panel__item-changes', changes));
-    if (item.notes) text.appendChild(el('span', 'scw-bid-cr-panel__item-notes', item.notes));
+    if (item.changeNotes) text.appendChild(el('span', 'scw-bid-cr-panel__item-notes', item.changeNotes));
     row.appendChild(text);
 
     var rmBtn = el('button', 'scw-bid-cr-panel__item-remove', '\u00d7');
@@ -555,10 +630,16 @@
     var parts = [];
     var r = item.requested;
     var c = item.current;
-    if (r.qty != null)     parts.push('Qty: ' + (c.qty || '?') + '\u2192' + r.qty);
-    if (r.rate != null)    parts.push('Rate: ' + fmtCurrency(c.rate) + '\u2192' + fmtCurrency(r.rate));
-    if (r.productName)     parts.push('Product: ' + r.productName);
-    if (r.laborDesc)       parts.push('Labor: ' + r.laborDesc);
+
+    for (var i = 0; i < FIELD_DEFS.length; i++) {
+      var def = FIELD_DEFS[i];
+      if (!hasValue(r[def.key])) continue;
+
+      var from = hasValue(c[def.key]) ? (def.currency ? fmtCurrency(c[def.key]) : String(c[def.key])) : '?';
+      var to   = def.currency ? fmtCurrency(r[def.key]) : String(r[def.key]);
+      parts.push(def.label + ': ' + from + '\u2192' + to);
+    }
+
     return parts.join(', ');
   }
 
@@ -585,7 +666,7 @@
         productName:  it.productName,
         current:      it.current,
         requested:    it.requested,
-        notes:        it.notes,
+        changeNotes:  it.changeNotes,
       });
     }
 
@@ -605,6 +686,7 @@
       items:      items,
     }).done(function () {
       delete _pending[pkgId];
+      savePending();
       renderPanel();
     }).fail(function () {
       // Re-enable button on failure
@@ -615,13 +697,21 @@
     });
   }
 
+  // ── Rehydrate from sessionStorage on load ──────────────
+
+  loadPending();
+  if (pendingCount() > 0) {
+    // Defer panel render until DOM is ready
+    setTimeout(function () { renderPanel(); }, 500);
+  }
+
   // ── Public API ─────────────────────────────────────────
 
   ns.changeRequests = {
     open:        openChangeModal,
     renderPanel: renderPanel,
     getPending:  function () { return _pending; },
-    clear:       function () { _pending = {}; renderPanel(); },
+    clear:       function () { _pending = {}; clearStorage(); renderPanel(); },
   };
 
 })();
