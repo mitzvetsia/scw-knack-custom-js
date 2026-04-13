@@ -30,15 +30,20 @@
   var SAVE_DEBOUNCE   = 3000;
 
   // ── Field registry ─────────────────────────────────────
+  // visKey: skip this field when the matching visibility flag is false
+  // multiline: render as textarea instead of input
+  // connection: Knack field key — renders as dropdown loaded from the connected object
+  // idsKey: cell property holding the raw connection IDs (for pre-fill)
   var FIELD_DEFS = [
     { key: 'productName',     label: 'Product',            type: 'text' },
-    { key: 'qty',             label: 'Qty',                type: 'number' },
+    { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
     { key: 'labor',           label: 'Extended ($)',       type: 'number',  currency: true },
-    { key: 'laborDesc',       label: 'Labor Description',  type: 'text' },
-    { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select',  options: ['Yes', 'No'] },
-    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'text' },
-    { key: 'notes',           label: 'Survey Notes',       type: 'text' },
+    { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
+    { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select',  options: ['Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
+    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling' },
+    { key: 'notes',           label: 'Survey Notes',       type: 'text',    multiline: true },
   ];
 
   // ── State ──────────────────────────────────────────────
@@ -84,6 +89,40 @@
   }
   function sclear() {
     try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) {}
+  }
+
+  // ── Connection field helpers ────────────────────────────
+  var _connObjCache = {};  // fieldKey → connected object key
+
+  function getConnectedObjectKey(fieldKey) {
+    if (_connObjCache[fieldKey]) return _connObjCache[fieldKey];
+    try {
+      var models = Knack.objects.models || [];
+      for (var i = 0; i < models.length; i++) {
+        var obj = models[i].attributes || models[i];
+        var fields = obj.fields || [];
+        for (var f = 0; f < fields.length; f++) {
+          var fld = fields[f].attributes || fields[f];
+          if (fld.key === fieldKey && fld.relationship) {
+            _connObjCache[fieldKey] = fld.relationship.object;
+            return _connObjCache[fieldKey];
+          }
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function fetchConnectionRecords(fieldKey) {
+    var objKey = getConnectedObjectKey(fieldKey);
+    if (!objKey) return $.Deferred().resolve([]).promise();
+    return SCW.knackAjax({
+      url: Knack.api_url + '/v1/objects/' + objKey + '/records',
+      type: 'GET',
+      data: { rows_per_page: 1000 },
+    }).then(function (resp) {
+      return (resp && resp.records) || [];
+    });
   }
 
   // ── Knack object key discovery ─────────────────────────
@@ -293,11 +332,51 @@
   }
 
   // ── Modal ──────────────────────────────────────────────
+
+  /** Find existing pending item for this row+package (for edit-existing). */
+  function findPendingItem(pkgId, rowId) {
+    if (!_pending[pkgId]) return null;
+    var items = _pending[pkgId].items;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].rowId === rowId) return items[i];
+    }
+    return null;
+  }
+
   function openChangeModal(params) {
     injectCrStyles();
     closeModal();
 
     var cell = params.cell || {};
+    var vis  = params.visibility || {};
+    var existing = findPendingItem(params.pkgId, params.rowId);
+
+    // Collect connection field keys that need async loading
+    var connLoads = [];
+    for (var ci = 0; ci < FIELD_DEFS.length; ci++) {
+      var cfd = FIELD_DEFS[ci];
+      if (cfd.type === 'connection' && cfd.connection) {
+        if (cfd.visKey && !vis[cfd.visKey]) continue; // hidden
+        connLoads.push({ def: cfd, promise: fetchConnectionRecords(cfd.connection) });
+      }
+    }
+
+    // Load connection records then build modal
+    var promises = [];
+    for (var cl = 0; cl < connLoads.length; cl++) promises.push(connLoads[cl].promise);
+
+    $.when.apply($, promises).always(function () {
+      var connRecords = {};
+      var results = connLoads.length === 1 ? [arguments[0]] : Array.prototype.slice.call(arguments);
+      for (var ri = 0; ri < connLoads.length; ri++) {
+        var recs = connLoads.length === 1 ? results[0] : (Array.isArray(results[ri]) ? results[ri][0] : results[ri]);
+        connRecords[connLoads[ri].def.key] = Array.isArray(recs) ? recs : [];
+      }
+      buildModal(params, cell, vis, existing, connRecords);
+    });
+  }
+
+  function buildModal(params, cell, vis, existing, connRecords) {
     var overlay = el('div', 'scw-bid-cr-overlay');
     overlay.id = OVERLAY_ID;
     overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
@@ -307,7 +386,8 @@
     // Header
     var header = el('div', 'scw-bid-cr-modal__header');
     var hLeft = el('div');
-    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', 'Request Change'));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title',
+      existing ? 'Edit Change Request' : 'Request Change'));
     hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
       params.pkgName + ' \u2014 ' + (params.displayLabel || params.productName || 'Item')));
     header.appendChild(hLeft);
@@ -316,69 +396,92 @@
     header.appendChild(closeBtn);
     modal.appendChild(header);
 
-    // Body
+    // Body — single form pre-filled with current values
     var body = el('div', 'scw-bid-cr-modal__body');
-
-    // Current values
-    var curSec = el('div', 'scw-bid-cr-modal__section');
-    curSec.appendChild(el('div', 'scw-bid-cr-modal__section-title', 'Current Bid Values'));
-    var curGrid = el('div', 'scw-bid-cr-modal__current');
-    for (var ci = 0; ci < FIELD_DEFS.length; ci++) {
-      var cd = FIELD_DEFS[ci];
-      if (hasValue(cell[cd.key])) {
-        curGrid.appendChild(el('span', 'scw-bid-cr-modal__current-label', cd.label + ':'));
-        curGrid.appendChild(el('span', 'scw-bid-cr-modal__current-value', formatDisplay(cd, cell[cd.key])));
-      }
-    }
-    curSec.appendChild(curGrid);
-    body.appendChild(curSec);
-
-    // Requested changes
-    var reqSec = el('div', 'scw-bid-cr-modal__section');
-    reqSec.appendChild(el('div', 'scw-bid-cr-modal__section-title', 'Requested Changes'));
-    reqSec.appendChild(el('div', 'scw-bid-cr-modal__hint',
-      'Leave blank for no change. Fill in only the fields you want updated.'));
+    body.appendChild(el('div', 'scw-bid-cr-modal__hint',
+      'Values are pre-filled from the current bid. Edit any field to request a change.'));
 
     var inputs = {};
     for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
       var fd = FIELD_DEFS[fi];
+
+      // Skip hidden fields based on visibility rules
+      if (fd.visKey && !vis[fd.visKey]) continue;
+
       var fRow = el('div', 'scw-bid-cr-modal__field');
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
 
+      // Determine pre-fill value: existing pending change > current cell value
+      var prefill = (existing && hasValue(existing.requested[fd.key]))
+        ? existing.requested[fd.key]
+        : cell[fd.key];
+
       var inp;
-      if (fd.type === 'select') {
+      if (fd.type === 'connection') {
+        // Connection dropdown
         inp = document.createElement('select');
         inp.className = 'scw-bid-cr-modal__select';
-        var blank = document.createElement('option');
-        blank.value = ''; blank.textContent = '\u2014 no change \u2014';
-        inp.appendChild(blank);
-        for (var oi = 0; oi < fd.options.length; oi++) {
+        var blankOpt = document.createElement('option');
+        blankOpt.value = ''; blankOpt.textContent = '\u2014 none \u2014';
+        inp.appendChild(blankOpt);
+
+        var recs = connRecords[fd.key] || [];
+        var currentIds = cell[fd.idsKey] || [];
+        var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
+
+        for (var ri = 0; ri < recs.length; ri++) {
+          var rec = recs[ri];
           var opt = document.createElement('option');
-          opt.value = fd.options[oi]; opt.textContent = fd.options[oi];
+          opt.value = rec.id;
+          opt.textContent = rec.identifier || rec.id;
+          // Pre-select if matches current/pending
+          for (var pi = 0; pi < prefillIds.length; pi++) {
+            if (prefillIds[pi] === rec.id) { opt.selected = true; break; }
+          }
           inp.appendChild(opt);
         }
+        inp.multiple = (currentIds.length > 1 || recs.length > 5);
+        if (inp.multiple) inp.size = Math.min(6, recs.length + 1);
+      } else if (fd.type === 'select') {
+        inp = document.createElement('select');
+        inp.className = 'scw-bid-cr-modal__select';
+        var blk = document.createElement('option');
+        blk.value = ''; blk.textContent = '\u2014 select \u2014';
+        inp.appendChild(blk);
+        for (var oi = 0; oi < fd.options.length; oi++) {
+          var sopt = document.createElement('option');
+          sopt.value = fd.options[oi]; sopt.textContent = fd.options[oi];
+          if (hasValue(prefill) && String(prefill) === fd.options[oi]) sopt.selected = true;
+          inp.appendChild(sopt);
+        }
+      } else if (fd.multiline) {
+        inp = document.createElement('textarea');
+        inp.className = 'scw-bid-cr-modal__textarea';
+        inp.rows = 3;
+        if (hasValue(prefill)) inp.value = String(prefill);
       } else {
         inp = document.createElement('input');
         inp.type = fd.type;
         inp.className = 'scw-bid-cr-modal__input';
-        inp.placeholder = hasValue(cell[fd.key]) ? String(cell[fd.key]) : '';
         if (fd.type === 'number') inp.setAttribute('step', 'any');
+        if (hasValue(prefill)) inp.value = fd.type === 'number' ? prefill : String(prefill);
       }
       inp.setAttribute('data-field', fd.key);
       inputs[fd.key] = inp;
       fRow.appendChild(inp);
-      reqSec.appendChild(fRow);
+      body.appendChild(fRow);
     }
 
+    // Change notes
     var notesRow = el('div', 'scw-bid-cr-modal__field');
     notesRow.appendChild(el('label', 'scw-bid-cr-modal__label', 'Change Notes'));
     var ta = document.createElement('textarea');
     ta.className = 'scw-bid-cr-modal__textarea';
     ta.placeholder = 'Describe the changes you need\u2026';
     ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
     notesRow.appendChild(ta);
-    reqSec.appendChild(notesRow);
-    body.appendChild(reqSec);
+    body.appendChild(notesRow);
     modal.appendChild(body);
 
     // Footer
@@ -387,16 +490,55 @@
     cancelBtn.addEventListener('click', closeModal);
     footer.appendChild(cancelBtn);
 
-    var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add', 'Add to Change Request');
+    var saveLabel = existing ? 'Update Change Request' : 'Add to Change Request';
+    var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add', saveLabel);
     addBtn.addEventListener('click', function () {
+      // Diff against original cell values — only capture changes
       var requested = {}, hasChange = false;
       for (var k = 0; k < FIELD_DEFS.length; k++) {
-        var d = FIELD_DEFS[k], v = (inputs[d.key].value || '').trim();
-        if (v) { requested[d.key] = d.type === 'number' ? parseFloat(v) : v; hasChange = true; }
+        var d = FIELD_DEFS[k];
+        if (d.visKey && !vis[d.visKey]) continue;
+        if (!inputs[d.key]) continue;
+
+        if (d.type === 'connection') {
+          // For multi-select, gather selected IDs
+          var sel = inputs[d.key];
+          var selIds = [];
+          for (var si = 0; si < sel.options.length; si++) {
+            if (sel.options[si].selected && sel.options[si].value) selIds.push(sel.options[si].value);
+          }
+          var origIds = cell[d.idsKey] || [];
+          if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
+            // Build display label from selected options
+            var labels = [];
+            for (var li = 0; li < sel.options.length; li++) {
+              if (sel.options[li].selected && sel.options[li].value) labels.push(sel.options[li].textContent);
+            }
+            requested[d.key] = labels.join(', ');
+            requested[d.key + 'Ids'] = selIds;
+            hasChange = true;
+          }
+        } else {
+          var v = (inputs[d.key].value || '').trim();
+          var orig = hasValue(cell[d.key]) ? String(cell[d.key]) : '';
+          if (d.type === 'number') {
+            var nv = v ? parseFloat(v) : 0;
+            var no = cell[d.key] || 0;
+            if (nv !== no) { requested[d.key] = nv; hasChange = true; }
+          } else {
+            if (v !== orig) { requested[d.key] = v; hasChange = true; }
+          }
+        }
       }
+
       var cn = ta.value.trim();
-      if (cn) hasChange = true;
-      if (!hasChange) { ns.renderToast('Please specify at least one change or add notes', 'info'); return; }
+      var origNotes = (existing && existing.changeNotes) || '';
+      if (cn !== origNotes) hasChange = true;
+
+      if (!hasChange) {
+        ns.renderToast('No changes detected', 'info');
+        return;
+      }
 
       var current = {};
       for (var c2 = 0; c2 < FIELD_DEFS.length; c2++) {
@@ -410,14 +552,14 @@
         current: current, requested: requested, changeNotes: cn,
       });
       closeModal();
-      ns.renderToast('Change added to request', 'success');
+      ns.renderToast(existing ? 'Change request updated' : 'Change added to request', 'success');
     });
     footer.appendChild(addBtn);
     modal.appendChild(footer);
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    var first = modal.querySelector('input, select');
+    var first = modal.querySelector('input, select, textarea');
     if (first) setTimeout(function () { first.focus(); }, 50);
   }
 

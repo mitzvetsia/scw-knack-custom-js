@@ -349,6 +349,11 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
+      visibility: {
+        qty:        button.getAttribute('data-vis-qty') === '1',
+        cabling:    button.getAttribute('data-vis-cabling') === '1',
+        connDevice: button.getAttribute('data-vis-conn') === '1',
+      },
     });
   }
 
