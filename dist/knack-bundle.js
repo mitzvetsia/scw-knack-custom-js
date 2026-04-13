@@ -10616,18 +10616,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__sow-header {',
-      '  width: 120px;',
-      '  min-width: 90px;',
+      '  width: 100px;',
+      '  min-width: 80px;',
       '}',
 
-      /* SOW detail and bid columns share equal width */
+      /* SOW detail, bid columns, and change request column share equal width */
       '.scw-bid-review__sow-detail-header,',
-      '.scw-bid-review__pkg-header {',
-      '}',
-
+      '.scw-bid-review__pkg-header,',
       '.scw-bid-review__actions-header {',
-      '  width: 150px;',
-      '  min-width: 120px;',
       '}',
 
       /* ── package column header ─────────────────────────────── */
@@ -11024,6 +11020,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  display: flex;',
       '  flex-direction: column;',
       '  gap: 3px;',
+      '}',
+
+      /* ── change request column header controls ────────────── */
+      '.scw-bid-review__cr-col-title {',
+      '  font-size: 13px;',
+      '  font-weight: 700;',
+      '  color: #0f172a;',
+      '  margin-bottom: 4px;',
+      '}',
+
+      '.scw-bid-review__cr-col-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      '.scw-bid-review__btn--cr-submit {',
+      '  background: #0891b2;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--cr-clear {',
+      '  background: #e2e8f0;',
+      '  color: #475569;',
       '}',
 
       /* ── change request cards (inline in actions column) ──── */
@@ -12130,8 +12150,34 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       tr.appendChild(th);
     }
 
-    // Actions column header
-    tr.appendChild(el('th', 'scw-bid-review__actions-header', 'Actions'));
+    // Change Requests column header (with Clear All + Submit controls)
+    var crTh = el('th', 'scw-bid-review__actions-header');
+    crTh.appendChild(el('div', 'scw-bid-review__cr-col-title', 'Change Requests'));
+
+    var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
+    var hasPending = Object.keys(pending).length > 0;
+
+    if (hasPending) {
+      var crActions = el('div', 'scw-bid-review__cr-col-actions');
+
+      // Per-package submit buttons
+      var pkgIds = Object.keys(pending);
+      for (var si = 0; si < pkgIds.length; si++) {
+        var sPkg = pending[pkgIds[si]];
+        if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
+        var subBtn = btn(
+          'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
+          { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
+        );
+        crActions.appendChild(subBtn);
+      }
+
+      // Clear All
+      crActions.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
+      crTh.appendChild(crActions);
+    }
+
+    tr.appendChild(crTh);
 
     return tr;
   }
@@ -12612,14 +12658,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ── render a single SOW grid ────────────────────────────────
 
   function buildSowSection(sowGrid) {
-    var section = el('div', 'scw-bid-review__sow-section scw-bid-review__sow-section--collapsed');
+    var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW accordion header (clickable) — collapsed by default
+    // SOW accordion header (clickable) — open by default
     var header = el('div', 'scw-bid-review__sow-title');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'false');
+    header.setAttribute('aria-expanded', 'true');
 
     var chevron = el('span', 'scw-bid-review__sow-chevron');
     chevron.innerHTML = CHEVRON_SVG;
@@ -12705,15 +12751,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function restoreAccordionState(mount, snap) {
     if (!mount || !snap) return;
 
-    // Restore SOW sections
+    // Restore SOW sections (default is now open, so restore collapsed ones)
     var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
     for (var i = 0; i < sections.length; i++) {
       var sowId = sections[i].getAttribute('data-sow-id');
-      if (sowId && snap.sow[sowId] === true) {
-        // Was open — remove collapsed class and update aria
-        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
+      if (sowId && snap.sow[sowId] === false) {
+        // Was collapsed — collapse it
+        sections[i].classList.add('scw-bid-review__sow-section--collapsed');
         var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
-        if (hdr) hdr.setAttribute('aria-expanded', 'true');
+        if (hdr) hdr.setAttribute('aria-expanded', 'false');
       }
     }
 
@@ -13017,7 +13063,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   var CR_CSS_ID       = 'scw-bid-cr-css';
   var OVERLAY_ID      = 'scw-bid-cr-overlay';
-  var PANEL_ID        = 'scw-bid-cr-panel';
   var STORAGE_KEY     = 'scw-bid-cr-pending';
   var SAVE_DEBOUNCE   = 3000;
 
@@ -13195,7 +13240,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (Object.keys(merged).length) {
         _pending = merged;
         ssave();
-        renderPanel();
+        triggerRerender();
         if (CFG.debug) console.log('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
       }
     }).fail(function () {
@@ -13276,52 +13321,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-cr-modal__btn:hover { filter: brightness(.92); }',
       '.scw-bid-cr-modal__btn--cancel { background: #e2e8f0; color: #475569; }',
       '.scw-bid-cr-modal__btn--add { background: #0891b2; color: #fff; }',
-
-      '.scw-bid-cr-panel {',
-      '  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);',
-      '  width: 600px; max-width: 96vw; max-height: 45vh; overflow-y: auto;',
-      '  background: #fff; border-radius: 10px 10px 0 0;',
-      '  box-shadow: 0 -4px 24px rgba(0,0,0,.18); z-index: 100000;',
-      '  font: 13px/1.4 system-ui, -apple-system, sans-serif; color: #1e293b;',
-      '}',
-      '.scw-bid-cr-panel__header {',
-      '  display: flex; align-items: center; justify-content: space-between;',
-      '  padding: 10px 16px; background: #1e293b; color: #fff;',
-      '  border-radius: 10px 10px 0 0; position: sticky; top: 0; z-index: 1;',
-      '}',
-      '.scw-bid-cr-panel__title { font-weight: 700; font-size: 13px; }',
-      '.scw-bid-cr-panel__clear {',
-      '  background: none; border: 1px solid rgba(255,255,255,.3);',
-      '  color: rgba(255,255,255,.8); font-size: 11px; font-weight: 600;',
-      '  padding: 3px 10px; border-radius: 4px; cursor: pointer;',
-      '}',
-      '.scw-bid-cr-panel__clear:hover { border-color: rgba(255,255,255,.6); color: #fff; }',
-      '.scw-bid-cr-panel__body { padding: 10px 16px 14px; }',
-      '.scw-bid-cr-panel__pkg { margin-bottom: 12px; }',
-      '.scw-bid-cr-panel__pkg:last-child { margin-bottom: 0; }',
-      '.scw-bid-cr-panel__pkg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }',
-      '.scw-bid-cr-panel__pkg-name { font-weight: 700; font-size: 13px; color: #0f172a; }',
-      '.scw-bid-cr-panel__pkg-count { font-size: 11px; color: #64748b; }',
-      '.scw-bid-cr-panel__item {',
-      '  display: flex; align-items: flex-start; gap: 8px;',
-      '  padding: 5px 8px; border-radius: 4px; background: #f8fafc; margin-bottom: 4px;',
-      '}',
-      '.scw-bid-cr-panel__item-text { flex: 1 1 auto; min-width: 0; }',
-      '.scw-bid-cr-panel__item-label { display: block; font-weight: 600; font-size: 12px; color: #1e293b; }',
-      '.scw-bid-cr-panel__item-changes { display: block; font-size: 11px; color: #0891b2; }',
-      '.scw-bid-cr-panel__item-notes { display: block; font-size: 11px; color: #64748b; font-style: italic; }',
-      '.scw-bid-cr-panel__item-remove {',
-      '  flex-shrink: 0; background: none; border: none;',
-      '  font-size: 16px; color: #94a3b8; cursor: pointer; padding: 0 2px; line-height: 1;',
-      '}',
-      '.scw-bid-cr-panel__item-remove:hover { color: #dc2626; }',
-      '.scw-bid-cr-panel__submit {',
-      '  display: block; width: 100%; margin-top: 8px; padding: 8px 12px;',
-      '  border: none; border-radius: 5px; background: #0891b2; color: #fff;',
-      '  font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; transition: filter .15s;',
-      '}',
-      '.scw-bid-cr-panel__submit:hover { filter: brightness(.9); }',
-      '.scw-bid-cr-panel__submit:disabled { opacity: .5; cursor: default; filter: none; }',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -13469,11 +13468,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
-      if (items[i].rowId === item.rowId) { items[i] = item; persist(); renderPanel(); triggerRerender(); return; }
+      if (items[i].rowId === item.rowId) { items[i] = item; persist(); triggerRerender(); return; }
     }
     items.push(item);
     persist();
-    renderPanel();
     triggerRerender();
   }
 
@@ -13485,77 +13483,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
     if (!items.length) delete _pending[pkgId];
     persist();
-    renderPanel();
     triggerRerender();
   }
 
   function triggerRerender() {
     if (ns.rerender) ns.rerender();
-  }
-
-  // ── Panel ──────────────────────────────────────────────
-  function renderPanel() {
-    injectCrStyles();
-    var existing = document.getElementById(PANEL_ID);
-    var count = pendingCount();
-    if (count === 0) { if (existing) existing.remove(); return; }
-
-    var panel = el('div', 'scw-bid-cr-panel');
-    panel.id = PANEL_ID;
-
-    var header = el('div', 'scw-bid-cr-panel__header');
-    header.appendChild(el('span', 'scw-bid-cr-panel__title',
-      'Change Request (' + count + ' item' + (count !== 1 ? 's' : '') + ')'));
-    var clearBtn = el('button', 'scw-bid-cr-panel__clear', 'Clear All');
-    clearBtn.addEventListener('click', function () {
-      if (!window.confirm('Clear all pending change requests?')) return;
-      _pending = {};
-      persist();
-      renderPanel();
-    });
-    header.appendChild(clearBtn);
-    panel.appendChild(header);
-
-    var body = el('div', 'scw-bid-cr-panel__body');
-    var pkgIds = Object.keys(_pending);
-    for (var p = 0; p < pkgIds.length; p++) {
-      var pkgId = pkgIds[p], pkg = _pending[pkgId];
-      var sec = el('div', 'scw-bid-cr-panel__pkg');
-      var ph = el('div', 'scw-bid-cr-panel__pkg-header');
-      ph.appendChild(el('span', 'scw-bid-cr-panel__pkg-name', pkg.pkgName));
-      ph.appendChild(el('span', 'scw-bid-cr-panel__pkg-count',
-        pkg.items.length + ' change' + (pkg.items.length !== 1 ? 's' : '')));
-      sec.appendChild(ph);
-
-      for (var i = 0; i < pkg.items.length; i++) sec.appendChild(buildPanelItem(pkgId, pkg.items[i]));
-
-      var sub = el('button', 'scw-bid-cr-panel__submit', 'Submit Change Request for ' + pkg.pkgName);
-      sub.setAttribute('data-pkg-id', pkgId);
-      sub.addEventListener('click', function () { submitChangeRequest(this.getAttribute('data-pkg-id')); });
-      sec.appendChild(sub);
-      body.appendChild(sec);
-    }
-    panel.appendChild(body);
-
-    if (existing) existing.parentNode.replaceChild(panel, existing);
-    else document.body.appendChild(panel);
-  }
-
-  function buildPanelItem(pkgId, item) {
-    var row = el('div', 'scw-bid-cr-panel__item');
-    var text = el('div', 'scw-bid-cr-panel__item-text');
-    text.appendChild(el('span', 'scw-bid-cr-panel__item-label', item.displayLabel || item.productName || 'Item'));
-    var ch = summarizeChanges(item);
-    if (ch) text.appendChild(el('span', 'scw-bid-cr-panel__item-changes', ch));
-    if (item.changeNotes) text.appendChild(el('span', 'scw-bid-cr-panel__item-notes', item.changeNotes));
-    row.appendChild(text);
-    var rm = el('button', 'scw-bid-cr-panel__item-remove', '\u00d7');
-    rm.setAttribute('data-pkg-id', pkgId); rm.setAttribute('data-row-id', item.rowId);
-    rm.addEventListener('click', function () {
-      removePendingItem(this.getAttribute('data-pkg-id'), this.getAttribute('data-row-id'));
-    });
-    row.appendChild(rm);
-    return row;
   }
 
   function summarizeChanges(item) {
@@ -13619,33 +13551,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       });
     }
 
-    var btn = document.querySelector('#' + PANEL_ID + ' .scw-bid-cr-panel__submit[data-pkg-id="' + pkgId + '"]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Sending\u2026'; }
-
     ns.submitAction({ actionType: 'change_request', packageId: pkgId, sowId: pkg.sowId, items: items })
       .done(function () {
         delete _pending[pkgId];
         persist();
-        renderPanel();
+        triggerRerender();
+        ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
       })
       .fail(function () {
-        if (btn) { btn.disabled = false; btn.textContent = 'Submit Change Request for ' + pkg.pkgName; }
+        ns.renderToast('Failed to submit change request', 'error');
       });
   }
 
   // ── Init: rehydrate from sessionStorage immediately ────
   sload();
-  if (pendingCount() > 0) setTimeout(function () { renderPanel(); }, 500);
 
   // ── Public API ─────────────────────────────────────────
   ns.changeRequests = {
-    open:           openChangeModal,
-    renderPanel:    renderPanel,
-    rehydrate:      rehydrateFromKnack,
-    getPending:     function () { return _pending; },
+    open:             openChangeModal,
+    rehydrate:        rehydrateFromKnack,
+    getPending:       function () { return _pending; },
     summarizeItem:    summarizeChanges,
     buildSummaryCard: buildSummaryCard,
-    clear:          function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
+    submitForPackage: submitChangeRequest,
+    clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
   };
 
 })();
@@ -13744,6 +13673,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       if (action === 'cell_request_change') {
         handleChangeRequest(button);
+      } else if (action === 'cr_submit') {
+        var pkgId = button.getAttribute('data-pkg-id');
+        if (ns.changeRequests && ns.changeRequests.submitForPackage) {
+          ns.changeRequests.submitForPackage(pkgId);
+        }
+      } else if (action === 'cr_clear_all') {
+        if (ns.changeRequests && ns.changeRequests.clear) {
+          if (window.confirm('Clear all pending change requests?')) {
+            ns.changeRequests.clear();
+          }
+        }
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {

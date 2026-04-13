@@ -126,8 +126,34 @@
       tr.appendChild(th);
     }
 
-    // Actions column header
-    tr.appendChild(el('th', 'scw-bid-review__actions-header', 'Actions'));
+    // Change Requests column header (with Clear All + Submit controls)
+    var crTh = el('th', 'scw-bid-review__actions-header');
+    crTh.appendChild(el('div', 'scw-bid-review__cr-col-title', 'Change Requests'));
+
+    var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
+    var hasPending = Object.keys(pending).length > 0;
+
+    if (hasPending) {
+      var crActions = el('div', 'scw-bid-review__cr-col-actions');
+
+      // Per-package submit buttons
+      var pkgIds = Object.keys(pending);
+      for (var si = 0; si < pkgIds.length; si++) {
+        var sPkg = pending[pkgIds[si]];
+        if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
+        var subBtn = btn(
+          'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
+          { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
+        );
+        crActions.appendChild(subBtn);
+      }
+
+      // Clear All
+      crActions.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
+      crTh.appendChild(crActions);
+    }
+
+    tr.appendChild(crTh);
 
     return tr;
   }
@@ -608,14 +634,14 @@
   // ── render a single SOW grid ────────────────────────────────
 
   function buildSowSection(sowGrid) {
-    var section = el('div', 'scw-bid-review__sow-section scw-bid-review__sow-section--collapsed');
+    var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW accordion header (clickable) — collapsed by default
+    // SOW accordion header (clickable) — open by default
     var header = el('div', 'scw-bid-review__sow-title');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'false');
+    header.setAttribute('aria-expanded', 'true');
 
     var chevron = el('span', 'scw-bid-review__sow-chevron');
     chevron.innerHTML = CHEVRON_SVG;
@@ -701,15 +727,15 @@
   function restoreAccordionState(mount, snap) {
     if (!mount || !snap) return;
 
-    // Restore SOW sections
+    // Restore SOW sections (default is now open, so restore collapsed ones)
     var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
     for (var i = 0; i < sections.length; i++) {
       var sowId = sections[i].getAttribute('data-sow-id');
-      if (sowId && snap.sow[sowId] === true) {
-        // Was open — remove collapsed class and update aria
-        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
+      if (sowId && snap.sow[sowId] === false) {
+        // Was collapsed — collapse it
+        sections[i].classList.add('scw-bid-review__sow-section--collapsed');
         var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
-        if (hdr) hdr.setAttribute('aria-expanded', 'true');
+        if (hdr) hdr.setAttribute('aria-expanded', 'false');
       }
     }
 

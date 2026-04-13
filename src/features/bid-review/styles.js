@@ -102,18 +102,14 @@
       '}',
 
       '.scw-bid-review__sow-header {',
-      '  width: 120px;',
-      '  min-width: 90px;',
+      '  width: 100px;',
+      '  min-width: 80px;',
       '}',
 
-      /* SOW detail and bid columns share equal width */
+      /* SOW detail, bid columns, and change request column share equal width */
       '.scw-bid-review__sow-detail-header,',
-      '.scw-bid-review__pkg-header {',
-      '}',
-
+      '.scw-bid-review__pkg-header,',
       '.scw-bid-review__actions-header {',
-      '  width: 150px;',
-      '  min-width: 120px;',
       '}',
 
       /* ── package column header ─────────────────────────────── */
@@ -510,6 +506,30 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  gap: 3px;',
+      '}',
+
+      /* ── change request column header controls ────────────── */
+      '.scw-bid-review__cr-col-title {',
+      '  font-size: 13px;',
+      '  font-weight: 700;',
+      '  color: #0f172a;',
+      '  margin-bottom: 4px;',
+      '}',
+
+      '.scw-bid-review__cr-col-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '}',
+
+      '.scw-bid-review__btn--cr-submit {',
+      '  background: #0891b2;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__btn--cr-clear {',
+      '  background: #e2e8f0;',
+      '  color: #475569;',
       '}',
 
       /* ── change request cards (inline in actions column) ──── */

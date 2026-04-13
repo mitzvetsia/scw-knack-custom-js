@@ -93,6 +93,17 @@
 
       if (action === 'cell_request_change') {
         handleChangeRequest(button);
+      } else if (action === 'cr_submit') {
+        var pkgId = button.getAttribute('data-pkg-id');
+        if (ns.changeRequests && ns.changeRequests.submitForPackage) {
+          ns.changeRequests.submitForPackage(pkgId);
+        }
+      } else if (action === 'cr_clear_all') {
+        if (ns.changeRequests && ns.changeRequests.clear) {
+          if (window.confirm('Clear all pending change requests?')) {
+            ns.changeRequests.clear();
+          }
+        }
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
