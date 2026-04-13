@@ -48,6 +48,23 @@
   var EVENT_NS = '.scwAccMenuInject';
   var LOG = '[SCW AccMenuInject]';
 
+  // ── Debounce / retry state ─────────────────────────
+  var _debounceTimer = null;
+  var _retryTimers = [];
+
+  function clearRetries() {
+    for (var i = 0; i < _retryTimers.length; i++) clearTimeout(_retryTimers[i]);
+    _retryTimers = [];
+  }
+
+  function scheduleEnhance(delay) {
+    if (_debounceTimer) clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(function () {
+      _debounceTimer = null;
+      enhance();
+    }, delay || 200);
+  }
+
   // ── Plus icon for "Add" / "New" buttons ─────────────
   var PLUS_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
@@ -130,12 +147,12 @@
   // ── Find the kn-menu view associated with an accordion ──
 
   function findMenuForAccordion(accordion) {
-    // Strategy 1: menu is an immediate preceding sibling
+    // Strategy 1: menu is an immediate preceding sibling (Pattern B)
     var prevSibling = accordion.previousElementSibling;
     if (prevSibling && prevSibling.classList.contains('kn-menu')) {
       return { menu: prevSibling, strategy: 'sibling' };
     }
-    // Strategy 2: menu lives in the preceding view-group
+    // Strategy 2: menu lives in the preceding view-group (Pattern A)
     var viewGroup = accordion.parentElement;
     while (viewGroup && !viewGroup.classList.contains('view-group')) {
       viewGroup = viewGroup.parentElement;
@@ -146,6 +163,13 @@
         prevGroup.classList.contains('view-group') &&
         !prevGroup.querySelector('.scw-ktl-accordion') &&
         !prevGroup.querySelector('.ktlHideShowView')) {
+      // Guard: if the previous group contains a table / list / report view
+      // alongside the menu, the menu belongs to a Pattern-B accordion in
+      // THAT group that KTL hasn't wrapped yet.  Skip to prevent
+      // cross-contamination between view-groups.
+      if (prevGroup.querySelector('.kn-view.kn-table, .kn-view.kn-list, .kn-view.kn-report')) {
+        return null;
+      }
       var menu = prevGroup.querySelector('.kn-view.kn-menu');
       if (menu) return { menu: menu, strategy: 'prev-group' };
     }
@@ -291,158 +315,162 @@
     var skipped = { noHeader: 0, alreadyInjected: 0, noMenu: 0, menuHidden: 0, emptyMenu: 0 };
 
     for (var i = 0; i < accordions.length; i++) {
-      var accordion = accordions[i];
-      var header = accordion.querySelector('.scw-ktl-accordion__header');
-      if (!header) { skipped.noHeader++; continue; }
-      if (header.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
+      try {
+        var accordion = accordions[i];
+        var header = accordion.querySelector('.scw-ktl-accordion__header');
+        if (!header) { skipped.noHeader++; continue; }
+        if (header.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
 
-      var accViewId = accordion.closest('[id^="view_"]');
-      accViewId = accViewId ? accViewId.id : '(unknown)';
+        var accViewId = accordion.closest('[id^="view_"]');
+        accViewId = accViewId ? accViewId.id : '(unknown)';
 
-      var result = findMenuForAccordion(accordion);
-      if (!result) { skipped.noMenu++; continue; }
+        var result = findMenuForAccordion(accordion);
+        if (!result) { skipped.noMenu++; continue; }
 
-      var menuView = result.menu;
-      var strategy = result.strategy;
+        var menuView = result.menu;
+        var strategy = result.strategy;
 
-      if (menuView.classList.contains(HIDDEN_CLASS)) { skipped.menuHidden++; continue; }
+        if (menuView.classList.contains(HIDDEN_CLASS)) { skipped.menuHidden++; continue; }
 
-      // ── Collect action links from DOM ──
-      var domLinks = menuView.querySelectorAll('a');
-      var actionLinks = [];
-      for (var j = 0; j < domLinks.length; j++) {
-        var text = (domLinks[j].textContent || '').trim();
-        if (text) actionLinks.push({ text: text, index: j });
-      }
+        // ── Collect action links from DOM ──
+        var domLinks = menuView.querySelectorAll('a');
+        var actionLinks = [];
+        for (var j = 0; j < domLinks.length; j++) {
+          var text = (domLinks[j].textContent || '').trim();
+          if (text) actionLinks.push({ text: text, index: j });
+        }
 
-      var useModelData = false;
-      var modelLinks = null;
+        var useModelData = false;
+        var modelLinks = null;
 
-      // ── If DOM is empty, try Knack's internal model ──
-      if (!actionLinks.length) {
-        modelLinks = extractMenuLinksFromKnack(menuView.id);
-        if (modelLinks && modelLinks.length) {
-          useModelData = true;
+        // ── If DOM is empty, try Knack's internal model ──
+        if (!actionLinks.length) {
+          modelLinks = extractMenuLinksFromKnack(menuView.id);
+          if (modelLinks && modelLinks.length) {
+            useModelData = true;
+            console.log(LOG, '  accordion', accViewId,
+              '-> menu', menuView.id, 'via', strategy,
+              '-- using', modelLinks.length, 'link(s) from Knack model');
+          } else {
+            skipped.emptyMenu++;
+            console.warn(LOG, '  accordion', accViewId,
+              '-> menu', menuView.id, 'via', strategy,
+              '-- empty DOM AND no model data');
+            continue;
+          }
+        } else {
           console.log(LOG, '  accordion', accViewId,
             '-> menu', menuView.id, 'via', strategy,
-            '-- using', modelLinks.length, 'link(s) from Knack model');
-        } else {
-          skipped.emptyMenu++;
-          console.warn(LOG, '  accordion', accViewId,
-            '-> menu', menuView.id, 'via', strategy,
-            '-- empty DOM AND no model data');
-          continue;
-        }
-      } else {
-        console.log(LOG, '  accordion', accViewId,
-          '-> menu', menuView.id, 'via', strategy,
-          '-- injecting', actionLinks.length, 'button(s) from DOM');
-      }
-
-      // ── Build button container ──
-      var container = document.createElement('div');
-      container.className = 'scw-acc-actions';
-      container.setAttribute(MENU_SRC, menuView.id);
-
-      var buttonDefs = useModelData
-        ? modelLinks.map(function (ml, idx) {
-            return { text: ml.text, index: idx, href: ml.href, fromModel: true };
-          })
-        : actionLinks.map(function (al) {
-            return { text: al.text, index: al.index, href: '', fromModel: false };
-          });
-
-      for (var k = 0; k < buttonDefs.length; k++) {
-        var def = buttonDefs[k];
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'scw-acc-action-btn';
-        btn.setAttribute('data-menu-view', menuView.id);
-        btn.setAttribute('data-link-index', String(def.index));
-
-        if (def.fromModel) {
-          btn.setAttribute('data-link-text', def.text);
-          btn.setAttribute('data-link-href', def.href);
-          btn.setAttribute('data-source', 'model');
+            '-- injecting', actionLinks.length, 'button(s) from DOM');
         }
 
-        // Prefix a "+" icon for Add / New / Bulk Add buttons
-        if (/^(add|bulk add|new)\b/i.test(def.text)) {
-          var iconSpan = document.createElement('span');
-          iconSpan.innerHTML = PLUS_SVG;
-          btn.appendChild(iconSpan);
-        }
+        // ── Build button container ──
+        var container = document.createElement('div');
+        container.className = 'scw-acc-actions';
+        container.setAttribute(MENU_SRC, menuView.id);
 
-        btn.appendChild(document.createTextNode(def.text));
+        var buttonDefs = useModelData
+          ? modelLinks.map(function (ml, idx) {
+              return { text: ml.text, index: idx, href: ml.href, fromModel: true };
+            })
+          : actionLinks.map(function (al) {
+              return { text: al.text, index: al.index, href: '', fromModel: false };
+            });
 
-        // Click handler — tries DOM link first, falls back to hash navigation
-        btn.addEventListener('click', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
+        for (var k = 0; k < buttonDefs.length; k++) {
+          var def = buttonDefs[k];
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'scw-acc-action-btn';
+          btn.setAttribute('data-menu-view', menuView.id);
+          btn.setAttribute('data-link-index', String(def.index));
 
-          var menuId = this.getAttribute('data-menu-view');
-          var isModel = this.getAttribute('data-source') === 'model';
-          var menu = document.getElementById(menuId);
+          if (def.fromModel) {
+            btn.setAttribute('data-link-text', def.text);
+            btn.setAttribute('data-link-href', def.href);
+            btn.setAttribute('data-source', 'model');
+          }
 
-          // Strategy 1: click the actual DOM link (works always for DOM-derived
-          // buttons, and works for model-derived if menu was rendered since)
-          if (menu) {
-            var targets = menu.querySelectorAll('a');
+          // Prefix a "+" icon for Add / New / Bulk Add buttons
+          if (/^(add|bulk add|new)\b/i.test(def.text)) {
+            var iconSpan = document.createElement('span');
+            iconSpan.innerHTML = PLUS_SVG;
+            btn.appendChild(iconSpan);
+          }
 
-            if (isModel) {
-              // Match by text for model-derived buttons (more reliable than index)
-              var linkText = this.getAttribute('data-link-text');
-              for (var t = 0; t < targets.length; t++) {
-                if ((targets[t].textContent || '').trim() === linkText) {
-                  console.log(LOG, 'Click: matched DOM link for "' + linkText + '"');
-                  targets[t].click();
+          btn.appendChild(document.createTextNode(def.text));
+
+          // Click handler — tries DOM link first, falls back to hash navigation
+          btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            var menuId = this.getAttribute('data-menu-view');
+            var isModel = this.getAttribute('data-source') === 'model';
+            var menu = document.getElementById(menuId);
+
+            // Strategy 1: click the actual DOM link (works always for DOM-derived
+            // buttons, and works for model-derived if menu was rendered since)
+            if (menu) {
+              var targets = menu.querySelectorAll('a');
+
+              if (isModel) {
+                // Match by text for model-derived buttons (more reliable than index)
+                var linkText = this.getAttribute('data-link-text');
+                for (var t = 0; t < targets.length; t++) {
+                  if ((targets[t].textContent || '').trim() === linkText) {
+                    console.log(LOG, 'Click: matched DOM link for "' + linkText + '"');
+                    targets[t].click();
+                    return;
+                  }
+                }
+              } else {
+                // Match by index for DOM-derived buttons
+                var linkIdx = parseInt(this.getAttribute('data-link-index'), 10);
+                if (targets[linkIdx]) {
+                  targets[linkIdx].click();
                   return;
                 }
               }
-            } else {
-              // Match by index for DOM-derived buttons
-              var linkIdx = parseInt(this.getAttribute('data-link-index'), 10);
-              if (targets[linkIdx]) {
-                targets[linkIdx].click();
-                return;
-              }
             }
-          }
 
-          // Strategy 2: hash navigation fallback for model-derived buttons
-          var href = this.getAttribute('data-link-href');
-          if (href) {
-            console.log(LOG, 'Click: hash navigation to "' + href + '"');
-            window.location.hash = href;
-            return;
-          }
+            // Strategy 2: hash navigation fallback for model-derived buttons
+            var href = this.getAttribute('data-link-href');
+            if (href) {
+              console.log(LOG, 'Click: hash navigation to "' + href + '"');
+              window.location.hash = href;
+              return;
+            }
 
-          console.warn(LOG, 'Click: no DOM link and no href for button');
-        });
+            console.warn(LOG, 'Click: no DOM link and no href for button');
+          });
 
-        container.appendChild(btn);
+          container.appendChild(btn);
+        }
+
+        // Insert before chevron in the header, then move count pill
+        // to sit between the buttons and the chevron:
+        //   icon | title | [buttons] | count | chevron
+        var chevron = header.querySelector('.scw-acc-chevron');
+        var countPill = header.querySelector('.scw-acc-count');
+        if (chevron) {
+          header.insertBefore(container, chevron);
+          // Move count pill to right of buttons (before chevron)
+          if (countPill) header.insertBefore(countPill, chevron);
+        } else {
+          header.appendChild(container);
+        }
+
+        // Hide only the kn-menu view (preserve rich_text titles, etc.)
+        menuView.classList.add(HIDDEN_CLASS);
+
+        // Mark this accordion header as processed
+        header.setAttribute(INJECTED, '1');
+        injected++;
+      } catch (err) {
+        console.error(LOG, 'Error processing accordion [' + i + ']:', err);
       }
-
-      // Insert before chevron in the header, then move count pill
-      // to sit between the buttons and the chevron:
-      //   icon | title | [buttons] | count | chevron
-      var chevron = header.querySelector('.scw-acc-chevron');
-      var countPill = header.querySelector('.scw-acc-count');
-      if (chevron) {
-        header.insertBefore(container, chevron);
-        // Move count pill to right of buttons (before chevron)
-        if (countPill) header.insertBefore(countPill, chevron);
-      } else {
-        header.appendChild(container);
-      }
-
-      // Hide only the kn-menu view (preserve rich_text titles, etc.)
-      menuView.classList.add(HIDDEN_CLASS);
-
-      // Mark this accordion header as processed
-      header.setAttribute(INJECTED, '1');
-      injected++;
     }
 
     console.log(LOG, 'enhance() done — injected:', injected,
@@ -453,27 +481,37 @@
 
   injectStyles();
 
-  // Run after accordion enhancement (which uses 80ms delay)
+  // Scene render: reset state and run multiple passes to catch late
+  // KTL accordion processing (KTL wraps tables asynchronously).
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function (event, scene) {
       var sceneId = scene && scene.key ? scene.key : '(unknown)';
       console.log(LOG, 'knack-scene-render.any — scene:', sceneId);
-      // Reset model inspection log for fresh scene
       modelInspected = {};
-      setTimeout(enhance, 200);
+      clearRetries();
+      scheduleEnhance(200);
+      // Additional passes for accordions that KTL processes after the
+      // initial 200 ms window — covers slow / async rendering.
+      _retryTimers.push(setTimeout(enhance, 800));
+      _retryTimers.push(setTimeout(enhance, 1500));
+      _retryTimers.push(setTimeout(enhance, 3000));
     });
 
+  // View render: single debounced pass (accordions are already set up
+  // by this point; this handles re-renders after inline edits, etc.)
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function (event, view) {
-      setTimeout(enhance, 200);
+      scheduleEnhance(200);
     });
 
   // Initial pass
   $(document).ready(function () {
-    console.log(LOG, 'document.ready — scheduling initial enhance() in 500ms');
-    setTimeout(enhance, 500);
+    console.log(LOG, 'document.ready — scheduling initial enhance passes');
+    scheduleEnhance(500);
+    _retryTimers.push(setTimeout(enhance, 1200));
+    _retryTimers.push(setTimeout(enhance, 2500));
   });
 
 })();
