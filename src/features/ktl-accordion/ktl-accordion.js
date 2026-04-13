@@ -243,6 +243,7 @@
       '  background: rgba(var(--scw-accent-rgb), 0.12);',
       '  border: 1px solid rgba(var(--scw-accent-rgb), 0.22);',
       '  color: rgb(var(--scw-accent-rgb));',
+      '  text-align: center;',
       '}',
 
       /* ── chevron ── */

@@ -108,6 +108,7 @@
       '  font-family: inherit;',
       '  box-shadow: 0 1px 3px rgba(0,0,0,.15);',
       '  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease;',
+      '  justify-content: center;',
       '}',
 
       '.scw-acc-action-btn:hover {',
@@ -305,6 +306,53 @@
     return null;
   }
 
+  // ── Width equalization ──────────────────────────────
+  // 1. All count pills match the widest pill on the page.
+  // 2. Single-button menus match the widest button on the page;
+  //    two-button menus get min-width = max(contentWidth, widestBtn / 2).
+
+  function equalizeWidths() {
+    // ── Count pills ──
+    var pills = document.querySelectorAll('.scw-acc-count');
+    var maxPillW = 0;
+    var i;
+    for (i = 0; i < pills.length; i++) pills[i].style.minWidth = '';
+    for (i = 0; i < pills.length; i++) {
+      if (pills[i].offsetParent === null) continue; // skip display:none
+      var pw = pills[i].getBoundingClientRect().width;
+      if (pw > maxPillW) maxPillW = pw;
+    }
+    if (maxPillW > 0) {
+      var pillW = Math.ceil(maxPillW) + 'px';
+      for (i = 0; i < pills.length; i++) {
+        if (pills[i].offsetParent !== null) pills[i].style.minWidth = pillW;
+      }
+    }
+
+    // ── Action buttons ──
+    var btns = document.querySelectorAll('.scw-acc-action-btn');
+    var maxBtnW = 0;
+    for (i = 0; i < btns.length; i++) btns[i].style.minWidth = '';
+    for (i = 0; i < btns.length; i++) {
+      if (btns[i].offsetParent === null) continue;
+      var bw = btns[i].getBoundingClientRect().width;
+      if (bw > maxBtnW) maxBtnW = bw;
+    }
+    if (maxBtnW > 0) {
+      var halfMax = Math.ceil(maxBtnW / 2) + 'px';
+      var fullMax = Math.ceil(maxBtnW) + 'px';
+      var containers = document.querySelectorAll('.scw-acc-actions');
+      for (var c = 0; c < containers.length; c++) {
+        var cBtns = containers[c].querySelectorAll('.scw-acc-action-btn');
+        if (cBtns.length === 1) {
+          cBtns[0].style.minWidth = fullMax;
+        } else if (cBtns.length === 2) {
+          for (var b = 0; b < cBtns.length; b++) cBtns[b].style.minWidth = halfMax;
+        }
+      }
+    }
+  }
+
   // ── Detect and inject ───────────────────────────────
 
   function enhance() {
@@ -475,6 +523,9 @@
 
     console.log(LOG, 'enhance() done — injected:', injected,
       '— skipped:', JSON.stringify(skipped));
+
+    // Equalize count-pill and button widths after the browser paints
+    requestAnimationFrame(equalizeWidths);
   }
 
   // ── Lifecycle ───────────────────────────────────────
