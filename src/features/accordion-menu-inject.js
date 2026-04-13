@@ -48,6 +48,9 @@
   var EVENT_NS = '.scwAccMenuInject';
   var LOG = '[SCW AccMenuInject]';
 
+  // Standalone menus that must never be injected into an accordion
+  var MENU_EXCLUDE = { 'view_3815': true };
+
   // ── Debounce / retry state ─────────────────────────
   var _debounceTimer = null;
   var _retryTimers = [];
@@ -378,6 +381,7 @@
         var menuView = result.menu;
         var strategy = result.strategy;
 
+        if (MENU_EXCLUDE[menuView.id]) { skipped.noMenu++; continue; }
         if (menuView.classList.contains(HIDDEN_CLASS)) { skipped.menuHidden++; continue; }
 
         // ── Collect action links from DOM ──
