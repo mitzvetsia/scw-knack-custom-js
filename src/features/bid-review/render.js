@@ -374,13 +374,6 @@
       // Only hide change request UI when require sub bid is explicitly No
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
 
-      if (CFG.debug) {
-        console.log('[BidReview] Row actions:', row.id,
-          'pkg:', cpkg.id,
-          'requireSubBid:', JSON.stringify(ccell.requireSubBid),
-          'noSubBid:', noSubBid);
-      }
-
       if (!noSubBid) {
         // Show pending card FIRST (above buttons)
         if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
