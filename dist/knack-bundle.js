@@ -11026,6 +11026,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  gap: 3px;',
       '}',
 
+      '.scw-bid-review__cr-summary {',
+      '  display: block;',
+      '  font-size: 10px;',
+      '  color: #0891b2;',
+      '  line-height: 1.3;',
+      '  padding: 2px 0;',
+      '}',
+
+      '.scw-bid-review__cr-notes {',
+      '  display: block;',
+      '  font-size: 10px;',
+      '  color: #64748b;',
+      '  font-style: italic;',
+      '  line-height: 1.3;',
+      '}',
+
       /* ── empty & loading states ────────────────────────────── */
       '.scw-bid-review__empty-state {',
       '  text-align: center;',
@@ -12285,15 +12301,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (!ccell) continue;
 
       // Check if there's an existing pending change for this row+package
-      var hasPending = false;
+      var pendingItem = null;
       if (pending[cpkg.id] && pending[cpkg.id].items) {
         for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
-          if (pending[cpkg.id].items[pi].rowId === row.id) { hasPending = true; break; }
+          if (pending[cpkg.id].items[pi].rowId === row.id) { pendingItem = pending[cpkg.id].items[pi]; break; }
         }
       }
 
-      var crLabel = hasPending ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-      var crMod   = hasPending ? 'change-edit sm' : 'change-req sm';
+      var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+      var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
       wrap.appendChild(btn(crLabel, crMod, {
         'data-action':      'cell_request_change',
         'data-row-id':      row.id,
@@ -12303,6 +12319,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         'data-vis-cabling': visibility.cabling ? '1' : '0',
         'data-vis-conn':    visibility.connDevice ? '1' : '0',
       }));
+
+      // Show inline summary of pending changes
+      if (pendingItem && ns.changeRequests && ns.changeRequests.summarizeItem) {
+        var summary = ns.changeRequests.summarizeItem(pendingItem);
+        if (summary) {
+          wrap.appendChild(el('span', 'scw-bid-review__cr-summary', summary));
+        }
+        if (pendingItem.changeNotes) {
+          wrap.appendChild(el('span', 'scw-bid-review__cr-notes', pendingItem.changeNotes));
+        }
+      }
     }
 
     td.appendChild(wrap);
@@ -13539,11 +13566,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── Public API ─────────────────────────────────────────
   ns.changeRequests = {
-    open:        openChangeModal,
-    renderPanel: renderPanel,
-    rehydrate:   rehydrateFromKnack,
-    getPending:  function () { return _pending; },
-    clear:       function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
+    open:           openChangeModal,
+    renderPanel:    renderPanel,
+    rehydrate:      rehydrateFromKnack,
+    getPending:     function () { return _pending; },
+    summarizeItem:  summarizeChanges,
+    clear:          function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
   };
 
 })();

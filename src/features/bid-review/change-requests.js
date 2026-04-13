@@ -610,11 +610,12 @@
 
   // ── Public API ─────────────────────────────────────────
   ns.changeRequests = {
-    open:        openChangeModal,
-    renderPanel: renderPanel,
-    rehydrate:   rehydrateFromKnack,
-    getPending:  function () { return _pending; },
-    clear:       function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
+    open:           openChangeModal,
+    renderPanel:    renderPanel,
+    rehydrate:      rehydrateFromKnack,
+    getPending:     function () { return _pending; },
+    summarizeItem:  summarizeChanges,
+    clear:          function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
   };
 
 })();

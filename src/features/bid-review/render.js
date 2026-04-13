@@ -338,15 +338,15 @@
       if (!ccell) continue;
 
       // Check if there's an existing pending change for this row+package
-      var hasPending = false;
+      var pendingItem = null;
       if (pending[cpkg.id] && pending[cpkg.id].items) {
         for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
-          if (pending[cpkg.id].items[pi].rowId === row.id) { hasPending = true; break; }
+          if (pending[cpkg.id].items[pi].rowId === row.id) { pendingItem = pending[cpkg.id].items[pi]; break; }
         }
       }
 
-      var crLabel = hasPending ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-      var crMod   = hasPending ? 'change-edit sm' : 'change-req sm';
+      var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+      var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
       wrap.appendChild(btn(crLabel, crMod, {
         'data-action':      'cell_request_change',
         'data-row-id':      row.id,
@@ -356,6 +356,17 @@
         'data-vis-cabling': visibility.cabling ? '1' : '0',
         'data-vis-conn':    visibility.connDevice ? '1' : '0',
       }));
+
+      // Show inline summary of pending changes
+      if (pendingItem && ns.changeRequests && ns.changeRequests.summarizeItem) {
+        var summary = ns.changeRequests.summarizeItem(pendingItem);
+        if (summary) {
+          wrap.appendChild(el('span', 'scw-bid-review__cr-summary', summary));
+        }
+        if (pendingItem.changeNotes) {
+          wrap.appendChild(el('span', 'scw-bid-review__cr-notes', pendingItem.changeNotes));
+        }
+      }
     }
 
     td.appendChild(wrap);

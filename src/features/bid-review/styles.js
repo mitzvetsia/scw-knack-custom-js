@@ -512,6 +512,22 @@
       '  gap: 3px;',
       '}',
 
+      '.scw-bid-review__cr-summary {',
+      '  display: block;',
+      '  font-size: 10px;',
+      '  color: #0891b2;',
+      '  line-height: 1.3;',
+      '  padding: 2px 0;',
+      '}',
+
+      '.scw-bid-review__cr-notes {',
+      '  display: block;',
+      '  font-size: 10px;',
+      '  color: #64748b;',
+      '  font-style: italic;',
+      '  line-height: 1.3;',
+      '}',
+
       /* ── empty & loading states ────────────────────────────── */
       '.scw-bid-review__empty-state {',
       '  text-align: center;',
