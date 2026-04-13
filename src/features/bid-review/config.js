@@ -76,6 +76,9 @@
       proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
       mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
       sortOrder:       'field_2218',   // sort order for proposal bucket groups
+
+      // Change request draft persistence (paragraph field on SOW record)
+      changeRequestDraft: 'field_2684',
     },
 
     // ── SOW item fields (view_3728 — different keys than bid records) ──

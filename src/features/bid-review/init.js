@@ -37,6 +37,11 @@
 
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
+
+      // Rehydrate change request drafts from Knack field
+      if (ns.changeRequests && ns.changeRequests.rehydrate) {
+        ns.changeRequests.rehydrate(_state.sowGrids);
+      }
     }).fail(function (err) {
       console.error('[BidReview] Pipeline failed:', err);
       ns.renderToast('Failed to load comparison data', 'error');
