@@ -11061,9 +11061,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  border-left: 3px solid #0891b2;',
       '  border-radius: 4px;',
       '  padding: 5px 8px;',
-      '  margin-top: 2px;',
+      '  margin-top: 2px; margin-bottom: 2px;',
       '  font-size: 10px;',
       '  line-height: 1.35;',
+      '}',
+      '.scw-bid-cr-card--removal {',
+      '  background: #fef2f2;',
+      '  border-color: #fca5a5;',
+      '  border-left-color: #dc2626;',
+      '}',
+      '.scw-bid-cr-card--removal .scw-bid-cr-card__header {',
+      '  color: #dc2626;',
       '}',
 
       '.scw-bid-cr-card__header {',
@@ -12415,9 +12423,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
       }
 
-      // Only show change request UI if require sub bid is not explicitly No
+      // Only hide change request UI when require sub bid is explicitly No
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
+
+      if (CFG.debug) {
+        console.log('[BidReview] Row actions:', row.id,
+          'pkg:', cpkg.id,
+          'requireSubBid:', JSON.stringify(ccell.requireSubBid),
+          'noSubBid:', noSubBid);
+      }
+
       if (!noSubBid) {
+        // Show pending card FIRST (above buttons)
+        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+        }
+
         var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
         var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
         wrap.appendChild(btn(crLabel, crMod, {
@@ -12438,11 +12459,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             'data-package-id': cpkg.id,
             'data-sow-id':     sowId,
           }));
-        }
-
-        // Show change card for pending changes
-        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
         }
       }
     }
@@ -13806,7 +13822,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId) {
-    var card = el('div', 'scw-bid-cr-card');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
+    var card = el('div', cardClass);
 
     var headerLabel = item.removeFromBid ? 'Remove from Bid'
                     : item.addToBid      ? 'Add to Bid'

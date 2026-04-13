@@ -735,7 +735,8 @@
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId) {
-    var card = el('div', 'scw-bid-cr-card');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
+    var card = el('div', cardClass);
 
     var headerLabel = item.removeFromBid ? 'Remove from Bid'
                     : item.addToBid      ? 'Add to Bid'

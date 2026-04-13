@@ -371,9 +371,22 @@
         }
       }
 
-      // Only show change request UI if require sub bid is not explicitly No
+      // Only hide change request UI when require sub bid is explicitly No
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
+
+      if (CFG.debug) {
+        console.log('[BidReview] Row actions:', row.id,
+          'pkg:', cpkg.id,
+          'requireSubBid:', JSON.stringify(ccell.requireSubBid),
+          'noSubBid:', noSubBid);
+      }
+
       if (!noSubBid) {
+        // Show pending card FIRST (above buttons)
+        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+        }
+
         var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
         var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
         wrap.appendChild(btn(crLabel, crMod, {
@@ -394,11 +407,6 @@
             'data-package-id': cpkg.id,
             'data-sow-id':     sowId,
           }));
-        }
-
-        // Show change card for pending changes
-        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
         }
       }
     }
