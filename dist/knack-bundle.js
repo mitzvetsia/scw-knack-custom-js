@@ -7621,13 +7621,27 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ══════════════════════════════════════════════════════════════
 
   var PUBLISH_TOAST_ID = 'scw-publish-toast';
+  var PUBLISH_SPIN_CSS = 'scw-publish-spin-css';
+
+  function injectPublishSpinCss() {
+    if (document.getElementById(PUBLISH_SPIN_CSS)) return;
+    var s = document.createElement('style');
+    s.id = PUBLISH_SPIN_CSS;
+    s.textContent = '@keyframes scwPublishSpin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(s);
+  }
 
   function dismissPublishToast() {
     var el = document.getElementById(PUBLISH_TOAST_ID);
     if (el) el.remove();
   }
 
-  function showPublishToast(message, autoClose) {
+  /**
+   * @param {string}  message
+   * @param {boolean} autoClose  — auto-dismiss after 3 s
+   * @param {boolean} showSpinner — prepend a spinning ring
+   */
+  function showPublishToast(message, autoClose, showSpinner) {
     var existing = document.getElementById(PUBLISH_TOAST_ID);
     if (existing) existing.remove();
 
@@ -7638,8 +7652,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       'background: #07467c; color: #fff; padding: 20px 50px 20px 40px;',
       'border-radius: 8px; font-size: 16px; font-weight: 600;',
       'box-shadow: 0 4px 20px rgba(0,0,0,.3); z-index: 10000;',
-      'text-align: center; min-width: 260px;'
+      'display: flex; align-items: center; gap: 10px;',
+      'text-align: center; min-width: 260px; justify-content: center;'
     ].join('');
+
+    if (showSpinner) {
+      injectPublishSpinCss();
+      var spin = document.createElement('span');
+      spin.style.cssText = [
+        'display: inline-block; width: 16px; height: 16px; flex-shrink: 0;',
+        'border: 2.5px solid rgba(255,255,255,.3); border-top-color: #fff;',
+        'border-radius: 50%; animation: scwPublishSpin .8s linear infinite;'
+      ].join('');
+      toast.appendChild(spin);
+    }
 
     var span = document.createElement('span');
     span.textContent = message;
@@ -7661,6 +7687,21 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     if (autoClose) {
       setTimeout(dismissPublishToast, 3000);
+    }
+  }
+
+  /** Navigate to the parent page by stripping the last two hash segments. */
+  function redirectToParent() {
+    dismissPublishToast();
+    var hash = (window.location.hash || '').replace(/\/+$/, '');
+    // Knack child page: #parent-slug/parent-id/child-slug/child-id
+    // Strip last two segments → #parent-slug/parent-id
+    var parts = hash.replace(/^#\/?/, '').split('/');
+    if (parts.length >= 2) {
+      parts.splice(-2, 2);
+      window.location.hash = '#' + parts.join('/');
+    } else {
+      window.location.hash = '#';
     }
   }
 
@@ -7768,6 +7809,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           sendToWebhook(payload);
 
           if (cfg.saveHtml) {
+            // Disable button to prevent double-submit
+            $btn.prop('disabled', true).css({ opacity: 0.5, cursor: 'not-allowed' });
+            showPublishToast('Publishing quote\u2026', false, true);
+
             var pageRecordId = getPageRecordId();
             var summary = extractSummaryFields(payload);
             var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
@@ -7792,16 +7837,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               contentType: 'application/json',
               data: JSON.stringify(savePayload),
               crossDomain: true,
+              timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Save webhook OK');
-                showPublishToast('Quote published successfully!', true);
+                console.log('[SCW PDF Export] Save webhook OK — redirecting to parent');
+                showPublishToast('Quote published \u2014 redirecting\u2026', false);
+                setTimeout(redirectToParent, 1500);
               },
               error: function (xhr, status, err) {
                 console.error('[SCW PDF Export] Save webhook failed:', status, err);
-                showPublishToast('Quote published — redirecting\u2026', true);
+                showPublishToast('Publish failed \u2014 please try again.', true);
+                $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
               }
             });
-            showPublishToast('Publishing quote\u2026', false);
           }
         });
 
