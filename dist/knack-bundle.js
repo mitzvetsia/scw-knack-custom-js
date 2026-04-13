@@ -10449,6 +10449,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       bidConnDevice:   'field_2380',   // Connected Devices (bid side)
       bidConnTo:       'field_2381',   // Connected To (bid side — camera/reader only)
       bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
+      requireSubBid:   'field_2478',   // BOOL_require sub bid (no bid → no change requests)
 
       // Payload-only fields (not displayed in grid)
       field2627:       'field_2627',
@@ -11579,6 +11580,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           bidConnTo:       connectionLabelsAll(rec, FK.bidConnTo),
           bidConnToIds:    connectionIdsAll(rec, FK.bidConnTo),
           bidMapConn:      raw(rec, FK.bidMapConn),
+          requireSubBid:   bool(rec, FK.requireSubBid),
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
           dropLength:      raw(rec, FK.dropLength),
@@ -12407,21 +12409,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
       }
 
-      var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-      var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-      wrap.appendChild(btn(crLabel, crMod, {
-        'data-action':      'cell_request_change',
-        'data-row-id':      row.id,
-        'data-package-id':  cpkg.id,
-        'data-sow-id':      sowId,
-        'data-vis-qty':     visibility.qty ? '1' : '0',
-        'data-vis-cabling': visibility.cabling ? '1' : '0',
-        'data-vis-conn':    visibility.connDevice ? '1' : '0',
-      }));
+      // Only show change request UI if this item requires a sub bid
+      if (ccell.requireSubBid !== false) {
+        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
+        wrap.appendChild(btn(crLabel, crMod, {
+          'data-action':      'cell_request_change',
+          'data-row-id':      row.id,
+          'data-package-id':  cpkg.id,
+          'data-sow-id':      sowId,
+          'data-vis-qty':     visibility.qty ? '1' : '0',
+          'data-vis-cabling': visibility.cabling ? '1' : '0',
+          'data-vis-conn':    visibility.connDevice ? '1' : '0',
+        }));
 
-      // Show change card for pending changes
-      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+        // Show change card for pending changes
+        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+        }
       }
     }
 

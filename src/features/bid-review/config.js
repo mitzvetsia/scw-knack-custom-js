@@ -46,6 +46,7 @@
       bidConnDevice:   'field_2380',   // Connected Devices (bid side)
       bidConnTo:       'field_2381',   // Connected To (bid side — camera/reader only)
       bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
+      requireSubBid:   'field_2478',   // BOOL_require sub bid (no bid → no change requests)
 
       // Payload-only fields (not displayed in grid)
       field2627:       'field_2627',

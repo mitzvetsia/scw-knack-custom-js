@@ -371,21 +371,24 @@
         }
       }
 
-      var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-      var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-      wrap.appendChild(btn(crLabel, crMod, {
-        'data-action':      'cell_request_change',
-        'data-row-id':      row.id,
-        'data-package-id':  cpkg.id,
-        'data-sow-id':      sowId,
-        'data-vis-qty':     visibility.qty ? '1' : '0',
-        'data-vis-cabling': visibility.cabling ? '1' : '0',
-        'data-vis-conn':    visibility.connDevice ? '1' : '0',
-      }));
+      // Only show change request UI if this item requires a sub bid
+      if (ccell.requireSubBid !== false) {
+        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
+        wrap.appendChild(btn(crLabel, crMod, {
+          'data-action':      'cell_request_change',
+          'data-row-id':      row.id,
+          'data-package-id':  cpkg.id,
+          'data-sow-id':      sowId,
+          'data-vis-qty':     visibility.qty ? '1' : '0',
+          'data-vis-cabling': visibility.cabling ? '1' : '0',
+          'data-vis-conn':    visibility.connDevice ? '1' : '0',
+        }));
 
-      // Show change card for pending changes
-      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+        // Show change card for pending changes
+        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+        }
       }
     }
 
