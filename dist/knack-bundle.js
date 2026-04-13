@@ -8105,6 +8105,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           var $idInput = $('#' + formViewId + ' input[name="' + cfg.trigger.recordIdInput + '"]');
           if ($idInput.length) extra.recordId = $idInput.val();
         }
+        // Fallback: extract record ID from the URL hash
+        if (!extra.recordId) {
+          extra.recordId = getPageRecordId();
+        }
 
         // Extract additional field values from the scene DOM
         if (cfg.extraFields) {
