@@ -34,6 +34,7 @@ cat \
   src/features/bid-review/transform.js \
   src/features/bid-review/render.js \
   src/features/bid-review/actions.js \
+  src/features/bid-review/change-requests.js \
   src/features/bid-review/init.js \
   src/features/group-collapse.js \
   src/features/select-all-checkboxes.js \

@@ -46,6 +46,7 @@
     if (payload.updates)     body.updates     = payload.updates;
     if (payload.creates)     body.creates     = payload.creates;
     if (payload.removals)    body.removals    = payload.removals;
+    if (payload.items)       body.items       = payload.items;
 
     if (CFG.debug) {
       console.log('[BidReview] Submitting action:', body);
@@ -181,6 +182,7 @@
       case 'package_adopt_create':   return 'Adopt + Create (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
       case 'package_copy_to_sow':    return 'Copy to SOW requested';
       case 'package_create_sow':     return 'Create new SOW requested';
+      case 'change_request':         return 'Change request (' + (payload.items ? payload.items.length : 0) + ' items)';
       default:                       return 'Action submitted';
     }
   }

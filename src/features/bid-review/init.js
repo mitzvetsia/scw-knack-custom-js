@@ -86,7 +86,9 @@
 
       if (button.classList.contains('scw-bid-review__btn--busy')) return;
 
-      if (action.indexOf('package_') === 0) {
+      if (action === 'cell_request_change') {
+        handleChangeRequest(button);
+      } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
         handleRowAction(button, action);
@@ -298,6 +300,40 @@
       .always(function () {
         setBusy(button, false);
       });
+  }
+
+  // ── change request (per-cell) ────────────────────────────────
+
+  function handleChangeRequest(button) {
+    if (!_state || !ns.changeRequests) return;
+
+    var rowId = button.getAttribute('data-row-id');
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+
+    var grid = findSowGrid(sowId);
+    if (!grid) return;
+
+    // Find the row
+    var row = null;
+    for (var i = 0; i < grid.rows.length; i++) {
+      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+    }
+    if (!row) return;
+
+    var cell = row.cellsByPackage[pkgId];
+    if (!cell) return;
+
+    ns.changeRequests.open({
+      rowId:        rowId,
+      pkgId:        pkgId,
+      pkgName:      findPackageName(grid, pkgId),
+      sowId:        sowId,
+      sowName:      grid.sowName,
+      displayLabel: row.displayLabel,
+      productName:  row.productName,
+      cell:         cell,
+    });
   }
 
   // ── row-level action ────────────────────────────────────────

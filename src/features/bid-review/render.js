@@ -249,7 +249,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs, actionData) {
     var td = el('td');
 
     if (!cell) {
@@ -305,6 +305,16 @@
       notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
       notesEl.appendChild(document.createTextNode(cell.notes));
       td.appendChild(notesEl);
+    }
+
+    // "Request Change" button — per bid cell
+    if (actionData) {
+      td.appendChild(btn('Request Change', 'change-req sm', {
+        'data-action':     'cell_request_change',
+        'data-row-id':     actionData.rowId,
+        'data-package-id': actionData.pkgId,
+        'data-sow-id':     actionData.sowId,
+      }));
     }
 
     return td;
@@ -445,7 +455,10 @@
     for (var i = 0; i < packages.length; i++) {
       var pid = packages[i].id;
       var d   = diffsByPkg[pid];
-      var dataTd = buildDataCell(row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d);
+      var dataTd = buildDataCell(
+        row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d,
+        { rowId: row.id, pkgId: pid, sowId: sowId }
+      );
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
