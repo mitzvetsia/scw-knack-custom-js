@@ -32,6 +32,12 @@
   // fallback restore if no view-renders fire after modal close
   var SAFETY_MS = 1500;
 
+  // ── Guard state — re-apply scroll if late renders move it ─
+  var _guardPos = 0;
+  var _guardUntil = 0;
+  // Duration after restore during which late view-renders re-apply scroll
+  var GUARD_MS = 1500;
+
   // ── Helpers ───────────────────────────────────────────
 
   function saveScroll() {
@@ -50,6 +56,10 @@
     }
   }
 
+  function applyScroll(pos) {
+    window.scrollTo(0, pos);
+  }
+
   function doRestore() {
     clearTimers();
     var pos = _savedScrollY;
@@ -60,7 +70,10 @@
     if (typeof pos === 'number' && pos > 0) {
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
-          window.scrollTo(0, pos);
+          applyScroll(pos);
+          // Enter guard mode — re-apply if late Knack/KTL renders move scroll
+          _guardPos = pos;
+          _guardUntil = Date.now() + GUARD_MS;
         });
       });
     }
@@ -105,6 +118,20 @@
     // Detect modal close: was open, now the DOM element is gone
     if (_modalWasOpen && !isModalPresent()) {
       startPendingRestore();
+    }
+
+    // Guard mode: a late view-render after restore moved the scroll —
+    // re-apply the saved position.  Stops after GUARD_MS or if the
+    // user scrolls manually (wheel / touch — see listeners below).
+    if (!_pendingRestore && _guardUntil && Date.now() < _guardUntil) {
+      setTimeout(function () {
+        if (Date.now() > _guardUntil) return;
+        var current = window.scrollY || window.pageYOffset || 0;
+        if (Math.abs(current - _guardPos) > 50) {
+          applyScroll(_guardPos);
+        }
+      }, 60);
+      return;
     }
 
     if (!_pendingRestore) return;
@@ -166,6 +193,12 @@
       }
     }, 300);
   });
+
+  // ── Cancel guard on user-initiated scroll ──────────────
+
+  function cancelGuard() { _guardUntil = 0; }
+  window.addEventListener('wheel', cancelGuard, { passive: true });
+  window.addEventListener('touchmove', cancelGuard, { passive: true });
 
   // ── Init ──────────────────────────────────────────────
 
