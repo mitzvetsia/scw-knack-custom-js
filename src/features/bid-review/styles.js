@@ -198,7 +198,11 @@
       '.scw-bid-review__btn--change-req {',
       '  background: #0891b2;',
       '  color: #fff;',
-      '  margin-top: 6px;',
+      '}',
+
+      '.scw-bid-review__btn--change-edit {',
+      '  background: #f59e0b;',
+      '  color: #78350f;',
       '}',
 
       '.scw-bid-review__btn--busy {',

@@ -249,7 +249,7 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs, actionData) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs) {
     var td = el('td');
 
     if (!cell) {
@@ -307,22 +307,12 @@
       td.appendChild(notesEl);
     }
 
-    // "Request Change" button — per bid cell
-    if (actionData) {
-      td.appendChild(btn('Request Change', 'change-req sm', {
-        'data-action':     'cell_request_change',
-        'data-row-id':     actionData.rowId,
-        'data-package-id': actionData.pkgId,
-        'data-sow-id':     actionData.sowId,
-      }));
-    }
-
     return td;
   }
 
   // ── row actions cell ────────────────────────────────────────
 
-  function buildRowActionsCell(row, packages, sowId) {
+  function buildRowActionsCell(row, packages, sowId, visibility) {
     var td = el('td');
     var wrap = el('div', 'scw-bid-review__row-actions');
 
@@ -340,11 +330,33 @@
       }
     }
 
-    // Request Revision — always available
-    wrap.appendChild(btn(
-      'Request Revision', 'revision sm',
-      { 'data-action': 'row_revision', 'data-row-id': row.id, 'data-sow-id': sowId }
-    ));
+    // Per-package "Request Change" / "Edit Change" buttons
+    var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
+    for (var ci = 0; ci < packages.length; ci++) {
+      var cpkg = packages[ci];
+      var ccell = row.cellsByPackage[cpkg.id];
+      if (!ccell) continue;
+
+      // Check if there's an existing pending change for this row+package
+      var hasPending = false;
+      if (pending[cpkg.id] && pending[cpkg.id].items) {
+        for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
+          if (pending[cpkg.id].items[pi].rowId === row.id) { hasPending = true; break; }
+        }
+      }
+
+      var crLabel = hasPending ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+      var crMod   = hasPending ? 'change-edit sm' : 'change-req sm';
+      wrap.appendChild(btn(crLabel, crMod, {
+        'data-action':      'cell_request_change',
+        'data-row-id':      row.id,
+        'data-package-id':  cpkg.id,
+        'data-sow-id':      sowId,
+        'data-vis-qty':     visibility.qty ? '1' : '0',
+        'data-vis-cabling': visibility.cabling ? '1' : '0',
+        'data-vis-conn':    visibility.connDevice ? '1' : '0',
+      }));
+    }
 
     td.appendChild(wrap);
     return td;
@@ -456,8 +468,7 @@
       var pid = packages[i].id;
       var d   = diffsByPkg[pid];
       var dataTd = buildDataCell(
-        row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d,
-        { rowId: row.id, pkgId: pid, sowId: sowId }
+        row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d
       );
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
@@ -465,8 +476,10 @@
       tr.appendChild(dataTd);
     }
 
-    // Row actions
-    tr.appendChild(buildRowActionsCell(row, packages, sowId));
+    // Row actions (with visibility flags for change request filtering)
+    tr.appendChild(buildRowActionsCell(row, packages, sowId, {
+      qty: qtyVisible, cabling: cablingVisible, connDevice: connDevVisible
+    }));
 
     return tr;
   }
