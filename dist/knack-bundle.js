@@ -11026,20 +11026,61 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  gap: 3px;',
       '}',
 
-      '.scw-bid-review__cr-summary {',
-      '  display: block;',
+      /* ── change request cards (inline in actions column) ──── */
+      '.scw-bid-cr-card {',
+      '  background: #f0fdfa;',
+      '  border: 1px solid #99f6e4;',
+      '  border-left: 3px solid #0891b2;',
+      '  border-radius: 4px;',
+      '  padding: 5px 8px;',
+      '  margin-top: 2px;',
       '  font-size: 10px;',
-      '  color: #0891b2;',
-      '  line-height: 1.3;',
-      '  padding: 2px 0;',
+      '  line-height: 1.35;',
       '}',
 
-      '.scw-bid-review__cr-notes {',
-      '  display: block;',
-      '  font-size: 10px;',
+      '.scw-bid-cr-card__header {',
+      '  font-weight: 700;',
+      '  font-size: 9px;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: .4px;',
+      '  color: #0891b2;',
+      '  margin-bottom: 3px;',
+      '}',
+
+      '.scw-bid-cr-card__row {',
+      '  display: flex;',
+      '  align-items: baseline;',
+      '  gap: 3px;',
+      '  padding: 1px 0;',
+      '}',
+
+      '.scw-bid-cr-card__label {',
+      '  font-weight: 600;',
+      '  color: #475569;',
+      '  white-space: nowrap;',
+      '}',
+
+      '.scw-bid-cr-card__from {',
+      '  color: #dc2626;',
+      '  text-decoration: line-through;',
+      '}',
+
+      '.scw-bid-cr-card__arrow {',
+      '  color: #94a3b8;',
+      '  flex-shrink: 0;',
+      '}',
+
+      '.scw-bid-cr-card__to {',
+      '  color: #059669;',
+      '  font-weight: 600;',
+      '}',
+
+      '.scw-bid-cr-card__notes {',
       '  color: #64748b;',
       '  font-style: italic;',
-      '  line-height: 1.3;',
+      '  margin-top: 3px;',
+      '  padding-top: 3px;',
+      '  border-top: 1px solid #ccfbf1;',
       '}',
 
       /* ── empty & loading states ────────────────────────────── */
@@ -12320,15 +12361,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         'data-vis-conn':    visibility.connDevice ? '1' : '0',
       }));
 
-      // Show inline summary of pending changes
-      if (pendingItem && ns.changeRequests && ns.changeRequests.summarizeItem) {
-        var summary = ns.changeRequests.summarizeItem(pendingItem);
-        if (summary) {
-          wrap.appendChild(el('span', 'scw-bid-review__cr-summary', summary));
-        }
-        if (pendingItem.changeNotes) {
-          wrap.appendChild(el('span', 'scw-bid-review__cr-notes', pendingItem.changeNotes));
-        }
+      // Show change card for pending changes
+      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem));
       }
     }
 
@@ -13434,11 +13469,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
-      if (items[i].rowId === item.rowId) { items[i] = item; persist(); renderPanel(); return; }
+      if (items[i].rowId === item.rowId) { items[i] = item; persist(); renderPanel(); triggerRerender(); return; }
     }
     items.push(item);
     persist();
     renderPanel();
+    triggerRerender();
   }
 
   function removePendingItem(pkgId, rowId) {
@@ -13450,6 +13486,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!items.length) delete _pending[pkgId];
     persist();
     renderPanel();
+    triggerRerender();
+  }
+
+  function triggerRerender() {
+    if (ns.rerender) ns.rerender();
   }
 
   // ── Panel ──────────────────────────────────────────────
@@ -13529,6 +13570,38 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return parts.join(', ');
   }
 
+  /** Build a styled card DOM element summarizing a pending change item. */
+  function buildSummaryCard(item) {
+    var card = el('div', 'scw-bid-cr-card');
+
+    var header = el('div', 'scw-bid-cr-card__header', 'Pending Change');
+    card.appendChild(header);
+
+    var r = item.requested, c = item.current;
+    for (var i = 0; i < FIELD_DEFS.length; i++) {
+      var d = FIELD_DEFS[i];
+      if (!hasValue(r[d.key])) continue;
+
+      var row = el('div', 'scw-bid-cr-card__row');
+      row.appendChild(el('span', 'scw-bid-cr-card__label', d.label + ':'));
+
+      var from = hasValue(c[d.key]) ? (d.currency ? fmtCurrency(c[d.key]) : String(c[d.key])) : '\u2014';
+      var to   = d.currency ? fmtCurrency(r[d.key]) : String(r[d.key]);
+
+      row.appendChild(el('span', 'scw-bid-cr-card__from', from));
+      row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
+      row.appendChild(el('span', 'scw-bid-cr-card__to', to));
+      card.appendChild(row);
+    }
+
+    if (item.changeNotes) {
+      var notes = el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d');
+      card.appendChild(notes);
+    }
+
+    return card;
+  }
+
   // ── Submit ─────────────────────────────────────────────
   function submitChangeRequest(pkgId) {
     var pkg = _pending[pkgId];
@@ -13570,7 +13643,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     renderPanel:    renderPanel,
     rehydrate:      rehydrateFromKnack,
     getPending:     function () { return _pending; },
-    summarizeItem:  summarizeChanges,
+    summarizeItem:    summarizeChanges,
+    buildSummaryCard: buildSummaryCard,
     clear:          function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
   };
 
@@ -13960,6 +14034,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   ns.refresh = function refresh() {
     runPipeline();
+  };
+
+  /** Lightweight re-render from existing state (no data refetch). */
+  ns.rerender = function rerender() {
+    if (!_state) return;
+    var mount = ns.renderMatrix(_state);
+    attachClickHandler(mount);
+    if (ns.changeRequests && ns.changeRequests.rehydrate) {
+      ns.changeRequests.rehydrate(_state.sowGrids);
+    }
   };
 
   // ── force views to load 1000 records per page ───────────────

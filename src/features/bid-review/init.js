@@ -385,6 +385,16 @@
     runPipeline();
   };
 
+  /** Lightweight re-render from existing state (no data refetch). */
+  ns.rerender = function rerender() {
+    if (!_state) return;
+    var mount = ns.renderMatrix(_state);
+    attachClickHandler(mount);
+    if (ns.changeRequests && ns.changeRequests.rehydrate) {
+      ns.changeRequests.rehydrate(_state.sowGrids);
+    }
+  };
+
   // ── force views to load 1000 records per page ───────────────
 
   /**

@@ -478,11 +478,12 @@
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
-      if (items[i].rowId === item.rowId) { items[i] = item; persist(); renderPanel(); return; }
+      if (items[i].rowId === item.rowId) { items[i] = item; persist(); renderPanel(); triggerRerender(); return; }
     }
     items.push(item);
     persist();
     renderPanel();
+    triggerRerender();
   }
 
   function removePendingItem(pkgId, rowId) {
@@ -494,6 +495,11 @@
     if (!items.length) delete _pending[pkgId];
     persist();
     renderPanel();
+    triggerRerender();
+  }
+
+  function triggerRerender() {
+    if (ns.rerender) ns.rerender();
   }
 
   // ── Panel ──────────────────────────────────────────────
@@ -573,6 +579,38 @@
     return parts.join(', ');
   }
 
+  /** Build a styled card DOM element summarizing a pending change item. */
+  function buildSummaryCard(item) {
+    var card = el('div', 'scw-bid-cr-card');
+
+    var header = el('div', 'scw-bid-cr-card__header', 'Pending Change');
+    card.appendChild(header);
+
+    var r = item.requested, c = item.current;
+    for (var i = 0; i < FIELD_DEFS.length; i++) {
+      var d = FIELD_DEFS[i];
+      if (!hasValue(r[d.key])) continue;
+
+      var row = el('div', 'scw-bid-cr-card__row');
+      row.appendChild(el('span', 'scw-bid-cr-card__label', d.label + ':'));
+
+      var from = hasValue(c[d.key]) ? (d.currency ? fmtCurrency(c[d.key]) : String(c[d.key])) : '\u2014';
+      var to   = d.currency ? fmtCurrency(r[d.key]) : String(r[d.key]);
+
+      row.appendChild(el('span', 'scw-bid-cr-card__from', from));
+      row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
+      row.appendChild(el('span', 'scw-bid-cr-card__to', to));
+      card.appendChild(row);
+    }
+
+    if (item.changeNotes) {
+      var notes = el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d');
+      card.appendChild(notes);
+    }
+
+    return card;
+  }
+
   // ── Submit ─────────────────────────────────────────────
   function submitChangeRequest(pkgId) {
     var pkg = _pending[pkgId];
@@ -614,7 +652,8 @@
     renderPanel:    renderPanel,
     rehydrate:      rehydrateFromKnack,
     getPending:     function () { return _pending; },
-    summarizeItem:  summarizeChanges,
+    summarizeItem:    summarizeChanges,
+    buildSummaryCard: buildSummaryCard,
     clear:          function () { _pending = {}; sclear(); saveToKnack(); renderPanel(); },
   };
 

@@ -357,15 +357,9 @@
         'data-vis-conn':    visibility.connDevice ? '1' : '0',
       }));
 
-      // Show inline summary of pending changes
-      if (pendingItem && ns.changeRequests && ns.changeRequests.summarizeItem) {
-        var summary = ns.changeRequests.summarizeItem(pendingItem);
-        if (summary) {
-          wrap.appendChild(el('span', 'scw-bid-review__cr-summary', summary));
-        }
-        if (pendingItem.changeNotes) {
-          wrap.appendChild(el('span', 'scw-bid-review__cr-notes', pendingItem.changeNotes));
-        }
+      // Show change card for pending changes
+      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+        wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem));
       }
     }
 
