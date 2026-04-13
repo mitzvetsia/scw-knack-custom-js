@@ -201,6 +201,12 @@
       '  color: #78350f;',
       '}',
 
+      '.scw-bid-review__btn--remove-bid {',
+      '  background: #fef2f2;',
+      '  color: #dc2626;',
+      '  border: 1px solid #fca5a5;',
+      '}',
+
       '.scw-bid-review__btn--busy {',
       '  opacity: 0.5;',
       '  pointer-events: none;',

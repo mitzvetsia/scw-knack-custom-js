@@ -265,6 +265,7 @@
       '.scw-bid-cr-modal__btn:hover { filter: brightness(.92); }',
       '.scw-bid-cr-modal__btn--cancel { background: #e2e8f0; color: #475569; }',
       '.scw-bid-cr-modal__btn--add { background: #0891b2; color: #fff; }',
+      '.scw-bid-cr-modal__btn--remove { background: #dc2626; color: #fff; }',
       '.scw-bid-cr-modal__checkbox-list {',
       '  display: flex; flex-direction: column; gap: 4px;',
       '  padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 5px;',
@@ -565,6 +566,7 @@
         return;
       }
     }
+    item.reciprocal = true;
     items.push(item);
     persist();
     triggerRerender();
@@ -735,17 +737,32 @@
   function buildSummaryCard(item, pkgId) {
     var card = el('div', 'scw-bid-cr-card');
 
-    var header = el('div', 'scw-bid-cr-card__header', 'Pending Change');
+    var headerLabel = item.removeFromBid ? 'Remove from Bid'
+                    : item.addToBid      ? 'Add to Bid'
+                    : 'Pending Change';
+    if (item.reciprocal) headerLabel += ' (auto)';
+    var header = el('div', 'scw-bid-cr-card__header', headerLabel);
 
-    // Dismiss button — top-right corner
-    var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
-    dismiss.title = 'Remove this change';
-    dismiss.addEventListener('click', function (e) {
-      e.stopPropagation();
-      removePendingItem(pkgId, item.rowId);
-    });
-    header.appendChild(dismiss);
+    // Dismiss button — hidden for reciprocal items (remove the source instead)
+    if (!item.reciprocal) {
+      var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
+      dismiss.title = 'Remove this change';
+      dismiss.addEventListener('click', function (e) {
+        e.stopPropagation();
+        removePendingItem(pkgId, item.rowId);
+      });
+      header.appendChild(dismiss);
+    }
     card.appendChild(header);
+
+    if (item.removeFromBid) {
+      card.appendChild(el('div', 'scw-bid-cr-card__row',
+        (item.displayLabel || item.productName || 'Item') + ' — requesting removal'));
+      if (item.changeNotes) {
+        card.appendChild(el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d'));
+      }
+      return card;
+    }
 
     var r = item.requested, c = item.current;
     for (var i = 0; i < FIELD_DEFS.length; i++) {
@@ -782,11 +799,14 @@
     var items = [];
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
-      items.push({
+      var payload = {
         rowId: it.rowId, bidRecordId: it.bidRecordId,
         displayLabel: it.displayLabel, productName: it.productName,
         current: it.current, requested: it.requested, changeNotes: it.changeNotes,
-      });
+      };
+      if (it.removeFromBid) payload.removeFromBid = true;
+      if (it.addToBid)      payload.addToBid = true;
+      items.push(payload);
     }
 
     ns.submitAction({ actionType: 'change_request', packageId: pkgId, sowId: pkg.sowId, items: items })
@@ -801,12 +821,177 @@
       });
   }
 
+  // ── Remove from Bid ─────────────────────────────────────
+  function openRemoveModal(params) {
+    injectCrStyles();
+    closeModal();
+
+    var overlay = el('div', 'scw-bid-cr-overlay');
+    overlay.id = OVERLAY_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = el('div', 'scw-bid-cr-modal');
+
+    var header = el('div', 'scw-bid-cr-modal__header');
+    var hLeft = el('div');
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', 'Remove from Bid'));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
+      params.pkgName + ' \u2014 ' + (params.displayLabel || params.productName || 'Item')));
+    header.appendChild(hLeft);
+    var closeBtn = el('button', 'scw-bid-cr-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = el('div', 'scw-bid-cr-modal__body');
+    body.appendChild(el('div', 'scw-bid-cr-modal__hint',
+      'Request that this line item be removed from the bid.'));
+    var notesRow = el('div', 'scw-bid-cr-modal__field');
+    notesRow.appendChild(el('label', 'scw-bid-cr-modal__label', 'Reason for removal'));
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-bid-cr-modal__textarea';
+    ta.placeholder = 'Why should this item be removed\u2026';
+    ta.rows = 3;
+    notesRow.appendChild(ta);
+    body.appendChild(notesRow);
+    modal.appendChild(body);
+
+    var footer = el('div', 'scw-bid-cr-modal__footer');
+    footer.appendChild(el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--cancel', 'Cancel'));
+    footer.lastChild.addEventListener('click', closeModal);
+    var removeBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--remove', 'Remove from Bid');
+    removeBtn.addEventListener('click', function () {
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+        rowId:         params.rowId,
+        bidRecordId:   params.cell.id,
+        displayLabel:  params.displayLabel,
+        productName:   params.cell.productName,
+        removeFromBid: true,
+        current:       {},
+        requested:     {},
+        changeNotes:   ta.value.trim(),
+      });
+      closeModal();
+      ns.renderToast('Removal added to change request', 'success');
+    });
+    footer.appendChild(removeBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Add Line Item ──────────────────────────────────────
+  function openAddItemModal(params) {
+    injectCrStyles();
+    closeModal();
+
+    var overlay = el('div', 'scw-bid-cr-overlay');
+    overlay.id = OVERLAY_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = el('div', 'scw-bid-cr-modal');
+
+    var header = el('div', 'scw-bid-cr-modal__header');
+    var hLeft = el('div');
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', 'Add Line Item'));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle', params.pkgName));
+    header.appendChild(hLeft);
+    var closeBtn = el('button', 'scw-bid-cr-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = el('div', 'scw-bid-cr-modal__body');
+    body.appendChild(el('div', 'scw-bid-cr-modal__hint',
+      'Request a new line item be added to this bid package.'));
+
+    // Editable fields for a new item (subset that makes sense for new items)
+    var ADD_FIELDS = [
+      { key: 'productName', label: 'Product',           type: 'text' },
+      { key: 'qty',         label: 'Qty',               type: 'number' },
+      { key: 'rate',        label: 'Rate ($)',          type: 'number' },
+      { key: 'laborDesc',   label: 'Labor Description', type: 'text', multiline: true },
+    ];
+
+    var inputs = {};
+    for (var fi = 0; fi < ADD_FIELDS.length; fi++) {
+      var fd = ADD_FIELDS[fi];
+      var fRow = el('div', 'scw-bid-cr-modal__field');
+      fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
+      var inp;
+      if (fd.multiline) {
+        inp = document.createElement('textarea');
+        inp.className = 'scw-bid-cr-modal__textarea';
+        inp.rows = 3;
+      } else {
+        inp = document.createElement('input');
+        inp.type = fd.type;
+        inp.className = 'scw-bid-cr-modal__input';
+        if (fd.type === 'number') inp.setAttribute('step', 'any');
+      }
+      inputs[fd.key] = inp;
+      fRow.appendChild(inp);
+      body.appendChild(fRow);
+    }
+
+    var notesRow = el('div', 'scw-bid-cr-modal__field');
+    notesRow.appendChild(el('label', 'scw-bid-cr-modal__label', 'Notes'));
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-bid-cr-modal__textarea';
+    ta.placeholder = 'Additional details\u2026';
+    ta.rows = 2;
+    notesRow.appendChild(ta);
+    body.appendChild(notesRow);
+    modal.appendChild(body);
+
+    var footer = el('div', 'scw-bid-cr-modal__footer');
+    footer.appendChild(el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--cancel', 'Cancel'));
+    footer.lastChild.addEventListener('click', closeModal);
+    var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add', 'Add to Change Request');
+    addBtn.addEventListener('click', function () {
+      var product = (inputs.productName.value || '').trim();
+      if (!product) {
+        ns.renderToast('Product name is required', 'error');
+        return;
+      }
+      var requested = {};
+      for (var k in inputs) {
+        var v = (inputs[k].value || '').trim();
+        if (v) requested[k] = k === 'qty' || k === 'rate' ? parseFloat(v) : v;
+      }
+      // Use a unique pseudo-ID for new items
+      var pseudoId = 'new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+        rowId:        pseudoId,
+        bidRecordId:  null,
+        displayLabel: product,
+        productName:  product,
+        addToBid:     true,
+        current:      {},
+        requested:    requested,
+        changeNotes:  ta.value.trim(),
+      });
+      closeModal();
+      ns.renderToast('New line item added to change request', 'success');
+    });
+    footer.appendChild(addBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { inputs.productName.focus(); }, 50);
+  }
+
   // ── Init: rehydrate from sessionStorage immediately ────
   sload();
 
   // ── Public API ─────────────────────────────────────────
   ns.changeRequests = {
     open:             openChangeModal,
+    openRemove:       openRemoveModal,
+    openAddItem:      openAddItemModal,
     rehydrate:        rehydrateFromKnack,
     getPending:       function () { return _pending; },
     summarizeItem:    summarizeChanges,

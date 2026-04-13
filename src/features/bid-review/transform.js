@@ -253,7 +253,7 @@
           bidConnTo:       connectionLabelsAll(rec, FK.bidConnTo),
           bidConnToIds:    connectionIdsAll(rec, FK.bidConnTo),
           bidMapConn:      raw(rec, FK.bidMapConn),
-          requireSubBid:   bool(rec, FK.requireSubBid),
+          requireSubBid:   raw(rec, FK.requireSubBid),
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
           dropLength:      raw(rec, FK.dropLength),

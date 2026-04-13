@@ -93,6 +93,8 @@
 
       if (action === 'cell_request_change') {
         handleChangeRequest(button);
+      } else if (action === 'cell_remove_from_bid') {
+        handleRemoveFromBid(button);
       } else if (action === 'cr_submit') {
         var pkgId = button.getAttribute('data-pkg-id');
         if (ns.changeRequests && ns.changeRequests.submitForPackage) {
@@ -404,6 +406,39 @@
         cabling:    button.getAttribute('data-vis-cabling') === '1',
         connDevice: button.getAttribute('data-vis-conn') === '1',
       },
+    });
+  }
+
+  // ── remove from bid (per-cell) ────────────────────────────────
+
+  function handleRemoveFromBid(button) {
+    if (!_state || !ns.changeRequests) return;
+
+    var rowId = button.getAttribute('data-row-id');
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+
+    var grid = findSowGrid(sowId);
+    if (!grid) return;
+
+    var row = null;
+    for (var i = 0; i < grid.rows.length; i++) {
+      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+    }
+    if (!row) return;
+
+    var cell = row.cellsByPackage[pkgId];
+    if (!cell) return;
+
+    ns.changeRequests.openRemove({
+      rowId:        rowId,
+      pkgId:        pkgId,
+      pkgName:      findPackageName(grid, pkgId),
+      sowId:        sowId,
+      sowName:      grid.sowName,
+      displayLabel: row.displayLabel,
+      productName:  row.productName,
+      cell:         cell,
     });
   }
 

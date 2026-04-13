@@ -371,8 +371,9 @@
         }
       }
 
-      // Only show change request UI if this item requires a sub bid
-      if (ccell.requireSubBid !== false) {
+      // Only show change request UI if require sub bid is not explicitly No
+      var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
+      if (!noSubBid) {
         var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
         var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
         wrap.appendChild(btn(crLabel, crMod, {
@@ -384,6 +385,16 @@
           'data-vis-cabling': visibility.cabling ? '1' : '0',
           'data-vis-conn':    visibility.connDevice ? '1' : '0',
         }));
+
+        // "Remove from Bid" button
+        if (!pendingItem || !pendingItem.removeFromBid) {
+          wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
+            'data-action':     'cell_remove_from_bid',
+            'data-row-id':     row.id,
+            'data-package-id': cpkg.id,
+            'data-sow-id':     sowId,
+          }));
+        }
 
         // Show change card for pending changes
         if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
