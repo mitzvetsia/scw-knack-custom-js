@@ -383,9 +383,11 @@
         ],
         // Client-side row sort — device-worksheet always re-sorts rows at
         // render time, so this dictates the visible order regardless of
-        // any server-side sort. field_2240 (drop prefix) is a text field
-        // with natural numeric compare; field_1951 (drop number) is numeric.
+        // any server-side sort. field_2218 (sort order) is numeric,
+        // field_2240 (drop prefix) is text with natural numeric compare,
+        // field_1951 (drop number) is numeric.
         rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2240', order: 'asc', type: 'text'   },
           { field: 'field_1951', order: 'asc', type: 'number' }
         ],
@@ -489,9 +491,10 @@
           'field_1984', // Exterior
           'field_2269'  // Total
         ],
-        // Client-side row sort. Drop prefix (text, natural compare) then
-        // drop number (numeric). Missing values trail.
+        // Client-side row sort. Sort order (numeric) then drop prefix
+        // (text, natural compare) then drop number (numeric). Missing values trail.
         rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2240', order: 'asc', type: 'text'   },
           { field: 'field_1951', order: 'asc', type: 'number' }
         ],
@@ -5429,8 +5432,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // ── Sort eligible rows ──
     // viewCfg.rowSort is an array of { field, order, type } rules applied
     // in order. type: 'number' | 'text' (default: 'number'). Missing values
-    // always sort last regardless of order. Default keeps the historical
-    // field_2218 asc / field_1960 desc behavior.
+    // always sort last regardless of order. Default sorts by
+    // field_2218 asc / field_2240 asc / field_1951 asc.
     //
     // When the user clicks a column header, Knack marks that <th> with
     // .sorted-asc / .sorted-desc. In that case we defer to Knack's sort
@@ -5463,7 +5466,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     } else {
       rowSortRules = viewCfg.rowSort || [
         { field: 'field_2218', order: 'asc',  type: 'number' },
-        { field: 'field_1960', order: 'desc', type: 'number' }
+        { field: 'field_2240', order: 'asc',  type: 'text'   },
+        { field: 'field_1951', order: 'asc',  type: 'number' }
       ];
     }
 
