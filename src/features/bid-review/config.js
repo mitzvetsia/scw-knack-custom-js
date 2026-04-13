@@ -44,6 +44,7 @@
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
       bidConnDevice:   'field_2380',   // Connected Devices (bid side)
+      bidConnTo:       'field_2381',   // Connected To (bid side — camera/reader only)
       bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
 
       // Payload-only fields (not displayed in grid)

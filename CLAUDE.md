@@ -191,6 +191,10 @@ The same principle applies to **git history** on this repo — it can dump enorm
 - To search history for a string: `git log --all -S '<string>' --oneline` — stays small.
 - Always exclude `dist/knack-bundle.js` from history-wide diffs: append `-- . ':(exclude)dist/knack-bundle.js'`.
 
+## Avoid Idle Timeouts
+
+**Never spend more than ~30 seconds thinking before producing output.** For large file rewrites, break them into multiple sequential Edit calls instead of one massive Write. If a file needs 10+ changes, do 3-4 Edits per message rather than rewriting the whole file at once. Silence kills the stream — interleave tool calls to keep output flowing.
+
 ## Work Fast (Avoid Design Thrash)
 
 This is a **copy-paste-and-modify codebase, not a design space.** Every feature follows the same skeleton: IIFE wrapper + `CONFIG`/`VIEWS` constant at top + `SCW.onViewRender` / `SCW.onSceneRender` binding + idempotent init + unique-ID CSS injection. There is no test framework, no linter, and no type system. Planning phases do not catch bugs here — manual testing against the live Knack app does. **Bias hard toward producing a diff the user can look at.**

@@ -250,6 +250,8 @@
           bidExistCabling: raw(rec, FK.bidExistCabling),
           bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
           bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
+          bidConnTo:       connectionLabelsAll(rec, FK.bidConnTo),
+          bidConnToIds:    connectionIdsAll(rec, FK.bidConnTo),
           bidMapConn:      raw(rec, FK.bidMapConn),
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
