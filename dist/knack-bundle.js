@@ -13078,7 +13078,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     { key: 'productName',     label: 'Product',            type: 'text' },
     { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
-    { key: 'labor',           label: 'Extended ($)',       type: 'number',  currency: true },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
     { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select',  options: ['Yes', 'No'], visKey: 'cabling' },
     { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
