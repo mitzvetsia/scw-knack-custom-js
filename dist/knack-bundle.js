@@ -13132,36 +13132,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ── Connection field helpers ────────────────────────────
-  var _connObjCache = {};  // fieldKey → connected object key
 
-  function getConnectedObjectKey(fieldKey) {
-    if (_connObjCache[fieldKey]) return _connObjCache[fieldKey];
-    try {
-      var models = Knack.objects.models || [];
-      for (var i = 0; i < models.length; i++) {
-        var obj = models[i].attributes || models[i];
-        var fields = obj.fields || [];
-        for (var f = 0; f < fields.length; f++) {
-          var fld = fields[f].attributes || fields[f];
-          if (fld.key === fieldKey && fld.relationship) {
-            _connObjCache[fieldKey] = fld.relationship.object;
-            return _connObjCache[fieldKey];
-          }
-        }
-      }
-    } catch (e) {}
-    return null;
-  }
-
+  /**
+   * Fetch connection records for a field using Knack's scene/view
+   * connections API.  This is the same endpoint Knack's Chosen.js
+   * dropdowns call — no object-key discovery needed.
+   */
   function fetchConnectionRecords(fieldKey) {
-    var objKey = getConnectedObjectKey(fieldKey);
-    if (!objKey) return $.Deferred().resolve([]).promise();
+    var url = Knack.api_url + '/v1/pages/' + CFG.sceneKey +
+              '/views/' + CFG.viewKey + '/connections/' + fieldKey;
+
+    if (CFG.debug) console.log('[BidReview CR] Fetching connections for', fieldKey, url);
+
     return SCW.knackAjax({
-      url: Knack.api_url + '/v1/objects/' + objKey + '/records',
+      url: url,
       type: 'GET',
       data: { rows_per_page: 1000 },
     }).then(function (resp) {
-      return (resp && resp.records) || [];
+      var recs = (resp && resp.records) || [];
+      if (CFG.debug) console.log('[BidReview CR] Got', recs.length, 'records for', fieldKey);
+      return recs;
+    }, function () {
+      if (CFG.debug) console.warn('[BidReview CR] Connection fetch failed for', fieldKey);
+      return [];
     });
   }
 
@@ -13407,9 +13400,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     $.when.apply($, promises).always(function () {
       var connRecords = {};
-      var results = connLoads.length === 1 ? [arguments[0]] : Array.prototype.slice.call(arguments);
+      // $.when with 1 deferred passes the value directly; with 2+ each arg is one result
+      var args = promises.length === 1 ? [arguments[0]] : Array.prototype.slice.call(arguments);
       for (var ri = 0; ri < connLoads.length; ri++) {
-        var recs = connLoads.length === 1 ? results[0] : (Array.isArray(results[ri]) ? results[ri][0] : results[ri]);
+        var recs = args[ri];
         connRecords[connLoads[ri].def.key] = Array.isArray(recs) ? recs : [];
       }
       buildModal(params, cell, vis, existing, connRecords);
