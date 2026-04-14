@@ -1220,6 +1220,68 @@
    *     ]
    *   }
    */
+  /**
+   * Build a self-contained HTML card for a single change-request item.
+   * Designed to be stored in a Knack rich-text field on the bid change
+   * record so it can render inside view_3505 without custom JS.
+   */
+  function buildItemHtml(item, fieldList) {
+    var action = itemActionType(item);
+    var palette = action === 'add'    ? { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'ADD' }
+                : action === 'remove' ? { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' }
+                :                       { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' };
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
+    h.push('<div style="background:' + palette.bg + ';border:1px solid ' + palette.border + ';border-radius:6px;padding:10px 14px;">');
+
+    // Badge + item header
+    h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">');
+    h.push('<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + palette.badge + ';color:' + palette.badgeText + ';font-size:10px;font-weight:700;letter-spacing:0.5px;">' + palette.label + '</span>');
+    h.push('<span style="font-weight:600;font-size:13px;">' + escHtml(item.displayLabel || item.productName || 'Item') + '</span>');
+    if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+      h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + escHtml(item.productName) + '</span>');
+    }
+    h.push('</div>');
+
+    if (action === 'remove') {
+      // Removal — just notes
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>');
+      }
+    } else if (fieldList && fieldList.length) {
+      // Revise or Add — field changes table
+      h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var isCurrency = false;
+        for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
+          if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+        }
+        var fromStr = f.from != null ? escHtml(isCurrency ? fmtCurrencyHtml(f.from) : String(f.from)) : '&mdash;';
+        var toStr   = escHtml(isCurrency ? fmtCurrencyHtml(f.to) : String(f.to));
+
+        h.push('<tr>');
+        h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + escHtml(f.label) + '</td>');
+        if (action === 'revise') {
+          h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
+          h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+        }
+        h.push('<td style="padding:3px 8px;font-weight:600;color:' + palette.color + ';">' + toStr + '</td>');
+        h.push('</tr>');
+      }
+      h.push('</table>');
+
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;border-top:1px solid ' + palette.border + ';padding-top:4px;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>');
+      }
+    }
+
+    h.push('</div>');
+    h.push('</div>');
+    return h.join('');
+  }
+
   function buildSubmitPayload(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg) return null;
@@ -1240,6 +1302,9 @@
         changeNotes:  it.changeNotes || '',
       };
 
+      // Snapshot of current item data (before changes)
+      entry.current = it.current || {};
+
       // Flatten requested values directly onto the item
       // (field key → "to" value, connection Ids arrays included)
       var r = it.requested || {};
@@ -1256,6 +1321,10 @@
 
       // Detailed from→to diffs
       entry.fields = fieldList;
+
+      // Per-item HTML card for display in view_3505
+      entry.html = buildItemHtml(it, fieldList);
+
       items.push(entry);
     }
 
