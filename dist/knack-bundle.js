@@ -30608,7 +30608,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  font-weight: 700; font-size: 13px; text-transform: uppercase;',
       '  letter-spacing: .04em; color: #166534; margin-bottom: 12px;',
       '  display: flex; align-items: center; gap: 8px;',
-      '  padding-bottom: 10px; border-bottom: 2px solid #bbf7d0;',
+      '  padding-bottom: 10px;',
       '}',
       '.' + P + '-orphan-header::before {',
       '  content: "\\f067"; font-family: FontAwesome;',
