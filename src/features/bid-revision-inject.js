@@ -355,27 +355,32 @@
     var model = findModel(viewId || CFG.targetViews[0]);
     var records = extractRecords(model);
     var devMap = {}, toMap = {};
+    var foundCamReaderFromModel = false;
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       var label = stripHtml(rec.field_2365 || rec.field_2379 || '') || rec.id;
 
       // Connected Device targets: only camera/reader items (proposalBucket = CAM_READER_BUCKET_ID)
-      var bucketRaw = rec['field_2366_raw'];
       var isCamReaderItem = false;
+      // Try _raw first
+      var bucketRaw = rec['field_2366_raw'];
       if (Array.isArray(bucketRaw)) {
         for (var bi = 0; bi < bucketRaw.length; bi++) {
           if (bucketRaw[bi] && bucketRaw[bi].id === CAM_READER_BUCKET_ID) { isCamReaderItem = true; break; }
         }
       }
-      // Fallback: parse the HTML string for the 24-char hex connection ID (same as getSurveyItemId pattern)
+      // Fallback: parse the HTML string for the bucket connection ID
       if (!isCamReaderItem) {
-        var bucketHtml = rec.field_2366 || rec['field_2366'] || '';
+        var bucketHtml = rec.field_2366 || '';
         if (typeof bucketHtml === 'string' && bucketHtml.indexOf(CAM_READER_BUCKET_ID) !== -1) {
           isCamReaderItem = true;
         }
       }
-      if (isCamReaderItem && !devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+      if (isCamReaderItem) {
+        foundCamReaderFromModel = true;
+        if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+      }
 
       // Connected To: only items where field_2374 (bidMapConn) = Yes
       var mapConn = stripHtml(rec.field_2374 || '');
@@ -404,20 +409,20 @@
       }
     }
 
-    // DOM scraping fallback: if model didn't yield camera/reader items, scrape the view_3505 table
-    if (Object.keys(devMap).length === 0) {
+    // DOM scraping fallback: if model didn't find camera/reader items, scrape the view_3505 table
+    if (!foundCamReaderFromModel) {
       var wsView = CFG.targetViews[0];
       var $wsTbl = $('#' + wsView + ' table.kn-table');
       if ($wsTbl.length) {
         $wsTbl.find('tbody tr[id]').each(function () {
-          var tr = this;
-          var rowId = tr.id;
-          var bucketCell = tr.querySelector('td.field_2366');
+          var domTr = this;
+          var rowId = domTr.id;
+          var bucketCell = domTr.querySelector('td.field_2366');
           if (bucketCell) {
             var connSpan = bucketCell.querySelector('span[data-kn="connection-value"]');
             if (connSpan && connSpan.className && connSpan.className.indexOf(CAM_READER_BUCKET_ID) !== -1) {
               if (!devMap[rowId]) {
-                var nameCell = tr.querySelector('td.field_2365') || tr.querySelector('td.field_2379');
+                var nameCell = domTr.querySelector('td.field_2365') || domTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
                 devMap[rowId] = { id: rowId, identifier: rowLabel };
               }
@@ -427,20 +432,47 @@
       }
     }
 
-    // Also include pending add requests (camera/reader items from revision records)
+    // Also include camera/reader items from revision records (view_3823)
+    // field_2698 = bucket ID on the revision record
     var revModel = findModel(CFG.revisionView);
     var revRecords = extractRecords(revModel);
     for (var rri = 0; rri < revRecords.length; rri++) {
       var rr = revRecords[rri];
-      var jsonStr = stripHtml(rr[CFG.changeJsonField] || '');
-      if (!jsonStr) continue;
-      try {
-        var rj = JSON.parse(jsonStr);
-        if (rj.addToBid && rj.proposalBucketId === CAM_READER_BUCKET_ID) {
-          var rlabel = rj.displayLabel || rj.productName || rr.id;
-          if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
+      // Check field_2698 (direct bucket ID) first
+      var revBucketId = '';
+      var revBucket698 = rr['field_2698_raw'];
+      if (Array.isArray(revBucket698) && revBucket698.length && revBucket698[0].id) {
+        revBucketId = revBucket698[0].id;
+      }
+      if (!revBucketId) {
+        var revBucket698Html = rr.field_2698 || '';
+        if (typeof revBucket698Html === 'string') {
+          var bm = revBucket698Html.match(/class="([0-9a-f]{24})"/i);
+          if (bm) revBucketId = bm[1];
         }
-      } catch (e) { /* skip unparseable */ }
+      }
+      // Also try parsing the JSON payload for the bucket
+      if (!revBucketId) {
+        var jsonStr = stripHtml(rr[CFG.changeJsonField] || '');
+        if (jsonStr) {
+          try {
+            var rj = JSON.parse(jsonStr);
+            if (rj.proposalBucketId) revBucketId = rj.proposalBucketId;
+          } catch (e) { /* skip */ }
+        }
+      }
+      if (revBucketId === CAM_READER_BUCKET_ID) {
+        // Get a label — try the JSON payload, then fall back to record ID
+        var rlabel = rr.id;
+        var rjStr = stripHtml(rr[CFG.changeJsonField] || '');
+        if (rjStr) {
+          try {
+            var rjData = JSON.parse(rjStr);
+            rlabel = rjData.displayLabel || rjData.productName || rr.id;
+          } catch (e) { /* skip */ }
+        }
+        if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
+      }
     }
 
     // Also include unsaved pending add items from the bid review grid
@@ -892,6 +924,18 @@
         // ── Connection field: radio (single) or checkbox (multi) list ──
         var recs = connOpts[fd.key] || [];
         var curIds = prefillIds[fd.key] || [];
+        // Ensure already-selected IDs appear in the options (even if buildConnOptions missed them)
+        if (curIds.length) {
+          var curLabels = (prefill[fd.key] || '').split(',');
+          var recsById = {};
+          for (var rx = 0; rx < recs.length; rx++) recsById[recs[rx].id] = true;
+          for (var cx = 0; cx < curIds.length; cx++) {
+            if (!recsById[curIds[cx]]) {
+              var cLabel = (curLabels[cx] || '').trim() || curIds[cx];
+              recs.push({ id: curIds[cx], identifier: cLabel });
+            }
+          }
+        }
         inp = document.createElement('div');
         inp.className = P + '-conn-list';
 
