@@ -17,6 +17,7 @@
   var CFG = ns.CONFIG;
 
   var INIT_FLAG = 'data-scw-bid-review-init';
+  var CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
 
   // Current state — kept in closure for the click handler
   var _state = null;
@@ -182,10 +183,7 @@
             && nbLbl.indexOf(cr.sowProduct) === -1) {
           nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
-        var nbBucket = (cr.proposalBucket || '').toLowerCase();
-        var nbIsCR = nbBucket === 'camera' || nbBucket === 'cameras'
-                   || nbBucket === 'reader' || nbBucket === 'readers'
-                   || nbBucket === 'camera or reader';
+        var nbIsCR = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         if (nbIsCR && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
           connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
@@ -208,7 +206,7 @@
           lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
         }
 
-        var isCR = (cr.proposalBucket || '').toLowerCase() === 'camera or reader';
+        var isCR = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
         if (!seenDev[cc.id] && isCR && connToBlank) {
@@ -460,11 +458,7 @@
             if (pitems[pi2].rowId === rowId) { pendItem = pitems[pi2]; break; }
           }
         }
-        var bucket2 = (row.proposalBucket || '').toLowerCase().trim();
-        var isCR2 = bucket2 === 'camera' || bucket2 === 'cameras'
-                  || bucket2 === 'reader' || bucket2 === 'readers'
-                  || bucket2 === 'camera or reader'
-                  || row.proposalBucketId === '6481e5ba38f283002898113c';
+        var isCR2 = row.proposalBucketId === CAM_READER_BUCKET_ID;
         var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim());
         var showConn2 = hasMapConn2 && !isCR2;
         var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
@@ -495,6 +489,7 @@
           sowMdfIdf:        row.mdfIdf || '',
           sowMdfIdfIds:     row.mdfIdfIds || [],
           connOptions:      addConnOpts2,
+          gridRows:         grid.rows,
           visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
           existing:         pendItem,
         });
@@ -526,10 +521,7 @@
             && nbLbl.indexOf(cr.sowProduct) === -1) {
           nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
-        var nbBucket = (cr.proposalBucket || '').toLowerCase();
-        var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'
-                         || nbBucket === 'reader' || nbBucket === 'readers'
-                         || nbBucket === 'camera or reader';
+        var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items
         if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
@@ -554,7 +546,7 @@
           lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
         }
 
-        var isCamReader = (cr.proposalBucket || '').toLowerCase() === 'camera or reader';
+        var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
         // Connected Devices: Camera/Reader with no existing "Connected To", or currently selected
@@ -651,11 +643,7 @@
     if (!row) return;
 
     // Derive visibility from proposal bucket (same logic as render.js)
-    var bucket = (row.proposalBucket || '').toLowerCase().trim();
-    var isCamReader = bucket === 'camera' || bucket === 'cameras'
-                   || bucket === 'reader' || bucket === 'readers'
-                   || bucket === 'camera or reader'
-                   || row.proposalBucketId === '6481e5ba38f283002898113c';
+    var isCamReader = row.proposalBucketId === CAM_READER_BUCKET_ID;
     var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim());
     var showConn = hasMapConn && !isCamReader;
     var vis = {
@@ -696,6 +684,7 @@
         sowMdfIdf:        row.mdfIdf || '',
         sowMdfIdfIds:     row.mdfIdfIds || [],
         connOptions:      connOpts,
+        gridRows:         grid.rows,
         visibility:       vis,
       });
     } else {

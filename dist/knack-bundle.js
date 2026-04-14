@@ -15125,6 +15125,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         return;
       }
       var requested = {};
+      var noBidAdds = [];
       for (var k in inputs) {
         var inpEl = inputs[k];
         // Connection checkbox/radio list
@@ -15135,7 +15136,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             for (var asi = 0; asi < addCbs.length; asi++) {
               addSelIds.push(addCbs[asi].value);
               var addCbLbl = inpEl.querySelector('label[for="' + addCbs[asi].id + '"]');
-              if (addCbLbl) addLabels.push(addCbLbl.textContent);
+              var rawLbl = addCbLbl ? addCbLbl.textContent.replace(/\s*\(not on bid\)\s*$/, '') : addCbs[asi].value;
+              if (addCbLbl) addLabels.push(rawLbl);
+              // Detect noBid selections for reciprocal add-to-bid
+              if (addCbs[asi].getAttribute('data-no-bid') === '1') {
+                noBidAdds.push({
+                  id:    addCbs[asi].value,
+                  rowId: addCbs[asi].getAttribute('data-row-id'),
+                  label: rawLbl,
+                  connKey: k,
+                });
+              }
             }
             requested[k] = addLabels.join(', ');
             requested[k + 'Ids'] = addSelIds;
@@ -15162,7 +15173,56 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Preserve reciprocal metadata when editing a reciprocal add-to-bid item
       if (existing && existing.reciprocal)       newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+
+      // Clear old reciprocals from this source before saving (handles edits)
+      var isRecipItem = existing && existing.reciprocalSource;
+      if (!isRecipItem) clearReciprocalsFromSource(itemRowId);
+
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
+
+      // Create reciprocal add-to-bid for noBid items selected in connection fields
+      if (!isRecipItem && noBidAdds.length) {
+        for (var nbi = 0; nbi < noBidAdds.length; nbi++) {
+          var nba = noBidAdds[nbi];
+          var nbaRow = null;
+          if (params.gridRows) {
+            for (var nri = 0; nri < params.gridRows.length; nri++) {
+              if (params.gridRows[nri].id === nba.rowId) { nbaRow = params.gridRows[nri]; break; }
+            }
+          }
+          var nbaProduct = nbaRow ? (nbaRow.sowProduct || nbaRow.productName || nba.label) : nba.label;
+          var nbaDisplay = nbaRow ? (nbaRow.displayLabel || nbaProduct) : nba.label;
+          // Mirror key: if selected in bidConnDevice, set bidConnTo on the new item
+          var nbaMirrorKey = nba.connKey === 'bidConnDevice' ? 'bidConnTo' : 'bidConnDevice';
+          var nbaReq = {};
+          nbaReq.productName = nbaProduct;
+          if (nbaRow && nbaRow.sowQty) nbaReq.qty = nbaRow.sowQty;
+          // Pre-fill reciprocal connection: point back to the source
+          nbaReq[nbaMirrorKey] = displayLabel || product;
+          nbaReq[nbaMirrorKey + 'Ids'] = [itemRowId];
+          // Copy source's MDF/IDF to the reciprocal add
+          var srcMdfIdf    = requested.bidMdfIdf || '';
+          var srcMdfIdfIds = requested.bidMdfIdfIds || [];
+          if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
+          if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
+
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+            rowId:        nba.rowId,
+            bidRecordId:  null,
+            sowItemId:    nba.rowId,
+            displayLabel: nbaDisplay,
+            productName:  nbaProduct,
+            addToBid:     true,
+            reciprocal:   true,
+            reciprocalSource: itemRowId,
+            current:      {},
+            requested:    nbaReq,
+            changeNotes:  'Add to bid \u2014 connected from ' + (displayLabel || product),
+          }, params.surveyId);
+        }
+        ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
+      }
+
       closeModal();
       ns.renderToast(existing ? 'Change request updated' : 'New line item added to change request', 'success');
     });
@@ -15210,6 +15270,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   var CFG = ns.CONFIG;
 
   var INIT_FLAG = 'data-scw-bid-review-init';
+  var CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
 
   // Current state — kept in closure for the click handler
   var _state = null;
@@ -15375,10 +15436,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             && nbLbl.indexOf(cr.sowProduct) === -1) {
           nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
-        var nbBucket = (cr.proposalBucket || '').toLowerCase();
-        var nbIsCR = nbBucket === 'camera' || nbBucket === 'cameras'
-                   || nbBucket === 'reader' || nbBucket === 'readers'
-                   || nbBucket === 'camera or reader';
+        var nbIsCR = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         if (nbIsCR && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
           connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
@@ -15401,7 +15459,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
         }
 
-        var isCR = (cr.proposalBucket || '').toLowerCase() === 'camera or reader';
+        var isCR = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
         if (!seenDev[cc.id] && isCR && connToBlank) {
@@ -15653,11 +15711,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             if (pitems[pi2].rowId === rowId) { pendItem = pitems[pi2]; break; }
           }
         }
-        var bucket2 = (row.proposalBucket || '').toLowerCase().trim();
-        var isCR2 = bucket2 === 'camera' || bucket2 === 'cameras'
-                  || bucket2 === 'reader' || bucket2 === 'readers'
-                  || bucket2 === 'camera or reader'
-                  || row.proposalBucketId === '6481e5ba38f283002898113c';
+        var isCR2 = row.proposalBucketId === CAM_READER_BUCKET_ID;
         var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim());
         var showConn2 = hasMapConn2 && !isCR2;
         var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
@@ -15688,6 +15742,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowMdfIdf:        row.mdfIdf || '',
           sowMdfIdfIds:     row.mdfIdfIds || [],
           connOptions:      addConnOpts2,
+          gridRows:         grid.rows,
           visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
           existing:         pendItem,
         });
@@ -15719,10 +15774,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             && nbLbl.indexOf(cr.sowProduct) === -1) {
           nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
-        var nbBucket = (cr.proposalBucket || '').toLowerCase();
-        var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'
-                         || nbBucket === 'reader' || nbBucket === 'readers'
-                         || nbBucket === 'camera or reader';
+        var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items
         if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
@@ -15747,7 +15799,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
         }
 
-        var isCamReader = (cr.proposalBucket || '').toLowerCase() === 'camera or reader';
+        var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
         // Connected Devices: Camera/Reader with no existing "Connected To", or currently selected
@@ -15844,11 +15896,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!row) return;
 
     // Derive visibility from proposal bucket (same logic as render.js)
-    var bucket = (row.proposalBucket || '').toLowerCase().trim();
-    var isCamReader = bucket === 'camera' || bucket === 'cameras'
-                   || bucket === 'reader' || bucket === 'readers'
-                   || bucket === 'camera or reader'
-                   || row.proposalBucketId === '6481e5ba38f283002898113c';
+    var isCamReader = row.proposalBucketId === CAM_READER_BUCKET_ID;
     var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim());
     var showConn = hasMapConn && !isCamReader;
     var vis = {
@@ -15889,6 +15937,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         sowMdfIdf:        row.mdfIdf || '',
         sowMdfIdfIds:     row.mdfIdfIds || [],
         connOptions:      connOpts,
+        gridRows:         grid.rows,
         visibility:       vis,
       });
     } else {
