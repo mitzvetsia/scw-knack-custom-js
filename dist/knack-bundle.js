@@ -10673,8 +10673,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       '.scw-bid-review__pkg-actions {',
       '  display: flex;',
-      '  flex-direction: column;',
-      '  gap: 3px;',
+      '  flex-direction: row;',
+      '  gap: 4px;',
+      '  margin-top: 4px;',
       '}',
 
       /* ── buttons ───────────────────────────────────────────── */
@@ -11393,9 +11394,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-review__status-badge[data-status="rejected"] {',
       '  background: #fee2e2;',
       '  color: #991b1b;',
-      '}',
-      '.scw-bid-review__pkg-status {',
-      '  margin-top: 4px;',
       '}',
 
     ].join('\n');
@@ -12543,25 +12541,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
         nameRow.appendChild(pdfLink);
       }
-      th.appendChild(nameRow);
-
-      // Show bid status in the column header
+      // Status badge inline with name
       var statusVal = pkg.bidStatus || '';
       if (statusVal) {
-        var statusBadge = el('div', 'scw-bid-review__pkg-status');
         var badge = el('span', 'scw-bid-review__status-badge');
         badge.textContent = statusVal;
         badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
-        statusBadge.appendChild(badge);
-        th.appendChild(statusBadge);
+        nameRow.appendChild(badge);
       }
+      th.appendChild(nameRow);
 
-      // Only show Copy to SOW / Create new SOW when bid status is "Submitted"
+      // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
       var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
       if (isSubmitted) {
         var actions = el('div', 'scw-bid-review__pkg-actions');
         actions.appendChild(btn(
-          'Copy to SOW', 'adopt',
+          'Sync to SOW', 'adopt',
           { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
         ));
         actions.appendChild(btn(

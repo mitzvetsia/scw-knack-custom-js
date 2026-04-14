@@ -144,8 +144,9 @@
 
       '.scw-bid-review__pkg-actions {',
       '  display: flex;',
-      '  flex-direction: column;',
-      '  gap: 3px;',
+      '  flex-direction: row;',
+      '  gap: 4px;',
+      '  margin-top: 4px;',
       '}',
 
       /* ── buttons ───────────────────────────────────────────── */
@@ -864,9 +865,6 @@
       '.scw-bid-review__status-badge[data-status="rejected"] {',
       '  background: #fee2e2;',
       '  color: #991b1b;',
-      '}',
-      '.scw-bid-review__pkg-status {',
-      '  margin-top: 4px;',
       '}',
 
     ].join('\n');
