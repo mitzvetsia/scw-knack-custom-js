@@ -156,6 +156,21 @@
       '  color: #dc2626; font-size: 11px; margin-top: 2px;',
       '}',
 
+      /* ── Group header revision/add count badges ── */
+      '.' + P + '-grp-badge {',
+      '  display: inline-flex; align-items: center; gap: 3px;',
+      '  padding: 1px 8px; font-size: 11px; font-weight: 600;',
+      '  line-height: 1.5; border-radius: 10px; white-space: nowrap;',
+      '}',
+      '.' + P + '-grp-badge--changes {',
+      '  background: rgba(180,83,9,.12); color: #b45309;',
+      '  border: 1px solid rgba(180,83,9,.22);',
+      '}',
+      '.' + P + '-grp-badge--adds {',
+      '  background: rgba(22,163,74,.12); color: #16a34a;',
+      '  border: 1px solid rgba(22,163,74,.22);',
+      '}',
+
       /* ── Orphan rows inserted into table groups ── */
       '.' + P + '-orphan-row > td {',
       '  padding: 4px 8px !important; border: none !important;',
@@ -1134,6 +1149,62 @@
 
     // Render orphaned add requests (includes any unmatched map entries)
     renderOrphanSection(viewEl, orphaned);
+
+    // Inject change/add count badges into group headers
+    injectGroupBadges(viewEl, siIds, revMap, orphaned);
+  }
+
+  var GRP_BADGE_CLS = P + '-grp-badge';
+
+  /**
+   * Add "N changes  N adds" badges to each group header that has revisions.
+   */
+  function injectGroupBadges(viewEl, siIds, revMap, orphaned) {
+    // Remove any previously injected badges
+    var old = viewEl.querySelectorAll('.' + GRP_BADGE_CLS);
+    for (var oi = 0; oi < old.length; oi++) old[oi].remove();
+
+    var groupHeaders = viewEl.querySelectorAll('tr.kn-table-group');
+    if (!groupHeaders.length) return;
+
+    for (var gi = 0; gi < groupHeaders.length; gi++) {
+      var header = groupHeaders[gi];
+      var changes = 0;
+      var adds = 0;
+
+      // Count matched revisions (REVISE/REMOVE) in this group:
+      // walk sibling rows until next group header
+      var row = header.nextElementSibling;
+      while (row) {
+        if (row.classList.contains('kn-group-level-1')) break;
+        if (row.classList.contains('scw-ws-row') && row.querySelector('[' + INJECTED + ']')) {
+          changes++;
+        }
+        if (row.classList.contains(ORPHAN_ROW_CLS)) {
+          adds++;
+        }
+        row = row.nextElementSibling;
+      }
+
+      if (!changes && !adds) continue;
+
+      // Find the badges container in the header
+      var badgesWrap = header.querySelector('.scw-group-badges');
+      if (!badgesWrap) continue;
+
+      if (changes) {
+        var changeBadge = document.createElement('span');
+        changeBadge.className = GRP_BADGE_CLS + ' ' + GRP_BADGE_CLS + '--changes';
+        changeBadge.textContent = changes + ' change' + (changes !== 1 ? 's' : '');
+        badgesWrap.insertBefore(changeBadge, badgesWrap.firstChild);
+      }
+      if (adds) {
+        var addBadge = document.createElement('span');
+        addBadge.className = GRP_BADGE_CLS + ' ' + GRP_BADGE_CLS + '--adds';
+        addBadge.textContent = adds + ' add' + (adds !== 1 ? 's' : '');
+        badgesWrap.insertBefore(addBadge, badgesWrap.firstChild);
+      }
+    }
   }
 
   // ── EVENT BINDING ───────────────────────────────────────
