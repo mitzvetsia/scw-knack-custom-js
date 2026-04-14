@@ -62,6 +62,7 @@
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
       bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
+      bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item

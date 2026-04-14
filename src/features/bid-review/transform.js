@@ -526,24 +526,33 @@
 
   // ── extract PDF URLs from bid package records ──────────────────
 
-  function buildPdfMap(bidPackages) {
+  function buildPkgInfoMap(bidPackages) {
     var map = {};
     if (!bidPackages || !bidPackages.length) return map;
     for (var i = 0; i < bidPackages.length; i++) {
       var rec = bidPackages[i];
       var id = rec.id;
       if (!id) continue;
+
+      var info = {};
+
+      // Survey connection (field_2386)
+      var surveyId = connectionId(rec, FK.bidSurvey);
+      if (surveyId) info.surveyId = surveyId;
+
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
-      if (!rawPdf) continue;
-      if (typeof rawPdf === 'object' && rawPdf.url) {
-        map[id] = { url: rawPdf.url, filename: rawPdf.filename || '' };
-      } else if (typeof rawPdf === 'string') {
-        // May be HTML: <a href="...">filename</a>
-        var m = rawPdf.match(/href="([^"]+)"/);
-        var fn = rawPdf.match(/>([^<]+)<\/a>/);
-        if (m) map[id] = { url: m[1], filename: fn ? fn[1] : '' };
+      if (rawPdf) {
+        if (typeof rawPdf === 'object' && rawPdf.url) {
+          info.url = rawPdf.url; info.filename = rawPdf.filename || '';
+        } else if (typeof rawPdf === 'string') {
+          var m = rawPdf.match(/href="([^"]+)"/);
+          var fn = rawPdf.match(/>([^<]+)<\/a>/);
+          if (m) { info.url = m[1]; info.filename = fn ? fn[1] : ''; }
+        }
       }
+
+      map[id] = info;
     }
     return map;
   }
@@ -564,12 +573,15 @@
   ns.buildState = function buildState(records, sowItems, bidPackages) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
-    var pdfMap     = buildPdfMap(bidPackages || []);
+    var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
 
-    // Attach PDF info to each package
+    // Attach PDF + survey info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
-      var pdf = pdfMap[allPkgs[pi].id];
-      if (pdf) { allPkgs[pi].pdfUrl = pdf.url; allPkgs[pi].pdfFilename = pdf.filename; }
+      var info = pkgInfoMap[allPkgs[pi].id];
+      if (info) {
+        if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
+        if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
+      }
     }
 
     var sowBuckets = groupBySow(records);
@@ -673,10 +685,13 @@
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF info to per-SOW packages
+      // Attach PDF + survey info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
-        var ppdf = pdfMap[pkgs[ppi].id];
-        if (ppdf) { pkgs[ppi].pdfUrl = ppdf.url; pkgs[ppi].pdfFilename = ppdf.filename; }
+        var pInfo = pkgInfoMap[pkgs[ppi].id];
+        if (pInfo) {
+          if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
+          if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
+        }
       }
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);

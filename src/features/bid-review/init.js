@@ -138,6 +138,13 @@
     return pkgId;
   }
 
+  function findPackageSurveyId(grid, pkgId) {
+    for (var i = 0; i < grid.packages.length; i++) {
+      if (grid.packages[i].id === pkgId) return grid.packages[i].surveyId || '';
+    }
+    return '';
+  }
+
   function handlePackageAction(button, actionType) {
     if (!_state) return;
 
@@ -428,6 +435,7 @@
       rowId:        rowId,
       pkgId:        pkgId,
       pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
       sowItemId:    row.sowItem || '',
@@ -469,6 +477,7 @@
       rowId:        rowId,
       pkgId:        pkgId,
       pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
       sowItemId:    row.sowItem || '',
@@ -513,6 +522,7 @@
         rowId:        rowId,
         pkgId:        pkgId,
         pkgName:      findPackageName(grid, pkgId),
+        surveyId:     findPackageSurveyId(grid, pkgId),
         sowId:        sowId,
         sowName:      grid.sowName,
         sowItemId:    row.sowItem || '',

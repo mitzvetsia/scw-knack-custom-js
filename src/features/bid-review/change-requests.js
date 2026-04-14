@@ -579,7 +579,7 @@
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
 
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem);
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
 
       // Only run reciprocal logic for source items (not reciprocal items).
       // Locked connection fields on reciprocal items are already managed
@@ -625,7 +625,7 @@
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid — connected from ' + (params.displayLabel || params.productName),
-          });
+          }, params.surveyId);
         }
         if (noBidAdds.length) {
           ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
@@ -650,8 +650,9 @@
   }
 
   // ── Pending management ─────────────────────────────────
-  function addPendingItem(pkgId, pkgName, sowId, sowName, item) {
-    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
+  function addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId) {
+    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: surveyId || '', items: [] };
+    if (surveyId && !_pending[pkgId].surveyId) _pending[pkgId].surveyId = surveyId;
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) { items[i] = item; persist(); triggerRerender(); return; }
@@ -667,7 +668,7 @@
    * new reciprocal-only item.
    */
   function addReciprocalItem(pkgId, pkgName, sowId, sowName, item, connKey, sourceRowId) {
-    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
+    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: '', items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) {
@@ -1136,20 +1137,8 @@
       var it = pkg.items[i];
       var fieldList = buildItemFields(it);
 
-      // Flat changes object: field key → requested value
-      // For connection fields, also include the Ids array
-      var changes = {};
-      var r = it.requested || {};
-      for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
-        var d = FIELD_DEFS[fi];
-        if (!hasValue(r[d.key])) continue;
-        changes[d.key] = r[d.key];
-        if (d.type === 'connection' && d.idsKey && r[d.idsKey]) {
-          changes[d.idsKey] = r[d.idsKey];
-        }
-      }
-
-      items.push({
+      // Base item — IDs, labels, notes
+      var entry = {
         action:       itemActionType(it),
         rowId:        it.rowId,
         bidRecordId:  it.bidRecordId || null,
@@ -1157,9 +1146,23 @@
         displayLabel: it.displayLabel || '',
         productName:  it.productName || '',
         changeNotes:  it.changeNotes || '',
-        changes:      changes,
-        fields:       fieldList,
-      });
+      };
+
+      // Flatten requested values directly onto the item
+      // (field key → "to" value, connection Ids arrays included)
+      var r = it.requested || {};
+      for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
+        var d = FIELD_DEFS[fi];
+        if (!hasValue(r[d.key])) continue;
+        entry[d.key] = r[d.key];
+        if (d.type === 'connection' && d.idsKey && r[d.idsKey]) {
+          entry[d.idsKey] = r[d.idsKey];
+        }
+      }
+
+      // Detailed from→to diffs
+      entry.fields = fieldList;
+      items.push(entry);
     }
 
     return {
@@ -1167,6 +1170,7 @@
       timestamp:   new Date().toISOString(),
       packageId:   pkgId,
       packageName: pkg.pkgName,
+      surveyId:    pkg.surveyId || '',
       sowId:       pkg.sowId,
       sowName:     pkg.sowName || '',
       items:       items,
@@ -1391,7 +1395,7 @@
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
-      });
+      }, params.surveyId);
       closeModal();
       ns.renderToast('Removal added to change request', 'success');
     });
@@ -1525,7 +1529,7 @@
         current:      {},
         requested:    requested,
         changeNotes:  ta.value.trim(),
-      });
+      }, params.surveyId);
       closeModal();
       ns.renderToast('New line item added to change request', 'success');
     });
