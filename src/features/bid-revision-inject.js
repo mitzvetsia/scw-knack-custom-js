@@ -375,19 +375,36 @@
   }
 
   /**
-   * Read revision records from view_3823's Knack model.
+   * Read revision records from view_3823's Knack model AND DOM table.
+   * DOM scraping is the primary source (most reliable for field_2695/2696 data);
+   * model data supplements any records not found in the DOM.
    * Returns { map: surveyItemId → [entry], orphaned: [entry] }
    * Orphaned = records with no survey item connection (e.g. Add requests).
    */
   function buildRevisionMap() {
-    var model   = findModel(CFG.revisionView);
-    var records = extractRecords(model);
-    console.log('[BidRevInject] Model records:', records.length);
+    // Always try DOM first — most reliable for rich-text / JSON fields
+    var domRecords = scrapeFromDom();
+    console.log('[BidRevInject] DOM-scraped records:', domRecords.length);
 
-    if (!records.length) {
-      records = scrapeFromDom();
-      console.log('[BidRevInject] DOM-scraped records:', records.length);
+    // Supplement with model data for records not found in the DOM
+    var seen = {};
+    for (var di = 0; di < domRecords.length; di++) {
+      if (domRecords[di].id) seen[domRecords[di].id] = true;
     }
+
+    var model = findModel(CFG.revisionView);
+    var modelRecords = extractRecords(model);
+    console.log('[BidRevInject] Model records:', modelRecords.length);
+
+    var records = domRecords.slice();
+    for (var mi = 0; mi < modelRecords.length; mi++) {
+      var mr = modelRecords[mi];
+      if (mr.id && !seen[mr.id]) {
+        records.push(mr);
+        seen[mr.id] = true;
+      }
+    }
+    console.log('[BidRevInject] Total records (merged):', records.length);
 
     var map = {};
     var orphaned = [];
@@ -395,6 +412,12 @@
       var rec = records[i];
       var siId = getSurveyItemId(rec);
       var entry = buildRevEntry(rec);
+
+      console.log('[BidRevInject] Record', rec.id,
+                  '| surveyItemId:', siId,
+                  '| hasHtml:', !!entry.changeHtml,
+                  '| hasJson:', !!entry.changeJson,
+                  '| changes:', entry.changes.length);
 
       if (!siId) {
         // No survey item connection — orphaned add request
@@ -411,24 +434,43 @@
   }
 
   /**
-   * Fallback: scrape records from the view_3823 DOM table.
+   * Scrape records from the view_3823 DOM table.
    * Works even when view_3823 is display:none — elements still exist in DOM.
    */
   function scrapeFromDom() {
-    var table = document.querySelector('#' + CFG.revisionView + ' table.kn-table-table');
+    var viewEl = document.getElementById(CFG.revisionView);
+    if (!viewEl) { console.log('[BidRevInject] View element not found for', CFG.revisionView); return []; }
+    var table = viewEl.querySelector('table.kn-table-table') || viewEl.querySelector('table.kn-table');
     if (!table) { console.log('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
     var rows = table.querySelectorAll('tbody > tr');
+    if (!rows.length) rows = table.querySelectorAll('tr');
+    console.log('[BidRevInject] DOM table rows found:', rows.length);
     var records = [];
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
-      if (!tr.id) continue;
-      var rec = { id: tr.id };
+      var trId = tr.id || tr.getAttribute('data-record-id') || '';
+      if (!trId) continue;
+      var rec = { id: trId };
       // Extract field_2644 (survey item connection)
       var siCell = tr.querySelector('td.' + CFG.surveyItemField);
       if (siCell) {
         var span = siCell.querySelector('span[data-kn="connection-value"]');
+        if (!span) span = siCell.querySelector('span.kn-detail-body__value');
+        if (!span) span = siCell.querySelector('span[class]');
         if (span) {
-          rec[CFG.surveyItemField + '_raw'] = [{ id: span.className.trim(), identifier: span.textContent.trim() }];
+          // Knack puts the record ID as the span's class name
+          var spanClass = (span.className || '').trim();
+          var connId = '';
+          if (/^[0-9a-f]{24}$/i.test(spanClass)) {
+            connId = spanClass;
+          } else {
+            // Try to find a 24-char hex ID in any attribute
+            var m2 = (siCell.innerHTML || '').match(/[0-9a-f]{24}/i);
+            if (m2) connId = m2[0];
+          }
+          if (connId) {
+            rec[CFG.surveyItemField + '_raw'] = [{ id: connId, identifier: span.textContent.trim() }];
+          }
         }
       }
       // Extract each data field
