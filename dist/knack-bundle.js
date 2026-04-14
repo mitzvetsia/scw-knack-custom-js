@@ -30871,6 +30871,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
+    // Also include pending add requests (camera/reader items from revision records)
+    var revModel = findModel(CFG.revisionView);
+    var revRecords = extractRecords(revModel);
+    for (var rri = 0; rri < revRecords.length; rri++) {
+      var rr = revRecords[rri];
+      var jsonStr = stripHtml(rr[CFG.changeJsonField] || '');
+      if (!jsonStr) continue;
+      try {
+        var rj = JSON.parse(jsonStr);
+        if (rj.addToBid && rj.proposalBucketId === CAM_READER_BUCKET_ID) {
+          var rlabel = rj.displayLabel || rj.productName || rr.id;
+          if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
+        }
+      } catch (e) { /* skip unparseable */ }
+    }
+
     // MDF/IDF options — pull from view_3617 (MDF/IDF location records)
     var mdfMap = {};
     var mdfModel = findModel(MDF_IDF_VIEW);
@@ -30967,13 +30983,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + escHtml(data.changeNotes) + '&rdquo;</div>');
       }
     } else {
-      // Build field changes from EDIT_FIELDS
+      // Build field changes from EDIT_FIELDS (only show actual changes)
       var fieldRows = [];
       for (var fi = 0; fi < EDIT_FIELDS.length; fi++) {
         var d = EDIT_FIELDS[fi];
         var toVal = r[d.key];
         if (toVal == null || toVal === '') continue;
         var fromVal = c[d.key];
+        // Skip fields where requested equals current (no actual change)
+        if (fromVal != null && String(toVal).trim() === String(fromVal).trim()) continue;
         var isCurrency = d.key === 'rate';
         var isConn = d.type === 'connection';
         var fromStr = fromVal != null && fromVal !== '' ? escHtml(isCurrency ? fmtCurrencyHtml(fromVal) : String(fromVal)) : '&mdash;';
@@ -31388,7 +31406,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     body.appendChild(notesRow);
     modal.appendChild(body);
 
-    // ── Collect modified values from the form ──
+    // ── Collect ONLY modified values from the form (skip unchanged) ──
     function collectModified() {
       var modified = {};
       for (var k = 0; k < EDIT_FIELDS.length; k++) {
@@ -31415,11 +31433,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             }
           }
 
-          modified[d.key] = selLabels.join(', ');
-          modified[d.idsKey] = selIds;
+          // Compare against prefill IDs — only include if changed
+          var origIds = (prefillIds[d.key] || []).slice().sort();
+          var newIds  = selIds.slice().sort();
+          var changed = origIds.length !== newIds.length;
+          if (!changed) {
+            for (var ci = 0; ci < origIds.length; ci++) {
+              if (origIds[ci] !== newIds[ci]) { changed = true; break; }
+            }
+          }
+          if (changed) {
+            modified[d.key] = selLabels.join(', ');
+            modified[d.idsKey] = selIds;
+          }
         } else {
           var v = (inputs[d.key].value || '').trim();
-          if (v) modified[d.key] = d.key === 'qty' || d.key === 'rate' ? parseFloat(v) : v;
+          var orig = prefill[d.key] != null ? String(prefill[d.key]).trim() : '';
+          if (d.type === 'number') {
+            var numV    = v    ? parseFloat(v)    : 0;
+            var numOrig = orig ? parseFloat(orig) : 0;
+            if (numV !== numOrig) modified[d.key] = numV;
+          } else {
+            if (v !== orig) modified[d.key] = v;
+          }
         }
       }
       return modified;
