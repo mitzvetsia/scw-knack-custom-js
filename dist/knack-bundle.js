@@ -30937,14 +30937,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * Build connection options from view_3505 Knack model records.
    * Returns { bidMdfIdf: [{id, identifier}], bidConnDevice: [...], bidConnTo: [...] }
    */
-  function buildConnOptions(viewId) {
+  function buildConnOptions(viewId, opts) {
     var TAG = '[SCW-connOpts]';
+    var isAdd = opts && opts.isAdd;
     var model = findModel(viewId || CFG.targetViews[0]);
     var records = extractRecords(model);
     var devMap = {}, toMap = {};
     var foundCamReaderFromModel = false;
 
-    console.log(TAG, 'model records:', records.length);
+    console.log(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -30969,8 +30970,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       if (isCamReaderItem) {
         foundCamReaderFromModel = true;
-        console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
-        if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+        // For ADD items, skip records where field_2381 (Connected To) is populated
+        var connToPopulated = false;
+        if (isAdd) {
+          var ct2381Raw = rec['field_2381_raw'];
+          if (Array.isArray(ct2381Raw) && ct2381Raw.length && ct2381Raw[0].id) {
+            connToPopulated = true;
+          } else {
+            var ct2381Html = stripHtml(rec.field_2381 || '');
+            if (ct2381Html) connToPopulated = true;
+          }
+        }
+        if (isAdd && connToPopulated) {
+          console.log(TAG, 'Skipping (field_2381 populated):', label, rec.id);
+        } else {
+          console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
+          if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+        }
       }
 
       // Connected To: only items where field_2374 (bidMapConn) = Yes
@@ -31017,6 +31033,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (bucketCell) {
             var connSpan = bucketCell.querySelector('span[data-kn="connection-value"]');
             if (connSpan && connSpan.className && connSpan.className.indexOf(CAM_READER_BUCKET_ID) !== -1) {
+              // For ADD items, skip if field_2381 (Connected To) is populated
+              if (isAdd) {
+                var ctCell = dataTr.querySelector('td.field_2381');
+                if (ctCell) {
+                  var ctSpan = ctCell.querySelector('span[data-kn="connection-value"]');
+                  if (ctSpan) {
+                    console.log(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
+                    return; // jQuery .each() continue
+                  }
+                }
+              }
               if (!devMap[rowId]) {
                 var nameCell = dataTr.querySelector('td.field_2365') || dataTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
@@ -31442,7 +31469,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var data = jsonData || {};
 
     // Build connection options from view_3505 + view_3617
-    var connOpts = buildConnOptions();
+    var isAddItem = !!(data.addToBid || data.action === 'add');
+    var connOpts = buildConnOptions(null, { isAdd: isAddItem });
 
     // Derive field visibility from proposal bucket (mirrors init.js logic)
     var bucketId = data.proposalBucketId || '';
