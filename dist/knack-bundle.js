@@ -12432,30 +12432,26 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
         }
 
-        // Purely reciprocal items: read-only card only, no action buttons.
-        // To change them, edit or delete the source change.
-        if (!pendingItem || !pendingItem.reciprocal) {
-          var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-          var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-          wrap.appendChild(btn(crLabel, crMod, {
-            'data-action':      'cell_request_change',
-            'data-row-id':      row.id,
-            'data-package-id':  cpkg.id,
-            'data-sow-id':      sowId,
-            'data-vis-qty':     visibility.qty ? '1' : '0',
-            'data-vis-cabling': visibility.cabling ? '1' : '0',
-            'data-vis-conn':    visibility.connDevice ? '1' : '0',
-          }));
+        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
+        wrap.appendChild(btn(crLabel, crMod, {
+          'data-action':      'cell_request_change',
+          'data-row-id':      row.id,
+          'data-package-id':  cpkg.id,
+          'data-sow-id':      sowId,
+          'data-vis-qty':     visibility.qty ? '1' : '0',
+          'data-vis-cabling': visibility.cabling ? '1' : '0',
+          'data-vis-conn':    visibility.connDevice ? '1' : '0',
+        }));
 
-          // "Remove from Bid" button
-          if (!pendingItem || !pendingItem.removeFromBid) {
-            wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
-              'data-action':     'cell_remove_from_bid',
-              'data-row-id':     row.id,
-              'data-package-id': cpkg.id,
-              'data-sow-id':     sowId,
-            }));
-          }
+        // "Remove from Bid" button (not on items already marked for removal)
+        if (!pendingItem || !pendingItem.removeFromBid) {
+          wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
+            'data-action':     'cell_remove_from_bid',
+            'data-row-id':     row.id,
+            'data-package-id': cpkg.id,
+            'data-sow-id':     sowId,
+          }));
         }
       }
     }
@@ -13162,6 +13158,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   function formatDisplay(def, v) { return def.currency ? fmtCurrency(v) : String(v); }
 
+  /** Check if any reciprocal source set the given connection key. */
+  function isReciprocalField(reciprocalSources, connKey) {
+    if (!reciprocalSources) return false;
+    var keys = Object.keys(reciprocalSources);
+    for (var i = 0; i < keys.length; i++) {
+      if (reciprocalSources[keys[i]] === connKey) return true;
+    }
+    return false;
+  }
+
   // ── sessionStorage (write-through cache) ───────────────
   function ssave() {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(_pending)); } catch (e) {}
@@ -13365,6 +13371,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
       '}',
+      '.scw-bid-cr-modal__checkbox-list--locked {',
+      '  opacity: .6; pointer-events: none;',
+      '}',
+      '.scw-bid-cr-modal__checkbox-locked {',
+      '  font-size: 11px; color: #9333ea; font-style: italic; padding: 2px 0 4px;',
+      '  pointer-events: auto;',
+      '}',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -13454,13 +13467,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var inp;
       if (fd.type === 'connection') {
+        // Check if this connection field is locked by reciprocal logic
+        var connLocked = existing && (
+          existing.reciprocal ||
+          (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, fd.key))
+        );
+
         // Connection checkbox list
         var recs = connRecords[fd.key] || [];
         var currentIds = cell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         inp = el('div', 'scw-bid-cr-modal__checkbox-list');
-        if (!recs.length) {
+        if (connLocked) {
+          inp.classList.add('scw-bid-cr-modal__checkbox-list--locked');
+          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-locked',
+            'Managed by a reciprocal change \u2014 edit the source to modify'));
+        }
+        if (!recs.length && !connLocked) {
           inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
         }
         for (var ri = 0; ri < recs.length; ri++) {
@@ -13470,6 +13494,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           cb.type = 'checkbox';
           cb.value = rec.id;
           cb.id = 'scw-cr-cb-' + fd.key + '-' + ri;
+          if (connLocked) cb.disabled = true;
           // Pre-check if matches current/pending
           for (var pi = 0; pi < prefillIds.length; pi++) {
             if (prefillIds[pi] === rec.id) { cb.checked = true; break; }
@@ -13540,22 +13565,33 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (!inputs[d.key]) continue;
 
         if (d.type === 'connection') {
-          // Gather checked checkbox IDs and labels
-          var container = inputs[d.key];
-          var cbs = container.querySelectorAll('input[type="checkbox"]');
-          var selIds = [], labels = [];
-          for (var si = 0; si < cbs.length; si++) {
-            if (cbs[si].checked) {
-              selIds.push(cbs[si].value);
-              var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
-              if (cbLbl) labels.push(cbLbl.textContent);
-            }
-          }
-          var origIds = cell[d.idsKey] || [];
-          if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
-            requested[d.key] = labels.join(', ');
-            requested[d.key + 'Ids'] = selIds;
+          // If locked by reciprocal, preserve existing values unchanged
+          var isLocked = existing && (
+            existing.reciprocal ||
+            (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, d.key))
+          );
+          if (isLocked && existing.requested[d.key + 'Ids']) {
+            requested[d.key] = existing.requested[d.key];
+            requested[d.key + 'Ids'] = existing.requested[d.key + 'Ids'];
             hasChange = true;
+          } else {
+            // Gather checked checkbox IDs and labels
+            var container = inputs[d.key];
+            var cbs = container.querySelectorAll('input[type="checkbox"]');
+            var selIds = [], labels = [];
+            for (var si = 0; si < cbs.length; si++) {
+              if (cbs[si].checked) {
+                selIds.push(cbs[si].value);
+                var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
+                if (cbLbl) labels.push(cbLbl.textContent);
+              }
+            }
+            var origIds = cell[d.idsKey] || [];
+            if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
+              requested[d.key] = labels.join(', ');
+              requested[d.key + 'Ids'] = selIds;
+              hasChange = true;
+            }
           }
         } else {
           var v = (inputs[d.key].value || '').trim();
@@ -13588,11 +13624,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Clear old reciprocals from this source before saving
       clearReciprocalsFromSource(params.rowId);
 
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+      var newItem = {
         rowId: params.rowId, bidRecordId: cell.id,
         displayLabel: params.displayLabel, productName: cell.productName,
         current: current, requested: requested, changeNotes: cn,
-      });
+      };
+      // Preserve reciprocal metadata so cascade-delete from original source still works
+      if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+      if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
+
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem);
 
       // Reciprocal: if either connection field changed, mirror the
       // add/remove on the other side (2380 ↔ 2381).

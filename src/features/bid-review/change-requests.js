@@ -78,6 +78,16 @@
 
   function formatDisplay(def, v) { return def.currency ? fmtCurrency(v) : String(v); }
 
+  /** Check if any reciprocal source set the given connection key. */
+  function isReciprocalField(reciprocalSources, connKey) {
+    if (!reciprocalSources) return false;
+    var keys = Object.keys(reciprocalSources);
+    for (var i = 0; i < keys.length; i++) {
+      if (reciprocalSources[keys[i]] === connKey) return true;
+    }
+    return false;
+  }
+
   // ── sessionStorage (write-through cache) ───────────────
   function ssave() {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(_pending)); } catch (e) {}
@@ -281,6 +291,13 @@
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
       '}',
+      '.scw-bid-cr-modal__checkbox-list--locked {',
+      '  opacity: .6; pointer-events: none;',
+      '}',
+      '.scw-bid-cr-modal__checkbox-locked {',
+      '  font-size: 11px; color: #9333ea; font-style: italic; padding: 2px 0 4px;',
+      '  pointer-events: auto;',
+      '}',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -370,13 +387,24 @@
 
       var inp;
       if (fd.type === 'connection') {
+        // Check if this connection field is locked by reciprocal logic
+        var connLocked = existing && (
+          existing.reciprocal ||
+          (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, fd.key))
+        );
+
         // Connection checkbox list
         var recs = connRecords[fd.key] || [];
         var currentIds = cell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         inp = el('div', 'scw-bid-cr-modal__checkbox-list');
-        if (!recs.length) {
+        if (connLocked) {
+          inp.classList.add('scw-bid-cr-modal__checkbox-list--locked');
+          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-locked',
+            'Managed by a reciprocal change \u2014 edit the source to modify'));
+        }
+        if (!recs.length && !connLocked) {
           inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
         }
         for (var ri = 0; ri < recs.length; ri++) {
@@ -386,6 +414,7 @@
           cb.type = 'checkbox';
           cb.value = rec.id;
           cb.id = 'scw-cr-cb-' + fd.key + '-' + ri;
+          if (connLocked) cb.disabled = true;
           // Pre-check if matches current/pending
           for (var pi = 0; pi < prefillIds.length; pi++) {
             if (prefillIds[pi] === rec.id) { cb.checked = true; break; }
@@ -456,22 +485,33 @@
         if (!inputs[d.key]) continue;
 
         if (d.type === 'connection') {
-          // Gather checked checkbox IDs and labels
-          var container = inputs[d.key];
-          var cbs = container.querySelectorAll('input[type="checkbox"]');
-          var selIds = [], labels = [];
-          for (var si = 0; si < cbs.length; si++) {
-            if (cbs[si].checked) {
-              selIds.push(cbs[si].value);
-              var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
-              if (cbLbl) labels.push(cbLbl.textContent);
-            }
-          }
-          var origIds = cell[d.idsKey] || [];
-          if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
-            requested[d.key] = labels.join(', ');
-            requested[d.key + 'Ids'] = selIds;
+          // If locked by reciprocal, preserve existing values unchanged
+          var isLocked = existing && (
+            existing.reciprocal ||
+            (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, d.key))
+          );
+          if (isLocked && existing.requested[d.key + 'Ids']) {
+            requested[d.key] = existing.requested[d.key];
+            requested[d.key + 'Ids'] = existing.requested[d.key + 'Ids'];
             hasChange = true;
+          } else {
+            // Gather checked checkbox IDs and labels
+            var container = inputs[d.key];
+            var cbs = container.querySelectorAll('input[type="checkbox"]');
+            var selIds = [], labels = [];
+            for (var si = 0; si < cbs.length; si++) {
+              if (cbs[si].checked) {
+                selIds.push(cbs[si].value);
+                var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
+                if (cbLbl) labels.push(cbLbl.textContent);
+              }
+            }
+            var origIds = cell[d.idsKey] || [];
+            if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
+              requested[d.key] = labels.join(', ');
+              requested[d.key + 'Ids'] = selIds;
+              hasChange = true;
+            }
           }
         } else {
           var v = (inputs[d.key].value || '').trim();
@@ -504,11 +544,16 @@
       // Clear old reciprocals from this source before saving
       clearReciprocalsFromSource(params.rowId);
 
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+      var newItem = {
         rowId: params.rowId, bidRecordId: cell.id,
         displayLabel: params.displayLabel, productName: cell.productName,
         current: current, requested: requested, changeNotes: cn,
-      });
+      };
+      // Preserve reciprocal metadata so cascade-delete from original source still works
+      if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+      if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
+
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem);
 
       // Reciprocal: if either connection field changed, mirror the
       // add/remove on the other side (2380 ↔ 2381).
