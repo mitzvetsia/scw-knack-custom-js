@@ -457,9 +457,21 @@
       }
     }
 
-    // No Bid rows — Add button
+    // No Bid rows — Add button (skip packages that already have a pending add)
     if (row.noBid) {
       for (var bi = 0; bi < packages.length; bi++) {
+        // Check if there's already an addToBid pending for this row+package
+        var alreadyAdding = false;
+        if (pending[packages[bi].id] && pending[packages[bi].id].items) {
+          for (var api = 0; api < pending[packages[bi].id].items.length; api++) {
+            if (pending[packages[bi].id].items[api].rowId === row.id &&
+                pending[packages[bi].id].items[api].addToBid) {
+              alreadyAdding = true; break;
+            }
+          }
+        }
+        if (alreadyAdding) continue;
+
         var addAttrs = {
           'data-action':      'cell_add_to_bid',
           'data-row-id':      row.id,

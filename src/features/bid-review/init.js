@@ -503,6 +503,11 @@
         sowName:      grid.sowName,
         displayLabel: row.displayLabel,
         productName:  row.productName,
+        // SOW data for pre-fill
+        sowProduct:   row.sowProduct,
+        sowQty:       row.sowQty,
+        sowFee:       row.sowFee,
+        sowLaborDesc: row.sowLaborDesc,
       });
     } else {
       ns.renderToast('Add to Bid not yet implemented', 'info');

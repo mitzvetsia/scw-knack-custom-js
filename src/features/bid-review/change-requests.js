@@ -854,6 +854,58 @@
     return 0;
   }
 
+  /**
+   * When dismissing an addToBid item that was auto-created from a connection
+   * field selection, update the source item's change request to remove
+   * this item from its connection field (field_2380 / field_2381).
+   */
+  function removeAddToBidFromSource(pkgId, addItem) {
+    var sourceRowId = addItem.reciprocalSource;
+    var removedId   = addItem.rowId;   // the noBid row ID
+    if (!sourceRowId || !_pending[pkgId]) return;
+
+    var items = _pending[pkgId].items;
+    for (var i = 0; i < items.length; i++) {
+      var src = items[i];
+      if (src.rowId !== sourceRowId) continue;
+      if (!src.requested) break;
+
+      // Check both connection fields for the removed ID
+      var connPairs = [
+        { key: 'bidConnDevice', idsKey: 'bidConnDeviceIds' },
+        { key: 'bidConnTo',     idsKey: 'bidConnToIds' },
+      ];
+      for (var cp = 0; cp < connPairs.length; cp++) {
+        var ids = src.requested[connPairs[cp].idsKey];
+        if (!ids) continue;
+        var idx = ids.indexOf(removedId);
+        if (idx === -1) continue;
+
+        // Remove from IDs and rebuild label
+        ids.splice(idx, 1);
+        var labels = src.requested[connPairs[cp].key]
+          ? String(src.requested[connPairs[cp].key]).split(', ')
+          : [];
+        if (idx < labels.length) labels.splice(idx, 1);
+        src.requested[connPairs[cp].key] = labels.join(', ');
+
+        // If IDs are now empty, remove the field from requested
+        if (!ids.length) {
+          delete src.requested[connPairs[cp].idsKey];
+          delete src.requested[connPairs[cp].key];
+        }
+      }
+
+      // If nothing left in requested, remove the source item entirely
+      if (!Object.keys(src.requested).length) {
+        items.splice(i, 1);
+        if (!items.length) delete _pending[pkgId];
+      }
+      break;
+    }
+    persist();
+  }
+
   function removePendingItem(pkgId, rowId) {
     if (!_pending[pkgId]) return;
     var items = _pending[pkgId].items;
@@ -896,12 +948,17 @@
     if (item.reciprocalSource) headerLabel += ' (auto)';
     var header = el('div', 'scw-bid-cr-card__header', headerLabel);
 
-    // Dismiss button — hidden for items created by reciprocal logic
-    if (!item.reciprocalSource) {
+    // Dismiss button — hidden for reciprocal revise/remove items, but shown for addToBid
+    var canDismiss = !item.reciprocalSource || item.addToBid;
+    if (canDismiss) {
       var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
       dismiss.title = 'Remove this change';
       dismiss.addEventListener('click', function (e) {
         e.stopPropagation();
+        // If this is an addToBid item with a reciprocal source, also update the source's connection field
+        if (item.addToBid && item.reciprocalSource) {
+          removeAddToBidFromSource(pkgId, item);
+        }
         removePendingItem(pkgId, item.rowId);
       });
       header.appendChild(dismiss);
@@ -1049,7 +1106,8 @@
     var header = el('div', 'scw-bid-cr-modal__header');
     var hLeft = el('div');
     hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', 'Add Line Item'));
-    hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle', params.pkgName));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
+      params.pkgName + ' \u2014 ' + (params.displayLabel || params.sowProduct || params.productName || 'Item')));
     header.appendChild(hLeft);
     var closeBtn = el('button', 'scw-bid-cr-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -1058,9 +1116,17 @@
 
     var body = el('div', 'scw-bid-cr-modal__body');
     body.appendChild(el('div', 'scw-bid-cr-modal__hint',
-      'Request a new line item be added to this bid package.'));
+      'Request a new line item be added to this bid package. Fields are pre-filled from the SOW.'));
 
-    // Editable fields for a new item (subset that makes sense for new items)
+    // Pre-fill map from SOW data
+    var prefill = {
+      productName: params.sowProduct || params.productName || '',
+      qty:         params.sowQty || '',
+      rate:        params.sowFee || '',
+      laborDesc:   params.sowLaborDesc || '',
+    };
+
+    // Editable fields for a new item
     var ADD_FIELDS = [
       { key: 'productName', label: 'Product',           type: 'text' },
       { key: 'qty',         label: 'Qty',               type: 'number' },
@@ -1078,11 +1144,13 @@
         inp = document.createElement('textarea');
         inp.className = 'scw-bid-cr-modal__textarea';
         inp.rows = 3;
+        if (prefill[fd.key]) inp.value = String(prefill[fd.key]);
       } else {
         inp = document.createElement('input');
         inp.type = fd.type;
         inp.className = 'scw-bid-cr-modal__input';
         if (fd.type === 'number') inp.setAttribute('step', 'any');
+        if (prefill[fd.key]) inp.value = fd.type === 'number' ? prefill[fd.key] : String(prefill[fd.key]);
       }
       inputs[fd.key] = inp;
       fRow.appendChild(inp);
@@ -1114,12 +1182,13 @@
         var v = (inputs[k].value || '').trim();
         if (v) requested[k] = k === 'qty' || k === 'rate' ? parseFloat(v) : v;
       }
-      // Use a unique pseudo-ID for new items
-      var pseudoId = 'new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+      // Use the noBid row ID if available, else generate a pseudo-ID
+      var itemRowId = params.rowId || ('new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+      var displayLabel = params.displayLabel || params.sowProduct || product;
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
-        rowId:        pseudoId,
+        rowId:        itemRowId,
         bidRecordId:  null,
-        displayLabel: product,
+        displayLabel: displayLabel,
         productName:  product,
         addToBid:     true,
         current:      {},
