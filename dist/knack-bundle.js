@@ -30600,7 +30600,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  color: #dc2626; font-size: 11px; margin-top: 2px;',
       '}',
 
-      /* ── Orphaned add-request section at top of view ── */
+      /* ── Orphan rows inserted into table groups ── */
+      '.' + P + '-orphan-row > td {',
+      '  padding: 4px 8px !important; border: none !important;',
+      '}',
+      '.' + P + '-orphan-card {',
+      '  padding: 10px 14px; margin: 4px 0;',
+      '  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;',
+      '}',
+
+      /* ── Fallback ungrouped orphan section at top of view ── */
       '.' + P + '-orphan-section {',
       '  margin: 0 0 16px; padding: 4px 0;',
       '}',
@@ -30613,10 +30622,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.' + P + '-orphan-header::before {',
       '  content: "\\f067"; font-family: FontAwesome;',
       '  font-size: 11px; font-weight: 400;',
-      '}',
-      '.' + P + '-orphan-card {',
-      '  padding: 12px; margin-top: 10px;',
-      '  background: #fff; border-radius: 6px;',
       '}',
 
       /* ── Edit modal overlay + dialog ── */
@@ -31371,38 +31376,135 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Render orphaned add requests as a banner at the top of the view.
+   * Extract the MDF/IDF label from an orphan revision entry's JSON data.
+   */
+  function getOrphanMdfIdf(rev) {
+    if (rev.changeJson && rev.changeJson.bidMdfIdf) return rev.changeJson.bidMdfIdf;
+    if (rev.changeJson && rev.changeJson.requested && rev.changeJson.requested.bidMdfIdf) return rev.changeJson.requested.bidMdfIdf;
+    if (rev.changeJson && rev.changeJson.current && rev.changeJson.current.bidMdfIdf) return rev.changeJson.current.bidMdfIdf;
+    return '';
+  }
+
+  /**
+   * Find the group header <tr> whose text matches the given MDF/IDF label.
+   * Returns the header row or null.
+   */
+  function findGroupHeader(viewEl, mdfIdf) {
+    if (!mdfIdf) return null;
+    var headers = viewEl.querySelectorAll('tr.kn-table-group');
+    var target = mdfIdf.trim().toLowerCase();
+    for (var i = 0; i < headers.length; i++) {
+      var inner = headers[i].querySelector('.scw-group-inner');
+      if (!inner) continue;
+      // The group label is a text node between the collapse icon and the badges span.
+      // Walk child nodes to extract just the text, ignoring badges/counts.
+      var label = '';
+      for (var ci = 0; ci < inner.childNodes.length; ci++) {
+        var n = inner.childNodes[ci];
+        if (n.nodeType === 3) label += n.textContent; // text nodes only
+      }
+      if (label.trim().toLowerCase() === target) return headers[i];
+    }
+    return null;
+  }
+
+  /**
+   * Find the last row belonging to a group (all sibling <tr>s after the
+   * header until the next kn-table-group or kn-group-level-1).
+   */
+  function findLastRowInGroup(headerTr) {
+    var last = headerTr;
+    var next = headerTr.nextElementSibling;
+    while (next) {
+      if (next.classList.contains('kn-group-level-1')) break;
+      last = next;
+      next = next.nextElementSibling;
+    }
+    return last;
+  }
+
+  var ORPHAN_ROW_CLS = P + '-orphan-row';
+
+  /**
+   * Render orphaned add requests within their matching MDF/IDF group.
+   * Falls back to a section at the top of the view for any unmatched orphans.
    */
   function renderOrphanSection(viewEl, orphans) {
-    // Remove any existing orphan section
+    // Remove any previously injected orphan rows and fallback section
+    var oldRows = viewEl.querySelectorAll('.' + ORPHAN_ROW_CLS);
+    for (var ri = 0; ri < oldRows.length; ri++) oldRows[ri].remove();
     var existing = viewEl.querySelector('.' + P + '-orphan-section');
     if (existing) existing.remove();
 
     if (!orphans.length) return;
 
-    var section = document.createElement('div');
-    section.className = P + '-orphan-section';
+    // Determine table colspan from the first group header or thead
+    var firstGroupTd = viewEl.querySelector('tr.kn-table-group > td[colspan]');
+    var colspan = firstGroupTd ? firstGroupTd.getAttribute('colspan') : '1';
 
-    var header = document.createElement('div');
-    header.className = P + '-orphan-header';
-    header.textContent = 'Add Requests (' + orphans.length + ')';
-    section.appendChild(header);
-
+    // Group orphans by MDF/IDF
+    var byMdf = {};
+    var ungrouped = [];
     for (var i = 0; i < orphans.length; i++) {
-      section.appendChild(makeOrphanCard(orphans[i]));
+      var mdf = getOrphanMdfIdf(orphans[i]);
+      if (mdf) {
+        if (!byMdf[mdf]) byMdf[mdf] = [];
+        byMdf[mdf].push(orphans[i]);
+      } else {
+        ungrouped.push(orphans[i]);
+      }
     }
 
-    // Insert at the very top of the view content area
-    // Note: viewEl.querySelector('table') returns a nested element (inside
-    // .kn-table-wrapper), NOT a direct child — insertBefore would throw.
-    // Use firstChild to safely prepend.
-    if (viewEl.firstChild) {
-      viewEl.insertBefore(section, viewEl.firstChild);
-    } else {
-      viewEl.appendChild(section);
+    // Insert grouped orphans into their matching table groups
+    var mdfKeys = Object.keys(byMdf);
+    for (var mi = 0; mi < mdfKeys.length; mi++) {
+      var mdfKey = mdfKeys[mi];
+      var groupHeader = findGroupHeader(viewEl, mdfKey);
+      if (!groupHeader) {
+        // No matching group — fall back to ungrouped
+        for (var fi = 0; fi < byMdf[mdfKey].length; fi++) ungrouped.push(byMdf[mdfKey][fi]);
+        continue;
+      }
+      var lastRow = findLastRowInGroup(groupHeader);
+      var items = byMdf[mdfKey];
+      for (var oi = 0; oi < items.length; oi++) {
+        var tr = document.createElement('tr');
+        tr.className = ORPHAN_ROW_CLS;
+        var td = document.createElement('td');
+        td.setAttribute('colspan', colspan);
+        td.appendChild(makeOrphanCard(items[oi]));
+        tr.appendChild(td);
+        // Insert after the last row in this group
+        if (lastRow.nextSibling) {
+          lastRow.parentNode.insertBefore(tr, lastRow.nextSibling);
+        } else {
+          lastRow.parentNode.appendChild(tr);
+        }
+        lastRow = tr; // subsequent orphans go after this one
+      }
     }
 
-    console.log('[BidRevInject] Rendered', orphans.length, 'orphaned add requests');
+    // Fallback: render ungrouped orphans at the top of the view
+    if (ungrouped.length) {
+      var section = document.createElement('div');
+      section.className = P + '-orphan-section';
+      var header = document.createElement('div');
+      header.className = P + '-orphan-header';
+      header.textContent = 'Add Requests (' + ungrouped.length + ')';
+      section.appendChild(header);
+      for (var ui = 0; ui < ungrouped.length; ui++) {
+        section.appendChild(makeOrphanCard(ungrouped[ui]));
+      }
+      if (viewEl.firstChild) {
+        viewEl.insertBefore(section, viewEl.firstChild);
+      } else {
+        viewEl.appendChild(section);
+      }
+    }
+
+    console.log('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
+                (orphans.length - ungrouped.length) + ' grouped, ' +
+                ungrouped.length + ' ungrouped)');
   }
 
   var _injectRetries = 0;
