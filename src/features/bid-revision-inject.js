@@ -172,6 +172,9 @@
       '}',
 
       /* ── Orphan rows inserted into table groups ── */
+      '.' + P + '-orphan-row {',
+      '  background: #fff !important;',
+      '}',
       '.' + P + '-orphan-row > td {',
       '  padding: 4px 8px !important; border: none !important;',
       '}',
