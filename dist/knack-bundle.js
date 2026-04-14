@@ -30529,7 +30529,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       /* Revision detail strip — lives INSIDE .scw-ws-detail */
       '.' + STRIP_CLS + ' {',
       '  margin: 8px 12px 4px; padding: 10px 14px;',
-      '  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;',
+      '  background: #fffbeb; border-radius: 6px;',
       '  font-size: 12px; color: #78350f;',
       '}',
       '.' + P + '-strip-header {',
@@ -31286,7 +31286,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var header = document.createElement('div');
     header.className = P + '-strip-header';
-    header.textContent = 'Bid Revisions (' + revisions.length + ')';
+    header.textContent = 'Revisions (' + revisions.length + ')';
     strip.appendChild(header);
 
     for (var i = 0; i < revisions.length; i++) {
