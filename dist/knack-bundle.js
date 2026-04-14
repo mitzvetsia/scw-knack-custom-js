@@ -12582,19 +12582,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         createChoices.push({ label: cpkg.name, attrs: createAttrs });
       }
 
-      if (!ccell) continue;
-
-      // Skip packages where require sub bid = No
-      var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
-      if (noSubBid) continue;
-
-      // Find pending item for this row+package
+      // Find pending item for this row+package (even without a bid cell,
+      // for auto-created add-to-bid items from connection field selections)
       var pendingItem = null;
       if (pending[cpkg.id] && pending[cpkg.id].items) {
         for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
           if (pending[cpkg.id].items[pi].rowId === row.id) { pendingItem = pending[cpkg.id].items[pi]; break; }
         }
       }
+
+      // Show pending card (works for both bid items and noBid add-to-bid items)
+      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+        var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id, cpkg.name);
+        card.setAttribute('data-action', 'cell_request_change');
+        var aKeys = Object.keys(attrs);
+        for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], attrs[aKeys[ai]]);
+        pendingCards.push(card);
+      }
+
+      // Revise / Remove only apply when there's a bid cell
+      if (!ccell) continue;
+
+      // Skip packages where require sub bid = No
+      var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
+      if (noSubBid) continue;
 
       // Revise — only if no pending change yet
       if (!pendingItem) {
@@ -12610,15 +12621,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var mk = Object.keys(attrs);
         for (var mi = 0; mi < mk.length; mi++) rmAttrs[mk[mi]] = attrs[mk[mi]];
         removeChoices.push({ label: cpkg.name, attrs: rmAttrs });
-      }
-
-      // Pending card
-      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-        var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id, cpkg.name);
-        card.setAttribute('data-action', 'cell_request_change');
-        var aKeys = Object.keys(attrs);
-        for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], attrs[aKeys[ai]]);
-        pendingCards.push(card);
       }
     }
 
