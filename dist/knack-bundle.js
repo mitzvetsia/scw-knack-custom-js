@@ -15159,13 +15159,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           if (fd.single) aInp.name = 'scw-cr-add-radio-' + fd.key;
           aInp.value = arec.id;
           aInp.id = 'scw-cr-add-cb-' + fd.key + '-' + ari;
+          if (arec.noBid) aInp.setAttribute('data-no-bid', '1');
+          if (arec.rowId) aInp.setAttribute('data-row-id', arec.rowId);
           for (var api = 0; api < addPrefillIds.length; api++) {
             if (addPrefillIds[api] === arec.id) { aInp.checked = true; break; }
           }
           aItem.appendChild(aInp);
           var aCbLabel = document.createElement('label');
           aCbLabel.setAttribute('for', aInp.id);
-          aCbLabel.textContent = arec.identifier || arec.id;
+          var aLblText = (arec.identifier || arec.id) + (arec.noBid ? ' (not on bid)' : '');
+          aCbLabel.textContent = aLblText;
+          if (arec.noBid) aCbLabel.style.fontStyle = 'italic';
           aItem.appendChild(aCbLabel);
           inp.appendChild(aItem);
         }
