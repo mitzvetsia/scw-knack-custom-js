@@ -180,10 +180,119 @@
       '  background: #fff !important;',
       '}',
       '.' + P + '-orphan-row > td {',
-      '  padding: 4px 8px !important; border: none !important;',
+      '  padding: 0 !important; border: none !important;',
       '}',
+
+      /* ── Orphan accordion card (mirrors scw-ws-card) ── */
       '.' + P + '-orphan-card {',
-      '  padding: 10px 14px; margin: 4px 0;',
+      '  display: flex; flex-direction: column;',
+      '  background: #fff; min-width: 0; overflow: hidden;',
+      '}',
+      '.' + P + '-orphan-summary {',
+      '  display: flex; align-items: center;',
+      '  flex-wrap: wrap; gap: 6px;',
+      '  padding: 15px 12px 20px;',
+      '  background: #fff;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '  min-height: 38px; min-width: 0;',
+      '  transition: background 0.15s;',
+      '  cursor: pointer;',
+      '}',
+      '.' + P + '-orphan-summary:hover {',
+      '  background: #f1f5f9;',
+      '}',
+      '.' + P + '-orphan-chevron {',
+      '  width: 16px; height: 16px; flex-shrink: 0;',
+      '  transition: transform 0.15s;',
+      '  color: #9ca3af;',
+      '}',
+      '.' + P + '-orphan-chevron.is-open {',
+      '  transform: rotate(90deg); color: #6b7280;',
+      '}',
+      '.' + P + '-orphan-badge {',
+      '  display: inline-flex; align-items: center;',
+      '  padding: 1px 8px; border-radius: 10px;',
+      '  background: rgba(22,163,74,.12); color: #16a34a;',
+      '  border: 1px solid rgba(22,163,74,.22);',
+      '  font-size: 10px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: .04em;',
+      '  white-space: nowrap; flex-shrink: 0;',
+      '}',
+      '.' + P + '-orphan-label {',
+      '  font-weight: 600; font-size: 14px; color: #1f2937;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.' + P + '-orphan-product {',
+      '  font-size: 13px; color: #374151;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.' + P + '-orphan-sep {',
+      '  color: #d1d5db; font-size: 14px;',
+      '}',
+      '.' + P + '-orphan-labordesc {',
+      '  font-size: 13px; color: #64748b;',
+      '  flex: 1 1 120px; min-width: 80px;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.' + P + '-orphan-chit {',
+      '  display: inline-block; padding: 1px 6px; border-radius: 3px;',
+      '  font-size: 11px; font-weight: 600; white-space: nowrap;',
+      '}',
+      '.' + P + '-orphan-chit--yes {',
+      '  background: #dcfce7; color: #166534;',
+      '}',
+      '.' + P + '-orphan-right {',
+      '  display: flex; align-items: center;',
+      '  gap: 6px; margin-left: auto; flex-shrink: 0;',
+      '}',
+      '.' + P + '-orphan-field {',
+      '  display: flex; flex-direction: column; align-items: flex-end;',
+      '  min-width: 50px;',
+      '}',
+      '.' + P + '-orphan-field-label {',
+      '  font-size: 10px; font-weight: 600; text-transform: uppercase;',
+      '  letter-spacing: .04em; color: #9ca3af;',
+      '}',
+      '.' + P + '-orphan-field-value {',
+      '  font-size: 13px; font-weight: 500; color: #1f2937;',
+      '}',
+      /* Detail panel */
+      '.' + P + '-orphan-detail {',
+      '  display: none; padding: 14px 20px 14px 46px;',
+      '  border-top: 1px solid #f3f4f6;',
+      '}',
+      '.' + P + '-orphan-detail.is-open {',
+      '  display: block;',
+      '}',
+      '.' + P + '-orphan-detail-grid {',
+      '  display: grid; grid-template-columns: 1fr 1fr;',
+      '  gap: 6px 24px; margin-bottom: 12px;',
+      '}',
+      '@media (max-width: 900px) {',
+      '  .' + P + '-orphan-detail-grid { grid-template-columns: 1fr; }',
+      '}',
+      '.' + P + '-orphan-detail-row {',
+      '  display: flex; gap: 8px; align-items: baseline;',
+      '}',
+      '.' + P + '-orphan-detail-label {',
+      '  font-size: 11px; font-weight: 600; color: #6b7280;',
+      '  text-transform: uppercase; letter-spacing: .04em;',
+      '  min-width: 90px; flex-shrink: 0;',
+      '}',
+      '.' + P + '-orphan-detail-value {',
+      '  font-size: 13px; color: #1f2937;',
+      '}',
+      /* Expanded state */
+      '.' + P + '-orphan-card.is-expanded {',
+      '  box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);',
+      '  border-radius: 8px; border: 1px solid #d1d5db;',
+      '  margin-bottom: 10px;',
+      '}',
+      '.' + P + '-orphan-card.is-expanded .' + P + '-orphan-summary {',
+      '  border-bottom: none; border-radius: 8px 8px 0 0;',
+      '}',
+      '.' + P + '-orphan-card.is-expanded .' + P + '-orphan-detail {',
+      '  border-radius: 0 0 8px 8px;',
       '}',
 
       /* ── Fallback ungrouped orphan section at top of view ── */
@@ -1429,49 +1538,166 @@
    * Build a standalone orphan card for an add request with no matching
    * survey item in view_3505.
    */
+  var CHEVRON_SVG = '<svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">' +
+    '<path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/>' +
+    '</svg>';
+
+  /**
+   * Read a field value from the revision JSON — checks top-level first,
+   * then requested, then current.
+   */
+  function readJsonField(json, key) {
+    if (!json) return '';
+    if (json[key] != null && json[key] !== '') return String(json[key]);
+    if (json.requested && json.requested[key] != null && json.requested[key] !== '') return String(json.requested[key]);
+    if (json.current && json.current[key] != null && json.current[key] !== '') return String(json.current[key]);
+    return '';
+  }
+
   function makeOrphanCard(rev) {
+    var d = rev.changeJson || {};
     var card = document.createElement('div');
     card.className = P + '-orphan-card';
 
-    if (rev.changeHtml) {
-      var htmlWrap = document.createElement('div');
-      htmlWrap.className = P + '-html-card';
-      htmlWrap.innerHTML = rev.changeHtml;
-      postProcessHtmlCard(htmlWrap);
-      // Remove redundant "ADD" badge — already in the Add Requests section
-      var badges = htmlWrap.querySelectorAll('span');
-      for (var bi = 0; bi < badges.length; bi++) {
-        if (/^\s*ADD\s*$/i.test(badges[bi].textContent) && /background/.test(badges[bi].getAttribute('style') || '')) {
-          badges[bi].remove();
-          break;
-        }
-      }
-      card.appendChild(htmlWrap);
-    } else {
-      // Fallback: tag-based
-      var row = document.createElement('div');
-      row.className = P + '-row';
-      for (var ci = 0; ci < rev.changes.length; ci++) {
-        var ch = rev.changes[ci];
-        var tag = document.createElement('span');
-        tag.className = P + '-tag';
-        var lbl = document.createElement('span');
-        lbl.className = P + '-tag-label';
-        lbl.textContent = ch.label + ':';
-        tag.appendChild(lbl);
-        tag.appendChild(document.createTextNode(' ' + ch.value));
-        row.appendChild(tag);
-      }
-      if (!rev.changes.length) {
-        var empty = document.createElement('span');
-        empty.className = P + '-tag';
-        empty.textContent = '(no details)';
-        row.appendChild(empty);
-      }
-      card.appendChild(row);
+    // ── Summary bar ──
+    var summary = document.createElement('div');
+    summary.className = P + '-orphan-summary';
+
+    // Chevron
+    var chevron = document.createElement('span');
+    chevron.className = P + '-orphan-chevron';
+    chevron.innerHTML = CHEVRON_SVG;
+    summary.appendChild(chevron);
+
+    // ADD badge
+    var badge = document.createElement('span');
+    badge.className = P + '-orphan-badge';
+    badge.textContent = 'ADD';
+    summary.appendChild(badge);
+
+    // Label (displayLabel)
+    var dlabel = readJsonField(d, 'displayLabel');
+    if (dlabel) {
+      var labelEl = document.createElement('span');
+      labelEl.className = P + '-orphan-label';
+      labelEl.textContent = dlabel;
+      summary.appendChild(labelEl);
     }
 
-    card.appendChild(buildActionButtons(rev.id, rev.changeJson));
+    // Product (if different from label)
+    var product = readJsonField(d, 'productName');
+    if (product && product !== dlabel) {
+      var sep = document.createElement('span');
+      sep.className = P + '-orphan-sep';
+      sep.textContent = '\u00b7';
+      summary.appendChild(sep);
+      var prodEl = document.createElement('span');
+      prodEl.className = P + '-orphan-product';
+      prodEl.textContent = product;
+      summary.appendChild(prodEl);
+    }
+
+    // Labor description
+    var laborDesc = readJsonField(d, 'laborDesc');
+    if (laborDesc) {
+      var ldSep = document.createElement('span');
+      ldSep.className = P + '-orphan-sep';
+      ldSep.textContent = '\u00b7';
+      summary.appendChild(ldSep);
+      var ldEl = document.createElement('span');
+      ldEl.className = P + '-orphan-labordesc';
+      ldEl.textContent = laborDesc;
+      summary.appendChild(ldEl);
+    }
+
+    // Chits for boolean fields: Existing, Plenum, Exterior
+    var chitFields = [
+      { key: 'bidExistCabling', label: 'Existing' },
+      { key: 'bidPlenum',       label: 'Plenum' },
+      { key: 'bidExterior',     label: 'Exterior' },
+    ];
+    for (var chi = 0; chi < chitFields.length; chi++) {
+      var cVal = readJsonField(d, chitFields[chi].key);
+      if (/^yes$/i.test(cVal)) {
+        var chit = document.createElement('span');
+        chit.className = P + '-orphan-chit ' + P + '-orphan-chit--yes';
+        chit.textContent = chitFields[chi].label;
+        summary.appendChild(chit);
+      }
+    }
+
+    // Right-aligned fields: Qty, Rate, Bid
+    var rightWrap = document.createElement('span');
+    rightWrap.className = P + '-orphan-right';
+
+    var rightFields = [
+      { key: 'qty',  label: 'Qty' },
+      { key: 'rate', label: 'Rate', prefix: '$' },
+    ];
+    for (var rf = 0; rf < rightFields.length; rf++) {
+      var rv = readJsonField(d, rightFields[rf].key);
+      if (rv) {
+        var rfWrap = document.createElement('span');
+        rfWrap.className = P + '-orphan-field';
+        var rfLabel = document.createElement('span');
+        rfLabel.className = P + '-orphan-field-label';
+        rfLabel.textContent = rightFields[rf].label;
+        rfWrap.appendChild(rfLabel);
+        var rfVal = document.createElement('span');
+        rfVal.className = P + '-orphan-field-value';
+        rfVal.textContent = (rightFields[rf].prefix || '') + rv;
+        rfWrap.appendChild(rfVal);
+        rightWrap.appendChild(rfWrap);
+      }
+    }
+    summary.appendChild(rightWrap);
+    card.appendChild(summary);
+
+    // ── Detail panel ──
+    var detail = document.createElement('div');
+    detail.className = P + '-orphan-detail';
+
+    var grid = document.createElement('div');
+    grid.className = P + '-orphan-detail-grid';
+
+    // Detail fields — everything not already in summary
+    var detailFields = [
+      { key: 'bidMdfIdf',       label: 'MDF/IDF' },
+      { key: 'bidConnDevice',   label: 'Connected Devices' },
+      { key: 'bidConnTo',       label: 'Connected To' },
+      { key: 'bidDropLength',   label: 'Drop Length' },
+      { key: 'bidConduit',      label: 'Conduit' },
+      { key: 'proposalBucket',  label: 'Bucket' },
+      { key: 'changeNotes',     label: 'Notes' },
+    ];
+    for (var df = 0; df < detailFields.length; df++) {
+      var dv = readJsonField(d, detailFields[df].key);
+      if (!dv) continue;
+      var dRow = document.createElement('div');
+      dRow.className = P + '-orphan-detail-row';
+      var dLabel = document.createElement('span');
+      dLabel.className = P + '-orphan-detail-label';
+      dLabel.textContent = detailFields[df].label;
+      dRow.appendChild(dLabel);
+      var dVal = document.createElement('span');
+      dVal.className = P + '-orphan-detail-value';
+      dVal.textContent = dv;
+      dRow.appendChild(dVal);
+      grid.appendChild(dRow);
+    }
+    detail.appendChild(grid);
+
+    // Action buttons (approve/reject)
+    detail.appendChild(buildActionButtons(rev.id, d));
+    card.appendChild(detail);
+
+    // Toggle expand/collapse
+    summary.addEventListener('click', function () {
+      var open = card.classList.toggle('is-expanded');
+      chevron.classList.toggle('is-open', open);
+      detail.classList.toggle('is-open', open);
+    });
+
     return card;
   }
 
