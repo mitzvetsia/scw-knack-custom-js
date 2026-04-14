@@ -82,10 +82,22 @@
     if (!mount || mount.getAttribute(INIT_FLAG)) return;
     mount.setAttribute(INIT_FLAG, '1');
 
+    // Close overflow menus on any click outside
+    document.addEventListener('click', function () {
+      var open = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var i = 0; i < open.length; i++) open[i].classList.remove('scw-bid-review__overflow--open');
+    });
+
     mount.addEventListener('click', function (e) {
-      // Match buttons OR clickable cards with data-action
-      var button = e.target.closest('.scw-bid-review__btn') || e.target.closest('.scw-bid-cr-card[data-action]');
+      // Match buttons, clickable cards, OR overflow menu items with data-action
+      var button = e.target.closest('.scw-bid-review__btn')
+        || e.target.closest('.scw-bid-cr-card[data-action]')
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
       if (!button) return;
+
+      // Close overflow menu after picking an item
+      var overflow = button.closest('.scw-bid-review__overflow');
+      if (overflow) overflow.classList.remove('scw-bid-review__overflow--open');
 
       var action = button.getAttribute('data-action');
       if (!action) return;

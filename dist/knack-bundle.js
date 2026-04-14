@@ -11030,6 +11030,83 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  gap: 3px;',
       '}',
 
+      /* ── overflow menu (⋮ per-package) ───────────────────── */
+      '.scw-bid-review__overflow {',
+      '  position: relative;',
+      '  display: inline-block;',
+      '}',
+
+      '.scw-bid-review__overflow-trigger {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 4px;',
+      '  padding: 3px 8px;',
+      '  border: 1px solid #cbd5e1;',
+      '  border-radius: 4px;',
+      '  background: #fff;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  color: #475569;',
+      '  cursor: pointer;',
+      '  transition: background .15s, border-color .15s;',
+      '  white-space: nowrap;',
+      '}',
+
+      '.scw-bid-review__overflow-trigger:hover {',
+      '  background: #f1f5f9;',
+      '  border-color: #94a3b8;',
+      '}',
+
+      '.scw-bid-review__overflow-dots {',
+      '  font-size: 14px;',
+      '  line-height: 1;',
+      '  font-weight: 700;',
+      '  color: #64748b;',
+      '}',
+
+      '.scw-bid-review__overflow-menu {',
+      '  display: none;',
+      '  position: absolute;',
+      '  top: 100%;',
+      '  left: 0;',
+      '  z-index: 50;',
+      '  margin-top: 2px;',
+      '  min-width: 160px;',
+      '  background: #fff;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 6px;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.12);',
+      '  padding: 4px 0;',
+      '}',
+
+      '.scw-bid-review__overflow--open .scw-bid-review__overflow-menu {',
+      '  display: block;',
+      '}',
+
+      '.scw-bid-review__overflow-item {',
+      '  display: block;',
+      '  width: 100%;',
+      '  text-align: left;',
+      '  padding: 6px 12px;',
+      '  border: none;',
+      '  background: none;',
+      '  font: 500 12px/1.3 system-ui, sans-serif;',
+      '  color: #334155;',
+      '  cursor: pointer;',
+      '  white-space: nowrap;',
+      '}',
+
+      '.scw-bid-review__overflow-item:hover {',
+      '  background: #f1f5f9;',
+      '}',
+
+      '.scw-bid-review__overflow-item--danger {',
+      '  color: #dc2626;',
+      '}',
+
+      '.scw-bid-review__overflow-item--danger:hover {',
+      '  background: #fef2f2;',
+      '}',
+
       /* ── change request column header controls ────────────── */
       '.scw-bid-review__cr-col-title {',
       '  font-size: 13px;',
@@ -12104,6 +12181,51 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return b;
   }
 
+  // ── overflow menu factory ─────────────────────────────────────
+
+  /**
+   * Builds a compact "⋮ PkgName" trigger + dropdown menu.
+   * Items: [{ label, action, icon?, cls? }]
+   * sharedAttrs: data-* attributes copied onto each menu item.
+   */
+  function buildOverflowMenu(pkgName, items, sharedAttrs) {
+    var container = el('div', 'scw-bid-review__overflow');
+
+    // Trigger button — "⋮ PkgName"
+    var trigger = el('button', 'scw-bid-review__overflow-trigger');
+    trigger.innerHTML = '<span class="scw-bid-review__overflow-dots">\u22EE</span> ' + esc(pkgName);
+    trigger.type = 'button';
+    container.appendChild(trigger);
+
+    // Dropdown
+    var menu = el('div', 'scw-bid-review__overflow-menu');
+    for (var i = 0; i < items.length; i++) {
+      var mi = items[i];
+      var itemEl = el('button', 'scw-bid-review__overflow-item' + (mi.cls === 'danger' ? ' scw-bid-review__overflow-item--danger' : ''));
+      itemEl.type = 'button';
+      if (mi.icon) itemEl.textContent = mi.icon + ' ' + mi.label;
+      else itemEl.textContent = mi.label;
+      itemEl.setAttribute('data-action', mi.action);
+      var keys = Object.keys(sharedAttrs);
+      for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], sharedAttrs[keys[k]]);
+      menu.appendChild(itemEl);
+    }
+    container.appendChild(menu);
+
+    // Toggle
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // Close any other open menus first
+      var allOpen = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var j = 0; j < allOpen.length; j++) {
+        if (allOpen[j] !== container) allOpen[j].classList.remove('scw-bid-review__overflow--open');
+      }
+      container.classList.toggle('scw-bid-review__overflow--open');
+    });
+
+    return container;
+  }
+
   // ── chevron SVG ──────────────────────────────────────────────
 
   var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
@@ -12411,7 +12533,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
 
-    // Per-package "Request Change" / "Edit Change" buttons
+    // Per-package change request cards + overflow menu
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
     for (var ci = 0; ci < packages.length; ci++) {
       var cpkg = packages[ci];
@@ -12430,38 +12552,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
 
       if (!noSubBid) {
+        // Shared data attributes for actions
+        var sharedAttrs = {
+          'data-row-id':      row.id,
+          'data-package-id':  cpkg.id,
+          'data-sow-id':      sowId,
+          'data-vis-qty':     visibility.qty ? '1' : '0',
+          'data-vis-cabling': visibility.cabling ? '1' : '0',
+          'data-vis-conn':    visibility.connDevice ? '1' : '0',
+        };
+
+        // Show pending card if one exists
         if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          // Clickable card replaces the "Edit Change" button
           var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
           card.setAttribute('data-action', 'cell_request_change');
-          card.setAttribute('data-row-id', row.id);
-          card.setAttribute('data-package-id', cpkg.id);
-          card.setAttribute('data-sow-id', sowId);
-          card.setAttribute('data-vis-qty', visibility.qty ? '1' : '0');
-          card.setAttribute('data-vis-cabling', visibility.cabling ? '1' : '0');
-          card.setAttribute('data-vis-conn', visibility.connDevice ? '1' : '0');
+          var aKeys = Object.keys(sharedAttrs);
+          for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], sharedAttrs[aKeys[ai]]);
           wrap.appendChild(card);
-        } else {
-          // No pending change — show "Request Change" button
-          wrap.appendChild(btn('Request Change \u2014 ' + cpkg.name, 'change-req sm', {
-            'data-action':      'cell_request_change',
-            'data-row-id':      row.id,
-            'data-package-id':  cpkg.id,
-            'data-sow-id':      sowId,
-            'data-vis-qty':     visibility.qty ? '1' : '0',
-            'data-vis-cabling': visibility.cabling ? '1' : '0',
-            'data-vis-conn':    visibility.connDevice ? '1' : '0',
-          }));
         }
 
-        // "Remove from Bid" button (not on items already marked for removal)
+        // Build overflow menu items
+        var menuItems = [];
+        if (!pendingItem) {
+          menuItems.push({ label: 'Request Change', action: 'cell_request_change', icon: '\u270E' });
+        }
         if (!pendingItem || !pendingItem.removeFromBid) {
-          wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
-            'data-action':     'cell_remove_from_bid',
-            'data-row-id':     row.id,
-            'data-package-id': cpkg.id,
-            'data-sow-id':     sowId,
-          }));
+          menuItems.push({ label: 'Remove from Bid', action: 'cell_remove_from_bid', icon: '\u2716', cls: 'danger' });
+        }
+
+        if (menuItems.length) {
+          wrap.appendChild(buildOverflowMenu(cpkg.name, menuItems, sharedAttrs));
         }
       }
     }
@@ -14271,10 +14391,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!mount || mount.getAttribute(INIT_FLAG)) return;
     mount.setAttribute(INIT_FLAG, '1');
 
+    // Close overflow menus on any click outside
+    document.addEventListener('click', function () {
+      var open = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var i = 0; i < open.length; i++) open[i].classList.remove('scw-bid-review__overflow--open');
+    });
+
     mount.addEventListener('click', function (e) {
-      // Match buttons OR clickable cards with data-action
-      var button = e.target.closest('.scw-bid-review__btn') || e.target.closest('.scw-bid-cr-card[data-action]');
+      // Match buttons, clickable cards, OR overflow menu items with data-action
+      var button = e.target.closest('.scw-bid-review__btn')
+        || e.target.closest('.scw-bid-cr-card[data-action]')
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
       if (!button) return;
+
+      // Close overflow menu after picking an item
+      var overflow = button.closest('.scw-bid-review__overflow');
+      if (overflow) overflow.classList.remove('scw-bid-review__overflow--open');
 
       var action = button.getAttribute('data-action');
       if (!action) return;

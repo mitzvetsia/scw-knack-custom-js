@@ -49,6 +49,51 @@
     return b;
   }
 
+  // ── overflow menu factory ─────────────────────────────────────
+
+  /**
+   * Builds a compact "⋮ PkgName" trigger + dropdown menu.
+   * Items: [{ label, action, icon?, cls? }]
+   * sharedAttrs: data-* attributes copied onto each menu item.
+   */
+  function buildOverflowMenu(pkgName, items, sharedAttrs) {
+    var container = el('div', 'scw-bid-review__overflow');
+
+    // Trigger button — "⋮ PkgName"
+    var trigger = el('button', 'scw-bid-review__overflow-trigger');
+    trigger.innerHTML = '<span class="scw-bid-review__overflow-dots">\u22EE</span> ' + esc(pkgName);
+    trigger.type = 'button';
+    container.appendChild(trigger);
+
+    // Dropdown
+    var menu = el('div', 'scw-bid-review__overflow-menu');
+    for (var i = 0; i < items.length; i++) {
+      var mi = items[i];
+      var itemEl = el('button', 'scw-bid-review__overflow-item' + (mi.cls === 'danger' ? ' scw-bid-review__overflow-item--danger' : ''));
+      itemEl.type = 'button';
+      if (mi.icon) itemEl.textContent = mi.icon + ' ' + mi.label;
+      else itemEl.textContent = mi.label;
+      itemEl.setAttribute('data-action', mi.action);
+      var keys = Object.keys(sharedAttrs);
+      for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], sharedAttrs[keys[k]]);
+      menu.appendChild(itemEl);
+    }
+    container.appendChild(menu);
+
+    // Toggle
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // Close any other open menus first
+      var allOpen = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var j = 0; j < allOpen.length; j++) {
+        if (allOpen[j] !== container) allOpen[j].classList.remove('scw-bid-review__overflow--open');
+      }
+      container.classList.toggle('scw-bid-review__overflow--open');
+    });
+
+    return container;
+  }
+
   // ── chevron SVG ──────────────────────────────────────────────
 
   var CHEVRON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
@@ -356,7 +401,7 @@
       }
     }
 
-    // Per-package "Request Change" / "Edit Change" buttons
+    // Per-package change request cards + overflow menu
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
     for (var ci = 0; ci < packages.length; ci++) {
       var cpkg = packages[ci];
@@ -375,38 +420,36 @@
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
 
       if (!noSubBid) {
+        // Shared data attributes for actions
+        var sharedAttrs = {
+          'data-row-id':      row.id,
+          'data-package-id':  cpkg.id,
+          'data-sow-id':      sowId,
+          'data-vis-qty':     visibility.qty ? '1' : '0',
+          'data-vis-cabling': visibility.cabling ? '1' : '0',
+          'data-vis-conn':    visibility.connDevice ? '1' : '0',
+        };
+
+        // Show pending card if one exists
         if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          // Clickable card replaces the "Edit Change" button
           var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
           card.setAttribute('data-action', 'cell_request_change');
-          card.setAttribute('data-row-id', row.id);
-          card.setAttribute('data-package-id', cpkg.id);
-          card.setAttribute('data-sow-id', sowId);
-          card.setAttribute('data-vis-qty', visibility.qty ? '1' : '0');
-          card.setAttribute('data-vis-cabling', visibility.cabling ? '1' : '0');
-          card.setAttribute('data-vis-conn', visibility.connDevice ? '1' : '0');
+          var aKeys = Object.keys(sharedAttrs);
+          for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], sharedAttrs[aKeys[ai]]);
           wrap.appendChild(card);
-        } else {
-          // No pending change — show "Request Change" button
-          wrap.appendChild(btn('Request Change \u2014 ' + cpkg.name, 'change-req sm', {
-            'data-action':      'cell_request_change',
-            'data-row-id':      row.id,
-            'data-package-id':  cpkg.id,
-            'data-sow-id':      sowId,
-            'data-vis-qty':     visibility.qty ? '1' : '0',
-            'data-vis-cabling': visibility.cabling ? '1' : '0',
-            'data-vis-conn':    visibility.connDevice ? '1' : '0',
-          }));
         }
 
-        // "Remove from Bid" button (not on items already marked for removal)
+        // Build overflow menu items
+        var menuItems = [];
+        if (!pendingItem) {
+          menuItems.push({ label: 'Request Change', action: 'cell_request_change', icon: '\u270E' });
+        }
         if (!pendingItem || !pendingItem.removeFromBid) {
-          wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
-            'data-action':     'cell_remove_from_bid',
-            'data-row-id':     row.id,
-            'data-package-id': cpkg.id,
-            'data-sow-id':     sowId,
-          }));
+          menuItems.push({ label: 'Remove from Bid', action: 'cell_remove_from_bid', icon: '\u2716', cls: 'danger' });
+        }
+
+        if (menuItems.length) {
+          wrap.appendChild(buildOverflowMenu(cpkg.name, menuItems, sharedAttrs));
         }
       }
     }
