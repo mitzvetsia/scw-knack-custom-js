@@ -10465,6 +10465,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
       bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
+      bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -12014,24 +12015,33 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── extract PDF URLs from bid package records ──────────────────
 
-  function buildPdfMap(bidPackages) {
+  function buildPkgInfoMap(bidPackages) {
     var map = {};
     if (!bidPackages || !bidPackages.length) return map;
     for (var i = 0; i < bidPackages.length; i++) {
       var rec = bidPackages[i];
       var id = rec.id;
       if (!id) continue;
+
+      var info = {};
+
+      // Survey connection (field_2386)
+      var surveyId = connectionId(rec, FK.bidSurvey);
+      if (surveyId) info.surveyId = surveyId;
+
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
-      if (!rawPdf) continue;
-      if (typeof rawPdf === 'object' && rawPdf.url) {
-        map[id] = { url: rawPdf.url, filename: rawPdf.filename || '' };
-      } else if (typeof rawPdf === 'string') {
-        // May be HTML: <a href="...">filename</a>
-        var m = rawPdf.match(/href="([^"]+)"/);
-        var fn = rawPdf.match(/>([^<]+)<\/a>/);
-        if (m) map[id] = { url: m[1], filename: fn ? fn[1] : '' };
+      if (rawPdf) {
+        if (typeof rawPdf === 'object' && rawPdf.url) {
+          info.url = rawPdf.url; info.filename = rawPdf.filename || '';
+        } else if (typeof rawPdf === 'string') {
+          var m = rawPdf.match(/href="([^"]+)"/);
+          var fn = rawPdf.match(/>([^<]+)<\/a>/);
+          if (m) { info.url = m[1]; info.filename = fn ? fn[1] : ''; }
+        }
       }
+
+      map[id] = info;
     }
     return map;
   }
@@ -12052,12 +12062,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   ns.buildState = function buildState(records, sowItems, bidPackages) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
-    var pdfMap     = buildPdfMap(bidPackages || []);
+    var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
 
-    // Attach PDF info to each package
+    // Attach PDF + survey info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
-      var pdf = pdfMap[allPkgs[pi].id];
-      if (pdf) { allPkgs[pi].pdfUrl = pdf.url; allPkgs[pi].pdfFilename = pdf.filename; }
+      var info = pkgInfoMap[allPkgs[pi].id];
+      if (info) {
+        if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
+        if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
+      }
     }
 
     var sowBuckets = groupBySow(records);
@@ -12161,10 +12174,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF info to per-SOW packages
+      // Attach PDF + survey info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
-        var ppdf = pdfMap[pkgs[ppi].id];
-        if (ppdf) { pkgs[ppi].pdfUrl = ppdf.url; pkgs[ppi].pdfFilename = ppdf.filename; }
+        var pInfo = pkgInfoMap[pkgs[ppi].id];
+        if (pInfo) {
+          if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
+          if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
+        }
       }
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
@@ -13978,7 +13994,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
 
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem);
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
 
       // Only run reciprocal logic for source items (not reciprocal items).
       // Locked connection fields on reciprocal items are already managed
@@ -14024,7 +14040,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid — connected from ' + (params.displayLabel || params.productName),
-          });
+          }, params.surveyId);
         }
         if (noBidAdds.length) {
           ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
@@ -14049,8 +14065,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ── Pending management ─────────────────────────────────
-  function addPendingItem(pkgId, pkgName, sowId, sowName, item) {
-    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
+  function addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId) {
+    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: surveyId || '', items: [] };
+    if (surveyId && !_pending[pkgId].surveyId) _pending[pkgId].surveyId = surveyId;
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) { items[i] = item; persist(); triggerRerender(); return; }
@@ -14066,7 +14083,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * new reciprocal-only item.
    */
   function addReciprocalItem(pkgId, pkgName, sowId, sowName, item, connKey, sourceRowId) {
-    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
+    if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: '', items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) {
@@ -14535,20 +14552,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var it = pkg.items[i];
       var fieldList = buildItemFields(it);
 
-      // Flat changes object: field key → requested value
-      // For connection fields, also include the Ids array
-      var changes = {};
-      var r = it.requested || {};
-      for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
-        var d = FIELD_DEFS[fi];
-        if (!hasValue(r[d.key])) continue;
-        changes[d.key] = r[d.key];
-        if (d.type === 'connection' && d.idsKey && r[d.idsKey]) {
-          changes[d.idsKey] = r[d.idsKey];
-        }
-      }
-
-      items.push({
+      // Base item — IDs, labels, notes
+      var entry = {
         action:       itemActionType(it),
         rowId:        it.rowId,
         bidRecordId:  it.bidRecordId || null,
@@ -14556,9 +14561,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         displayLabel: it.displayLabel || '',
         productName:  it.productName || '',
         changeNotes:  it.changeNotes || '',
-        changes:      changes,
-        fields:       fieldList,
-      });
+      };
+
+      // Flatten requested values directly onto the item
+      // (field key → "to" value, connection Ids arrays included)
+      var r = it.requested || {};
+      for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
+        var d = FIELD_DEFS[fi];
+        if (!hasValue(r[d.key])) continue;
+        entry[d.key] = r[d.key];
+        if (d.type === 'connection' && d.idsKey && r[d.idsKey]) {
+          entry[d.idsKey] = r[d.idsKey];
+        }
+      }
+
+      // Detailed from→to diffs
+      entry.fields = fieldList;
+      items.push(entry);
     }
 
     return {
@@ -14566,6 +14585,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       timestamp:   new Date().toISOString(),
       packageId:   pkgId,
       packageName: pkg.pkgName,
+      surveyId:    pkg.surveyId || '',
       sowId:       pkg.sowId,
       sowName:     pkg.sowName || '',
       items:       items,
@@ -14790,7 +14810,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
-      });
+      }, params.surveyId);
       closeModal();
       ns.renderToast('Removal added to change request', 'success');
     });
@@ -14924,7 +14944,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         current:      {},
         requested:    requested,
         changeNotes:  ta.value.trim(),
-      });
+      }, params.surveyId);
       closeModal();
       ns.renderToast('New line item added to change request', 'success');
     });
@@ -15091,6 +15111,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (grid.packages[i].id === pkgId) return grid.packages[i].name;
     }
     return pkgId;
+  }
+
+  function findPackageSurveyId(grid, pkgId) {
+    for (var i = 0; i < grid.packages.length; i++) {
+      if (grid.packages[i].id === pkgId) return grid.packages[i].surveyId || '';
+    }
+    return '';
   }
 
   function handlePackageAction(button, actionType) {
@@ -15383,6 +15410,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       rowId:        rowId,
       pkgId:        pkgId,
       pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
       sowItemId:    row.sowItem || '',
@@ -15424,6 +15452,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       rowId:        rowId,
       pkgId:        pkgId,
       pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
       sowItemId:    row.sowItem || '',
@@ -15468,6 +15497,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         rowId:        rowId,
         pkgId:        pkgId,
         pkgName:      findPackageName(grid, pkgId),
+        surveyId:     findPackageSurveyId(grid, pkgId),
         sowId:        sowId,
         sowName:      grid.sowName,
         sowItemId:    row.sowItem || '',
