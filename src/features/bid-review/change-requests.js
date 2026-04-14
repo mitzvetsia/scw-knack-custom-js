@@ -973,7 +973,7 @@
 
     if (item.removeFromBid) {
       card.appendChild(el('div', 'scw-bid-cr-card__row',
-        (item.displayLabel || item.productName || 'Item') + ' — requesting removal'));
+        (item.displayLabel || 'Item') + ' \u2014 requesting removal'));
       if (item.changeNotes) {
         card.appendChild(el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d'));
       }
@@ -984,6 +984,40 @@
     for (var i = 0; i < FIELD_DEFS.length; i++) {
       var d = FIELD_DEFS[i];
       if (!hasValue(r[d.key])) continue;
+
+      // Connection fields: show each item on its own line (label-only)
+      if (d.type === 'connection') {
+        var row = el('div', 'scw-bid-cr-card__row');
+        row.appendChild(el('span', 'scw-bid-cr-card__label', d.label + ':'));
+
+        var fromItems = hasValue(c[d.key]) ? String(c[d.key]).split(/,\s*/) : [];
+        var toItems   = String(r[d.key]).split(/,\s*/);
+
+        // Strip product name — keep only the label portion (before " — ")
+        function labelOnly(s) {
+          var dash = s.indexOf(' \u2014 ');
+          return dash !== -1 ? s.substring(0, dash).trim() : s.trim();
+        }
+
+        var fromList = el('div', 'scw-bid-cr-card__from');
+        for (var fi = 0; fi < fromItems.length; fi++) {
+          if (fi > 0) fromList.appendChild(document.createElement('br'));
+          fromList.appendChild(document.createTextNode(labelOnly(fromItems[fi])));
+        }
+        if (!fromItems.length) fromList.textContent = '\u2014';
+
+        var toList = el('div', 'scw-bid-cr-card__to');
+        for (var ti = 0; ti < toItems.length; ti++) {
+          if (ti > 0) toList.appendChild(document.createElement('br'));
+          toList.appendChild(document.createTextNode(labelOnly(toItems[ti])));
+        }
+
+        row.appendChild(fromList);
+        row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
+        row.appendChild(toList);
+        card.appendChild(row);
+        continue;
+      }
 
       var row = el('div', 'scw-bid-cr-card__row');
       row.appendChild(el('span', 'scw-bid-cr-card__label', d.label + ':'));
