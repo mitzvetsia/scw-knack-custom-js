@@ -1255,11 +1255,21 @@
       for (var fi = 0; fi < fieldList.length; fi++) {
         var f = fieldList[fi];
         var isCurrency = false;
+        var isConn = false;
         for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
-          if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+          if (FIELD_DEFS[fd].key === f.field) {
+            if (FIELD_DEFS[fd].currency) isCurrency = true;
+            if (FIELD_DEFS[fd].type === 'connection') isConn = true;
+            break;
+          }
         }
         var fromStr = f.from != null ? escHtml(isCurrency ? fmtCurrencyHtml(f.from) : String(f.from)) : '&mdash;';
         var toStr   = escHtml(isCurrency ? fmtCurrencyHtml(f.to) : String(f.to));
+        // Connection fields: use line breaks instead of commas for device lists
+        if (isConn) {
+          fromStr = fromStr.replace(/,\s*/g, '<br>');
+          toStr   = toStr.replace(/,\s*/g, '<br>');
+        }
 
         h.push('<tr>');
         h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + escHtml(f.label) + '</td>');
@@ -1428,12 +1438,22 @@
               var toStr   = escHtml(String(f.to));
               // Currency formatting
               var isCurrency = false;
+              var isConn2 = false;
               for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
-                if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+                if (FIELD_DEFS[fd].key === f.field) {
+                  if (FIELD_DEFS[fd].currency) isCurrency = true;
+                  if (FIELD_DEFS[fd].type === 'connection') isConn2 = true;
+                  break;
+                }
               }
               if (isCurrency) {
                 fromStr = f.from != null ? escHtml(fmtCurrencyHtml(f.from)) : '&mdash;';
                 toStr   = escHtml(fmtCurrencyHtml(f.to));
+              }
+              // Connection fields: use line breaks instead of commas for device lists
+              if (isConn2) {
+                fromStr = fromStr.replace(/,\s*/g, '<br>');
+                toStr   = toStr.replace(/,\s*/g, '<br>');
               }
 
               h.push('<tr>');

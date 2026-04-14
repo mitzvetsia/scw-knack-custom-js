@@ -33,7 +33,25 @@
     },
     /** Rich-text field holding pre-built HTML card from change request */
     changeHtmlField: 'field_2695',
+    /** JSON field holding the item data for editing */
+    changeJsonField: 'field_2696',
   };
+
+  /** Editable fields in the revision edit modal (mirrors change-requests.js FIELD_DEFS) */
+  var EDIT_FIELDS = [
+    { key: 'productName',     label: 'Product',            type: 'text' },
+    { key: 'qty',             label: 'Qty',                type: 'number' },
+    { key: 'rate',            label: 'Rate ($)',           type: 'number' },
+    { key: 'laborDesc',       label: 'Labor Description',  type: 'text', multiline: true },
+    { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select', options: ['', 'Yes', 'No'] },
+    { key: 'bidPlenum',       label: 'Plenum',             type: 'select', options: ['', 'Yes', 'No'] },
+    { key: 'bidExterior',     label: 'Exterior',           type: 'select', options: ['', 'Yes', 'No'] },
+    { key: 'bidDropLength',   label: 'Drop Length',        type: 'text' },
+    { key: 'bidConduit',      label: 'Conduit',            type: 'text' },
+    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'text' },
+    { key: 'bidConnTo',       label: 'Connected To',       type: 'text' },
+    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'text' },
+  ];
 
   var STYLE_ID   = 'scw-bid-revision-inject-css';
   var BADGE_CLS  = 'scw-revision-badge';
@@ -155,6 +173,62 @@
       '  padding: 8px 0; border-bottom: 1px solid #dcfce7;',
       '}',
       '.' + P + '-orphan-card:last-child { border-bottom: none; }',
+
+      /* ── Edit modal overlay + dialog ── */
+      '.' + P + '-modal-overlay {',
+      '  position: fixed; inset: 0; z-index: 10000;',
+      '  background: rgba(0,0,0,.45);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '}',
+      '.' + P + '-modal {',
+      '  background: #fff; border-radius: 8px; width: 500px; max-width: 92vw;',
+      '  max-height: 85vh; display: flex; flex-direction: column;',
+      '  box-shadow: 0 8px 30px rgba(0,0,0,.25);',
+      '}',
+      '.' + P + '-modal-header {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  padding: 12px 16px; border-bottom: 1px solid #e5e7eb;',
+      '}',
+      '.' + P + '-modal-title {',
+      '  font-size: 14px; font-weight: 700; color: #1f2937;',
+      '}',
+      '.' + P + '-modal-close {',
+      '  background: none; border: none; font-size: 20px; cursor: pointer;',
+      '  color: #6b7280; line-height: 1; padding: 0 4px;',
+      '}',
+      '.' + P + '-modal-close:hover { color: #111827; }',
+      '.' + P + '-modal-body {',
+      '  padding: 14px 16px; overflow-y: auto; flex: 1;',
+      '}',
+      '.' + P + '-modal-field {',
+      '  margin-bottom: 10px;',
+      '}',
+      '.' + P + '-modal-label {',
+      '  display: block; font-size: 11px; font-weight: 600;',
+      '  color: #374151; margin-bottom: 3px;',
+      '}',
+      '.' + P + '-modal-input, .' + P + '-modal-select {',
+      '  width: 100%; padding: 6px 8px; font-size: 13px;',
+      '  border: 1px solid #d1d5db; border-radius: 4px;',
+      '  box-sizing: border-box;',
+      '}',
+      '.' + P + '-modal-input:focus, .' + P + '-modal-select:focus {',
+      '  outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.15);',
+      '}',
+      '.' + P + '-modal-footer {',
+      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  padding: 10px 16px; border-top: 1px solid #e5e7eb;',
+      '}',
+
+      /* ── Edit + Cancel button styles ── */
+      '.' + P + '-btn--edit {',
+      '  background: #2563eb; color: #fff;',
+      '}',
+      '.' + P + '-btn--edit:hover { background: #1d4ed8; }',
+      '.' + P + '-btn--cancel {',
+      '  background: #e5e7eb; color: #374151;',
+      '}',
+      '.' + P + '-btn--cancel:hover { background: #d1d5db; }',
     ].join('\n');
 
     var style = document.createElement('style');
@@ -247,7 +321,17 @@
       if (link) editHref = link.getAttribute('href') || '';
     }
 
-    return { id: rec.id, editHref: editHref, changeHtml: changeHtml, changes: changes };
+    // Parse JSON item data for editing
+    var changeJson = null;
+    var jsonRaw = rec[CFG.changeJsonField] || '';
+    if (typeof jsonRaw === 'string') jsonRaw = stripHtml(jsonRaw).trim();
+    if (jsonRaw) {
+      try { changeJson = JSON.parse(jsonRaw); } catch (e) {
+        console.warn('[BidRevInject] Failed to parse JSON for', rec.id, e);
+      }
+    }
+
+    return { id: rec.id, editHref: editHref, changeHtml: changeHtml, changeJson: changeJson, changes: changes };
   }
 
   /**
@@ -317,6 +401,9 @@
       // Extract pre-built HTML field (rich text — keep innerHTML)
       var htmlCell = tr.querySelector('td.' + CFG.changeHtmlField);
       if (htmlCell) rec[CFG.changeHtmlField] = htmlCell.innerHTML.trim();
+      // Extract JSON data field
+      var jsonCell = tr.querySelector('td.' + CFG.changeJsonField);
+      if (jsonCell) rec[CFG.changeJsonField] = jsonCell.textContent.trim();
       records.push(rec);
     }
     return records;
@@ -346,10 +433,159 @@
     return badge;
   }
 
+  // ── EDIT MODAL ──────────────────────────────────────────
+
+  var MODAL_ID = 'scw-rev-edit-overlay';
+
+  function closeEditModal() {
+    var el = document.getElementById(MODAL_ID);
+    if (el) el.remove();
+  }
+
   /**
-   * Build Approve / Reject action buttons for a single revision.
+   * Open an edit modal pre-filled from the revision JSON.
+   * On save: calls submitRevisionAction with outcome "accepted with changes"
+   * and the modified values.
    */
-  function buildActionButtons(revisionId) {
+  function openEditModal(revisionId, jsonData, wrapEl) {
+    closeEditModal();
+    var data = jsonData || {};
+
+    var overlay = document.createElement('div');
+    overlay.id = MODAL_ID;
+    overlay.className = P + '-modal-overlay';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeEditModal(); });
+
+    var modal = document.createElement('div');
+    modal.className = P + '-modal';
+
+    // Header
+    var header = document.createElement('div');
+    header.className = P + '-modal-header';
+    var title = document.createElement('div');
+    title.className = P + '-modal-title';
+    title.textContent = 'Edit Revision — ' + (data.displayLabel || data.productName || 'Item');
+    header.appendChild(title);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = P + '-modal-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.addEventListener('click', closeEditModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body — build inputs from EDIT_FIELDS
+    var body = document.createElement('div');
+    body.className = P + '-modal-body';
+
+    // Merge current + requested for pre-fill (requested wins)
+    var current   = data.current   || {};
+    var requested = data.requested || {};
+    var prefill = {};
+    for (var pi = 0; pi < EDIT_FIELDS.length; pi++) {
+      var pk = EDIT_FIELDS[pi].key;
+      if (requested[pk] != null) prefill[pk] = requested[pk];
+      else if (current[pk] != null) prefill[pk] = current[pk];
+      else if (data[pk] != null) prefill[pk] = data[pk];
+    }
+
+    var inputs = {};
+    for (var fi = 0; fi < EDIT_FIELDS.length; fi++) {
+      var fd = EDIT_FIELDS[fi];
+      var val = prefill[fd.key] != null ? String(prefill[fd.key]) : '';
+      // Skip empty fields for non-text types to keep modal compact
+      if (!val && fd.type === 'select') continue;
+      if (!val && fd.key !== 'productName' && fd.key !== 'qty' && fd.key !== 'rate') continue;
+
+      var fRow = document.createElement('div');
+      fRow.className = P + '-modal-field';
+      var label = document.createElement('label');
+      label.className = P + '-modal-label';
+      label.textContent = fd.label;
+      fRow.appendChild(label);
+
+      var inp;
+      if (fd.type === 'select') {
+        inp = document.createElement('select');
+        inp.className = P + '-modal-select';
+        for (var oi = 0; oi < fd.options.length; oi++) {
+          var opt = document.createElement('option');
+          opt.value = fd.options[oi];
+          opt.textContent = fd.options[oi] || '\u2014';
+          inp.appendChild(opt);
+        }
+        inp.value = val;
+      } else if (fd.multiline) {
+        inp = document.createElement('textarea');
+        inp.className = P + '-modal-input';
+        inp.rows = 3;
+        inp.value = val;
+      } else {
+        inp = document.createElement('input');
+        inp.type = fd.type === 'number' ? 'number' : 'text';
+        inp.className = P + '-modal-input';
+        if (fd.type === 'number') inp.setAttribute('step', 'any');
+        inp.value = val;
+      }
+      inputs[fd.key] = inp;
+      fRow.appendChild(inp);
+      body.appendChild(fRow);
+    }
+
+    // Notes
+    var notesRow = document.createElement('div');
+    notesRow.className = P + '-modal-field';
+    var notesLabel = document.createElement('label');
+    notesLabel.className = P + '-modal-label';
+    notesLabel.textContent = 'Notes';
+    notesRow.appendChild(notesLabel);
+    var notesInput = document.createElement('textarea');
+    notesInput.className = P + '-modal-input';
+    notesInput.rows = 2;
+    notesInput.placeholder = 'Optional notes about changes\u2026';
+    notesRow.appendChild(notesInput);
+    body.appendChild(notesRow);
+    modal.appendChild(body);
+
+    // Footer
+    var footer = document.createElement('div');
+    footer.className = P + '-modal-footer';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = P + '-btn ' + P + '-btn--cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', closeEditModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = document.createElement('button');
+    saveBtn.className = P + '-btn ' + P + '-btn--approve';
+    saveBtn.textContent = 'Approve with Changes';
+    saveBtn.addEventListener('click', function () {
+      // Collect modified values
+      var modified = {};
+      for (var k in inputs) {
+        var v = (inputs[k].value || '').trim();
+        if (v) modified[k] = k === 'qty' || k === 'rate' ? parseFloat(v) : v;
+      }
+      var notes = notesInput.value.trim();
+      closeEditModal();
+      submitRevisionAction(revisionId, 'approve_with_changes', '', wrapEl, {
+        outcome: 'accepted with changes',
+        modified: modified,
+        notes: notes,
+      });
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  // ── ACTION BUTTONS ──────────────────────────────────────
+
+  /**
+   * Build Approve / Edit / Reject action buttons for a single revision.
+   */
+  function buildActionButtons(revisionId, changeJson) {
     var wrap = document.createElement('div');
 
     var actions = document.createElement('div');
@@ -359,15 +595,19 @@
     approveBtn.type = 'button';
     approveBtn.className = P + '-btn ' + P + '-btn--approve';
     approveBtn.textContent = 'Approve';
-    approveBtn.setAttribute('data-rev-id', revisionId);
+
+    var editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = P + '-btn ' + P + '-btn--edit';
+    editBtn.textContent = 'Edit';
 
     var rejectBtn = document.createElement('button');
     rejectBtn.type = 'button';
     rejectBtn.className = P + '-btn ' + P + '-btn--reject';
     rejectBtn.textContent = 'Reject';
-    rejectBtn.setAttribute('data-rev-id', revisionId);
 
     actions.appendChild(approveBtn);
+    actions.appendChild(editBtn);
     actions.appendChild(rejectBtn);
     wrap.appendChild(actions);
 
@@ -396,8 +636,14 @@
     // ── Approve handler ──
     approveBtn.addEventListener('click', function () {
       approveBtn.disabled = true;
+      editBtn.disabled = true;
       rejectBtn.disabled = true;
-      submitRevisionAction(revisionId, 'approve', '', wrap);
+      submitRevisionAction(revisionId, 'approve', '', wrap, { outcome: 'accepted' });
+    });
+
+    // ── Edit handler — open modal ──
+    editBtn.addEventListener('click', function () {
+      openEditModal(revisionId, changeJson, wrap);
     });
 
     // ── Reject handler — toggle notes input ──
@@ -418,28 +664,33 @@
       }
       errorMsg.textContent = '';
       approveBtn.disabled = true;
+      editBtn.disabled = true;
       rejectBtn.disabled = true;
       confirmBtn.disabled = true;
-      submitRevisionAction(revisionId, 'reject', reason, wrap);
+      submitRevisionAction(revisionId, 'reject', reason, wrap, { outcome: 'rejected' });
     });
 
     return wrap;
   }
 
   /**
-   * Submit an approve/reject action for a revision record.
+   * Submit an action for a revision record.
+   * extra: { outcome, modified?, notes? }
    */
-  function submitRevisionAction(revisionId, action, reason, wrapEl) {
+  function submitRevisionAction(revisionId, action, reason, wrapEl, extra) {
+    extra = extra || {};
     var payload = {
-      actionType:  'revision_' + action,
+      actionType:  'revision_response',
       revisionId:  revisionId,
+      outcome:     extra.outcome || action,
       timestamp:   new Date().toISOString(),
     };
-    if (reason) payload.reason = reason;
+    if (reason)         payload.reason   = reason;
+    if (extra.modified) payload.modified = extra.modified;
+    if (extra.notes)    payload.notes    = extra.notes;
 
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
-    // Post to the same change-request webhook
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
                    ? window.SCW.bidReview.CONFIG.changeRequestWebhook
                    : '';
@@ -454,24 +705,26 @@
       data: JSON.stringify(payload),
       success: function () {
         console.log('[BidRevInject]', action, 'success for', revisionId);
-        // Replace buttons with status indicator
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
-        if (action === 'approve') {
-          badge.style.background = '#dcfce7';
-          badge.style.color = '#166534';
-          badge.textContent = '\u2713 Approved';
-        } else {
+        if (extra.outcome === 'rejected') {
           badge.style.background = '#fee2e2';
           badge.style.color = '#991b1b';
           badge.textContent = '\u2717 Rejected' + (reason ? ': ' + reason : '');
+        } else if (extra.outcome === 'accepted with changes') {
+          badge.style.background = '#dbeafe';
+          badge.style.color = '#1e40af';
+          badge.textContent = '\u2713 Accepted with changes';
+        } else {
+          badge.style.background = '#dcfce7';
+          badge.style.color = '#166534';
+          badge.textContent = '\u2713 Accepted';
         }
         wrapEl.innerHTML = '';
         wrapEl.appendChild(badge);
       },
       error: function (xhr) {
         console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status);
-        // Re-enable buttons
         var btns = wrapEl.querySelectorAll('button');
         for (var bi = 0; bi < btns.length; bi++) btns[bi].disabled = false;
         var err = wrapEl.querySelector('.' + P + '-reject-error');
@@ -530,16 +783,8 @@
         item.appendChild(row);
       }
 
-      if (rev.editHref) {
-        var link = document.createElement('a');
-        link.className = P + '-edit-link';
-        link.href = rev.editHref;
-        link.textContent = 'Edit';
-        item.appendChild(link);
-      }
-
-      // ── Approve / Reject buttons ──
-      item.appendChild(buildActionButtons(rev.id));
+      // ── Approve / Edit / Reject buttons ──
+      item.appendChild(buildActionButtons(rev.id, rev.changeJson));
 
       strip.appendChild(item);
     }
@@ -587,15 +832,7 @@
       card.appendChild(row);
     }
 
-    if (rev.editHref) {
-      var link = document.createElement('a');
-      link.className = P + '-edit-link';
-      link.href = rev.editHref;
-      link.textContent = 'Edit';
-      card.appendChild(link);
-    }
-
-    card.appendChild(buildActionButtons(rev.id));
+    card.appendChild(buildActionButtons(rev.id, rev.changeJson));
     return card;
   }
 
