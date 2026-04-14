@@ -15555,7 +15555,46 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * Used by the Add to Bid modal for camera/reader items.
    * Returns { bidConnDevice: [...], bidConnTo: [...] }
    */
-  function buildAddConnOptions(grid) {
+  /**
+   * Build a set of camera/reader IDs that are already claimed as Connected
+   * Devices on ANY record (existing bid cells + pending change requests).
+   * Excludes the given selfId so the current item's own selections don't
+   * block themselves from appearing.
+   */
+  function buildClaimedDeviceSet(grid, selfId) {
+    var claimed = {};
+    // 1. Existing bid records — scan all cells across all packages
+    for (var ri = 0; ri < grid.rows.length; ri++) {
+      var row = grid.rows[ri];
+      var pkgs = Object.keys(row.cellsByPackage);
+      for (var pi = 0; pi < pkgs.length; pi++) {
+        var c = row.cellsByPackage[pkgs[pi]];
+        if (c.id === selfId) continue; // skip self
+        var ids = c.bidConnDeviceIds || [];
+        for (var di = 0; di < ids.length; di++) claimed[ids[di]] = true;
+      }
+    }
+    // 2. Pending change requests — check requested bidConnDeviceIds
+    var crApi = ns.changeRequests;
+    if (crApi && typeof crApi.getPending === 'function') {
+      var pending = crApi.getPending();
+      var pkeys = Object.keys(pending);
+      for (var pk = 0; pk < pkeys.length; pk++) {
+        var items = pending[pkeys[pk]].items || [];
+        for (var ii = 0; ii < items.length; ii++) {
+          var it = items[ii];
+          // Skip self
+          if (it.bidRecordId === selfId || it.rowId === selfId) continue;
+          var reqIds = (it.requested && it.requested.bidConnDeviceIds) || [];
+          for (var qi = 0; qi < reqIds.length; qi++) claimed[reqIds[qi]] = true;
+        }
+      }
+    }
+    return claimed;
+  }
+
+  function buildAddConnOptions(grid, selfId) {
+    var claimed = buildClaimedDeviceSet(grid, selfId);
     var connDevOpts = [], connToOpts = [];
     var seenDev = {}, seenTo = {};
 
@@ -15571,7 +15610,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
         var nbIsCR = cr.proposalBucketId === CAM_READER_BUCKET_ID;
-        if (nbIsCR && !seenDev[cr.id]) {
+        if (nbIsCR && !seenDev[cr.id] && !claimed[cr.id]) {
           seenDev[cr.id] = true;
           connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
         }
@@ -15596,7 +15635,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var isCR = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
-        if (!seenDev[cc.id] && isCR && connToBlank) {
+        if (!seenDev[cc.id] && isCR && connToBlank && !claimed[cc.id]) {
           seenDev[cc.id] = true;
           connDevOpts.push({ id: cc.id, identifier: lbl });
         }
@@ -15851,7 +15890,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var showConn2 = hasMapConn2 && !isCR2;
         var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
         if (showConn2 || isCR2) {
-          var ac2 = buildAddConnOptions(grid);
+          var ac2 = buildAddConnOptions(grid, rowId);
           addConnOpts2.bidConnDevice = ac2.bidConnDevice;
           addConnOpts2.bidConnTo     = ac2.bidConnTo;
         }
@@ -15892,6 +15931,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Build per-field connection dropdown options from the grid rows.
     // field_2380 (Connected Devices): cameras/readers not yet wired
     // field_2381 (Connected To): networking / headend items
+    var claimed = buildClaimedDeviceSet(grid, cell.id);
     var connDevOpts = [], connToOpts = [];
     var seenDev = {}, seenTo = {};
 
@@ -15914,8 +15954,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
         var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
-        // Connected Devices: camera/reader noBid items
-        if (nbIsCamReader && !seenDev[cr.id]) {
+        // Connected Devices: camera/reader noBid items — skip if claimed elsewhere
+        if (nbIsCamReader && !seenDev[cr.id] && !claimed[cr.id]) {
           seenDev[cr.id] = true;
           connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
         }
@@ -15941,8 +15981,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
-        // Connected Devices: Camera/Reader with no existing "Connected To", or currently selected
-        if (!seenDev[cc.id] && ((isCamReader && connToBlank) || curDevSet[cc.id])) {
+        // Connected Devices: Camera/Reader with no existing "Connected To",
+        // not claimed by another record, or currently selected on this record
+        if (!seenDev[cc.id] && ((isCamReader && connToBlank && !claimed[cc.id]) || curDevSet[cc.id])) {
           seenDev[cc.id] = true;
           connDevOpts.push({ id: cc.id, identifier: lbl });
         }
