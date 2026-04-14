@@ -44,8 +44,8 @@
     { key: 'bidExterior',     label: 'Exterior',           type: 'select',  options: ['Yes', 'No'], visKey: 'cabling' },
     { key: 'bidDropLength',   label: 'Drop Length',        type: 'text',    visKey: 'cabling' },
     { key: 'bidConduit',      label: 'Conduit',            type: 'text',    visKey: 'cabling' },
-    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
-    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling', single: true },
+    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice', addable: true },
+    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling', single: true, addable: true },
     { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connection: 'field_2375', idsKey: 'bidMdfIdfIds', addable: true, single: true },
   ];
 

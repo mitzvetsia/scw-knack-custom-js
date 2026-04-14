@@ -162,6 +162,69 @@
     return opts;
   }
 
+  /**
+   * Build Connected Devices + Connected To dropdown options from grid rows.
+   * Used by the Add to Bid modal for camera/reader items.
+   * Returns { bidConnDevice: [...], bidConnTo: [...] }
+   */
+  function buildAddConnOptions(grid) {
+    var connDevOpts = [], connToOpts = [];
+    var seenDev = {}, seenTo = {};
+
+    for (var ci = 0; ci < grid.rows.length; ci++) {
+      var cr = grid.rows[ci];
+      var cpkgs = Object.keys(cr.cellsByPackage);
+
+      // noBid / surveyNoBid rows
+      if ((cr.noBid || cr.surveyNoBid) && cpkgs.length === 0) {
+        var nbLbl = cr.displayLabel || cr.sowProduct || cr.productName || cr.id;
+        if (cr.sowProduct && cr.displayLabel && cr.displayLabel !== cr.sowProduct
+            && nbLbl.indexOf(cr.sowProduct) === -1) {
+          nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
+        }
+        var nbBucket = (cr.proposalBucket || '').toLowerCase();
+        var nbIsCR = nbBucket === 'camera' || nbBucket === 'cameras'
+                   || nbBucket === 'reader' || nbBucket === 'readers'
+                   || nbBucket === 'camera or reader';
+        if (nbIsCR && !seenDev[cr.id]) {
+          seenDev[cr.id] = true;
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+        }
+        var nbMapConn = /^yes$/i.test(String(cr.sowMapConn || '').trim());
+        if (nbMapConn && !seenTo[cr.id]) {
+          seenTo[cr.id] = true;
+          connToOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+        }
+        continue;
+      }
+
+      for (var cp = 0; cp < cpkgs.length; cp++) {
+        var cc = cr.cellsByPackage[cpkgs[cp]];
+        if (!cc.id) continue;
+
+        var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
+        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
+            && lbl.indexOf(cr.productName) === -1) {
+          lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
+        }
+
+        var isCR = (cr.proposalBucket || '').toLowerCase() === 'camera or reader';
+        var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
+
+        if (!seenDev[cc.id] && isCR && connToBlank) {
+          seenDev[cc.id] = true;
+          connDevOpts.push({ id: cc.id, identifier: lbl });
+        }
+        if (!seenTo[cc.id] && cc.mapConnections) {
+          seenTo[cc.id] = true;
+          connToOpts.push({ id: cc.id, identifier: lbl });
+        }
+      }
+    }
+
+    return { bidConnDevice: connDevOpts, bidConnTo: connToOpts };
+  }
+
   function findPackageSurveyId(grid, pkgId) {
     for (var i = 0; i < grid.packages.length; i++) {
       if (grid.packages[i].id === pkgId) return grid.packages[i].surveyId || '';
@@ -402,6 +465,12 @@
                   || bucket2 === 'reader' || bucket2 === 'readers'
                   || bucket2 === 'camera or reader'
                   || row.proposalBucketId === '6481e5ba38f283002898113c';
+        var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
+        if (isCR2) {
+          var ac2 = buildAddConnOptions(grid);
+          addConnOpts2.bidConnDevice = ac2.bidConnDevice;
+          addConnOpts2.bidConnTo     = ac2.bidConnTo;
+        }
         ns.changeRequests.openAddItem({
           rowId:        rowId,
           pkgId:        pkgId,
@@ -423,8 +492,8 @@
           sowConduit:       row.sowConduit,
           sowMdfIdf:        row.mdfIdf || '',
           sowMdfIdfIds:     row.mdfIdfIds || [],
-          connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
-          visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: false },
+          connOptions:      addConnOpts2,
+          visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: isCR2 },
           existing:         pendItem,
         });
       }
@@ -588,8 +657,16 @@
     var vis = {
       qty:        row.sowQty > 1,
       cabling:    isCamReader,
-      connDevice: false,  // Add modal doesn't need connection dropdowns
+      connDevice: isCamReader,
     };
+
+    // Build connection options for camera/reader adds
+    var connOpts = { bidMdfIdf: buildMdfIdfOptions() };
+    if (isCamReader) {
+      var addConn = buildAddConnOptions(grid);
+      connOpts.bidConnDevice = addConn.bidConnDevice;
+      connOpts.bidConnTo     = addConn.bidConnTo;
+    }
 
     if (ns.changeRequests.openAddItem) {
       ns.changeRequests.openAddItem({
@@ -614,7 +691,7 @@
         sowConduit:       row.sowConduit,
         sowMdfIdf:        row.mdfIdf || '',
         sowMdfIdfIds:     row.mdfIdfIds || [],
-        connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
+        connOptions:      connOpts,
         visibility:       vis,
       });
     } else {
