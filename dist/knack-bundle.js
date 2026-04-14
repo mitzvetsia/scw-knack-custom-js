@@ -31016,13 +31016,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * Build connection options from view_3505 Knack model records.
    * Returns { bidMdfIdf: [{id, identifier}], bidConnDevice: [...], bidConnTo: [...] }
    */
+  /**
+   * Build a set of camera/reader IDs already claimed as Connected Devices
+   * by any pending change request.  Excludes selfId so the current item's
+   * own selections still appear.
+   */
+  function buildPendingClaimedSet(selfId) {
+    var claimed = {};
+    var crApi = window.SCW && window.SCW.bidReview && window.SCW.bidReview.changeRequests;
+    if (!crApi || typeof crApi.getPending !== 'function') return claimed;
+    var pending = crApi.getPending();
+    var pkeys = Object.keys(pending);
+    for (var pk = 0; pk < pkeys.length; pk++) {
+      var items = pending[pkeys[pk]].items || [];
+      for (var ii = 0; ii < items.length; ii++) {
+        var it = items[ii];
+        if (selfId && (it.bidRecordId === selfId || it.rowId === selfId)) continue;
+        var reqIds = (it.requested && it.requested.bidConnDeviceIds) || [];
+        for (var qi = 0; qi < reqIds.length; qi++) claimed[reqIds[qi]] = true;
+      }
+    }
+    return claimed;
+  }
+
   function buildConnOptions(viewId, opts) {
     var TAG = '[SCW-connOpts]';
     var isAdd = opts && opts.isAdd;
+    var selfId = opts && opts.selfId;
     var model = findModel(viewId || CFG.targetViews[0]);
     var records = extractRecords(model);
     var devMap = {}, toMap = {};
     var foundCamReaderFromModel = false;
+
+    // Build claimed set from pending change requests
+    var pendingClaimed = buildPendingClaimedSet(selfId);
+    var pClaimedKeys = Object.keys(pendingClaimed);
+    if (pClaimedKeys.length) console.log(TAG, 'pendingClaimed:', pClaimedKeys);
 
     console.log(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
 
@@ -31062,6 +31091,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
         if (isAdd && connToPopulated) {
           console.log(TAG, 'Skipping (field_2381 populated):', label, rec.id);
+        } else if (pendingClaimed[rec.id]) {
+          console.log(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
         } else {
           console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
           if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
@@ -31123,7 +31154,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                   }
                 }
               }
-              if (!devMap[rowId]) {
+              if (pendingClaimed[rowId]) {
+                console.log(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
+              } else if (!devMap[rowId]) {
                 var nameCell = dataTr.querySelector('td.field_2365') || dataTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
                 console.log(TAG, 'Strategy 3 hit:', rowLabel, rowId);
@@ -31175,8 +31208,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             rlabel = rjData.displayLabel || rjData.productName || rr.id;
           } catch (e) { /* skip */ }
         }
-        console.log(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
-        if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
+        if (pendingClaimed[rr.id]) {
+          console.log(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
+        } else {
+          console.log(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
+          if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
+        }
       }
     }
 
@@ -31192,7 +31229,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (pItem.addToBid && pItem.proposalBucketId === CAM_READER_BUCKET_ID) {
             var pLabel = pItem.displayLabel || pItem.productName || pItem.rowId;
             var pId = pItem.sowItemId || pItem.rowId;
-            if (pId && !devMap[pId]) {
+            if (pId && pendingClaimed[pId]) {
+              console.log(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
+            } else if (pId && !devMap[pId]) {
               console.log(TAG, 'Strategy 6 (pending):', pLabel, pId);
               devMap[pId] = { id: pId, identifier: pLabel };
             }
@@ -31549,7 +31588,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Build connection options from view_3505 + view_3617
     var isAddItem = !!(data.addToBid || data.action === 'add');
-    var connOpts = buildConnOptions(null, { isAdd: isAddItem });
+    var selfRowId = data.rowId || data.sowItemId || '';
+    var connOpts = buildConnOptions(null, { isAdd: isAddItem, selfId: selfRowId });
 
     // Derive field visibility from proposal bucket (mirrors init.js logic)
     var bucketId = data.proposalBucketId || '';
