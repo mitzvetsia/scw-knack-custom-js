@@ -405,7 +405,7 @@
       var cr = grid.rows[ci];
       var cpkgs = Object.keys(cr.cellsByPackage);
 
-      // noBid rows: no bid cells, but include as connDev options if camera/reader
+      // noBid rows: no bid cells, but include as connection options
       if (cr.noBid && cpkgs.length === 0) {
         var nbLbl = cr.displayLabel || cr.sowProduct || cr.productName || cr.id;
         if (cr.sowProduct && cr.displayLabel && cr.displayLabel !== cr.sowProduct
@@ -416,9 +416,16 @@
         var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'
                          || nbBucket === 'reader' || nbBucket === 'readers'
                          || nbBucket === 'camera or reader';
+        // Connected Devices: camera/reader noBid items
         if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
           connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+        }
+        // Connected To: noBid items with mapConnections flag (field_2231)
+        var nbMapConn = /^yes$/i.test(String(cr.sowMapConn || '').trim());
+        if (nbMapConn && !seenTo[cr.id]) {
+          seenTo[cr.id] = true;
+          connToOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
         }
         continue;
       }
