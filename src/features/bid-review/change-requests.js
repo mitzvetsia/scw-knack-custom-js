@@ -567,7 +567,7 @@
               if (cbs[si].checked) {
                 selIds.push(cbs[si].value);
                 var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
-                var rawLabel = cbLbl ? cbLbl.textContent.replace(/\s*\(not on bid\)\s*$/, '') : cbs[si].value;
+                var rawLabel = cbLbl ? cbLbl.textContent.replace(/\s*\(locked\)\s*$/, '').replace(/\s*\(not on bid\)\s*$/, '') : cbs[si].value;
                 if (cbLbl) labels.push(rawLabel);
                 // Classify: SOW items (noBid) are ADDs, Survey items are CHANGEs
                 if (cbs[si].getAttribute('data-no-bid') === '1') {
@@ -622,12 +622,11 @@
         if (hasValue(cell[cd2.key])) current[cd2.key] = cell[cd2.key];
       }
 
-      // Clear old reciprocals from this source before saving
-      // (only if this is NOT a reciprocal item — reciprocals don't create their own reciprocals)
+      // Clear old reciprocals/noBid-adds from this source before saving.
+      // For source items this clears reciprocal connection changes;
+      // for reciprocal items this clears noBid add-to-bid entries they created.
       var isRecipItem = existing && existing.reciprocalSource;
-      if (!isRecipItem) {
-        clearReciprocalsFromSource(params.rowId);
-      }
+      clearReciprocalsFromSource(params.rowId);
 
       var newItem = {
         rowId: params.rowId, bidRecordId: cell.id,
@@ -653,8 +652,10 @@
         }
       }
 
-      // Create "add to bid" requests for noBid items selected in connection fields
-      if (noBidAdds.length && !isRecipItem) {
+      // Create "add to bid" requests for noBid items selected in connection fields.
+      // Runs for both source AND reciprocal items — per-ID locking prevents
+      // circular issues, and noBid entries don't trigger createReciprocalChanges.
+      if (noBidAdds.length) {
         for (var nbi = 0; nbi < noBidAdds.length; nbi++) {
           var nba = noBidAdds[nbi];
           // Find the noBid row in gridRows to get its details
