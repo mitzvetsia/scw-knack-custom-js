@@ -303,6 +303,7 @@
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
+      bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
     };

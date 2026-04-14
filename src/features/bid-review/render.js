@@ -229,6 +229,8 @@
   function showConnectedDevices(row) {
     // SOW side: field_2231
     if (isYes(row.sowMapConn)) return true;
+    // Bid side (row-level from meta record)
+    if (isYes(row.bidMapConn)) return true;
     // Bid side: check every package cell for field_2374
     var pkgs = Object.keys(row.cellsByPackage || {});
     for (var i = 0; i < pkgs.length; i++) {

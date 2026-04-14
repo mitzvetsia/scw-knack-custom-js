@@ -459,7 +459,8 @@
           }
         }
         var isCR2 = row.proposalBucketId === CAM_READER_BUCKET_ID;
-        var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim());
+        var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim())
+                       || /^yes$/i.test(String(row.bidMapConn || '').trim());
         var showConn2 = hasMapConn2 && !isCR2;
         var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
         if (showConn2 || isCR2) {
@@ -644,7 +645,8 @@
 
     // Derive visibility from proposal bucket (same logic as render.js)
     var isCamReader = row.proposalBucketId === CAM_READER_BUCKET_ID;
-    var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim());
+    var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim())
+                   || /^yes$/i.test(String(row.bidMapConn || '').trim());
     var showConn = hasMapConn && !isCamReader;
     var vis = {
       qty:        row.sowQty > 1,

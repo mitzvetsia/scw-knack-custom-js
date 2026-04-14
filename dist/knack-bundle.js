@@ -11827,6 +11827,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
+      bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
     };
@@ -12508,6 +12509,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function showConnectedDevices(row) {
     // SOW side: field_2231
     if (isYes(row.sowMapConn)) return true;
+    // Bid side (row-level from meta record)
+    if (isYes(row.bidMapConn)) return true;
     // Bid side: check every package cell for field_2374
     var pkgs = Object.keys(row.cellsByPackage || {});
     for (var i = 0; i < pkgs.length; i++) {
@@ -15712,7 +15715,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           }
         }
         var isCR2 = row.proposalBucketId === CAM_READER_BUCKET_ID;
-        var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim());
+        var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim())
+                       || /^yes$/i.test(String(row.bidMapConn || '').trim());
         var showConn2 = hasMapConn2 && !isCR2;
         var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
         if (showConn2 || isCR2) {
@@ -15897,7 +15901,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // Derive visibility from proposal bucket (same logic as render.js)
     var isCamReader = row.proposalBucketId === CAM_READER_BUCKET_ID;
-    var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim());
+    var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim())
+                   || /^yes$/i.test(String(row.bidMapConn || '').trim());
     var showConn = hasMapConn && !isCamReader;
     var vis = {
       qty:        row.sowQty > 1,
