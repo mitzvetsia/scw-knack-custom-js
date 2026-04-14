@@ -510,26 +510,35 @@
             var origIdSet = {};
             var origIds = cell[d.idsKey] || [];
             for (var oii = 0; oii < origIds.length; oii++) origIdSet[origIds[oii]] = true;
+            var connAddIds = [], connChangeIds = [];
             for (var si = 0; si < cbs.length; si++) {
               if (cbs[si].checked) {
                 selIds.push(cbs[si].value);
                 var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
                 var rawLabel = cbLbl ? cbLbl.textContent.replace(/\s*\(not on bid\)\s*$/, '') : cbs[si].value;
                 if (cbLbl) labels.push(rawLabel);
-                // Detect newly-selected noBid items
-                if (cbs[si].getAttribute('data-no-bid') === '1' && !origIdSet[cbs[si].value]) {
-                  noBidAdds.push({
-                    id:    cbs[si].value,
-                    rowId: cbs[si].getAttribute('data-row-id'),
-                    label: rawLabel,
-                    connKey: d.key,
-                  });
+                // Classify: SOW items (noBid) are ADDs, Survey items are CHANGEs
+                if (cbs[si].getAttribute('data-no-bid') === '1') {
+                  connAddIds.push(cbs[si].value);
+                  // Detect newly-selected noBid items for add-to-bid creation
+                  if (!origIdSet[cbs[si].value]) {
+                    noBidAdds.push({
+                      id:    cbs[si].value,
+                      rowId: cbs[si].getAttribute('data-row-id'),
+                      label: rawLabel,
+                      connKey: d.key,
+                    });
+                  }
+                } else {
+                  connChangeIds.push(cbs[si].value);
                 }
               }
             }
             if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
               requested[d.key] = labels.join(', ');
               requested[d.key + 'Ids'] = selIds;
+              if (connAddIds.length)    requested[d.key + 'AddIds']    = connAddIds;
+              if (connChangeIds.length) requested[d.key + 'ChangeIds'] = connChangeIds;
               hasChange = true;
             }
           }
@@ -1087,10 +1096,12 @@
         to:    toVal,
       };
 
-      // Connection fields: include ID arrays
+      // Connection fields: include ID arrays + add/change classification
       if (d.type === 'connection' && d.idsKey) {
-        if (c[d.idsKey])   entry.fromIds = c[d.idsKey];
-        if (r[d.idsKey])   entry.toIds   = r[d.idsKey];
+        if (c[d.idsKey])              entry.fromIds   = c[d.idsKey];
+        if (r[d.idsKey])              entry.toIds     = r[d.idsKey];
+        if (r[d.key + 'AddIds'])      entry.addIds    = r[d.key + 'AddIds'];
+        if (r[d.key + 'ChangeIds'])   entry.changeIds = r[d.key + 'ChangeIds'];
       }
 
       fields.push(entry);
@@ -1155,8 +1166,10 @@
         var d = FIELD_DEFS[fi];
         if (!hasValue(r[d.key])) continue;
         entry[d.key] = r[d.key];
-        if (d.type === 'connection' && d.idsKey && r[d.idsKey]) {
-          entry[d.idsKey] = r[d.idsKey];
+        if (d.type === 'connection' && d.idsKey) {
+          if (r[d.idsKey])              entry[d.idsKey]              = r[d.idsKey];
+          if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
+          if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
         }
       }
 
