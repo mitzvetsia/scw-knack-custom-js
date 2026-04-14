@@ -510,8 +510,8 @@
       }
     }
 
-    // No Bid rows — Add button (skip packages that already have a pending add)
-    if (row.noBid) {
+    // No Bid / Survey No Bid rows — Add button (skip packages that already have a pending add)
+    if (row.noBid || row.surveyNoBid) {
       for (var bi = 0; bi < packages.length; bi++) {
         // Check if there's already an addToBid pending for this row+package
         var alreadyAdding = false;
@@ -603,6 +603,7 @@
   function buildDataRow(row, packages, sowId) {
     var rowClass = 'scw-bid-review__row';
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
+    if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
 
@@ -611,9 +612,17 @@
     var isCamReader = showCabling(row);
     var labelTd = el('td');
     if (row.noBid) {
-      // SOW item with no bid at all
+      // SOW item with no survey and no bid
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
       labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
+    } else if (row.surveyNoBid) {
+      // On survey but not assigned to any bid package
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
+      labelTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
       if (isCamReader && row.displayLabel) {
         labelTd.appendChild(document.createElement('br'));
         labelTd.appendChild(document.createTextNode(row.displayLabel));

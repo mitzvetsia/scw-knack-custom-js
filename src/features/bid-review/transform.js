@@ -275,6 +275,10 @@
       }
     }
 
+    // A row from view_3680 with no bid-package cells means the item
+    // was surveyed but never assigned to a bid package.
+    var surveyNoBid = Object.keys(cellsByPackage).length === 0;
+
     return {
       id:              meta.id,
       rowKey:          rowKey,
@@ -300,6 +304,7 @@
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
+      surveyNoBid:     surveyNoBid,
     };
   }
 
@@ -682,9 +687,21 @@
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
 
-      // Merge in NO BID rows for this SOW
+      // Merge in NO BID rows for this SOW — skip any whose SOW item
+      // already appears in a view_3680 row (e.g. surveyNoBid rows)
+      var existingSowItems = {};
+      for (var ei = 0; ei < rows.length; ei++) {
+        if (rows[ei].sowItem) existingSowItems[rows[ei].sowItem] = true;
+      }
       var noBidRows = noBidBySow[sow.id] || [];
       for (var nb = 0; nb < noBidRows.length; nb++) {
+        if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) {
+          if (CFG.debug) {
+            console.log('[BidReview] Skipping noBid row — already in view_3680:',
+                        noBidRows[nb].sowItem, noBidRows[nb].displayLabel);
+          }
+          continue;
+        }
         rows.push(noBidRows[nb]);
       }
 

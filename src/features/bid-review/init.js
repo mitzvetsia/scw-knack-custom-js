@@ -387,8 +387,8 @@
 
     var cell = row.cellsByPackage[pkgId];
     if (!cell) {
-      // noBid row — re-open add modal for editing the pending add-to-bid item
-      if (row.noBid && ns.changeRequests && ns.changeRequests.openAddItem) {
+      // noBid or surveyNoBid row — re-open add modal for editing the pending add-to-bid item
+      if ((row.noBid || row.surveyNoBid) && ns.changeRequests && ns.changeRequests.openAddItem) {
         var pendingData = ns.changeRequests.getPending();
         var pendItem = null;
         if (pendingData[pkgId]) {
@@ -448,8 +448,8 @@
       var cr = grid.rows[ci];
       var cpkgs = Object.keys(cr.cellsByPackage);
 
-      // noBid rows: no bid cells, but include as connection options
-      if (cr.noBid && cpkgs.length === 0) {
+      // noBid / surveyNoBid rows: no bid cells, but include as connection options
+      if ((cr.noBid || cr.surveyNoBid) && cpkgs.length === 0) {
         var nbLbl = cr.displayLabel || cr.sowProduct || cr.productName || cr.id;
         if (cr.sowProduct && cr.displayLabel && cr.displayLabel !== cr.sowProduct
             && nbLbl.indexOf(cr.sowProduct) === -1) {

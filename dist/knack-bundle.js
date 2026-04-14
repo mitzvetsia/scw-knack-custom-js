@@ -10899,6 +10899,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  background: #fee2e2 !important;',
       '}',
 
+      /* ── SURVEY NO BID badge & row (on survey, not on any bid package) */
+      '.scw-bid-review__survey-no-bid-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #d97706;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
+      '}',
+
+      '.scw-bid-review__row--survey-no-bid td {',
+      '  background: #fffbeb !important;',
+      '}',
+
+      '.scw-bid-review__row--survey-no-bid:hover td {',
+      '  background: #fef3c7 !important;',
+      '}',
+
       /* ── package data cell ─────────────────────────────────── */
       '.scw-bid-review__cell-label {',
       '  font-size: 12px;',
@@ -11776,6 +11799,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
 
+    // A row from view_3680 with no bid-package cells means the item
+    // was surveyed but never assigned to a bid package.
+    var surveyNoBid = Object.keys(cellsByPackage).length === 0;
+
     return {
       id:              meta.id,
       rowKey:          rowKey,
@@ -11801,6 +11828,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
       cellsByPackage:  cellsByPackage,
+      surveyNoBid:     surveyNoBid,
     };
   }
 
@@ -12183,9 +12211,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
 
-      // Merge in NO BID rows for this SOW
+      // Merge in NO BID rows for this SOW — skip any whose SOW item
+      // already appears in a view_3680 row (e.g. surveyNoBid rows)
+      var existingSowItems = {};
+      for (var ei = 0; ei < rows.length; ei++) {
+        if (rows[ei].sowItem) existingSowItems[rows[ei].sowItem] = true;
+      }
       var noBidRows = noBidBySow[sow.id] || [];
       for (var nb = 0; nb < noBidRows.length; nb++) {
+        if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) {
+          if (CFG.debug) {
+            console.log('[BidReview] Skipping noBid row — already in view_3680:',
+                        noBidRows[nb].sowItem, noBidRows[nb].displayLabel);
+          }
+          continue;
+        }
         rows.push(noBidRows[nb]);
       }
 
@@ -12749,8 +12789,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
 
-    // No Bid rows — Add button (skip packages that already have a pending add)
-    if (row.noBid) {
+    // No Bid / Survey No Bid rows — Add button (skip packages that already have a pending add)
+    if (row.noBid || row.surveyNoBid) {
       for (var bi = 0; bi < packages.length; bi++) {
         // Check if there's already an addToBid pending for this row+package
         var alreadyAdding = false;
@@ -12842,6 +12882,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function buildDataRow(row, packages, sowId) {
     var rowClass = 'scw-bid-review__row';
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
+    if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
 
@@ -12850,9 +12891,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var isCamReader = showCabling(row);
     var labelTd = el('td');
     if (row.noBid) {
-      // SOW item with no bid at all
+      // SOW item with no survey and no bid
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
       labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+      if (isCamReader && row.displayLabel) {
+        labelTd.appendChild(document.createElement('br'));
+        labelTd.appendChild(document.createTextNode(row.displayLabel));
+      }
+    } else if (row.surveyNoBid) {
+      // On survey but not assigned to any bid package
+      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
+      labelTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
       if (isCamReader && row.displayLabel) {
         labelTd.appendChild(document.createElement('br'));
         labelTd.appendChild(document.createTextNode(row.displayLabel));
@@ -15531,8 +15580,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     var cell = row.cellsByPackage[pkgId];
     if (!cell) {
-      // noBid row — re-open add modal for editing the pending add-to-bid item
-      if (row.noBid && ns.changeRequests && ns.changeRequests.openAddItem) {
+      // noBid or surveyNoBid row — re-open add modal for editing the pending add-to-bid item
+      if ((row.noBid || row.surveyNoBid) && ns.changeRequests && ns.changeRequests.openAddItem) {
         var pendingData = ns.changeRequests.getPending();
         var pendItem = null;
         if (pendingData[pkgId]) {
@@ -15592,8 +15641,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var cr = grid.rows[ci];
       var cpkgs = Object.keys(cr.cellsByPackage);
 
-      // noBid rows: no bid cells, but include as connection options
-      if (cr.noBid && cpkgs.length === 0) {
+      // noBid / surveyNoBid rows: no bid cells, but include as connection options
+      if ((cr.noBid || cr.surveyNoBid) && cpkgs.length === 0) {
         var nbLbl = cr.displayLabel || cr.sowProduct || cr.productName || cr.id;
         if (cr.sowProduct && cr.displayLabel && cr.displayLabel !== cr.sowProduct
             && nbLbl.indexOf(cr.sowProduct) === -1) {

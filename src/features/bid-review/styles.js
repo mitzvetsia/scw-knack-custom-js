@@ -372,6 +372,29 @@
       '  background: #fee2e2 !important;',
       '}',
 
+      /* ── SURVEY NO BID badge & row (on survey, not on any bid package) */
+      '.scw-bid-review__survey-no-bid-badge {',
+      '  display: inline-block;',
+      '  padding: 1px 5px;',
+      '  border-radius: 3px;',
+      '  background: #d97706;',
+      '  color: #fff;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-right: 4px;',
+      '}',
+
+      '.scw-bid-review__row--survey-no-bid td {',
+      '  background: #fffbeb !important;',
+      '}',
+
+      '.scw-bid-review__row--survey-no-bid:hover td {',
+      '  background: #fef3c7 !important;',
+      '}',
+
       /* ── package data cell ─────────────────────────────────── */
       '.scw-bid-review__cell-label {',
       '  font-size: 12px;',
