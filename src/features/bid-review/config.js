@@ -70,6 +70,10 @@
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
       sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
       sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      sowPlenum:       'field_1983',   // BOOL_plenum (SOW side)
+      sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
+      sowDropLength:   'field_1965',   // drop length (SOW side)
+      sowConduit:      'field_2035',   // conduit (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -98,6 +102,10 @@
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
       connDevice:      'field_1957',   // Connected Devices (SOW side)
       mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      plenum:          'field_1983',   // BOOL_plenum (SOW side)
+      exterior:        'field_1984',   // BOOL_exterior (SOW side)
+      dropLength:      'field_1965',   // drop length (SOW side)
+      conduit:         'field_2035',   // conduit (SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────

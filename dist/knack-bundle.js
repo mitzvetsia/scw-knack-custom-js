@@ -10473,6 +10473,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
       sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
       sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      sowPlenum:       'field_1983',   // BOOL_plenum (SOW side)
+      sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
+      sowDropLength:   'field_1965',   // drop length (SOW side)
+      sowConduit:      'field_2035',   // conduit (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -10501,6 +10505,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
       connDevice:      'field_1957',   // Connected Devices (SOW side)
       mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      plenum:          'field_1983',   // BOOL_plenum (SOW side)
+      exterior:        'field_1984',   // BOOL_exterior (SOW side)
+      dropLength:      'field_1965',   // drop length (SOW side)
+      conduit:         'field_2035',   // conduit (SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────
@@ -11704,6 +11712,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
+          bidPlenum:       raw(rec, FK.plenum),
+          bidExterior:     raw(rec, FK.exterior),
+          bidDropLength:   raw(rec, FK.dropLength),
+          bidConduit:      raw(rec, FK.conduit),
           bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
           bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
           bidConnTo:       connectionLabelsAll(rec, FK.bidConnTo),
@@ -11745,6 +11757,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
+      sowPlenum:       raw(meta, FK.sowPlenum),
+      sowExterior:     raw(meta, FK.sowExterior),
+      sowDropLength:   raw(meta, FK.sowDropLength),
+      sowConduit:      raw(meta, FK.sowConduit),
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
@@ -11957,6 +11973,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
+          sowPlenum:       raw(rec, SFK.plenum),
+          sowExterior:     raw(rec, SFK.exterior),
+          sowDropLength:   raw(rec, SFK.dropLength),
+          sowConduit:      raw(rec, SFK.conduit),
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
           sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
@@ -12424,6 +12444,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--off', 'New Cabling');
   }
 
+  /** Generic Yes/No chip with a label prefix. */
+  function buildBoolChip(label, val) {
+    var yes = isYes(val);
+    var chip = el('span', 'scw-bid-review__cabling-chip ' +
+      (yes ? 'scw-bid-review__cabling-chip--on' : 'scw-bid-review__cabling-chip--off'),
+      label + ': ' + (yes ? 'Yes' : 'No'));
+    return chip;
+  }
+
   // ── SOW detail cell ─────────────────────────────────────────
 
   /** diff class helper — appends --field-diff modifier when flagged */
@@ -12469,6 +12498,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var cabEl = buildCablingChip(row.sowExistCabling);
       if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
       td.appendChild(cabEl);
+
+      var plnEl = buildBoolChip('Plenum', row.sowPlenum);
+      if (diffs && diffs.plenum) plnEl.classList.add(DIFF_CLS);
+      td.appendChild(plnEl);
+
+      var extEl = buildBoolChip('Exterior', row.sowExterior);
+      if (diffs && diffs.exterior) extEl.classList.add(DIFF_CLS);
+      td.appendChild(extEl);
+
+      if (row.sowDropLength) {
+        var dlEl = el('div', 'scw-bid-review__cell-qty');
+        dlEl.appendChild(el('span', 'scw-bid-review__field-label', 'Length: '));
+        dlEl.appendChild(document.createTextNode(row.sowDropLength));
+        if (diffs && diffs.dropLength) dlEl.classList.add(DIFF_CLS);
+        td.appendChild(dlEl);
+      }
+
+      if (row.sowConduit) {
+        var cnEl = el('div', 'scw-bid-review__cell-qty');
+        cnEl.appendChild(el('span', 'scw-bid-review__field-label', 'Conduit: '));
+        cnEl.appendChild(document.createTextNode(row.sowConduit));
+        if (diffs && diffs.conduit) cnEl.classList.add(DIFF_CLS);
+        td.appendChild(cnEl);
+      }
     }
 
     if (row.sowFee) {
@@ -12524,6 +12577,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var cabEl = buildCablingChip(cell.bidExistCabling);
       if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
       td.appendChild(cabEl);
+
+      var plnEl = buildBoolChip('Plenum', cell.bidPlenum);
+      if (diffs && diffs.plenum) plnEl.classList.add(DIFF_CLS);
+      td.appendChild(plnEl);
+
+      var extEl = buildBoolChip('Exterior', cell.bidExterior);
+      if (diffs && diffs.exterior) extEl.classList.add(DIFF_CLS);
+      td.appendChild(extEl);
+
+      if (cell.bidDropLength) {
+        var dlEl = el('div', 'scw-bid-review__cell-qty');
+        dlEl.appendChild(el('span', 'scw-bid-review__field-label', 'Length: '));
+        dlEl.appendChild(document.createTextNode(cell.bidDropLength));
+        if (diffs && diffs.dropLength) dlEl.classList.add(DIFF_CLS);
+        td.appendChild(dlEl);
+      }
+
+      if (cell.bidConduit) {
+        var cnEl = el('div', 'scw-bid-review__cell-qty');
+        cnEl.appendChild(el('span', 'scw-bid-review__field-label', 'Conduit: '));
+        cnEl.appendChild(document.createTextNode(cell.bidConduit));
+        if (diffs && diffs.conduit) cnEl.classList.add(DIFF_CLS);
+        td.appendChild(cnEl);
+      }
     }
 
     if (cell.labor) {
@@ -12694,15 +12771,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     var m = {
-      any:       false,
-      product:   norm(row.sowProduct)   !== norm(cell.productName),
-      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
-      fee:       row.sowFee !== cell.labor,
-      cabling:   cablingVisible  ? norm(row.sowExistCabling) !== norm(cell.bidExistCabling) : false,
-      connDevice: connDevVisible ? norm(row.sowConnDevice)   !== norm(cell.bidConnDevice)   : false,
+      any:        false,
+      product:    norm(row.sowProduct)   !== norm(cell.productName),
+      laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:        row.sowFee !== cell.labor,
+      cabling:    cablingVisible  ? norm(row.sowExistCabling) !== norm(cell.bidExistCabling) : false,
+      connDevice: connDevVisible  ? norm(row.sowConnDevice)   !== norm(cell.bidConnDevice)   : false,
+      plenum:     cablingVisible  ? norm(row.sowPlenum)       !== norm(cell.bidPlenum)        : false,
+      exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
+      dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
+      conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
     };
 
-    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice;
+    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
+            m.plenum || m.exterior || m.dropLength || m.conduit;
     return m;
   }
 
@@ -12751,7 +12833,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Per-package mismatch breakdown
     var diffsByPkg = {};
     // Aggregate: which fields differ in ANY package (for SOW detail highlight)
-    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false, cabling: false, connDevice: false };
+    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false,
+                     cabling: false, connDevice: false,
+                     plenum: false, exterior: false, dropLength: false, conduit: false };
 
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgId   = packages[mi].id;
@@ -12766,6 +12850,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (m.fee)        sowDiffs.fee        = true;
         if (m.cabling)    sowDiffs.cabling    = true;
         if (m.connDevice) sowDiffs.connDevice = true;
+        if (m.plenum)     sowDiffs.plenum     = true;
+        if (m.exterior)   sowDiffs.exterior   = true;
+        if (m.dropLength) sowDiffs.dropLength = true;
+        if (m.conduit)    sowDiffs.conduit    = true;
       }
     }
 
@@ -13335,6 +13423,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
     { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select',  options: ['Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidPlenum',       label: 'Plenum',             type: 'select',  options: ['Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidExterior',     label: 'Exterior',           type: 'select',  options: ['Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidDropLength',   label: 'Drop Length',        type: 'text',    visKey: 'cabling' },
+    { key: 'bidConduit',      label: 'Conduit',            type: 'text',    visKey: 'cabling' },
     { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
     { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling' },
     { key: 'notes',           label: 'Survey Notes',       type: 'text',    multiline: true },

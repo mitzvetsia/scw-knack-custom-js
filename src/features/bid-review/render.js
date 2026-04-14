@@ -257,6 +257,15 @@
     return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--off', 'New Cabling');
   }
 
+  /** Generic Yes/No chip with a label prefix. */
+  function buildBoolChip(label, val) {
+    var yes = isYes(val);
+    var chip = el('span', 'scw-bid-review__cabling-chip ' +
+      (yes ? 'scw-bid-review__cabling-chip--on' : 'scw-bid-review__cabling-chip--off'),
+      label + ': ' + (yes ? 'Yes' : 'No'));
+    return chip;
+  }
+
   // ── SOW detail cell ─────────────────────────────────────────
 
   /** diff class helper — appends --field-diff modifier when flagged */
@@ -302,6 +311,30 @@
       var cabEl = buildCablingChip(row.sowExistCabling);
       if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
       td.appendChild(cabEl);
+
+      var plnEl = buildBoolChip('Plenum', row.sowPlenum);
+      if (diffs && diffs.plenum) plnEl.classList.add(DIFF_CLS);
+      td.appendChild(plnEl);
+
+      var extEl = buildBoolChip('Exterior', row.sowExterior);
+      if (diffs && diffs.exterior) extEl.classList.add(DIFF_CLS);
+      td.appendChild(extEl);
+
+      if (row.sowDropLength) {
+        var dlEl = el('div', 'scw-bid-review__cell-qty');
+        dlEl.appendChild(el('span', 'scw-bid-review__field-label', 'Length: '));
+        dlEl.appendChild(document.createTextNode(row.sowDropLength));
+        if (diffs && diffs.dropLength) dlEl.classList.add(DIFF_CLS);
+        td.appendChild(dlEl);
+      }
+
+      if (row.sowConduit) {
+        var cnEl = el('div', 'scw-bid-review__cell-qty');
+        cnEl.appendChild(el('span', 'scw-bid-review__field-label', 'Conduit: '));
+        cnEl.appendChild(document.createTextNode(row.sowConduit));
+        if (diffs && diffs.conduit) cnEl.classList.add(DIFF_CLS);
+        td.appendChild(cnEl);
+      }
     }
 
     if (row.sowFee) {
@@ -357,6 +390,30 @@
       var cabEl = buildCablingChip(cell.bidExistCabling);
       if (diffs && diffs.cabling) cabEl.classList.add(DIFF_CLS);
       td.appendChild(cabEl);
+
+      var plnEl = buildBoolChip('Plenum', cell.bidPlenum);
+      if (diffs && diffs.plenum) plnEl.classList.add(DIFF_CLS);
+      td.appendChild(plnEl);
+
+      var extEl = buildBoolChip('Exterior', cell.bidExterior);
+      if (diffs && diffs.exterior) extEl.classList.add(DIFF_CLS);
+      td.appendChild(extEl);
+
+      if (cell.bidDropLength) {
+        var dlEl = el('div', 'scw-bid-review__cell-qty');
+        dlEl.appendChild(el('span', 'scw-bid-review__field-label', 'Length: '));
+        dlEl.appendChild(document.createTextNode(cell.bidDropLength));
+        if (diffs && diffs.dropLength) dlEl.classList.add(DIFF_CLS);
+        td.appendChild(dlEl);
+      }
+
+      if (cell.bidConduit) {
+        var cnEl = el('div', 'scw-bid-review__cell-qty');
+        cnEl.appendChild(el('span', 'scw-bid-review__field-label', 'Conduit: '));
+        cnEl.appendChild(document.createTextNode(cell.bidConduit));
+        if (diffs && diffs.conduit) cnEl.classList.add(DIFF_CLS);
+        td.appendChild(cnEl);
+      }
     }
 
     if (cell.labor) {
@@ -527,15 +584,20 @@
     }
 
     var m = {
-      any:       false,
-      product:   norm(row.sowProduct)   !== norm(cell.productName),
-      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
-      fee:       row.sowFee !== cell.labor,
-      cabling:   cablingVisible  ? norm(row.sowExistCabling) !== norm(cell.bidExistCabling) : false,
-      connDevice: connDevVisible ? norm(row.sowConnDevice)   !== norm(cell.bidConnDevice)   : false,
+      any:        false,
+      product:    norm(row.sowProduct)   !== norm(cell.productName),
+      laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:        row.sowFee !== cell.labor,
+      cabling:    cablingVisible  ? norm(row.sowExistCabling) !== norm(cell.bidExistCabling) : false,
+      connDevice: connDevVisible  ? norm(row.sowConnDevice)   !== norm(cell.bidConnDevice)   : false,
+      plenum:     cablingVisible  ? norm(row.sowPlenum)       !== norm(cell.bidPlenum)        : false,
+      exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
+      dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
+      conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
     };
 
-    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice;
+    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
+            m.plenum || m.exterior || m.dropLength || m.conduit;
     return m;
   }
 
@@ -584,7 +646,9 @@
     // Per-package mismatch breakdown
     var diffsByPkg = {};
     // Aggregate: which fields differ in ANY package (for SOW detail highlight)
-    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false, cabling: false, connDevice: false };
+    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false,
+                     cabling: false, connDevice: false,
+                     plenum: false, exterior: false, dropLength: false, conduit: false };
 
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgId   = packages[mi].id;
@@ -599,6 +663,10 @@
         if (m.fee)        sowDiffs.fee        = true;
         if (m.cabling)    sowDiffs.cabling    = true;
         if (m.connDevice) sowDiffs.connDevice = true;
+        if (m.plenum)     sowDiffs.plenum     = true;
+        if (m.exterior)   sowDiffs.exterior   = true;
+        if (m.dropLength) sowDiffs.dropLength = true;
+        if (m.conduit)    sowDiffs.conduit    = true;
       }
     }
 
