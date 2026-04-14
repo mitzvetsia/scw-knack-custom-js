@@ -296,7 +296,7 @@
       td.appendChild(prodEl);
     }
 
-    var sowMdf = row.sowMdfIdf || row.mdfIdf || '';
+    var sowMdf = row.sowMdfIdf || '';
     if (sowMdf) {
       var mdfEl = el('div', 'scw-bid-review__cell-qty');
       mdfEl.appendChild(el('span', 'scw-bid-review__field-label', 'MDF/IDF: '));
@@ -621,7 +621,7 @@
       exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
       dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
       conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
-      mdfIdf:     norm(row.sowMdfIdf || row.mdfIdf) !== norm(cell.bidMdfIdf),
+      mdfIdf:     norm(row.sowMdfIdf) !== norm(cell.bidMdfIdf),
     };
 
     if (CFG.debug && (m.mdfIdf || row.sowMdfIdf || cell.bidMdfIdf)) {
