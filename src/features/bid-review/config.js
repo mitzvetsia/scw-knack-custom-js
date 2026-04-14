@@ -74,6 +74,7 @@
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
       sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
       sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      sowMdfIdf:       'field_1946',   // MDF/IDF location (SOW side — differs from bid field_2375)
       sowPlenum:       'field_1983',   // BOOL_plenum (SOW side)
       sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
       sowDropLength:   'field_1965',   // drop length (SOW side)

@@ -288,6 +288,15 @@
       td.appendChild(prodEl);
     }
 
+    var sowMdf = row.sowMdfIdf || row.mdfIdf || '';
+    if (sowMdf) {
+      var mdfEl = el('div', 'scw-bid-review__cell-qty');
+      mdfEl.appendChild(el('span', 'scw-bid-review__field-label', 'MDF/IDF: '));
+      mdfEl.appendChild(document.createTextNode(sowMdf));
+      if (diffs && diffs.mdfIdf) mdfEl.classList.add(DIFF_CLS);
+      td.appendChild(mdfEl);
+    }
+
     if (qtyVisible && row.sowQty) {
       var qtyEl = el('div', 'scw-bid-review__cell-qty');
       qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
@@ -365,6 +374,14 @@
       var prodEl = el('div', 'scw-bid-review__cell-label', cell.productName);
       if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
       td.appendChild(prodEl);
+    }
+
+    if (cell.bidMdfIdf) {
+      var mdfEl = el('div', 'scw-bid-review__cell-qty');
+      mdfEl.appendChild(el('span', 'scw-bid-review__field-label', 'MDF/IDF: '));
+      mdfEl.appendChild(document.createTextNode(cell.bidMdfIdf));
+      if (diffs && diffs.mdfIdf) mdfEl.classList.add(DIFF_CLS);
+      td.appendChild(mdfEl);
     }
 
     if (qtyVisible && cell.qty) {
@@ -596,7 +613,7 @@
       exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
       dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
       conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
-      mdfIdf:     norm(row.mdfIdf)      !== norm(cell.bidMdfIdf),
+      mdfIdf:     norm(row.sowMdfIdf || row.mdfIdf) !== norm(cell.bidMdfIdf),
     };
 
     m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||

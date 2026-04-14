@@ -303,6 +303,7 @@
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
+      sowMdfIdf:       connectionLabel(meta, FK.sowMdfIdf),
       bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
@@ -522,6 +523,7 @@
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
           sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
+          sowMdfIdf:       connectionLabel(rec, SFK.mdfIdf),
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,

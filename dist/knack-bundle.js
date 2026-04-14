@@ -10477,6 +10477,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
       sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
       sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      sowMdfIdf:       'field_1946',   // MDF/IDF location (SOW side — differs from bid field_2375)
       sowPlenum:       'field_1983',   // BOOL_plenum (SOW side)
       sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
       sowDropLength:   'field_1965',   // drop length (SOW side)
@@ -11878,6 +11879,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
+      sowMdfIdf:       connectionLabel(meta, FK.sowMdfIdf),
       bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
@@ -12097,6 +12099,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
           sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
+          sowMdfIdf:       connectionLabel(rec, SFK.mdfIdf),
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
@@ -12625,6 +12628,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       td.appendChild(prodEl);
     }
 
+    var sowMdf = row.sowMdfIdf || row.mdfIdf || '';
+    if (sowMdf) {
+      var mdfEl = el('div', 'scw-bid-review__cell-qty');
+      mdfEl.appendChild(el('span', 'scw-bid-review__field-label', 'MDF/IDF: '));
+      mdfEl.appendChild(document.createTextNode(sowMdf));
+      if (diffs && diffs.mdfIdf) mdfEl.classList.add(DIFF_CLS);
+      td.appendChild(mdfEl);
+    }
+
     if (qtyVisible && row.sowQty) {
       var qtyEl = el('div', 'scw-bid-review__cell-qty');
       qtyEl.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
@@ -12702,6 +12714,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var prodEl = el('div', 'scw-bid-review__cell-label', cell.productName);
       if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);
       td.appendChild(prodEl);
+    }
+
+    if (cell.bidMdfIdf) {
+      var mdfEl = el('div', 'scw-bid-review__cell-qty');
+      mdfEl.appendChild(el('span', 'scw-bid-review__field-label', 'MDF/IDF: '));
+      mdfEl.appendChild(document.createTextNode(cell.bidMdfIdf));
+      if (diffs && diffs.mdfIdf) mdfEl.classList.add(DIFF_CLS);
+      td.appendChild(mdfEl);
     }
 
     if (qtyVisible && cell.qty) {
@@ -12933,7 +12953,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
       dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
       conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
-      mdfIdf:     norm(row.mdfIdf)      !== norm(cell.bidMdfIdf),
+      mdfIdf:     norm(row.sowMdfIdf || row.mdfIdf) !== norm(cell.bidMdfIdf),
     };
 
     m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
