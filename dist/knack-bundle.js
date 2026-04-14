@@ -12890,21 +12890,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Only show displayLabel (field_2365) for Camera / Reader buckets
     var isCamReader = showCabling(row);
     var labelTd = el('td');
-    if (row.noBid) {
-      // SOW item with no survey and no bid
-      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
-      labelTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+    if (row.noBid || row.surveyNoBid) {
+      // Badge moved to bid-package columns — label cell matches sowItem style
+      labelTd.className = 'scw-bid-review__sow-cell';
       if (isCamReader && row.displayLabel) {
-        labelTd.appendChild(document.createElement('br'));
-        labelTd.appendChild(document.createTextNode(row.displayLabel));
-      }
-    } else if (row.surveyNoBid) {
-      // On survey but not assigned to any bid package
-      labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--no-bid';
-      labelTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
-      if (isCamReader && row.displayLabel) {
-        labelTd.appendChild(document.createElement('br'));
-        labelTd.appendChild(document.createTextNode(row.displayLabel));
+        labelTd.textContent = row.displayLabel;
       }
     } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
@@ -12973,6 +12963,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       );
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
+      }
+      // Show bid-status badge in the package cell when there's no bid data
+      if (!row.cellsByPackage[pid]) {
+        if (row.surveyNoBid) {
+          dataTd.textContent = '';
+          dataTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
+        } else if (row.noBid) {
+          dataTd.textContent = '';
+          dataTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+        }
       }
       tr.appendChild(dataTd);
     }
