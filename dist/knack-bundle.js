@@ -30422,13 +30422,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 // ============================================================
 // End Device Worksheet
 // ============================================================
-/*** BID REVISION INJECTION — view_3782 → view_3505 ***/
+/*** BID REVISION INJECTION — view_3823 → view_3505 ***/
 /**
- * Reads bid-revision line items from view_3782 and injects a compact
+ * Reads bid-revision line items from view_3823 and injects a compact
  * "revision badge + detail strip" onto matching survey-item rows in
  * view_3505 (the device worksheet).
  *
- * view_3782 is on the same scene as view_3505; we hide it visually and
+ * view_3823 is on the same scene as view_3505; we hide it visually and
  * treat it purely as a data source.
  *
  * Join key: field_2644 (connection from revision record → survey item).
@@ -30439,7 +30439,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ── CONFIG ──────────────────────────────────────────────
 
   var CFG = {
-    revisionView: 'view_3782',
+    revisionView: 'view_3823',
     targetViews:  ['view_3505'],
     /** field_2644 — connection to the survey line item */
     surveyItemField: 'field_2644',
@@ -30675,7 +30675,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Read revision records from view_3782's Knack model.
+   * Read revision records from view_3823's Knack model.
    * Returns { map: surveyItemId → [entry], orphaned: [entry] }
    * Orphaned = records with no survey item connection (e.g. Add requests).
    */
@@ -30711,8 +30711,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Fallback: scrape records from the view_3782 DOM table.
-   * Works even when view_3782 is display:none — elements still exist in DOM.
+   * Fallback: scrape records from the view_3823 DOM table.
+   * Works even when view_3823 is display:none — elements still exist in DOM.
    */
   function scrapeFromDom() {
     var table = document.querySelector('#' + CFG.revisionView + ' table.kn-table-table');
@@ -31123,7 +31123,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   injectStyles();
 
-  // We need both view_3782 and view_3505 to have rendered.
+  // We need both view_3823 and view_3505 to have rendered.
   // Track readiness and inject when both are available.
   var _ready = {};
 
