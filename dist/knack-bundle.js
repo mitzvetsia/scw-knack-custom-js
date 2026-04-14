@@ -30834,8 +30834,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var rec = records[i];
       var label = stripHtml(rec.field_2365 || rec.field_2379 || '') || rec.id;
 
-      // All survey items are potential Connected Device targets
-      if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+      // Connected Device targets: only camera/reader items (proposalBucket = CAM_READER_BUCKET_ID)
+      var bucketRaw = rec['field_2366_raw'];
+      var isCamReaderItem = false;
+      if (Array.isArray(bucketRaw)) {
+        for (var bi = 0; bi < bucketRaw.length; bi++) {
+          if (bucketRaw[bi] && bucketRaw[bi].id === CAM_READER_BUCKET_ID) { isCamReaderItem = true; break; }
+        }
+      }
+      if (isCamReaderItem && !devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
 
       // Connected To: only items where field_2374 (bidMapConn) = Yes
       var mapConn = stripHtml(rec.field_2374 || '');
@@ -30909,6 +30916,99 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function stripHtml(v) {
     if (typeof v !== 'string') return String(v == null ? '' : v);
     return v.replace(/<[^>]*>/g, '').trim();
+  }
+
+  /**
+   * Escape HTML special characters for safe injection.
+   */
+  function escHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /** Format a number as currency ($1,234.56). */
+  function fmtCurrencyHtml(v) {
+    if (v == null || v === 0) return '$0.00';
+    return '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /**
+   * Build self-contained HTML card from a revision JSON object.
+   * Mirrors change-requests.js buildItemHtml() so the stored card
+   * renders identically whether it was created from the bid grid
+   * or from the revision edit modal.
+   */
+  function buildRevisionHtml(data) {
+    // Determine action type
+    var action = data.removeFromBid ? 'remove' : data.addToBid ? 'add' : 'revise';
+    var palette = action === 'add'    ? { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'ADD' }
+                : action === 'remove' ? { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' }
+                :                       { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' };
+
+    var r = data.requested || {};
+    var c = data.current   || {};
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
+    h.push('<div style="background:' + palette.bg + ';border:1px solid ' + palette.border + ';border-radius:6px;padding:10px 14px;">');
+
+    // Badge + item header
+    h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">');
+    h.push('<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + palette.badge + ';color:' + palette.badgeText + ';font-size:10px;font-weight:700;letter-spacing:0.5px;">' + palette.label + '</span>');
+    h.push('<span style="font-weight:600;font-size:13px;">' + escHtml(data.displayLabel || data.productName || 'Item') + '</span>');
+    if (data.productName && data.displayLabel && data.productName !== data.displayLabel) {
+      h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + escHtml(data.productName) + '</span>');
+    }
+    h.push('</div>');
+
+    if (action === 'remove') {
+      if (data.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + escHtml(data.changeNotes) + '&rdquo;</div>');
+      }
+    } else {
+      // Build field changes from EDIT_FIELDS
+      var fieldRows = [];
+      for (var fi = 0; fi < EDIT_FIELDS.length; fi++) {
+        var d = EDIT_FIELDS[fi];
+        var toVal = r[d.key];
+        if (toVal == null || toVal === '') continue;
+        var fromVal = c[d.key];
+        var isCurrency = d.key === 'rate';
+        var isConn = d.type === 'connection';
+        var fromStr = fromVal != null && fromVal !== '' ? escHtml(isCurrency ? fmtCurrencyHtml(fromVal) : String(fromVal)) : '&mdash;';
+        var toStr = escHtml(isCurrency ? fmtCurrencyHtml(toVal) : String(toVal));
+        if (isConn) {
+          fromStr = fromStr.replace(/,\s*/g, '<br>');
+          toStr = toStr.replace(/,\s*/g, '<br>');
+        }
+        fieldRows.push({ label: d.label, fromStr: fromStr, toStr: toStr });
+      }
+
+      if (fieldRows.length) {
+        h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
+        for (var ri = 0; ri < fieldRows.length; ri++) {
+          var fr = fieldRows[ri];
+          h.push('<tr>');
+          h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + escHtml(fr.label) + '</td>');
+          if (action === 'revise') {
+            h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fr.fromStr + '</td>');
+            h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+          }
+          h.push('<td style="padding:3px 8px;font-weight:600;color:' + palette.color + ';">' + fr.toStr + '</td>');
+          h.push('</tr>');
+        }
+        h.push('</table>');
+      }
+
+      if (data.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;border-top:1px solid ' + palette.border + ';padding-top:4px;">&ldquo;' + escHtml(data.changeNotes) + '&rdquo;</div>');
+      }
+    }
+
+    h.push('</div>');
+    h.push('</div>');
+    return h.join('');
   }
 
   /**
@@ -31351,22 +31451,40 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       if (notes) updated.changeNotes = notes;
 
-      var body = {};
-      body[CFG.changeJsonField] = JSON.stringify(updated);
+      // Build both JSON and HTML for the revision record
+      var updatedJson = JSON.stringify(updated);
+      var updatedHtml = buildRevisionHtml(updated);
+
+      var putBody = {};
+      putBody[CFG.changeJsonField] = updatedJson;
+      putBody[CFG.changeHtmlField] = updatedHtml;
 
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
 
+      console.log('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
+
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(CFG.revisionView, revisionId),
         type: 'PUT',
-        data: JSON.stringify(body),
+        data: JSON.stringify(putBody),
         success: function () {
-          console.log('[BidRevInject] Saved JSON for', revisionId);
+          console.log('[BidRevInject] Saved JSON + HTML for', revisionId);
+          // Re-inject the updated HTML card into the DOM
+          // wrapEl is the action-buttons wrapper; the HTML card is a sibling
+          // inside the parent .scw-rev-item div
+          if (wrapEl) {
+            var itemDiv = wrapEl.parentElement;
+            var htmlCard = itemDiv ? itemDiv.querySelector('.' + P + '-html-card') : null;
+            if (htmlCard) {
+              htmlCard.innerHTML = updatedHtml;
+              postProcessHtmlCard(htmlCard);
+            }
+          }
           closeEditModal();
         },
         error: function (xhr) {
-          console.error('[BidRevInject] Save failed for', revisionId, xhr.status);
+          console.error('[BidRevInject] Save failed for', revisionId, xhr.status, xhr.responseText);
           saveOnlyBtn.disabled = false;
           saveOnlyBtn.textContent = 'Save';
         },
