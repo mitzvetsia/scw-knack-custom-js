@@ -380,26 +380,30 @@
           wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
         }
 
-        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-        wrap.appendChild(btn(crLabel, crMod, {
-          'data-action':      'cell_request_change',
-          'data-row-id':      row.id,
-          'data-package-id':  cpkg.id,
-          'data-sow-id':      sowId,
-          'data-vis-qty':     visibility.qty ? '1' : '0',
-          'data-vis-cabling': visibility.cabling ? '1' : '0',
-          'data-vis-conn':    visibility.connDevice ? '1' : '0',
-        }));
-
-        // "Remove from Bid" button
-        if (!pendingItem || !pendingItem.removeFromBid) {
-          wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
-            'data-action':     'cell_remove_from_bid',
-            'data-row-id':     row.id,
-            'data-package-id': cpkg.id,
-            'data-sow-id':     sowId,
+        // Purely reciprocal items: read-only card only, no action buttons.
+        // To change them, edit or delete the source change.
+        if (!pendingItem || !pendingItem.reciprocal) {
+          var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+          var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
+          wrap.appendChild(btn(crLabel, crMod, {
+            'data-action':      'cell_request_change',
+            'data-row-id':      row.id,
+            'data-package-id':  cpkg.id,
+            'data-sow-id':      sowId,
+            'data-vis-qty':     visibility.qty ? '1' : '0',
+            'data-vis-cabling': visibility.cabling ? '1' : '0',
+            'data-vis-conn':    visibility.connDevice ? '1' : '0',
           }));
+
+          // "Remove from Bid" button
+          if (!pendingItem || !pendingItem.removeFromBid) {
+            wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
+              'data-action':     'cell_remove_from_bid',
+              'data-row-id':     row.id,
+              'data-package-id': cpkg.id,
+              'data-sow-id':     sowId,
+            }));
+          }
         }
       }
     }

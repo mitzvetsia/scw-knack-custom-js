@@ -12432,26 +12432,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
         }
 
-        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-        wrap.appendChild(btn(crLabel, crMod, {
-          'data-action':      'cell_request_change',
-          'data-row-id':      row.id,
-          'data-package-id':  cpkg.id,
-          'data-sow-id':      sowId,
-          'data-vis-qty':     visibility.qty ? '1' : '0',
-          'data-vis-cabling': visibility.cabling ? '1' : '0',
-          'data-vis-conn':    visibility.connDevice ? '1' : '0',
-        }));
-
-        // "Remove from Bid" button
-        if (!pendingItem || !pendingItem.removeFromBid) {
-          wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
-            'data-action':     'cell_remove_from_bid',
-            'data-row-id':     row.id,
-            'data-package-id': cpkg.id,
-            'data-sow-id':     sowId,
+        // Purely reciprocal items: read-only card only, no action buttons.
+        // To change them, edit or delete the source change.
+        if (!pendingItem || !pendingItem.reciprocal) {
+          var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
+          var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
+          wrap.appendChild(btn(crLabel, crMod, {
+            'data-action':      'cell_request_change',
+            'data-row-id':      row.id,
+            'data-package-id':  cpkg.id,
+            'data-sow-id':      sowId,
+            'data-vis-qty':     visibility.qty ? '1' : '0',
+            'data-vis-cabling': visibility.cabling ? '1' : '0',
+            'data-vis-conn':    visibility.connDevice ? '1' : '0',
           }));
+
+          // "Remove from Bid" button
+          if (!pendingItem || !pendingItem.removeFromBid) {
+            wrap.appendChild(btn('Remove from Bid \u2014 ' + cpkg.name, 'remove-bid sm', {
+              'data-action':     'cell_remove_from_bid',
+              'data-row-id':     row.id,
+              'data-package-id': cpkg.id,
+              'data-sow-id':     sowId,
+            }));
+          }
         }
       }
     }
@@ -13581,6 +13585,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (hasValue(cell[cd2.key])) current[cd2.key] = cell[cd2.key];
       }
 
+      // Clear old reciprocals from this source before saving
+      clearReciprocalsFromSource(params.rowId);
+
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
         rowId: params.rowId, bidRecordId: cell.id,
         displayLabel: params.displayLabel, productName: cell.productName,
@@ -13624,18 +13631,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   /**
-   * Merge-aware add for reciprocal changes.
-   * If a pending item already exists for this row, only merge the
-   * specified connection field without overwriting other requested fields.
+   * Add a reciprocal item. If the target row already has a non-reciprocal
+   * pending item, merge the connection field into it. Otherwise create a
+   * new reciprocal-only item.
    */
-  function addReciprocalItem(pkgId, pkgName, sowId, sowName, item, connKey) {
+  function addReciprocalItem(pkgId, pkgName, sowId, sowName, item, connKey, sourceRowId) {
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, items: [] };
     var items = _pending[pkgId].items;
     for (var i = 0; i < items.length; i++) {
       if (items[i].rowId === item.rowId) {
-        // Merge: keep existing requested fields, add/overwrite the target connection
+        // Merge connection field into existing item
         items[i].requested[connKey] = item.requested[connKey];
         items[i].requested[connKey + 'Ids'] = item.requested[connKey + 'Ids'];
+        // Track that this item has reciprocal content from this source
+        if (!items[i].reciprocalSources) items[i].reciprocalSources = {};
+        items[i].reciprocalSources[sourceRowId] = connKey;
         if (item.changeNotes) {
           items[i].changeNotes = items[i].changeNotes
             ? items[i].changeNotes + ' | ' + item.changeNotes
@@ -13646,10 +13656,43 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         return;
       }
     }
+    // New purely-reciprocal item
     item.reciprocal = true;
+    item.reciprocalSource = sourceRowId;
     items.push(item);
     persist();
     triggerRerender();
+  }
+
+  /**
+   * Remove all reciprocal items that were created by a given source row.
+   * For merged items (non-reciprocal with reciprocal fields), strips
+   * the reciprocal connection fields instead of deleting the whole item.
+   */
+  function clearReciprocalsFromSource(sourceRowId) {
+    var pkgIds = Object.keys(_pending);
+    for (var p = 0; p < pkgIds.length; p++) {
+      var items = _pending[pkgIds[p]].items;
+      for (var i = items.length - 1; i >= 0; i--) {
+        var it = items[i];
+        // Purely reciprocal item from this source → delete
+        if (it.reciprocal && it.reciprocalSource === sourceRowId) {
+          items.splice(i, 1);
+          continue;
+        }
+        // Merged item with reciprocal fields from this source → strip those fields
+        if (it.reciprocalSources && it.reciprocalSources[sourceRowId]) {
+          var connKey = it.reciprocalSources[sourceRowId];
+          delete it.requested[connKey];
+          delete it.requested[connKey + 'Ids'];
+          delete it.reciprocalSources[sourceRowId];
+          if (!Object.keys(it.reciprocalSources).length) delete it.reciprocalSources;
+          // If nothing left in requested, remove the item
+          if (!Object.keys(it.requested).length) { items.splice(i, 1); }
+        }
+      }
+      if (!items.length) delete _pending[pkgIds[p]];
+    }
   }
 
   /**
@@ -13707,13 +13750,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // Process additions
       for (var a = 0; a < added.length; a++) {
-        count += applyReciprocal(params, cell, sourceId, sourceLabel,
+        count += applyReciprocal(params, cell, sourceId, sourceLabel, params.rowId,
           added[a], pair.mirrorKey, pair.mirrorIds, 'add');
       }
 
       // Process removals
       for (var r = 0; r < removed.length; r++) {
-        count += applyReciprocal(params, cell, sourceId, sourceLabel,
+        count += applyReciprocal(params, cell, sourceId, sourceLabel, params.rowId,
           removed[r], pair.mirrorKey, pair.mirrorIds, 'remove');
       }
     }
@@ -13725,7 +13768,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * Apply a single reciprocal change: add or remove sourceId from
    * targetRecordId's mirror connection field.
    */
-  function applyReciprocal(params, cell, sourceId, sourceLabel,
+  function applyReciprocal(params, cell, sourceId, sourceLabel, sourceRowId,
                            targetRecordId, mirrorKey, mirrorIds, action) {
     for (var ri = 0; ri < params.gridRows.length; ri++) {
       var row     = params.gridRows[ri];
@@ -13779,7 +13822,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         current:      current,
         requested:    reqObj,
         changeNotes:  'Reciprocal: ' + sourceLabel + ' ' + verb + ' ' + tgtLabel,
-      }, mirrorKey);
+      }, mirrorKey, sourceRowId);
 
       return 1;
     }
@@ -13793,6 +13836,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (items[i].rowId === rowId) { items.splice(i, 1); break; }
     }
     if (!items.length) delete _pending[pkgId];
+    // Cascade: remove any reciprocals this item created
+    clearReciprocalsFromSource(rowId);
     persist();
     triggerRerender();
   }
