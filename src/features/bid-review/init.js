@@ -466,9 +466,9 @@
                   || bucket2 === 'camera or reader'
                   || row.proposalBucketId === '6481e5ba38f283002898113c';
         var hasMapConn2 = /^yes$/i.test(String(row.sowMapConn || '').trim());
-        var showConn2 = isCR2 || hasMapConn2;
+        var showConn2 = hasMapConn2 && !isCR2;
         var addConnOpts2 = { bidMdfIdf: buildMdfIdfOptions() };
-        if (showConn2) {
+        if (showConn2 || isCR2) {
           var ac2 = buildAddConnOptions(grid);
           addConnOpts2.bidConnDevice = ac2.bidConnDevice;
           addConnOpts2.bidConnTo     = ac2.bidConnTo;
@@ -657,16 +657,16 @@
                    || bucket === 'camera or reader'
                    || row.proposalBucketId === '6481e5ba38f283002898113c';
     var hasMapConn = /^yes$/i.test(String(row.sowMapConn || '').trim());
-    var showConn = isCamReader || hasMapConn;
+    var showConn = hasMapConn && !isCamReader;
     var vis = {
       qty:        row.sowQty > 1,
       cabling:    isCamReader,
       connDevice: showConn,
     };
 
-    // Build connection options when Connected Devices is visible
+    // Build connection options when Connected Devices or Connected To is visible
     var connOpts = { bidMdfIdf: buildMdfIdfOptions() };
-    if (showConn) {
+    if (showConn || isCamReader) {
       var addConn = buildAddConnOptions(grid);
       connOpts.bidConnDevice = addConn.bidConnDevice;
       connOpts.bidConnTo     = addConn.bidConnTo;
