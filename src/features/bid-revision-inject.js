@@ -942,10 +942,12 @@
       section.appendChild(makeOrphanCard(orphans[i]));
     }
 
-    // Insert at the very top of the view, before the table
-    var table = viewEl.querySelector('table') || viewEl.firstChild;
-    if (table) {
-      viewEl.insertBefore(section, table);
+    // Insert at the very top of the view content area
+    // Note: viewEl.querySelector('table') returns a nested element (inside
+    // .kn-table-wrapper), NOT a direct child — insertBefore would throw.
+    // Use firstChild to safely prepend.
+    if (viewEl.firstChild) {
+      viewEl.insertBefore(section, viewEl.firstChild);
     } else {
       viewEl.appendChild(section);
     }
