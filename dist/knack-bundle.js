@@ -30488,10 +30488,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  font-size: 10px; font-weight: 400;',
       '}',
 
-      /* Revision detail strip — lives inside the card, below the detail panel */
+      /* Revision detail strip — lives INSIDE .scw-ws-detail */
       '.' + STRIP_CLS + ' {',
-      '  margin: 0; padding: 8px 12px;',
-      '  background: #fffbeb; border-top: 1px solid #fde68a;',
+      '  margin: 8px 12px 4px; padding: 10px 14px;',
+      '  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;',
       '  font-size: 12px; color: #78350f;',
       '}',
       '.' + P + '-strip-header {',
@@ -30499,7 +30499,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  letter-spacing: .04em; color: #92400e; margin-bottom: 6px;',
       '}',
       '.' + P + '-item {',
-      '  padding: 4px 0; border-bottom: 1px dashed #fde68a;',
+      '  padding: 6px 0; border-bottom: 1px dashed #fde68a;',
       '}',
       '.' + P + '-item:last-child { border-bottom: none; }',
       '.' + P + '-row {',
@@ -30517,6 +30517,47 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  cursor: pointer; margin-left: 6px;',
       '}',
       '.' + P + '-edit-link:hover { color: #92400e; }',
+
+      /* ── Action buttons (Approve / Reject) ── */
+      '.' + P + '-actions {',
+      '  display: flex; gap: 8px; margin-top: 8px;',
+      '}',
+      '.' + P + '-btn {',
+      '  padding: 4px 14px; border-radius: 4px; border: none;',
+      '  font-size: 12px; font-weight: 600; cursor: pointer;',
+      '}',
+      '.' + P + '-btn--approve {',
+      '  background: #16a34a; color: #fff;',
+      '}',
+      '.' + P + '-btn--approve:hover { background: #15803d; }',
+      '.' + P + '-btn--reject {',
+      '  background: #dc2626; color: #fff;',
+      '}',
+      '.' + P + '-btn--reject:hover { background: #b91c1c; }',
+      '.' + P + '-btn:disabled {',
+      '  opacity: 0.5; cursor: not-allowed;',
+      '}',
+
+      /* ── Reject notes input ── */
+      '.' + P + '-reject-wrap {',
+      '  display: none; margin-top: 6px;',
+      '}',
+      '.' + P + '-reject-wrap.is-open { display: block; }',
+      '.' + P + '-reject-input {',
+      '  width: 100%; padding: 6px 8px; font-size: 12px;',
+      '  border: 1px solid #fca5a5; border-radius: 4px;',
+      '  box-sizing: border-box;',
+      '}',
+      '.' + P + '-reject-input:focus { outline: none; border-color: #dc2626; }',
+      '.' + P + '-reject-confirm {',
+      '  margin-top: 4px; padding: 3px 12px; border-radius: 4px;',
+      '  border: none; background: #dc2626; color: #fff;',
+      '  font-size: 11px; font-weight: 600; cursor: pointer;',
+      '}',
+      '.' + P + '-reject-confirm:hover { background: #b91c1c; }',
+      '.' + P + '-reject-error {',
+      '  color: #dc2626; font-size: 11px; margin-top: 2px;',
+      '}',
     ].join('\n');
 
     var style = document.createElement('style');
@@ -30701,6 +30742,140 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
+   * Build Approve / Reject action buttons for a single revision.
+   */
+  function buildActionButtons(revisionId) {
+    var wrap = document.createElement('div');
+
+    var actions = document.createElement('div');
+    actions.className = P + '-actions';
+
+    var approveBtn = document.createElement('button');
+    approveBtn.type = 'button';
+    approveBtn.className = P + '-btn ' + P + '-btn--approve';
+    approveBtn.textContent = 'Approve';
+    approveBtn.setAttribute('data-rev-id', revisionId);
+
+    var rejectBtn = document.createElement('button');
+    rejectBtn.type = 'button';
+    rejectBtn.className = P + '-btn ' + P + '-btn--reject';
+    rejectBtn.textContent = 'Reject';
+    rejectBtn.setAttribute('data-rev-id', revisionId);
+
+    actions.appendChild(approveBtn);
+    actions.appendChild(rejectBtn);
+    wrap.appendChild(actions);
+
+    // Reject notes — hidden until Reject is clicked
+    var rejectWrap = document.createElement('div');
+    rejectWrap.className = P + '-reject-wrap';
+
+    var input = document.createElement('textarea');
+    input.className = P + '-reject-input';
+    input.placeholder = 'Reason for rejection (required)\u2026';
+    input.rows = 2;
+    rejectWrap.appendChild(input);
+
+    var errorMsg = document.createElement('div');
+    errorMsg.className = P + '-reject-error';
+    rejectWrap.appendChild(errorMsg);
+
+    var confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = P + '-reject-confirm';
+    confirmBtn.textContent = 'Confirm Rejection';
+    rejectWrap.appendChild(confirmBtn);
+
+    wrap.appendChild(rejectWrap);
+
+    // ── Approve handler ──
+    approveBtn.addEventListener('click', function () {
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      submitRevisionAction(revisionId, 'approve', '', wrap);
+    });
+
+    // ── Reject handler — toggle notes input ──
+    rejectBtn.addEventListener('click', function () {
+      rejectWrap.classList.toggle('is-open');
+      if (rejectWrap.classList.contains('is-open')) {
+        input.focus();
+      }
+    });
+
+    // ── Confirm rejection ──
+    confirmBtn.addEventListener('click', function () {
+      var reason = input.value.trim();
+      if (!reason) {
+        errorMsg.textContent = 'A reason is required to reject.';
+        input.focus();
+        return;
+      }
+      errorMsg.textContent = '';
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      confirmBtn.disabled = true;
+      submitRevisionAction(revisionId, 'reject', reason, wrap);
+    });
+
+    return wrap;
+  }
+
+  /**
+   * Submit an approve/reject action for a revision record.
+   */
+  function submitRevisionAction(revisionId, action, reason, wrapEl) {
+    var payload = {
+      actionType:  'revision_' + action,
+      revisionId:  revisionId,
+      timestamp:   new Date().toISOString(),
+    };
+    if (reason) payload.reason = reason;
+
+    console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
+
+    // Post to the same change-request webhook
+    var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
+                   ? window.SCW.bidReview.CONFIG.changeRequestWebhook
+                   : '';
+    if (!webhookUrl) {
+      console.error('[BidRevInject] No webhook URL configured');
+      return;
+    }
+
+    SCW.knackAjax({
+      url:  webhookUrl,
+      type: 'POST',
+      data: JSON.stringify(payload),
+      success: function () {
+        console.log('[BidRevInject]', action, 'success for', revisionId);
+        // Replace buttons with status indicator
+        var badge = document.createElement('div');
+        badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
+        if (action === 'approve') {
+          badge.style.background = '#dcfce7';
+          badge.style.color = '#166534';
+          badge.textContent = '\u2713 Approved';
+        } else {
+          badge.style.background = '#fee2e2';
+          badge.style.color = '#991b1b';
+          badge.textContent = '\u2717 Rejected' + (reason ? ': ' + reason : '');
+        }
+        wrapEl.innerHTML = '';
+        wrapEl.appendChild(badge);
+      },
+      error: function (xhr) {
+        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status);
+        // Re-enable buttons
+        var btns = wrapEl.querySelectorAll('button');
+        for (var bi = 0; bi < btns.length; bi++) btns[bi].disabled = false;
+        var err = wrapEl.querySelector('.' + P + '-reject-error');
+        if (err) err.textContent = 'Failed to submit \u2014 please try again.';
+      },
+    });
+  }
+
+  /**
    * Build the revision detail strip for one survey item's revisions.
    */
   function makeStrip(revisions) {
@@ -30758,6 +30933,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         item.appendChild(link);
       }
 
+      // ── Approve / Reject buttons ──
+      item.appendChild(buildActionButtons(rev.id));
+
       strip.appendChild(item);
     }
     return strip;
@@ -30814,12 +30992,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         identity.appendChild(makeBadge(revisions.length));
       }
 
-      // Detail strip → append at the end of the card (after detail, before photos)
-      var photoWrap = card.querySelector('.scw-ws-photo-wrap');
-      if (photoWrap) {
-        card.insertBefore(makeStrip(revisions), photoWrap);
+      // Revision strip → inside the detail panel (visible when expanded)
+      var detail = card.querySelector('.scw-ws-detail');
+      if (detail) {
+        detail.appendChild(makeStrip(revisions));
       } else {
-        card.appendChild(makeStrip(revisions));
+        // Fallback: insert before photo wrap or append to card
+        var photoWrap = card.querySelector('.scw-ws-photo-wrap');
+        if (photoWrap) {
+          card.insertBefore(makeStrip(revisions), photoWrap);
+        } else {
+          card.appendChild(makeStrip(revisions));
+        }
       }
       injected++;
     }
