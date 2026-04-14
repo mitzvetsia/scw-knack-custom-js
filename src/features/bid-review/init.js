@@ -89,11 +89,10 @@
     });
 
     mount.addEventListener('click', function (e) {
-      // Match buttons, clickable cards, overflow menu items, or direct triggers
+      // Match buttons, clickable cards, or overflow menu items
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-item[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-trigger--direct[data-action]');
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -377,10 +376,10 @@
 
       // noBid rows: no bid cells, but include as connDev options if camera/reader
       if (cr.noBid && cpkgs.length === 0) {
-        var nbLbl = cr.displayLabel || cr.productName || cr.id;
-        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
-            && nbLbl.indexOf(cr.productName) === -1) {
-          nbLbl = cr.displayLabel + ' \u2014 ' + cr.productName;
+        var nbLbl = cr.displayLabel || cr.sowProduct || cr.productName || cr.id;
+        if (cr.sowProduct && cr.displayLabel && cr.displayLabel !== cr.sowProduct
+            && nbLbl.indexOf(cr.sowProduct) === -1) {
+          nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
         var nbBucket = (cr.proposalBucket || '').toLowerCase();
         var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'

@@ -12232,16 +12232,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     trigger.type = 'button';
     container.appendChild(trigger);
 
-    // Single choice — skip menu, put attrs directly on trigger
-    if (choices.length === 1) {
-      var sa = choices[0].attrs;
-      var sKeys = Object.keys(sa);
-      for (var s = 0; s < sKeys.length; s++) trigger.setAttribute(sKeys[s], sa[sKeys[s]]);
-      trigger.classList.add('scw-bid-review__overflow-trigger--direct');
-      return container;
-    }
-
-    // Multiple choices — build dropdown
+    // Always build dropdown — even with one choice, show which bid it targets
     var menu = el('div', 'scw-bid-review__overflow-menu');
     for (var i = 0; i < choices.length; i++) {
       var ch = choices[i];
@@ -14535,11 +14526,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 
     mount.addEventListener('click', function (e) {
-      // Match buttons, clickable cards, overflow menu items, or direct triggers
+      // Match buttons, clickable cards, or overflow menu items
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-item[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-trigger--direct[data-action]');
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -14823,10 +14813,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // noBid rows: no bid cells, but include as connDev options if camera/reader
       if (cr.noBid && cpkgs.length === 0) {
-        var nbLbl = cr.displayLabel || cr.productName || cr.id;
-        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
-            && nbLbl.indexOf(cr.productName) === -1) {
-          nbLbl = cr.displayLabel + ' \u2014 ' + cr.productName;
+        var nbLbl = cr.displayLabel || cr.sowProduct || cr.productName || cr.id;
+        if (cr.sowProduct && cr.displayLabel && cr.displayLabel !== cr.sowProduct
+            && nbLbl.indexOf(cr.sowProduct) === -1) {
+          nbLbl = cr.displayLabel + ' \u2014 ' + cr.sowProduct;
         }
         var nbBucket = (cr.proposalBucket || '').toLowerCase();
         var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'

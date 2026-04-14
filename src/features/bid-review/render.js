@@ -65,16 +65,7 @@
     trigger.type = 'button';
     container.appendChild(trigger);
 
-    // Single choice — skip menu, put attrs directly on trigger
-    if (choices.length === 1) {
-      var sa = choices[0].attrs;
-      var sKeys = Object.keys(sa);
-      for (var s = 0; s < sKeys.length; s++) trigger.setAttribute(sKeys[s], sa[sKeys[s]]);
-      trigger.classList.add('scw-bid-review__overflow-trigger--direct');
-      return container;
-    }
-
-    // Multiple choices — build dropdown
+    // Always build dropdown — even with one choice, show which bid it targets
     var menu = el('div', 'scw-bid-review__overflow-menu');
     for (var i = 0; i < choices.length; i++) {
       var ch = choices[i];
