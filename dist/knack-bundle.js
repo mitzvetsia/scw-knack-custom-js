@@ -13480,7 +13480,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     { key: 'bidConduit',      label: 'Conduit',            type: 'text',    visKey: 'cabling' },
     { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
     { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling', single: true },
-    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connection: 'field_2375', idsKey: 'bidMdfIdfIds', addable: true },
+    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connection: 'field_2375', idsKey: 'bidMdfIdfIds', addable: true, single: true },
   ];
 
   // ── State ──────────────────────────────────────────────
@@ -13838,27 +13838,35 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         if (fd.single) {
-          // Single-select connection → <select> dropdown
-          inp = document.createElement('select');
-          inp.className = 'scw-bid-cr-modal__select';
-          inp.setAttribute('data-field', fd.key);
-          // Lock dropdown only if the current value is a locked ID
-          var singleLocked = prefillIds.length && lockedIdSet[prefillIds[0]];
-          if (singleLocked) inp.disabled = true;
-          var blankOpt = document.createElement('option');
-          blankOpt.value = ''; blankOpt.textContent = '\u2014 select \u2014';
-          inp.appendChild(blankOpt);
+          // Single-select connection → radio button list
+          inp = el('div', 'scw-bid-cr-modal__checkbox-list');
+          if (!recs.length) {
+            inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
+          }
           for (var ri = 0; ri < recs.length; ri++) {
             var rec = recs[ri];
-            var sopt = document.createElement('option');
-            sopt.value = rec.id;
-            sopt.textContent = (rec.identifier || rec.id) + (rec.noBid ? ' (not on bid)' : '');
-            if (rec.noBid) sopt.setAttribute('data-no-bid', '1');
-            if (rec.rowId) sopt.setAttribute('data-row-id', rec.rowId);
+            var item = el('div', 'scw-bid-cr-modal__checkbox-item');
+            var rb = document.createElement('input');
+            rb.type = 'radio';
+            rb.name = 'scw-cr-radio-' + fd.key;
+            rb.value = rec.id;
+            rb.id = 'scw-cr-rb-' + fd.key + '-' + ri;
+            if (rec.noBid) rb.setAttribute('data-no-bid', '1');
+            if (rec.rowId) rb.setAttribute('data-row-id', rec.rowId);
+            if (lockedIdSet[rec.id]) rb.disabled = true;
             for (var pi = 0; pi < prefillIds.length; pi++) {
-              if (prefillIds[pi] === rec.id) { sopt.selected = true; break; }
+              if (prefillIds[pi] === rec.id) { rb.checked = true; break; }
             }
-            inp.appendChild(sopt);
+            item.appendChild(rb);
+            var rbLabel = document.createElement('label');
+            rbLabel.setAttribute('for', rb.id);
+            var rbText = (rec.identifier || rec.id) + (rec.noBid ? ' (not on bid)' : '');
+            if (lockedIdSet[rec.id]) rbText += ' (locked)';
+            rbLabel.textContent = rbText;
+            if (rec.noBid) rbLabel.style.fontStyle = 'italic';
+            if (lockedIdSet[rec.id]) rbLabel.style.opacity = '0.6';
+            item.appendChild(rbLabel);
+            inp.appendChild(item);
           }
         } else {
           // Multi-select connection → checkbox list
@@ -13953,24 +13961,24 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
         if (d.type === 'connection') {
           if (d.single) {
-            // Single-select connection (select dropdown)
-            var selEl = inputs[d.key];
-            var selVal = selEl.value;
+            // Single-select connection (radio buttons)
+            var radioContainer = inputs[d.key];
+            var checkedRadio = radioContainer.querySelector('input[type="radio"]:checked');
+            var selVal = checkedRadio ? checkedRadio.value : '';
             var origIds = cell[d.idsKey] || [];
             var origId = origIds.length ? origIds[0] : '';
             if (selVal !== origId) {
-              var selOpt = selEl.options[selEl.selectedIndex];
-              var selLabel = selOpt ? selOpt.textContent.replace(/\s*\(not on bid\)\s*$/, '') : selVal;
+              var rbLbl = checkedRadio ? radioContainer.querySelector('label[for="' + checkedRadio.id + '"]') : null;
+              var selLabel = rbLbl ? rbLbl.textContent.replace(/\s*\(not on bid\)\s*$/, '').replace(/\s*\(locked\)\s*$/, '') : selVal;
               requested[d.key] = selVal ? selLabel : '';
               requested[d.key + 'Ids'] = selVal ? [selVal] : [];
               // Classify add vs change
-              if (selVal && selOpt && selOpt.getAttribute('data-no-bid') === '1') {
+              if (selVal && checkedRadio && checkedRadio.getAttribute('data-no-bid') === '1') {
                 requested[d.key + 'AddIds'] = [selVal];
-                // Create add-to-bid item if newly selected noBid
                 if (selVal !== origId) {
                   noBidAdds.push({
                     id:    selVal,
-                    rowId: selOpt.getAttribute('data-row-id'),
+                    rowId: checkedRadio.getAttribute('data-row-id'),
                     label: selLabel,
                     connKey: d.key,
                   });
@@ -14980,7 +14988,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
       var inp;
       if (fd.type === 'connection' && fd.addable) {
-        // Connection checkbox list for addable fields
+        // Connection field for addable fields — radio if single, checkbox if multi
         var addRecs = addConnOpts[fd.key] || [];
         var addPrefillIds = prefill[fd.key + 'Ids'] || [];
         inp = el('div', 'scw-bid-cr-modal__checkbox-list');
@@ -14990,16 +14998,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         for (var ari = 0; ari < addRecs.length; ari++) {
           var arec = addRecs[ari];
           var aItem = el('div', 'scw-bid-cr-modal__checkbox-item');
-          var aCb = document.createElement('input');
-          aCb.type = 'checkbox';
-          aCb.value = arec.id;
-          aCb.id = 'scw-cr-add-cb-' + fd.key + '-' + ari;
+          var aInp = document.createElement('input');
+          aInp.type = fd.single ? 'radio' : 'checkbox';
+          if (fd.single) aInp.name = 'scw-cr-add-radio-' + fd.key;
+          aInp.value = arec.id;
+          aInp.id = 'scw-cr-add-cb-' + fd.key + '-' + ari;
           for (var api = 0; api < addPrefillIds.length; api++) {
-            if (addPrefillIds[api] === arec.id) { aCb.checked = true; break; }
+            if (addPrefillIds[api] === arec.id) { aInp.checked = true; break; }
           }
-          aItem.appendChild(aCb);
+          aItem.appendChild(aInp);
           var aCbLabel = document.createElement('label');
-          aCbLabel.setAttribute('for', aCb.id);
+          aCbLabel.setAttribute('for', aInp.id);
           aCbLabel.textContent = arec.identifier || arec.id;
           aItem.appendChild(aCbLabel);
           inp.appendChild(aItem);
@@ -15058,9 +15067,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var requested = {};
       for (var k in inputs) {
         var inpEl = inputs[k];
-        // Connection checkbox list
+        // Connection checkbox/radio list
         if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__checkbox-list')) {
-          var addCbs = inpEl.querySelectorAll('input[type="checkbox"]:checked');
+          var addCbs = inpEl.querySelectorAll('input[type="checkbox"]:checked, input[type="radio"]:checked');
           if (addCbs.length) {
             var addSelIds = [], addLabels = [];
             for (var asi = 0; asi < addCbs.length; asi++) {
