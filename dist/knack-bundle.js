@@ -13704,6 +13704,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           cb.type = 'checkbox';
           cb.value = rec.id;
           cb.id = 'scw-cr-cb-' + fd.key + '-' + ri;
+          if (rec.noBid) cb.setAttribute('data-no-bid', '1');
+          if (rec.rowId) cb.setAttribute('data-row-id', rec.rowId);
           if (connLocked) cb.disabled = true;
           // Pre-check if matches current/pending
           for (var pi = 0; pi < prefillIds.length; pi++) {
@@ -13712,7 +13714,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           item.appendChild(cb);
           var cbLabel = document.createElement('label');
           cbLabel.setAttribute('for', cb.id);
-          cbLabel.textContent = rec.identifier || rec.id;
+          cbLabel.textContent = (rec.identifier || rec.id) + (rec.noBid ? ' (not on bid)' : '');
+          if (rec.noBid) cbLabel.style.fontStyle = 'italic';
           item.appendChild(cbLabel);
           inp.appendChild(item);
         }
@@ -13769,6 +13772,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     addBtn.addEventListener('click', function () {
       // Diff against original cell values — only capture changes
       var requested = {}, hasChange = false;
+      var noBidAdds = [];   // noBid items newly selected in connection fields
       for (var k = 0; k < FIELD_DEFS.length; k++) {
         var d = FIELD_DEFS[k];
         if (d.visKey && !vis[d.visKey]) continue;
@@ -13789,14 +13793,26 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             var container = inputs[d.key];
             var cbs = container.querySelectorAll('input[type="checkbox"]');
             var selIds = [], labels = [];
+            var origIdSet = {};
+            var origIds = cell[d.idsKey] || [];
+            for (var oii = 0; oii < origIds.length; oii++) origIdSet[origIds[oii]] = true;
             for (var si = 0; si < cbs.length; si++) {
               if (cbs[si].checked) {
                 selIds.push(cbs[si].value);
                 var cbLbl = container.querySelector('label[for="' + cbs[si].id + '"]');
-                if (cbLbl) labels.push(cbLbl.textContent);
+                var rawLabel = cbLbl ? cbLbl.textContent.replace(/\s*\(not on bid\)\s*$/, '') : cbs[si].value;
+                if (cbLbl) labels.push(rawLabel);
+                // Detect newly-selected noBid items
+                if (cbs[si].getAttribute('data-no-bid') === '1' && !origIdSet[cbs[si].value]) {
+                  noBidAdds.push({
+                    id:    cbs[si].value,
+                    rowId: cbs[si].getAttribute('data-row-id'),
+                    label: rawLabel,
+                    connKey: d.key,
+                  });
+                }
               }
             }
-            var origIds = cell[d.idsKey] || [];
             if (selIds.sort().join(',') !== origIds.slice().sort().join(',')) {
               requested[d.key] = labels.join(', ');
               requested[d.key + 'Ids'] = selIds;
@@ -13857,6 +13873,46 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var recipCount = createReciprocalChanges(params, cell, requested);
         if (recipCount) {
           ns.renderToast(recipCount + ' reciprocal change(s) created', 'info');
+        }
+      }
+
+      // Create "add to bid" requests for noBid items selected in connection fields
+      if (noBidAdds.length && !isRecipItem) {
+        for (var nbi = 0; nbi < noBidAdds.length; nbi++) {
+          var nba = noBidAdds[nbi];
+          // Find the noBid row in gridRows to get its details
+          var nbaRow = null;
+          if (params.gridRows) {
+            for (var nri = 0; nri < params.gridRows.length; nri++) {
+              if (params.gridRows[nri].id === nba.rowId) { nbaRow = params.gridRows[nri]; break; }
+            }
+          }
+          var nbaProduct = nbaRow ? (nbaRow.sowProduct || nbaRow.productName || nba.label) : nba.label;
+          var nbaDisplay = nbaRow ? (nbaRow.displayLabel || nbaProduct) : nba.label;
+          // Mirror key: if selected in bidConnDevice, set bidConnTo on the new item
+          var nbaMirrorKey = nba.connKey === 'bidConnDevice' ? 'bidConnTo' : 'bidConnDevice';
+          var nbaReq = {};
+          nbaReq.productName = nbaProduct;
+          if (nbaRow && nbaRow.sowQty) nbaReq.qty = nbaRow.sowQty;
+          // Pre-fill reciprocal connection: point back to the source record
+          nbaReq[nbaMirrorKey] = params.displayLabel || params.productName || cell.id;
+          nbaReq[nbaMirrorKey + 'Ids'] = [cell.id];
+
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+            rowId:        nba.rowId,
+            bidRecordId:  null,
+            displayLabel: nbaDisplay,
+            productName:  nbaProduct,
+            addToBid:     true,
+            reciprocal:   true,
+            reciprocalSource: params.rowId,
+            current:      {},
+            requested:    nbaReq,
+            changeNotes:  'Add to bid — connected from ' + (params.displayLabel || params.productName),
+          });
+        }
+        if (noBidAdds.length) {
+          ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
         }
       }
 
@@ -14764,6 +14820,25 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     for (var ci = 0; ci < grid.rows.length; ci++) {
       var cr = grid.rows[ci];
       var cpkgs = Object.keys(cr.cellsByPackage);
+
+      // noBid rows: no bid cells, but include as connDev options if camera/reader
+      if (cr.noBid && cpkgs.length === 0) {
+        var nbLbl = cr.displayLabel || cr.productName || cr.id;
+        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
+            && nbLbl.indexOf(cr.productName) === -1) {
+          nbLbl = cr.displayLabel + ' \u2014 ' + cr.productName;
+        }
+        var nbBucket = (cr.proposalBucket || '').toLowerCase();
+        var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'
+                         || nbBucket === 'reader' || nbBucket === 'readers'
+                         || nbBucket === 'camera or reader';
+        if (nbIsCamReader && !seenDev[cr.id]) {
+          seenDev[cr.id] = true;
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+        }
+        continue;
+      }
+
       for (var cp = 0; cp < cpkgs.length; cp++) {
         var cc = cr.cellsByPackage[cpkgs[cp]];
         if (!cc.id || cc.id === cell.id) continue; // skip self

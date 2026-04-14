@@ -374,6 +374,25 @@
     for (var ci = 0; ci < grid.rows.length; ci++) {
       var cr = grid.rows[ci];
       var cpkgs = Object.keys(cr.cellsByPackage);
+
+      // noBid rows: no bid cells, but include as connDev options if camera/reader
+      if (cr.noBid && cpkgs.length === 0) {
+        var nbLbl = cr.displayLabel || cr.productName || cr.id;
+        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
+            && nbLbl.indexOf(cr.productName) === -1) {
+          nbLbl = cr.displayLabel + ' \u2014 ' + cr.productName;
+        }
+        var nbBucket = (cr.proposalBucket || '').toLowerCase();
+        var nbIsCamReader = nbBucket === 'camera' || nbBucket === 'cameras'
+                         || nbBucket === 'reader' || nbBucket === 'readers'
+                         || nbBucket === 'camera or reader';
+        if (nbIsCamReader && !seenDev[cr.id]) {
+          seenDev[cr.id] = true;
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+        }
+        continue;
+      }
+
       for (var cp = 0; cp < cpkgs.length; cp++) {
         var cc = cr.cellsByPackage[cpkgs[cp]];
         if (!cc.id || cc.id === cell.id) continue; // skip self
