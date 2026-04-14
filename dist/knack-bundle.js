@@ -31333,6 +31333,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       htmlWrap.className = P + '-html-card';
       htmlWrap.innerHTML = rev.changeHtml;
       postProcessHtmlCard(htmlWrap);
+      // Remove redundant "ADD" badge — already in the Add Requests section
+      var badges = htmlWrap.querySelectorAll('span');
+      for (var bi = 0; bi < badges.length; bi++) {
+        if (/^\s*ADD\s*$/i.test(badges[bi].textContent) && /background/.test(badges[bi].getAttribute('style') || '')) {
+          badges[bi].remove();
+          break;
+        }
+      }
       card.appendChild(htmlWrap);
     } else {
       // Fallback: tag-based
