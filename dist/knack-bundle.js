@@ -30621,7 +30621,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '}',
       '.' + P + '-orphan-card {',
       '  padding: 10px 14px; margin: 4px 0;',
-      '  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;',
       '}',
 
       /* ── Fallback ungrouped orphan section at top of view ── */
