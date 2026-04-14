@@ -30887,6 +30887,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       } catch (e) { /* skip unparseable */ }
     }
 
+    // Also include unsaved pending add items from the bid review grid
+    var crApi = window.SCW && window.SCW.bidReview && window.SCW.bidReview.changeRequests;
+    if (crApi && typeof crApi.getPending === 'function') {
+      var pending = crApi.getPending();
+      var pkgIds = Object.keys(pending);
+      for (var pi = 0; pi < pkgIds.length; pi++) {
+        var pkgItems = pending[pkgIds[pi]].items || [];
+        for (var pii = 0; pii < pkgItems.length; pii++) {
+          var pItem = pkgItems[pii];
+          if (pItem.addToBid && pItem.proposalBucketId === CAM_READER_BUCKET_ID) {
+            var pLabel = pItem.displayLabel || pItem.productName || pItem.rowId;
+            var pId = pItem.sowItemId || pItem.rowId;
+            if (pId && !devMap[pId]) devMap[pId] = { id: pId, identifier: pLabel };
+          }
+        }
+      }
+    }
+
     // MDF/IDF options — pull from view_3617 (MDF/IDF location records)
     var mdfMap = {};
     var mdfModel = findModel(MDF_IDF_VIEW);
