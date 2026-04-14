@@ -430,6 +430,7 @@
       pkgName:      findPackageName(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
@@ -470,6 +471,7 @@
       pkgName:      findPackageName(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
@@ -513,6 +515,7 @@
         pkgName:      findPackageName(grid, pkgId),
         sowId:        sowId,
         sowName:      grid.sowName,
+        sowItemId:    row.sowItem || '',
         displayLabel: row.displayLabel,
         productName:  row.productName,
         // SOW data for pre-fill

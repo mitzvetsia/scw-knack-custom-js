@@ -13969,6 +13969,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var newItem = {
         rowId: params.rowId, bidRecordId: cell.id,
+        sowItemId: params.sowItemId || '',
         displayLabel: params.displayLabel, productName: cell.productName,
         current: current, requested: requested, changeNotes: cn,
       };
@@ -14014,6 +14015,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
             rowId:        nba.rowId,
             bidRecordId:  null,
+            sowItemId:    nba.rowId,
             displayLabel: nbaDisplay,
             productName:  nbaProduct,
             addToBid:     true,
@@ -14429,6 +14431,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   /**
    * Build a flat array of field-level changes for one pending item.
    * Each entry: { field, label, from, to }
+   * Connection fields also include fromIds / toIds arrays.
    */
   function buildItemFields(item) {
     var fields = [];
@@ -14441,12 +14444,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var fromVal = hasValue(c[d.key]) ? c[d.key] : null;
       var toVal   = r[d.key];
-      fields.push({
+      var entry   = {
         field: d.key,
         label: d.label,
         from:  fromVal,
         to:    toVal,
-      });
+      };
+
+      // Connection fields: include ID arrays
+      if (d.type === 'connection' && d.idsKey) {
+        if (c[d.idsKey])   entry.fromIds = c[d.idsKey];
+        if (r[d.idsKey])   entry.toIds   = r[d.idsKey];
+      }
+
+      fields.push(entry);
     }
     return fields;
   }
@@ -14467,11 +14478,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    *         action:       'revise' | 'remove' | 'add',
    *         rowId:        Knack record ID or pseudo-ID,
    *         bidRecordId:  Knack record ID or null (add),
+   *         sowItemId:    Knack record ID (related SOW line item),
    *         displayLabel: 'E-003',
    *         productName:  'Cat 6 Drop',
    *         changeNotes:  'free text',
+   *         changes: { qty: 4, rate: 150, bidConnDeviceIds: ['id1','id2'] },
    *         fields: [
-   *           { field: 'qty', label: 'Qty', from: 2, to: 4 },
+   *           { field: 'qty', label: 'Qty', from: 2, to: 4,
+   *             fromIds: [...], toIds: [...] (connection fields only) },
    *           ...
    *         ]
    *       }
@@ -14485,14 +14499,31 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var items = [];
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
+      var fieldList = buildItemFields(it);
+
+      // Flat changes object: field key → requested value
+      // For connection fields, also include the Ids array
+      var changes = {};
+      var r = it.requested || {};
+      for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
+        var d = FIELD_DEFS[fi];
+        if (!hasValue(r[d.key])) continue;
+        changes[d.key] = r[d.key];
+        if (d.type === 'connection' && d.idsKey && r[d.idsKey]) {
+          changes[d.idsKey] = r[d.idsKey];
+        }
+      }
+
       items.push({
         action:       itemActionType(it),
         rowId:        it.rowId,
         bidRecordId:  it.bidRecordId || null,
+        sowItemId:    it.sowItemId || '',
         displayLabel: it.displayLabel || '',
         productName:  it.productName || '',
         changeNotes:  it.changeNotes || '',
-        fields:       buildItemFields(it),
+        changes:      changes,
+        fields:       fieldList,
       });
     }
 
@@ -14718,6 +14749,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
         rowId:         params.rowId,
         bidRecordId:   params.cell.id,
+        sowItemId:     params.sowItemId || '',
         displayLabel:  params.displayLabel,
         productName:   params.cell.productName,
         removeFromBid: true,
@@ -14851,6 +14883,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
         rowId:        itemRowId,
         bidRecordId:  null,
+        sowItemId:    params.sowItemId || '',
         displayLabel: displayLabel,
         productName:  product,
         addToBid:     true,
@@ -15318,6 +15351,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       pkgName:      findPackageName(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
@@ -15358,6 +15392,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       pkgName:      findPackageName(grid, pkgId),
       sowId:        sowId,
       sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
@@ -15401,6 +15436,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         pkgName:      findPackageName(grid, pkgId),
         sowId:        sowId,
         sowName:      grid.sowName,
+        sowItemId:    row.sowItem || '',
         displayLabel: row.displayLabel,
         productName:  row.productName,
         // SOW data for pre-fill
