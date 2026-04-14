@@ -1315,7 +1315,7 @@
       // Proposal bucket + sort order (for ordering ADD items in revision view)
       if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
       if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
-      if (it.sortOrder)        entry.sortOrder         = it.sortOrder;
+      entry.sortOrder = it.sortOrder != null ? it.sortOrder : 0;
 
       // Snapshot of current item data (before changes)
       entry.current = it.current || {};
