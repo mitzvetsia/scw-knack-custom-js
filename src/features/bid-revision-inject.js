@@ -158,8 +158,7 @@
 
       /* ── Orphaned add-request section at top of view ── */
       '.' + P + '-orphan-section {',
-      '  margin: 0 0 16px; padding: 14px 16px;',
-      '  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;',
+      '  margin: 0 0 16px; padding: 4px 0;',
       '}',
       '.' + P + '-orphan-header {',
       '  font-weight: 700; font-size: 13px; text-transform: uppercase;',
