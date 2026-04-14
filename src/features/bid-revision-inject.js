@@ -352,10 +352,13 @@
    * Returns { bidMdfIdf: [{id, identifier}], bidConnDevice: [...], bidConnTo: [...] }
    */
   function buildConnOptions(viewId) {
+    var TAG = '[SCW-connOpts]';
     var model = findModel(viewId || CFG.targetViews[0]);
     var records = extractRecords(model);
     var devMap = {}, toMap = {};
     var foundCamReaderFromModel = false;
+
+    console.log(TAG, 'model records:', records.length);
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -363,22 +366,24 @@
 
       // Connected Device targets: only camera/reader items (proposalBucket = CAM_READER_BUCKET_ID)
       var isCamReaderItem = false;
-      // Try _raw first
+      var matchedBy = '';
+      // Strategy 1: _raw array
       var bucketRaw = rec['field_2366_raw'];
       if (Array.isArray(bucketRaw)) {
         for (var bi = 0; bi < bucketRaw.length; bi++) {
-          if (bucketRaw[bi] && bucketRaw[bi].id === CAM_READER_BUCKET_ID) { isCamReaderItem = true; break; }
+          if (bucketRaw[bi] && bucketRaw[bi].id === CAM_READER_BUCKET_ID) { isCamReaderItem = true; matchedBy = 'field_2366_raw'; break; }
         }
       }
-      // Fallback: parse the HTML string for the bucket connection ID
+      // Strategy 2: HTML string
       if (!isCamReaderItem) {
         var bucketHtml = rec.field_2366 || '';
         if (typeof bucketHtml === 'string' && bucketHtml.indexOf(CAM_READER_BUCKET_ID) !== -1) {
-          isCamReaderItem = true;
+          isCamReaderItem = true; matchedBy = 'field_2366 HTML';
         }
       }
       if (isCamReaderItem) {
         foundCamReaderFromModel = true;
+        console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
         if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
       }
 
@@ -409,21 +414,27 @@
       }
     }
 
-    // DOM scraping fallback: if model didn't find camera/reader items, scrape the view_3505 table
+    // Strategy 3: DOM scraping — field_2366 is a hidden column NOT in the Knack model.
+    // The worksheet puts field cells on tr[data-scw-worksheet] rows; the record ID is
+    // on the next sibling tr.scw-ws-row.
     if (!foundCamReaderFromModel) {
+      console.log(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
       var wsView = CFG.targetViews[0];
       var $wsTbl = $('#' + wsView + ' table.kn-table');
       if ($wsTbl.length) {
-        $wsTbl.find('tbody tr[id]').each(function () {
-          var domTr = this;
-          var rowId = domTr.id;
-          var bucketCell = domTr.querySelector('td.field_2366');
+        $wsTbl.find('tbody tr[data-scw-worksheet]').each(function () {
+          var dataTr = this;
+          var nextTr = dataTr.nextElementSibling;
+          var rowId = (nextTr && nextTr.id) ? nextTr.id : '';
+          if (!rowId) return;
+          var bucketCell = dataTr.querySelector('td.field_2366');
           if (bucketCell) {
             var connSpan = bucketCell.querySelector('span[data-kn="connection-value"]');
             if (connSpan && connSpan.className && connSpan.className.indexOf(CAM_READER_BUCKET_ID) !== -1) {
               if (!devMap[rowId]) {
-                var nameCell = domTr.querySelector('td.field_2365') || domTr.querySelector('td.field_2379');
+                var nameCell = dataTr.querySelector('td.field_2365') || dataTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
+                console.log(TAG, 'Strategy 3 hit:', rowLabel, rowId);
                 devMap[rowId] = { id: rowId, identifier: rowLabel };
               }
             }
@@ -432,37 +443,38 @@
       }
     }
 
-    // Also include camera/reader items from revision records (view_3823)
-    // field_2698 = bucket ID on the revision record
+    // Strategy 4+5: revision records (view_3823) — field_2698 direct, then JSON payload
     var revModel = findModel(CFG.revisionView);
     var revRecords = extractRecords(revModel);
+    console.log(TAG, 'revision records:', revRecords.length);
     for (var rri = 0; rri < revRecords.length; rri++) {
       var rr = revRecords[rri];
-      // Check field_2698 (direct bucket ID) first
       var revBucketId = '';
+      var revSource = '';
+      // Strategy 4: field_2698 (direct bucket ID on revision record)
       var revBucket698 = rr['field_2698_raw'];
       if (Array.isArray(revBucket698) && revBucket698.length && revBucket698[0].id) {
         revBucketId = revBucket698[0].id;
+        revSource = 'field_2698_raw';
       }
       if (!revBucketId) {
         var revBucket698Html = rr.field_2698 || '';
         if (typeof revBucket698Html === 'string') {
           var bm = revBucket698Html.match(/class="([0-9a-f]{24})"/i);
-          if (bm) revBucketId = bm[1];
+          if (bm) { revBucketId = bm[1]; revSource = 'field_2698 HTML'; }
         }
       }
-      // Also try parsing the JSON payload for the bucket
+      // Strategy 5: JSON payload parsing
       if (!revBucketId) {
         var jsonStr = stripHtml(rr[CFG.changeJsonField] || '');
         if (jsonStr) {
           try {
             var rj = JSON.parse(jsonStr);
-            if (rj.proposalBucketId) revBucketId = rj.proposalBucketId;
+            if (rj.proposalBucketId) { revBucketId = rj.proposalBucketId; revSource = 'JSON proposalBucketId'; }
           } catch (e) { /* skip */ }
         }
       }
       if (revBucketId === CAM_READER_BUCKET_ID) {
-        // Get a label — try the JSON payload, then fall back to record ID
         var rlabel = rr.id;
         var rjStr = stripHtml(rr[CFG.changeJsonField] || '');
         if (rjStr) {
@@ -471,11 +483,12 @@
             rlabel = rjData.displayLabel || rjData.productName || rr.id;
           } catch (e) { /* skip */ }
         }
+        console.log(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
         if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
       }
     }
 
-    // Also include unsaved pending add items from the bid review grid
+    // Strategy 6: unsaved pending add items from the bid review grid
     var crApi = window.SCW && window.SCW.bidReview && window.SCW.bidReview.changeRequests;
     if (crApi && typeof crApi.getPending === 'function') {
       var pending = crApi.getPending();
@@ -487,7 +500,10 @@
           if (pItem.addToBid && pItem.proposalBucketId === CAM_READER_BUCKET_ID) {
             var pLabel = pItem.displayLabel || pItem.productName || pItem.rowId;
             var pId = pItem.sowItemId || pItem.rowId;
-            if (pId && !devMap[pId]) devMap[pId] = { id: pId, identifier: pLabel };
+            if (pId && !devMap[pId]) {
+              console.log(TAG, 'Strategy 6 (pending):', pLabel, pId);
+              devMap[pId] = { id: pId, identifier: pLabel };
+            }
           }
         }
       }
@@ -513,7 +529,10 @@
       return arr;
     }
 
-    return { bidMdfIdf: vals(mdfMap), bidConnDevice: vals(devMap), bidConnTo: vals(toMap) };
+    var result = { bidMdfIdf: vals(mdfMap), bidConnDevice: vals(devMap), bidConnTo: vals(toMap) };
+    console.log(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
+      'connTo:', result.bidConnTo.length, 'mdfIdf:', result.bidMdfIdf.length, result);
+    return result;
   }
 
   /**
@@ -924,6 +943,24 @@
         // ── Connection field: radio (single) or checkbox (multi) list ──
         var recs = connOpts[fd.key] || [];
         var curIds = prefillIds[fd.key] || [];
+        // If we have label text but no IDs, resolve labels → IDs by matching options
+        if (!curIds.length && prefill[fd.key]) {
+          var labelStr = String(prefill[fd.key]);
+          var labels = labelStr.split(',');
+          var resolved = [];
+          for (var li = 0; li < labels.length; li++) {
+            var needle = labels[li].trim();
+            if (!needle) continue;
+            for (var ri2 = 0; ri2 < recs.length; ri2++) {
+              if (recs[ri2].identifier === needle) { resolved.push(recs[ri2].id); break; }
+            }
+          }
+          if (resolved.length) {
+            curIds = resolved;
+            prefillIds[fd.key] = resolved;
+            console.log('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
+          }
+        }
         // Ensure already-selected IDs appear in the options (even if buildConnOptions missed them)
         if (curIds.length) {
           var curLabels = (prefill[fd.key] || '').split(',');
