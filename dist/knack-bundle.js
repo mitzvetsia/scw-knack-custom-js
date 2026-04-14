@@ -30416,14 +30416,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   /**
    * Find the worksheet card wrapper for a given record ID in the target view.
-   * The original <tr> has id=recordId; the worksheet row (scw-ws-row) follows it.
-   * Uses attribute selector instead of #id (Knack IDs start with digits, invalid for #).
+   * The device-worksheet transform puts the record ID on the scw-ws-row <tr>
+   * itself (not the original data <tr>).  The card lives inside that row.
+   * Uses attribute selector because Knack IDs start with digits (invalid for #).
    */
   function findCardForRecord(viewEl, recordId) {
-    var origTr = viewEl.querySelector('tr[id="' + recordId + '"]');
-    if (!origTr) return null;
-    var wsTr = origTr.nextElementSibling;
-    if (!wsTr || !wsTr.classList.contains('scw-ws-row')) return null;
+    var wsTr = viewEl.querySelector('tr.scw-ws-row[id="' + recordId + '"]');
+    if (!wsTr) return null;
     return wsTr.querySelector('.scw-ws-card') || null;
   }
 
