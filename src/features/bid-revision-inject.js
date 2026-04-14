@@ -7,7 +7,7 @@
  * view_3823 is on the same scene as view_3505; we hide it visually and
  * treat it purely as a data source.
  *
- * Join key: field_2644 (connection from revision record → survey item).
+ * Join key: field_2344 (connection from revision record → survey item).
  */
 (function () {
   'use strict';
@@ -17,8 +17,8 @@
   var CFG = {
     revisionView: 'view_3823',
     targetViews:  ['view_3505'],
-    /** field_2644 — connection to the survey line item */
-    surveyItemField: 'field_2644',
+    /** field_2344 — connection to the survey line item (blank = ADD) */
+    surveyItemField: 'field_2344',
     /** Fields to display in the revision detail strip */
     fields: {
       status:     { key: 'field_2645', label: 'Status' },
@@ -310,7 +310,7 @@
   }
 
   /**
-   * Extract the survey-item record ID from a revision record's field_2644.
+   * Extract the survey-item record ID from a revision record's field_2344.
    * Tries _raw first (array of {id, identifier}), then parses the HTML string.
    */
   function getSurveyItemId(record) {
@@ -451,7 +451,7 @@
       var trId = tr.id || tr.getAttribute('data-record-id') || '';
       if (!trId) continue;
       var rec = { id: trId };
-      // Extract field_2644 (survey item connection)
+      // Extract field_2344 (survey item connection — blank = ADD)
       var siCell = tr.querySelector('td.' + CFG.surveyItemField);
       if (siCell) {
         var span = siCell.querySelector('span[data-kn="connection-value"]');
