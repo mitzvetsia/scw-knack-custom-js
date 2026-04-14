@@ -40,18 +40,22 @@
   /** Editable fields in the revision edit modal (mirrors change-requests.js FIELD_DEFS) */
   var EDIT_FIELDS = [
     { key: 'productName',     label: 'Product',            type: 'text' },
-    { key: 'qty',             label: 'Qty',                type: 'number' },
+    { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number' },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text', multiline: true },
-    { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select', options: ['', 'Yes', 'No'] },
-    { key: 'bidPlenum',       label: 'Plenum',             type: 'select', options: ['', 'Yes', 'No'] },
-    { key: 'bidExterior',     label: 'Exterior',           type: 'select', options: ['', 'Yes', 'No'] },
-    { key: 'bidDropLength',   label: 'Drop Length',        type: 'text' },
-    { key: 'bidConduit',      label: 'Conduit',            type: 'text' },
-    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connField: 'field_2380', idsKey: 'bidConnDeviceIds' },
-    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connField: 'field_2381', idsKey: 'bidConnToIds', single: true },
+    { key: 'bidExistCabling', label: 'Existing Cabling',   type: 'select', options: ['', 'Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidPlenum',       label: 'Plenum',             type: 'select', options: ['', 'Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidExterior',     label: 'Exterior',           type: 'select', options: ['', 'Yes', 'No'], visKey: 'cabling' },
+    { key: 'bidDropLength',   label: 'Drop Length',        type: 'text',   visKey: 'cabling' },
+    { key: 'bidConduit',      label: 'Conduit',            type: 'text',   visKey: 'cabling' },
+    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connField: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
+    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connField: 'field_2381', idsKey: 'bidConnToIds', single: true, visKey: 'cabling' },
     { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connField: 'field_2375', idsKey: 'bidMdfIdfIds', single: true },
   ];
+
+  var CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
+  /** MDF/IDF location records view (on the same scene as view_3505) */
+  var MDF_IDF_VIEW = 'view_3617';
 
   var STYLE_ID   = 'scw-bid-revision-inject-css';
   var BADGE_CLS  = 'scw-revision-badge';
@@ -350,24 +354,12 @@
   function buildConnOptions(viewId) {
     var model = findModel(viewId || CFG.targetViews[0]);
     var records = extractRecords(model);
-    var mdfMap = {}, devMap = {}, toMap = {};
+    var devMap = {}, toMap = {};
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
 
-      // MDF/IDF — deduplicate from connection field raw values
-      var mdfRaw = rec['field_2375_raw'];
-      if (Array.isArray(mdfRaw)) {
-        for (var j = 0; j < mdfRaw.length; j++) {
-          var mr = mdfRaw[j];
-          if (mr && mr.id && !mdfMap[mr.id]) {
-            mdfMap[mr.id] = { id: mr.id, identifier: stripHtml(mr.identifier || mr.id) };
-          }
-        }
-      }
-
       // Each survey item record can be a Connected Device or Connected To target.
-      // Use the display label (field_2365) for the identifier.
       var label = stripHtml(rec.field_2365 || rec.field_2379 || '') || rec.id;
       if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
       if (!toMap[rec.id])  toMap[rec.id]  = { id: rec.id, identifier: label };
@@ -391,6 +383,17 @@
           }
         }
       }
+    }
+
+    // MDF/IDF options — pull from view_3617 (MDF/IDF location records)
+    var mdfMap = {};
+    var mdfModel = findModel(MDF_IDF_VIEW);
+    var mdfRecords = extractRecords(mdfModel);
+    for (var mi = 0; mi < mdfRecords.length; mi++) {
+      var mr = mdfRecords[mi];
+      if (!mr.id || mdfMap[mr.id]) continue;
+      var mdfLabel = stripHtml(mr.field_1642 || '') || mr.id;
+      mdfMap[mr.id] = { id: mr.id, identifier: mdfLabel };
     }
 
     // Convert maps to sorted arrays
@@ -630,8 +633,21 @@
     closeEditModal();
     var data = jsonData || {};
 
-    // Build connection options from view_3505 Knack model
+    // Build connection options from view_3505 + view_3617
     var connOpts = buildConnOptions();
+
+    // Derive field visibility from proposal bucket (mirrors init.js logic)
+    var bucketId = data.proposalBucketId || '';
+    var isCamReader = bucketId === CAM_READER_BUCKET_ID;
+    // Check if the item has connection data (mapConnections equivalent)
+    var hasConnData = !!(data.bidConnDevice || data.bidConnTo
+      || (data.requested && (data.requested.bidConnDevice || data.requested.bidConnTo))
+      || (data.current   && (data.current.bidConnDevice   || data.current.bidConnTo)));
+    var vis = {
+      qty:        true,
+      cabling:    isCamReader,
+      connDevice: hasConnData && !isCamReader,
+    };
 
     var overlay = document.createElement('div');
     overlay.id = MODAL_ID;
@@ -681,6 +697,10 @@
     var inputs = {};
     for (var fi = 0; fi < EDIT_FIELDS.length; fi++) {
       var fd = EDIT_FIELDS[fi];
+
+      // Skip fields hidden by proposal bucket visibility rules
+      if (fd.visKey && !vis[fd.visKey]) continue;
+
       var val = prefill[fd.key] != null ? String(prefill[fd.key]) : '';
 
       // Skip empty non-essential fields to keep modal compact
@@ -789,29 +809,15 @@
     body.appendChild(notesRow);
     modal.appendChild(body);
 
-    // Footer
-    var footer = document.createElement('div');
-    footer.className = P + '-modal-footer';
-    var cancelBtn = document.createElement('button');
-    cancelBtn.className = P + '-btn ' + P + '-btn--cancel';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', closeEditModal);
-    footer.appendChild(cancelBtn);
-
-    var saveBtn = document.createElement('button');
-    saveBtn.className = P + '-btn ' + P + '-btn--approve';
-    saveBtn.textContent = 'Approve with Changes';
-    saveBtn.addEventListener('click', function () {
-      // Collect modified values — handle connection fields specially
+    // ── Collect modified values from the form ──
+    function collectModified() {
       var modified = {};
       for (var k = 0; k < EDIT_FIELDS.length; k++) {
         var d = EDIT_FIELDS[k];
         if (!inputs[d.key]) continue;
 
         if (d.type === 'connection') {
-          // Connection field: read selected IDs and identifiers
           var container = inputs[d.key];
-          var inputType = d.single ? 'input[type="radio"]' : 'input[type="checkbox"]';
           var selIds = [], selLabels = [];
 
           if (d.single) {
@@ -830,7 +836,6 @@
             }
           }
 
-          // Always include both identifier and IDs
           modified[d.key] = selLabels.join(', ');
           modified[d.idsKey] = selIds;
         } else {
@@ -838,7 +843,40 @@
           if (v) modified[d.key] = d.key === 'qty' || d.key === 'rate' ? parseFloat(v) : v;
         }
       }
+      return modified;
+    }
 
+    // Footer
+    var footer = document.createElement('div');
+    footer.className = P + '-modal-footer';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = P + '-btn ' + P + '-btn--cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', closeEditModal);
+    footer.appendChild(cancelBtn);
+
+    // Save (without approving)
+    var saveOnlyBtn = document.createElement('button');
+    saveOnlyBtn.className = P + '-btn ' + P + '-btn--edit';
+    saveOnlyBtn.textContent = 'Save';
+    saveOnlyBtn.addEventListener('click', function () {
+      var modified = collectModified();
+      var notes = notesInput.value.trim();
+      closeEditModal();
+      submitRevisionAction(revisionId, 'save_edits', '', wrapEl, {
+        outcome: 'saved',
+        modified: modified,
+        notes: notes,
+      });
+    });
+    footer.appendChild(saveOnlyBtn);
+
+    // Approve with Changes
+    var approveBtn = document.createElement('button');
+    approveBtn.className = P + '-btn ' + P + '-btn--approve';
+    approveBtn.textContent = 'Approve with Changes';
+    approveBtn.addEventListener('click', function () {
+      var modified = collectModified();
       var notes = notesInput.value.trim();
       closeEditModal();
       submitRevisionAction(revisionId, 'approve_with_changes', '', wrapEl, {
@@ -847,7 +885,7 @@
         notes: notes,
       });
     });
-    footer.appendChild(saveBtn);
+    footer.appendChild(approveBtn);
     modal.appendChild(footer);
 
     overlay.appendChild(modal);
