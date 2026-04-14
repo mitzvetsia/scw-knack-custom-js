@@ -153,19 +153,9 @@
       var rec = _mdfIdfRecords[i];
       if (!rec.id || seen[rec.id]) continue;
       seen[rec.id] = true;
-      // Try Knack's identifier property, then first non-empty string field
-      var name = rec.identifier || '';
-      if (!name) {
-        var keys = Object.keys(rec);
-        for (var k = 0; k < keys.length; k++) {
-          if (keys[k] === 'id' || keys[k].indexOf('_raw') !== -1) continue;
-          var v = rec[keys[k]];
-          if (typeof v === 'string' && v.trim()) {
-            name = v.replace(/<[^>]*>/g, '').trim();
-            break;
-          }
-        }
-      }
+      // Use field_1642 for the display label
+      var name = rec.field_1642 || '';
+      if (typeof name === 'string') name = name.replace(/<[^>]*>/g, '').trim();
       opts.push({ id: rec.id, identifier: name || rec.id });
     }
     opts.sort(function (a, b) { return a.identifier.localeCompare(b.identifier); });
