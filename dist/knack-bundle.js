@@ -15126,6 +15126,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       bidConduit:      req.bidConduit || params.sowConduit || '',
       bidMdfIdf:       req.bidMdfIdf || params.sowMdfIdf || '',
       bidMdfIdfIds:    req.bidMdfIdfIds || params.sowMdfIdfIds || [],
+      bidConnDevice:      req.bidConnDevice || '',
+      bidConnDeviceIds:   req.bidConnDeviceIds || [],
+      bidConnTo:          req.bidConnTo || '',
+      bidConnToIds:       req.bidConnToIds || [],
     };
 
     // Connection options for addable connection fields (e.g. MDF/IDF)
@@ -15145,8 +15149,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var inp;
       if (fd.type === 'connection' && fd.addable) {
         // Connection field for addable fields — radio if single, checkbox if multi
-        var addRecs = addConnOpts[fd.key] || [];
+        var addRecs = (addConnOpts[fd.key] || []).slice();
         var addPrefillIds = prefill[fd.key + 'Ids'] || [];
+        // Inject prefilled IDs that aren't in the options list (e.g. pending add sources)
+        if (addPrefillIds.length) {
+          var addRecsById = {};
+          for (var adi = 0; adi < addRecs.length; adi++) addRecsById[addRecs[adi].id] = true;
+          var addLabels = (prefill[fd.key] || '').split(',');
+          for (var api2 = 0; api2 < addPrefillIds.length; api2++) {
+            if (!addRecsById[addPrefillIds[api2]]) {
+              var injLabel = (addLabels[api2] || '').trim() || addPrefillIds[api2];
+              addRecs.push({ id: addPrefillIds[api2], identifier: injLabel });
+            }
+          }
+        }
         inp = el('div', 'scw-bid-cr-modal__checkbox-list');
         if (!addRecs.length) {
           inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
