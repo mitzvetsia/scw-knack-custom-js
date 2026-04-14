@@ -11218,6 +11218,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
       '.scw-bid-cr-card__dismiss:hover { color: #dc2626; }',
 
+      '.scw-bid-cr-card__item-label {',
+      '  font-weight: 700;',
+      '  font-size: 11px;',
+      '  color: #0f172a;',
+      '  margin-bottom: 2px;',
+      '}',
+
       '.scw-bid-cr-card__row {',
       '  display: flex;',
       '  align-items: baseline;',
@@ -14459,9 +14466,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
     card.appendChild(header);
 
+    // Display label above change details
+    if (item.displayLabel) {
+      var labelEl = el('div', 'scw-bid-cr-card__item-label', item.displayLabel);
+      card.appendChild(labelEl);
+    }
+
     if (item.removeFromBid) {
-      card.appendChild(el('div', 'scw-bid-cr-card__row',
-        (item.displayLabel || 'Item') + ' \u2014 requesting removal'));
+      card.appendChild(el('div', 'scw-bid-cr-card__row', 'Requesting removal'));
       if (item.changeNotes) {
         card.appendChild(el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d'));
       }

@@ -691,6 +691,13 @@
       '}',
       '.scw-bid-cr-card__dismiss:hover { color: #dc2626; }',
 
+      '.scw-bid-cr-card__item-label {',
+      '  font-weight: 700;',
+      '  font-size: 11px;',
+      '  color: #0f172a;',
+      '  margin-bottom: 2px;',
+      '}',
+
       '.scw-bid-cr-card__row {',
       '  display: flex;',
       '  align-items: baseline;',
