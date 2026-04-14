@@ -12562,16 +12562,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           'data-vis-conn':    visibility.connDevice ? '1' : '0',
         };
 
-        // Show pending card if one exists
-        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
-          card.setAttribute('data-action', 'cell_request_change');
-          var aKeys = Object.keys(sharedAttrs);
-          for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], sharedAttrs[aKeys[ai]]);
-          wrap.appendChild(card);
-        }
-
-        // Build overflow menu items
+        // Build overflow menu items (rendered first, above the card)
         var menuItems = [];
         if (!pendingItem) {
           menuItems.push({ label: 'Request Change', action: 'cell_request_change', icon: '\u270E' });
@@ -12582,6 +12573,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
         if (menuItems.length) {
           wrap.appendChild(buildOverflowMenu(cpkg.name, menuItems, sharedAttrs));
+        }
+
+        // Show pending card below the overflow menu
+        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+          var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
+          card.setAttribute('data-action', 'cell_request_change');
+          var aKeys = Object.keys(sharedAttrs);
+          for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], sharedAttrs[aKeys[ai]]);
+          wrap.appendChild(card);
         }
       }
     }
