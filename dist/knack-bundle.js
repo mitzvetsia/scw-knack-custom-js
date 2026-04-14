@@ -11800,6 +11800,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   function buildRow(rowKey, bucket) {
     var meta = bucket.meta;
+    if (CFG.debug && bucket.cells.length) {
+      var _dbg1946 = meta[FK.sowMdfIdf];
+      var _dbg1946r = meta[FK.sowMdfIdf + '_raw'];
+      var _dbg2375 = meta[FK.mdfIdf];
+      var _dbg2375r = meta[FK.mdfIdf + '_raw'];
+      console.log('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
+        '| field_2375:', _dbg2375, '_raw:', _dbg2375r,
+        '| label:', stripHtml(meta[FK.displayLabel] || ''));
+    }
     var cellsByPackage = {};
 
     for (var i = 0; i < bucket.cells.length; i++) {
@@ -11882,7 +11891,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
-      sowMdfIdf:       connectionLabel(meta, FK.sowMdfIdf),
+      sowMdfIdf:       connectionLabel(meta, FK.sowMdfIdf) || raw(meta, FK.sowMdfIdf),
       bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
@@ -12192,6 +12201,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
     }
 
+    // Build SOW item lookup: sowItemId → { mdfIdf label from field_1946 }
+    var SFK = CFG.sowItemFieldKeys;
+    var sowItemLookup = {};
+    if (sowItems && sowItems.length) {
+      for (var si2 = 0; si2 < sowItems.length; si2++) {
+        var siRec = sowItems[si2];
+        if (!siRec.id) continue;
+        sowItemLookup[siRec.id] = {
+          mdfIdf: connectionLabel(siRec, SFK.mdfIdf),
+        };
+      }
+      if (CFG.debug) {
+        console.log('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
+      }
+    }
+
     var sowBuckets = groupBySow(records);
 
     // Distribute no-SOW records into SOW grids that share the same bid package.
@@ -12302,6 +12327,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           continue;
         }
         rows.push(noBidRows[nb]);
+      }
+
+      // Merge SOW MDF/IDF (field_1946) into rows from the SOW item lookup
+      for (var mi2 = 0; mi2 < rows.length; mi2++) {
+        var r2 = rows[mi2];
+        if (r2.sowItem && sowItemLookup[r2.sowItem]) {
+          var siData = sowItemLookup[r2.sowItem];
+          if (siData.mdfIdf && !r2.sowMdfIdf) {
+            r2.sowMdfIdf = siData.mdfIdf;
+          }
+        }
       }
 
       var pkgs    = extractPackages(recs);
@@ -12981,6 +13017,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
       mdfIdf:     norm(row.sowMdfIdf || row.mdfIdf) !== norm(cell.bidMdfIdf),
     };
+
+    if (CFG.debug && (m.mdfIdf || row.sowMdfIdf || cell.bidMdfIdf)) {
+      console.log('[BidReview] MDF/IDF compare:', row.displayLabel,
+        '| sowMdfIdf:', JSON.stringify(row.sowMdfIdf),
+        '| row.mdfIdf:', JSON.stringify(row.mdfIdf),
+        '| cell.bidMdfIdf:', JSON.stringify(cell.bidMdfIdf),
+        '| diff?', m.mdfIdf);
+    }
 
     m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
             m.plenum || m.exterior || m.dropLength || m.conduit || m.mdfIdf;

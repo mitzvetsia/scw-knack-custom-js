@@ -627,6 +627,14 @@
       mdfIdf:     norm(row.sowMdfIdf || row.mdfIdf) !== norm(cell.bidMdfIdf),
     };
 
+    if (CFG.debug && (m.mdfIdf || row.sowMdfIdf || cell.bidMdfIdf)) {
+      console.log('[BidReview] MDF/IDF compare:', row.displayLabel,
+        '| sowMdfIdf:', JSON.stringify(row.sowMdfIdf),
+        '| row.mdfIdf:', JSON.stringify(row.mdfIdf),
+        '| cell.bidMdfIdf:', JSON.stringify(cell.bidMdfIdf),
+        '| diff?', m.mdfIdf);
+    }
+
     m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
             m.plenum || m.exterior || m.dropLength || m.conduit || m.mdfIdf;
     return m;
