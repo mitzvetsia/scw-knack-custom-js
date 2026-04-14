@@ -14798,6 +14798,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         changeNotes:  it.changeNotes || '',
       };
 
+      // Proposal bucket + sort order (for ordering ADD items in revision view)
+      if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
+      if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
+      if (it.sortOrder)        entry.sortOrder         = it.sortOrder;
+
       // Snapshot of current item data (before changes)
       entry.current = it.current || {};
 
@@ -15258,6 +15263,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         displayLabel: displayLabel,
         productName:  product,
         addToBid:     true,
+        proposalBucket:   params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
+        sortOrder:        params.sortOrder || 0,
         current:      {},
         requested:    requested,
         changeNotes:  ta.value.trim(),
@@ -15298,6 +15306,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
           if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
 
+          // Reciprocal inherits the source's proposal bucket and sort order
+          var nbaSort = 0;
+          var nbaBucket = '';
+          var nbaBucketId = '';
+          if (nbaRow) {
+            nbaSort = nbaRow.sortOrder || 0;
+            nbaBucket = nbaRow.proposalBucket || '';
+            nbaBucketId = nbaRow.proposalBucketId || '';
+          }
           addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
             rowId:        nba.rowId,
             bidRecordId:  null,
@@ -15305,6 +15322,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             displayLabel: nbaDisplay,
             productName:  nbaProduct,
             addToBid:     true,
+            proposalBucket:   nbaBucket,
+            proposalBucketId: nbaBucketId,
+            sortOrder:        nbaSort,
             reciprocal:   true,
             reciprocalSource: itemRowId,
             current:      {},
@@ -15834,6 +15854,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowConduit:       row.sowConduit,
           sowMdfIdf:        row.mdfIdf || '',
           sowMdfIdfIds:     row.mdfIdfIds || [],
+          proposalBucket:   row.proposalBucket || '',
+          proposalBucketId: row.proposalBucketId || '',
+          sortOrder:        row.sortOrder || 0,
           connOptions:      addConnOpts2,
           gridRows:         grid.rows,
           visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
@@ -16030,6 +16053,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         sowConduit:       row.sowConduit,
         sowMdfIdf:        row.mdfIdf || '',
         sowMdfIdfIds:     row.mdfIdfIds || [],
+        proposalBucket:   row.proposalBucket || '',
+        proposalBucketId: row.proposalBucketId || '',
+        sortOrder:        row.sortOrder || 0,
         connOptions:      connOpts,
         gridRows:         grid.rows,
         visibility:       vis,
@@ -31454,6 +31480,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (existing) existing.remove();
 
     if (!orphans.length) return;
+
+    // Sort orphans by proposalBucket name, then sortOrder
+    orphans.sort(function (a, b) {
+      var aBucket = (a.changeJson && a.changeJson.proposalBucket) || '';
+      var bBucket = (b.changeJson && b.changeJson.proposalBucket) || '';
+      if (aBucket !== bBucket) return aBucket.localeCompare(bBucket);
+      var aSort = (a.changeJson && a.changeJson.sortOrder) || 0;
+      var bSort = (b.changeJson && b.changeJson.sortOrder) || 0;
+      return aSort - bSort;
+    });
 
     // Determine table colspan from the first group header or thead
     var firstGroupTd = viewEl.querySelector('tr.kn-table-group > td[colspan]');

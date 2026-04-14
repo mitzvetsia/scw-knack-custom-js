@@ -1011,6 +1011,16 @@
 
     if (!orphans.length) return;
 
+    // Sort orphans by proposalBucket name, then sortOrder
+    orphans.sort(function (a, b) {
+      var aBucket = (a.changeJson && a.changeJson.proposalBucket) || '';
+      var bBucket = (b.changeJson && b.changeJson.proposalBucket) || '';
+      if (aBucket !== bBucket) return aBucket.localeCompare(bBucket);
+      var aSort = (a.changeJson && a.changeJson.sortOrder) || 0;
+      var bSort = (b.changeJson && b.changeJson.sortOrder) || 0;
+      return aSort - bSort;
+    });
+
     // Determine table colspan from the first group header or thead
     var firstGroupTd = viewEl.querySelector('tr.kn-table-group > td[colspan]');
     var colspan = firstGroupTd ? firstGroupTd.getAttribute('colspan') : '1';

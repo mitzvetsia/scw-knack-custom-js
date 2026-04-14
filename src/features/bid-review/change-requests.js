@@ -1312,6 +1312,11 @@
         changeNotes:  it.changeNotes || '',
       };
 
+      // Proposal bucket + sort order (for ordering ADD items in revision view)
+      if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
+      if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
+      if (it.sortOrder)        entry.sortOrder         = it.sortOrder;
+
       // Snapshot of current item data (before changes)
       entry.current = it.current || {};
 
@@ -1772,6 +1777,9 @@
         displayLabel: displayLabel,
         productName:  product,
         addToBid:     true,
+        proposalBucket:   params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
+        sortOrder:        params.sortOrder || 0,
         current:      {},
         requested:    requested,
         changeNotes:  ta.value.trim(),
@@ -1812,6 +1820,15 @@
           if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
           if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
 
+          // Reciprocal inherits the source's proposal bucket and sort order
+          var nbaSort = 0;
+          var nbaBucket = '';
+          var nbaBucketId = '';
+          if (nbaRow) {
+            nbaSort = nbaRow.sortOrder || 0;
+            nbaBucket = nbaRow.proposalBucket || '';
+            nbaBucketId = nbaRow.proposalBucketId || '';
+          }
           addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
             rowId:        nba.rowId,
             bidRecordId:  null,
@@ -1819,6 +1836,9 @@
             displayLabel: nbaDisplay,
             productName:  nbaProduct,
             addToBid:     true,
+            proposalBucket:   nbaBucket,
+            proposalBucketId: nbaBucketId,
+            sortOrder:        nbaSort,
             reciprocal:   true,
             reciprocalSource: itemRowId,
             current:      {},
