@@ -11033,7 +11033,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       /* ── overflow menu (⋮ per-package) ───────────────────── */
       '.scw-bid-review__overflow {',
       '  position: relative;',
-      '  display: inline-block;',
+      '  display: flex;',
+      '  justify-content: flex-end;',
       '}',
 
       '.scw-bid-review__overflow-trigger {',
@@ -11067,7 +11068,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  display: none;',
       '  position: absolute;',
       '  top: 100%;',
-      '  left: 0;',
+      '  right: 0;',
       '  z-index: 50;',
       '  margin-top: 2px;',
       '  min-width: 160px;',
