@@ -855,18 +855,42 @@
     cancelBtn.addEventListener('click', closeEditModal);
     footer.appendChild(cancelBtn);
 
-    // Save (without approving)
+    // Save (update JSON on the revision record — no webhook)
     var saveOnlyBtn = document.createElement('button');
     saveOnlyBtn.className = P + '-btn ' + P + '-btn--edit';
     saveOnlyBtn.textContent = 'Save';
     saveOnlyBtn.addEventListener('click', function () {
       var modified = collectModified();
       var notes = notesInput.value.trim();
-      closeEditModal();
-      submitRevisionAction(revisionId, 'save_edits', '', wrapEl, {
-        outcome: 'saved',
-        modified: modified,
-        notes: notes,
+
+      // Merge modified values into the JSON and write back to field_2696
+      var updated = JSON.parse(JSON.stringify(data)); // deep clone
+      if (!updated.requested) updated.requested = {};
+      var mKeys = Object.keys(modified);
+      for (var mi = 0; mi < mKeys.length; mi++) {
+        updated.requested[mKeys[mi]] = modified[mKeys[mi]];
+      }
+      if (notes) updated.changeNotes = notes;
+
+      var body = {};
+      body[CFG.changeJsonField] = JSON.stringify(updated);
+
+      saveOnlyBtn.disabled = true;
+      saveOnlyBtn.textContent = 'Saving\u2026';
+
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(CFG.revisionView, revisionId),
+        type: 'PUT',
+        data: JSON.stringify(body),
+        success: function () {
+          console.log('[BidRevInject] Saved JSON for', revisionId);
+          closeEditModal();
+        },
+        error: function (xhr) {
+          console.error('[BidRevInject] Save failed for', revisionId, xhr.status);
+          saveOnlyBtn.disabled = false;
+          saveOnlyBtn.textContent = 'Save';
+        },
       });
     });
     footer.appendChild(saveOnlyBtn);
