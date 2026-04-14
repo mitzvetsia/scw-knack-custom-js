@@ -10420,8 +10420,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
 
-    // ── Make webhook for all review actions ────────────────────
-    actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
+    // ── Make webhooks ───────────────────────────────────────────
+    actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
+    changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -14402,35 +14403,276 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ── Submit ─────────────────────────────────────────────
-  function submitChangeRequest(pkgId) {
+
+  /** Escape HTML entities for safe embedding. */
+  function escHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /** Format a number as currency ($1,234.56). */
+  function fmtCurrencyHtml(v) {
+    if (v == null || v === 0) return '$0.00';
+    return '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /**
+   * Classify a pending item into a human-readable action type.
+   */
+  function itemActionType(item) {
+    if (item.removeFromBid) return 'remove';
+    if (item.addToBid)      return 'add';
+    return 'revise';
+  }
+
+  /**
+   * Build a flat array of field-level changes for one pending item.
+   * Each entry: { field, label, from, to }
+   */
+  function buildItemFields(item) {
+    var fields = [];
+    var r = item.requested || {};
+    var c = item.current   || {};
+
+    for (var i = 0; i < FIELD_DEFS.length; i++) {
+      var d = FIELD_DEFS[i];
+      if (!hasValue(r[d.key])) continue;
+
+      var fromVal = hasValue(c[d.key]) ? c[d.key] : null;
+      var toVal   = r[d.key];
+      fields.push({
+        field: d.key,
+        label: d.label,
+        from:  fromVal,
+        to:    toVal,
+      });
+    }
+    return fields;
+  }
+
+  /**
+   * Build the JSON payload for a change request submission.
+   *
+   * Shape:
+   *   {
+   *     actionType:  'change_request',
+   *     timestamp:   ISO string,
+   *     packageId:   Knack record ID,
+   *     packageName: 'BD-1',
+   *     sowId:       Knack record ID,
+   *     sowName:     'SOW Name',
+   *     items: [
+   *       {
+   *         action:       'revise' | 'remove' | 'add',
+   *         rowId:        Knack record ID or pseudo-ID,
+   *         bidRecordId:  Knack record ID or null (add),
+   *         displayLabel: 'E-003',
+   *         productName:  'Cat 6 Drop',
+   *         changeNotes:  'free text',
+   *         fields: [
+   *           { field: 'qty', label: 'Qty', from: 2, to: 4 },
+   *           ...
+   *         ]
+   *       }
+   *     ]
+   *   }
+   */
+  function buildSubmitPayload(pkgId) {
     var pkg = _pending[pkgId];
-    if (!pkg || !pkg.items.length) return;
-    if (!window.confirm('Submit change request for ' + pkg.pkgName + '?\n\n' +
-      pkg.items.length + ' item(s) will be sent to the subcontractor.')) return;
+    if (!pkg) return null;
 
     var items = [];
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
-      var payload = {
-        rowId: it.rowId, bidRecordId: it.bidRecordId,
-        displayLabel: it.displayLabel, productName: it.productName,
-        current: it.current, requested: it.requested, changeNotes: it.changeNotes,
-      };
-      if (it.removeFromBid) payload.removeFromBid = true;
-      if (it.addToBid)      payload.addToBid = true;
-      items.push(payload);
+      items.push({
+        action:       itemActionType(it),
+        rowId:        it.rowId,
+        bidRecordId:  it.bidRecordId || null,
+        displayLabel: it.displayLabel || '',
+        productName:  it.productName || '',
+        changeNotes:  it.changeNotes || '',
+        fields:       buildItemFields(it),
+      });
     }
 
-    ns.submitAction({ actionType: 'change_request', packageId: pkgId, sowId: pkg.sowId, items: items })
-      .done(function () {
+    return {
+      actionType:  'change_request',
+      timestamp:   new Date().toISOString(),
+      packageId:   pkgId,
+      packageName: pkg.pkgName,
+      sowId:       pkg.sowId,
+      sowName:     pkg.sowName || '',
+      items:       items,
+    };
+  }
+
+  /**
+   * Build a self-contained HTML document for the change request.
+   * Designed to be stored in a Knack rich-text field and displayed
+   * on a revision request detail page.
+   */
+  function buildSubmitHtml(pkgId) {
+    var pkg = _pending[pkgId];
+    if (!pkg) return '';
+
+    var h = [];
+    // Inline styles — the HTML will render inside Knack's page so we
+    // can't rely on external CSS.
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:720px;">');
+
+    // Header
+    h.push('<div style="border-bottom:2px solid #3b82f6;padding-bottom:8px;margin-bottom:16px;">');
+    h.push('<div style="font-size:18px;font-weight:700;color:#0f172a;">Change Request</div>');
+    h.push('<div style="font-size:13px;color:#64748b;margin-top:2px;">');
+    h.push(escHtml(pkg.pkgName));
+    if (pkg.sowName) h.push(' &mdash; ' + escHtml(pkg.sowName));
+    h.push('</div>');
+    h.push('</div>');
+
+    // Group items by action type for readability
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < pkg.items.length; i++) {
+      var it = pkg.items[i];
+      groups[itemActionType(it)].push(it);
+    }
+
+    var sectionOrder = [
+      { key: 'revise', title: 'Revisions',        color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',      color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'remove', title: 'Items to Remove',   color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
+    ];
+
+    for (var si = 0; si < sectionOrder.length; si++) {
+      var sec = sectionOrder[si];
+      var arr = groups[sec.key];
+      if (!arr.length) continue;
+
+      h.push('<div style="margin-bottom:20px;">');
+      h.push('<div style="font-size:14px;font-weight:700;color:' + sec.color + ';margin-bottom:8px;">');
+      h.push(sec.icon + ' ' + escHtml(sec.title) + ' (' + arr.length + ')');
+      h.push('</div>');
+
+      for (var j = 0; j < arr.length; j++) {
+        var item = arr[j];
+        var label = item.displayLabel || item.productName || 'Item';
+
+        h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:10px 14px;margin-bottom:8px;">');
+
+        // Item header
+        h.push('<div style="font-weight:600;font-size:13px;margin-bottom:4px;">');
+        h.push(escHtml(label));
+        if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+          h.push(' <span style="font-weight:400;color:#64748b;">&mdash; ' + escHtml(item.productName) + '</span>');
+        }
+        h.push('</div>');
+
+        if (sec.key === 'remove') {
+          // Removal — just show the item name and optional notes
+          if (item.changeNotes) {
+            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:4px;">');
+            h.push('&ldquo;' + escHtml(item.changeNotes) + '&rdquo;');
+            h.push('</div>');
+          }
+        } else {
+          // Revise or Add — show field changes in a compact table
+          var fields = buildItemFields(item);
+          if (fields.length) {
+            h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">');
+            h.push('<tr style="border-bottom:1px solid ' + sec.color + '22;">');
+            h.push('<th style="text-align:left;padding:3px 8px 3px 0;color:#64748b;font-weight:600;">Field</th>');
+            if (sec.key === 'revise') {
+              h.push('<th style="text-align:left;padding:3px 8px;color:#64748b;font-weight:600;">Current</th>');
+            }
+            h.push('<th style="text-align:left;padding:3px 8px;color:#64748b;font-weight:600;">');
+            h.push(sec.key === 'revise' ? 'Requested' : 'Value');
+            h.push('</th>');
+            h.push('</tr>');
+
+            for (var fi = 0; fi < fields.length; fi++) {
+              var f = fields[fi];
+              var fromStr = f.from != null ? escHtml(String(f.from)) : '&mdash;';
+              var toStr   = escHtml(String(f.to));
+              // Currency formatting
+              var isCurrency = false;
+              for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
+                if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+              }
+              if (isCurrency) {
+                fromStr = f.from != null ? escHtml(fmtCurrencyHtml(f.from)) : '&mdash;';
+                toStr   = escHtml(fmtCurrencyHtml(f.to));
+              }
+
+              h.push('<tr>');
+              h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;">' + escHtml(f.label) + '</td>');
+              if (sec.key === 'revise') {
+                h.push('<td style="padding:3px 8px;color:#94a3b8;">' + fromStr + '</td>');
+              }
+              h.push('<td style="padding:3px 8px;font-weight:600;color:' + sec.color + ';">' + toStr + '</td>');
+              h.push('</tr>');
+            }
+            h.push('</table>');
+          }
+
+          if (item.changeNotes) {
+            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;">');
+            h.push('&ldquo;' + escHtml(item.changeNotes) + '&rdquo;');
+            h.push('</div>');
+          }
+        }
+
+        h.push('</div>');  // card
+      }
+
+      h.push('</div>');  // section
+    }
+
+    // Footer
+    h.push('<div style="font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:12px;">');
+    h.push('Generated ' + new Date().toLocaleString());
+    h.push('</div>');
+
+    h.push('</div>');
+    return h.join('');
+  }
+
+  function submitChangeRequest(pkgId) {
+    var pkg = _pending[pkgId];
+    if (!pkg || !pkg.items.length) return;
+    if (!window.confirm('Submit change request for ' + pkg.pkgName + '?\n\n' +
+      pkg.items.length + ' item(s) will be sent.')) return;
+
+    var payload = buildSubmitPayload(pkgId);
+    var html    = buildSubmitHtml(pkgId);
+    payload.html = html;
+
+    if (CFG.debug) {
+      console.log('[BidReview CR] Submitting:', payload);
+      console.log('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
+    }
+
+    var deferred = $.Deferred();
+
+    SCW.knackAjax({
+      url:  CFG.changeRequestWebhook,
+      type: 'POST',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        if (CFG.debug) console.log('[BidReview CR] Submit success:', resp);
         delete _pending[pkgId];
         persist();
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
-      })
-      .fail(function () {
-        ns.renderToast('Failed to submit change request', 'error');
-      });
+        deferred.resolve(resp);
+      },
+      error: function (xhr) {
+        console.error('[BidReview CR] Submit failed:', xhr.status, xhr.responseText);
+        ns.renderToast('Failed to submit change request — please try again', 'error');
+        deferred.reject(xhr);
+      },
+    });
+
+    return deferred.promise();
   }
 
   // ── Remove from Bid ─────────────────────────────────────
