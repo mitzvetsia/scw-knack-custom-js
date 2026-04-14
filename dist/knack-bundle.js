@@ -31412,9 +31412,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return;
     }
 
-    // Always render orphaned adds immediately — they don't depend on worksheet rows
-    renderOrphanSection(viewEl, orphaned);
-
     // For matched revisions, verify the device-worksheet transform has run
     var wsRows = viewEl.querySelectorAll('tr.scw-ws-row');
     if (!wsRows.length && siIds.length) {
@@ -31425,6 +31422,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       } else {
         console.warn('[BidRevInject] Gave up waiting for scw-ws-row after', _injectRetries, 'attempts');
       }
+      // Render orphans even while waiting for worksheet rows
+      renderOrphanSection(viewEl, orphaned);
       return;
     }
     _injectRetries = 0;
@@ -31464,16 +31463,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       injected++;
     }
-    console.log('[BidRevInject] Injected revisions onto', injected, 'cards');
+    console.log('[BidRevInject] Injected revisions onto', injected, 'cards,',
+                orphaned.length, 'orphaned adds');
+
+    // Render orphaned add requests (includes any unmatched map entries)
+    renderOrphanSection(viewEl, orphaned);
   }
 
   // ── EVENT BINDING ───────────────────────────────────────
 
+  console.log('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
   injectStyles();
 
   // We need both view_3823 and view_3505 to have rendered.
   // Track readiness and inject when both are available.
   var _ready = {};
+
+  function tryInject(targetViewId) {
+    // Delay to let device-worksheet finish its 150ms transform
+    setTimeout(function () { inject(targetViewId); }, 350);
+  }
 
   function onViewReady(viewId) {
     _ready[viewId] = true;
@@ -31482,8 +31491,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!_ready[CFG.revisionView]) return;
     for (var i = 0; i < CFG.targetViews.length; i++) {
       if (_ready[CFG.targetViews[i]]) {
-        // Delay to let device-worksheet finish its 150ms transform
-        setTimeout(function (tid) { inject(tid); }, 350, CFG.targetViews[i]);
+        tryInject(CFG.targetViews[i]);
       }
     }
   }
@@ -31517,10 +31525,36 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     })(CFG.targetViews[ti2]);
   }
 
-  // Reset on scene change
+  // Reset on scene change + fallback polling
   $(document).off('knack-scene-render.any' + EVENT_NS)
              .on('knack-scene-render.any' + EVENT_NS, function () {
     _ready = {};
+    _injectRetries = 0;
+
+    // Fallback: poll for both views in case view-render events were missed
+    // (e.g. view rendered before event handler was bound, or hidden views
+    // that don't fire render events reliably).
+    var pollCount = 0;
+    var pollId = setInterval(function () {
+      pollCount++;
+      if (pollCount > 20) { clearInterval(pollId); return; }  // give up after 10s
+      var revView = document.getElementById(CFG.revisionView);
+      if (!revView) return;
+      // Check each target view
+      for (var pi = 0; pi < CFG.targetViews.length; pi++) {
+        var tv = CFG.targetViews[pi];
+        if (_ready[CFG.revisionView] && _ready[tv]) continue; // already handled
+        var targetView = document.getElementById(tv);
+        if (!targetView) continue;
+        // Both views exist in the DOM — mark ready and inject
+        console.log('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
+        _ready[CFG.revisionView] = true;
+        _ready[tv] = true;
+        clearInterval(pollId);
+        tryInject(tv);
+        return;
+      }
+    }, 500);
   });
 
 })();
