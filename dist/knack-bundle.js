@@ -12971,7 +12971,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           dataTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
         } else if (row.noBid) {
           dataTd.textContent = '';
-          dataTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NO BID'));
+          dataTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NOT SURVEYED'));
         }
       }
       tr.appendChild(dataTd);
