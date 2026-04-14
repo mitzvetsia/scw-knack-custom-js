@@ -30695,9 +30695,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * - Remove max-width from the outer wrapper
    */
   function postProcessHtmlCard(el) {
-    // Fix max-width on the outermost wrapper
-    var outerDiv = el.querySelector(':scope > div');
-    if (outerDiv) outerDiv.style.maxWidth = '100%';
+    // Fix max-width on any wrapper divs
+    var divs = el.querySelectorAll('div[style*="max-width"]');
+    for (var di = 0; di < divs.length; di++) divs[di].style.maxWidth = '100%';
 
     // Find all table rows and check if the label cell matches a connection field
     var tds = el.querySelectorAll('td');
@@ -31397,17 +31397,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     console.log('[BidRevInject] Rendered', orphans.length, 'orphaned add requests');
   }
 
+  var _injectRetries = 0;
+
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
     if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
-
-    // Verify the device-worksheet transform has run
-    var wsRows = viewEl.querySelectorAll('tr.scw-ws-row');
-    if (!wsRows.length) {
-      console.log('[BidRevInject] No scw-ws-row found in', viewId, '— transform may not have run yet, retrying in 500ms');
-      setTimeout(function () { inject(viewId); }, 500);
-      return;
-    }
 
     var result = buildRevisionMap();
     var revMap = result.map;
@@ -31417,6 +31411,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       console.log('[BidRevInject] No revisions to inject');
       return;
     }
+
+    // Always render orphaned adds immediately — they don't depend on worksheet rows
+    renderOrphanSection(viewEl, orphaned);
+
+    // For matched revisions, verify the device-worksheet transform has run
+    var wsRows = viewEl.querySelectorAll('tr.scw-ws-row');
+    if (!wsRows.length && siIds.length) {
+      _injectRetries++;
+      if (_injectRetries < 10) {
+        console.log('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
+        setTimeout(function () { inject(viewId); }, 500);
+      } else {
+        console.warn('[BidRevInject] Gave up waiting for scw-ws-row after', _injectRetries, 'attempts');
+      }
+      return;
+    }
+    _injectRetries = 0;
 
     var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
@@ -31453,11 +31464,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       injected++;
     }
-    console.log('[BidRevInject] Injected revisions onto', injected, 'cards,',
-                orphaned.length, 'orphaned adds');
-
-    // Render orphaned add requests at the top of the view
-    renderOrphanSection(viewEl, orphaned);
+    console.log('[BidRevInject] Injected revisions onto', injected, 'cards');
   }
 
   // ── EVENT BINDING ───────────────────────────────────────
