@@ -828,7 +828,7 @@
   }
 
   /** Build a styled card DOM element summarizing a pending change item. */
-  function buildSummaryCard(item, pkgId) {
+  function buildSummaryCard(item, pkgId, pkgName) {
     var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
@@ -836,6 +836,7 @@
     var headerLabel = item.removeFromBid ? 'Remove from Bid'
                     : item.addToBid      ? 'Add to Bid'
                     : 'Pending Change';
+    if (pkgName) headerLabel += ' \u2014 ' + pkgName;
     if (item.reciprocalSource) headerLabel += ' (auto)';
     var header = el('div', 'scw-bid-cr-card__header', headerLabel);
 

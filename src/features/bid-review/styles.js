@@ -514,22 +514,28 @@
       '  gap: 3px;',
       '}',
 
-      /* ── overflow menu (⋮ per-package) ───────────────────── */
-      '.scw-bid-review__overflow {',
-      '  position: relative;',
+      /* ── action menus row ───────────────────────────────── */
+      '.scw-bid-review__action-menus {',
       '  display: flex;',
       '  justify-content: flex-end;',
+      '  gap: 4px;',
+      '  margin-top: 2px;',
+      '}',
+
+      /* ── overflow menu (⋮ per action) ────────────────────── */
+      '.scw-bid-review__overflow {',
+      '  position: relative;',
       '}',
 
       '.scw-bid-review__overflow-trigger {',
       '  display: inline-flex;',
       '  align-items: center;',
-      '  gap: 4px;',
+      '  gap: 3px;',
       '  padding: 3px 8px;',
       '  border: 1px solid #cbd5e1;',
       '  border-radius: 4px;',
       '  background: #fff;',
-      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  font: 600 10px/1.2 system-ui, sans-serif;',
       '  color: #475569;',
       '  cursor: pointer;',
       '  transition: background .15s, border-color .15s;',
@@ -542,10 +548,46 @@
       '}',
 
       '.scw-bid-review__overflow-dots {',
-      '  font-size: 14px;',
+      '  font-size: 13px;',
       '  line-height: 1;',
       '  font-weight: 700;',
-      '  color: #64748b;',
+      '}',
+
+      /* Trigger color variants */
+      '.scw-bid-review__overflow-trigger--revise {',
+      '  border-color: #93c5fd;',
+      '  color: #1d4ed8;',
+      '}',
+      '.scw-bid-review__overflow-trigger--revise:hover {',
+      '  background: #eff6ff;',
+      '  border-color: #60a5fa;',
+      '}',
+
+      '.scw-bid-review__overflow-trigger--remove {',
+      '  border-color: #fca5a5;',
+      '  color: #dc2626;',
+      '}',
+      '.scw-bid-review__overflow-trigger--remove:hover {',
+      '  background: #fef2f2;',
+      '  border-color: #f87171;',
+      '}',
+
+      '.scw-bid-review__overflow-trigger--add {',
+      '  border-color: #86efac;',
+      '  color: #16a34a;',
+      '}',
+      '.scw-bid-review__overflow-trigger--add:hover {',
+      '  background: #f0fdf4;',
+      '  border-color: #4ade80;',
+      '}',
+
+      '.scw-bid-review__overflow-trigger--create {',
+      '  border-color: #93c5fd;',
+      '  color: #2563eb;',
+      '}',
+      '.scw-bid-review__overflow-trigger--create:hover {',
+      '  background: #eff6ff;',
+      '  border-color: #60a5fa;',
       '}',
 
       '.scw-bid-review__overflow-menu {',
@@ -555,7 +597,7 @@
       '  right: 0;',
       '  z-index: 50;',
       '  margin-top: 2px;',
-      '  min-width: 160px;',
+      '  min-width: 140px;',
       '  background: #fff;',
       '  border: 1px solid #e2e8f0;',
       '  border-radius: 6px;',
@@ -582,14 +624,6 @@
 
       '.scw-bid-review__overflow-item:hover {',
       '  background: #f1f5f9;',
-      '}',
-
-      '.scw-bid-review__overflow-item--danger {',
-      '  color: #dc2626;',
-      '}',
-
-      '.scw-bid-review__overflow-item--danger:hover {',
-      '  background: #fef2f2;',
       '}',
 
       /* ── change request column header controls ────────────── */

@@ -89,10 +89,11 @@
     });
 
     mount.addEventListener('click', function (e) {
-      // Match buttons, clickable cards, OR overflow menu items with data-action
+      // Match buttons, clickable cards, overflow menu items, or direct triggers
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]')
+        || e.target.closest('.scw-bid-review__overflow-trigger--direct[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -108,6 +109,8 @@
         handleChangeRequest(button);
       } else if (action === 'cell_remove_from_bid') {
         handleRemoveFromBid(button);
+      } else if (action === 'cell_add_to_bid') {
+        handleAddToBid(button);
       } else if (action === 'cr_submit') {
         var pkgId = button.getAttribute('data-pkg-id');
         if (ns.changeRequests && ns.changeRequests.submitForPackage) {
@@ -453,6 +456,39 @@
       productName:  row.productName,
       cell:         cell,
     });
+  }
+
+  // ── add to bid (per-cell, for No Bid rows) ─────────────────
+
+  function handleAddToBid(button) {
+    if (!_state || !ns.changeRequests) return;
+
+    var rowId = button.getAttribute('data-row-id');
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+
+    var grid = findSowGrid(sowId);
+    if (!grid) return;
+
+    var row = null;
+    for (var i = 0; i < grid.rows.length; i++) {
+      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+    }
+    if (!row) return;
+
+    if (ns.changeRequests.openAddItem) {
+      ns.changeRequests.openAddItem({
+        rowId:        rowId,
+        pkgId:        pkgId,
+        pkgName:      findPackageName(grid, pkgId),
+        sowId:        sowId,
+        sowName:      grid.sowName,
+        displayLabel: row.displayLabel,
+        productName:  row.productName,
+      });
+    } else {
+      ns.renderToast('Add to Bid not yet implemented', 'info');
+    }
   }
 
   // ── row-level action ────────────────────────────────────────

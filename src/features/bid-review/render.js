@@ -52,30 +52,37 @@
   // ── overflow menu factory ─────────────────────────────────────
 
   /**
-   * Builds a compact "⋮ PkgName" trigger + dropdown menu.
-   * Items: [{ label, action, icon?, cls? }]
-   * sharedAttrs: data-* attributes copied onto each menu item.
+   * Builds a compact "⋮ Label" trigger + dropdown listing package choices.
+   * triggerLabel: display text ("Revise", "Remove", "Add")
+   * triggerMod:   CSS modifier for trigger color ("revise", "remove", "add")
+   * choices:      [{ label, attrs: { 'data-action': ..., ... } }]
    */
-  function buildOverflowMenu(pkgName, items, sharedAttrs) {
+  function buildOverflowMenu(triggerLabel, triggerMod, choices) {
     var container = el('div', 'scw-bid-review__overflow');
 
-    // Trigger button — "⋮ PkgName"
-    var trigger = el('button', 'scw-bid-review__overflow-trigger');
-    trigger.innerHTML = '<span class="scw-bid-review__overflow-dots">\u22EE</span> ' + esc(pkgName);
+    var trigger = el('button', 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--' + triggerMod);
+    trigger.innerHTML = '<span class="scw-bid-review__overflow-dots">\u22EE</span> ' + esc(triggerLabel);
     trigger.type = 'button';
     container.appendChild(trigger);
 
-    // Dropdown
+    // Single choice — skip menu, put attrs directly on trigger
+    if (choices.length === 1) {
+      var sa = choices[0].attrs;
+      var sKeys = Object.keys(sa);
+      for (var s = 0; s < sKeys.length; s++) trigger.setAttribute(sKeys[s], sa[sKeys[s]]);
+      trigger.classList.add('scw-bid-review__overflow-trigger--direct');
+      return container;
+    }
+
+    // Multiple choices — build dropdown
     var menu = el('div', 'scw-bid-review__overflow-menu');
-    for (var i = 0; i < items.length; i++) {
-      var mi = items[i];
-      var itemEl = el('button', 'scw-bid-review__overflow-item' + (mi.cls === 'danger' ? ' scw-bid-review__overflow-item--danger' : ''));
+    for (var i = 0; i < choices.length; i++) {
+      var ch = choices[i];
+      var itemEl = el('button', 'scw-bid-review__overflow-item');
       itemEl.type = 'button';
-      if (mi.icon) itemEl.textContent = mi.icon + ' ' + mi.label;
-      else itemEl.textContent = mi.label;
-      itemEl.setAttribute('data-action', mi.action);
-      var keys = Object.keys(sharedAttrs);
-      for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], sharedAttrs[keys[k]]);
+      itemEl.textContent = ch.label;
+      var keys = Object.keys(ch.attrs);
+      for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], ch.attrs[keys[k]]);
       menu.appendChild(itemEl);
     }
     container.appendChild(menu);
@@ -83,7 +90,6 @@
     // Toggle
     trigger.addEventListener('click', function (e) {
       e.stopPropagation();
-      // Close any other open menus first
       var allOpen = document.querySelectorAll('.scw-bid-review__overflow--open');
       for (var j = 0; j < allOpen.length; j++) {
         if (allOpen[j] !== container) allOpen[j].classList.remove('scw-bid-review__overflow--open');
@@ -387,28 +393,44 @@
     var td = el('td');
     var wrap = el('div', 'scw-bid-review__row-actions');
 
-    // Create buttons — only for NEW items (no SOW match)
-    if (!row.sowItem) {
-      for (var i = 0; i < packages.length; i++) {
-        var pkg = packages[i];
-        var cell = row.cellsByPackage[pkg.id];
-        if (!cell) continue;
-
-        wrap.appendChild(btn(
-          'Create \u2190 ' + pkg.name, 'create sm',
-          { 'data-action': 'row_create', 'data-row-id': row.id, 'data-package-id': pkg.id, 'data-sow-id': sowId }
-        ));
-      }
-    }
-
-    // Per-package change request cards + overflow menu
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
+
+    // Collect eligible packages per action type
+    var reviseChoices = [];
+    var removeChoices = [];
+    var addChoices    = [];
+    var createChoices = [];
+    var pendingCards  = [];
+
     for (var ci = 0; ci < packages.length; ci++) {
-      var cpkg = packages[ci];
+      var cpkg  = packages[ci];
       var ccell = row.cellsByPackage[cpkg.id];
+
+      // Shared data attributes for this package
+      var attrs = {
+        'data-row-id':      row.id,
+        'data-package-id':  cpkg.id,
+        'data-sow-id':      sowId,
+        'data-vis-qty':     visibility.qty ? '1' : '0',
+        'data-vis-cabling': visibility.cabling ? '1' : '0',
+        'data-vis-conn':    visibility.connDevice ? '1' : '0',
+      };
+
+      // NEW items (no SOW match) — Create buttons
+      if (!row.sowItem && ccell) {
+        var createAttrs = { 'data-action': 'row_create' };
+        var cKeys = Object.keys(attrs);
+        for (var ck = 0; ck < cKeys.length; ck++) createAttrs[cKeys[ck]] = attrs[cKeys[ck]];
+        createChoices.push({ label: cpkg.name, attrs: createAttrs });
+      }
+
       if (!ccell) continue;
 
-      // Check if there's an existing pending change for this row+package
+      // Skip packages where require sub bid = No
+      var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
+      if (noSubBid) continue;
+
+      // Find pending item for this row+package
       var pendingItem = null;
       if (pending[cpkg.id] && pending[cpkg.id].items) {
         for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
@@ -416,43 +438,66 @@
         }
       }
 
-      // Only hide change request UI when require sub bid is explicitly No
-      var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
+      // Revise — only if no pending change yet
+      if (!pendingItem) {
+        var revAttrs = { 'data-action': 'cell_request_change' };
+        var rk = Object.keys(attrs);
+        for (var ri = 0; ri < rk.length; ri++) revAttrs[rk[ri]] = attrs[rk[ri]];
+        reviseChoices.push({ label: cpkg.name, attrs: revAttrs });
+      }
 
-      if (!noSubBid) {
-        // Shared data attributes for actions
-        var sharedAttrs = {
-          'data-row-id':      row.id,
-          'data-package-id':  cpkg.id,
-          'data-sow-id':      sowId,
-          'data-vis-qty':     visibility.qty ? '1' : '0',
-          'data-vis-cabling': visibility.cabling ? '1' : '0',
-          'data-vis-conn':    visibility.connDevice ? '1' : '0',
-        };
+      // Remove — only if not already a removal request
+      if (!pendingItem || !pendingItem.removeFromBid) {
+        var rmAttrs = { 'data-action': 'cell_remove_from_bid' };
+        var mk = Object.keys(attrs);
+        for (var mi = 0; mi < mk.length; mi++) rmAttrs[mk[mi]] = attrs[mk[mi]];
+        removeChoices.push({ label: cpkg.name, attrs: rmAttrs });
+      }
 
-        // Build overflow menu items (rendered first, above the card)
-        var menuItems = [];
-        if (!pendingItem) {
-          menuItems.push({ label: 'Request Change', action: 'cell_request_change', icon: '\u270E' });
-        }
-        if (!pendingItem || !pendingItem.removeFromBid) {
-          menuItems.push({ label: 'Remove from Bid', action: 'cell_remove_from_bid', icon: '\u2716', cls: 'danger' });
-        }
-
-        if (menuItems.length) {
-          wrap.appendChild(buildOverflowMenu(cpkg.name, menuItems, sharedAttrs));
-        }
-
-        // Show pending card below the overflow menu
-        if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
-          card.setAttribute('data-action', 'cell_request_change');
-          var aKeys = Object.keys(sharedAttrs);
-          for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], sharedAttrs[aKeys[ai]]);
-          wrap.appendChild(card);
-        }
+      // Pending card
+      if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
+        var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id, cpkg.name);
+        card.setAttribute('data-action', 'cell_request_change');
+        var aKeys = Object.keys(attrs);
+        for (var ai = 0; ai < aKeys.length; ai++) card.setAttribute(aKeys[ai], attrs[aKeys[ai]]);
+        pendingCards.push(card);
       }
     }
+
+    // No Bid rows — Add button
+    if (row.noBid) {
+      for (var bi = 0; bi < packages.length; bi++) {
+        var addAttrs = {
+          'data-action':      'cell_add_to_bid',
+          'data-row-id':      row.id,
+          'data-package-id':  packages[bi].id,
+          'data-sow-id':      sowId,
+        };
+        addChoices.push({ label: packages[bi].name, attrs: addAttrs });
+      }
+    }
+
+    // Render: pending cards first, action menus below
+    for (var pc = 0; pc < pendingCards.length; pc++) {
+      wrap.appendChild(pendingCards[pc]);
+    }
+
+    var menuRow = el('div', 'scw-bid-review__action-menus');
+
+    if (createChoices.length) {
+      menuRow.appendChild(buildOverflowMenu('Create', 'create', createChoices));
+    }
+    if (reviseChoices.length) {
+      menuRow.appendChild(buildOverflowMenu('Revise', 'revise', reviseChoices));
+    }
+    if (removeChoices.length) {
+      menuRow.appendChild(buildOverflowMenu('Remove', 'remove', removeChoices));
+    }
+    if (addChoices.length) {
+      menuRow.appendChild(buildOverflowMenu('Add', 'add', addChoices));
+    }
+
+    if (menuRow.childNodes.length) wrap.appendChild(menuRow);
 
     td.appendChild(wrap);
     return td;
