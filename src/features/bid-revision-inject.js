@@ -340,12 +340,24 @@
     var siIds = Object.keys(revMap);
     if (!siIds.length) { console.log('[BidRevInject] No revisions to inject'); return; }
 
+    // Diagnostic: dump first 5 <tr> IDs in view_3505 to compare with revision map keys
+    var allTrs = viewEl.querySelectorAll('tbody > tr');
+    var trIds = [];
+    for (var di = 0; di < Math.min(allTrs.length, 10); di++) {
+      if (allTrs[di].id) trIds.push(allTrs[di].id);
+    }
+    console.log('[BidRevInject] Looking for survey item IDs:', siIds);
+    console.log('[BidRevInject] First <tr> IDs in', viewId + ':', trIds);
+    console.log('[BidRevInject] Total <tr> in view:', allTrs.length,
+                '| ws-rows:', viewEl.querySelectorAll('tr.scw-ws-row').length);
+
     var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
       var card = findCardForRecord(viewEl, siId);
       if (!card) {
-        console.log('[BidRevInject] No card found for survey item', siId);
+        console.log('[BidRevInject] No card found for survey item', siId,
+                    '| tr exists?', !!viewEl.querySelector('tr[id="' + siId + '"]'));
         continue;
       }
       if (card.getAttribute(INJECTED)) continue;
