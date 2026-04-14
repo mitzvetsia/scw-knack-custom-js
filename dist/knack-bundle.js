@@ -30842,6 +30842,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (bucketRaw[bi] && bucketRaw[bi].id === CAM_READER_BUCKET_ID) { isCamReaderItem = true; break; }
         }
       }
+      // Fallback: parse the HTML string for the 24-char hex connection ID (same as getSurveyItemId pattern)
+      if (!isCamReaderItem) {
+        var bucketHtml = rec.field_2366 || rec['field_2366'] || '';
+        if (typeof bucketHtml === 'string' && bucketHtml.indexOf(CAM_READER_BUCKET_ID) !== -1) {
+          isCamReaderItem = true;
+        }
+      }
       if (isCamReaderItem && !devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
 
       // Connected To: only items where field_2374 (bidMapConn) = Yes
@@ -30868,6 +30875,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             toMap[tr.id] = { id: tr.id, identifier: stripHtml(tr.identifier || tr.id) };
           }
         }
+      }
+    }
+
+    // DOM scraping fallback: if model didn't yield camera/reader items, scrape the view_3505 table
+    if (Object.keys(devMap).length === 0) {
+      var wsView = CFG.targetViews[0];
+      var $wsTbl = $('#' + wsView + ' table.kn-table');
+      if ($wsTbl.length) {
+        $wsTbl.find('tbody tr[id]').each(function () {
+          var tr = this;
+          var rowId = tr.id;
+          var bucketCell = tr.querySelector('td.field_2366');
+          if (bucketCell) {
+            var connSpan = bucketCell.querySelector('span[data-kn="connection-value"]');
+            if (connSpan && connSpan.className && connSpan.className.indexOf(CAM_READER_BUCKET_ID) !== -1) {
+              if (!devMap[rowId]) {
+                var nameCell = tr.querySelector('td.field_2365') || tr.querySelector('td.field_2379');
+                var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
+                devMap[rowId] = { id: rowId, identifier: rowLabel };
+              }
+            }
+          }
+        });
       }
     }
 
