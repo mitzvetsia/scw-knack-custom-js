@@ -13472,7 +13472,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     { key: 'bidDropLength',   label: 'Drop Length',        type: 'text',    visKey: 'cabling' },
     { key: 'bidConduit',      label: 'Conduit',            type: 'text',    visKey: 'cabling' },
     { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
-    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling' },
+    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling', single: true },
     { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connection: 'field_2375', idsKey: 'bidMdfIdfIds', addable: true },
   ];
 
@@ -13824,41 +13824,64 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, fd.key))
         );
 
-        // Connection checkbox list
         var recs = connRecords[fd.key] || [];
         var currentIds = cell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
-        inp = el('div', 'scw-bid-cr-modal__checkbox-list');
-        if (connLocked) {
-          inp.classList.add('scw-bid-cr-modal__checkbox-list--locked');
-          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-locked',
-            'Managed by a reciprocal change \u2014 edit the source to modify'));
-        }
-        if (!recs.length && !connLocked) {
-          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
-        }
-        for (var ri = 0; ri < recs.length; ri++) {
-          var rec = recs[ri];
-          var item = el('div', 'scw-bid-cr-modal__checkbox-item');
-          var cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.value = rec.id;
-          cb.id = 'scw-cr-cb-' + fd.key + '-' + ri;
-          if (rec.noBid) cb.setAttribute('data-no-bid', '1');
-          if (rec.rowId) cb.setAttribute('data-row-id', rec.rowId);
-          if (connLocked) cb.disabled = true;
-          // Pre-check if matches current/pending
-          for (var pi = 0; pi < prefillIds.length; pi++) {
-            if (prefillIds[pi] === rec.id) { cb.checked = true; break; }
+        if (fd.single) {
+          // Single-select connection → <select> dropdown
+          inp = document.createElement('select');
+          inp.className = 'scw-bid-cr-modal__select';
+          inp.setAttribute('data-field', fd.key);
+          if (connLocked) inp.disabled = true;
+          var blankOpt = document.createElement('option');
+          blankOpt.value = ''; blankOpt.textContent = '\u2014 select \u2014';
+          inp.appendChild(blankOpt);
+          for (var ri = 0; ri < recs.length; ri++) {
+            var rec = recs[ri];
+            var sopt = document.createElement('option');
+            sopt.value = rec.id;
+            sopt.textContent = (rec.identifier || rec.id) + (rec.noBid ? ' (not on bid)' : '');
+            if (rec.noBid) sopt.setAttribute('data-no-bid', '1');
+            if (rec.rowId) sopt.setAttribute('data-row-id', rec.rowId);
+            // Pre-select if matches current/pending
+            for (var pi = 0; pi < prefillIds.length; pi++) {
+              if (prefillIds[pi] === rec.id) { sopt.selected = true; break; }
+            }
+            inp.appendChild(sopt);
           }
-          item.appendChild(cb);
-          var cbLabel = document.createElement('label');
-          cbLabel.setAttribute('for', cb.id);
-          cbLabel.textContent = (rec.identifier || rec.id) + (rec.noBid ? ' (not on bid)' : '');
-          if (rec.noBid) cbLabel.style.fontStyle = 'italic';
-          item.appendChild(cbLabel);
-          inp.appendChild(item);
+        } else {
+          // Multi-select connection → checkbox list
+          inp = el('div', 'scw-bid-cr-modal__checkbox-list');
+          if (connLocked) {
+            inp.classList.add('scw-bid-cr-modal__checkbox-list--locked');
+            inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-locked',
+              'Managed by a reciprocal change \u2014 edit the source to modify'));
+          }
+          if (!recs.length && !connLocked) {
+            inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
+          }
+          for (var ri = 0; ri < recs.length; ri++) {
+            var rec = recs[ri];
+            var item = el('div', 'scw-bid-cr-modal__checkbox-item');
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = rec.id;
+            cb.id = 'scw-cr-cb-' + fd.key + '-' + ri;
+            if (rec.noBid) cb.setAttribute('data-no-bid', '1');
+            if (rec.rowId) cb.setAttribute('data-row-id', rec.rowId);
+            if (connLocked) cb.disabled = true;
+            for (var pi = 0; pi < prefillIds.length; pi++) {
+              if (prefillIds[pi] === rec.id) { cb.checked = true; break; }
+            }
+            item.appendChild(cb);
+            var cbLabel = document.createElement('label');
+            cbLabel.setAttribute('for', cb.id);
+            cbLabel.textContent = (rec.identifier || rec.id) + (rec.noBid ? ' (not on bid)' : '');
+            if (rec.noBid) cbLabel.style.fontStyle = 'italic';
+            item.appendChild(cbLabel);
+            inp.appendChild(item);
+          }
         }
       } else if (fd.type === 'select') {
         inp = document.createElement('select');
@@ -13929,8 +13952,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             requested[d.key] = existing.requested[d.key];
             requested[d.key + 'Ids'] = existing.requested[d.key + 'Ids'];
             hasChange = true;
+          } else if (d.single) {
+            // Single-select connection (select dropdown)
+            var selEl = inputs[d.key];
+            var selVal = selEl.value;
+            var origIds = cell[d.idsKey] || [];
+            var origId = origIds.length ? origIds[0] : '';
+            if (selVal !== origId) {
+              var selOpt = selEl.options[selEl.selectedIndex];
+              var selLabel = selOpt ? selOpt.textContent.replace(/\s*\(not on bid\)\s*$/, '') : selVal;
+              requested[d.key] = selVal ? selLabel : '';
+              requested[d.key + 'Ids'] = selVal ? [selVal] : [];
+              // Classify add vs change
+              if (selVal && selOpt && selOpt.getAttribute('data-no-bid') === '1') {
+                requested[d.key + 'AddIds'] = [selVal];
+                // Create add-to-bid item if newly selected noBid
+                if (selVal !== origId) {
+                  noBidAdds.push({
+                    id:    selVal,
+                    rowId: selOpt.getAttribute('data-row-id'),
+                    label: selLabel,
+                    connKey: d.key,
+                  });
+                }
+              } else if (selVal) {
+                requested[d.key + 'ChangeIds'] = [selVal];
+              }
+              hasChange = true;
+            }
           } else {
-            // Gather checked checkbox IDs and labels
+            // Multi-select connection (checkbox list)
             var container = inputs[d.key];
             var cbs = container.querySelectorAll('input[type="checkbox"]');
             var selIds = [], labels = [];
