@@ -172,7 +172,7 @@
       '}',
       '.' + P + '-orphan-card {',
       '  padding: 12px; margin-top: 10px;',
-      '  background: #fff; border: 1px solid #dcfce7; border-radius: 6px;',
+      '  background: #fff; border-radius: 6px;',
       '}',
 
       /* ── Edit modal overlay + dialog ── */
