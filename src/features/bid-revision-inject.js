@@ -96,6 +96,9 @@
       '  padding: 6px 0; border-bottom: 1px dashed #fde68a;',
       '}',
       '.' + P + '-item:last-child { border-bottom: none; }',
+      /* HTML card — stretch full width */
+      '.' + P + '-html-card { width: 100%; }',
+      '.' + P + '-html-card > div { max-width: 100% !important; }',
       '.' + P + '-row {',
       '  display: flex; flex-wrap: wrap; gap: 4px 12px;',
       '}',
@@ -235,6 +238,43 @@
     style.id = STYLE_ID;
     style.textContent = css;
     document.head.appendChild(style);
+  }
+
+  // ── HTML POST-PROCESSING ─────────────────────────────────
+
+  /** Connection field labels whose values should use line breaks not commas */
+  var CONN_LABELS = ['Connected Devices', 'Connected To', 'MDF/IDF'];
+
+  /**
+   * Post-process an injected HTML card element:
+   * - Replace comma-delimited connection field values with <br> line breaks
+   * - Remove max-width from the outer wrapper
+   */
+  function postProcessHtmlCard(el) {
+    // Fix max-width on the outermost wrapper
+    var outerDiv = el.querySelector(':scope > div');
+    if (outerDiv) outerDiv.style.maxWidth = '100%';
+
+    // Find all table rows and check if the label cell matches a connection field
+    var tds = el.querySelectorAll('td');
+    for (var i = 0; i < tds.length; i++) {
+      var td = tds[i];
+      var text = (td.textContent || '').trim();
+      // Check if this is a label cell for a connection field
+      for (var ci = 0; ci < CONN_LABELS.length; ci++) {
+        if (text === CONN_LABELS[ci]) {
+          // Found a connection label — fix the sibling value cells in this row
+          var tr = td.parentElement;
+          if (!tr) break;
+          var cells = tr.querySelectorAll('td');
+          for (var j = 0; j < cells.length; j++) {
+            if (cells[j] === td) continue; // skip the label cell
+            cells[j].innerHTML = cells[j].innerHTML.replace(/,\s*/g, '<br>');
+          }
+          break;
+        }
+      }
+    }
   }
 
   // ── DATA EXTRACTION ─────────────────────────────────────
@@ -755,6 +795,7 @@
         var htmlWrap = document.createElement('div');
         htmlWrap.className = P + '-html-card';
         htmlWrap.innerHTML = rev.changeHtml;
+        postProcessHtmlCard(htmlWrap);
         item.appendChild(htmlWrap);
       } else {
         // Fallback: tag-based rendering for older records
@@ -807,6 +848,7 @@
       var htmlWrap = document.createElement('div');
       htmlWrap.className = P + '-html-card';
       htmlWrap.innerHTML = rev.changeHtml;
+      postProcessHtmlCard(htmlWrap);
       card.appendChild(htmlWrap);
     } else {
       // Fallback: tag-based
