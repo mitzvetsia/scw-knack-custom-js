@@ -865,6 +865,9 @@
       '  background: #fee2e2;',
       '  color: #991b1b;',
       '}',
+      '.scw-bid-review__pkg-status {',
+      '  margin-top: 4px;',
+      '}',
 
     ].join('\n');
 

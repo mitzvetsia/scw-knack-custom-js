@@ -11394,6 +11394,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  background: #fee2e2;',
       '  color: #991b1b;',
       '}',
+      '.scw-bid-review__pkg-status {',
+      '  margin-top: 4px;',
+      '}',
 
     ].join('\n');
 
@@ -12128,9 +12131,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var surveyId = connectionId(rec, FK.bidSurvey);
       if (surveyId) info.surveyId = surveyId;
 
-      // Bid status (field_2550)
-      var bidStatus = stripHtml(rec[FK.bidStatus] || '');
+      // Bid status (field_2550) — try multiple strategies
+      var bidStatus = '';
+      var bsRaw = rec[FK.bidStatus + '_raw'];
+      if (Array.isArray(bsRaw) && bsRaw.length && bsRaw[0].identifier) {
+        bidStatus = stripHtml(bsRaw[0].identifier);
+      } else if (bsRaw && typeof bsRaw === 'object' && bsRaw.identifier) {
+        bidStatus = stripHtml(bsRaw.identifier);
+      } else if (typeof bsRaw === 'string') {
+        bidStatus = stripHtml(bsRaw);
+      }
+      if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
       if (bidStatus) info.bidStatus = bidStatus;
+      if (CFG.debug) {
+        console.log('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
+      }
 
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
@@ -12494,8 +12509,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
       th.appendChild(nameRow);
 
+      // Show bid status in the column header
+      var statusVal = pkg.bidStatus || '';
+      if (statusVal) {
+        var statusBadge = el('div', 'scw-bid-review__pkg-status');
+        var badge = el('span', 'scw-bid-review__status-badge');
+        badge.textContent = statusVal;
+        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
+        statusBadge.appendChild(badge);
+        th.appendChild(statusBadge);
+      }
+
       // Only show Copy to SOW / Create new SOW when bid status is "Submitted"
-      var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+      var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
       if (isSubmitted) {
         var actions = el('div', 'scw-bid-review__pkg-actions');
         actions.appendChild(btn(
@@ -13330,23 +13356,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       mount.appendChild(el('div', 'scw-bid-review__empty-state',
         'No comparison data available.'));
       return mount;
-    }
-
-    // Bid status bar — show each package's status at the top
-    if (state.allPackages && state.allPackages.length) {
-      var statusBar = el('div', 'scw-bid-review__status-bar');
-      for (var si = 0; si < state.allPackages.length; si++) {
-        var sp = state.allPackages[si];
-        var statusVal = sp.bidStatus || 'Unknown';
-        var chip = el('div', 'scw-bid-review__status-chip');
-        chip.appendChild(el('span', 'scw-bid-review__status-pkg', sp.name));
-        var badge = el('span', 'scw-bid-review__status-badge');
-        badge.textContent = statusVal;
-        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
-        chip.appendChild(badge);
-        statusBar.appendChild(chip);
-      }
-      mount.appendChild(statusBar);
     }
 
     for (var i = 0; i < state.sowGrids.length; i++) {

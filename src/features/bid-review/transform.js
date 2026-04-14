@@ -552,9 +552,21 @@
       var surveyId = connectionId(rec, FK.bidSurvey);
       if (surveyId) info.surveyId = surveyId;
 
-      // Bid status (field_2550)
-      var bidStatus = stripHtml(rec[FK.bidStatus] || '');
+      // Bid status (field_2550) — try multiple strategies
+      var bidStatus = '';
+      var bsRaw = rec[FK.bidStatus + '_raw'];
+      if (Array.isArray(bsRaw) && bsRaw.length && bsRaw[0].identifier) {
+        bidStatus = stripHtml(bsRaw[0].identifier);
+      } else if (bsRaw && typeof bsRaw === 'object' && bsRaw.identifier) {
+        bidStatus = stripHtml(bsRaw.identifier);
+      } else if (typeof bsRaw === 'string') {
+        bidStatus = stripHtml(bsRaw);
+      }
+      if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
       if (bidStatus) info.bidStatus = bidStatus;
+      if (CFG.debug) {
+        console.log('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
+      }
 
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
