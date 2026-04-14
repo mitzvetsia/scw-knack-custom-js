@@ -15562,7 +15562,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
    * block themselves from appearing.
    */
   function buildClaimedDeviceSet(grid, selfId) {
+    var TAG = '[ClaimedDevices]';
     var claimed = {};
+    console.log(TAG, 'Building claimed set, selfId:', selfId);
     // 1. Existing bid records — scan all cells across all packages
     for (var ri = 0; ri < grid.rows.length; ri++) {
       var row = grid.rows[ri];
@@ -15571,6 +15573,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var c = row.cellsByPackage[pkgs[pi]];
         if (c.id === selfId) continue; // skip self
         var ids = c.bidConnDeviceIds || [];
+        if (ids.length) console.log(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
         for (var di = 0; di < ids.length; di++) claimed[ids[di]] = true;
       }
     }
@@ -15579,17 +15582,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (crApi && typeof crApi.getPending === 'function') {
       var pending = crApi.getPending();
       var pkeys = Object.keys(pending);
+      console.log(TAG, '  pending packages:', pkeys.length);
       for (var pk = 0; pk < pkeys.length; pk++) {
         var items = pending[pkeys[pk]].items || [];
         for (var ii = 0; ii < items.length; ii++) {
           var it = items[ii];
+          console.log(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
+            'displayLabel:', it.displayLabel,
+            'req.bidConnDevice:', it.requested && it.requested.bidConnDevice,
+            'req.bidConnDeviceIds:', it.requested && it.requested.bidConnDeviceIds);
           // Skip self
-          if (it.bidRecordId === selfId || it.rowId === selfId) continue;
+          if (it.bidRecordId === selfId || it.rowId === selfId) {
+            console.log(TAG, '    → SKIPPED (self)');
+            continue;
+          }
           var reqIds = (it.requested && it.requested.bidConnDeviceIds) || [];
           for (var qi = 0; qi < reqIds.length; qi++) claimed[reqIds[qi]] = true;
         }
       }
+    } else {
+      console.warn(TAG, '  ns.changeRequests or getPending not available!');
     }
+    var claimedKeys = Object.keys(claimed);
+    console.log(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
     return claimed;
   }
 
@@ -15955,6 +15970,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
         var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items — skip if claimed elsewhere
+        if (nbIsCamReader) {
+          console.log('[ClaimedDevices] noBid cam/reader:', cr.id, nbLbl, 'claimed?', !!claimed[cr.id]);
+        }
         if (nbIsCamReader && !seenDev[cr.id] && !claimed[cr.id]) {
           seenDev[cr.id] = true;
           connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
