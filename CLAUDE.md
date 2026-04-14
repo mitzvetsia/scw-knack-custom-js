@@ -119,6 +119,67 @@ document.head.appendChild(style);
 
 Configuration is always at the top of each feature file in a `CONFIG` or `VIEWS` constant. When modifying behavior for a specific view/field, edit the config — not the core logic.
 
+### Reading Connection Fields from Table DOM
+
+Connection fields in Knack table cells have a specific DOM structure that differs from plain text fields. Every table cell is wrapped in a `<span class="col-N">` container. Understanding this structure is critical when scraping data from hidden views.
+
+**Connection field cell (populated):**
+```html
+<td class="field_2644 cell-edit" data-field-key="field_2644">
+  <span class="col-2">
+    <span class="64a1b2c3d4e5f6a7b8c9d0e1" data-kn="connection-value">
+      Display Label Text
+    </span>
+  </span>
+</td>
+```
+
+Key details:
+- The **record ID** of the connected record is the `class` attribute on the inner `<span>` (a 24-character hex string like `64a1b2c3d4e5f6a7b8c9d0e1`)
+- The inner span has `data-kn="connection-value"` — use this as the selector
+- The span's `textContent` is the display label (identifier)
+- Multi-connection fields repeat the inner span for each connected record
+
+**Connection field cell (empty / blank):**
+```html
+<td class="field_2644 cell-edit" data-field-key="field_2644">
+  <span class="col-2">
+    &nbsp;
+  </span>
+</td>
+```
+
+There is no inner `<span data-kn="connection-value">` — only `&nbsp;` inside the wrapper.
+
+**Rich-text / HTML field cell:**
+```html
+<td class="field_2695 cell-edit" data-field-key="field_2695">
+  <span class="col-3">
+    <div style="...">actual HTML content</div>
+  </span>
+</td>
+```
+
+Use `innerHTML` (not `textContent`) to preserve the rendered HTML. Remember the outer `<span class="col-N">` wrapper will be included — account for it when processing.
+
+**Extracting connection record IDs from a table cell:**
+```js
+var cell = tr.querySelector('td.field_XXXX');
+if (cell) {
+  var span = cell.querySelector('span[data-kn="connection-value"]');
+  if (span) {
+    var recordId = span.className.trim();   // 24-char hex ID
+    var label    = span.textContent.trim();  // display text
+  }
+  // If no span found, the connection is blank
+}
+```
+
+**Reading from Knack model vs DOM scraping:**
+- **Knack model** (`Knack.models`): use `record[fieldKey + '_raw']` for connection fields — returns `[{id, identifier}]`. Plain fields are at `record[fieldKey]` and may contain HTML.
+- **DOM scraping**: more reliable for rich-text fields (`field.innerHTML`) and JSON fields (`field.textContent`). Always try DOM first when the view is on the same scene (even `display:none` views have their elements in the DOM).
+- When scraping, `td.field_XXXX` selects the cell (field key is a CSS class on the `<td>`), then navigate into the `<span class="col-N">` wrapper to reach the actual content.
+
 ### Data Saving Patterns
 
 Features use Knack's internal APIs for saving data, in order of preference:
