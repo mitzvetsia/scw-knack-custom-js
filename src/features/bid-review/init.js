@@ -494,6 +494,18 @@
     }
     if (!row) return;
 
+    // Derive visibility from proposal bucket (same logic as render.js)
+    var bucket = (row.proposalBucket || '').toLowerCase().trim();
+    var isCamReader = bucket === 'camera' || bucket === 'cameras'
+                   || bucket === 'reader' || bucket === 'readers'
+                   || bucket === 'camera or reader'
+                   || row.proposalBucketId === '6481e5ba38f283002898113c';
+    var vis = {
+      qty:        row.sowQty > 1,
+      cabling:    isCamReader,
+      connDevice: false,  // Add modal doesn't need connection dropdowns
+    };
+
     if (ns.changeRequests.openAddItem) {
       ns.changeRequests.openAddItem({
         rowId:        rowId,
@@ -504,10 +516,16 @@
         displayLabel: row.displayLabel,
         productName:  row.productName,
         // SOW data for pre-fill
-        sowProduct:   row.sowProduct,
-        sowQty:       row.sowQty,
-        sowFee:       row.sowFee,
-        sowLaborDesc: row.sowLaborDesc,
+        sowProduct:       row.sowProduct,
+        sowQty:           row.sowQty,
+        sowFee:           row.sowFee,
+        sowLaborDesc:     row.sowLaborDesc,
+        sowExistCabling:  row.sowExistCabling,
+        sowPlenum:        row.sowPlenum,
+        sowExterior:      row.sowExterior,
+        sowDropLength:    row.sowDropLength,
+        sowConduit:       row.sowConduit,
+        visibility:       vis,
       });
     } else {
       ns.renderToast('Add to Bid not yet implemented', 'info');

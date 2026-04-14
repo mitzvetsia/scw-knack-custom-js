@@ -250,11 +250,7 @@
   }
 
   function buildCablingChip(val) {
-    if (isYes(val)) {
-      return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--on', 'Existing Cabling');
-    }
-    // "No" or empty — render a dim off chip
-    return el('span', 'scw-bid-review__cabling-chip scw-bid-review__cabling-chip--off', 'New Cabling');
+    return buildBoolChip('Existing', val);
   }
 
   /** Generic Yes/No chip with a label prefix. */

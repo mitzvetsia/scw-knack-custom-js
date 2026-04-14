@@ -1101,6 +1101,8 @@
     injectCrStyles();
     closeModal();
 
+    var vis = params.visibility || {};
+
     var overlay = el('div', 'scw-bid-cr-overlay');
     overlay.id = OVERLAY_ID;
     overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
@@ -1122,25 +1124,28 @@
     body.appendChild(el('div', 'scw-bid-cr-modal__hint',
       'Request a new line item be added to this bid package. Fields are pre-filled from the SOW.'));
 
-    // Pre-fill map from SOW data
+    // Pre-fill map from SOW data (maps bid field keys → SOW values)
     var prefill = {
-      productName: params.sowProduct || params.productName || '',
-      qty:         params.sowQty || '',
-      rate:        params.sowFee || '',
-      laborDesc:   params.sowLaborDesc || '',
+      productName:     params.sowProduct || params.productName || '',
+      qty:             params.sowQty || '',
+      rate:            params.sowFee || '',
+      laborDesc:       params.sowLaborDesc || '',
+      bidExistCabling: params.sowExistCabling || '',
+      bidPlenum:       params.sowPlenum || '',
+      bidExterior:     params.sowExterior || '',
+      bidDropLength:   params.sowDropLength || '',
+      bidConduit:      params.sowConduit || '',
     };
 
-    // Editable fields for a new item
-    var ADD_FIELDS = [
-      { key: 'productName', label: 'Product',           type: 'text' },
-      { key: 'qty',         label: 'Qty',               type: 'number' },
-      { key: 'rate',        label: 'Rate ($)',          type: 'number' },
-      { key: 'laborDesc',   label: 'Labor Description', type: 'text', multiline: true },
-    ];
-
+    // Use FIELD_DEFS with visKey filtering — skip connection fields for Add
     var inputs = {};
-    for (var fi = 0; fi < ADD_FIELDS.length; fi++) {
-      var fd = ADD_FIELDS[fi];
+    for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
+      var fd = FIELD_DEFS[fi];
+      // Skip connection fields in Add modal — no existing bid record to connect from
+      if (fd.type === 'connection') continue;
+      // Skip hidden fields based on visibility rules
+      if (fd.visKey && !vis[fd.visKey]) continue;
+
       var fRow = el('div', 'scw-bid-cr-modal__field');
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
       var inp;
@@ -1148,6 +1153,20 @@
         inp = document.createElement('textarea');
         inp.className = 'scw-bid-cr-modal__textarea';
         inp.rows = 3;
+        if (prefill[fd.key]) inp.value = String(prefill[fd.key]);
+      } else if (fd.type === 'select') {
+        inp = document.createElement('select');
+        inp.className = 'scw-bid-cr-modal__select';
+        var blankOpt = document.createElement('option');
+        blankOpt.value = '';
+        blankOpt.textContent = '\u2014';
+        inp.appendChild(blankOpt);
+        for (var oi = 0; oi < fd.options.length; oi++) {
+          var opt = document.createElement('option');
+          opt.value = fd.options[oi];
+          opt.textContent = fd.options[oi];
+          inp.appendChild(opt);
+        }
         if (prefill[fd.key]) inp.value = String(prefill[fd.key]);
       } else {
         inp = document.createElement('input');
