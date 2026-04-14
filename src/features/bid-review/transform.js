@@ -550,6 +550,10 @@
       var surveyId = connectionId(rec, FK.bidSurvey);
       if (surveyId) info.surveyId = surveyId;
 
+      // Bid status (field_2550)
+      var bidStatus = stripHtml(rec[FK.bidStatus] || '');
+      if (bidStatus) info.bidStatus = bidStatus;
+
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
       if (rawPdf) {
@@ -585,12 +589,13 @@
     var allPkgs    = extractPackages(records);
     var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
 
-    // Attach PDF + survey info to each package
+    // Attach PDF, survey, and status info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
       var info = pkgInfoMap[allPkgs[pi].id];
       if (info) {
         if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
         if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
+        if (info.bidStatus) allPkgs[pi].bidStatus = info.bidStatus;
       }
     }
 
@@ -707,12 +712,13 @@
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF + survey info to per-SOW packages
+      // Attach PDF, survey, and status info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
         var pInfo = pkgInfoMap[pkgs[ppi].id];
         if (pInfo) {
           if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
           if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
+          if (pInfo.bidStatus) pkgs[ppi].bidStatus = pInfo.bidStatus;
         }
       }
       var groups  = groupRows(rows);

@@ -10467,6 +10467,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       limitQtyOne:     'field_2373',
       bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
       bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
+      bidStatus:       'field_2550',   // Bid status (text field on bid package, view_3573)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -11343,6 +11344,56 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  background: #2563eb;',
       '}',
 
+      /* ── bid status bar ──────────────────────────────────── */
+      '.scw-bid-review__status-bar {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 10px;',
+      '  margin-bottom: 14px;',
+      '  padding: 10px 14px;',
+      '  background: #f8fafc;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 6px;',
+      '}',
+      '.scw-bid-review__status-chip {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 8px;',
+      '  padding: 4px 0;',
+      '}',
+      '.scw-bid-review__status-pkg {',
+      '  font-weight: 600;',
+      '  font-size: 13px;',
+      '  color: #334155;',
+      '}',
+      '.scw-bid-review__status-badge {',
+      '  display: inline-block;',
+      '  padding: 2px 10px;',
+      '  border-radius: 12px;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '  background: #e2e8f0;',
+      '  color: #475569;',
+      '}',
+      '.scw-bid-review__status-badge[data-status="submitted"] {',
+      '  background: #dcfce7;',
+      '  color: #166534;',
+      '}',
+      '.scw-bid-review__status-badge[data-status="pending"] {',
+      '  background: #fef3c7;',
+      '  color: #92400e;',
+      '}',
+      '.scw-bid-review__status-badge[data-status="draft"] {',
+      '  background: #dbeafe;',
+      '  color: #1e40af;',
+      '}',
+      '.scw-bid-review__status-badge[data-status="rejected"] {',
+      '  background: #fee2e2;',
+      '  color: #991b1b;',
+      '}',
+
     ].join('\n');
 
     var style = document.createElement('style');
@@ -12074,6 +12125,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var surveyId = connectionId(rec, FK.bidSurvey);
       if (surveyId) info.surveyId = surveyId;
 
+      // Bid status (field_2550)
+      var bidStatus = stripHtml(rec[FK.bidStatus] || '');
+      if (bidStatus) info.bidStatus = bidStatus;
+
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
       if (rawPdf) {
@@ -12109,12 +12164,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var allPkgs    = extractPackages(records);
     var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
 
-    // Attach PDF + survey info to each package
+    // Attach PDF, survey, and status info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
       var info = pkgInfoMap[allPkgs[pi].id];
       if (info) {
         if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
         if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
+        if (info.bidStatus) allPkgs[pi].bidStatus = info.bidStatus;
       }
     }
 
@@ -12231,12 +12287,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF + survey info to per-SOW packages
+      // Attach PDF, survey, and status info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
         var pInfo = pkgInfoMap[pkgs[ppi].id];
         if (pInfo) {
           if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
           if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
+          if (pInfo.bidStatus) pkgs[ppi].bidStatus = pInfo.bidStatus;
         }
       }
       var groups  = groupRows(rows);
@@ -12434,16 +12491,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
       th.appendChild(nameRow);
 
-      var actions = el('div', 'scw-bid-review__pkg-actions');
-      actions.appendChild(btn(
-        'Copy to SOW', 'adopt',
-        { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-      ));
-      actions.appendChild(btn(
-        'Create new SOW', 'create',
-        { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-      ));
-      th.appendChild(actions);
+      // Only show Copy to SOW / Create new SOW when bid status is "Submitted"
+      var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+      if (isSubmitted) {
+        var actions = el('div', 'scw-bid-review__pkg-actions');
+        actions.appendChild(btn(
+          'Copy to SOW', 'adopt',
+          { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+        ));
+        actions.appendChild(btn(
+          'Create new SOW', 'create',
+          { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+        ));
+        th.appendChild(actions);
+      }
 
       tr.appendChild(th);
     }
@@ -13249,6 +13310,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       mount.appendChild(el('div', 'scw-bid-review__empty-state',
         'No comparison data available.'));
       return mount;
+    }
+
+    // Bid status bar — show each package's status at the top
+    if (state.allPackages && state.allPackages.length) {
+      var statusBar = el('div', 'scw-bid-review__status-bar');
+      for (var si = 0; si < state.allPackages.length; si++) {
+        var sp = state.allPackages[si];
+        var statusVal = sp.bidStatus || 'Unknown';
+        var chip = el('div', 'scw-bid-review__status-chip');
+        chip.appendChild(el('span', 'scw-bid-review__status-pkg', sp.name));
+        var badge = el('span', 'scw-bid-review__status-badge');
+        badge.textContent = statusVal;
+        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
+        chip.appendChild(badge);
+        statusBar.appendChild(chip);
+      }
+      mount.appendChild(statusBar);
     }
 
     for (var i = 0; i < state.sowGrids.length; i++) {

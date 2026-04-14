@@ -154,16 +154,20 @@
       }
       th.appendChild(nameRow);
 
-      var actions = el('div', 'scw-bid-review__pkg-actions');
-      actions.appendChild(btn(
-        'Copy to SOW', 'adopt',
-        { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-      ));
-      actions.appendChild(btn(
-        'Create new SOW', 'create',
-        { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
-      ));
-      th.appendChild(actions);
+      // Only show Copy to SOW / Create new SOW when bid status is "Submitted"
+      var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+      if (isSubmitted) {
+        var actions = el('div', 'scw-bid-review__pkg-actions');
+        actions.appendChild(btn(
+          'Copy to SOW', 'adopt',
+          { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+        ));
+        actions.appendChild(btn(
+          'Create new SOW', 'create',
+          { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+        ));
+        th.appendChild(actions);
+      }
 
       tr.appendChild(th);
     }
@@ -969,6 +973,23 @@
       mount.appendChild(el('div', 'scw-bid-review__empty-state',
         'No comparison data available.'));
       return mount;
+    }
+
+    // Bid status bar — show each package's status at the top
+    if (state.allPackages && state.allPackages.length) {
+      var statusBar = el('div', 'scw-bid-review__status-bar');
+      for (var si = 0; si < state.allPackages.length; si++) {
+        var sp = state.allPackages[si];
+        var statusVal = sp.bidStatus || 'Unknown';
+        var chip = el('div', 'scw-bid-review__status-chip');
+        chip.appendChild(el('span', 'scw-bid-review__status-pkg', sp.name));
+        var badge = el('span', 'scw-bid-review__status-badge');
+        badge.textContent = statusVal;
+        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
+        chip.appendChild(badge);
+        statusBar.appendChild(chip);
+      }
+      mount.appendChild(statusBar);
     }
 
     for (var i = 0; i < state.sowGrids.length; i++) {
