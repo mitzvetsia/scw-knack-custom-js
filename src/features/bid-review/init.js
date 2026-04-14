@@ -386,7 +386,50 @@
     if (!row) return;
 
     var cell = row.cellsByPackage[pkgId];
-    if (!cell) return;
+    if (!cell) {
+      // noBid row — re-open add modal for editing the pending add-to-bid item
+      if (row.noBid && ns.changeRequests && ns.changeRequests.openAddItem) {
+        var pendingData = ns.changeRequests.getPending();
+        var pendItem = null;
+        if (pendingData[pkgId]) {
+          var pitems = pendingData[pkgId].items;
+          for (var pi2 = 0; pi2 < pitems.length; pi2++) {
+            if (pitems[pi2].rowId === rowId) { pendItem = pitems[pi2]; break; }
+          }
+        }
+        var bucket2 = (row.proposalBucket || '').toLowerCase().trim();
+        var isCR2 = bucket2 === 'camera' || bucket2 === 'cameras'
+                  || bucket2 === 'reader' || bucket2 === 'readers'
+                  || bucket2 === 'camera or reader'
+                  || row.proposalBucketId === '6481e5ba38f283002898113c';
+        ns.changeRequests.openAddItem({
+          rowId:        rowId,
+          pkgId:        pkgId,
+          pkgName:      findPackageName(grid, pkgId),
+          surveyId:     findPackageSurveyId(grid, pkgId),
+          sowId:        sowId,
+          sowName:      grid.sowName,
+          sowItemId:    row.sowItem || '',
+          displayLabel: row.displayLabel,
+          productName:  row.productName,
+          sowProduct:       row.sowProduct,
+          sowQty:           row.sowQty,
+          sowFee:           row.sowFee,
+          sowLaborDesc:     row.sowLaborDesc,
+          sowExistCabling:  row.sowExistCabling,
+          sowPlenum:        row.sowPlenum,
+          sowExterior:      row.sowExterior,
+          sowDropLength:    row.sowDropLength,
+          sowConduit:       row.sowConduit,
+          sowMdfIdf:        row.mdfIdf || '',
+          sowMdfIdfIds:     row.mdfIdfIds || [],
+          connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
+          visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: false },
+          existing:         pendItem,
+        });
+      }
+      return;
+    }
 
     // Build per-field connection dropdown options from the grid rows.
     // field_2380 (Connected Devices): cameras/readers not yet wired

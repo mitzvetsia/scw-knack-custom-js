@@ -675,6 +675,11 @@
           // Pre-fill reciprocal connection: point back to the source record
           nbaReq[nbaMirrorKey] = params.displayLabel || params.productName || cell.id;
           nbaReq[nbaMirrorKey + 'Ids'] = [cell.id];
+          // Copy source's MDF/IDF to the reciprocal add
+          var srcMdfIdf    = requested.bidMdfIdf    || cell.bidMdfIdf    || '';
+          var srcMdfIdfIds = requested.bidMdfIdfIds || cell.bidMdfIdfIds || [];
+          if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
+          if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
 
           addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
             rowId:        nba.rowId,
@@ -1502,6 +1507,7 @@
     closeModal();
 
     var vis = params.visibility || {};
+    var existing = params.existing || null;
 
     var overlay = el('div', 'scw-bid-cr-overlay');
     overlay.id = OVERLAY_ID;
@@ -1511,7 +1517,7 @@
 
     var header = el('div', 'scw-bid-cr-modal__header');
     var hLeft = el('div');
-    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', 'Add Line Item'));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', existing ? 'Edit Line Item' : 'Add Line Item'));
     hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
       params.pkgName + ' \u2014 ' + (params.displayLabel || params.sowProduct || params.productName || 'Item')));
     header.appendChild(hLeft);
@@ -1522,21 +1528,23 @@
 
     var body = el('div', 'scw-bid-cr-modal__body');
     body.appendChild(el('div', 'scw-bid-cr-modal__hint',
-      'Request a new line item be added to this bid package. Fields are pre-filled from the SOW.'));
+      existing ? 'Edit the add-to-bid line item details.'
+               : 'Request a new line item be added to this bid package. Fields are pre-filled from the SOW.'));
 
-    // Pre-fill map from SOW data (maps bid field keys → SOW values)
+    // Pre-fill: use existing pending values (if editing), otherwise SOW data
+    var req = existing ? existing.requested : {};
     var prefill = {
-      productName:     params.sowProduct || params.productName || '',
-      qty:             params.sowQty || '',
-      rate:            params.sowFee || '',
-      laborDesc:       params.sowLaborDesc || '',
-      bidExistCabling: params.sowExistCabling || '',
-      bidPlenum:       params.sowPlenum || '',
-      bidExterior:     params.sowExterior || '',
-      bidDropLength:   params.sowDropLength || '',
-      bidConduit:      params.sowConduit || '',
-      bidMdfIdf:       params.sowMdfIdf || '',
-      bidMdfIdfIds:    params.sowMdfIdfIds || [],
+      productName:     req.productName || params.sowProduct || params.productName || '',
+      qty:             hasValue(req.qty) ? req.qty : (params.sowQty || ''),
+      rate:            hasValue(req.rate) ? req.rate : (params.sowFee || ''),
+      laborDesc:       req.laborDesc || params.sowLaborDesc || '',
+      bidExistCabling: req.bidExistCabling || params.sowExistCabling || '',
+      bidPlenum:       req.bidPlenum || params.sowPlenum || '',
+      bidExterior:     req.bidExterior || params.sowExterior || '',
+      bidDropLength:   req.bidDropLength || params.sowDropLength || '',
+      bidConduit:      req.bidConduit || params.sowConduit || '',
+      bidMdfIdf:       req.bidMdfIdf || params.sowMdfIdf || '',
+      bidMdfIdfIds:    req.bidMdfIdfIds || params.sowMdfIdfIds || [],
     };
 
     // Connection options for addable connection fields (e.g. MDF/IDF)
@@ -1617,6 +1625,7 @@
     ta.className = 'scw-bid-cr-modal__textarea';
     ta.placeholder = 'Additional details\u2026';
     ta.rows = 2;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
     notesRow.appendChild(ta);
     body.appendChild(notesRow);
     modal.appendChild(body);
@@ -1624,7 +1633,8 @@
     var footer = el('div', 'scw-bid-cr-modal__footer');
     footer.appendChild(el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--cancel', 'Cancel'));
     footer.lastChild.addEventListener('click', closeModal);
-    var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add', 'Add to Change Request');
+    var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add',
+      existing ? 'Update Change Request' : 'Add to Change Request');
     addBtn.addEventListener('click', function () {
       var product = (inputs.productName.value || '').trim();
       if (!product) {
@@ -1655,7 +1665,7 @@
       // Use the noBid row ID if available, else generate a pseudo-ID
       var itemRowId = params.rowId || ('new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
       var displayLabel = params.displayLabel || params.sowProduct || product;
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+      var newItem = {
         rowId:        itemRowId,
         bidRecordId:  null,
         sowItemId:    params.sowItemId || '',
@@ -1665,9 +1675,13 @@
         current:      {},
         requested:    requested,
         changeNotes:  ta.value.trim(),
-      }, params.surveyId);
+      };
+      // Preserve reciprocal metadata when editing a reciprocal add-to-bid item
+      if (existing && existing.reciprocal)       newItem.reciprocal = true;
+      if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
       closeModal();
-      ns.renderToast('New line item added to change request', 'success');
+      ns.renderToast(existing ? 'Change request updated' : 'New line item added to change request', 'success');
     });
     footer.appendChild(addBtn);
     modal.appendChild(footer);
