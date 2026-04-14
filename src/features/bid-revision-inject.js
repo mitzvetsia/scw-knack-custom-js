@@ -752,7 +752,7 @@
    * comparison bid grid behavior.  On save the modified payload includes
    * both identifiers and IDs for every connection field.
    */
-  function openEditModal(revisionId, jsonData, wrapEl) {
+  function openEditModal(revisionId, jsonData, wrapEl, jsonRef) {
     closeEditModal();
     var data = jsonData || {};
 
@@ -1032,6 +1032,8 @@
         data: JSON.stringify(putBody),
         success: function () {
           console.log('[BidRevInject] Saved JSON + HTML for', revisionId);
+          // Update the in-memory reference so the next Edit click sees latest data
+          if (jsonRef) jsonRef.data = updated;
           // Re-inject the updated HTML card into the DOM
           // wrapEl is the action-buttons wrapper; the HTML card is a sibling
           // inside the parent .scw-rev-item div
@@ -1081,6 +1083,9 @@
    * Build Approve / Edit / Reject action buttons for a single revision.
    */
   function buildActionButtons(revisionId, changeJson) {
+    // Mutable holder so the Edit button always sees the latest data
+    // (updated after Save without needing to rebuild the DOM)
+    var jsonRef = { data: changeJson };
     var wrap = document.createElement('div');
 
     var actions = document.createElement('div');
@@ -1136,9 +1141,9 @@
       submitRevisionAction(revisionId, 'approve', '', wrap, { outcome: 'accepted' });
     });
 
-    // ── Edit handler — open modal ──
+    // ── Edit handler — open modal with latest data ──
     editBtn.addEventListener('click', function () {
-      openEditModal(revisionId, changeJson, wrap);
+      openEditModal(revisionId, jsonRef.data, wrap, jsonRef);
     });
 
     // ── Reject handler — toggle notes input ──
