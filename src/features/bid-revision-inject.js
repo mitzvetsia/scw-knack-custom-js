@@ -234,7 +234,7 @@
       '}',
       '.' + P + '-orphan-labordesc {',
       '  font-size: 13px; color: #64748b;',
-      '  flex: 1 1 120px; min-width: 80px;',
+      '  width: 280px; min-width: 120px; max-width: 280px;',
       '  white-space: normal; word-break: break-word; line-height: 1.3;',
       '}',
       '.' + P + '-orphan-chit {',
@@ -1578,22 +1578,27 @@
     badge.textContent = 'ADD';
     summary.appendChild(badge);
 
-    // Label (displayLabel)
+    // Label (displayLabel) — only for camera/reader items
     var dlabel = readJsonField(d, 'displayLabel');
-    if (dlabel) {
+    var bucketId = d.proposalBucketId || '';
+    var isCamReader = bucketId === CAM_READER_BUCKET_ID;
+    if (dlabel && isCamReader) {
       var labelEl = document.createElement('span');
       labelEl.className = P + '-orphan-label';
       labelEl.textContent = dlabel;
       summary.appendChild(labelEl);
     }
 
-    // Product (if different from label)
+    // Product (if different from label, or always when label is hidden)
     var product = readJsonField(d, 'productName');
-    if (product && product !== dlabel) {
-      var sep = document.createElement('span');
-      sep.className = P + '-orphan-sep';
-      sep.textContent = '\u00b7';
-      summary.appendChild(sep);
+    var showProduct = product && (!isCamReader || product !== dlabel);
+    if (showProduct) {
+      if (isCamReader && dlabel) {
+        var sep = document.createElement('span');
+        sep.className = P + '-orphan-sep';
+        sep.textContent = '\u00b7';
+        summary.appendChild(sep);
+      }
       var prodEl = document.createElement('span');
       prodEl.className = P + '-orphan-product';
       prodEl.textContent = product;
@@ -1670,7 +1675,12 @@
       { key: 'bidConnTo',       label: 'Connected To' },
       { key: 'bidDropLength',   label: 'Drop Length' },
       { key: 'bidConduit',      label: 'Conduit' },
-      { key: 'proposalBucket',  label: 'Bucket' },
+      { key: 'bidExistCabling', label: 'Existing Cabling' },
+      { key: 'bidPlenum',       label: 'Plenum' },
+      { key: 'bidExterior',     label: 'Exterior' },
+      { key: 'qty',             label: 'Qty' },
+      { key: 'rate',            label: 'Rate' },
+      { key: 'laborDesc',       label: 'Labor Description' },
       { key: 'changeNotes',     label: 'Notes' },
     ];
     for (var df = 0; df < detailFields.length; df++) {
