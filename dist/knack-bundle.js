@@ -30558,6 +30558,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.' + P + '-reject-error {',
       '  color: #dc2626; font-size: 11px; margin-top: 2px;',
       '}',
+
+      /* ── Orphaned add-request section at top of view ── */
+      '.' + P + '-orphan-section {',
+      '  margin: 0 0 16px; padding: 12px 14px;',
+      '  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;',
+      '}',
+      '.' + P + '-orphan-header {',
+      '  font-weight: 700; font-size: 13px; text-transform: uppercase;',
+      '  letter-spacing: .04em; color: #166534; margin-bottom: 10px;',
+      '  display: flex; align-items: center; gap: 6px;',
+      '}',
+      '.' + P + '-orphan-header::before {',
+      '  content: "+"; display: inline-flex; align-items: center;',
+      '  justify-content: center; width: 20px; height: 20px;',
+      '  border-radius: 50%; background: #16a34a; color: #fff;',
+      '  font-size: 14px; font-weight: 700;',
+      '}',
+      '.' + P + '-orphan-card {',
+      '  padding: 8px 0; border-bottom: 1px solid #dcfce7;',
+      '}',
+      '.' + P + '-orphan-card:last-child { border-bottom: none; }',
     ].join('\n');
 
     var style = document.createElement('style');
@@ -30623,62 +30644,70 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
+   * Build a revision entry from a raw record.
+   */
+  function buildRevEntry(rec) {
+    var changeHtml = rec[CFG.changeHtmlField] || '';
+    if (typeof changeHtml === 'string') changeHtml = changeHtml.trim();
+
+    var changes = [];
+    if (!changeHtml) {
+      var fKeys = Object.keys(CFG.fields);
+      for (var fi = 0; fi < fKeys.length; fi++) {
+        var fd = CFG.fields[fKeys[fi]];
+        var val = stripHtml(rec[fd.key] || '');
+        if (!val || val === '&nbsp;' || val === '\u00a0') continue;
+        if (fKeys[fi] === 'existing' || fKeys[fi] === 'exterior' || fKeys[fi] === 'plenum') {
+          if (/^no$/i.test(val)) continue;
+        }
+        changes.push({ label: fd.label, value: val });
+      }
+    }
+
+    var editHref = '';
+    var domRow = document.getElementById(rec.id);
+    if (domRow) {
+      var link = domRow.querySelector('a.kn-link-page');
+      if (link) editHref = link.getAttribute('href') || '';
+    }
+
+    return { id: rec.id, editHref: editHref, changeHtml: changeHtml, changes: changes };
+  }
+
+  /**
    * Read revision records from view_3782's Knack model.
-   * Returns a map: surveyItemId → [{ id, editHref, changes: [{label, value}] }]
+   * Returns { map: surveyItemId → [entry], orphaned: [entry] }
+   * Orphaned = records with no survey item connection (e.g. Add requests).
    */
   function buildRevisionMap() {
     var model   = findModel(CFG.revisionView);
     var records = extractRecords(model);
     console.log('[BidRevInject] Model records:', records.length);
 
-    // Fallback: scrape from DOM if model is empty
     if (!records.length) {
       records = scrapeFromDom();
       console.log('[BidRevInject] DOM-scraped records:', records.length);
     }
 
     var map = {};
+    var orphaned = [];
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       var siId = getSurveyItemId(rec);
+      var entry = buildRevEntry(rec);
+
       if (!siId) {
-        console.log('[BidRevInject] No survey item ID for record', rec.id);
+        // No survey item connection — orphaned add request
+        orphaned.push(entry);
         continue;
       }
 
-      // Check for pre-built HTML card (field_2695)
-      var changeHtml = rec[CFG.changeHtmlField] || '';
-      if (typeof changeHtml === 'string') changeHtml = changeHtml.trim();
-
-      // Build change summary (fallback for records without HTML)
-      var changes = [];
-      if (!changeHtml) {
-        var fKeys = Object.keys(CFG.fields);
-        for (var fi = 0; fi < fKeys.length; fi++) {
-          var fd = CFG.fields[fKeys[fi]];
-          var val = stripHtml(rec[fd.key] || '');
-          if (!val || val === '&nbsp;' || val === '\u00a0') continue;
-          // Skip Yes/No flags that are "No" (no change)
-          if (fKeys[fi] === 'existing' || fKeys[fi] === 'exterior' || fKeys[fi] === 'plenum') {
-            if (/^no$/i.test(val)) continue;
-          }
-          changes.push({ label: fd.label, value: val });
-        }
-      }
-
-      // Extract edit href from DOM row if available
-      var editHref = '';
-      var domRow = document.getElementById(rec.id);
-      if (domRow) {
-        var link = domRow.querySelector('a.kn-link-page');
-        if (link) editHref = link.getAttribute('href') || '';
-      }
-
       if (!map[siId]) map[siId] = [];
-      map[siId].push({ id: rec.id, editHref: editHref, changeHtml: changeHtml, changes: changes });
+      map[siId].push(entry);
     }
-    console.log('[BidRevInject] Revision map:', Object.keys(map).length, 'survey items with revisions');
-    return map;
+    console.log('[BidRevInject] Revision map:', Object.keys(map).length,
+                'matched,', orphaned.length, 'orphaned');
+    return { map: map, orphaned: orphaned };
   }
 
   /**
@@ -30945,6 +30974,88 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * Main injection: for each target view, match revision records to rows
    * and inject badge + detail strip.
    */
+  /**
+   * Build a standalone orphan card for an add request with no matching
+   * survey item in view_3505.
+   */
+  function makeOrphanCard(rev) {
+    var card = document.createElement('div');
+    card.className = P + '-orphan-card';
+
+    if (rev.changeHtml) {
+      var htmlWrap = document.createElement('div');
+      htmlWrap.className = P + '-html-card';
+      htmlWrap.innerHTML = rev.changeHtml;
+      card.appendChild(htmlWrap);
+    } else {
+      // Fallback: tag-based
+      var row = document.createElement('div');
+      row.className = P + '-row';
+      for (var ci = 0; ci < rev.changes.length; ci++) {
+        var ch = rev.changes[ci];
+        var tag = document.createElement('span');
+        tag.className = P + '-tag';
+        var lbl = document.createElement('span');
+        lbl.className = P + '-tag-label';
+        lbl.textContent = ch.label + ':';
+        tag.appendChild(lbl);
+        tag.appendChild(document.createTextNode(' ' + ch.value));
+        row.appendChild(tag);
+      }
+      if (!rev.changes.length) {
+        var empty = document.createElement('span');
+        empty.className = P + '-tag';
+        empty.textContent = '(no details)';
+        row.appendChild(empty);
+      }
+      card.appendChild(row);
+    }
+
+    if (rev.editHref) {
+      var link = document.createElement('a');
+      link.className = P + '-edit-link';
+      link.href = rev.editHref;
+      link.textContent = 'Edit';
+      card.appendChild(link);
+    }
+
+    card.appendChild(buildActionButtons(rev.id));
+    return card;
+  }
+
+  /**
+   * Render orphaned add requests as a banner at the top of the view.
+   */
+  function renderOrphanSection(viewEl, orphans) {
+    // Remove any existing orphan section
+    var existing = viewEl.querySelector('.' + P + '-orphan-section');
+    if (existing) existing.remove();
+
+    if (!orphans.length) return;
+
+    var section = document.createElement('div');
+    section.className = P + '-orphan-section';
+
+    var header = document.createElement('div');
+    header.className = P + '-orphan-header';
+    header.textContent = 'Add Requests (' + orphans.length + ')';
+    section.appendChild(header);
+
+    for (var i = 0; i < orphans.length; i++) {
+      section.appendChild(makeOrphanCard(orphans[i]));
+    }
+
+    // Insert at the very top of the view, before the table
+    var table = viewEl.querySelector('table') || viewEl.firstChild;
+    if (table) {
+      viewEl.insertBefore(section, table);
+    } else {
+      viewEl.appendChild(section);
+    }
+
+    console.log('[BidRevInject] Rendered', orphans.length, 'orphaned add requests');
+  }
+
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
     if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
@@ -30957,28 +31068,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return;
     }
 
-    var revMap = buildRevisionMap();
+    var result = buildRevisionMap();
+    var revMap = result.map;
+    var orphaned = result.orphaned;
     var siIds = Object.keys(revMap);
-    if (!siIds.length) { console.log('[BidRevInject] No revisions to inject'); return; }
-
-    // Diagnostic: dump first 5 <tr> IDs in view_3505 to compare with revision map keys
-    var allTrs = viewEl.querySelectorAll('tbody > tr');
-    var trIds = [];
-    for (var di = 0; di < Math.min(allTrs.length, 10); di++) {
-      if (allTrs[di].id) trIds.push(allTrs[di].id);
+    if (!siIds.length && !orphaned.length) {
+      console.log('[BidRevInject] No revisions to inject');
+      return;
     }
-    console.log('[BidRevInject] Looking for survey item IDs:', siIds);
-    console.log('[BidRevInject] First <tr> IDs in', viewId + ':', trIds);
-    console.log('[BidRevInject] Total <tr> in view:', allTrs.length,
-                '| ws-rows:', viewEl.querySelectorAll('tr.scw-ws-row').length);
 
     var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
       var card = findCardForRecord(viewEl, siId);
       if (!card) {
-        console.log('[BidRevInject] No card found for survey item', siId,
-                    '| tr exists?', !!viewEl.querySelector('tr[id="' + siId + '"]'));
+        // No matching row in view_3505 — treat as orphaned add
+        var unmatched = revMap[siId];
+        for (var ui = 0; ui < unmatched.length; ui++) orphaned.push(unmatched[ui]);
         continue;
       }
       if (card.getAttribute(INJECTED)) continue;
@@ -30997,7 +31103,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (detail) {
         detail.appendChild(makeStrip(revisions));
       } else {
-        // Fallback: insert before photo wrap or append to card
         var photoWrap = card.querySelector('.scw-ws-photo-wrap');
         if (photoWrap) {
           card.insertBefore(makeStrip(revisions), photoWrap);
@@ -31007,7 +31112,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       injected++;
     }
-    console.log('[BidRevInject] Injected revisions onto', injected, 'cards in', viewId);
+    console.log('[BidRevInject] Injected revisions onto', injected, 'cards,',
+                orphaned.length, 'orphaned adds');
+
+    // Render orphaned add requests at the top of the view
+    renderOrphanSection(viewEl, orphaned);
   }
 
   // ── EVENT BINDING ───────────────────────────────────────
