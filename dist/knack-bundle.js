@@ -31950,13 +31950,36 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Extract the MDF/IDF label from an orphan revision entry's JSON data.
+   * Extract the MDF/IDF label from a revision entry's JSON data.
    */
-  function getOrphanMdfIdf(rev) {
+  function getRevMdfIdf(rev) {
     if (rev.changeJson && rev.changeJson.bidMdfIdf) return rev.changeJson.bidMdfIdf;
     if (rev.changeJson && rev.changeJson.requested && rev.changeJson.requested.bidMdfIdf) return rev.changeJson.requested.bidMdfIdf;
     if (rev.changeJson && rev.changeJson.current && rev.changeJson.current.bidMdfIdf) return rev.changeJson.current.bidMdfIdf;
     return '';
+  }
+
+  /**
+   * Extract the numeric sort order from a revision entry's JSON data.
+   */
+  function getRevSortOrder(rev) {
+    if (rev.changeJson && rev.changeJson.sortOrder != null) return Number(rev.changeJson.sortOrder) || 0;
+    return 0;
+  }
+
+  /**
+   * Read the numeric sort order (field_2218) from a worksheet data row.
+   * The data row is tr[data-scw-worksheet]; field_2218 is a hidden cell.
+   */
+  function getRowSortOrder(wsRow) {
+    // wsRow is a tr.scw-ws-row — its previous sibling is tr[data-scw-worksheet]
+    var dataTr = wsRow.previousElementSibling;
+    if (!dataTr || !dataTr.hasAttribute('data-scw-worksheet')) return Infinity;
+    var cell = dataTr.querySelector('td.field_2218');
+    if (!cell) return Infinity;
+    var val = (cell.textContent || '').trim();
+    var n = parseFloat(val);
+    return isNaN(n) ? Infinity : n;
   }
 
   /**
@@ -32000,7 +32023,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var ORPHAN_ROW_CLS = P + '-orphan-row';
 
   /**
-   * Render orphaned add requests within their matching MDF/IDF group.
+   * Find the correct insertion point for an orphan row within a group
+   * based on its sortOrder vs. existing worksheet rows' field_2218 values.
+   * Returns the <tr> to insert BEFORE, or null to append at group end.
+   *
+   * Worksheet rows come in pairs: tr[data-scw-worksheet] (hidden data) +
+   * tr.scw-ws-row (visible card).  We return the data row so the orphan
+   * is inserted before the entire pair.
+   */
+  function findSortedInsertPoint(groupHeaderTr, sortOrder) {
+    var row = groupHeaderTr.nextElementSibling;
+    while (row) {
+      if (row.classList.contains('kn-group-level-1')) break;
+      if (row.classList.contains('scw-ws-row')) {
+        var rowSort = getRowSortOrder(row);
+        if (sortOrder < rowSort) {
+          // Return the data row (previous sibling) so orphan goes before the pair
+          var dataTr = row.previousElementSibling;
+          return (dataTr && dataTr.hasAttribute('data-scw-worksheet')) ? dataTr : row;
+        }
+      }
+      row = row.nextElementSibling;
+    }
+    return null; // append at end of group
+  }
+
+  /**
+   * Render orphaned add requests within their matching MDF/IDF group,
+   * interleaved at the correct sort position (by sortOrder / field_2218).
    * Falls back to a section at the top of the view for any unmatched orphans.
    */
   function renderOrphanSection(viewEl, orphans) {
@@ -32012,13 +32062,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     if (!orphans.length) return;
 
-    // Sort orphans by proposalBucket name, then sortOrder
+    // Sort orphans by sortOrder within each MDF/IDF group
     orphans.sort(function (a, b) {
-      var aBucket = (a.changeJson && a.changeJson.proposalBucket) || '';
-      var bBucket = (b.changeJson && b.changeJson.proposalBucket) || '';
-      if (aBucket !== bBucket) return aBucket.localeCompare(bBucket);
-      var aSort = (a.changeJson && a.changeJson.sortOrder) || 0;
-      var bSort = (b.changeJson && b.changeJson.sortOrder) || 0;
+      var aSort = getRevSortOrder(a);
+      var bSort = getRevSortOrder(b);
       return aSort - bSort;
     });
 
@@ -32030,7 +32077,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var byMdf = {};
     var ungrouped = [];
     for (var i = 0; i < orphans.length; i++) {
-      var mdf = getOrphanMdfIdf(orphans[i]);
+      var mdf = getRevMdfIdf(orphans[i]);
       if (mdf) {
         if (!byMdf[mdf]) byMdf[mdf] = [];
         byMdf[mdf].push(orphans[i]);
@@ -32039,7 +32086,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    // Insert grouped orphans into their matching table groups
+    // Insert grouped orphans into their matching table groups at sorted positions
     var mdfKeys = Object.keys(byMdf);
     for (var mi = 0; mi < mdfKeys.length; mi++) {
       var mdfKey = mdfKeys[mi];
@@ -32049,22 +32096,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var fi = 0; fi < byMdf[mdfKey].length; fi++) ungrouped.push(byMdf[mdfKey][fi]);
         continue;
       }
-      var lastRow = findLastRowInGroup(groupHeader);
-      var items = byMdf[mdfKey];
+      var items = byMdf[mdfKey]; // already sorted by sortOrder
       for (var oi = 0; oi < items.length; oi++) {
         var tr = document.createElement('tr');
         tr.className = ORPHAN_ROW_CLS;
+        tr.setAttribute('data-sort-order', getRevSortOrder(items[oi]));
         var td = document.createElement('td');
         td.setAttribute('colspan', colspan);
         td.appendChild(makeOrphanCard(items[oi]));
         tr.appendChild(td);
-        // Insert after the last row in this group
-        if (lastRow.nextSibling) {
-          lastRow.parentNode.insertBefore(tr, lastRow.nextSibling);
+
+        // Find the correct sorted position within this group
+        var sortVal = getRevSortOrder(items[oi]);
+        var insertBefore = findSortedInsertPoint(groupHeader, sortVal);
+        if (insertBefore) {
+          insertBefore.parentNode.insertBefore(tr, insertBefore);
         } else {
-          lastRow.parentNode.appendChild(tr);
+          // Append after the last row in this group
+          var lastRow = findLastRowInGroup(groupHeader);
+          if (lastRow.nextSibling) {
+            lastRow.parentNode.insertBefore(tr, lastRow.nextSibling);
+          } else {
+            lastRow.parentNode.appendChild(tr);
+          }
         }
-        lastRow = tr; // subsequent orphans go after this one
       }
     }
 
