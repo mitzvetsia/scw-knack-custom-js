@@ -48,9 +48,9 @@
     { key: 'bidExterior',     label: 'Exterior',           type: 'select', options: ['', 'Yes', 'No'] },
     { key: 'bidDropLength',   label: 'Drop Length',        type: 'text' },
     { key: 'bidConduit',      label: 'Conduit',            type: 'text' },
-    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'text' },
-    { key: 'bidConnTo',       label: 'Connected To',       type: 'text' },
-    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'text' },
+    { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connField: 'field_2380', idsKey: 'bidConnDeviceIds' },
+    { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connField: 'field_2381', idsKey: 'bidConnToIds', single: true },
+    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connField: 'field_2375', idsKey: 'bidMdfIdfIds', single: true },
   ];
 
   var STYLE_ID   = 'scw-bid-revision-inject-css';
@@ -197,6 +197,20 @@
       '  font-size: 11px; font-weight: 400;',
       '}',
 
+      /* ── Connection field lists in edit modal ── */
+      '.' + P + '-conn-list {',
+      '  max-height: 180px; overflow-y: auto; border: 1px solid #d1d5db;',
+      '  border-radius: 4px; padding: 6px 8px;',
+      '}',
+      '.' + P + '-conn-item {',
+      '  display: flex; align-items: center; gap: 6px;',
+      '  padding: 3px 0; font-size: 13px; cursor: pointer;',
+      '}',
+      '.' + P + '-conn-item label { cursor: pointer; }',
+      '.' + P + '-conn-empty {',
+      '  color: #9ca3af; font-size: 12px; font-style: italic;',
+      '}',
+
       /* ── Edit modal overlay + dialog ── */
       '.' + P + '-modal-overlay {',
       '  position: fixed; inset: 0; z-index: 10000;',
@@ -327,6 +341,68 @@
       }
     }
     return [];
+  }
+
+  /**
+   * Build connection options from view_3505 Knack model records.
+   * Returns { bidMdfIdf: [{id, identifier}], bidConnDevice: [...], bidConnTo: [...] }
+   */
+  function buildConnOptions(viewId) {
+    var model = findModel(viewId || CFG.targetViews[0]);
+    var records = extractRecords(model);
+    var mdfMap = {}, devMap = {}, toMap = {};
+
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+
+      // MDF/IDF — deduplicate from connection field raw values
+      var mdfRaw = rec['field_2375_raw'];
+      if (Array.isArray(mdfRaw)) {
+        for (var j = 0; j < mdfRaw.length; j++) {
+          var mr = mdfRaw[j];
+          if (mr && mr.id && !mdfMap[mr.id]) {
+            mdfMap[mr.id] = { id: mr.id, identifier: stripHtml(mr.identifier || mr.id) };
+          }
+        }
+      }
+
+      // Each survey item record can be a Connected Device or Connected To target.
+      // Use the display label (field_2365) for the identifier.
+      var label = stripHtml(rec.field_2365 || rec.field_2379 || '') || rec.id;
+      if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+      if (!toMap[rec.id])  toMap[rec.id]  = { id: rec.id, identifier: label };
+
+      // Also extract existing connections so their targets are available as options
+      var devRaw = rec['field_2380_raw'];
+      if (Array.isArray(devRaw)) {
+        for (var d = 0; d < devRaw.length; d++) {
+          var dr = devRaw[d];
+          if (dr && dr.id && !devMap[dr.id]) {
+            devMap[dr.id] = { id: dr.id, identifier: stripHtml(dr.identifier || dr.id) };
+          }
+        }
+      }
+      var toRaw = rec['field_2381_raw'];
+      if (Array.isArray(toRaw)) {
+        for (var t = 0; t < toRaw.length; t++) {
+          var tr = toRaw[t];
+          if (tr && tr.id && !toMap[tr.id]) {
+            toMap[tr.id] = { id: tr.id, identifier: stripHtml(tr.identifier || tr.id) };
+          }
+        }
+      }
+    }
+
+    // Convert maps to sorted arrays
+    function vals(map) {
+      var arr = [];
+      var keys = Object.keys(map);
+      for (var k = 0; k < keys.length; k++) arr.push(map[keys[k]]);
+      arr.sort(function (a, b) { return a.identifier.localeCompare(b.identifier); });
+      return arr;
+    }
+
+    return { bidMdfIdf: vals(mdfMap), bidConnDevice: vals(devMap), bidConnTo: vals(toMap) };
   }
 
   /**
@@ -546,12 +622,16 @@
 
   /**
    * Open an edit modal pre-filled from the revision JSON.
-   * On save: calls submitRevisionAction with outcome "accepted with changes"
-   * and the modified values.
+   * Connection fields render as radio/checkbox lists matching the
+   * comparison bid grid behavior.  On save the modified payload includes
+   * both identifiers and IDs for every connection field.
    */
   function openEditModal(revisionId, jsonData, wrapEl) {
     closeEditModal();
     var data = jsonData || {};
+
+    // Build connection options from view_3505 Knack model
+    var connOpts = buildConnOptions();
 
     var overlay = document.createElement('div');
     overlay.id = MODAL_ID;
@@ -566,7 +646,7 @@
     header.className = P + '-modal-header';
     var title = document.createElement('div');
     title.className = P + '-modal-title';
-    title.textContent = 'Edit Revision — ' + (data.displayLabel || data.productName || 'Item');
+    title.textContent = 'Edit Revision \u2014 ' + (data.displayLabel || data.productName || 'Item');
     header.appendChild(title);
     var closeBtn = document.createElement('button');
     closeBtn.className = P + '-modal-close';
@@ -583,20 +663,31 @@
     var current   = data.current   || {};
     var requested = data.requested || {};
     var prefill = {};
+    var prefillIds = {};
     for (var pi = 0; pi < EDIT_FIELDS.length; pi++) {
       var pk = EDIT_FIELDS[pi].key;
       if (requested[pk] != null) prefill[pk] = requested[pk];
       else if (current[pk] != null) prefill[pk] = current[pk];
       else if (data[pk] != null) prefill[pk] = data[pk];
+      // Pre-fill IDs for connection fields
+      if (EDIT_FIELDS[pi].idsKey) {
+        var ik = EDIT_FIELDS[pi].idsKey;
+        if (requested[ik] && requested[ik].length) prefillIds[pk] = requested[ik];
+        else if (current[ik] && current[ik].length) prefillIds[pk] = current[ik];
+        else if (data[ik] && data[ik].length) prefillIds[pk] = data[ik];
+      }
     }
 
     var inputs = {};
     for (var fi = 0; fi < EDIT_FIELDS.length; fi++) {
       var fd = EDIT_FIELDS[fi];
       var val = prefill[fd.key] != null ? String(prefill[fd.key]) : '';
-      // Skip empty fields for non-text types to keep modal compact
-      if (!val && fd.type === 'select') continue;
-      if (!val && fd.key !== 'productName' && fd.key !== 'qty' && fd.key !== 'rate') continue;
+
+      // Skip empty non-essential fields to keep modal compact
+      if (fd.type !== 'connection') {
+        if (!val && fd.type === 'select') continue;
+        if (!val && fd.key !== 'productName' && fd.key !== 'qty' && fd.key !== 'rate') continue;
+      }
 
       var fRow = document.createElement('div');
       fRow.className = P + '-modal-field';
@@ -606,7 +697,51 @@
       fRow.appendChild(label);
 
       var inp;
-      if (fd.type === 'select') {
+      if (fd.type === 'connection') {
+        // ── Connection field: radio (single) or checkbox (multi) list ──
+        var recs = connOpts[fd.key] || [];
+        var curIds = prefillIds[fd.key] || [];
+        inp = document.createElement('div');
+        inp.className = P + '-conn-list';
+
+        if (!recs.length) {
+          var emptyMsg = document.createElement('span');
+          emptyMsg.className = P + '-conn-empty';
+          emptyMsg.textContent = 'No available records';
+          inp.appendChild(emptyMsg);
+        }
+
+        for (var ri = 0; ri < recs.length; ri++) {
+          var rec = recs[ri];
+          var item = document.createElement('div');
+          item.className = P + '-conn-item';
+
+          var ctrl = document.createElement('input');
+          if (fd.single) {
+            ctrl.type = 'radio';
+            ctrl.name = P + '-radio-' + fd.key;
+          } else {
+            ctrl.type = 'checkbox';
+          }
+          ctrl.value = rec.id;
+          ctrl.id = P + '-conn-' + fd.key + '-' + ri;
+          // Check if this option is currently selected
+          for (var ci = 0; ci < curIds.length; ci++) {
+            if (curIds[ci] === rec.id) { ctrl.checked = true; break; }
+          }
+          item.appendChild(ctrl);
+
+          var ctrlLabel = document.createElement('label');
+          ctrlLabel.setAttribute('for', ctrl.id);
+          ctrlLabel.textContent = rec.identifier || rec.id;
+          item.appendChild(ctrlLabel);
+          inp.appendChild(item);
+        }
+
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
+      } else if (fd.type === 'select') {
         inp = document.createElement('select');
         inp.className = P + '-modal-select';
         for (var oi = 0; oi < fd.options.length; oi++) {
@@ -616,21 +751,27 @@
           inp.appendChild(opt);
         }
         inp.value = val;
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
       } else if (fd.multiline) {
         inp = document.createElement('textarea');
         inp.className = P + '-modal-input';
         inp.rows = 3;
         inp.value = val;
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
       } else {
         inp = document.createElement('input');
         inp.type = fd.type === 'number' ? 'number' : 'text';
         inp.className = P + '-modal-input';
         if (fd.type === 'number') inp.setAttribute('step', 'any');
         inp.value = val;
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
       }
-      inputs[fd.key] = inp;
-      fRow.appendChild(inp);
-      body.appendChild(fRow);
     }
 
     // Notes
@@ -661,12 +802,43 @@
     saveBtn.className = P + '-btn ' + P + '-btn--approve';
     saveBtn.textContent = 'Approve with Changes';
     saveBtn.addEventListener('click', function () {
-      // Collect modified values
+      // Collect modified values — handle connection fields specially
       var modified = {};
-      for (var k in inputs) {
-        var v = (inputs[k].value || '').trim();
-        if (v) modified[k] = k === 'qty' || k === 'rate' ? parseFloat(v) : v;
+      for (var k = 0; k < EDIT_FIELDS.length; k++) {
+        var d = EDIT_FIELDS[k];
+        if (!inputs[d.key]) continue;
+
+        if (d.type === 'connection') {
+          // Connection field: read selected IDs and identifiers
+          var container = inputs[d.key];
+          var inputType = d.single ? 'input[type="radio"]' : 'input[type="checkbox"]';
+          var selIds = [], selLabels = [];
+
+          if (d.single) {
+            var checked = container.querySelector('input[type="radio"]:checked');
+            if (checked) {
+              selIds.push(checked.value);
+              var lbl = container.querySelector('label[for="' + checked.id + '"]');
+              selLabels.push(lbl ? lbl.textContent : checked.value);
+            }
+          } else {
+            var cbs = container.querySelectorAll('input[type="checkbox"]:checked');
+            for (var si = 0; si < cbs.length; si++) {
+              selIds.push(cbs[si].value);
+              var lbl = container.querySelector('label[for="' + cbs[si].id + '"]');
+              selLabels.push(lbl ? lbl.textContent : cbs[si].value);
+            }
+          }
+
+          // Always include both identifier and IDs
+          modified[d.key] = selLabels.join(', ');
+          modified[d.idsKey] = selIds;
+        } else {
+          var v = (inputs[d.key].value || '').trim();
+          if (v) modified[d.key] = d.key === 'qty' || d.key === 'rate' ? parseFloat(v) : v;
+        }
       }
+
       var notes = notesInput.value.trim();
       closeEditModal();
       submitRevisionAction(revisionId, 'approve_with_changes', '', wrapEl, {
