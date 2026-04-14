@@ -31,6 +31,8 @@
       plenum:     { key: 'field_2652', label: 'Plenum' },
       other:      { key: 'field_2653', label: 'Other' },
     },
+    /** Rich-text field holding pre-built HTML card from change request */
+    changeHtmlField: 'field_2695',
   };
 
   var STYLE_ID   = 'scw-bid-revision-inject-css';
@@ -179,18 +181,24 @@
         continue;
       }
 
-      // Build change summary
+      // Check for pre-built HTML card (field_2695)
+      var changeHtml = rec[CFG.changeHtmlField] || '';
+      if (typeof changeHtml === 'string') changeHtml = changeHtml.trim();
+
+      // Build change summary (fallback for records without HTML)
       var changes = [];
-      var fKeys = Object.keys(CFG.fields);
-      for (var fi = 0; fi < fKeys.length; fi++) {
-        var fd = CFG.fields[fKeys[fi]];
-        var val = stripHtml(rec[fd.key] || '');
-        if (!val || val === '&nbsp;' || val === '\u00a0') continue;
-        // Skip Yes/No flags that are "No" (no change)
-        if (fKeys[fi] === 'existing' || fKeys[fi] === 'exterior' || fKeys[fi] === 'plenum') {
-          if (/^no$/i.test(val)) continue;
+      if (!changeHtml) {
+        var fKeys = Object.keys(CFG.fields);
+        for (var fi = 0; fi < fKeys.length; fi++) {
+          var fd = CFG.fields[fKeys[fi]];
+          var val = stripHtml(rec[fd.key] || '');
+          if (!val || val === '&nbsp;' || val === '\u00a0') continue;
+          // Skip Yes/No flags that are "No" (no change)
+          if (fKeys[fi] === 'existing' || fKeys[fi] === 'exterior' || fKeys[fi] === 'plenum') {
+            if (/^no$/i.test(val)) continue;
+          }
+          changes.push({ label: fd.label, value: val });
         }
-        changes.push({ label: fd.label, value: val });
       }
 
       // Extract edit href from DOM row if available
@@ -202,7 +210,7 @@
       }
 
       if (!map[siId]) map[siId] = [];
-      map[siId].push({ id: rec.id, editHref: editHref, changes: changes });
+      map[siId].push({ id: rec.id, editHref: editHref, changeHtml: changeHtml, changes: changes });
     }
     console.log('[BidRevInject] Revision map:', Object.keys(map).length, 'survey items with revisions');
     return map;
@@ -236,6 +244,9 @@
         var cell = tr.querySelector('td.' + fd.key);
         if (cell) rec[fd.key] = cell.textContent.trim();
       }
+      // Extract pre-built HTML field (rich text — keep innerHTML)
+      var htmlCell = tr.querySelector('td.' + CFG.changeHtmlField);
+      if (htmlCell) rec[CFG.changeHtmlField] = htmlCell.innerHTML.trim();
       records.push(rec);
     }
     return records;
@@ -282,29 +293,38 @@
       var item = document.createElement('div');
       item.className = P + '-item';
 
-      var row = document.createElement('div');
-      row.className = P + '-row';
+      if (rev.changeHtml) {
+        // Pre-built HTML card from change request payload
+        var htmlWrap = document.createElement('div');
+        htmlWrap.className = P + '-html-card';
+        htmlWrap.innerHTML = rev.changeHtml;
+        item.appendChild(htmlWrap);
+      } else {
+        // Fallback: tag-based rendering for older records
+        var row = document.createElement('div');
+        row.className = P + '-row';
 
-      for (var ci = 0; ci < rev.changes.length; ci++) {
-        var ch = rev.changes[ci];
-        var tag = document.createElement('span');
-        tag.className = P + '-tag';
-        var lbl = document.createElement('span');
-        lbl.className = P + '-tag-label';
-        lbl.textContent = ch.label + ':';
-        tag.appendChild(lbl);
-        tag.appendChild(document.createTextNode(' ' + ch.value));
-        row.appendChild(tag);
+        for (var ci = 0; ci < rev.changes.length; ci++) {
+          var ch = rev.changes[ci];
+          var tag = document.createElement('span');
+          tag.className = P + '-tag';
+          var lbl = document.createElement('span');
+          lbl.className = P + '-tag-label';
+          lbl.textContent = ch.label + ':';
+          tag.appendChild(lbl);
+          tag.appendChild(document.createTextNode(' ' + ch.value));
+          row.appendChild(tag);
+        }
+
+        if (!rev.changes.length) {
+          var empty = document.createElement('span');
+          empty.className = P + '-tag';
+          empty.textContent = '(no field changes)';
+          row.appendChild(empty);
+        }
+
+        item.appendChild(row);
       }
-
-      if (!rev.changes.length) {
-        var empty = document.createElement('span');
-        empty.className = P + '-tag';
-        empty.textContent = '(no field changes)';
-        row.appendChild(empty);
-      }
-
-      item.appendChild(row);
 
       if (rev.editHref) {
         var link = document.createElement('a');
