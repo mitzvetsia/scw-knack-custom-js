@@ -11417,6 +11417,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   /**
    * Load records from a single view. Tries Knack.models first,
    * falls back to REST API with rows_per_page=1000.
+   * If the API also returns 0 records, re-checks the model once after
+   * a short delay (Knack may still be loading the view).
    * Returns a jQuery Deferred resolving to an array of records.
    */
   function loadView(viewKey) {
@@ -11431,11 +11433,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return $.Deferred().resolve(records).promise();
     }
 
+    // Model empty — try API, then retry model once if API also empty
     return fetchFromApi(viewKey).then(function (recs) {
-      if (CFG.debug) {
-        console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+      if (recs.length > 0) {
+        if (CFG.debug) console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+        return recs;
       }
-      return recs;
+
+      // API returned 0 — the view may not be server-ready yet.
+      // Wait 1.5 s and re-check the model (Knack may have rendered it by now).
+      if (CFG.debug) console.log('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
+      var retry = $.Deferred();
+      setTimeout(function () {
+        var m2 = findModel(viewKey);
+        var r2 = extractRecords(m2);
+        if (r2.length > 0) {
+          if (CFG.debug) console.log('[BidReview] Retry model from ' + viewKey + ':', r2.length);
+          retry.resolve(r2);
+          return;
+        }
+        // Last resort: one more API attempt
+        fetchFromApi(viewKey).then(function (r3) {
+          if (CFG.debug) console.log('[BidReview] Retry API from ' + viewKey + ':', r3.length);
+          retry.resolve(r3);
+        });
+      }, 1500);
+      return retry.promise();
     });
   }
 
@@ -15226,24 +15249,94 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return true; // already at 1000 (or no dropdown found)
   }
 
+  // ── multi-view readiness tracking ────────────────────────────
+  //
+  // The matrix depends on three Knack views:
+  //   view_3680  — bid records (primary)
+  //   view_3728  — unbid SOW items (noBid rows)
+  //   view_3573  — bid packages (PDF links)
+  //
+  // On first page load the secondary views may not have rendered
+  // when the primary fires.  We track all three and only run the
+  // pipeline once all are ready — or after a fallback timeout so
+  // the grid still appears (the API adapter retries for missing data).
+
+  var _viewsReady      = {};
+  var _pipelineQueued  = false;
+  var _fallbackTimer   = null;
+
+  function allViewsReady() {
+    if (!_viewsReady[CFG.viewKey]) return false;
+    if (!_viewsReady[CFG.sowItemsViewKey]) return false;
+    if (CFG.bidPackagesViewKey && !_viewsReady[CFG.bidPackagesViewKey]) return false;
+    return true;
+  }
+
+  function schedulePipeline() {
+    if (_pipelineQueued) return;
+    _pipelineQueued = true;
+    if (_fallbackTimer) { clearTimeout(_fallbackTimer); _fallbackTimer = null; }
+    setTimeout(function () {
+      _pipelineQueued = false;
+      runPipeline();
+    }, CFG.renderDelay);
+  }
+
+  function checkViewsAndRun() {
+    if (!_viewsReady[CFG.viewKey]) return;   // primary must be ready
+    if (allViewsReady()) {
+      schedulePipeline();
+    }
+  }
+
   // ── init on view render ─────────────────────────────────────
 
   function init() {
     ns.injectStyles();
 
+    // Primary view — bid records
     SCW.onViewRender(CFG.viewKey, function () {
-      // Force both data views to 1000 per page.
-      // If either needed changing, Knack re-renders the view and
-      // this handler will fire again with full data in the cache.
-      var bidReady = ensureFullPage(CFG.viewKey);
+      var ready = ensureFullPage(CFG.viewKey);
+      if (!ready) return;    // Knack will re-render with full data
+
+      // Kick SOW items pagination if already visible (belt-and-suspenders)
       ensureFullPage(CFG.sowItemsViewKey);
 
-      if (!bidReady) return; // wait for re-render with full data
+      _viewsReady[CFG.viewKey] = true;
+      checkViewsAndRun();
 
-      setTimeout(function () {
-        runPipeline();
-      }, CFG.renderDelay);
+      // Fallback: if secondary views haven't rendered within 3 s,
+      // run anyway — loadRawData will use the API adapter for missing data.
+      if (!_fallbackTimer && !allViewsReady()) {
+        _fallbackTimer = setTimeout(function () {
+          _fallbackTimer = null;
+          if (!allViewsReady()) {
+            if (CFG.debug) {
+              console.log('[BidReview] Timeout waiting for:',
+                !_viewsReady[CFG.sowItemsViewKey] ? CFG.sowItemsViewKey : '',
+                CFG.bidPackagesViewKey && !_viewsReady[CFG.bidPackagesViewKey] ? CFG.bidPackagesViewKey : '');
+            }
+            schedulePipeline();
+          }
+        }, 3000);
+      }
     }, CFG.eventNs);
+
+    // SOW items view — unbid rows (noBid)
+    SCW.onViewRender(CFG.sowItemsViewKey, function () {
+      var ready = ensureFullPage(CFG.sowItemsViewKey);
+      if (!ready) return;
+      _viewsReady[CFG.sowItemsViewKey] = true;
+      checkViewsAndRun();
+    }, CFG.eventNs + 'Sow');
+
+    // Bid packages view — PDF links
+    if (CFG.bidPackagesViewKey) {
+      SCW.onViewRender(CFG.bidPackagesViewKey, function () {
+        _viewsReady[CFG.bidPackagesViewKey] = true;
+        checkViewsAndRun();
+      }, CFG.eventNs + 'Pkg');
+    }
   }
 
   init();
