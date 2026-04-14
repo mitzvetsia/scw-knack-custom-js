@@ -30309,7 +30309,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function getSurveyItemId(record) {
     var raw = record[CFG.surveyItemField + '_raw'];
     if (Array.isArray(raw) && raw.length && raw[0].id) return raw[0].id;
-    // Fallback: parse connection HTML
+    // Fallback: parse connection HTML — look for 24-char hex in class attr
     var html = record[CFG.surveyItemField];
     if (typeof html === 'string') {
       var m = html.match(/class="([0-9a-f]{24})"/i);
@@ -30333,17 +30333,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function buildRevisionMap() {
     var model   = findModel(CFG.revisionView);
     var records = extractRecords(model);
+    console.log('[BidRevInject] Model records:', records.length);
 
     // Fallback: scrape from DOM if model is empty
     if (!records.length) {
       records = scrapeFromDom();
+      console.log('[BidRevInject] DOM-scraped records:', records.length);
     }
 
     var map = {};
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       var siId = getSurveyItemId(rec);
-      if (!siId) continue;
+      if (!siId) {
+        console.log('[BidRevInject] No survey item ID for record', rec.id);
+        continue;
+      }
 
       // Build change summary
       var changes = [];
@@ -30370,15 +30375,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!map[siId]) map[siId] = [];
       map[siId].push({ id: rec.id, editHref: editHref, changes: changes });
     }
+    console.log('[BidRevInject] Revision map:', Object.keys(map).length, 'survey items with revisions');
     return map;
   }
 
   /**
    * Fallback: scrape records from the view_3782 DOM table.
+   * Works even when view_3782 is display:none — elements still exist in DOM.
    */
   function scrapeFromDom() {
     var table = document.querySelector('#' + CFG.revisionView + ' table.kn-table-table');
-    if (!table) return [];
+    if (!table) { console.log('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
     var rows = table.querySelectorAll('tbody > tr');
     var records = [];
     for (var i = 0; i < rows.length; i++) {
@@ -30410,9 +30417,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /**
    * Find the worksheet card wrapper for a given record ID in the target view.
    * The original <tr> has id=recordId; the worksheet row (scw-ws-row) follows it.
+   * Uses attribute selector instead of #id (Knack IDs start with digits, invalid for #).
    */
   function findCardForRecord(viewEl, recordId) {
-    var origTr = viewEl.querySelector('tr#' + recordId);
+    var origTr = viewEl.querySelector('tr[id="' + recordId + '"]');
     if (!origTr) return null;
     var wsTr = origTr.nextElementSibling;
     if (!wsTr || !wsTr.classList.contains('scw-ws-row')) return null;
@@ -30489,16 +30497,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    */
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
-    if (!viewEl) return;
+    if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+
+    // Verify the device-worksheet transform has run
+    var wsRows = viewEl.querySelectorAll('tr.scw-ws-row');
+    if (!wsRows.length) {
+      console.log('[BidRevInject] No scw-ws-row found in', viewId, '— transform may not have run yet, retrying in 500ms');
+      setTimeout(function () { inject(viewId); }, 500);
+      return;
+    }
 
     var revMap = buildRevisionMap();
     var siIds = Object.keys(revMap);
-    if (!siIds.length) return;
+    if (!siIds.length) { console.log('[BidRevInject] No revisions to inject'); return; }
 
+    var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
       var card = findCardForRecord(viewEl, siId);
-      if (!card) continue;
+      if (!card) {
+        console.log('[BidRevInject] No card found for survey item', siId);
+        continue;
+      }
       if (card.getAttribute(INJECTED)) continue;
       card.setAttribute(INJECTED, '1');
 
@@ -30517,7 +30537,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       } else {
         card.appendChild(makeStrip(revisions));
       }
+      injected++;
     }
+    console.log('[BidRevInject] Injected revisions onto', injected, 'cards in', viewId);
   }
 
   // ── EVENT BINDING ───────────────────────────────────────
@@ -30530,12 +30552,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function onViewReady(viewId) {
     _ready[viewId] = true;
+    console.log('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
     // Only inject once the revision view AND at least one target have rendered
     if (!_ready[CFG.revisionView]) return;
     for (var i = 0; i < CFG.targetViews.length; i++) {
       if (_ready[CFG.targetViews[i]]) {
-        // Small delay to let device-worksheet finish its transform
-        setTimeout(function (tid) { inject(tid); }, 200, CFG.targetViews[i]);
+        // Delay to let device-worksheet finish its 150ms transform
+        setTimeout(function (tid) { inject(tid); }, 350, CFG.targetViews[i]);
       }
     }
   }
@@ -30564,7 +30587,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // Clear injected flags so we re-inject
         var cards = document.querySelectorAll('#' + tv + ' [' + INJECTED + ']');
         for (var ci = 0; ci < cards.length; ci++) cards[ci].removeAttribute(INJECTED);
-        setTimeout(function () { inject(tv); }, 300);
+        setTimeout(function () { inject(tv); }, 400);
       });
     })(CFG.targetViews[ti2]);
   }
