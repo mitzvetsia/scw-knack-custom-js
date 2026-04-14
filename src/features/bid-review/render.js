@@ -590,10 +590,11 @@
       exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
       dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
       conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
+      mdfIdf:     norm(row.mdfIdf)      !== norm(cell.bidMdfIdf),
     };
 
     m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
-            m.plenum || m.exterior || m.dropLength || m.conduit;
+            m.plenum || m.exterior || m.dropLength || m.conduit || m.mdfIdf;
     return m;
   }
 
@@ -644,7 +645,8 @@
     // Aggregate: which fields differ in ANY package (for SOW detail highlight)
     var sowDiffs = { any: false, product: false, laborDesc: false, fee: false,
                      cabling: false, connDevice: false,
-                     plenum: false, exterior: false, dropLength: false, conduit: false };
+                     plenum: false, exterior: false, dropLength: false, conduit: false,
+                     mdfIdf: false };
 
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgId   = packages[mi].id;
@@ -663,6 +665,7 @@
         if (m.exterior)   sowDiffs.exterior   = true;
         if (m.dropLength) sowDiffs.dropLength = true;
         if (m.conduit)    sowDiffs.conduit    = true;
+        if (m.mdfIdf)     sowDiffs.mdfIdf     = true;
       }
     }
 

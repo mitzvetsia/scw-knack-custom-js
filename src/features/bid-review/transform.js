@@ -267,6 +267,8 @@
           dropNumber:      raw(rec, FK.dropNumber),
           limitQtyOne:     bool(rec, FK.limitQtyOne),
           mapConnections:  bool(rec, FK.bidMapConn),
+          bidMdfIdf:        connectionLabel(rec, FK.mdfIdf),
+          bidMdfIdfIds:    connectionIdsAll(rec, FK.mdfIdf),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
@@ -282,6 +284,7 @@
       proposalBucket:  connectionLabel(meta, FK.proposalBucket),
       proposalBucketId: connectionId(meta, FK.proposalBucket),
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
+      mdfIdfIds:       connectionIdsAll(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
       sowQty:          num(meta, FK.sowQty),
@@ -498,6 +501,7 @@
           proposalBucket:  connectionLabel(rec, SFK.proposalBucket),
           proposalBucketId: connectionId(rec, SFK.proposalBucket),
           mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
+          mdfIdfIds:       connectionIdsAll(rec, SFK.mdfIdf),
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
           sowQty:          num(rec, SFK.qty),

@@ -46,6 +46,7 @@
     { key: 'bidConduit',      label: 'Conduit',            type: 'text',    visKey: 'cabling' },
     { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
     { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling' },
+    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connection: 'field_2375', idsKey: 'bidMdfIdfIds', addable: true },
     { key: 'notes',           label: 'Survey Notes',       type: 'text',    multiline: true },
   ];
 
@@ -1446,21 +1447,51 @@
       bidExterior:     params.sowExterior || '',
       bidDropLength:   params.sowDropLength || '',
       bidConduit:      params.sowConduit || '',
+      bidMdfIdf:       params.sowMdfIdf || '',
+      bidMdfIdfIds:    params.sowMdfIdfIds || [],
     };
 
-    // Use FIELD_DEFS with visKey filtering — skip connection fields for Add
+    // Connection options for addable connection fields (e.g. MDF/IDF)
+    var addConnOpts = params.connOptions || {};
+
+    // Use FIELD_DEFS with visKey filtering — skip most connection fields for Add
     var inputs = {};
     for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
       var fd = FIELD_DEFS[fi];
-      // Skip connection fields in Add modal — no existing bid record to connect from
-      if (fd.type === 'connection') continue;
+      // Skip connection fields unless marked addable
+      if (fd.type === 'connection' && !fd.addable) continue;
       // Skip hidden fields based on visibility rules
       if (fd.visKey && !vis[fd.visKey]) continue;
 
       var fRow = el('div', 'scw-bid-cr-modal__field');
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
       var inp;
-      if (fd.multiline) {
+      if (fd.type === 'connection' && fd.addable) {
+        // Connection checkbox list for addable fields
+        var addRecs = addConnOpts[fd.key] || [];
+        var addPrefillIds = prefill[fd.key + 'Ids'] || [];
+        inp = el('div', 'scw-bid-cr-modal__checkbox-list');
+        if (!addRecs.length) {
+          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
+        }
+        for (var ari = 0; ari < addRecs.length; ari++) {
+          var arec = addRecs[ari];
+          var aItem = el('div', 'scw-bid-cr-modal__checkbox-item');
+          var aCb = document.createElement('input');
+          aCb.type = 'checkbox';
+          aCb.value = arec.id;
+          aCb.id = 'scw-cr-add-cb-' + fd.key + '-' + ari;
+          for (var api = 0; api < addPrefillIds.length; api++) {
+            if (addPrefillIds[api] === arec.id) { aCb.checked = true; break; }
+          }
+          aItem.appendChild(aCb);
+          var aCbLabel = document.createElement('label');
+          aCbLabel.setAttribute('for', aCb.id);
+          aCbLabel.textContent = arec.identifier || arec.id;
+          aItem.appendChild(aCbLabel);
+          inp.appendChild(aItem);
+        }
+      } else if (fd.multiline) {
         inp = document.createElement('textarea');
         inp.className = 'scw-bid-cr-modal__textarea';
         inp.rows = 3;
@@ -1513,7 +1544,23 @@
       }
       var requested = {};
       for (var k in inputs) {
-        var v = (inputs[k].value || '').trim();
+        var inpEl = inputs[k];
+        // Connection checkbox list
+        if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__checkbox-list')) {
+          var addCbs = inpEl.querySelectorAll('input[type="checkbox"]:checked');
+          if (addCbs.length) {
+            var addSelIds = [], addLabels = [];
+            for (var asi = 0; asi < addCbs.length; asi++) {
+              addSelIds.push(addCbs[asi].value);
+              var addCbLbl = inpEl.querySelector('label[for="' + addCbs[asi].id + '"]');
+              if (addCbLbl) addLabels.push(addCbLbl.textContent);
+            }
+            requested[k] = addLabels.join(', ');
+            requested[k + 'Ids'] = addSelIds;
+          }
+          continue;
+        }
+        var v = (inpEl.value || '').trim();
         if (v) requested[k] = k === 'qty' || k === 'rate' ? parseFloat(v) : v;
       }
       // Use the noBid row ID if available, else generate a pseudo-ID

@@ -20,6 +20,7 @@
 
   // Current state — kept in closure for the click handler
   var _state = null;
+  var _mdfIdfRecords = [];  // MDF/IDF location records from view_3822
 
   // ── load → transform → render pipeline ──────────────────────
 
@@ -28,11 +29,13 @@
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',
           _state.sowGrids.length, 'SOW grids,',
-          _state.allPackages.length, 'packages');
+          _state.allPackages.length, 'packages,',
+          _mdfIdfRecords.length, 'MDF/IDF records');
       }
 
       var mount = ns.renderMatrix(_state);
@@ -57,6 +60,7 @@
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
     }).fail(function (err) {
@@ -136,6 +140,36 @@
       if (grid.packages[i].id === pkgId) return grid.packages[i].name;
     }
     return pkgId;
+  }
+
+  /**
+   * Build MDF/IDF dropdown options from view_3822 records.
+   * Each record becomes { id, identifier }.
+   */
+  function buildMdfIdfOptions() {
+    var opts = [];
+    var seen = {};
+    for (var i = 0; i < _mdfIdfRecords.length; i++) {
+      var rec = _mdfIdfRecords[i];
+      if (!rec.id || seen[rec.id]) continue;
+      seen[rec.id] = true;
+      // Try Knack's identifier property, then first non-empty string field
+      var name = rec.identifier || '';
+      if (!name) {
+        var keys = Object.keys(rec);
+        for (var k = 0; k < keys.length; k++) {
+          if (keys[k] === 'id' || keys[k].indexOf('_raw') !== -1) continue;
+          var v = rec[keys[k]];
+          if (typeof v === 'string' && v.trim()) {
+            name = v.replace(/<[^>]*>/g, '').trim();
+            break;
+          }
+        }
+      }
+      opts.push({ id: rec.id, identifier: name || rec.id });
+    }
+    opts.sort(function (a, b) { return a.identifier.localeCompare(b.identifier); });
+    return opts;
   }
 
   function findPackageSurveyId(grid, pkgId) {
@@ -442,7 +476,7 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
-      connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts },
+      connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
       visibility: {
         qty:        button.getAttribute('data-vis-qty') === '1',
@@ -538,6 +572,9 @@
         sowExterior:      row.sowExterior,
         sowDropLength:    row.sowDropLength,
         sowConduit:       row.sowConduit,
+        sowMdfIdf:        row.mdfIdf || '',
+        sowMdfIdfIds:     row.mdfIdfIds || [],
+        connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
         visibility:       vis,
       });
     } else {

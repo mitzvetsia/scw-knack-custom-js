@@ -152,14 +152,18 @@
     var pkgPromise     = CFG.bidPackagesViewKey
                            ? loadView(CFG.bidPackagesViewKey)
                            : $.Deferred().resolve([]).promise();
+    var mdfIdfPromise  = CFG.mdfIdfViewKey
+                           ? loadView(CFG.mdfIdfViewKey)
+                           : $.Deferred().resolve([]).promise();
 
-    return $.when(bidPromise, sowItemPromise, pkgPromise).then(function (bidRecs, sowRecs, pkgRecs) {
+    return $.when(bidPromise, sowItemPromise, pkgPromise, mdfIdfPromise).then(function (bidRecs, sowRecs, pkgRecs, mdfRecs) {
       if (CFG.debug) {
         console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
                     sowRecs.length, 'unbid SOW items,',
-                    pkgRecs.length, 'bid packages');
+                    pkgRecs.length, 'bid packages,',
+                    mdfRecs.length, 'MDF/IDF records');
       }
-      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs };
+      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs, mdfIdfRecords: mdfRecs };
     });
   };
 

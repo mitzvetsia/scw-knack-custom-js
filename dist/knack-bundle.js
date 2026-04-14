@@ -10419,6 +10419,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     viewKey:           'view_3680',
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
+    mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -11475,14 +11476,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var pkgPromise     = CFG.bidPackagesViewKey
                            ? loadView(CFG.bidPackagesViewKey)
                            : $.Deferred().resolve([]).promise();
+    var mdfIdfPromise  = CFG.mdfIdfViewKey
+                           ? loadView(CFG.mdfIdfViewKey)
+                           : $.Deferred().resolve([]).promise();
 
-    return $.when(bidPromise, sowItemPromise, pkgPromise).then(function (bidRecs, sowRecs, pkgRecs) {
+    return $.when(bidPromise, sowItemPromise, pkgPromise, mdfIdfPromise).then(function (bidRecs, sowRecs, pkgRecs, mdfRecs) {
       if (CFG.debug) {
         console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
                     sowRecs.length, 'unbid SOW items,',
-                    pkgRecs.length, 'bid packages');
+                    pkgRecs.length, 'bid packages,',
+                    mdfRecs.length, 'MDF/IDF records');
       }
-      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs };
+      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs, mdfIdfRecords: mdfRecs };
     });
   };
 
@@ -11756,6 +11761,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           dropNumber:      raw(rec, FK.dropNumber),
           limitQtyOne:     bool(rec, FK.limitQtyOne),
           mapConnections:  bool(rec, FK.bidMapConn),
+          bidMdfIdf:        connectionLabel(rec, FK.mdfIdf),
+          bidMdfIdfIds:    connectionIdsAll(rec, FK.mdfIdf),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
@@ -11771,6 +11778,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       proposalBucket:  connectionLabel(meta, FK.proposalBucket),
       proposalBucketId: connectionId(meta, FK.proposalBucket),
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
+      mdfIdfIds:       connectionIdsAll(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
       sowQty:          num(meta, FK.sowQty),
@@ -11987,6 +11995,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           proposalBucket:  connectionLabel(rec, SFK.proposalBucket),
           proposalBucketId: connectionId(rec, SFK.proposalBucket),
           mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
+          mdfIdfIds:       connectionIdsAll(rec, SFK.mdfIdf),
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
           sowQty:          num(rec, SFK.qty),
@@ -12813,10 +12822,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       exterior:   cablingVisible  ? norm(row.sowExterior)     !== norm(cell.bidExterior)      : false,
       dropLength: cablingVisible  ? norm(row.sowDropLength)   !== norm(cell.bidDropLength)    : false,
       conduit:    cablingVisible  ? norm(row.sowConduit)      !== norm(cell.bidConduit)       : false,
+      mdfIdf:     norm(row.mdfIdf)      !== norm(cell.bidMdfIdf),
     };
 
     m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
-            m.plenum || m.exterior || m.dropLength || m.conduit;
+            m.plenum || m.exterior || m.dropLength || m.conduit || m.mdfIdf;
     return m;
   }
 
@@ -12867,7 +12877,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Aggregate: which fields differ in ANY package (for SOW detail highlight)
     var sowDiffs = { any: false, product: false, laborDesc: false, fee: false,
                      cabling: false, connDevice: false,
-                     plenum: false, exterior: false, dropLength: false, conduit: false };
+                     plenum: false, exterior: false, dropLength: false, conduit: false,
+                     mdfIdf: false };
 
     for (var mi = 0; mi < packages.length; mi++) {
       var pkgId   = packages[mi].id;
@@ -12886,6 +12897,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (m.exterior)   sowDiffs.exterior   = true;
         if (m.dropLength) sowDiffs.dropLength = true;
         if (m.conduit)    sowDiffs.conduit    = true;
+        if (m.mdfIdf)     sowDiffs.mdfIdf     = true;
       }
     }
 
@@ -13461,6 +13473,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     { key: 'bidConduit',      label: 'Conduit',            type: 'text',    visKey: 'cabling' },
     { key: 'bidConnDevice',   label: 'Connected Devices',  type: 'connection', connection: 'field_2380', idsKey: 'bidConnDeviceIds', visKey: 'connDevice' },
     { key: 'bidConnTo',       label: 'Connected To',       type: 'connection', connection: 'field_2381', idsKey: 'bidConnToIds', visKey: 'cabling' },
+    { key: 'bidMdfIdf',       label: 'MDF/IDF',            type: 'connection', connection: 'field_2375', idsKey: 'bidMdfIdfIds', addable: true },
     { key: 'notes',           label: 'Survey Notes',       type: 'text',    multiline: true },
   ];
 
@@ -14861,21 +14874,51 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       bidExterior:     params.sowExterior || '',
       bidDropLength:   params.sowDropLength || '',
       bidConduit:      params.sowConduit || '',
+      bidMdfIdf:       params.sowMdfIdf || '',
+      bidMdfIdfIds:    params.sowMdfIdfIds || [],
     };
 
-    // Use FIELD_DEFS with visKey filtering — skip connection fields for Add
+    // Connection options for addable connection fields (e.g. MDF/IDF)
+    var addConnOpts = params.connOptions || {};
+
+    // Use FIELD_DEFS with visKey filtering — skip most connection fields for Add
     var inputs = {};
     for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
       var fd = FIELD_DEFS[fi];
-      // Skip connection fields in Add modal — no existing bid record to connect from
-      if (fd.type === 'connection') continue;
+      // Skip connection fields unless marked addable
+      if (fd.type === 'connection' && !fd.addable) continue;
       // Skip hidden fields based on visibility rules
       if (fd.visKey && !vis[fd.visKey]) continue;
 
       var fRow = el('div', 'scw-bid-cr-modal__field');
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
       var inp;
-      if (fd.multiline) {
+      if (fd.type === 'connection' && fd.addable) {
+        // Connection checkbox list for addable fields
+        var addRecs = addConnOpts[fd.key] || [];
+        var addPrefillIds = prefill[fd.key + 'Ids'] || [];
+        inp = el('div', 'scw-bid-cr-modal__checkbox-list');
+        if (!addRecs.length) {
+          inp.appendChild(el('span', 'scw-bid-cr-modal__checkbox-empty', 'No available records'));
+        }
+        for (var ari = 0; ari < addRecs.length; ari++) {
+          var arec = addRecs[ari];
+          var aItem = el('div', 'scw-bid-cr-modal__checkbox-item');
+          var aCb = document.createElement('input');
+          aCb.type = 'checkbox';
+          aCb.value = arec.id;
+          aCb.id = 'scw-cr-add-cb-' + fd.key + '-' + ari;
+          for (var api = 0; api < addPrefillIds.length; api++) {
+            if (addPrefillIds[api] === arec.id) { aCb.checked = true; break; }
+          }
+          aItem.appendChild(aCb);
+          var aCbLabel = document.createElement('label');
+          aCbLabel.setAttribute('for', aCb.id);
+          aCbLabel.textContent = arec.identifier || arec.id;
+          aItem.appendChild(aCbLabel);
+          inp.appendChild(aItem);
+        }
+      } else if (fd.multiline) {
         inp = document.createElement('textarea');
         inp.className = 'scw-bid-cr-modal__textarea';
         inp.rows = 3;
@@ -14928,7 +14971,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
       var requested = {};
       for (var k in inputs) {
-        var v = (inputs[k].value || '').trim();
+        var inpEl = inputs[k];
+        // Connection checkbox list
+        if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__checkbox-list')) {
+          var addCbs = inpEl.querySelectorAll('input[type="checkbox"]:checked');
+          if (addCbs.length) {
+            var addSelIds = [], addLabels = [];
+            for (var asi = 0; asi < addCbs.length; asi++) {
+              addSelIds.push(addCbs[asi].value);
+              var addCbLbl = inpEl.querySelector('label[for="' + addCbs[asi].id + '"]');
+              if (addCbLbl) addLabels.push(addCbLbl.textContent);
+            }
+            requested[k] = addLabels.join(', ');
+            requested[k + 'Ids'] = addSelIds;
+          }
+          continue;
+        }
+        var v = (inpEl.value || '').trim();
         if (v) requested[k] = k === 'qty' || k === 'rate' ? parseFloat(v) : v;
       }
       // Use the noBid row ID if available, else generate a pseudo-ID
@@ -14995,6 +15054,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // Current state — kept in closure for the click handler
   var _state = null;
+  var _mdfIdfRecords = [];  // MDF/IDF location records from view_3822
 
   // ── load → transform → render pipeline ──────────────────────
 
@@ -15003,11 +15063,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
         console.log('[BidReview] State built:',
           _state.sowGrids.length, 'SOW grids,',
-          _state.allPackages.length, 'packages');
+          _state.allPackages.length, 'packages,',
+          _mdfIdfRecords.length, 'MDF/IDF records');
       }
 
       var mount = ns.renderMatrix(_state);
@@ -15032,6 +15094,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
     }).fail(function (err) {
@@ -15111,6 +15174,36 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (grid.packages[i].id === pkgId) return grid.packages[i].name;
     }
     return pkgId;
+  }
+
+  /**
+   * Build MDF/IDF dropdown options from view_3822 records.
+   * Each record becomes { id, identifier }.
+   */
+  function buildMdfIdfOptions() {
+    var opts = [];
+    var seen = {};
+    for (var i = 0; i < _mdfIdfRecords.length; i++) {
+      var rec = _mdfIdfRecords[i];
+      if (!rec.id || seen[rec.id]) continue;
+      seen[rec.id] = true;
+      // Try Knack's identifier property, then first non-empty string field
+      var name = rec.identifier || '';
+      if (!name) {
+        var keys = Object.keys(rec);
+        for (var k = 0; k < keys.length; k++) {
+          if (keys[k] === 'id' || keys[k].indexOf('_raw') !== -1) continue;
+          var v = rec[keys[k]];
+          if (typeof v === 'string' && v.trim()) {
+            name = v.replace(/<[^>]*>/g, '').trim();
+            break;
+          }
+        }
+      }
+      opts.push({ id: rec.id, identifier: name || rec.id });
+    }
+    opts.sort(function (a, b) { return a.identifier.localeCompare(b.identifier); });
+    return opts;
   }
 
   function findPackageSurveyId(grid, pkgId) {
@@ -15417,7 +15510,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
-      connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts },
+      connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
       visibility: {
         qty:        button.getAttribute('data-vis-qty') === '1',
@@ -15513,6 +15606,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         sowExterior:      row.sowExterior,
         sowDropLength:    row.sowDropLength,
         sowConduit:       row.sowConduit,
+        sowMdfIdf:        row.mdfIdf || '',
+        sowMdfIdfIds:     row.mdfIdfIds || [],
+        connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
         visibility:       vis,
       });
     } else {

@@ -16,6 +16,7 @@
     viewKey:           'view_3680',
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
+    mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
