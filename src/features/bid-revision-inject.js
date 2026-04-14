@@ -358,13 +358,18 @@
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
-
-      // Each survey item record can be a Connected Device or Connected To target.
       var label = stripHtml(rec.field_2365 || rec.field_2379 || '') || rec.id;
-      if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
-      if (!toMap[rec.id])  toMap[rec.id]  = { id: rec.id, identifier: label };
 
-      // Also extract existing connections so their targets are available as options
+      // All survey items are potential Connected Device targets
+      if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
+
+      // Connected To: only items where field_2374 (bidMapConn) = Yes
+      var mapConn = stripHtml(rec.field_2374 || '');
+      if (/^yes$/i.test(mapConn) && !toMap[rec.id]) {
+        toMap[rec.id] = { id: rec.id, identifier: label };
+      }
+
+      // Also include existing connection targets as options
       var devRaw = rec['field_2380_raw'];
       if (Array.isArray(devRaw)) {
         for (var d = 0; d < devRaw.length; d++) {

@@ -1316,6 +1316,7 @@
       if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
       if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
       entry.sortOrder = it.sortOrder != null ? it.sortOrder : 0;
+      if (it.sowMapConn)       entry.sowMapConn        = it.sowMapConn;
 
       // Snapshot of current item data (before changes)
       entry.current = it.current || {};
@@ -1780,6 +1781,7 @@
         proposalBucket:   params.proposalBucket || '',
         proposalBucketId: params.proposalBucketId || '',
         sortOrder:        params.sortOrder || 0,
+        sowMapConn:       params.sowMapConn || '',
         current:      {},
         requested:    requested,
         changeNotes:  ta.value.trim(),
