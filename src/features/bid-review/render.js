@@ -375,22 +375,29 @@
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
 
       if (!noSubBid) {
-        // Show pending card FIRST (above buttons)
         if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+          // Clickable card replaces the "Edit Change" button
+          var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
+          card.setAttribute('data-action', 'cell_request_change');
+          card.setAttribute('data-row-id', row.id);
+          card.setAttribute('data-package-id', cpkg.id);
+          card.setAttribute('data-sow-id', sowId);
+          card.setAttribute('data-vis-qty', visibility.qty ? '1' : '0');
+          card.setAttribute('data-vis-cabling', visibility.cabling ? '1' : '0');
+          card.setAttribute('data-vis-conn', visibility.connDevice ? '1' : '0');
+          wrap.appendChild(card);
+        } else {
+          // No pending change — show "Request Change" button
+          wrap.appendChild(btn('Request Change \u2014 ' + cpkg.name, 'change-req sm', {
+            'data-action':      'cell_request_change',
+            'data-row-id':      row.id,
+            'data-package-id':  cpkg.id,
+            'data-sow-id':      sowId,
+            'data-vis-qty':     visibility.qty ? '1' : '0',
+            'data-vis-cabling': visibility.cabling ? '1' : '0',
+            'data-vis-conn':    visibility.connDevice ? '1' : '0',
+          }));
         }
-
-        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-        wrap.appendChild(btn(crLabel, crMod, {
-          'data-action':      'cell_request_change',
-          'data-row-id':      row.id,
-          'data-package-id':  cpkg.id,
-          'data-sow-id':      sowId,
-          'data-vis-qty':     visibility.qty ? '1' : '0',
-          'data-vis-cabling': visibility.cabling ? '1' : '0',
-          'data-vis-conn':    visibility.connDevice ? '1' : '0',
-        }));
 
         // "Remove from Bid" button (not on items already marked for removal)
         if (!pendingItem || !pendingItem.removeFromBid) {

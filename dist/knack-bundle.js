@@ -11064,7 +11064,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  margin-top: 2px; margin-bottom: 2px;',
       '  font-size: 10px;',
       '  line-height: 1.35;',
+      '  cursor: pointer;',
+      '  transition: box-shadow .15s;',
       '}',
+      '.scw-bid-cr-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.12); }',
       '.scw-bid-cr-card--removal {',
       '  background: #fef2f2;',
       '  border-color: #fca5a5;',
@@ -12427,22 +12430,29 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
 
       if (!noSubBid) {
-        // Show pending card FIRST (above buttons)
         if (pendingItem && ns.changeRequests && ns.changeRequests.buildSummaryCard) {
-          wrap.appendChild(ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id));
+          // Clickable card replaces the "Edit Change" button
+          var card = ns.changeRequests.buildSummaryCard(pendingItem, cpkg.id);
+          card.setAttribute('data-action', 'cell_request_change');
+          card.setAttribute('data-row-id', row.id);
+          card.setAttribute('data-package-id', cpkg.id);
+          card.setAttribute('data-sow-id', sowId);
+          card.setAttribute('data-vis-qty', visibility.qty ? '1' : '0');
+          card.setAttribute('data-vis-cabling', visibility.cabling ? '1' : '0');
+          card.setAttribute('data-vis-conn', visibility.connDevice ? '1' : '0');
+          wrap.appendChild(card);
+        } else {
+          // No pending change — show "Request Change" button
+          wrap.appendChild(btn('Request Change \u2014 ' + cpkg.name, 'change-req sm', {
+            'data-action':      'cell_request_change',
+            'data-row-id':      row.id,
+            'data-package-id':  cpkg.id,
+            'data-sow-id':      sowId,
+            'data-vis-qty':     visibility.qty ? '1' : '0',
+            'data-vis-cabling': visibility.cabling ? '1' : '0',
+            'data-vis-conn':    visibility.connDevice ? '1' : '0',
+          }));
         }
-
-        var crLabel = pendingItem ? ('\u270E Edit Change \u2014 ' + cpkg.name) : ('Request Change \u2014 ' + cpkg.name);
-        var crMod   = pendingItem ? 'change-edit sm' : 'change-req sm';
-        wrap.appendChild(btn(crLabel, crMod, {
-          'data-action':      'cell_request_change',
-          'data-row-id':      row.id,
-          'data-package-id':  cpkg.id,
-          'data-sow-id':      sowId,
-          'data-vis-qty':     visibility.qty ? '1' : '0',
-          'data-vis-cabling': visibility.cabling ? '1' : '0',
-          'data-vis-conn':    visibility.connDevice ? '1' : '0',
-        }));
 
         // "Remove from Bid" button (not on items already marked for removal)
         if (!pendingItem || !pendingItem.removeFromBid) {
@@ -13469,7 +13479,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (fd.type === 'connection') {
         // Check if this connection field is locked by reciprocal logic
         var connLocked = existing && (
-          existing.reciprocal ||
+          existing.reciprocalSource ||
           (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, fd.key))
         );
 
@@ -13567,7 +13577,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (d.type === 'connection') {
           // If locked by reciprocal, preserve existing values unchanged
           var isLocked = existing && (
-            existing.reciprocal ||
+            existing.reciprocalSource ||
             (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, d.key))
           );
           if (isLocked && existing.requested[d.key + 'Ids']) {
@@ -13622,24 +13632,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       // Clear old reciprocals from this source before saving
-      clearReciprocalsFromSource(params.rowId);
+      // (only if this is NOT a reciprocal item — reciprocals don't create their own reciprocals)
+      var isRecipItem = existing && existing.reciprocalSource;
+      if (!isRecipItem) {
+        clearReciprocalsFromSource(params.rowId);
+      }
 
       var newItem = {
         rowId: params.rowId, bidRecordId: cell.id,
         displayLabel: params.displayLabel, productName: cell.productName,
         current: current, requested: requested, changeNotes: cn,
       };
-      // Preserve reciprocal metadata so cascade-delete from original source still works
+      // Preserve ALL reciprocal metadata so cascade-delete + locking still works
+      if (existing && existing.reciprocal) newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
 
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem);
 
-      // Reciprocal: if either connection field changed, mirror the
-      // add/remove on the other side (2380 ↔ 2381).
-      var recipCount = createReciprocalChanges(params, cell, requested);
-      if (recipCount) {
-        ns.renderToast(recipCount + ' reciprocal change(s) created', 'info');
+      // Only run reciprocal logic for source items (not reciprocal items).
+      // Locked connection fields on reciprocal items are already managed
+      // by the source — re-deriving would create circular reciprocals.
+      if (!isRecipItem) {
+        var recipCount = createReciprocalChanges(params, cell, requested);
+        if (recipCount) {
+          ns.renderToast(recipCount + ' reciprocal change(s) created', 'info');
+        }
       }
 
       closeModal();
@@ -13903,15 +13921,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function buildSummaryCard(item, pkgId) {
     var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
     var card = el('div', cardClass);
+    card.style.cursor = 'pointer';
 
     var headerLabel = item.removeFromBid ? 'Remove from Bid'
                     : item.addToBid      ? 'Add to Bid'
                     : 'Pending Change';
-    if (item.reciprocal) headerLabel += ' (auto)';
+    if (item.reciprocalSource) headerLabel += ' (auto)';
     var header = el('div', 'scw-bid-cr-card__header', headerLabel);
 
-    // Dismiss button — hidden for reciprocal items (remove the source instead)
-    if (!item.reciprocal) {
+    // Dismiss button — hidden for items created by reciprocal logic
+    if (!item.reciprocalSource) {
       var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
       dismiss.title = 'Remove this change';
       dismiss.addEventListener('click', function (e) {
@@ -14253,7 +14272,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     mount.setAttribute(INIT_FLAG, '1');
 
     mount.addEventListener('click', function (e) {
-      var button = e.target.closest('.scw-bid-review__btn');
+      // Match buttons OR clickable cards with data-action
+      var button = e.target.closest('.scw-bid-review__btn') || e.target.closest('.scw-bid-cr-card[data-action]');
       if (!button) return;
 
       var action = button.getAttribute('data-action');

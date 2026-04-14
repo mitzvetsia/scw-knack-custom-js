@@ -83,7 +83,8 @@
     mount.setAttribute(INIT_FLAG, '1');
 
     mount.addEventListener('click', function (e) {
-      var button = e.target.closest('.scw-bid-review__btn');
+      // Match buttons OR clickable cards with data-action
+      var button = e.target.closest('.scw-bid-review__btn') || e.target.closest('.scw-bid-cr-card[data-action]');
       if (!button) return;
 
       var action = button.getAttribute('data-action');

@@ -389,7 +389,7 @@
       if (fd.type === 'connection') {
         // Check if this connection field is locked by reciprocal logic
         var connLocked = existing && (
-          existing.reciprocal ||
+          existing.reciprocalSource ||
           (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, fd.key))
         );
 
@@ -487,7 +487,7 @@
         if (d.type === 'connection') {
           // If locked by reciprocal, preserve existing values unchanged
           var isLocked = existing && (
-            existing.reciprocal ||
+            existing.reciprocalSource ||
             (existing.reciprocalSources && isReciprocalField(existing.reciprocalSources, d.key))
           );
           if (isLocked && existing.requested[d.key + 'Ids']) {
@@ -542,24 +542,32 @@
       }
 
       // Clear old reciprocals from this source before saving
-      clearReciprocalsFromSource(params.rowId);
+      // (only if this is NOT a reciprocal item — reciprocals don't create their own reciprocals)
+      var isRecipItem = existing && existing.reciprocalSource;
+      if (!isRecipItem) {
+        clearReciprocalsFromSource(params.rowId);
+      }
 
       var newItem = {
         rowId: params.rowId, bidRecordId: cell.id,
         displayLabel: params.displayLabel, productName: cell.productName,
         current: current, requested: requested, changeNotes: cn,
       };
-      // Preserve reciprocal metadata so cascade-delete from original source still works
+      // Preserve ALL reciprocal metadata so cascade-delete + locking still works
+      if (existing && existing.reciprocal) newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
 
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem);
 
-      // Reciprocal: if either connection field changed, mirror the
-      // add/remove on the other side (2380 ↔ 2381).
-      var recipCount = createReciprocalChanges(params, cell, requested);
-      if (recipCount) {
-        ns.renderToast(recipCount + ' reciprocal change(s) created', 'info');
+      // Only run reciprocal logic for source items (not reciprocal items).
+      // Locked connection fields on reciprocal items are already managed
+      // by the source — re-deriving would create circular reciprocals.
+      if (!isRecipItem) {
+        var recipCount = createReciprocalChanges(params, cell, requested);
+        if (recipCount) {
+          ns.renderToast(recipCount + ' reciprocal change(s) created', 'info');
+        }
       }
 
       closeModal();
@@ -823,15 +831,16 @@
   function buildSummaryCard(item, pkgId) {
     var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
     var card = el('div', cardClass);
+    card.style.cursor = 'pointer';
 
     var headerLabel = item.removeFromBid ? 'Remove from Bid'
                     : item.addToBid      ? 'Add to Bid'
                     : 'Pending Change';
-    if (item.reciprocal) headerLabel += ' (auto)';
+    if (item.reciprocalSource) headerLabel += ' (auto)';
     var header = el('div', 'scw-bid-cr-card__header', headerLabel);
 
-    // Dismiss button — hidden for reciprocal items (remove the source instead)
-    if (!item.reciprocal) {
+    // Dismiss button — hidden for items created by reciprocal logic
+    if (!item.reciprocalSource) {
       var dismiss = el('button', 'scw-bid-cr-card__dismiss', '\u00d7');
       dismiss.title = 'Remove this change';
       dismiss.addEventListener('click', function (e) {
