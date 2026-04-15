@@ -30803,14 +30803,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function findFieldTd(card, fieldKey) {
     var tr = card.closest('tr');
     var td = null;
+    var sel = 'td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]';
     if (tr) {
-      var dataTr = tr.previousElementSibling;
-      if (dataTr) {
-        td = dataTr.querySelector('td.' + fieldKey) || dataTr.querySelector('td[data-field-key="' + fieldKey + '"]');
+      // Check previous sibling (data row comes before ws-row in some views)
+      var prev = tr.previousElementSibling;
+      if (prev) td = prev.querySelector(sel);
+      // Check next siblings (data row comes after ws-row + photo-row in other views)
+      if (!td) {
+        var next = tr.nextElementSibling;
+        while (next) {
+          if (next.classList.contains(P + '-row') || next.classList.contains('kn-table-group')) break;
+          td = next.querySelector(sel);
+          if (td) break;
+          next = next.nextElementSibling;
+        }
       }
-      if (!td) td = tr.querySelector('td.' + fieldKey) || tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+      if (!td) td = tr.querySelector(sel);
     }
-    if (!td) td = card.querySelector('td.' + fieldKey) || card.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (!td) td = card.querySelector(sel);
     return td;
   }
 
