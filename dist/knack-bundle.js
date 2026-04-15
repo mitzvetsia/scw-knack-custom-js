@@ -6923,7 +6923,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ══════════════════════════════════════════════════════════════
 
   function getPageRecordId() {
-    var match = (window.location.hash || '').match(/\/([a-f0-9]{24})\/?$/);
+    var match = (window.location.hash || '').split('?')[0].match(/\/([a-f0-9]{24})\/?$/);
     return match ? match[1] : '';
   }
 
