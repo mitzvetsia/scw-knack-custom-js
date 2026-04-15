@@ -96,6 +96,8 @@
   /**
    * Load records from a single view. Tries Knack.models first,
    * falls back to REST API with rows_per_page=1000.
+   * If the API also returns 0 records, re-checks the model once after
+   * a short delay (Knack may still be loading the view).
    * Returns a jQuery Deferred resolving to an array of records.
    */
   function loadView(viewKey) {
@@ -110,11 +112,32 @@
       return $.Deferred().resolve(records).promise();
     }
 
+    // Model empty — try API, then retry model once if API also empty
     return fetchFromApi(viewKey).then(function (recs) {
-      if (CFG.debug) {
-        console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+      if (recs.length > 0) {
+        if (CFG.debug) console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+        return recs;
       }
-      return recs;
+
+      // API returned 0 — the view may not be server-ready yet.
+      // Wait 1.5 s and re-check the model (Knack may have rendered it by now).
+      if (CFG.debug) console.log('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
+      var retry = $.Deferred();
+      setTimeout(function () {
+        var m2 = findModel(viewKey);
+        var r2 = extractRecords(m2);
+        if (r2.length > 0) {
+          if (CFG.debug) console.log('[BidReview] Retry model from ' + viewKey + ':', r2.length);
+          retry.resolve(r2);
+          return;
+        }
+        // Last resort: one more API attempt
+        fetchFromApi(viewKey).then(function (r3) {
+          if (CFG.debug) console.log('[BidReview] Retry API from ' + viewKey + ':', r3.length);
+          retry.resolve(r3);
+        });
+      }, 1500);
+      return retry.promise();
     });
   }
 
@@ -129,14 +152,18 @@
     var pkgPromise     = CFG.bidPackagesViewKey
                            ? loadView(CFG.bidPackagesViewKey)
                            : $.Deferred().resolve([]).promise();
+    var mdfIdfPromise  = CFG.mdfIdfViewKey
+                           ? loadView(CFG.mdfIdfViewKey)
+                           : $.Deferred().resolve([]).promise();
 
-    return $.when(bidPromise, sowItemPromise, pkgPromise).then(function (bidRecs, sowRecs, pkgRecs) {
+    return $.when(bidPromise, sowItemPromise, pkgPromise, mdfIdfPromise).then(function (bidRecs, sowRecs, pkgRecs, mdfRecs) {
       if (CFG.debug) {
         console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
                     sowRecs.length, 'unbid SOW items,',
-                    pkgRecs.length, 'bid packages');
+                    pkgRecs.length, 'bid packages,',
+                    mdfRecs.length, 'MDF/IDF records');
       }
-      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs };
+      return { records: bidRecs, sowItems: sowRecs, bidPackages: pkgRecs, mdfIdfRecords: mdfRecs };
     });
   };
 

@@ -34,6 +34,7 @@ cat \
   src/features/bid-review/transform.js \
   src/features/bid-review/render.js \
   src/features/bid-review/actions.js \
+  src/features/bid-review/change-requests.js \
   src/features/bid-review/init.js \
   src/features/group-collapse.js \
   src/features/select-all-checkboxes.js \
@@ -66,6 +67,7 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/bid-revision-inject.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \

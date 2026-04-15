@@ -221,6 +221,15 @@
 
   function buildRow(rowKey, bucket) {
     var meta = bucket.meta;
+    if (CFG.debug && bucket.cells.length) {
+      var _dbg1946 = meta[FK.sowMdfIdf];
+      var _dbg1946r = meta[FK.sowMdfIdf + '_raw'];
+      var _dbg2375 = meta[FK.mdfIdf];
+      var _dbg2375r = meta[FK.mdfIdf + '_raw'];
+      console.log('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
+        '| field_2375:', _dbg2375, '_raw:', _dbg2375r,
+        '| label:', stripHtml(meta[FK.displayLabel] || ''));
+    }
     var cellsByPackage = {};
 
     for (var i = 0; i < bucket.cells.length; i++) {
@@ -248,27 +257,36 @@
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
+          bidPlenum:       raw(rec, FK.plenum),
+          bidExterior:     raw(rec, FK.exterior),
+          bidDropLength:   raw(rec, FK.dropLength),
+          bidConduit:      raw(rec, FK.conduit),
           bidConnDevice:   connectionLabelsAll(rec, FK.bidConnDevice),
           bidConnDeviceIds: connectionIdsAll(rec, FK.bidConnDevice),
+          bidConnTo:       connectionLabelsAll(rec, FK.bidConnTo),
+          bidConnToIds:    connectionIdsAll(rec, FK.bidConnTo),
           bidMapConn:      raw(rec, FK.bidMapConn),
+          requireSubBid:   raw(rec, FK.requireSubBid),
           // Payload-only fields
           field2627:       connectionId(rec, FK.field2627),
-          dropLength:      raw(rec, FK.dropLength),
-          conduit:         bool(rec, FK.conduit),
-          plenum:          bool(rec, FK.plenum),
           sku:             raw(rec, FK.sku),
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
           dropPrefix:      connectionId(rec, FK.dropPrefix),
           dropNumber:      raw(rec, FK.dropNumber),
-          exterior:        bool(rec, FK.exterior),
           limitQtyOne:     bool(rec, FK.limitQtyOne),
           mapConnections:  bool(rec, FK.bidMapConn),
+          bidMdfIdf:        connectionLabel(rec, FK.mdfIdf),
+          bidMdfIdfIds:    connectionIdsAll(rec, FK.mdfIdf),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
         };
       }
     }
+
+    // A row from view_3680 with no bid-package cells means the item
+    // was surveyed but never assigned to a bid package.
+    var surveyNoBid = Object.keys(cellsByPackage).length === 0;
 
     return {
       id:              meta.id,
@@ -279,6 +297,7 @@
       proposalBucket:  connectionLabel(meta, FK.proposalBucket),
       proposalBucketId: connectionId(meta, FK.proposalBucket),
       mdfIdf:          connectionLabel(meta, FK.mdfIdf),
+      mdfIdfIds:       connectionIdsAll(meta, FK.mdfIdf),
       sortOrder:       num(meta, FK.sortOrder),
       // SOW detail fields (from first record in the row)
       sowQty:          num(meta, FK.sowQty),
@@ -286,10 +305,17 @@
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
+      sowPlenum:       raw(meta, FK.sowPlenum),
+      sowExterior:     raw(meta, FK.sowExterior),
+      sowDropLength:   raw(meta, FK.sowDropLength),
+      sowConduit:      raw(meta, FK.sowConduit),
       sowConnDevice:   connectionLabelsAll(meta, FK.sowConnDevice),
       sowConnDeviceIds: connectionIdsAll(meta, FK.sowConnDevice),
       sowMapConn:      raw(meta, FK.sowMapConn),
+      sowMdfIdf:       connectionLabel(meta, FK.sowMdfIdf) || raw(meta, FK.sowMdfIdf),
+      bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
+      surveyNoBid:     surveyNoBid,
     };
   }
 
@@ -491,6 +517,7 @@
           proposalBucket:  connectionLabel(rec, SFK.proposalBucket),
           proposalBucketId: connectionId(rec, SFK.proposalBucket),
           mdfIdf:          connectionLabel(rec, SFK.mdfIdf),
+          mdfIdfIds:       connectionIdsAll(rec, SFK.mdfIdf),
           sortOrder:       num(rec, SFK.sortOrder),
           // SOW detail — populated from the SOW item record itself
           sowQty:          num(rec, SFK.qty),
@@ -498,9 +525,14 @@
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
+          sowPlenum:       raw(rec, SFK.plenum),
+          sowExterior:     raw(rec, SFK.exterior),
+          sowDropLength:   raw(rec, SFK.dropLength),
+          sowConduit:      raw(rec, SFK.conduit),
           sowConnDevice:   connectionLabelsAll(rec, SFK.connDevice),
           sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
+          sowMdfIdf:       connectionLabel(rec, SFK.mdfIdf),
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
@@ -515,24 +547,49 @@
 
   // ── extract PDF URLs from bid package records ──────────────────
 
-  function buildPdfMap(bidPackages) {
+  function buildPkgInfoMap(bidPackages) {
     var map = {};
     if (!bidPackages || !bidPackages.length) return map;
     for (var i = 0; i < bidPackages.length; i++) {
       var rec = bidPackages[i];
       var id = rec.id;
       if (!id) continue;
+
+      var info = {};
+
+      // Survey connection (field_2386)
+      var surveyId = connectionId(rec, FK.bidSurvey);
+      if (surveyId) info.surveyId = surveyId;
+
+      // Bid status (field_2550) — try multiple strategies
+      var bidStatus = '';
+      var bsRaw = rec[FK.bidStatus + '_raw'];
+      if (Array.isArray(bsRaw) && bsRaw.length && bsRaw[0].identifier) {
+        bidStatus = stripHtml(bsRaw[0].identifier);
+      } else if (bsRaw && typeof bsRaw === 'object' && bsRaw.identifier) {
+        bidStatus = stripHtml(bsRaw.identifier);
+      } else if (typeof bsRaw === 'string') {
+        bidStatus = stripHtml(bsRaw);
+      }
+      if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
+      if (bidStatus) info.bidStatus = bidStatus;
+      if (CFG.debug) {
+        console.log('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
+      }
+
       // File fields: try _raw (object with url) then fall back to HTML parsing
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
-      if (!rawPdf) continue;
-      if (typeof rawPdf === 'object' && rawPdf.url) {
-        map[id] = { url: rawPdf.url, filename: rawPdf.filename || '' };
-      } else if (typeof rawPdf === 'string') {
-        // May be HTML: <a href="...">filename</a>
-        var m = rawPdf.match(/href="([^"]+)"/);
-        var fn = rawPdf.match(/>([^<]+)<\/a>/);
-        if (m) map[id] = { url: m[1], filename: fn ? fn[1] : '' };
+      if (rawPdf) {
+        if (typeof rawPdf === 'object' && rawPdf.url) {
+          info.url = rawPdf.url; info.filename = rawPdf.filename || '';
+        } else if (typeof rawPdf === 'string') {
+          var m = rawPdf.match(/href="([^"]+)"/);
+          var fn = rawPdf.match(/>([^<]+)<\/a>/);
+          if (m) { info.url = m[1]; info.filename = fn ? fn[1] : ''; }
+        }
       }
+
+      map[id] = info;
     }
     return map;
   }
@@ -553,12 +610,32 @@
   ns.buildState = function buildState(records, sowItems, bidPackages) {
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
-    var pdfMap     = buildPdfMap(bidPackages || []);
+    var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
 
-    // Attach PDF info to each package
+    // Attach PDF, survey, and status info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
-      var pdf = pdfMap[allPkgs[pi].id];
-      if (pdf) { allPkgs[pi].pdfUrl = pdf.url; allPkgs[pi].pdfFilename = pdf.filename; }
+      var info = pkgInfoMap[allPkgs[pi].id];
+      if (info) {
+        if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
+        if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
+        if (info.bidStatus) allPkgs[pi].bidStatus = info.bidStatus;
+      }
+    }
+
+    // Build SOW item lookup: sowItemId → { mdfIdf label from field_1946 }
+    var SFK = CFG.sowItemFieldKeys;
+    var sowItemLookup = {};
+    if (sowItems && sowItems.length) {
+      for (var si2 = 0; si2 < sowItems.length; si2++) {
+        var siRec = sowItems[si2];
+        if (!siRec.id) continue;
+        sowItemLookup[siRec.id] = {
+          mdfIdf: connectionLabel(siRec, SFK.mdfIdf),
+        };
+      }
+      if (CFG.debug) {
+        console.log('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
+      }
     }
 
     var sowBuckets = groupBySow(records);
@@ -655,17 +732,44 @@
       var recs    = sowBuckets[sow.id] || [];
       var rows    = buildRowsForSow(recs);
 
-      // Merge in NO BID rows for this SOW
+      // Merge in NO BID rows for this SOW — skip any whose SOW item
+      // already appears in a view_3680 row (e.g. surveyNoBid rows)
+      var existingSowItems = {};
+      for (var ei = 0; ei < rows.length; ei++) {
+        if (rows[ei].sowItem) existingSowItems[rows[ei].sowItem] = true;
+      }
       var noBidRows = noBidBySow[sow.id] || [];
       for (var nb = 0; nb < noBidRows.length; nb++) {
+        if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) {
+          if (CFG.debug) {
+            console.log('[BidReview] Skipping noBid row — already in view_3680:',
+                        noBidRows[nb].sowItem, noBidRows[nb].displayLabel);
+          }
+          continue;
+        }
         rows.push(noBidRows[nb]);
       }
 
+      // Merge SOW MDF/IDF (field_1946) into rows from the SOW item lookup
+      for (var mi2 = 0; mi2 < rows.length; mi2++) {
+        var r2 = rows[mi2];
+        if (r2.sowItem && sowItemLookup[r2.sowItem]) {
+          var siData = sowItemLookup[r2.sowItem];
+          if (siData.mdfIdf && !r2.sowMdfIdf) {
+            r2.sowMdfIdf = siData.mdfIdf;
+          }
+        }
+      }
+
       var pkgs    = extractPackages(recs);
-      // Attach PDF info to per-SOW packages
+      // Attach PDF, survey, and status info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
-        var ppdf = pdfMap[pkgs[ppi].id];
-        if (ppdf) { pkgs[ppi].pdfUrl = ppdf.url; pkgs[ppi].pdfFilename = ppdf.filename; }
+        var pInfo = pkgInfoMap[pkgs[ppi].id];
+        if (pInfo) {
+          if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
+          if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
+          if (pInfo.bidStatus) pkgs[ppi].bidStatus = pInfo.bidStatus;
+        }
       }
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);

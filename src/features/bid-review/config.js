@@ -16,9 +16,11 @@
     viewKey:           'view_3680',
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
+    mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
 
-    // ── Make webhook for all review actions ────────────────────
-    actionWebhook:     'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
+    // ── Make webhooks ───────────────────────────────────────────
+    actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
+    changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -44,7 +46,9 @@
       laborDesc:       'field_2409',   // labor description (shown under price)
       bidExistCabling: 'field_2370',   // BOOL_existing cabling (bid side)
       bidConnDevice:   'field_2380',   // Connected Devices (bid side)
+      bidConnTo:       'field_2381',   // Connected To (bid side — camera/reader only)
       bidMapConn:      'field_2374',   // FLAG_map camera or reader connections (bid side)
+      requireSubBid:   'field_2478',   // BOOL_require sub bid (no bid → no change requests)
 
       // Payload-only fields (not displayed in grid)
       field2627:       'field_2627',
@@ -59,6 +63,8 @@
       exterior:        'field_2372',
       limitQtyOne:     'field_2373',
       bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
+      bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
+      bidStatus:       'field_2550',   // Bid status (text field on bid package, view_3573)
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item
@@ -68,6 +74,11 @@
       sowExistCabling: 'field_2461',   // BOOL_existing cabling (SOW side)
       sowConnDevice:   'field_1957',   // Connected Devices (SOW side)
       sowMapConn:      'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      sowMdfIdf:       'field_1946',   // MDF/IDF location (SOW side — differs from bid field_2375)
+      sowPlenum:       'field_1983',   // BOOL_plenum (SOW side)
+      sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
+      sowDropLength:   'field_1965',   // drop length (SOW side)
+      sowConduit:      'field_2035',   // conduit (SOW side)
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -76,6 +87,9 @@
       proposalBucket:  'field_2366',   // REL_proposal bucket (sub-group within mdfIdf)
       mdfIdf:          'field_2375',   // REL_mdf-idf (location/IDF — primary group)
       sortOrder:       'field_2218',   // sort order for proposal bucket groups
+
+      // Change request draft persistence (paragraph field on SOW record)
+      changeRequestDraft: 'field_2684',
     },
 
     // ── SOW item fields (view_3728 — different keys than bid records) ──
@@ -93,6 +107,10 @@
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
       connDevice:      'field_1957',   // Connected Devices (SOW side)
       mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
+      plenum:          'field_1983',   // BOOL_plenum (SOW side)
+      exterior:        'field_1984',   // BOOL_exterior (SOW side)
+      dropLength:      'field_1965',   // drop length (SOW side)
+      conduit:         'field_2035',   // conduit (SOW side)
     },
 
     // ── Timing ────────────────────────────────────────────────
