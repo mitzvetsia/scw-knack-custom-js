@@ -1042,7 +1042,7 @@
   /** Navigate to the parent page by stripping the last two hash segments. */
   function redirectToParent() {
     dismissPublishToast();
-    var hash = (window.location.hash || '').replace(/\/+$/, '');
+    var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
     // Knack child page: #parent-slug/parent-id/child-slug/child-id
     // Strip last two segments → #parent-slug/parent-id
     var parts = hash.replace(/^#\/?/, '').split('/');
