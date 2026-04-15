@@ -15109,11 +15109,28 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       // Explicit connection arrays split by source view
-      // Survey items (view_3680) = ChangeIds, SOW/noBid items (view_3728) = AddIds
-      entry.ConnDevices_surveyitem = r.bidConnDeviceChangeIds || [];
-      entry.ConnTO_surveyitem      = r.bidConnToChangeIds     || [];
-      entry.ConnDevices_sowitem    = r.bidConnDeviceAddIds    || [];
-      entry.ConnTO_sowitem         = r.bidConnToAddIds        || [];
+      // SOW/noBid items (view_3728) = AddIds; everything else in the full Ids = survey (view_3680)
+      var _cdAll  = r.bidConnDeviceIds || [];
+      var _cdAdd  = r.bidConnDeviceAddIds || [];
+      var _cdAddSet = {};
+      for (var ai = 0; ai < _cdAdd.length; ai++) _cdAddSet[_cdAdd[ai]] = true;
+      var _cdSurvey = [];
+      for (var si2 = 0; si2 < _cdAll.length; si2++) {
+        if (!_cdAddSet[_cdAll[si2]]) _cdSurvey.push(_cdAll[si2]);
+      }
+      entry.ConnDevices_surveyitem = _cdSurvey;
+      entry.ConnDevices_sowitem    = _cdAdd;
+
+      var _ctAll  = r.bidConnToIds || [];
+      var _ctAdd  = r.bidConnToAddIds || [];
+      var _ctAddSet = {};
+      for (var ai2 = 0; ai2 < _ctAdd.length; ai2++) _ctAddSet[_ctAdd[ai2]] = true;
+      var _ctSurvey = [];
+      for (var si3 = 0; si3 < _ctAll.length; si3++) {
+        if (!_ctAddSet[_ctAll[si3]]) _ctSurvey.push(_ctAll[si3]);
+      }
+      entry.ConnTO_surveyitem = _ctSurvey;
+      entry.ConnTO_sowitem    = _ctAdd;
 
       // Detailed from→to diffs
       entry.fields = fieldList;
