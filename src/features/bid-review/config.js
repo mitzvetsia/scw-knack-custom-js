@@ -17,6 +17,7 @@
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
+    changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -90,6 +91,9 @@
 
       // Change request draft persistence (paragraph field on SOW record)
       changeRequestDraft: 'field_2684',
+
+      // Change request view (view_3818)
+      crPendingCount:  'field_2699',   // COUNT_pending change requests
     },
 
     // ── SOW item fields (view_3728 — different keys than bid records) ──

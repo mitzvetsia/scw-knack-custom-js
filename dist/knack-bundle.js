@@ -10463,6 +10463,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
+    changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -10536,6 +10537,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // Change request draft persistence (paragraph field on SOW record)
       changeRequestDraft: 'field_2684',
+
+      // Change request view (view_3818)
+      crPendingCount:  'field_2699',   // COUNT_pending change requests
     },
 
     // ── SOW item fields (view_3728 — different keys than bid records) ──
@@ -10706,6 +10710,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
       '.scw-bid-review__pdf-link:hover { opacity: 1; }',
       '.scw-bid-review__pdf-link svg { display: block; width: 20px; height: 20px; }',
+
+      '.scw-bid-review__cr-link {',
+      '  display: block;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #dc6900;',
+      '  margin-top: 4px;',
+      '  text-decoration: none;',
+      '}',
+      '.scw-bid-review__cr-link:hover {',
+      '  text-decoration: underline;',
+      '  color: #b85700;',
+      '}',
 
       '.scw-bid-review__pkg-counts {',
       '  font-size: 11px;',
@@ -12165,6 +12182,72 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── public entry point ────────────────────────────────────────
 
+  // ── scrape change request records from view_3818 DOM ──────────
+
+  /**
+   * Scrape view_3818 (change request grid) from the DOM.
+   * Returns a map: bidPackageId → { pendingCount, linkUrl }
+   *
+   * Each row has:
+   *  - A bid-package connection cell (span[data-kn="connection-value"])
+   *  - field_2699 (pending change request count)
+   *  - A Knack action-link column (<a> tag with the CR detail URL)
+   */
+  function scrapeCrView() {
+    var map = {};
+    var viewKey = CFG.changeRequestViewKey;
+    if (!viewKey) return map;
+
+    var $view = $('#' + viewKey);
+    if (!$view.length) return map;
+
+    var $rows = $view.find('table.kn-table-table tbody tr');
+    $rows.each(function () {
+      var $tr = $(this);
+      if ($tr.hasClass('kn-table-group')) return;
+
+      // Find the bid-package connection — look for field_2415 first,
+      // then fall back to scanning all connection-value spans
+      var pkgId = '';
+      var $pkgCell = $tr.find('td.' + FK.bidPackage);
+      if ($pkgCell.length) {
+        var $connSpan = $pkgCell.find('span[data-kn="connection-value"]');
+        if ($connSpan.length) pkgId = $connSpan.attr('class').trim();
+      }
+      if (!pkgId) {
+        // Fallback: first connection-value span whose class is a 24-char hex ID
+        $tr.find('span[data-kn="connection-value"]').each(function () {
+          var cls = ($(this).attr('class') || '').trim();
+          if (/^[a-f0-9]{24}$/.test(cls) && !pkgId) pkgId = cls;
+        });
+      }
+      if (!pkgId) return;
+
+      // Read pending count from field_2699
+      var $countCell = $tr.find('td.' + FK.crPendingCount);
+      var countText = $countCell.length ? $countCell.text().trim() : '0';
+      var count = parseInt(countText, 10) || 0;
+
+      // Find the Knack action link (typically the first <a> with an href containing #)
+      var linkUrl = '';
+      $tr.find('a[href]').each(function () {
+        var href = $(this).attr('href') || '';
+        if (href.indexOf('#') !== -1 && !linkUrl) linkUrl = href;
+      });
+
+      if (count > 0 && linkUrl) {
+        map[pkgId] = { pendingCount: count, linkUrl: linkUrl };
+      }
+    });
+
+    if (CFG.debug) {
+      console.log('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
+    }
+    return map;
+  }
+
+  ns.scrapeCrView = scrapeCrView;
+
   // ── extract PDF URLs from bid package records ──────────────────
 
   function buildPkgInfoMap(bidPackages) {
@@ -12231,9 +12314,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
     var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
+    var crMap      = scrapeCrView();
 
-    // Attach PDF, survey, and status info to each package
+    // Attach PDF, survey, status, and CR info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
+      var crInfo = crMap[allPkgs[pi].id];
+      if (crInfo) {
+        allPkgs[pi].crPendingCount = crInfo.pendingCount;
+        allPkgs[pi].crLinkUrl      = crInfo.linkUrl;
+      }
       var info = pkgInfoMap[allPkgs[pi].id];
       if (info) {
         if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
@@ -12382,8 +12471,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF, survey, and status info to per-SOW packages
+      // Attach PDF, survey, status, and CR info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
+        var pCr = crMap[pkgs[ppi].id];
+        if (pCr) {
+          pkgs[ppi].crPendingCount = pCr.pendingCount;
+          pkgs[ppi].crLinkUrl      = pCr.linkUrl;
+        }
         var pInfo = pkgInfoMap[pkgs[ppi].id];
         if (pInfo) {
           if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
@@ -12593,6 +12687,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         nameRow.appendChild(badge);
       }
       th.appendChild(nameRow);
+
+      // Pending change request link
+      if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
+        var crLink = document.createElement('a');
+        crLink.href = pkg.crLinkUrl;
+        crLink.className = 'scw-bid-review__cr-link';
+        crLink.textContent = pkg.crPendingCount + ' pending change request' +
+          (pkg.crPendingCount !== 1 ? 's' : '');
+        th.appendChild(crLink);
+      }
 
       // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
       var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
@@ -16500,6 +16604,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         _viewsReady[CFG.bidPackagesViewKey] = true;
         checkViewsAndRun();
       }, CFG.eventNs + 'Pkg');
+    }
+
+    // Change request view — pending CR counts + links (DOM-scraped)
+    if (CFG.changeRequestViewKey) {
+      SCW.onViewRender(CFG.changeRequestViewKey, function () {
+        // Re-render the matrix to pick up updated CR data from view_3818
+        if (_state) refreshSilently();
+      }, CFG.eventNs + 'Cr');
     }
   }
 

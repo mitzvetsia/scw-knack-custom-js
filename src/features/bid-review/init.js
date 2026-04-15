@@ -920,6 +920,14 @@
         checkViewsAndRun();
       }, CFG.eventNs + 'Pkg');
     }
+
+    // Change request view — pending CR counts + links (DOM-scraped)
+    if (CFG.changeRequestViewKey) {
+      SCW.onViewRender(CFG.changeRequestViewKey, function () {
+        // Re-render the matrix to pick up updated CR data from view_3818
+        if (_state) refreshSilently();
+      }, CFG.eventNs + 'Cr');
+    }
   }
 
   init();
