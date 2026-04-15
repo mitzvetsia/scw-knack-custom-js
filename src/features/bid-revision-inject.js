@@ -57,12 +57,14 @@
   /** MDF/IDF location records view (on the same scene as view_3505) */
   var MDF_IDF_VIEW = 'view_3617';
 
-  var STYLE_ID   = 'scw-bid-revision-inject-css';
-  var BADGE_CLS  = 'scw-revision-badge';
-  var STRIP_CLS  = 'scw-revision-strip';
-  var INJECTED   = 'data-scw-rev-injected';
-  var EVENT_NS   = '.scwBidRevInject';
-  var P          = 'scw-rev';
+  var STYLE_ID      = 'scw-bid-revision-inject-css';
+  var BADGE_CLS     = 'scw-revision-badge';
+  var STRIP_CLS     = 'scw-revision-strip';
+  var INJECTED      = 'data-scw-rev-injected';
+  var EVENT_NS      = '.scwBidRevInject';
+  var P             = 'scw-rev';
+  var GRP_BADGE_CLS = P + '-grp-badge';
+  var ORPHAN_ROW_CLS = P + '-orphan-row';
 
   // ── CSS ─────────────────────────────────────────────────
 
@@ -1892,8 +1894,6 @@
     return last;
   }
 
-  var ORPHAN_ROW_CLS = P + '-orphan-row';
-
   /**
    * Find the correct insertion point for an orphan row within a group
    * based on its sortOrder vs. existing worksheet rows' field_2218 values.
@@ -2020,9 +2020,38 @@
 
   var _injectRetries = 0;
 
+  /**
+   * Remove all previously-injected revision DOM: strips, badges, orphan rows,
+   * orphan sections, group badges, and INJECTED flags.  Called at the top of
+   * inject() so stale elements are always cleaned before (re-)injection.
+   */
+  function cleanupInjections(viewEl) {
+    // Revision strips
+    var strips = viewEl.querySelectorAll('.' + STRIP_CLS);
+    for (var si = 0; si < strips.length; si++) strips[si].remove();
+    // Revision badges on cards
+    var badges = viewEl.querySelectorAll('.' + BADGE_CLS);
+    for (var bi = 0; bi < badges.length; bi++) badges[bi].remove();
+    // Orphan rows
+    var orphRows = viewEl.querySelectorAll('.' + ORPHAN_ROW_CLS);
+    for (var oi = 0; oi < orphRows.length; oi++) orphRows[oi].remove();
+    // Orphan fallback section
+    var orphSec = viewEl.querySelector('.' + P + '-orphan-section');
+    if (orphSec) orphSec.remove();
+    // Group header badges
+    var grpBadges = viewEl.querySelectorAll('.' + GRP_BADGE_CLS);
+    for (var gi = 0; gi < grpBadges.length; gi++) grpBadges[gi].remove();
+    // Clear injected flags so cards can be re-injected
+    var flagged = viewEl.querySelectorAll('[' + INJECTED + ']');
+    for (var fi = 0; fi < flagged.length; fi++) flagged[fi].removeAttribute(INJECTED);
+  }
+
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
     if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+
+    // Always clean up previous injections before rebuilding
+    cleanupInjections(viewEl);
 
     var result = buildRevisionMap();
     var revMap = result.map;
@@ -2059,7 +2088,6 @@
         for (var ui = 0; ui < unmatched.length; ui++) orphaned.push(unmatched[ui]);
         continue;
       }
-      if (card.getAttribute(INJECTED)) continue;
       card.setAttribute(INJECTED, '1');
 
       var revisions = revMap[siId];
@@ -2093,8 +2121,6 @@
     // Inject change/add count badges into group headers
     injectGroupBadges(viewEl, siIds, revMap, orphaned);
   }
-
-  var GRP_BADGE_CLS = P + '-grp-badge';
 
   /**
    * Add "N changes  N adds" badges to each group header that has revisions.
