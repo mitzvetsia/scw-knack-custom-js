@@ -94,6 +94,7 @@
 
       // Change request view (view_3818)
       crPendingCount:  'field_2699',   // COUNT_pending change requests
+      crBidPackage:    'field_2689',   // REL_bid package (on CR records — differs from field_2415)
     },
 
     // ── SOW item fields (view_3728 — different keys than bid records) ──

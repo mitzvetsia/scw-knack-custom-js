@@ -569,20 +569,12 @@
       var $tr = $(this);
       if ($tr.hasClass('kn-table-group')) return;
 
-      // Find the bid-package connection — look for field_2415 first,
-      // then fall back to scanning all connection-value spans
+      // Bid-package connection is field_2689 (not field_2415)
       var pkgId = '';
-      var $pkgCell = $tr.find('td.' + FK.bidPackage);
+      var $pkgCell = $tr.find('td.' + FK.crBidPackage);
       if ($pkgCell.length) {
         var $connSpan = $pkgCell.find('span[data-kn="connection-value"]');
-        if ($connSpan.length) pkgId = $connSpan.attr('class').trim();
-      }
-      if (!pkgId) {
-        // Fallback: first connection-value span whose class is a 24-char hex ID
-        $tr.find('span[data-kn="connection-value"]').each(function () {
-          var cls = ($(this).attr('class') || '').trim();
-          if (/^[a-f0-9]{24}$/.test(cls) && !pkgId) pkgId = cls;
-        });
+        if ($connSpan.length) pkgId = ($connSpan.attr('class') || '').trim();
       }
       if (!pkgId) return;
 
@@ -591,9 +583,9 @@
       var countText = $countCell.length ? $countCell.text().trim() : '0';
       var count = parseInt(countText, 10) || 0;
 
-      // Find the Knack action link (typically the first <a> with an href containing #)
+      // The detail link is in the kn-table-link cell (eye icon column)
       var linkUrl = '';
-      $tr.find('a[href]').each(function () {
+      $tr.find('td.kn-table-link a[href]').each(function () {
         var href = $(this).attr('href') || '';
         if (href.indexOf('#') !== -1 && !linkUrl) linkUrl = href;
       });
