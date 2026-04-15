@@ -1554,6 +1554,10 @@
         // 3) Wait for view_3823's knack-view-render so its DOM is fresh
         // 4) Then fetch target views — their re-render triggers inject()
         //    which reads fresh view_3823 data
+        // Parse resp if it came back as a raw JSON string
+        if (typeof resp === 'string') {
+          try { resp = JSON.parse(resp); } catch (e) { /* ignore */ }
+        }
         if (resp && resp.success) {
           setTimeout(function () {
             var refreshTargets = function () {
