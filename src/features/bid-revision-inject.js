@@ -1551,23 +1551,47 @@
         // Refresh views to show updated data
         // 1) Wait for Make to finish updating Knack records
         // 2) Fetch view_3823 first (revision data source)
-        // 3) Then fetch view_3505 — its re-render triggers inject()
+        // 3) Wait for view_3823's knack-view-render so its DOM is fresh
+        // 4) Then fetch target views — their re-render triggers inject()
         //    which reads fresh view_3823 data
         if (resp && resp.success) {
           setTimeout(function () {
-            // Step 1: refresh revision view (view_3823)
-            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-              Knack.views[CFG.revisionView].model.fetch();
-            }
-            // Step 2: after view_3823 re-renders, refresh target views
-            setTimeout(function () {
+            var refreshTargets = function () {
               for (var vi = 0; vi < CFG.targetViews.length; vi++) {
                 var vk = CFG.targetViews[vi];
                 if (Knack.views[vk] && Knack.views[vk].model) {
                   Knack.views[vk].model.fetch();
                 }
               }
-            }, 1500);
+            };
+
+            // Listen for view_3823 re-render before refreshing targets
+            var onceNs = '.scwRevActionRefresh';
+            var fired = false;
+            $(document).off('knack-view-render.' + CFG.revisionView + onceNs)
+                       .on('knack-view-render.' + CFG.revisionView + onceNs, function () {
+              if (fired) return;
+              fired = true;
+              $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
+              console.log('[BidRevInject] view_3823 re-rendered, refreshing targets');
+              // Small delay to let DOM settle
+              setTimeout(refreshTargets, 300);
+            });
+
+            // Fallback: if view_3823 doesn't fire render within 5s, refresh anyway
+            setTimeout(function () {
+              if (!fired) {
+                fired = true;
+                $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
+                console.log('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
+                refreshTargets();
+              }
+            }, 5000);
+
+            // Kick off view_3823 fetch
+            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+              Knack.views[CFG.revisionView].model.fetch();
+            }
           }, 3000);
         }
       },
