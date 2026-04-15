@@ -1322,6 +1322,12 @@
       }
       if (notes) updated.changeNotes = notes;
 
+      // Rebuild the per-item json snapshot (excludes html/json fields)
+      var jsonSnap = JSON.parse(JSON.stringify(updated));
+      delete jsonSnap.html;
+      delete jsonSnap.json;
+      updated.json = JSON.stringify(jsonSnap);
+
       // Build both JSON and HTML for the revision record
       var updatedJson = JSON.stringify(updated);
       var updatedHtml = buildRevisionHtml(updated);
