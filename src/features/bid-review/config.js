@@ -22,6 +22,7 @@
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
     changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
+    revisionResponseWebhook: 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',

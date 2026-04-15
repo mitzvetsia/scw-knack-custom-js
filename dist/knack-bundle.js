@@ -10468,6 +10468,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
     changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
+    revisionResponseWebhook: 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -32269,9 +32270,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     rejectBtn.className = P + '-btn ' + P + '-btn--reject';
     rejectBtn.textContent = 'Reject';
 
-    actions.appendChild(approveBtn);
     actions.appendChild(editBtn);
     actions.appendChild(rejectBtn);
+    actions.appendChild(approveBtn);
     wrap.appendChild(actions);
 
     // Reject notes — hidden until Reject is clicked
@@ -32355,7 +32356,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
-                   ? window.SCW.bidReview.CONFIG.changeRequestWebhook
+                   ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
                    : '';
     if (!webhookUrl) {
       console.error('[BidRevInject] No webhook URL configured');

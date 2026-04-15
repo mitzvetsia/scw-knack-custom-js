@@ -1415,9 +1415,9 @@
     rejectBtn.className = P + '-btn ' + P + '-btn--reject';
     rejectBtn.textContent = 'Reject';
 
-    actions.appendChild(approveBtn);
     actions.appendChild(editBtn);
     actions.appendChild(rejectBtn);
+    actions.appendChild(approveBtn);
     wrap.appendChild(actions);
 
     // Reject notes — hidden until Reject is clicked
@@ -1501,7 +1501,7 @@
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
-                   ? window.SCW.bidReview.CONFIG.changeRequestWebhook
+                   ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
                    : '';
     if (!webhookUrl) {
       console.error('[BidRevInject] No webhook URL configured');
