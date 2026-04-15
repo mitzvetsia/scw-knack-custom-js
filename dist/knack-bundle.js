@@ -32447,13 +32447,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         wrapEl.appendChild(badge);
 
         // Refresh view_3505 to show updated data
+        // Delay to allow Make to finish updating Knack records
         if (resp && resp.success) {
-          for (var vi = 0; vi < CFG.targetViews.length; vi++) {
-            var vk = CFG.targetViews[vi];
-            if (Knack.views[vk] && Knack.views[vk].model) {
-              Knack.views[vk].model.fetch();
+          setTimeout(function () {
+            for (var vi = 0; vi < CFG.targetViews.length; vi++) {
+              var vk = CFG.targetViews[vi];
+              if (Knack.views[vk] && Knack.views[vk].model) {
+                Knack.views[vk].model.fetch();
+              }
             }
-          }
+            // Also refresh the revision view so strips rebuild with fresh data
+            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+              Knack.views[CFG.revisionView].model.fetch();
+            }
+          }, 3000);
         }
       },
       error: function (xhr) {
