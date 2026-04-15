@@ -8055,24 +8055,31 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               json: jsonSnapshot
             };
             console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
               type: 'POST',
               contentType: 'application/json',
               data: JSON.stringify(savePayload),
               crossDomain: true,
-              timeout: 90000
+              timeout: 90000,
+              success: function () {
+                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                if (cfg.pollViewOnReturn) {
+                  try {
+                    sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+                    if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+                    if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+                  } catch (e) {}
+                }
+                redirectToParent();
+              },
+              error: function (xhr, status) {
+                console.error('[SCW PDF Export] Webhook failed:', status);
+                showPublishToast('Webhook failed — please try again.', true, false);
+                $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
+              }
             });
-
-            // Redirect immediately — poll on the parent page for completion
-            if (cfg.pollViewOnReturn) {
-              try {
-                sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
-                if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
-                if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
-              } catch (e) {}
-            }
-            setTimeout(redirectToParent, 500);
           }
         });
 
