@@ -1522,6 +1522,11 @@
         persist();
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
+
+        // Refresh the comparison grid after Make finishes processing
+        if (resp && resp.success) {
+          setTimeout(function () { if (ns.refresh) ns.refresh(); }, 2000);
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
