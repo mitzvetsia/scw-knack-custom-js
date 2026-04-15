@@ -15108,6 +15108,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
       }
 
+      // Explicit connection arrays split by source view
+      // Survey items (view_3680) = ChangeIds, SOW/noBid items (view_3728) = AddIds
+      entry.ConnDevices_surveyitem = r.bidConnDeviceChangeIds || [];
+      entry.ConnTO_surveyitem      = r.bidConnToChangeIds     || [];
+      entry.ConnDevices_sowitem    = r.bidConnDeviceAddIds    || [];
+      entry.ConnTO_sowitem         = r.bidConnToAddIds        || [];
+
       // Detailed from→to diffs
       entry.fields = fieldList;
 
