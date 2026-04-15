@@ -1514,12 +1514,20 @@
       return;
     }
 
+    // Show processing feedback
+    wrapEl.innerHTML = '';
+    var spinner = document.createElement('div');
+    spinner.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#f1f5f9;color:#475569;';
+    spinner.textContent = '\u23F3 Processing\u2026';
+    wrapEl.appendChild(spinner);
+
     SCW.knackAjax({
       url:  webhookUrl,
       type: 'POST',
       data: JSON.stringify(payload),
-      success: function () {
-        console.log('[BidRevInject]', action, 'success for', revisionId);
+      timeout: 90000,
+      success: function (resp) {
+        console.log('[BidRevInject]', action, 'response for', revisionId, resp);
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
         if (extra.outcome === 'rejected') {
@@ -1537,13 +1545,25 @@
         }
         wrapEl.innerHTML = '';
         wrapEl.appendChild(badge);
+
+        // Refresh view_3505 to show updated data
+        if (resp && resp.success) {
+          for (var vi = 0; vi < CFG.targetViews.length; vi++) {
+            var vk = CFG.targetViews[vi];
+            if (Knack.views[vk] && Knack.views[vk].model) {
+              Knack.views[vk].model.fetch();
+            }
+          }
+        }
       },
       error: function (xhr) {
-        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status);
-        var btns = wrapEl.querySelectorAll('button');
-        for (var bi = 0; bi < btns.length; bi++) btns[bi].disabled = false;
-        var err = wrapEl.querySelector('.' + P + '-reject-error');
-        if (err) err.textContent = 'Failed to submit \u2014 please try again.';
+        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status, xhr.responseText);
+        wrapEl.innerHTML = '';
+        // Re-enable by rebuilding action buttons
+        var errBadge = document.createElement('div');
+        errBadge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#fee2e2;color:#991b1b;';
+        errBadge.textContent = 'Failed to submit \u2014 please reload and try again.';
+        wrapEl.appendChild(errBadge);
       },
     });
   }
