@@ -6895,6 +6895,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       recurringGrids: ['view_3371'],
       payloadType: 'proposal',
       saveHtml: true,
+      pollViewOnReturn: 'view_3814',
+      pollField: 'field_2681',
     },
     {
       sceneId: 'scene_1149',
@@ -8034,7 +8036,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           if (cfg.saveHtml) {
             // Disable button to prevent double-submit
             $btn.prop('disabled', true).css({ opacity: 0.5, cursor: 'not-allowed' });
-            showPublishToast('Publishing quote\u2026', false, true);
 
             var pageRecordId = getPageRecordId();
             var summary = extractSummaryFields(payload);
@@ -8060,18 +8061,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               contentType: 'application/json',
               data: JSON.stringify(savePayload),
               crossDomain: true,
-              timeout: 90000,
-              success: function () {
-                console.log('[SCW PDF Export] Save webhook OK — redirecting to parent');
-                showPublishToast('Quote published \u2014 redirecting\u2026', false);
-                setTimeout(redirectToParent, 1500);
-              },
-              error: function (xhr, status, err) {
-                console.error('[SCW PDF Export] Save webhook failed:', status, err);
-                showPublishToast('Publish failed \u2014 please try again.', true);
-                $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
-              }
+              timeout: 90000
             });
+
+            // Redirect immediately — poll on the parent page for completion
+            if (cfg.pollViewOnReturn) {
+              try {
+                sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+                if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+                if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+              } catch (e) {}
+            }
+            redirectToParent();
           }
         });
 
@@ -8144,6 +8145,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           try {
             sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
             if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+            if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
           } catch (e) {}
         }
       });
@@ -8187,6 +8189,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   var _pollViewId      = null;
   var _pollFieldId     = null;
   var _pollInitial     = '';
+  var _pollMsg         = '';
 
   function injectPollStyles() {
     if (document.getElementById(POLL_CSS_ID)) return;
@@ -8216,7 +8219,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       '.scw-pdf-poll-target { position: relative !important; }',
       '.scw-pdf-poll-target > * { opacity: .35; pointer-events: none; }',
       '.scw-pdf-poll-target::after {',
-      '  content: "Generating bid PDF\\2026";',
+      '  content: attr(data-scw-poll-msg);',
       '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
       '  display: flex; align-items: center; justify-content: center;',
       '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
@@ -8226,12 +8229,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     document.head.appendChild(s);
   }
 
-  function showPollToast() {
+  function showPollToast(msg) {
     injectPollStyles();
     if (document.getElementById(POLL_TOAST_ID)) return;
     var toast = document.createElement('div');
     toast.id = POLL_TOAST_ID;
-    toast.innerHTML = '<span class="scw-poll-spinner"></span> Generating bid PDF\u2026';
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> ' + esc(msg || 'Generating PDF\u2026');
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-poll-close';
     closeBtn.textContent = '\u00d7';
@@ -8257,11 +8260,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
-  // Apply the overlay class to the field_2626 td in the current DOM
-  function applyFieldOverlay(viewId, fieldId) {
+  // Apply the overlay class + message to the target td in the current DOM
+  function applyFieldOverlay(viewId, fieldId, msg) {
     if (!fieldId) return;
     var td = document.querySelector('#' + viewId + ' td.' + fieldId);
-    if (td) td.classList.add('scw-pdf-poll-target');
+    if (td) {
+      td.classList.add('scw-pdf-poll-target');
+      td.setAttribute('data-scw-poll-msg', msg || 'Generating PDF\u2026');
+    }
   }
 
   function clearFieldOverlay() {
@@ -8278,6 +8284,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     _pollViewId = null;
     _pollFieldId = null;
     _pollInitial = '';
+    _pollMsg = '';
   }
 
   // Called every time the polled view re-renders (from model.fetch or anything else)
@@ -8290,20 +8297,23 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
-      applyFieldOverlay(_pollViewId, _pollFieldId);
+      applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
     }
   }
 
-  function startPollRefresh(viewId, fieldId) {
+  function startPollRefresh(viewId, fieldId, pollType) {
     if (_pollTimer) clearInterval(_pollTimer);
     _pollActive = true;
     _pollViewId = viewId;
     _pollFieldId = fieldId;
     _pollInitial = readFieldText(viewId, fieldId);
 
+    var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
+    _pollMsg = 'Generating ' + label + ' PDF\u2026';
+
     console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
-    showPollToast();
-    applyFieldOverlay(viewId, fieldId);
+    showPollToast(_pollMsg);
+    applyFieldOverlay(viewId, fieldId, _pollMsg);
 
     // Listen for every re-render of this view
     $(document).off('knack-view-render.' + viewId + POLL_NS)
@@ -8327,18 +8337,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // Check for poll flag whenever any scene renders
   $(document).on('knack-scene-render.any.scwPdfPoll', function () {
-    var viewId, fieldId;
+    var viewId, fieldId, pollType;
     try {
       viewId = sessionStorage.getItem('scw-pdf-poll-view');
       fieldId = sessionStorage.getItem('scw-pdf-poll-field');
+      pollType = sessionStorage.getItem('scw-pdf-poll-type');
     } catch (e) {}
     if (!viewId) return;
     if (!document.getElementById(viewId)) return;
     try {
       sessionStorage.removeItem('scw-pdf-poll-view');
       sessionStorage.removeItem('scw-pdf-poll-field');
+      sessionStorage.removeItem('scw-pdf-poll-type');
     } catch (e) {}
-    setTimeout(function () { startPollRefresh(viewId, fieldId); }, 2000);
+    setTimeout(function () { startPollRefresh(viewId, fieldId, pollType); }, 2000);
   });
 
   // ══════════════════════════════════════════════════════════════
