@@ -1296,6 +1296,20 @@
     var pkg = _pending[pkgId];
     if (!pkg) return null;
 
+    // Build lookup: bid cell ID → row ID (survey item ID from view_3680)
+    // and set of known SOW item IDs (noBid items from view_3728)
+    var cellToRow = {};   // bidRecordId → rowId
+    var sowIdSet  = {};   // rowId for ADD/noBid items
+    for (var pi = 0; pi < pkg.items.length; pi++) {
+      var _it = pkg.items[pi];
+      if (_it.bidRecordId && _it.rowId) {
+        cellToRow[_it.bidRecordId] = _it.rowId;
+      }
+      if (_it.addToBid || itemActionType(_it) === 'add') {
+        sowIdSet[_it.rowId] = true;
+      }
+    }
+
     var items = [];
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
@@ -1335,29 +1349,33 @@
         }
       }
 
-      // Explicit connection arrays split by source view
-      // SOW/noBid items (view_3728) = AddIds; everything else in the full Ids = survey (view_3680)
-      var _cdAll  = r.bidConnDeviceIds || [];
-      var _cdAdd  = r.bidConnDeviceAddIds || [];
-      var _cdAddSet = {};
-      for (var ai = 0; ai < _cdAdd.length; ai++) _cdAddSet[_cdAdd[ai]] = true;
-      var _cdSurvey = [];
-      for (var si2 = 0; si2 < _cdAll.length; si2++) {
-        if (!_cdAddSet[_cdAll[si2]]) _cdSurvey.push(_cdAll[si2]);
+      // Classify connection IDs into survey (view_3680) vs SOW (view_3728)
+      // Survey items use bid cell IDs → translate to row IDs via cellToRow
+      // SOW items already use their own record IDs
+      function classifyConnIds(allIds, addIds) {
+        var survey = [], sow = [];
+        var addSet = {};
+        for (var a = 0; a < addIds.length; a++) addSet[addIds[a]] = true;
+        for (var j = 0; j < allIds.length; j++) {
+          var cid = allIds[j];
+          if (addSet[cid] || sowIdSet[cid]) {
+            // SOW/noBid item (view_3728) — ID is already the SOW item ID
+            sow.push(cid);
+          } else {
+            // Survey item (view_3680) — translate bid cell ID to row ID
+            survey.push(cellToRow[cid] || cid);
+          }
+        }
+        return { survey: survey, sow: sow };
       }
-      entry.ConnDevices_surveyitem = _cdSurvey;
-      entry.ConnDevices_sowitem    = _cdAdd;
 
-      var _ctAll  = r.bidConnToIds || [];
-      var _ctAdd  = r.bidConnToAddIds || [];
-      var _ctAddSet = {};
-      for (var ai2 = 0; ai2 < _ctAdd.length; ai2++) _ctAddSet[_ctAdd[ai2]] = true;
-      var _ctSurvey = [];
-      for (var si3 = 0; si3 < _ctAll.length; si3++) {
-        if (!_ctAddSet[_ctAll[si3]]) _ctSurvey.push(_ctAll[si3]);
-      }
-      entry.ConnTO_surveyitem = _ctSurvey;
-      entry.ConnTO_sowitem    = _ctAdd;
+      var cdClass = classifyConnIds(r.bidConnDeviceIds || [], r.bidConnDeviceAddIds || []);
+      entry.ConnDevices_surveyitem = cdClass.survey;
+      entry.ConnDevices_sowitem    = cdClass.sow;
+
+      var ctClass = classifyConnIds(r.bidConnToIds || [], r.bidConnToAddIds || []);
+      entry.ConnTO_surveyitem = ctClass.survey;
+      entry.ConnTO_sowitem    = ctClass.sow;
 
       // Detailed from→to diffs
       entry.fields = fieldList;
