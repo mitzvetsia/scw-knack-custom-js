@@ -32446,20 +32446,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         wrapEl.innerHTML = '';
         wrapEl.appendChild(badge);
 
-        // Refresh view_3505 to show updated data
-        // Delay to allow Make to finish updating Knack records
+        // Refresh views to show updated data
+        // 1) Wait for Make to finish updating Knack records
+        // 2) Fetch view_3823 first (revision data source)
+        // 3) Then fetch view_3505 — its re-render triggers inject()
+        //    which reads fresh view_3823 data
         if (resp && resp.success) {
           setTimeout(function () {
-            for (var vi = 0; vi < CFG.targetViews.length; vi++) {
-              var vk = CFG.targetViews[vi];
-              if (Knack.views[vk] && Knack.views[vk].model) {
-                Knack.views[vk].model.fetch();
-              }
-            }
-            // Also refresh the revision view so strips rebuild with fresh data
+            // Step 1: refresh revision view (view_3823)
             if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
               Knack.views[CFG.revisionView].model.fetch();
             }
+            // Step 2: after view_3823 re-renders, refresh target views
+            setTimeout(function () {
+              for (var vi = 0; vi < CFG.targetViews.length; vi++) {
+                var vk = CFG.targetViews[vi];
+                if (Knack.views[vk] && Knack.views[vk].model) {
+                  Knack.views[vk].model.fetch();
+                }
+              }
+            }, 1500);
           }, 3000);
         }
       },
