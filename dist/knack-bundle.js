@@ -15102,9 +15102,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (!hasValue(r[d.key])) continue;
         entry[d.key] = r[d.key];
         if (d.type === 'connection' && d.idsKey) {
-          if (r[d.idsKey])              entry[d.idsKey]              = r[d.idsKey];
-          if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
-          if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
+          // Skip raw ID arrays for bidConnDevice/bidConnTo — replaced by Conn*_surveyitem/sowitem
+          var skipRawIds = (d.key === 'bidConnDevice' || d.key === 'bidConnTo');
+          if (!skipRawIds) {
+            if (r[d.idsKey])              entry[d.idsKey]              = r[d.idsKey];
+            if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
+            if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
+          }
         }
       }
 
