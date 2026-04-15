@@ -8072,7 +8072,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
                 if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
               } catch (e) {}
             }
-            redirectToParent();
+            setTimeout(redirectToParent, 500);
           }
         });
 
