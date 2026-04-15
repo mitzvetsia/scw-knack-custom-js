@@ -121,7 +121,7 @@
 
       /* ── Action buttons (Approve / Reject) ── */
       '.' + P + '-actions {',
-      '  display: flex; gap: 8px; margin-top: 8px;',
+      '  display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;',
       '}',
       '.' + P + '-btn {',
       '  padding: 4px 14px; border-radius: 4px; border: none;',
