@@ -162,6 +162,16 @@
       }
       th.appendChild(nameRow);
 
+      // Pending change request link
+      if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
+        var crLink = document.createElement('a');
+        crLink.href = pkg.crLinkUrl;
+        crLink.className = 'scw-bid-review__cr-link';
+        crLink.textContent = pkg.crPendingCount + ' pending change request' +
+          (pkg.crPendingCount !== 1 ? 's' : '');
+        th.appendChild(crLink);
+      }
+
       // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
       var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
       if (isSubmitted) {

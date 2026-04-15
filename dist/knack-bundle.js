@@ -6895,11 +6895,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       recurringGrids: ['view_3371'],
       payloadType: 'proposal',
       saveHtml: true,
+      pollViewOnReturn: 'view_3814',
+      pollField: 'field_2681',
     },
     {
       sceneId: 'scene_1149',
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true, view_3770: true },
+      skipViews: { view_3679: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
@@ -6910,7 +6912,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         { field: 'field_2638', name: 'bidId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
-        { field: 'field_2633', name: 'field_2633' }
+        { field: 'field_2633', name: 'field_2633' },
+        { field: 'field_2631', name: 'cuTaskId', sourceView: 'view_3552', hide: true }
       ],
     },
   ];
@@ -6920,7 +6923,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ══════════════════════════════════════════════════════════════
 
   function getPageRecordId() {
-    var match = (window.location.hash || '').match(/\/([a-f0-9]{24})\/?$/);
+    var match = (window.location.hash || '').split('?')[0].match(/\/([a-f0-9]{24})\/?$/);
     return match ? match[1] : '';
   }
 
@@ -7915,7 +7918,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   /** Navigate to the parent page by stripping the last two hash segments. */
   function redirectToParent() {
     dismissPublishToast();
-    var hash = (window.location.hash || '').replace(/\/+$/, '');
+    var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
     // Knack child page: #parent-slug/parent-id/child-slug/child-id
     // Strip last two segments → #parent-slug/parent-id
     var parts = hash.replace(/^#\/?/, '').split('/');
@@ -8033,7 +8036,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           if (cfg.saveHtml) {
             // Disable button to prevent double-submit
             $btn.prop('disabled', true).css({ opacity: 0.5, cursor: 'not-allowed' });
-            showPublishToast('Publishing quote\u2026', false, true);
 
             var pageRecordId = getPageRecordId();
             var summary = extractSummaryFields(payload);
@@ -8053,6 +8055,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               json: jsonSnapshot
             };
             console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
               type: 'POST',
@@ -8061,13 +8064,19 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               crossDomain: true,
               timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Save webhook OK — redirecting to parent');
-                showPublishToast('Quote published \u2014 redirecting\u2026', false);
-                setTimeout(redirectToParent, 1500);
+                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                if (cfg.pollViewOnReturn) {
+                  try {
+                    sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+                    if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+                    if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+                  } catch (e) {}
+                }
+                redirectToParent();
               },
-              error: function (xhr, status, err) {
-                console.error('[SCW PDF Export] Save webhook failed:', status, err);
-                showPublishToast('Publish failed \u2014 please try again.', true);
+              error: function (xhr, status) {
+                console.error('[SCW PDF Export] Webhook failed:', status);
+                showPublishToast('Webhook failed — please try again.', true, false);
                 $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
               }
             });
@@ -8116,7 +8125,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
             _fNum = spec.field.replace('field_', '');
-            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
+            // If sourceView is specified, scope the search to that view first
+            var el = null;
+            if (spec.sourceView) {
+              el = document.querySelector('#' + spec.sourceView + ' .field_' + _fNum);
+              if (!el) el = document.querySelector('#' + spec.sourceView + ' td.' + spec.field);
+              if (!el) el = document.querySelector('#' + spec.sourceView + ' [data-field-key="' + spec.field + '"]');
+            }
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
             // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
@@ -8136,10 +8152,27 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           try {
             sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
             if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+            if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
           } catch (e) {}
         }
       });
     });
+
+    // Hide extraFields marked with hide:true when their source view renders
+    if (cfg.extraFields) {
+      cfg.extraFields.forEach(function (spec) {
+        if (!spec.hide || !spec.sourceView) return;
+        var _fn = spec.field.replace('field_', '');
+        $(document).on('knack-view-render.' + spec.sourceView + ns, function () {
+          var el = document.querySelector('#' + spec.sourceView + ' .field_' + _fn)
+               || document.querySelector('#' + spec.sourceView + ' [data-field-key="' + spec.field + '"]');
+          if (el) {
+            var hideTarget = el.closest('.kn-detail') || el;
+            hideTarget.style.display = 'none';
+          }
+        });
+      });
+    }
 
     // Also hide empty grids on scene render
     if (cfg.hideEmptyGrids.length) {
@@ -8163,6 +8196,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   var _pollViewId      = null;
   var _pollFieldId     = null;
   var _pollInitial     = '';
+  var _pollMsg         = '';
 
   function injectPollStyles() {
     if (document.getElementById(POLL_CSS_ID)) return;
@@ -8192,7 +8226,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       '.scw-pdf-poll-target { position: relative !important; }',
       '.scw-pdf-poll-target > * { opacity: .35; pointer-events: none; }',
       '.scw-pdf-poll-target::after {',
-      '  content: "Generating bid PDF\\2026";',
+      '  content: attr(data-scw-poll-msg);',
       '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
       '  display: flex; align-items: center; justify-content: center;',
       '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
@@ -8202,12 +8236,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     document.head.appendChild(s);
   }
 
-  function showPollToast() {
+  function showPollToast(msg) {
     injectPollStyles();
     if (document.getElementById(POLL_TOAST_ID)) return;
     var toast = document.createElement('div');
     toast.id = POLL_TOAST_ID;
-    toast.innerHTML = '<span class="scw-poll-spinner"></span> Generating bid PDF\u2026';
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> ' + esc(msg || 'Generating PDF\u2026');
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-poll-close';
     closeBtn.textContent = '\u00d7';
@@ -8233,11 +8267,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
-  // Apply the overlay class to the field_2626 td in the current DOM
-  function applyFieldOverlay(viewId, fieldId) {
+  // Apply the overlay class + message to the target td in the current DOM
+  function applyFieldOverlay(viewId, fieldId, msg) {
     if (!fieldId) return;
     var td = document.querySelector('#' + viewId + ' td.' + fieldId);
-    if (td) td.classList.add('scw-pdf-poll-target');
+    if (td) {
+      td.classList.add('scw-pdf-poll-target');
+      td.setAttribute('data-scw-poll-msg', msg || 'Generating PDF\u2026');
+    }
   }
 
   function clearFieldOverlay() {
@@ -8254,6 +8291,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     _pollViewId = null;
     _pollFieldId = null;
     _pollInitial = '';
+    _pollMsg = '';
   }
 
   // Called every time the polled view re-renders (from model.fetch or anything else)
@@ -8266,20 +8304,23 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
-      applyFieldOverlay(_pollViewId, _pollFieldId);
+      applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
     }
   }
 
-  function startPollRefresh(viewId, fieldId) {
+  function startPollRefresh(viewId, fieldId, pollType) {
     if (_pollTimer) clearInterval(_pollTimer);
     _pollActive = true;
     _pollViewId = viewId;
     _pollFieldId = fieldId;
     _pollInitial = readFieldText(viewId, fieldId);
 
+    var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
+    _pollMsg = 'Generating ' + label + ' PDF\u2026';
+
     console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
-    showPollToast();
-    applyFieldOverlay(viewId, fieldId);
+    showPollToast(_pollMsg);
+    applyFieldOverlay(viewId, fieldId, _pollMsg);
 
     // Listen for every re-render of this view
     $(document).off('knack-view-render.' + viewId + POLL_NS)
@@ -8303,18 +8344,20 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // Check for poll flag whenever any scene renders
   $(document).on('knack-scene-render.any.scwPdfPoll', function () {
-    var viewId, fieldId;
+    var viewId, fieldId, pollType;
     try {
       viewId = sessionStorage.getItem('scw-pdf-poll-view');
       fieldId = sessionStorage.getItem('scw-pdf-poll-field');
+      pollType = sessionStorage.getItem('scw-pdf-poll-type');
     } catch (e) {}
     if (!viewId) return;
     if (!document.getElementById(viewId)) return;
     try {
       sessionStorage.removeItem('scw-pdf-poll-view');
       sessionStorage.removeItem('scw-pdf-poll-field');
+      sessionStorage.removeItem('scw-pdf-poll-type');
     } catch (e) {}
-    setTimeout(function () { startPollRefresh(viewId, fieldId); }, 2000);
+    setTimeout(function () { startPollRefresh(viewId, fieldId, pollType); }, 2000);
   });
 
   // ══════════════════════════════════════════════════════════════
@@ -10420,10 +10463,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
+    changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
     changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
+    revisionResponseWebhook: 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -10493,6 +10538,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       // Change request draft persistence (paragraph field on SOW record)
       changeRequestDraft: 'field_2684',
+
+      // Change request view (view_3818)
+      crPendingCount:  'field_2699',   // COUNT_pending change requests
+      crBidPackage:    'field_2689',   // REL_bid package (on CR records — differs from field_2415)
     },
 
     // ── SOW item fields (view_3728 — different keys than bid records) ──
@@ -10663,6 +10712,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
       '.scw-bid-review__pdf-link:hover { opacity: 1; }',
       '.scw-bid-review__pdf-link svg { display: block; width: 20px; height: 20px; }',
+
+      '.scw-bid-review__cr-link {',
+      '  display: block;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #dc6900;',
+      '  margin-top: 4px;',
+      '  text-decoration: none;',
+      '}',
+      '.scw-bid-review__cr-link:hover {',
+      '  text-decoration: underline;',
+      '  color: #b85700;',
+      '}',
 
       '.scw-bid-review__pkg-counts {',
       '  font-size: 11px;',
@@ -12122,6 +12184,64 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── public entry point ────────────────────────────────────────
 
+  // ── scrape change request records from view_3818 DOM ──────────
+
+  /**
+   * Scrape view_3818 (change request grid) from the DOM.
+   * Returns a map: bidPackageId → { pendingCount, linkUrl }
+   *
+   * Each row has:
+   *  - A bid-package connection cell (span[data-kn="connection-value"])
+   *  - field_2699 (pending change request count)
+   *  - A Knack action-link column (<a> tag with the CR detail URL)
+   */
+  function scrapeCrView() {
+    var map = {};
+    var viewKey = CFG.changeRequestViewKey;
+    if (!viewKey) return map;
+
+    var $view = $('#' + viewKey);
+    if (!$view.length) return map;
+
+    var $rows = $view.find('table.kn-table-table tbody tr');
+    $rows.each(function () {
+      var $tr = $(this);
+      if ($tr.hasClass('kn-table-group')) return;
+
+      // Bid-package connection is field_2689 (not field_2415)
+      var pkgId = '';
+      var $pkgCell = $tr.find('td.' + FK.crBidPackage);
+      if ($pkgCell.length) {
+        var $connSpan = $pkgCell.find('span[data-kn="connection-value"]');
+        if ($connSpan.length) pkgId = ($connSpan.attr('class') || '').trim();
+      }
+      if (!pkgId) return;
+
+      // Read pending count from field_2699
+      var $countCell = $tr.find('td.' + FK.crPendingCount);
+      var countText = $countCell.length ? $countCell.text().trim() : '0';
+      var count = parseInt(countText, 10) || 0;
+
+      // The detail link is in the kn-table-link cell (eye icon column)
+      var linkUrl = '';
+      $tr.find('td.kn-table-link a[href]').each(function () {
+        var href = $(this).attr('href') || '';
+        if (href.indexOf('#') !== -1 && !linkUrl) linkUrl = href;
+      });
+
+      if (count > 0 && linkUrl) {
+        map[pkgId] = { pendingCount: count, linkUrl: linkUrl };
+      }
+    });
+
+    if (CFG.debug) {
+      console.log('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
+    }
+    return map;
+  }
+
+  ns.scrapeCrView = scrapeCrView;
+
   // ── extract PDF URLs from bid package records ──────────────────
 
   function buildPkgInfoMap(bidPackages) {
@@ -12188,9 +12308,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
     var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
+    var crMap      = scrapeCrView();
 
-    // Attach PDF, survey, and status info to each package
+    // Attach PDF, survey, status, and CR info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
+      var crInfo = crMap[allPkgs[pi].id];
+      if (crInfo) {
+        allPkgs[pi].crPendingCount = crInfo.pendingCount;
+        allPkgs[pi].crLinkUrl      = crInfo.linkUrl;
+      }
       var info = pkgInfoMap[allPkgs[pi].id];
       if (info) {
         if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
@@ -12339,8 +12465,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF, survey, and status info to per-SOW packages
+      // Attach PDF, survey, status, and CR info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
+        var pCr = crMap[pkgs[ppi].id];
+        if (pCr) {
+          pkgs[ppi].crPendingCount = pCr.pendingCount;
+          pkgs[ppi].crLinkUrl      = pCr.linkUrl;
+        }
         var pInfo = pkgInfoMap[pkgs[ppi].id];
         if (pInfo) {
           if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
@@ -12550,6 +12681,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         nameRow.appendChild(badge);
       }
       th.appendChild(nameRow);
+
+      // Pending change request link
+      if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
+        var crLink = document.createElement('a');
+        crLink.href = pkg.crLinkUrl;
+        crLink.className = 'scw-bid-review__cr-link';
+        crLink.textContent = pkg.crPendingCount + ' pending change request' +
+          (pkg.crPendingCount !== 1 ? 's' : '');
+        th.appendChild(crLink);
+      }
 
       // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
       var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
@@ -14928,6 +15069,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var pkg = _pending[pkgId];
     if (!pkg) return null;
 
+    // Build lookup: bid cell ID → row ID (survey item ID from view_3680)
+    // and set of known SOW item IDs (noBid items from view_3728)
+    var cellToRow = {};   // bidRecordId → rowId
+    var sowIdSet  = {};   // rowId for ADD/noBid items
+    for (var pi = 0; pi < pkg.items.length; pi++) {
+      var _it = pkg.items[pi];
+      if (_it.bidRecordId && _it.rowId) {
+        cellToRow[_it.bidRecordId] = _it.rowId;
+      }
+      if (_it.addToBid || itemActionType(_it) === 'add') {
+        sowIdSet[_it.rowId] = true;
+      }
+    }
+
     var items = [];
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
@@ -14967,8 +15122,39 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
       }
 
+      // Classify connection IDs into survey (view_3680) vs SOW (view_3728)
+      // Survey items use bid cell IDs → translate to row IDs via cellToRow
+      // SOW items already use their own record IDs
+      function classifyConnIds(allIds, addIds) {
+        var survey = [], sow = [];
+        var addSet = {};
+        for (var a = 0; a < addIds.length; a++) addSet[addIds[a]] = true;
+        for (var j = 0; j < allIds.length; j++) {
+          var cid = allIds[j];
+          if (addSet[cid] || sowIdSet[cid]) {
+            // SOW/noBid item (view_3728) — ID is already the SOW item ID
+            sow.push(cid);
+          } else {
+            // Survey item (view_3680) — translate bid cell ID to row ID
+            survey.push(cellToRow[cid] || cid);
+          }
+        }
+        return { survey: survey, sow: sow };
+      }
+
+      var cdClass = classifyConnIds(r.bidConnDeviceIds || [], r.bidConnDeviceAddIds || []);
+      entry.ConnDevices_surveyitem = cdClass.survey;
+      entry.ConnDevices_sowitem    = cdClass.sow;
+
+      var ctClass = classifyConnIds(r.bidConnToIds || [], r.bidConnToAddIds || []);
+      entry.ConnTO_surveyitem = ctClass.survey;
+      entry.ConnTO_sowitem    = ctClass.sow;
+
       // Detailed from→to diffs
       entry.fields = fieldList;
+
+      // Per-item JSON snapshot (stringified before HTML is added)
+      entry.json = JSON.stringify(entry);
 
       // Per-item HTML card for display in view_3505
       entry.html = buildItemHtml(it, fieldList);
@@ -15154,6 +15340,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         persist();
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
+
+        // Refresh the comparison grid after Make finishes processing
+        if (resp && resp.success) {
+          setTimeout(function () { if (ns.refresh) ns.refresh(); }, 2000);
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
@@ -16452,6 +16643,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         _viewsReady[CFG.bidPackagesViewKey] = true;
         checkViewsAndRun();
       }, CFG.eventNs + 'Pkg');
+    }
+
+    // Change request view — pending CR counts + links (DOM-scraped)
+    if (CFG.changeRequestViewKey) {
+      SCW.onViewRender(CFG.changeRequestViewKey, function () {
+        // Re-render the matrix to pick up updated CR data from view_3818
+        if (_state) refreshSilently();
+      }, CFG.eventNs + 'Cr');
     }
   }
 
@@ -30173,7 +30372,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (isLocked) {
         card.classList.add(P + '-locked');
         // Block Knack's native inline-edit popup modals on locked rows
+        // but allow the toggle-zone (chevron + identity) so the detail panel still opens
         card.addEventListener('click', function (e) {
+          if (e.target.closest('.' + P + '-toggle-zone')) return;
           var td = e.target.closest('td');
           if (td) {
             e.stopPropagation();
@@ -30756,12 +30957,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /** MDF/IDF location records view (on the same scene as view_3505) */
   var MDF_IDF_VIEW = 'view_3617';
 
-  var STYLE_ID   = 'scw-bid-revision-inject-css';
-  var BADGE_CLS  = 'scw-revision-badge';
-  var STRIP_CLS  = 'scw-revision-strip';
-  var INJECTED   = 'data-scw-rev-injected';
-  var EVENT_NS   = '.scwBidRevInject';
-  var P          = 'scw-rev';
+  var STYLE_ID      = 'scw-bid-revision-inject-css';
+  var BADGE_CLS     = 'scw-revision-badge';
+  var STRIP_CLS     = 'scw-revision-strip';
+  var INJECTED      = 'data-scw-rev-injected';
+  var EVENT_NS      = '.scwBidRevInject';
+  var P             = 'scw-rev';
+  var GRP_BADGE_CLS = P + '-grp-badge';
+  var ORPHAN_ROW_CLS = P + '-orphan-row';
 
   // ── CSS ─────────────────────────────────────────────────
 
@@ -30820,7 +31023,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       /* ── Action buttons (Approve / Reject) ── */
       '.' + P + '-actions {',
-      '  display: flex; gap: 8px; margin-top: 8px;',
+      '  display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;',
       '}',
       '.' + P + '-btn {',
       '  padding: 4px 14px; border-radius: 4px; border: none;',
@@ -32021,6 +32224,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       if (notes) updated.changeNotes = notes;
 
+      // Rebuild the per-item json snapshot (excludes html/json fields)
+      var jsonSnap = JSON.parse(JSON.stringify(updated));
+      delete jsonSnap.html;
+      delete jsonSnap.json;
+      updated.json = JSON.stringify(jsonSnap);
+
       // Build both JSON and HTML for the revision record
       var updatedJson = JSON.stringify(updated);
       var updatedHtml = buildRevisionHtml(updated);
@@ -32114,9 +32323,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     rejectBtn.className = P + '-btn ' + P + '-btn--reject';
     rejectBtn.textContent = 'Reject';
 
-    actions.appendChild(approveBtn);
     actions.appendChild(editBtn);
     actions.appendChild(rejectBtn);
+    actions.appendChild(approveBtn);
     wrap.appendChild(actions);
 
     // Reject notes — hidden until Reject is clicked
@@ -32200,19 +32409,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
-                   ? window.SCW.bidReview.CONFIG.changeRequestWebhook
+                   ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
                    : '';
     if (!webhookUrl) {
       console.error('[BidRevInject] No webhook URL configured');
       return;
     }
 
+    // Show processing feedback
+    wrapEl.innerHTML = '';
+    var spinner = document.createElement('div');
+    spinner.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#f1f5f9;color:#475569;';
+    spinner.textContent = '\u23F3 Processing\u2026';
+    wrapEl.appendChild(spinner);
+
     SCW.knackAjax({
       url:  webhookUrl,
       type: 'POST',
       data: JSON.stringify(payload),
-      success: function () {
-        console.log('[BidRevInject]', action, 'success for', revisionId);
+      timeout: 90000,
+      success: function (resp) {
+        console.log('[BidRevInject]', action, 'response for', revisionId, resp);
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
         if (extra.outcome === 'rejected') {
@@ -32230,13 +32447,66 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
         wrapEl.innerHTML = '';
         wrapEl.appendChild(badge);
+
+        // Refresh views to show updated data
+        // 1) Wait for Make to finish updating Knack records
+        // 2) Fetch view_3823 first (revision data source)
+        // 3) Wait for view_3823's knack-view-render so its DOM is fresh
+        // 4) Then fetch target views — their re-render triggers inject()
+        //    which reads fresh view_3823 data
+        // Parse resp if it came back as a raw JSON string
+        if (typeof resp === 'string') {
+          try { resp = JSON.parse(resp); } catch (e) { /* ignore */ }
+        }
+        if (resp && resp.success) {
+          setTimeout(function () {
+            var refreshTargets = function () {
+              for (var vi = 0; vi < CFG.targetViews.length; vi++) {
+                var vk = CFG.targetViews[vi];
+                if (Knack.views[vk] && Knack.views[vk].model) {
+                  Knack.views[vk].model.fetch();
+                }
+              }
+            };
+
+            // Listen for view_3823 re-render before refreshing targets
+            var onceNs = '.scwRevActionRefresh';
+            var fired = false;
+            $(document).off('knack-view-render.' + CFG.revisionView + onceNs)
+                       .on('knack-view-render.' + CFG.revisionView + onceNs, function () {
+              if (fired) return;
+              fired = true;
+              $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
+              console.log('[BidRevInject] view_3823 re-rendered, refreshing targets');
+              // Small delay to let DOM settle
+              setTimeout(refreshTargets, 300);
+            });
+
+            // Fallback: if view_3823 doesn't fire render within 5s, refresh anyway
+            setTimeout(function () {
+              if (!fired) {
+                fired = true;
+                $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
+                console.log('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
+                refreshTargets();
+              }
+            }, 5000);
+
+            // Kick off view_3823 fetch
+            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+              Knack.views[CFG.revisionView].model.fetch();
+            }
+          }, 3000);
+        }
       },
       error: function (xhr) {
-        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status);
-        var btns = wrapEl.querySelectorAll('button');
-        for (var bi = 0; bi < btns.length; bi++) btns[bi].disabled = false;
-        var err = wrapEl.querySelector('.' + P + '-reject-error');
-        if (err) err.textContent = 'Failed to submit \u2014 please try again.';
+        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status, xhr.responseText);
+        wrapEl.innerHTML = '';
+        // Re-enable by rebuilding action buttons
+        var errBadge = document.createElement('div');
+        errBadge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#fee2e2;color:#991b1b;';
+        errBadge.textContent = 'Failed to submit \u2014 please reload and try again.';
+        wrapEl.appendChild(errBadge);
       },
     });
   }
@@ -32552,8 +32822,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return last;
   }
 
-  var ORPHAN_ROW_CLS = P + '-orphan-row';
-
   /**
    * Find the correct insertion point for an orphan row within a group
    * based on its sortOrder vs. existing worksheet rows' field_2218 values.
@@ -32680,9 +32948,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   var _injectRetries = 0;
 
+  /**
+   * Remove all previously-injected revision DOM: strips, badges, orphan rows,
+   * orphan sections, group badges, and INJECTED flags.  Called at the top of
+   * inject() so stale elements are always cleaned before (re-)injection.
+   */
+  function cleanupInjections(viewEl) {
+    // Revision strips
+    var strips = viewEl.querySelectorAll('.' + STRIP_CLS);
+    for (var si = 0; si < strips.length; si++) strips[si].remove();
+    // Revision badges on cards
+    var badges = viewEl.querySelectorAll('.' + BADGE_CLS);
+    for (var bi = 0; bi < badges.length; bi++) badges[bi].remove();
+    // Orphan rows
+    var orphRows = viewEl.querySelectorAll('.' + ORPHAN_ROW_CLS);
+    for (var oi = 0; oi < orphRows.length; oi++) orphRows[oi].remove();
+    // Orphan fallback section
+    var orphSec = viewEl.querySelector('.' + P + '-orphan-section');
+    if (orphSec) orphSec.remove();
+    // Group header badges
+    var grpBadges = viewEl.querySelectorAll('.' + GRP_BADGE_CLS);
+    for (var gi = 0; gi < grpBadges.length; gi++) grpBadges[gi].remove();
+    // Clear injected flags so cards can be re-injected
+    var flagged = viewEl.querySelectorAll('[' + INJECTED + ']');
+    for (var fi = 0; fi < flagged.length; fi++) flagged[fi].removeAttribute(INJECTED);
+  }
+
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
     if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+
+    // Always clean up previous injections before rebuilding
+    cleanupInjections(viewEl);
 
     var result = buildRevisionMap();
     var revMap = result.map;
@@ -32719,7 +33016,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var ui = 0; ui < unmatched.length; ui++) orphaned.push(unmatched[ui]);
         continue;
       }
-      if (card.getAttribute(INJECTED)) continue;
       card.setAttribute(INJECTED, '1');
 
       var revisions = revMap[siId];
@@ -32753,8 +33049,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Inject change/add count badges into group headers
     injectGroupBadges(viewEl, siIds, revMap, orphaned);
   }
-
-  var GRP_BADGE_CLS = P + '-grp-badge';
 
   /**
    * Add "N changes  N adds" badges to each group header that has revisions.

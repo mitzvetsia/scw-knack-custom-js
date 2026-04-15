@@ -57,12 +57,14 @@
   /** MDF/IDF location records view (on the same scene as view_3505) */
   var MDF_IDF_VIEW = 'view_3617';
 
-  var STYLE_ID   = 'scw-bid-revision-inject-css';
-  var BADGE_CLS  = 'scw-revision-badge';
-  var STRIP_CLS  = 'scw-revision-strip';
-  var INJECTED   = 'data-scw-rev-injected';
-  var EVENT_NS   = '.scwBidRevInject';
-  var P          = 'scw-rev';
+  var STYLE_ID      = 'scw-bid-revision-inject-css';
+  var BADGE_CLS     = 'scw-revision-badge';
+  var STRIP_CLS     = 'scw-revision-strip';
+  var INJECTED      = 'data-scw-rev-injected';
+  var EVENT_NS      = '.scwBidRevInject';
+  var P             = 'scw-rev';
+  var GRP_BADGE_CLS = P + '-grp-badge';
+  var ORPHAN_ROW_CLS = P + '-orphan-row';
 
   // ── CSS ─────────────────────────────────────────────────
 
@@ -121,7 +123,7 @@
 
       /* ── Action buttons (Approve / Reject) ── */
       '.' + P + '-actions {',
-      '  display: flex; gap: 8px; margin-top: 8px;',
+      '  display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;',
       '}',
       '.' + P + '-btn {',
       '  padding: 4px 14px; border-radius: 4px; border: none;',
@@ -1322,6 +1324,12 @@
       }
       if (notes) updated.changeNotes = notes;
 
+      // Rebuild the per-item json snapshot (excludes html/json fields)
+      var jsonSnap = JSON.parse(JSON.stringify(updated));
+      delete jsonSnap.html;
+      delete jsonSnap.json;
+      updated.json = JSON.stringify(jsonSnap);
+
       // Build both JSON and HTML for the revision record
       var updatedJson = JSON.stringify(updated);
       var updatedHtml = buildRevisionHtml(updated);
@@ -1415,9 +1423,9 @@
     rejectBtn.className = P + '-btn ' + P + '-btn--reject';
     rejectBtn.textContent = 'Reject';
 
-    actions.appendChild(approveBtn);
     actions.appendChild(editBtn);
     actions.appendChild(rejectBtn);
+    actions.appendChild(approveBtn);
     wrap.appendChild(actions);
 
     // Reject notes — hidden until Reject is clicked
@@ -1501,19 +1509,27 @@
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
-                   ? window.SCW.bidReview.CONFIG.changeRequestWebhook
+                   ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
                    : '';
     if (!webhookUrl) {
       console.error('[BidRevInject] No webhook URL configured');
       return;
     }
 
+    // Show processing feedback
+    wrapEl.innerHTML = '';
+    var spinner = document.createElement('div');
+    spinner.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#f1f5f9;color:#475569;';
+    spinner.textContent = '\u23F3 Processing\u2026';
+    wrapEl.appendChild(spinner);
+
     SCW.knackAjax({
       url:  webhookUrl,
       type: 'POST',
       data: JSON.stringify(payload),
-      success: function () {
-        console.log('[BidRevInject]', action, 'success for', revisionId);
+      timeout: 90000,
+      success: function (resp) {
+        console.log('[BidRevInject]', action, 'response for', revisionId, resp);
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
         if (extra.outcome === 'rejected') {
@@ -1531,13 +1547,66 @@
         }
         wrapEl.innerHTML = '';
         wrapEl.appendChild(badge);
+
+        // Refresh views to show updated data
+        // 1) Wait for Make to finish updating Knack records
+        // 2) Fetch view_3823 first (revision data source)
+        // 3) Wait for view_3823's knack-view-render so its DOM is fresh
+        // 4) Then fetch target views — their re-render triggers inject()
+        //    which reads fresh view_3823 data
+        // Parse resp if it came back as a raw JSON string
+        if (typeof resp === 'string') {
+          try { resp = JSON.parse(resp); } catch (e) { /* ignore */ }
+        }
+        if (resp && resp.success) {
+          setTimeout(function () {
+            var refreshTargets = function () {
+              for (var vi = 0; vi < CFG.targetViews.length; vi++) {
+                var vk = CFG.targetViews[vi];
+                if (Knack.views[vk] && Knack.views[vk].model) {
+                  Knack.views[vk].model.fetch();
+                }
+              }
+            };
+
+            // Listen for view_3823 re-render before refreshing targets
+            var onceNs = '.scwRevActionRefresh';
+            var fired = false;
+            $(document).off('knack-view-render.' + CFG.revisionView + onceNs)
+                       .on('knack-view-render.' + CFG.revisionView + onceNs, function () {
+              if (fired) return;
+              fired = true;
+              $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
+              console.log('[BidRevInject] view_3823 re-rendered, refreshing targets');
+              // Small delay to let DOM settle
+              setTimeout(refreshTargets, 300);
+            });
+
+            // Fallback: if view_3823 doesn't fire render within 5s, refresh anyway
+            setTimeout(function () {
+              if (!fired) {
+                fired = true;
+                $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
+                console.log('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
+                refreshTargets();
+              }
+            }, 5000);
+
+            // Kick off view_3823 fetch
+            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+              Knack.views[CFG.revisionView].model.fetch();
+            }
+          }, 3000);
+        }
       },
       error: function (xhr) {
-        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status);
-        var btns = wrapEl.querySelectorAll('button');
-        for (var bi = 0; bi < btns.length; bi++) btns[bi].disabled = false;
-        var err = wrapEl.querySelector('.' + P + '-reject-error');
-        if (err) err.textContent = 'Failed to submit \u2014 please try again.';
+        console.error('[BidRevInject]', action, 'failed for', revisionId, xhr.status, xhr.responseText);
+        wrapEl.innerHTML = '';
+        // Re-enable by rebuilding action buttons
+        var errBadge = document.createElement('div');
+        errBadge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#fee2e2;color:#991b1b;';
+        errBadge.textContent = 'Failed to submit \u2014 please reload and try again.';
+        wrapEl.appendChild(errBadge);
       },
     });
   }
@@ -1853,8 +1922,6 @@
     return last;
   }
 
-  var ORPHAN_ROW_CLS = P + '-orphan-row';
-
   /**
    * Find the correct insertion point for an orphan row within a group
    * based on its sortOrder vs. existing worksheet rows' field_2218 values.
@@ -1981,9 +2048,38 @@
 
   var _injectRetries = 0;
 
+  /**
+   * Remove all previously-injected revision DOM: strips, badges, orphan rows,
+   * orphan sections, group badges, and INJECTED flags.  Called at the top of
+   * inject() so stale elements are always cleaned before (re-)injection.
+   */
+  function cleanupInjections(viewEl) {
+    // Revision strips
+    var strips = viewEl.querySelectorAll('.' + STRIP_CLS);
+    for (var si = 0; si < strips.length; si++) strips[si].remove();
+    // Revision badges on cards
+    var badges = viewEl.querySelectorAll('.' + BADGE_CLS);
+    for (var bi = 0; bi < badges.length; bi++) badges[bi].remove();
+    // Orphan rows
+    var orphRows = viewEl.querySelectorAll('.' + ORPHAN_ROW_CLS);
+    for (var oi = 0; oi < orphRows.length; oi++) orphRows[oi].remove();
+    // Orphan fallback section
+    var orphSec = viewEl.querySelector('.' + P + '-orphan-section');
+    if (orphSec) orphSec.remove();
+    // Group header badges
+    var grpBadges = viewEl.querySelectorAll('.' + GRP_BADGE_CLS);
+    for (var gi = 0; gi < grpBadges.length; gi++) grpBadges[gi].remove();
+    // Clear injected flags so cards can be re-injected
+    var flagged = viewEl.querySelectorAll('[' + INJECTED + ']');
+    for (var fi = 0; fi < flagged.length; fi++) flagged[fi].removeAttribute(INJECTED);
+  }
+
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
     if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+
+    // Always clean up previous injections before rebuilding
+    cleanupInjections(viewEl);
 
     var result = buildRevisionMap();
     var revMap = result.map;
@@ -2020,7 +2116,6 @@
         for (var ui = 0; ui < unmatched.length; ui++) orphaned.push(unmatched[ui]);
         continue;
       }
-      if (card.getAttribute(INJECTED)) continue;
       card.setAttribute(INJECTED, '1');
 
       var revisions = revMap[siId];
@@ -2054,8 +2149,6 @@
     // Inject change/add count badges into group headers
     injectGroupBadges(viewEl, siIds, revMap, orphaned);
   }
-
-  var GRP_BADGE_CLS = P + '-grp-badge';
 
   /**
    * Add "N changes  N adds" badges to each group header that has revisions.

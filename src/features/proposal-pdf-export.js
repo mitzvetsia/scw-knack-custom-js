@@ -19,11 +19,13 @@
       recurringGrids: ['view_3371'],
       payloadType: 'proposal',
       saveHtml: true,
+      pollViewOnReturn: 'view_3814',
+      pollField: 'field_2681',
     },
     {
       sceneId: 'scene_1149',
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true, view_3770: true },
+      skipViews: { view_3679: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
@@ -34,7 +36,8 @@
         { field: 'field_2638', name: 'bidId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
-        { field: 'field_2633', name: 'field_2633' }
+        { field: 'field_2633', name: 'field_2633' },
+        { field: 'field_2631', name: 'cuTaskId', sourceView: 'view_3552', hide: true }
       ],
     },
   ];
@@ -44,7 +47,7 @@
   // ══════════════════════════════════════════════════════════════
 
   function getPageRecordId() {
-    var match = (window.location.hash || '').match(/\/([a-f0-9]{24})\/?$/);
+    var match = (window.location.hash || '').split('?')[0].match(/\/([a-f0-9]{24})\/?$/);
     return match ? match[1] : '';
   }
 
@@ -1039,7 +1042,7 @@
   /** Navigate to the parent page by stripping the last two hash segments. */
   function redirectToParent() {
     dismissPublishToast();
-    var hash = (window.location.hash || '').replace(/\/+$/, '');
+    var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
     // Knack child page: #parent-slug/parent-id/child-slug/child-id
     // Strip last two segments → #parent-slug/parent-id
     var parts = hash.replace(/^#\/?/, '').split('/');
@@ -1157,7 +1160,6 @@
           if (cfg.saveHtml) {
             // Disable button to prevent double-submit
             $btn.prop('disabled', true).css({ opacity: 0.5, cursor: 'not-allowed' });
-            showPublishToast('Publishing quote\u2026', false, true);
 
             var pageRecordId = getPageRecordId();
             var summary = extractSummaryFields(payload);
@@ -1177,6 +1179,7 @@
               json: jsonSnapshot
             };
             console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
               type: 'POST',
@@ -1185,13 +1188,19 @@
               crossDomain: true,
               timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Save webhook OK — redirecting to parent');
-                showPublishToast('Quote published \u2014 redirecting\u2026', false);
-                setTimeout(redirectToParent, 1500);
+                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                if (cfg.pollViewOnReturn) {
+                  try {
+                    sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+                    if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+                    if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+                  } catch (e) {}
+                }
+                redirectToParent();
               },
-              error: function (xhr, status, err) {
-                console.error('[SCW PDF Export] Save webhook failed:', status, err);
-                showPublishToast('Publish failed \u2014 please try again.', true);
+              error: function (xhr, status) {
+                console.error('[SCW PDF Export] Webhook failed:', status);
+                showPublishToast('Webhook failed — please try again.', true, false);
                 $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
               }
             });
@@ -1240,7 +1249,14 @@
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
             _fNum = spec.field.replace('field_', '');
-            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
+            // If sourceView is specified, scope the search to that view first
+            var el = null;
+            if (spec.sourceView) {
+              el = document.querySelector('#' + spec.sourceView + ' .field_' + _fNum);
+              if (!el) el = document.querySelector('#' + spec.sourceView + ' td.' + spec.field);
+              if (!el) el = document.querySelector('#' + spec.sourceView + ' [data-field-key="' + spec.field + '"]');
+            }
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
             // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
@@ -1260,10 +1276,27 @@
           try {
             sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
             if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+            if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
           } catch (e) {}
         }
       });
     });
+
+    // Hide extraFields marked with hide:true when their source view renders
+    if (cfg.extraFields) {
+      cfg.extraFields.forEach(function (spec) {
+        if (!spec.hide || !spec.sourceView) return;
+        var _fn = spec.field.replace('field_', '');
+        $(document).on('knack-view-render.' + spec.sourceView + ns, function () {
+          var el = document.querySelector('#' + spec.sourceView + ' .field_' + _fn)
+               || document.querySelector('#' + spec.sourceView + ' [data-field-key="' + spec.field + '"]');
+          if (el) {
+            var hideTarget = el.closest('.kn-detail') || el;
+            hideTarget.style.display = 'none';
+          }
+        });
+      });
+    }
 
     // Also hide empty grids on scene render
     if (cfg.hideEmptyGrids.length) {
@@ -1287,6 +1320,7 @@
   var _pollViewId      = null;
   var _pollFieldId     = null;
   var _pollInitial     = '';
+  var _pollMsg         = '';
 
   function injectPollStyles() {
     if (document.getElementById(POLL_CSS_ID)) return;
@@ -1316,7 +1350,7 @@
       '.scw-pdf-poll-target { position: relative !important; }',
       '.scw-pdf-poll-target > * { opacity: .35; pointer-events: none; }',
       '.scw-pdf-poll-target::after {',
-      '  content: "Generating bid PDF\\2026";',
+      '  content: attr(data-scw-poll-msg);',
       '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
       '  display: flex; align-items: center; justify-content: center;',
       '  background: rgba(255,255,255,.80); border-radius: 6px; z-index: 5;',
@@ -1326,12 +1360,12 @@
     document.head.appendChild(s);
   }
 
-  function showPollToast() {
+  function showPollToast(msg) {
     injectPollStyles();
     if (document.getElementById(POLL_TOAST_ID)) return;
     var toast = document.createElement('div');
     toast.id = POLL_TOAST_ID;
-    toast.innerHTML = '<span class="scw-poll-spinner"></span> Generating bid PDF\u2026';
+    toast.innerHTML = '<span class="scw-poll-spinner"></span> ' + esc(msg || 'Generating PDF\u2026');
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-poll-close';
     closeBtn.textContent = '\u00d7';
@@ -1357,11 +1391,14 @@
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
-  // Apply the overlay class to the field_2626 td in the current DOM
-  function applyFieldOverlay(viewId, fieldId) {
+  // Apply the overlay class + message to the target td in the current DOM
+  function applyFieldOverlay(viewId, fieldId, msg) {
     if (!fieldId) return;
     var td = document.querySelector('#' + viewId + ' td.' + fieldId);
-    if (td) td.classList.add('scw-pdf-poll-target');
+    if (td) {
+      td.classList.add('scw-pdf-poll-target');
+      td.setAttribute('data-scw-poll-msg', msg || 'Generating PDF\u2026');
+    }
   }
 
   function clearFieldOverlay() {
@@ -1378,6 +1415,7 @@
     _pollViewId = null;
     _pollFieldId = null;
     _pollInitial = '';
+    _pollMsg = '';
   }
 
   // Called every time the polled view re-renders (from model.fetch or anything else)
@@ -1390,20 +1428,23 @@
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
-      applyFieldOverlay(_pollViewId, _pollFieldId);
+      applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
     }
   }
 
-  function startPollRefresh(viewId, fieldId) {
+  function startPollRefresh(viewId, fieldId, pollType) {
     if (_pollTimer) clearInterval(_pollTimer);
     _pollActive = true;
     _pollViewId = viewId;
     _pollFieldId = fieldId;
     _pollInitial = readFieldText(viewId, fieldId);
 
+    var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
+    _pollMsg = 'Generating ' + label + ' PDF\u2026';
+
     console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
-    showPollToast();
-    applyFieldOverlay(viewId, fieldId);
+    showPollToast(_pollMsg);
+    applyFieldOverlay(viewId, fieldId, _pollMsg);
 
     // Listen for every re-render of this view
     $(document).off('knack-view-render.' + viewId + POLL_NS)
@@ -1427,18 +1468,20 @@
 
   // Check for poll flag whenever any scene renders
   $(document).on('knack-scene-render.any.scwPdfPoll', function () {
-    var viewId, fieldId;
+    var viewId, fieldId, pollType;
     try {
       viewId = sessionStorage.getItem('scw-pdf-poll-view');
       fieldId = sessionStorage.getItem('scw-pdf-poll-field');
+      pollType = sessionStorage.getItem('scw-pdf-poll-type');
     } catch (e) {}
     if (!viewId) return;
     if (!document.getElementById(viewId)) return;
     try {
       sessionStorage.removeItem('scw-pdf-poll-view');
       sessionStorage.removeItem('scw-pdf-poll-field');
+      sessionStorage.removeItem('scw-pdf-poll-type');
     } catch (e) {}
-    setTimeout(function () { startPollRefresh(viewId, fieldId); }, 2000);
+    setTimeout(function () { startPollRefresh(viewId, fieldId, pollType); }, 2000);
   });
 
   // ══════════════════════════════════════════════════════════════

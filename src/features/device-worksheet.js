@@ -5563,7 +5563,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (isLocked) {
         card.classList.add(P + '-locked');
         // Block Knack's native inline-edit popup modals on locked rows
+        // but allow the toggle-zone (chevron + identity) so the detail panel still opens
         card.addEventListener('click', function (e) {
+          if (e.target.closest('.' + P + '-toggle-zone')) return;
           var td = e.target.closest('td');
           if (td) {
             e.stopPropagation();

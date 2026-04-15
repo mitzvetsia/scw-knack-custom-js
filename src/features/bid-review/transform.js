@@ -545,6 +545,64 @@
 
   // ── public entry point ────────────────────────────────────────
 
+  // ── scrape change request records from view_3818 DOM ──────────
+
+  /**
+   * Scrape view_3818 (change request grid) from the DOM.
+   * Returns a map: bidPackageId → { pendingCount, linkUrl }
+   *
+   * Each row has:
+   *  - A bid-package connection cell (span[data-kn="connection-value"])
+   *  - field_2699 (pending change request count)
+   *  - A Knack action-link column (<a> tag with the CR detail URL)
+   */
+  function scrapeCrView() {
+    var map = {};
+    var viewKey = CFG.changeRequestViewKey;
+    if (!viewKey) return map;
+
+    var $view = $('#' + viewKey);
+    if (!$view.length) return map;
+
+    var $rows = $view.find('table.kn-table-table tbody tr');
+    $rows.each(function () {
+      var $tr = $(this);
+      if ($tr.hasClass('kn-table-group')) return;
+
+      // Bid-package connection is field_2689 (not field_2415)
+      var pkgId = '';
+      var $pkgCell = $tr.find('td.' + FK.crBidPackage);
+      if ($pkgCell.length) {
+        var $connSpan = $pkgCell.find('span[data-kn="connection-value"]');
+        if ($connSpan.length) pkgId = ($connSpan.attr('class') || '').trim();
+      }
+      if (!pkgId) return;
+
+      // Read pending count from field_2699
+      var $countCell = $tr.find('td.' + FK.crPendingCount);
+      var countText = $countCell.length ? $countCell.text().trim() : '0';
+      var count = parseInt(countText, 10) || 0;
+
+      // The detail link is in the kn-table-link cell (eye icon column)
+      var linkUrl = '';
+      $tr.find('td.kn-table-link a[href]').each(function () {
+        var href = $(this).attr('href') || '';
+        if (href.indexOf('#') !== -1 && !linkUrl) linkUrl = href;
+      });
+
+      if (count > 0 && linkUrl) {
+        map[pkgId] = { pendingCount: count, linkUrl: linkUrl };
+      }
+    });
+
+    if (CFG.debug) {
+      console.log('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
+    }
+    return map;
+  }
+
+  ns.scrapeCrView = scrapeCrView;
+
   // ── extract PDF URLs from bid package records ──────────────────
 
   function buildPkgInfoMap(bidPackages) {
@@ -611,9 +669,15 @@
     var sows       = extractSows(records);
     var allPkgs    = extractPackages(records);
     var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
+    var crMap      = scrapeCrView();
 
-    // Attach PDF, survey, and status info to each package
+    // Attach PDF, survey, status, and CR info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
+      var crInfo = crMap[allPkgs[pi].id];
+      if (crInfo) {
+        allPkgs[pi].crPendingCount = crInfo.pendingCount;
+        allPkgs[pi].crLinkUrl      = crInfo.linkUrl;
+      }
       var info = pkgInfoMap[allPkgs[pi].id];
       if (info) {
         if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
@@ -762,8 +826,13 @@
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF, survey, and status info to per-SOW packages
+      // Attach PDF, survey, status, and CR info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
+        var pCr = crMap[pkgs[ppi].id];
+        if (pCr) {
+          pkgs[ppi].crPendingCount = pCr.pendingCount;
+          pkgs[ppi].crLinkUrl      = pCr.linkUrl;
+        }
         var pInfo = pkgInfoMap[pkgs[ppi].id];
         if (pInfo) {
           if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }

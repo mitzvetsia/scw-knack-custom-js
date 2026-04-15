@@ -1296,6 +1296,20 @@
     var pkg = _pending[pkgId];
     if (!pkg) return null;
 
+    // Build lookup: bid cell ID → row ID (survey item ID from view_3680)
+    // and set of known SOW item IDs (noBid items from view_3728)
+    var cellToRow = {};   // bidRecordId → rowId
+    var sowIdSet  = {};   // rowId for ADD/noBid items
+    for (var pi = 0; pi < pkg.items.length; pi++) {
+      var _it = pkg.items[pi];
+      if (_it.bidRecordId && _it.rowId) {
+        cellToRow[_it.bidRecordId] = _it.rowId;
+      }
+      if (_it.addToBid || itemActionType(_it) === 'add') {
+        sowIdSet[_it.rowId] = true;
+      }
+    }
+
     var items = [];
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
@@ -1335,8 +1349,39 @@
         }
       }
 
+      // Classify connection IDs into survey (view_3680) vs SOW (view_3728)
+      // Survey items use bid cell IDs → translate to row IDs via cellToRow
+      // SOW items already use their own record IDs
+      function classifyConnIds(allIds, addIds) {
+        var survey = [], sow = [];
+        var addSet = {};
+        for (var a = 0; a < addIds.length; a++) addSet[addIds[a]] = true;
+        for (var j = 0; j < allIds.length; j++) {
+          var cid = allIds[j];
+          if (addSet[cid] || sowIdSet[cid]) {
+            // SOW/noBid item (view_3728) — ID is already the SOW item ID
+            sow.push(cid);
+          } else {
+            // Survey item (view_3680) — translate bid cell ID to row ID
+            survey.push(cellToRow[cid] || cid);
+          }
+        }
+        return { survey: survey, sow: sow };
+      }
+
+      var cdClass = classifyConnIds(r.bidConnDeviceIds || [], r.bidConnDeviceAddIds || []);
+      entry.ConnDevices_surveyitem = cdClass.survey;
+      entry.ConnDevices_sowitem    = cdClass.sow;
+
+      var ctClass = classifyConnIds(r.bidConnToIds || [], r.bidConnToAddIds || []);
+      entry.ConnTO_surveyitem = ctClass.survey;
+      entry.ConnTO_sowitem    = ctClass.sow;
+
       // Detailed from→to diffs
       entry.fields = fieldList;
+
+      // Per-item JSON snapshot (stringified before HTML is added)
+      entry.json = JSON.stringify(entry);
 
       // Per-item HTML card for display in view_3505
       entry.html = buildItemHtml(it, fieldList);
@@ -1522,6 +1567,11 @@
         persist();
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
+
+        // Refresh the comparison grid after Make finishes processing
+        if (resp && resp.success) {
+          setTimeout(function () { if (ns.refresh) ns.refresh(); }, 2000);
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
