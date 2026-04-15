@@ -23900,9 +23900,13 @@ $(".kn-navigation-bar").hide();
   var _origConfirm = window.confirm;
 
   window.confirm = function (msg) {
-    var result = _origConfirm.call(window, msg);
+    var isDeletePrompt = SINGLE_DELETE_RE.test(msg) || BULK_DELETE_RE.test(msg);
 
-    // Only act if user clicked OK
+    // Auto-confirm delete dialogs — skip the native "are you sure" modal.
+    // For all other confirm() calls, pass through to the browser default.
+    var result = isDeletePrompt ? true : _origConfirm.call(window, msg);
+
+    // Only act if user clicked OK (or auto-confirmed)
     if (!result) return result;
 
     var deletedRecordIds = [];
@@ -25163,6 +25167,7 @@ $(".kn-navigation-bar").hide();
         viewId: 'view_3586',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         stackedSummary: false,
+        hideDeleteWhenCountGtZero: 'field_2586',
         fields: {
           // ── Summary row ──
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
@@ -30791,31 +30796,52 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * on each row where the specified field is not blank.
    * Called after any worksheet view transforms.
    */
+  /**
+   * Look up a field's <td> from a worksheet card — checks the original
+   * Knack data row first, then falls back to the card / worksheet row.
+   */
+  function findFieldTd(card, fieldKey) {
+    var tr = card.closest('tr');
+    var td = null;
+    var sel = 'td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]';
+    if (tr) {
+      // Check previous sibling (data row comes before ws-row in some views)
+      var prev = tr.previousElementSibling;
+      if (prev) td = prev.querySelector(sel);
+      // Check next siblings (data row comes after ws-row + photo-row in other views)
+      if (!td) {
+        var next = tr.nextElementSibling;
+        while (next) {
+          if (next.classList.contains(P + '-row') || next.classList.contains('kn-table-group')) break;
+          td = next.querySelector(sel);
+          if (td) break;
+          next = next.nextElementSibling;
+        }
+      }
+      if (!td) td = tr.querySelector(sel);
+    }
+    if (!td) td = card.querySelector(sel);
+    return td;
+  }
+
   function syncDeleteVisibility() {
     WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
-      if (!viewCfg.hideDeleteWhenFieldNotBlank) return;
+      var fieldKey = viewCfg.hideDeleteWhenFieldNotBlank || viewCfg.hideDeleteWhenCountGtZero;
+      if (!fieldKey) return;
+      var isCountCheck = !!viewCfg.hideDeleteWhenCountGtZero;
+
       var $view = $('#' + viewCfg.viewId);
       if (!$view.length) return;
 
-      var fieldKey = viewCfg.hideDeleteWhenFieldNotBlank;
       var cards = $view[0].querySelectorAll('.' + P + '-card');
       for (var i = 0; i < cards.length; i++) {
         var card = cards[i];
-        var tr = card.closest('tr');
-        var td = null;
-        // The field td lives in the original Knack data row (previousElementSibling of scw-ws-row)
-        if (tr) {
-          var dataTr = tr.previousElementSibling;
-          if (dataTr) {
-            td = dataTr.querySelector('td.' + fieldKey) || dataTr.querySelector('td[data-field-key="' + fieldKey + '"]');
-          }
-          if (!td) td = tr.querySelector('td.' + fieldKey) || tr.querySelector('td[data-field-key="' + fieldKey + '"]');
-        }
-        if (!td) td = card.querySelector('td.' + fieldKey) || card.querySelector('td[data-field-key="' + fieldKey + '"]');
-        var val = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
+        var td = findFieldTd(card, fieldKey);
+        var raw = td ? (td.textContent || '').replace(/[\u00a0\s]/g, '').trim() : '';
+        var shouldHide = isCountCheck ? (parseFloat(raw) > 0) : !!raw;
         var del = card.querySelector('.' + P + '-sum-delete');
         if (del) {
-          del.style.visibility = val ? 'hidden' : '';
+          del.style.visibility = shouldHide ? 'hidden' : '';
         }
       }
     });

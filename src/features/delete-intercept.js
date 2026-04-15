@@ -152,9 +152,13 @@
   var _origConfirm = window.confirm;
 
   window.confirm = function (msg) {
-    var result = _origConfirm.call(window, msg);
+    var isDeletePrompt = SINGLE_DELETE_RE.test(msg) || BULK_DELETE_RE.test(msg);
 
-    // Only act if user clicked OK
+    // Auto-confirm delete dialogs — skip the native "are you sure" modal.
+    // For all other confirm() calls, pass through to the browser default.
+    var result = isDeletePrompt ? true : _origConfirm.call(window, msg);
+
+    // Only act if user clicked OK (or auto-confirmed)
     if (!result) return result;
 
     var deletedRecordIds = [];
