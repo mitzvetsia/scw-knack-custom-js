@@ -1338,6 +1338,9 @@
       // Detailed from→to diffs
       entry.fields = fieldList;
 
+      // Per-item JSON snapshot (stringified before HTML is added)
+      entry.json = JSON.stringify(entry);
+
       // Per-item HTML card for display in view_3505
       entry.html = buildItemHtml(it, fieldList);
 
