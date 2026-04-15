@@ -6899,7 +6899,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     {
       sceneId: 'scene_1149',
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true, view_3770: true },
+      skipViews: { view_3679: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
@@ -6910,7 +6910,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         { field: 'field_2638', name: 'bidId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
-        { field: 'field_2633', name: 'field_2633' }
+        { field: 'field_2633', name: 'field_2633' },
+        { field: 'field_2631', name: 'cuTaskId', sourceView: 'view_3552', hide: true }
       ],
     },
   ];
@@ -8116,7 +8117,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
             _fNum = spec.field.replace('field_', '');
-            var el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
+            // If sourceView is specified, scope the search to that view first
+            var el = null;
+            if (spec.sourceView) {
+              el = document.querySelector('#' + spec.sourceView + ' .field_' + _fNum);
+              if (!el) el = document.querySelector('#' + spec.sourceView + ' td.' + spec.field);
+              if (!el) el = document.querySelector('#' + spec.sourceView + ' [data-field-key="' + spec.field + '"]');
+            }
+            if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
             // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
@@ -8140,6 +8148,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
       });
     });
+
+    // Hide extraFields marked with hide:true when their source view renders
+    if (cfg.extraFields) {
+      cfg.extraFields.forEach(function (spec) {
+        if (!spec.hide || !spec.sourceView) return;
+        var _fn = spec.field.replace('field_', '');
+        $(document).on('knack-view-render.' + spec.sourceView + ns, function () {
+          var el = document.querySelector('#' + spec.sourceView + ' .field_' + _fn)
+               || document.querySelector('#' + spec.sourceView + ' [data-field-key="' + spec.field + '"]');
+          if (el) {
+            var hideTarget = el.closest('.kn-detail') || el;
+            hideTarget.style.display = 'none';
+          }
+        });
+      });
+    }
 
     // Also hide empty grids on scene render
     if (cfg.hideEmptyGrids.length) {
