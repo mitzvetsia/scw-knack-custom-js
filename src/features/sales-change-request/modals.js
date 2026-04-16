@@ -17,6 +17,29 @@
 
   var MODAL_ID = P + '-overlay';
 
+  /** Resolve display label + product for a record from pending, baseline, or DOM. */
+  function resolveIdentity(recordId) {
+    var pending = S.pending();
+    var item = pending[recordId] || pending['note_' + recordId];
+    var base = S.baseline()[recordId] || {};
+
+    var label = (item && item.displayLabel) || base._label || '';
+    var product = (item && item.productName) || base._product || '';
+
+    // Fallback: read from the DOM card
+    if (!label && !product) {
+      var $row = $('#' + recordId);
+      if ($row.length) {
+        var $labelTd = $row.find('td[data-field-key="' + CFG.labelField + '"]');
+        if ($labelTd.length) label = H.stripHtml($labelTd.text());
+        var $prodTd = $row.find('td[data-field-key="' + CFG.productField + '"]');
+        if ($prodTd.length) product = H.stripHtml($prodTd.text());
+      }
+    }
+
+    return { label: label, product: product };
+  }
+
   function closeModal() {
     var o = document.getElementById(MODAL_ID);
     if (o) o.remove();
@@ -98,9 +121,11 @@
     ns.injectStyles();
     closeModal();
 
-    var base = S.baseline()[recordId] || {};
-    var label = base._label || recordId;
-    var product = base._product || '';
+    var id = resolveIdentity(recordId);
+    var label = id.label;
+    var product = id.product;
+    var existing = S.pending()[recordId];
+    var isEdit = existing && existing.action === 'remove';
 
     var overlay = H.el('div', P + '-overlay');
     overlay.id = MODAL_ID;
@@ -111,9 +136,11 @@
     // Header
     var header = H.el('div', P + '-modal__header');
     var hLeft = H.el('div');
-    hLeft.appendChild(H.el('div', P + '-modal__title', 'Request Removal'));
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
-      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      isEdit ? 'Edit Removal Request' : 'Request Removal'));
+    var subtitle = product || label || 'Item';
+    if (label && product) subtitle = label + ' \u2014 ' + product;
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -129,6 +156,7 @@
     ta.className = P + '-modal__textarea';
     ta.placeholder = 'Why should this item be removed\u2026';
     ta.rows = 3;
+    if (isEdit && existing.changeNotes) ta.value = existing.changeNotes;
     body.appendChild(ta);
     modal.appendChild(body);
 
@@ -169,11 +197,10 @@
     ns.injectStyles();
     closeModal();
 
-    var base = S.baseline()[recordId] || {};
-    var label = base._label || recordId;
-    var product = base._product || '';
+    var id = resolveIdentity(recordId);
+    var label = id.label;
+    var product = id.product;
 
-    // Check for existing note on this row
     var noteKey = 'note_' + recordId;
     var existing = S.pending()[noteKey];
 
@@ -183,13 +210,13 @@
 
     var modal = H.el('div', P + '-modal');
 
-    // Header
     var header = H.el('div', P + '-modal__header');
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       existing ? 'Edit Note' : 'Add Note'));
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
-      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    var subtitle = product || label || 'Item';
+    if (label && product) subtitle = label + ' \u2014 ' + product;
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -249,9 +276,9 @@
     ns.injectStyles();
     closeModal();
 
-    var base = S.baseline()[recordId] || {};
-    var label = base._label || recordId;
-    var product = base._product || '';
+    var id = resolveIdentity(recordId);
+    var label = id.label;
+    var product = id.product;
 
     var noteKey = 'note_' + recordId;
     var existing = S.pending()[noteKey];
@@ -266,8 +293,9 @@
     var hLeft = H.el('div');
     hLeft.appendChild(H.el('div', P + '-modal__title',
       existing ? 'Edit Add Request' : 'Add to Change Request'));
-    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
-      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    var addSubtitle = product || label || 'Item';
+    if (label && product) addSubtitle = label + ' \u2014 ' + product;
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', addSubtitle));
     header.appendChild(hLeft);
     var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
     closeBtn.addEventListener('click', closeModal);
@@ -385,7 +413,8 @@
     var item = pending[recordId];
     if (!item) return;
 
-    var label = item.displayLabel || item.productName || recordId;
+    var id = resolveIdentity(recordId);
+    var label = id.product || id.label || item.displayLabel || item.productName || 'Item';
 
     var overlay = H.el('div', P + '-overlay');
     overlay.id = MODAL_ID;
