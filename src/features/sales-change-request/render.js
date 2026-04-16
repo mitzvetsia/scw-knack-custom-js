@@ -395,13 +395,13 @@
       var $card = $tr.find('.scw-ws-card');
       if (!$card.length) return;
 
-      // Use the delete wrapper visibility as the source of truth:
-      // visibility:hidden means field_2586 > 0 (existing item, editable)
-      // visible (no inline style) means field_2586 = 0 (new item, lock it)
+      // Delete wrapper visibility maps to field_2586:
+      // visible (no inline style) = field_2586 = 0 (new item, fully editable)
+      // visibility:hidden = field_2586 > 0 (existing item, lock all except product)
       var $deleteWrap = $card.find('.' + WS_P + '-sum-delete');
       if (!$deleteWrap.length) return;
-      var isNewItem = $deleteWrap[0].style.visibility !== 'hidden';
-      if (!isNewItem) return;
+      var isExisting = $deleteWrap[0].style.visibility === 'hidden';
+      if (!isExisting) return;
 
       // Already locked this render cycle
       if ($card[0].hasAttribute(LOCK_ATTR)) return;
