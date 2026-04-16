@@ -11865,6 +11865,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var rec = records[i];
 
       var sowItemId = connectionId(rec, FK.relatedSowItem);
+      var hasBid    = connectionAll(rec, FK.bidPackage).length > 0;
+
+      // Skip records that are on neither the SOW nor any bid —
+      // these are survey-only items that were deliberately removed.
+      if (!sowItemId && !hasBid) continue;
+
       var rowKey    = sowItemId ? 'sow::' + sowItemId : 'rec::' + rec.id;
 
       if (!rowMap[rowKey]) {
