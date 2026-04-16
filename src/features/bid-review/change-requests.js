@@ -35,7 +35,7 @@
   // connection: Knack field key — renders as dropdown loaded from the connected object
   // idsKey: cell property holding the raw connection IDs (for pre-fill)
   var FIELD_DEFS = [
-    { key: 'productName',     label: 'Product',            type: 'text' },
+    { key: 'productName',     label: 'Product',            type: 'text', displayOnly: true },
     { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
@@ -302,6 +302,10 @@
       '  font-size: 11px; color: #9333ea; font-style: italic; padding: 2px 0 4px;',
       '  pointer-events: auto;',
       '}',
+      '.scw-bid-cr-modal__display-value {',
+      '  display: block; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 5px;',
+      '  font-size: 13px; color: #64748b; background: #f1f5f9;',
+      '}',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -390,6 +394,14 @@
         : cell[fd.key];
 
       var inp;
+      if (fd.displayOnly) {
+        inp = el('span', 'scw-bid-cr-modal__display-value', hasValue(prefill) ? formatDisplay(fd, prefill) : '\u2014');
+        inp.setAttribute('data-field', fd.key);
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
+        continue;
+      }
       if (fd.type === 'connection') {
         // Build set of IDs locked by reciprocal logic (per-ID, not whole field)
         var lockedIdSet = {};
@@ -522,6 +534,7 @@
       var noBidAdds = [];   // noBid items newly selected in connection fields
       for (var k = 0; k < FIELD_DEFS.length; k++) {
         var d = FIELD_DEFS[k];
+        if (d.displayOnly) continue;
         if (d.visKey && !vis[d.visKey]) continue;
         if (!inputs[d.key]) continue;
 
@@ -1711,6 +1724,14 @@
       var fRow = el('div', 'scw-bid-cr-modal__field');
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
       var inp;
+      if (fd.displayOnly) {
+        inp = el('span', 'scw-bid-cr-modal__display-value', prefill[fd.key] || '\u2014');
+        inp.setAttribute('data-field', fd.key);
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
+        continue;
+      }
       if (fd.type === 'connection' && fd.addable) {
         // Connection field for addable fields — radio if single, checkbox if multi
         var addRecs = (addConnOpts[fd.key] || []).slice();
@@ -1801,7 +1822,8 @@
     var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add',
       existing ? 'Update Change Request' : 'Add to Change Request');
     addBtn.addEventListener('click', function () {
-      var product = (inputs.productName.value || '').trim();
+      var product = (inputs.productName ? (inputs.productName.textContent || '').trim() : '') ||
+                    params.sowProduct || params.productName || '';
       if (!product) {
         ns.renderToast('Product name is required', 'error');
         return;
@@ -1810,6 +1832,8 @@
       var noBidAdds = [];
       for (var k in inputs) {
         var inpEl = inputs[k];
+        // Skip display-only fields (not editable)
+        if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__display-value')) continue;
         // Connection checkbox/radio list
         if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__checkbox-list')) {
           var addCbs = inpEl.querySelectorAll('input[type="checkbox"]:checked, input[type="radio"]:checked');
@@ -1929,7 +1953,8 @@
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    setTimeout(function () { inputs.productName.focus(); }, 50);
+    var firstInput = modal.querySelector('input, select, textarea');
+    if (firstInput) setTimeout(function () { firstInput.focus(); }, 50);
   }
 
   // ── Init: rehydrate from sessionStorage immediately ────
