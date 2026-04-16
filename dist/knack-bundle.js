@@ -33424,54 +33424,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
-  function buildActionBar(packages) {
-    var bar = document.createElement('div');
-    bar.className = 'scw-rev-actions';
-    bar.setAttribute('data-scw-rev-bar', '1');
-
-    var pkgIds = Object.keys(packages);
-    for (var i = 0; i < pkgIds.length; i++) {
-      var pkgId = pkgIds[i];
-      var pkg = packages[pkgId];
-
-      if (pkgIds.length > 1) {
-        var label = document.createElement('span');
-        label.className = 'scw-rev-actions__pkg-label';
-        label.textContent = pkg.name + ':';
-        bar.appendChild(label);
-      }
-
-      var acceptBtn = document.createElement('button');
-      acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
-      acceptBtn.textContent = 'Accept All';
-      acceptBtn.setAttribute('data-pkg-id', pkgId);
-      (function (pid, pname, rids) {
-        acceptBtn.addEventListener('click', function () {
-          sendAction('accept_all', pid, pname, rids, this);
-        });
-      })(pkgId, pkg.name, pkg.recordIds);
-      bar.appendChild(acceptBtn);
-
-      var rejectBtn = document.createElement('button');
-      rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
-      rejectBtn.textContent = 'Reject All';
-      rejectBtn.setAttribute('data-pkg-id', pkgId);
-      (function (pid, pname, rids) {
-        rejectBtn.addEventListener('click', function () {
-          sendAction('reject_all', pid, pname, rids, this);
-        });
-      })(pkgId, pkg.name, pkg.recordIds);
-      bar.appendChild(rejectBtn);
-    }
-
-    return bar;
-  }
-
   function enhance() {
     var $view = $('#' + VIEW_ID);
     if (!$view.length) return;
-
-    $view.find('[data-scw-rev-bar]').remove();
 
     var $tbody = $view.find('table.kn-table-table tbody');
     if (!$tbody.length || $tbody.find('.kn-tr-nodata').length) return;
@@ -33481,8 +33436,54 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     injectStyles();
 
-    var bar = buildActionBar(packages);
-    $view.find('.kn-records-nav').first().after(bar);
+    // Inject buttons into each row's action-link cell
+    $tbody.find('tr[id]').each(function () {
+      var tr = this;
+      var recordId = tr.id;
+      if (!recordId) return;
+
+      var actionTd = tr.querySelector('td.kn-table-action-link');
+      if (!actionTd) return;
+      if (actionTd.querySelector('.scw-rev-actions')) return;
+
+      // Find this row's package
+      var pkgCell = tr.querySelector('td.' + PKG_FIELD);
+      if (!pkgCell) return;
+      var connSpan = pkgCell.querySelector('span[data-kn="connection-value"]');
+      var pkgId = connSpan ? (connSpan.className || '').trim() : '';
+      if (!pkgId || !packages[pkgId]) return;
+
+      var pkg = packages[pkgId];
+
+      // Hide the existing Knack action link
+      var knackLink = actionTd.querySelector('a.kn-action-link');
+      if (knackLink) knackLink.style.display = 'none';
+
+      var wrapper = document.createElement('div');
+      wrapper.className = 'scw-rev-actions';
+
+      var acceptBtn = document.createElement('button');
+      acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
+      acceptBtn.textContent = 'Accept All';
+      (function (pid, pname, rids) {
+        acceptBtn.addEventListener('click', function () {
+          sendAction('accept_all', pid, pname, rids, this);
+        });
+      })(pkgId, pkg.name, pkg.recordIds);
+      wrapper.appendChild(acceptBtn);
+
+      var rejectBtn = document.createElement('button');
+      rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
+      rejectBtn.textContent = 'Reject All';
+      (function (pid, pname, rids) {
+        rejectBtn.addEventListener('click', function () {
+          sendAction('reject_all', pid, pname, rids, this);
+        });
+      })(pkgId, pkg.name, pkg.recordIds);
+      wrapper.appendChild(rejectBtn);
+
+      actionTd.appendChild(wrapper);
+    });
   }
 
   $(document)
