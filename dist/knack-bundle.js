@@ -11865,8 +11865,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var rec = records[i];
 
       var sowItemId = connectionId(rec, FK.relatedSowItem);
-      var label     = raw(rec, FK.displayLabel);
-      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'label::' + label;
+      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'rec::' + rec.id;
 
       if (!rowMap[rowKey]) {
         rowMap[rowKey] = { meta: rec, cells: [] };
