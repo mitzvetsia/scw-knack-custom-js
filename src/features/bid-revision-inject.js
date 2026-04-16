@@ -35,6 +35,9 @@
     changeHtmlField: 'field_2695',
     /** JSON field holding the item data for editing */
     changeJsonField: 'field_2696',
+    /** Revision record HTML/JSON payload fields (view_3823 columns) */
+    revisionHtmlField: 'field_2687',
+    revisionJsonField: 'field_2688',
   };
 
   /** Editable fields in the revision edit modal (mirrors change-requests.js FIELD_DEFS) */
@@ -1082,6 +1085,9 @@
     // Merge current + requested for pre-fill (requested wins)
     var current   = data.current   || {};
     var requested = data.requested || {};
+    console.log('[BidRevInject] Edit modal data keys:', Object.keys(data),
+      '| requested keys:', Object.keys(requested),
+      '| current keys:', Object.keys(current));
     var prefill = {};
     var prefillIds = {};
     for (var pi = 0; pi < EDIT_FIELDS.length; pi++) {
@@ -1337,6 +1343,9 @@
       var putBody = {};
       putBody[CFG.changeJsonField] = updatedJson;
       putBody[CFG.changeHtmlField] = updatedHtml;
+      // Also update the revision record's own payload fields
+      if (CFG.revisionJsonField) putBody[CFG.revisionJsonField] = updatedJson;
+      if (CFG.revisionHtmlField) putBody[CFG.revisionHtmlField] = updatedHtml;
 
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
