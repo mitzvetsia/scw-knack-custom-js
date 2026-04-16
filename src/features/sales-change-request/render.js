@@ -420,6 +420,7 @@
         this.tabIndex = -1;
         this.style.cursor = 'default';
         this.style.pointerEvents = 'none';
+        this.style.background = '#fff';
       });
 
       // Lock toggleChit (Existing Cabling, Exterior)
