@@ -45,13 +45,29 @@
   }, CFG.eventNs);
 
   // ── Cell update → auto-create CR ──────────────────────
-  // Fires BEFORE the view re-renders. We capture the change here;
-  // the subsequent view-render will re-inject the UI with the
-  // updated pending state.
+  // Device-worksheet uses direct AJAX PUT (not model.updateRecord),
+  // so knack-cell-update never fires. We intercept successful PUT
+  // responses to the worksheet view's records URL instead.
 
-  $(document)
-    .off('knack-cell-update.' + CFG.worksheetView + CFG.eventNs)
-    .on('knack-cell-update.' + CFG.worksheetView + CFG.eventNs, ns.onCellUpdate);
+  $(document).on('knack-cell-update.' + CFG.worksheetView + CFG.eventNs, ns.onCellUpdate);
+
+  // Intercept AJAX PUT responses for view_3586 records
+  $(document).ajaxComplete(function (event, xhr, settings) {
+    if (!S.onPage()) return;
+    if (settings.type !== 'PUT') return;
+    var url = settings.url || '';
+    if (url.indexOf(CFG.worksheetView) === -1) return;
+    if (xhr.status !== 200) return;
+
+    try {
+      var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
+               : JSON.parse(xhr.responseText);
+      if (resp && resp.id) {
+        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
+        ns.onCellUpdate(null, null, resp);
+      }
+    } catch (e) {}
+  });
 
   // ── Proposal view render → check add mode ─────────────
 
