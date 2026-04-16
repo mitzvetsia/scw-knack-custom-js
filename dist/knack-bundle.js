@@ -31963,9 +31963,87 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setTimeout(function () { ta.focus(); }, 50);
   }
 
+  // ── Add request (field_2586=0 rows — note required) ─────
+
+  function openAddNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var base = S.baseline()[recordId] || {};
+    var label = base._label || recordId;
+    var product = base._product || '';
+
+    var noteKey = 'note_' + recordId;
+    var existing = S.pending()[noteKey];
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      existing ? 'Edit Add Request' : 'Add to Change Request'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'This item will be submitted as a new addition. Please include a note describing the add request.'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Note (required)'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Describe why this item is being added\u2026';
+    ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save',
+      existing ? 'Update' : 'Add');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('A note is required for add requests', 'error'); return; }
+
+      var pending = S.pending();
+      pending[noteKey] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'add',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast(existing ? 'Add request updated' : 'Add request created', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
   // ── Public API ──
   ns.openNote    = openNoteModal;
   ns.openRowNote = openRowNoteModal;
+  ns.openAddNote = openAddNoteModal;
   ns.openRemove  = openRemoveModal;
 
 })();
@@ -32268,19 +32346,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var hasCR    = !!pending[recordId];
     var hasNote  = !!pending['note_' + recordId];
 
-    // Add Note (per-row) — always available
-    var noteItem = H.el('div', P + '-popover-item');
-    noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
-    noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
-    noteItem.addEventListener('click', function (e) {
-      e.stopPropagation();
-      closePopover();
-      ns.openRowNote(recordId);
-    });
-    pop.appendChild(noteItem);
+    if (addOnly) {
+      // ADD-only rows: single "Add" action (opens note modal, creates add CR)
+      var addItem = H.el('div', P + '-popover-item');
+      addItem.appendChild(H.el('span', P + '-popover-icon', '+'));
+      addItem.appendChild(document.createTextNode(hasNote ? 'Edit Add Request' : 'Add'));
+      addItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openAddNote(recordId);
+      });
+      pop.appendChild(addItem);
+    } else {
+      // Add Note (per-row)
+      var noteItem = H.el('div', P + '-popover-item');
+      noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
+      noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
+      noteItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openRowNote(recordId);
+      });
+      pop.appendChild(noteItem);
 
-    if (!addOnly) {
-      // Request Removal — only for non-add rows
+      // Request Removal
       if (!hasCR || pending[recordId].action !== 'remove') {
         var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
         removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
@@ -32375,9 +32464,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var wrap = H.el('span', P + '-action-wrap');
       var btn  = H.el('button', P + '-action-btn');
 
-      // Icon: FontAwesome pencil-square for filled state, ellipsis-v for idle
+      // Icon varies by state
       if (state) {
-        btn.innerHTML = '<i class="fa fa-pencil-square" style="font-size:14px;"></i>';
+        var iconCls = state.action === 'add'    ? 'fa-plus'
+                    : state.action === 'remove' ? 'fa-minus-circle'
+                    : state.action === 'note'   ? 'fa-sticky-note'
+                    :                             'fa-pencil-square';
+        btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
         btn.classList.add(P + '-action-btn--' + state.action);
         if (state.hasNote && state.action !== 'note') {
           btn.classList.add(P + '-action-btn--has-note');

@@ -243,9 +243,87 @@
     setTimeout(function () { ta.focus(); }, 50);
   }
 
+  // ── Add request (field_2586=0 rows — note required) ─────
+
+  function openAddNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var base = S.baseline()[recordId] || {};
+    var label = base._label || recordId;
+    var product = base._product || '';
+
+    var noteKey = 'note_' + recordId;
+    var existing = S.pending()[noteKey];
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      existing ? 'Edit Add Request' : 'Add to Change Request'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'This item will be submitted as a new addition. Please include a note describing the add request.'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Note (required)'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Describe why this item is being added\u2026';
+    ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save',
+      existing ? 'Update' : 'Add');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('A note is required for add requests', 'error'); return; }
+
+      var pending = S.pending();
+      pending[noteKey] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'add',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast(existing ? 'Add request updated' : 'Add request created', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
   // ── Public API ──
   ns.openNote    = openNoteModal;
   ns.openRowNote = openRowNoteModal;
+  ns.openAddNote = openAddNoteModal;
   ns.openRemove  = openRemoveModal;
 
 })();

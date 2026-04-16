@@ -111,19 +111,30 @@
     var hasCR    = !!pending[recordId];
     var hasNote  = !!pending['note_' + recordId];
 
-    // Add Note (per-row) — always available
-    var noteItem = H.el('div', P + '-popover-item');
-    noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
-    noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
-    noteItem.addEventListener('click', function (e) {
-      e.stopPropagation();
-      closePopover();
-      ns.openRowNote(recordId);
-    });
-    pop.appendChild(noteItem);
+    if (addOnly) {
+      // ADD-only rows: single "Add" action (opens note modal, creates add CR)
+      var addItem = H.el('div', P + '-popover-item');
+      addItem.appendChild(H.el('span', P + '-popover-icon', '+'));
+      addItem.appendChild(document.createTextNode(hasNote ? 'Edit Add Request' : 'Add'));
+      addItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openAddNote(recordId);
+      });
+      pop.appendChild(addItem);
+    } else {
+      // Add Note (per-row)
+      var noteItem = H.el('div', P + '-popover-item');
+      noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
+      noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
+      noteItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openRowNote(recordId);
+      });
+      pop.appendChild(noteItem);
 
-    if (!addOnly) {
-      // Request Removal — only for non-add rows
+      // Request Removal
       if (!hasCR || pending[recordId].action !== 'remove') {
         var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
         removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
@@ -218,9 +229,13 @@
       var wrap = H.el('span', P + '-action-wrap');
       var btn  = H.el('button', P + '-action-btn');
 
-      // Icon: FontAwesome pencil-square for filled state, ellipsis-v for idle
+      // Icon varies by state
       if (state) {
-        btn.innerHTML = '<i class="fa fa-pencil-square" style="font-size:14px;"></i>';
+        var iconCls = state.action === 'add'    ? 'fa-plus'
+                    : state.action === 'remove' ? 'fa-minus-circle'
+                    : state.action === 'note'   ? 'fa-sticky-note'
+                    :                             'fa-pencil-square';
+        btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
         btn.classList.add(P + '-action-btn--' + state.action);
         if (state.hasNote && state.action !== 'note') {
           btn.classList.add(P + '-action-btn--has-note');
