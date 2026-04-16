@@ -6054,20 +6054,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
+          console.log('[SCW WS] knack-view-render fired for', viewId, 'at', Date.now());
+          var $viewAtEvent = $('#' + viewId);
+          var tableAtEvent = $viewAtEvent.find('table.kn-table-table, table.kn-table')[0];
+          var rowCountAtEvent = tableAtEvent ? tableAtEvent.querySelectorAll('tbody tr[id]').length : 0;
+          var field2409CountAtEvent = tableAtEvent ? tableAtEvent.querySelectorAll('td.field_2409').length : 0;
+          var sectionVisible = $viewAtEvent.closest('.ktlHideShowSection').css('display');
+          console.log('[SCW WS]   at event fire: rows=' + rowCountAtEvent +
+            ', field_2409 tds=' + field2409CountAtEvent +
+            ', section display=' + sectionVisible);
           setTimeout(function () {
+            var $viewAtTransform = $('#' + viewId);
+            var tableAtTransform = $viewAtTransform.find('table.kn-table-table, table.kn-table')[0];
+            var rowCountAtTransform = tableAtTransform ? tableAtTransform.querySelectorAll('tbody tr[id]').length : 0;
+            var field2409CountAtTransform = tableAtTransform ? tableAtTransform.querySelectorAll('td.field_2409').length : 0;
+            var sectionVisibleAtTransform = $viewAtTransform.closest('.ktlHideShowSection').css('display');
+            var wsRowsBefore = tableAtTransform ? tableAtTransform.querySelectorAll('tr.scw-ws-row').length : 0;
+            console.log('[SCW WS]   at transform (150ms): rows=' + rowCountAtTransform +
+              ', field_2409 tds=' + field2409CountAtTransform +
+              ', section display=' + sectionVisibleAtTransform +
+              ', existing ws-rows=' + wsRowsBefore);
             transformView(viewCfg);
             syncDeleteVisibility();
-            // Force browser to recalculate flex layout after SPA navigation.
-            // Form redirects can leave the browser mid-layout when transform
-            // runs, causing flex children (labor desc) to have zero size.
-            var root = document.getElementById(viewId);
-            if (root) {
-              requestAnimationFrame(function () {
-                root.style.opacity = '0.99';
-                requestAnimationFrame(function () {
-                  root.style.opacity = '';
-                });
-              });
+            var wsRowsAfter = tableAtTransform ? tableAtTransform.querySelectorAll('tr.scw-ws-row').length : 0;
+            console.log('[SCW WS]   after transform: ws-rows=' + wsRowsAfter);
+            // Check labor desc visibility in first card
+            var firstCard = tableAtTransform ? tableAtTransform.querySelector('.scw-ws-card') : null;
+            if (firstCard) {
+              var ldGroup = firstCard.querySelector('[data-scw-fields="field_2409"]');
+              var ldTd = firstCard.querySelector('td.field_2409');
+              console.log('[SCW WS]   first card labor desc: group display=' +
+                (ldGroup ? ldGroup.style.display || 'unset' : 'NOT FOUND') +
+                ', td classes=' + (ldTd ? ldTd.className : 'NOT FOUND') +
+                ', td text=' + (ldTd ? JSON.stringify(ldTd.textContent.trim().substring(0, 60)) : 'N/A'));
             }
           }, 150);
         });
