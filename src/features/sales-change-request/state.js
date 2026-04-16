@@ -226,6 +226,13 @@
 
   sload();
 
+  // Force-save to Knack on tab close so no changes are lost
+  window.addEventListener('beforeunload', function () {
+    if (Object.keys(_pending).length && _sowRecordId) {
+      forceSaveDraft();
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════
   //  EXPOSE ON NAMESPACE
   // ═══════════════════════════════════════════════════════════

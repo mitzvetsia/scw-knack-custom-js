@@ -31349,6 +31349,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   sload();
 
+  // Force-save to Knack on tab close so no changes are lost
+  window.addEventListener('beforeunload', function () {
+    if (Object.keys(_pending).length && _sowRecordId) {
+      forceSaveDraft();
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════
   //  EXPOSE ON NAMESPACE
   // ═══════════════════════════════════════════════════════════
@@ -32930,11 +32937,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       });
       topRow.appendChild(clearBtn);
     }
-
-    var draftBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--draft', 'Save Draft');
-    draftBtn.disabled = count === 0;
-    draftBtn.addEventListener('click', function () { ns.saveDraft(); });
-    topRow.appendChild(draftBtn);
 
     var submitBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--submit', 'Submit Changes');
     submitBtn.disabled = count === 0;
