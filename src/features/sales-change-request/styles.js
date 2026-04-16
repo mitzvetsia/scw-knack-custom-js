@@ -1,0 +1,202 @@
+/*** SALES CHANGE REQUEST — STYLES ***/
+/**
+ * CSS injection for badges, cards, action bar, modals, and revision strips.
+ *
+ * Reads : SCW.salesCR.CONFIG
+ */
+(function () {
+  'use strict';
+
+  var CFG = window.SCW.salesCR.CONFIG;
+  var P   = CFG.prefix;
+
+  function inject() {
+    if (document.getElementById(CFG.cssId)) return;
+
+    var css = [
+      /* ── Badge on summary row ── */
+      '.' + P + '-badge {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 2px 8px; border-radius: 10px;',
+      '  font-size: 11px; font-weight: 600; white-space: nowrap;',
+      '  margin-left: 6px; vertical-align: middle; cursor: default;',
+      '}',
+      '.' + P + '-badge--revise { background: #dbeafe; color: #1e40af; }',
+      '.' + P + '-badge--add    { background: #dcfce7; color: #166534; }',
+      '.' + P + '-badge--remove { background: #fee2e2; color: #991b1b; }',
+      '.' + P + '-badge--note   { background: #fef3c7; color: #92400e; }',
+
+      /* ── Pending card in detail panel ── */
+      '.' + P + '-card {',
+      '  margin: 8px 12px; padding: 10px 14px;',
+      '  border-radius: 6px; font-size: 12px; position: relative;',
+      '}',
+      '.' + P + '-card--revise { background: #eff6ff;  border: 1px solid #3b82f633; color: #1e40af; }',
+      '.' + P + '-card--add    { background: #f0fdf4;  border: 1px solid #16a34a33; color: #166534; }',
+      '.' + P + '-card--remove { background: #fef2f2;  border: 1px solid #dc262633; color: #991b1b; }',
+      '.' + P + '-card--note   { background: #fffbeb;  border: 1px solid #f59e0b33; color: #92400e; }',
+      '.' + P + '-card-header {',
+      '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
+      '  letter-spacing: .04em; margin-bottom: 4px;',
+      '}',
+      '.' + P + '-card-field {',
+      '  display: flex; gap: 6px; align-items: baseline; margin: 2px 0;',
+      '}',
+      '.' + P + '-card-label  { font-weight: 600; min-width: 100px; flex-shrink: 0; }',
+      '.' + P + '-card-from   { color: #94a3b8; text-decoration: line-through; }',
+      '.' + P + '-card-arrow  { color: #94a3b8; }',
+      '.' + P + '-card-to     { font-weight: 600; }',
+      '.' + P + '-card-notes  { font-style: italic; margin-top: 4px; font-size: 11px; }',
+      '.' + P + '-card-dismiss {',
+      '  position: absolute; top: 6px; right: 8px;',
+      '  background: none; border: none; font-size: 16px;',
+      '  color: inherit; opacity: .5; cursor: pointer; padding: 0; line-height: 1;',
+      '}',
+      '.' + P + '-card-dismiss:hover { opacity: 1; }',
+
+      /* ── Per-row action buttons (inside detail panel) ── */
+      '.' + P + '-row-actions {',
+      '  display: flex; gap: 8px; padding: 8px 12px;',
+      '  border-top: 1px solid #e5e7eb;',
+      '}',
+      '.' + P + '-row-btn {',
+      '  padding: 4px 12px; border-radius: 4px; border: 1px solid #cbd5e1;',
+      '  background: #fff; color: #475569; font-size: 11px; font-weight: 600;',
+      '  cursor: pointer; transition: all .15s;',
+      '}',
+      '.' + P + '-row-btn:hover { background: #f1f5f9; border-color: #94a3b8; }',
+      '.' + P + '-row-btn--remove { border-color: #fca5a5; color: #dc2626; }',
+      '.' + P + '-row-btn--remove:hover { background: #fef2f2; }',
+
+      /* ── Floating action bar ── */
+      '#' + CFG.barId + ' {',
+      '  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10000;',
+      '  background: #fff; border-top: 2px solid #3b82f6;',
+      '  box-shadow: 0 -4px 12px rgba(0,0,0,.1);',
+      '  display: flex; align-items: center; gap: 12px;',
+      '  padding: 10px 24px;',
+      '  font: 13px/1.3 system-ui, -apple-system, sans-serif;',
+      '  transition: transform .3s;',
+      '}',
+      '#' + CFG.barId + '.is-hidden { transform: translateY(100%); }',
+      '.' + P + '-bar-count {',
+      '  font-weight: 700; color: #0f172a;',
+      '  display: flex; align-items: center; gap: 6px;',
+      '}',
+      '.' + P + '-bar-num {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 22px; height: 22px; border-radius: 11px;',
+      '  background: #3b82f6; color: #fff; font-size: 12px; font-weight: 700;',
+      '  padding: 0 6px;',
+      '}',
+      '.' + P + '-bar-spacer { flex: 1; }',
+      '.' + P + '-bar-btn {',
+      '  padding: 7px 18px; border: none; border-radius: 5px;',
+      '  font: 600 13px/1 system-ui, sans-serif; cursor: pointer;',
+      '  transition: filter .15s;',
+      '}',
+      '.' + P + '-bar-btn:hover { filter: brightness(.92); }',
+      '.' + P + '-bar-btn--draft  { background: #e2e8f0; color: #475569; }',
+      '.' + P + '-bar-btn--submit { background: #3b82f6; color: #fff; }',
+      '.' + P + '-bar-btn--note   { background: #f59e0b; color: #fff; }',
+      '.' + P + '-bar-btn--clear  {',
+      '  background: none; border: none; color: #94a3b8;',
+      '  font-size: 12px; cursor: pointer; text-decoration: underline;',
+      '  padding: 4px 8px;',
+      '}',
+      '.' + P + '-bar-btn:disabled { opacity: .5; cursor: not-allowed; }',
+
+      /* ── Hide revision source view ── */
+      '#' + CFG.revisionView + ' { display: none !important; }',
+
+      /* ── Revision badge & strip (submitted items on rows) ── */
+      '.' + P + '-rev-badge {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 2px 8px; border-radius: 10px;',
+      '  background: #fef3c7; color: #92400e;',
+      '  font-size: 11px; font-weight: 600; white-space: nowrap;',
+      '  margin-left: 6px; vertical-align: middle;',
+      '}',
+      '.' + P + '-rev-strip {',
+      '  margin: 8px 12px 4px; padding: 10px 14px;',
+      '  background: #fffbeb; border-radius: 6px;',
+      '  font-size: 12px; color: #78350f;',
+      '}',
+      '.' + P + '-rev-strip-header {',
+      '  font-weight: 700; font-size: 11px; text-transform: uppercase;',
+      '  letter-spacing: .04em; color: #92400e; margin-bottom: 6px;',
+      '}',
+      '.' + P + '-rev-html-card { width: 100%; }',
+      '.' + P + '-rev-html-card > div { max-width: 100% !important; }',
+
+      /* ── Modal (shared by note + remove modals) ── */
+      '.' + P + '-overlay {',
+      '  position: fixed; inset: 0; z-index: 100001;',
+      '  background: rgba(0,0,0,.45);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '}',
+      '.' + P + '-modal {',
+      '  background: #fff; border-radius: 10px;',
+      '  box-shadow: 0 8px 32px rgba(0,0,0,.25);',
+      '  width: 480px; max-width: 94vw; max-height: 90vh;',
+      '  display: flex; flex-direction: column;',
+      '  font: 13px/1.45 system-ui, -apple-system, sans-serif;',
+      '  color: #1e293b;',
+      '}',
+      '.' + P + '-modal__header {',
+      '  display: flex; align-items: flex-start; gap: 8px;',
+      '  padding: 16px 20px 12px; border-bottom: 1px solid #e2e8f0;',
+      '  position: relative;',
+      '}',
+      '.' + P + '-modal__title    { font-size: 16px; font-weight: 700; color: #0f172a; }',
+      '.' + P + '-modal__subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }',
+      '.' + P + '-modal__close {',
+      '  position: absolute; top: 12px; right: 14px;',
+      '  background: none; border: none; font-size: 22px;',
+      '  color: #94a3b8; cursor: pointer; line-height: 1; padding: 0 4px;',
+      '}',
+      '.' + P + '-modal__close:hover { color: #334155; }',
+      '.' + P + '-modal__body {',
+      '  padding: 16px 20px; overflow-y: auto; flex: 1 1 auto;',
+      '}',
+      '.' + P + '-modal__hint {',
+      '  font-size: 12px; color: #64748b; margin-bottom: 12px;',
+      '}',
+      '.' + P + '-modal__label {',
+      '  display: block; font-size: 11px; font-weight: 600;',
+      '  color: #475569; margin-bottom: 3px;',
+      '}',
+      '.' + P + '-modal__textarea {',
+      '  display: block; width: 100%; box-sizing: border-box;',
+      '  padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 5px;',
+      '  font: inherit; font-size: 13px; color: #1e293b; background: #f8fafc;',
+      '  resize: vertical; min-height: 80px;',
+      '}',
+      '.' + P + '-modal__textarea:focus {',
+      '  outline: none; border-color: #3b82f6;',
+      '  box-shadow: 0 0 0 2px rgba(59,130,246,.15);',
+      '}',
+      '.' + P + '-modal__footer {',
+      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  padding: 12px 20px; border-top: 1px solid #e2e8f0;',
+      '}',
+      '.' + P + '-modal__btn {',
+      '  padding: 8px 16px; border: none; border-radius: 5px;',
+      '  font: 600 13px/1 system-ui, sans-serif; cursor: pointer;',
+      '  transition: filter .15s;',
+      '}',
+      '.' + P + '-modal__btn:hover { filter: brightness(.92); }',
+      '.' + P + '-modal__btn--cancel { background: #e2e8f0; color: #475569; }',
+      '.' + P + '-modal__btn--save   { background: #3b82f6; color: #fff; }',
+      '.' + P + '-modal__btn--remove { background: #dc2626; color: #fff; }',
+    ].join('\n');
+
+    var s = document.createElement('style');
+    s.id = CFG.cssId;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  window.SCW.salesCR.injectStyles = inject;
+
+})();
