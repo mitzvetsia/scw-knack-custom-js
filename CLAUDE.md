@@ -275,3 +275,18 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Knack re-renders the entire view** after inline edits. Features must be idempotent and handle re-initialization gracefully.
 - **KTL (Knack Toolkit Library)** is loaded alongside this bundle. Some features interact with KTL's keyword system (`ktlKeywords`), accordion state, and hide/show buttons.
 - **`save.sh` excludes dist/** — use it for source-only commits during development. Only `release.sh` includes the built bundle.
+
+## Known Issues (TODO)
+
+### 1. Bid comparison grid does not refresh after change request submission
+- **Location**: `src/features/bid-review/change-requests.js` → `submitChangeRequest()`
+- **Symptom**: After submitting a change request on the bid review page (scene_1155), the comparison grid does not rebuild to reflect the new CR. User must manually refresh.
+- **What we tried**: Calling `ns.refresh()` (full data refetch + grid rebuild) on success, on CORS-fallback (status 0), and unconditionally after 3s. None worked.
+- **Suspected root cause**: Unknown. The webhook to Make returns 200 + `{success: true}`, but the grid doesn't update. May be a deeper issue with how `runPipeline` / `loadRawData` interacts with the page state after a CR submission, or the Knack views may not have fresh data yet. Needs console logging in `runPipeline` to confirm it's even being called and whether `loadRawData` returns updated records.
+
+### 2. "Generating subcontractor bid PDF…" poll message doesn't stop on webhook completion
+- **Location**: `src/features/proposal-pdf-export.js` → `startPollRefresh()`
+- **Symptom**: After form submission on view_3679 (which fires a webhook and redirects to parent page scene_1140), the blue "Generating subcontractor bid PDF…" toast and field overlay persist. The 60s timeout DOES eventually stop it, but it should stop sooner when the PDF is actually ready.
+- **How it works**: Poll stores flags in sessionStorage before redirect. On parent page scene render, it starts polling view_3507 every 4s via `Knack.views[viewId].model.fetch()`. It watches for `field_2626` (PDF file field) text content to change from its initial value.
+- **What we tried**: Added direct field check in setInterval (not just on view re-render). The 60s timeout works, but the field change detection doesn't fire before timeout.
+- **Suspected root cause**: Either `model.fetch()` isn't causing the view to re-render (KTL accordion may interfere), or Make's PDF generation takes longer than 60s, or the PDF filename doesn't change (same version uploaded). Needs console logging to check: (a) whether `model.fetch()` actually fires, (b) what `readFieldText` returns each poll cycle, (c) whether the field value genuinely changes after Make processes.
