@@ -32717,10 +32717,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       locked++;
 
-      // Lock ALL directEdit inputs/textareas (except product field)
+      // Lock ALL directEdit inputs/textareas (except product + discount %)
+      var editableFields = {};
+      editableFields[CFG.productField] = true;  // field_1949
+      editableFields['field_2261'] = true;       // Custom Discount %
       $card.find('input[data-field], textarea[data-field]').each(function () {
         var field = this.getAttribute('data-field') || '';
-        if (field === CFG.productField) return;
+        if (editableFields[field]) return;
         this.readOnly = true;
         this.tabIndex = -1;
         this.style.cursor = 'default';
