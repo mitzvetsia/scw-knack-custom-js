@@ -6054,10 +6054,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
-          setTimeout(function () { transformView(viewCfg); syncDeleteVisibility(); }, 150);
-          // Second pass after SPA navigation settles (form redirects
-          // can leave the browser mid-layout when the first pass runs).
-          setTimeout(function () { transformView(viewCfg); }, 600);
+          setTimeout(function () {
+            transformView(viewCfg);
+            syncDeleteVisibility();
+            // Force browser to recalculate flex layout after SPA navigation.
+            // Form redirects can leave the browser mid-layout when transform
+            // runs, causing flex children (labor desc) to have zero size.
+            var root = document.getElementById(viewId);
+            if (root) {
+              requestAnimationFrame(function () {
+                root.style.opacity = '0.99';
+                requestAnimationFrame(function () {
+                  root.style.opacity = '';
+                });
+              });
+            }
+          }, 150);
         });
 
       $(document)
