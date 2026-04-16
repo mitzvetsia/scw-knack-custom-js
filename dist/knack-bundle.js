@@ -31109,6 +31109,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // ── Persistence ────────────────────────────────────────
     storageKey:       'scw-sales-cr-pending',
+    draftField:       'field_2707',  // paragraph field on SOW record for cross-session draft
+    draftView:        'view_3491',  // view on the same page that has the SOW record (for API calls)
 
     // ── Debug / styling ────────────────────────────────────
     debug:            true,
@@ -31149,7 +31151,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // true when worksheetView is on the current page
   var _onPage = false;
 
-  // ── SessionStorage persistence ────────────────────────────
+  // ── SessionStorage persistence (write-through cache) ───
   function ssave() {
     try { sessionStorage.setItem(CFG.storageKey, JSON.stringify(_pending)); } catch (e) {}
   }
@@ -31160,9 +31162,88 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     } catch (e) {}
   }
 
-  function persist() { ssave(); }
+  // ── Knack field persistence (field_2707 on SOW record) ──
+  // Mirrors the bid-review pattern: debounced writes to a paragraph
+  // field for cross-session durability.
+  var _saveTimer = null;
+  var _sowRecordId = '';   // set by init when the page loads
+  var SAVE_DEBOUNCE = 3000;
 
-  function pendingCount() { return Object.keys(_pending).length; }
+  function setDraftRecordId(id) { _sowRecordId = id; }
+
+  /** Extract the SOW record ID from the URL hash.
+   *  URL pattern: #.../scope-of-work-details/<sowId>/... */
+  function detectSowRecordId() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
+    if (match) {
+      _sowRecordId = match[1];
+      if (CFG.debug) console.log('[SalesCR] SOW record ID:', _sowRecordId);
+    }
+  }
+
+  function readDraftField() {
+    if (!_sowRecordId) return $.Deferred().resolve(null).promise();
+    return SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.draftView, _sowRecordId),
+      type: 'GET',
+    }).then(function (resp) {
+      var raw = resp[CFG.draftField + '_raw'] || resp[CFG.draftField] || '';
+      if (typeof raw === 'string') raw = raw.replace(/<[^>]*>/g, '').trim();
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    });
+  }
+
+  function writeDraftField(data) {
+    if (!_sowRecordId) return;
+    var body = {};
+    body[CFG.draftField] = data ? JSON.stringify(data) : '';
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.draftView, _sowRecordId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+    });
+  }
+
+  function debouncedSaveDraft() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function () {
+      _saveTimer = null;
+      var count = Object.keys(_pending).length;
+      writeDraftField(count ? _pending : null);
+    }, SAVE_DEBOUNCE);
+  }
+
+  function persist() {
+    ssave();
+    debouncedSaveDraft();
+  }
+
+  /** Rehydrate pending state from field_2707. Called by init after
+   *  the worksheet view renders and we know the SOW record ID. */
+  function rehydrateFromKnack() {
+    if (!_sowRecordId) return;
+    readDraftField().then(function (data) {
+      if (!data || typeof data !== 'object') return;
+      // Merge Knack data with any sessionStorage data (sessionStorage wins on conflicts)
+      var knackKeys = Object.keys(data);
+      var merged = false;
+      for (var i = 0; i < knackKeys.length; i++) {
+        if (!_pending[knackKeys[i]]) {
+          _pending[knackKeys[i]] = data[knackKeys[i]];
+          merged = true;
+        }
+      }
+      if (merged) {
+        ssave();
+        if (ns.refresh) ns.refresh();
+        if (CFG.debug) console.log('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
+      }
+    }).fail(function () {
+      if (CFG.debug) console.warn('[SalesCR] Knack rehydration failed — using sessionStorage');
+    });
+  }
 
   // ═══════════════════════════════════════════════════════════
   //  DOM HELPERS
@@ -31276,9 +31357,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setOnPage:    function (v) { _onPage = v; },
   };
 
-  ns.persist      = persist;
-  ns.pendingCount = pendingCount;
-  ns.showToast    = showToast;
+  ns.persist             = persist;
+  ns.pendingCount        = pendingCount;
+  ns.showToast           = showToast;
+  ns.setDraftRecordId    = setDraftRecordId;
+  ns.detectSowRecordId   = detectSowRecordId;
+  ns.rehydrateFromKnack  = rehydrateFromKnack;
 
   // Helpers (used by sibling modules)
   ns._h = {
@@ -32838,12 +32922,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var draftBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--draft', 'Save Draft');
     draftBtn.disabled = count === 0;
-    draftBtn.addEventListener('click', function () { ns.submitToWebhook(true); });
+    draftBtn.addEventListener('click', function () { ns.saveDraft(); });
     topRow.appendChild(draftBtn);
 
     var submitBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--submit', 'Submit Changes');
     submitBtn.disabled = count === 0;
-    submitBtn.addEventListener('click', function () { ns.submitToWebhook(false); });
+    submitBtn.addEventListener('click', function () { ns.submitToWebhook(); });
     topRow.appendChild(submitBtn);
 
     bar.appendChild(topRow);
@@ -32946,11 +33030,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 })();
 /*** SALES CHANGE REQUEST — SUBMIT ***/
 /**
- * Webhook submission for both draft saves and final submissions.
+ * Webhook submission for final submissions, and draft save to Knack field.
+ *
+ * Save Draft: writes pending JSON to field_2707 immediately (no webhook).
+ * Submit: posts to webhook, then clears pending + draft field.
  *
  * Reads : SCW.salesCR.CONFIG, ._state, .pendingCount, .persist,
  *         .buildPayload, .buildHtml, .showToast, .refresh
- * Writes: SCW.salesCR.submitToWebhook, .clear
+ * Writes: SCW.salesCR.submitToWebhook, .saveDraft, .clear
  */
 (function () {
   'use strict';
@@ -32959,63 +33046,63 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var CFG = ns.CONFIG;
   var S   = ns._state;
 
-  function submitToWebhook(isDraft) {
+  function submitToWebhook() {
     var count = ns.pendingCount();
     if (!count) { ns.showToast('No pending changes to submit', 'info'); return; }
 
-    var verb = isDraft ? 'save draft' : 'submit';
-    if (!isDraft) {
-      if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
-    }
+    if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
 
-    var payload = ns.buildPayload(isDraft);
+    var payload = ns.buildPayload(false);
     var html    = ns.buildHtml();
     payload.html = html;
 
-    var url = isDraft ? CFG.draftWebhook : CFG.submitWebhook;
-
     if (CFG.debug) {
-      console.log('[SalesCR] ' + verb + ':', payload);
-      console.log('[SalesCR] HTML preview:', html.substring(0, 500) + '...');
+      console.log('[SalesCR] Submit:', payload);
     }
 
     SCW.knackAjax({
-      url:  url,
+      url:  CFG.submitWebhook,
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[SalesCR] ' + verb + ' success:', resp);
-        if (!isDraft) {
-          clearPending();
-        }
-        ns.showToast(isDraft ? 'Draft saved' : 'Change request submitted', 'success');
+        if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
+        clearPending();
+        ns.showToast('Change request submitted', 'success');
       },
       error: function (xhr) {
-        // CORS may block the response even though Make received the data
         if (xhr && xhr.status === 0) {
           if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
-          if (!isDraft) {
-            clearPending();
-          }
-          ns.showToast(isDraft ? 'Draft saved' : 'Change request submitted', 'success');
+          clearPending();
+          ns.showToast('Change request submitted', 'success');
         } else {
-          console.error('[SalesCR] ' + verb + ' failed:', xhr.status, xhr.responseText);
-          ns.showToast('Failed to ' + verb + ' \u2014 please try again', 'error');
+          console.error('[SalesCR] Submit failed:', xhr.status, xhr.responseText);
+          ns.showToast('Failed to submit \u2014 please try again', 'error');
         }
       },
     });
+  }
+
+  /** Save draft: immediate write to field_2707 (no webhook). */
+  function saveDraft() {
+    var count = ns.pendingCount();
+    if (!count) { ns.showToast('No pending changes to save', 'info'); return; }
+
+    // Force immediate persist to Knack field
+    ns.persist();
+    ns.showToast('Draft saved', 'success');
   }
 
   function clearPending() {
     var pending = S.pending();
     var keys = Object.keys(pending);
     for (var i = 0; i < keys.length; i++) delete pending[keys[i]];
-    ns.persist();
+    ns.persist();  // clears sessionStorage + writes empty to field_2707
     if (ns.refresh) ns.refresh();
   }
 
   // ── Public API ──
   ns.submitToWebhook = submitToWebhook;
+  ns.saveDraft       = saveDraft;
   ns.clear           = clearPending;
 
 })();
@@ -33214,11 +33301,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
+  var _rehydrated = false;
+
   SCW.onViewRender(CFG.worksheetView, function () {
     S.setOnPage(true);
     _activeScene = Knack.router.current_scene_key || '';
     ns.injectStyles();
     ns.buildBaseline();
+
+    // Detect SOW record ID from URL and rehydrate from Knack (once per page)
+    if (!_rehydrated) {
+      _rehydrated = true;
+      ns.detectSowRecordId();
+      ns.rehydrateFromKnack();
+    }
 
     // Inject UI after device-worksheet transform (uses 150ms)
     setTimeout(function () {
@@ -33289,6 +33385,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       S.setOnPage(false);
       S.setBaseline({});
       _activeScene = '';
+      _rehydrated = false;
       ns.renderActionBar();
     });
 

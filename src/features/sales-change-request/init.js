@@ -30,11 +30,20 @@
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
+  var _rehydrated = false;
+
   SCW.onViewRender(CFG.worksheetView, function () {
     S.setOnPage(true);
     _activeScene = Knack.router.current_scene_key || '';
     ns.injectStyles();
     ns.buildBaseline();
+
+    // Detect SOW record ID from URL and rehydrate from Knack (once per page)
+    if (!_rehydrated) {
+      _rehydrated = true;
+      ns.detectSowRecordId();
+      ns.rehydrateFromKnack();
+    }
 
     // Inject UI after device-worksheet transform (uses 150ms)
     setTimeout(function () {
@@ -105,6 +114,7 @@
       S.setOnPage(false);
       S.setBaseline({});
       _activeScene = '';
+      _rehydrated = false;
       ns.renderActionBar();
     });
 

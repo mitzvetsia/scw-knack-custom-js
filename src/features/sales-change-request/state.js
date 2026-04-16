@@ -28,7 +28,7 @@
   // true when worksheetView is on the current page
   var _onPage = false;
 
-  // ── SessionStorage persistence ────────────────────────────
+  // ── SessionStorage persistence (write-through cache) ───
   function ssave() {
     try { sessionStorage.setItem(CFG.storageKey, JSON.stringify(_pending)); } catch (e) {}
   }
@@ -39,9 +39,88 @@
     } catch (e) {}
   }
 
-  function persist() { ssave(); }
+  // ── Knack field persistence (field_2707 on SOW record) ──
+  // Mirrors the bid-review pattern: debounced writes to a paragraph
+  // field for cross-session durability.
+  var _saveTimer = null;
+  var _sowRecordId = '';   // set by init when the page loads
+  var SAVE_DEBOUNCE = 3000;
 
-  function pendingCount() { return Object.keys(_pending).length; }
+  function setDraftRecordId(id) { _sowRecordId = id; }
+
+  /** Extract the SOW record ID from the URL hash.
+   *  URL pattern: #.../scope-of-work-details/<sowId>/... */
+  function detectSowRecordId() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
+    if (match) {
+      _sowRecordId = match[1];
+      if (CFG.debug) console.log('[SalesCR] SOW record ID:', _sowRecordId);
+    }
+  }
+
+  function readDraftField() {
+    if (!_sowRecordId) return $.Deferred().resolve(null).promise();
+    return SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.draftView, _sowRecordId),
+      type: 'GET',
+    }).then(function (resp) {
+      var raw = resp[CFG.draftField + '_raw'] || resp[CFG.draftField] || '';
+      if (typeof raw === 'string') raw = raw.replace(/<[^>]*>/g, '').trim();
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    });
+  }
+
+  function writeDraftField(data) {
+    if (!_sowRecordId) return;
+    var body = {};
+    body[CFG.draftField] = data ? JSON.stringify(data) : '';
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.draftView, _sowRecordId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+    });
+  }
+
+  function debouncedSaveDraft() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function () {
+      _saveTimer = null;
+      var count = Object.keys(_pending).length;
+      writeDraftField(count ? _pending : null);
+    }, SAVE_DEBOUNCE);
+  }
+
+  function persist() {
+    ssave();
+    debouncedSaveDraft();
+  }
+
+  /** Rehydrate pending state from field_2707. Called by init after
+   *  the worksheet view renders and we know the SOW record ID. */
+  function rehydrateFromKnack() {
+    if (!_sowRecordId) return;
+    readDraftField().then(function (data) {
+      if (!data || typeof data !== 'object') return;
+      // Merge Knack data with any sessionStorage data (sessionStorage wins on conflicts)
+      var knackKeys = Object.keys(data);
+      var merged = false;
+      for (var i = 0; i < knackKeys.length; i++) {
+        if (!_pending[knackKeys[i]]) {
+          _pending[knackKeys[i]] = data[knackKeys[i]];
+          merged = true;
+        }
+      }
+      if (merged) {
+        ssave();
+        if (ns.refresh) ns.refresh();
+        if (CFG.debug) console.log('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
+      }
+    }).fail(function () {
+      if (CFG.debug) console.warn('[SalesCR] Knack rehydration failed — using sessionStorage');
+    });
+  }
 
   // ═══════════════════════════════════════════════════════════
   //  DOM HELPERS
@@ -155,9 +234,12 @@
     setOnPage:    function (v) { _onPage = v; },
   };
 
-  ns.persist      = persist;
-  ns.pendingCount = pendingCount;
-  ns.showToast    = showToast;
+  ns.persist             = persist;
+  ns.pendingCount        = pendingCount;
+  ns.showToast           = showToast;
+  ns.setDraftRecordId    = setDraftRecordId;
+  ns.detectSowRecordId   = detectSowRecordId;
+  ns.rehydrateFromKnack  = rehydrateFromKnack;
 
   // Helpers (used by sibling modules)
   ns._h = {

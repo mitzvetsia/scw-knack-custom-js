@@ -370,12 +370,12 @@
 
     var draftBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--draft', 'Save Draft');
     draftBtn.disabled = count === 0;
-    draftBtn.addEventListener('click', function () { ns.submitToWebhook(true); });
+    draftBtn.addEventListener('click', function () { ns.saveDraft(); });
     topRow.appendChild(draftBtn);
 
     var submitBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--submit', 'Submit Changes');
     submitBtn.disabled = count === 0;
-    submitBtn.addEventListener('click', function () { ns.submitToWebhook(false); });
+    submitBtn.addEventListener('click', function () { ns.submitToWebhook(); });
     topRow.appendChild(submitBtn);
 
     bar.appendChild(topRow);
