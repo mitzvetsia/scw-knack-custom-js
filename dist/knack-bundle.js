@@ -15396,9 +15396,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
 
-        // Refresh the comparison grid after Make finishes processing
-        if (resp && resp.success) {
-          setTimeout(function () { if (ns.refresh) ns.refresh(); }, 2000);
+        // Rebuild the comparison grid with fresh data from Knack
+        if (ns.refresh) {
+          setTimeout(function () { ns.refresh(); }, 2000);
         }
         deferred.resolve(resp);
       },
