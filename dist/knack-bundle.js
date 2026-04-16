@@ -11866,10 +11866,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var sowItemId = connectionId(rec, FK.relatedSowItem);
       var hasBid    = connectionAll(rec, FK.bidPackage).length > 0;
+      var hasSow    = connectionAll(rec, FK.sow).length > 0;
 
-      // Skip records that are on neither the SOW nor any bid —
+      // Skip records that are not on any bid AND not connected to a SOW —
       // these are survey-only items that were deliberately removed.
-      if (!sowItemId && !hasBid) continue;
+      // (A stale relatedSowItem connection doesn't count; the SOW scope
+      // connection field_2154 is the authoritative check.)
+      if (!hasBid && !hasSow) continue;
 
       var rowKey    = sowItemId ? 'sow::' + sowItemId : 'rec::' + rec.id;
 
