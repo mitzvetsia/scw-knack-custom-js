@@ -31297,44 +31297,46 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (document.getElementById(CFG.cssId)) return;
 
     var css = [
-      /* ── Action menu icon (replaces delete slot) ── */
+      /* ── Action menu icon (next to delete slot) ── */
       '.' + P + '-action-wrap {',
       '  display: inline-flex; align-items: center;',
       '  justify-content: center; align-self: flex-start;',
-      '  flex-shrink: 0; position: relative;',
+      '  flex-shrink: 0;',
       '  min-width: 22px; padding: 5px 4px 0 4px;',
-      '  overflow: visible;',
       '}',
       '.' + P + '-action-btn {',
       '  display: inline-flex; align-items: center; justify-content: center;',
-      '  width: 24px; height: 24px; border-radius: 12px;',
-      '  border: 1.5px solid #cbd5e1; background: #fff;',
-      '  color: #94a3b8; font-size: 14px; cursor: pointer;',
+      '  width: 26px; height: 26px; border-radius: 5px;',
+      '  border: none; background: #e2e8f0;',
+      '  color: #64748b; cursor: pointer;',
       '  transition: all .15s; line-height: 1; padding: 0;',
       '}',
       '.' + P + '-action-btn:hover {',
-      '  border-color: #94a3b8; color: #475569; background: #f1f5f9;',
+      '  background: #cbd5e1; color: #334155;',
       '}',
       '.' + P + '-action-btn--revise {',
-      '  border-color: #93c5fd; background: #dbeafe; color: #1e40af;',
+      '  background: #3b82f6; color: #fff;',
       '}',
+      '.' + P + '-action-btn--revise:hover { background: #2563eb; }',
       '.' + P + '-action-btn--add {',
-      '  border-color: #86efac; background: #dcfce7; color: #166534;',
+      '  background: #16a34a; color: #fff;',
       '}',
+      '.' + P + '-action-btn--add:hover { background: #15803d; }',
       '.' + P + '-action-btn--remove {',
-      '  border-color: #fca5a5; background: #fee2e2; color: #991b1b;',
+      '  background: #dc2626; color: #fff;',
       '}',
+      '.' + P + '-action-btn--remove:hover { background: #b91c1c; }',
       '.' + P + '-action-btn--note {',
-      '  border-color: #fcd34d; background: #fef3c7; color: #92400e;',
+      '  background: #f59e0b; color: #fff;',
       '}',
+      '.' + P + '-action-btn--note:hover { background: #d97706; }',
       '.' + P + '-action-btn--has-note {',
       '  box-shadow: 0 0 0 2px #fbbf24;',
       '}',
 
-      /* ── Popover menu ── */
+      /* ── Popover menu (portal on document.body) ── */
       '.' + P + '-popover {',
-      '  position: absolute; top: 100%; right: 0; z-index: 10001;',
-      '  margin-top: 4px; min-width: 160px;',
+      '  z-index: 100000; min-width: 170px;',
       '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
       '  box-shadow: 0 8px 24px rgba(0,0,0,.15);',
       '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
@@ -32158,9 +32160,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  * Injects per-row action menus (in the delete-button slot), pending-CR
  * cards into detail panels, and the floating action bar.
  *
- * The action menu replaces the Knack delete icon with a "..." button
- * that opens a popover with: Add Note, Request Removal, Clear.
- * When a pending CR exists the icon shows the action-type color.
+ * The action menu sits next to the Knack delete icon. When delete is
+ * hidden (field_2586 > 0) it offers: Add Note, Request Removal, Clear.
+ * When delete is visible (field_2586 = 0, new item) it only offers Add Note
+ * since the item itself is the "add" change request.
+ *
+ * The popover renders as a portal on document.body to avoid stacking-
+ * context / overflow issues with accordion containers.
  *
  * Reads : SCW.salesCR.CONFIG, ._state, ._h, .pendingCount,
  *         .openNote, .openRowNote, .openRemove, .submitToWebhook
@@ -32176,15 +32182,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
 
-  // Track the currently-open popover so we can close it
+  // Currently-open popover (rendered on document.body)
   var _openPopover = null;
+  var _popoverAnchor = null;
 
-  // Close any open popover on outside click
+  // Close popover on outside click or scroll
   $(document).on('click' + CFG.eventNs + 'Pop', function (e) {
-    if (_openPopover && !_openPopover.contains(e.target)) {
-      _openPopover.remove();
-      _openPopover = null;
-    }
+    if (!_openPopover) return;
+    if (_openPopover.contains(e.target)) return;
+    if (_popoverAnchor && _popoverAnchor.contains(e.target)) return;
+    closePopover();
+  });
+  $(window).on('scroll' + CFG.eventNs + 'Pop', function () {
+    if (_openPopover) closePopover();
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -32245,16 +32255,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  ACTION MENU (popover in delete-button slot)
+  //  POPOVER (portal on document.body)
   // ═══════════════════════════════════════════════════════════
 
-  function buildPopover(recordId) {
+  /**
+   * @param {string} recordId
+   * @param {boolean} addOnly - true for field_2586=0 rows (only note allowed)
+   */
+  function buildPopover(recordId, addOnly) {
     var pop = H.el('div', P + '-popover');
     var pending = S.pending();
     var hasCR    = !!pending[recordId];
     var hasNote  = !!pending['note_' + recordId];
 
-    // Add Note (per-row)
+    // Add Note (per-row) — always available
     var noteItem = H.el('div', P + '-popover-item');
     noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
     noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
@@ -32265,17 +32279,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
     pop.appendChild(noteItem);
 
-    // Request Removal
-    if (!hasCR || pending[recordId].action !== 'remove') {
-      var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
-      removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
-      removeItem.appendChild(document.createTextNode('Request Removal'));
-      removeItem.addEventListener('click', function (e) {
-        e.stopPropagation();
-        closePopover();
-        ns.openRemove(recordId);
-      });
-      pop.appendChild(removeItem);
+    if (!addOnly) {
+      // Request Removal — only for non-add rows
+      if (!hasCR || pending[recordId].action !== 'remove') {
+        var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
+        removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
+        removeItem.appendChild(document.createTextNode('Request Removal'));
+        removeItem.addEventListener('click', function (e) {
+          e.stopPropagation();
+          closePopover();
+          ns.openRemove(recordId);
+        });
+        pop.appendChild(removeItem);
+      }
     }
 
     // Clear (if any pending CR or note on this row)
@@ -32298,18 +32314,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return pop;
   }
 
+  function positionPopover(pop, anchorEl) {
+    var rect = anchorEl.getBoundingClientRect();
+    pop.style.position = 'fixed';
+    pop.style.top  = (rect.bottom + 4) + 'px';
+    pop.style.right = (window.innerWidth - rect.right) + 'px';
+    pop.style.left = 'auto';
+  }
+
   function closePopover() {
     if (_openPopover) {
-      // Remove z-index boost from ancestor card
-      var boosted = _openPopover.closest('.' + P + '-action-wrap');
-      if (boosted) {
-        var parentCard = boosted.closest('.scw-ws-card');
-        if (parentCard) parentCard.style.zIndex = '';
-        var parentTr = boosted.closest('tr');
-        if (parentTr) parentTr.style.zIndex = '';
-      }
       _openPopover.remove();
       _openPopover = null;
+      _popoverAnchor = null;
     }
   }
 
@@ -32345,23 +32362,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var $card = $tr.find('.scw-ws-card');
       if (!$card.length) return;
 
-      // Find the delete wrapper in the summary row
       var $deleteWrap = $card.find('.scw-ws-sum-delete');
       if (!$deleteWrap.length) return;
 
-      // Skip rows where the delete button is visible (field_2586 = 0)
-      if ($deleteWrap[0].style.visibility !== 'hidden') return;
+      // field_2586 = 0 → delete is visible → ADD-only mode (just notes)
+      // field_2586 > 0 → delete is hidden → full CR menu
+      var deleteVisible = $deleteWrap[0].style.visibility !== 'hidden';
+      var addOnly = deleteVisible;
 
       // Build action button
       var state = rowActionState(recordId);
       var wrap = H.el('span', P + '-action-wrap');
-      var btn  = H.el('button', P + '-action-btn', '\u22EE'); // vertical ellipsis
+      var btn  = H.el('button', P + '-action-btn');
 
+      // Icon: FontAwesome pencil-square for filled state, ellipsis-v for idle
       if (state) {
+        btn.innerHTML = '<i class="fa fa-pencil-square" style="font-size:14px;"></i>';
         btn.classList.add(P + '-action-btn--' + state.action);
         if (state.hasNote && state.action !== 'note') {
           btn.classList.add(P + '-action-btn--has-note');
         }
+      } else {
+        btn.innerHTML = '<i class="fa fa-ellipsis-v" style="font-size:14px;"></i>';
       }
 
       btn.addEventListener('click', function (e) {
@@ -32369,39 +32391,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         e.preventDefault();
         closePopover();
 
-        // Boost z-index on ancestor elements so popover escapes overflow
-        var parentCard = wrap.closest('.scw-ws-card');
-        if (parentCard) parentCard.style.zIndex = '10002';
-        var parentTr = wrap.closest('tr');
-        if (parentTr) parentTr.style.zIndex = '10002';
-
-        var pop = buildPopover(recordId);
-        wrap.appendChild(pop);
+        var pop = buildPopover(recordId, addOnly);
+        positionPopover(pop, btn);
+        document.body.appendChild(pop);
         _openPopover = pop;
+        _popoverAnchor = btn;
       });
 
       wrap.appendChild(btn);
-
-      // Insert after the delete wrapper
       $deleteWrap.after(wrap);
 
       // Inject cards into detail panel
       var $detail = $card.find('.scw-ws-detail');
       if (!$detail.length) return;
 
-      // CR card (revise/add/remove)
       if (pending[recordId]) {
         $detail[0].appendChild(buildCard(recordId, pending[recordId]));
       }
-      // Note card (per-row)
       var noteKey = 'note_' + recordId;
       if (pending[noteKey]) {
         $detail[0].appendChild(buildCard(noteKey, pending[noteKey]));
       }
     });
-
-    // Also show global (non-row) note cards somewhere — in the action bar area
-    // (handled by renderActionBar)
   }
 
   // ═══════════════════════════════════════════════════════════
