@@ -25180,7 +25180,7 @@ $(".kn-navigation-bar").hide();
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
         },
-        recordLockField: 'field_2634',
+        // recordLockField disabled — field_2634 lock not used on view_3313
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
