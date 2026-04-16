@@ -290,3 +290,9 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **How it works**: Poll stores flags in sessionStorage before redirect. On parent page scene render, it starts polling view_3507 every 4s via `Knack.views[viewId].model.fetch()`. It watches for `field_2626` (PDF file field) text content to change from its initial value.
 - **What we tried**: Added direct field check in setInterval (not just on view re-render). The 60s timeout works, but the field change detection doesn't fire before timeout.
 - **Suspected root cause**: Either `model.fetch()` isn't causing the view to re-render (KTL accordion may interfere), or Make's PDF generation takes longer than 60s, or the PDF filename doesn't change (same version uploaded). Needs console logging to check: (a) whether `model.fetch()` actually fires, (b) what `readFieldText` returns each poll cycle, (c) whether the field value genuinely changes after Make processes.
+
+### 3. Edit Revision modal needs field/choice rules (TEMPORARILY DISABLED)
+- **Location**: `src/features/bid-revision-inject.js` → `openEditModal()`
+- **Status**: Edit button is disabled. The modal opens and prefills revised values correctly (from `data.fields`), but it doesn't apply the right field visibility and choice rules based on the product/bucket type. For example, connection options, cabling fields, and chip choices don't match what the worksheet shows for that product.
+- **What's needed**: The edit modal should mirror the same field visibility, connection option filtering, and chip/select choices that the device worksheet (view_3505/view_3313) uses for the same record's bucket type. This likely means reading the proposal bucket from the revision data and applying the same `bucketOverride` / `bucketRules` logic that `device-worksheet.js` uses.
+- **What works**: Prefill from `data.fields` is correct. Save writes to field_2687/2688/2695/2696 correctly. The HTML card rebuilds on save.

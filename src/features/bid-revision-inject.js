@@ -1444,6 +1444,8 @@
     editBtn.type = 'button';
     editBtn.className = P + '-btn ' + P + '-btn--edit';
     editBtn.textContent = 'Edit';
+    editBtn.disabled = true;
+    editBtn.title = 'Edit revision — temporarily disabled';
 
     var rejectBtn = document.createElement('button');
     rejectBtn.type = 'button';
