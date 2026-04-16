@@ -1580,19 +1580,32 @@
         persist();
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
-
-        // Rebuild the comparison grid with fresh data from Knack
-        if (ns.refresh) {
-          setTimeout(function () { ns.refresh(); }, 2000);
-        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
-        console.error('[BidReview CR] Submit failed:', xhr.status, xhr.responseText);
-        ns.renderToast('Failed to submit change request — please try again', 'error');
-        deferred.reject(xhr);
+        // CORS may block the response even though Make received and
+        // processed the request (status 0). Treat as success if so.
+        if (xhr && xhr.status === 0) {
+          if (CFG.debug) console.log('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
+          delete _pending[pkgId];
+          persist();
+          triggerRerender();
+          ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
+          deferred.resolve();
+        } else {
+          console.error('[BidReview CR] Submit failed:', xhr.status, xhr.responseText);
+          ns.renderToast('Failed to submit change request — please try again', 'error');
+          deferred.reject(xhr);
+        }
       },
     });
+
+    // Rebuild the comparison grid after Make finishes processing.
+    // Runs regardless of success/error since Make may have already
+    // received the data even if CORS blocks the response.
+    if (ns.refresh) {
+      setTimeout(function () { ns.refresh(); }, 3000);
+    }
 
     return deferred.promise();
   }
