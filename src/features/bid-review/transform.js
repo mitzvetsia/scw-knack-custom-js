@@ -280,8 +280,6 @@
           bidMdfIdfIds:    connectionIdsAll(rec, FK.mdfIdf),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
-          // Full raw Knack record for webhook payloads
-          _rawRecord:      rec,
         };
       }
     }

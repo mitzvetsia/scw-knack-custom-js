@@ -11950,8 +11950,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           bidMdfIdfIds:    connectionIdsAll(rec, FK.mdfIdf),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
-          // Full raw Knack record for webhook payloads
-          _rawRecord:      rec,
         };
       }
     }
@@ -13741,7 +13739,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           limitQtyOne:      cell.limitQtyOne,
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
-          rawRecord:        cell._rawRecord || null,
         });
       } else if (!row.sowItem && cell) {
         // NEW: create SOW item from bid data
@@ -13770,7 +13767,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
           displayLabel:     row.displayLabel,
-          rawRecord:        cell._rawRecord || null,
         });
       } else if (row.sowItem && !cell) {
         // Removal: SOW item not covered by this bid package
