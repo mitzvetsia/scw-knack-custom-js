@@ -31,8 +31,10 @@
     document.head.appendChild(s);
   }
 
-  function sendAction(action, recordId, btn) {
+  function sendAction(action, recordId, pkgName, btn) {
     var label = action === 'accept' ? 'Accept' : 'Reject';
+
+    if (!window.confirm(label + ' revision for ' + (pkgName || 'this package') + '?')) return;
 
     btn.disabled = true;
     btn.textContent = label + 'ing\u2026';
@@ -81,6 +83,11 @@
       if (!actionTd) continue;
       if (actionTd.querySelector('.scw-rev-actions')) continue;
 
+      // Read package name from the row's field_2689 connection
+      var pkgCell = tr.querySelector('td.field_2689');
+      var connSpan = pkgCell ? pkgCell.querySelector('span[data-kn="connection-value"]') : null;
+      var pkgName = connSpan ? (connSpan.textContent || '').trim() : '';
+
       var knackLink = actionTd.querySelector('a.kn-action-link');
       if (knackLink) knackLink.style.display = 'none';
 
@@ -90,19 +97,17 @@
       var acceptBtn = document.createElement('button');
       acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
       acceptBtn.textContent = 'Accept';
-      acceptBtn.setAttribute('data-record-id', recordId);
-      acceptBtn.addEventListener('click', (function (rid) {
-        return function () { sendAction('accept', rid, this); };
-      })(recordId));
+      acceptBtn.addEventListener('click', (function (rid, pname) {
+        return function () { sendAction('accept', rid, pname, this); };
+      })(recordId, pkgName));
       wrapper.appendChild(acceptBtn);
 
       var rejectBtn = document.createElement('button');
       rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
       rejectBtn.textContent = 'Reject';
-      rejectBtn.setAttribute('data-record-id', recordId);
-      rejectBtn.addEventListener('click', (function (rid) {
-        return function () { sendAction('reject', rid, this); };
-      })(recordId));
+      rejectBtn.addEventListener('click', (function (rid, pname) {
+        return function () { sendAction('reject', rid, pname, this); };
+      })(recordId, pkgName));
       wrapper.appendChild(rejectBtn);
 
       actionTd.appendChild(wrapper);
