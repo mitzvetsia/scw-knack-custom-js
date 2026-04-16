@@ -341,9 +341,7 @@
   var COPY_CSS_ID    = 'scw-bid-review-copy-css';
   var COPY_POLL_MS    = 5000;     // poll every 5s
   var COPY_TIMEOUT_MS = 120000;  // stop after 2 minutes
-  var COPY_GRACE_MS   = 30000;   // keep polling 30s after webhook 200
   var _copyPollTimer  = null;
-  var _copyGraceTimer = null;
 
   function injectCopyToastStyle() {
     if (document.getElementById(COPY_CSS_ID)) return;
@@ -429,10 +427,6 @@
       clearInterval(_copyPollTimer);
       _copyPollTimer = null;
     }
-    if (_copyGraceTimer) {
-      clearTimeout(_copyGraceTimer);
-      _copyGraceTimer = null;
-    }
   }
 
   function handleCopyToSow(button, pkgId, grid) {
@@ -464,16 +458,13 @@
 
     ns.submitAction(payload)
       .done(function () {
-        // Webhook acknowledged (200) — Make scenario may still be running.
-        // Keep polling for COPY_GRACE_MS so refreshes pick up actual
-        // Knack record changes, then stop and show success.
-        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook acknowledged — polling for ' + (COPY_GRACE_MS / 1000) + 's');
-        _copyGraceTimer = setTimeout(function () {
-          stopCopyPoll();
-          refreshSilently();
-          hideCopyToast();
-          ns.renderToast('SOW updated successfully', 'success');
-        }, COPY_GRACE_MS);
+        // Webhook responded 200 — Make scenario is complete.
+        // Stop polling, refresh the grid immediately, and show success.
+        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
+        stopCopyPoll();
+        hideCopyToast();
+        refreshSilently();
+        ns.renderToast('SOW updated successfully', 'success');
       })
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing
