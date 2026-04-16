@@ -35,6 +35,9 @@
     changeHtmlField: 'field_2695',
     /** JSON field holding the item data for editing */
     changeJsonField: 'field_2696',
+    /** Revision record HTML/JSON payload fields (view_3823 columns) */
+    revisionHtmlField: 'field_2687',
+    revisionJsonField: 'field_2688',
   };
 
   /** Editable fields in the revision edit modal (mirrors change-requests.js FIELD_DEFS) */
@@ -1082,19 +1085,40 @@
     // Merge current + requested for pre-fill (requested wins)
     var current   = data.current   || {};
     var requested = data.requested || {};
+    // Some revision records store revised values in data.fields (object or array)
+    // rather than data.requested. Normalize into a flat lookup.
+    var fieldsLookup = {};
+    if (data.fields) {
+      if (Array.isArray(data.fields)) {
+        for (var fli = 0; fli < data.fields.length; fli++) {
+          var fl = data.fields[fli];
+          if (fl && fl.key && fl.value != null) fieldsLookup[fl.key] = fl.value;
+        }
+      } else if (typeof data.fields === 'object') {
+        fieldsLookup = data.fields;
+      }
+    }
+    console.log('[BidRevInject] Edit modal data keys:', Object.keys(data),
+      '| requested keys:', Object.keys(requested),
+      '| current keys:', Object.keys(current),
+      '| fields type:', Array.isArray(data.fields) ? 'array(' + data.fields.length + ')' : typeof data.fields,
+      '| fieldsLookup keys:', Object.keys(fieldsLookup));
     var prefill = {};
     var prefillIds = {};
     for (var pi = 0; pi < EDIT_FIELDS.length; pi++) {
       var pk = EDIT_FIELDS[pi].key;
+      // Priority: requested > fieldsLookup > top-level data > current
       if (requested[pk] != null) prefill[pk] = requested[pk];
-      else if (current[pk] != null) prefill[pk] = current[pk];
+      else if (fieldsLookup[pk] != null) prefill[pk] = fieldsLookup[pk];
       else if (data[pk] != null) prefill[pk] = data[pk];
+      else if (current[pk] != null) prefill[pk] = current[pk];
       // Pre-fill IDs for connection fields
       if (EDIT_FIELDS[pi].idsKey) {
         var ik = EDIT_FIELDS[pi].idsKey;
         if (requested[ik] && requested[ik].length) prefillIds[pk] = requested[ik];
-        else if (current[ik] && current[ik].length) prefillIds[pk] = current[ik];
+        else if (fieldsLookup[ik] && fieldsLookup[ik].length) prefillIds[pk] = fieldsLookup[ik];
         else if (data[ik] && data[ik].length) prefillIds[pk] = data[ik];
+        else if (current[ik] && current[ik].length) prefillIds[pk] = current[ik];
       }
     }
 
@@ -1337,6 +1361,9 @@
       var putBody = {};
       putBody[CFG.changeJsonField] = updatedJson;
       putBody[CFG.changeHtmlField] = updatedHtml;
+      // Also update the revision record's own payload fields
+      if (CFG.revisionJsonField) putBody[CFG.revisionJsonField] = updatedJson;
+      if (CFG.revisionHtmlField) putBody[CFG.revisionHtmlField] = updatedHtml;
 
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
@@ -1417,6 +1444,7 @@
     editBtn.type = 'button';
     editBtn.className = P + '-btn ' + P + '-btn--edit';
     editBtn.textContent = 'Edit';
+    editBtn.style.display = 'none';
 
     var rejectBtn = document.createElement('button');
     rejectBtn.type = 'button';

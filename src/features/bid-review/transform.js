@@ -19,7 +19,7 @@
 
   /** Strip HTML tags from a string — Knack wraps connection values in <span>. */
   function stripHtml(str) {
-    if (!str) return '';
+    if (str == null || str === '') return '';
     return String(str).replace(/<[^>]*>/g, '').trim();
   }
 
@@ -195,8 +195,16 @@
       var rec = records[i];
 
       var sowItemId = connectionId(rec, FK.relatedSowItem);
-      var label     = raw(rec, FK.displayLabel);
-      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'label::' + label;
+      var hasBid    = connectionAll(rec, FK.bidPackage).length > 0;
+      var hasSow    = connectionAll(rec, FK.sow).length > 0;
+
+      // Skip records that are not on any bid AND not connected to a SOW —
+      // these are survey-only items that were deliberately removed.
+      // (A stale relatedSowItem connection doesn't count; the SOW scope
+      // connection field_2154 is the authoritative check.)
+      if (!hasBid && !hasSow) continue;
+
+      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'rec::' + rec.id;
 
       if (!rowMap[rowKey]) {
         rowMap[rowKey] = { meta: rec, cells: [] };

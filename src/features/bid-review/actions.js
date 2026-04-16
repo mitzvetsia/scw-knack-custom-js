@@ -59,8 +59,11 @@
       success: function (resp) {
         if (CFG.debug) console.log('[BidReview] Action success:', resp);
 
-        var label = describeAction(payload);
-        ns.renderToast(label + ' — sent successfully', 'success');
+        // Skip toast for copy_to_sow — handleCopyToSow manages its own messaging
+        if (payload.actionType !== 'package_copy_to_sow') {
+          var label = describeAction(payload);
+          ns.renderToast(label + ' — sent successfully', 'success');
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {

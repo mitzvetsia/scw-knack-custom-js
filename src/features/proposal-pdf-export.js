@@ -1450,17 +1450,29 @@
     $(document).off('knack-view-render.' + viewId + POLL_NS)
                .on('knack-view-render.' + viewId + POLL_NS, onPollViewRender);
 
-    // Interval just triggers model.fetch() to pull fresh data from server
+    // Interval triggers model.fetch() AND also directly checks the field
+    // value (model.fetch may not fire knack-view-render on collapsed views).
     var elapsed = 0;
     _pollTimer = setInterval(function () {
       elapsed += POLL_INTERVAL_MS;
       if (typeof Knack === 'undefined') return;
+
+      // Direct field check — doesn't depend on view re-render event
+      if (_pollFieldId) {
+        var currentVal = readFieldText(_pollViewId, _pollFieldId);
+        if (currentVal !== _pollInitial) {
+          console.log('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
+          stopPolling();
+          return;
+        }
+      }
+
       var view = Knack.views && Knack.views[viewId];
       if (view && view.model && typeof view.model.fetch === 'function') {
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
-        console.log('[SCW PDF Export] Poll timeout for ' + viewId);
+        console.log('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
         stopPolling();
       }
     }, POLL_INTERVAL_MS);

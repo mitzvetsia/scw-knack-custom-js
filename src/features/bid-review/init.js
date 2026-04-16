@@ -339,9 +339,9 @@
 
   var COPY_TOAST_ID  = 'scw-bid-review-copy-toast';
   var COPY_CSS_ID    = 'scw-bid-review-copy-css';
-  var COPY_POLL_MS   = 5000;     // poll every 5s
+  var COPY_POLL_MS    = 5000;     // poll every 5s
   var COPY_TIMEOUT_MS = 120000;  // stop after 2 minutes
-  var _copyPollTimer = null;
+  var _copyPollTimer  = null;
 
   function injectCopyToastStyle() {
     if (document.getElementById(COPY_CSS_ID)) return;
@@ -458,16 +458,13 @@
 
     ns.submitAction(payload)
       .done(function () {
-        // Webhook responded — schedule final refreshes then stop
+        // Webhook responded 200 — Make scenario is complete.
+        // Stop polling, refresh the grid immediately, and show success.
         if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
         stopCopyPoll();
-        // Two final refreshes to catch any stragglers
-        setTimeout(function () { refreshSilently(); }, 2000);
-        setTimeout(function () {
-          refreshSilently();
-          hideCopyToast();
-          ns.renderToast('SOW updated successfully', 'success');
-        }, 5000);
+        hideCopyToast();
+        refreshSilently();
+        ns.renderToast('SOW updated successfully', 'success');
       })
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing

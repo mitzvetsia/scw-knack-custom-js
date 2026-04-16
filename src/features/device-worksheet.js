@@ -278,7 +278,7 @@
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
         },
-        recordLockField: 'field_2634',
+        // recordLockField disabled — field_2634 lock not used on view_3313
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
@@ -317,8 +317,7 @@
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
         },
-        recordLockField: 'field_2634',
-        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
+        // recordLockField disabled — field_2634 lock not used on view_3610
         conditionalHide: [
           {
             whenLocked: 'field_1964',
@@ -2348,7 +2347,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /** Check if a td has been explicitly locked/grayed by conditional modules. */
   function isCellLocked(td) {
     if (!td) return false;
-    return td.classList.contains('scw-cond-grayed') || td.classList.contains('scw-cell-locked');
+    return td.classList.contains('scw-cond-grayed')
+        || td.classList.contains('scw-cell-locked')
+        || td.classList.contains(P + '-td-locked');
   }
 
   function getRecordId(tr) {
@@ -2566,7 +2567,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!triggerTd) return;
 
       var locked = triggerTd.classList.contains('scw-cond-grayed')
-                || triggerTd.classList.contains('scw-cell-locked');
+                || triggerTd.classList.contains('scw-cell-locked')
+                || triggerTd.classList.contains(P + '-td-locked');
       if (!locked) return;
 
       // Hide the trigger field's label (e.g. "Qty" label when qty is locked)
@@ -5550,19 +5552,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
       // ── Lock all fields if field_2551 = Yes (row is finalized) ──
+      // Uses a worksheet-specific class (P + '-td-locked') instead of
+      // 'scw-cell-locked' to avoid picking up lock-fields.js CSS
+      // (slategray background + "N/A" badge) that is meant for
+      // individual cell locks, not whole-row finalization.
       var lockTd = tr.querySelector('td.field_2551');
       var isLocked = lockTd && /yes/i.test((lockTd.textContent || '').trim());
       if (isLocked) {
         var allTds = tr.querySelectorAll('td');
         for (var lk = 0; lk < allTds.length; lk++) {
           allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
-          allTds[lk].classList.add('scw-cell-locked');
+          allTds[lk].classList.add(P + '-td-locked');
         }
       }
 
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
         card.classList.add(P + '-locked');
+        // Lock chip containers (radio chips for mounting height, exterior, etc.)
+        var chipContainers = card.querySelectorAll('.' + P + '-radio-chips');
+        for (var lci = 0; lci < chipContainers.length; lci++) {
+          chipContainers[lci].classList.add(P + '-chips-locked');
+        }
+        // Lock chip stacks (boolean chip groups for exterior/plenum)
+        var chipStacks = card.querySelectorAll('.scw-chip-stack, .' + P + '-chips');
+        for (var lsi = 0; lsi < chipStacks.length; lsi++) {
+          chipStacks[lsi].classList.add(P + '-chips-locked');
+        }
+        // Lock toggle chits (existing cabling)
+        var chitHosts = card.querySelectorAll('[data-scw-cabling-src], .' + P + '-sum-chip-host');
+        for (var lhi = 0; lhi < chitHosts.length; lhi++) {
+          chitHosts[lhi].classList.add(P + '-chit-locked');
+        }
         // Block Knack's native inline-edit popup modals on locked rows
         // but allow the toggle-zone (chevron + identity) so the detail panel still opens
         card.addEventListener('click', function (e) {
@@ -6047,7 +6068,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
-          setTimeout(function () { transformView(viewCfg); syncDeleteVisibility(); }, 150);
+          setTimeout(function () {
+            transformView(viewCfg);
+            syncDeleteVisibility();
+            // KTL's hide/show toggle may not fire on SPA navigation,
+            // leaving .ktlHideShowSection without inline display:block.
+            // Backstop: if the section exists and has no display set, force it.
+            var $viewEl = $('#' + viewId);
+            var $section = $viewEl.find('.ktlHideShowSection').first();
+            if ($section.length && !$section[0].style.display) {
+              $section[0].style.display = 'block';
+            }
+          }, 150);
         });
 
       $(document)

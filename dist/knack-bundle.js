@@ -8357,17 +8357,29 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $(document).off('knack-view-render.' + viewId + POLL_NS)
                .on('knack-view-render.' + viewId + POLL_NS, onPollViewRender);
 
-    // Interval just triggers model.fetch() to pull fresh data from server
+    // Interval triggers model.fetch() AND also directly checks the field
+    // value (model.fetch may not fire knack-view-render on collapsed views).
     var elapsed = 0;
     _pollTimer = setInterval(function () {
       elapsed += POLL_INTERVAL_MS;
       if (typeof Knack === 'undefined') return;
+
+      // Direct field check — doesn't depend on view re-render event
+      if (_pollFieldId) {
+        var currentVal = readFieldText(_pollViewId, _pollFieldId);
+        if (currentVal !== _pollInitial) {
+          console.log('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
+          stopPolling();
+          return;
+        }
+      }
+
       var view = Knack.views && Knack.views[viewId];
       if (view && view.model && typeof view.model.fetch === 'function') {
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
-        console.log('[SCW PDF Export] Poll timeout for ' + viewId);
+        console.log('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
         stopPolling();
       }
     }, POLL_INTERVAL_MS);
@@ -10632,8 +10644,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  color: #1e293b;',
       '  overflow-x: auto;',
       '  -webkit-overflow-scrolling: touch;',
-      '  padding: 12px 16px 8px;',
-      '  margin: 0 12px;',
+      '  padding: 0;',
+      '  margin: 0;',
       '}',
 
       /* ── SOW sections ────────────────────────────────────────── */
@@ -11689,7 +11701,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   /** Strip HTML tags from a string — Knack wraps connection values in <span>. */
   function stripHtml(str) {
-    if (!str) return '';
+    if (str == null || str === '') return '';
     return String(str).replace(/<[^>]*>/g, '').trim();
   }
 
@@ -11865,8 +11877,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var rec = records[i];
 
       var sowItemId = connectionId(rec, FK.relatedSowItem);
-      var label     = raw(rec, FK.displayLabel);
-      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'label::' + label;
+      var hasBid    = connectionAll(rec, FK.bidPackage).length > 0;
+      var hasSow    = connectionAll(rec, FK.sow).length > 0;
+
+      // Skip records that are not on any bid AND not connected to a SOW —
+      // these are survey-only items that were deliberately removed.
+      // (A stale relatedSowItem connection doesn't count; the SOW scope
+      // connection field_2154 is the authoritative check.)
+      if (!hasBid && !hasSow) continue;
+
+      var rowKey    = sowItemId ? 'sow::' + sowItemId : 'rec::' + rec.id;
 
       if (!rowMap[rowKey]) {
         rowMap[rowKey] = { meta: rec, cells: [] };
@@ -13673,8 +13693,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       success: function (resp) {
         if (CFG.debug) console.log('[BidReview] Action success:', resp);
 
-        var label = describeAction(payload);
-        ns.renderToast(label + ' — sent successfully', 'success');
+        // Skip toast for copy_to_sow — handleCopyToSow manages its own messaging
+        if (payload.actionType !== 'package_copy_to_sow') {
+          var label = describeAction(payload);
+          ns.renderToast(label + ' — sent successfully', 'success');
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
@@ -13839,7 +13862,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // connection: Knack field key — renders as dropdown loaded from the connected object
   // idsKey: cell property holding the raw connection IDs (for pre-fill)
   var FIELD_DEFS = [
-    { key: 'productName',     label: 'Product',            type: 'text' },
+    { key: 'productName',     label: 'Product',            type: 'text', displayOnly: true },
     { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
@@ -14106,6 +14129,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  font-size: 11px; color: #9333ea; font-style: italic; padding: 2px 0 4px;',
       '  pointer-events: auto;',
       '}',
+      '.scw-bid-cr-modal__display-value {',
+      '  display: block; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 5px;',
+      '  font-size: 13px; color: #64748b; background: #f1f5f9;',
+      '}',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -14194,6 +14221,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         : cell[fd.key];
 
       var inp;
+      if (fd.displayOnly) {
+        inp = el('span', 'scw-bid-cr-modal__display-value', hasValue(prefill) ? formatDisplay(fd, prefill) : '\u2014');
+        inp.setAttribute('data-field', fd.key);
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
+        continue;
+      }
       if (fd.type === 'connection') {
         // Build set of IDs locked by reciprocal logic (per-ID, not whole field)
         var lockedIdSet = {};
@@ -14326,6 +14361,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var noBidAdds = [];   // noBid items newly selected in connection fields
       for (var k = 0; k < FIELD_DEFS.length; k++) {
         var d = FIELD_DEFS[k];
+        if (d.displayOnly) continue;
         if (d.visKey && !vis[d.visKey]) continue;
         if (!inputs[d.key]) continue;
 
@@ -15371,19 +15407,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         persist();
         triggerRerender();
         ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
-
-        // Refresh the comparison grid after Make finishes processing
-        if (resp && resp.success) {
-          setTimeout(function () { if (ns.refresh) ns.refresh(); }, 2000);
-        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
-        console.error('[BidReview CR] Submit failed:', xhr.status, xhr.responseText);
-        ns.renderToast('Failed to submit change request — please try again', 'error');
-        deferred.reject(xhr);
+        // CORS may block the response even though Make received and
+        // processed the request (status 0). Treat as success if so.
+        if (xhr && xhr.status === 0) {
+          if (CFG.debug) console.log('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
+          delete _pending[pkgId];
+          persist();
+          triggerRerender();
+          ns.renderToast('Change request submitted for ' + pkg.pkgName, 'success');
+          deferred.resolve();
+        } else {
+          console.error('[BidReview CR] Submit failed:', xhr.status, xhr.responseText);
+          ns.renderToast('Failed to submit change request — please try again', 'error');
+          deferred.reject(xhr);
+        }
       },
     });
+
+    // Rebuild the comparison grid after Make finishes processing.
+    // Runs regardless of success/error since Make may have already
+    // received the data even if CORS blocks the response.
+    if (ns.refresh) {
+      setTimeout(function () { ns.refresh(); }, 3000);
+    }
 
     return deferred.promise();
   }
@@ -15515,6 +15564,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var fRow = el('div', 'scw-bid-cr-modal__field');
       fRow.appendChild(el('label', 'scw-bid-cr-modal__label', fd.label));
       var inp;
+      if (fd.displayOnly) {
+        inp = el('span', 'scw-bid-cr-modal__display-value', prefill[fd.key] || '\u2014');
+        inp.setAttribute('data-field', fd.key);
+        inputs[fd.key] = inp;
+        fRow.appendChild(inp);
+        body.appendChild(fRow);
+        continue;
+      }
       if (fd.type === 'connection' && fd.addable) {
         // Connection field for addable fields — radio if single, checkbox if multi
         var addRecs = (addConnOpts[fd.key] || []).slice();
@@ -15605,7 +15662,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add',
       existing ? 'Update Change Request' : 'Add to Change Request');
     addBtn.addEventListener('click', function () {
-      var product = (inputs.productName.value || '').trim();
+      var product = (inputs.productName ? (inputs.productName.textContent || '').trim() : '') ||
+                    params.sowProduct || params.productName || '';
       if (!product) {
         ns.renderToast('Product name is required', 'error');
         return;
@@ -15614,6 +15672,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var noBidAdds = [];
       for (var k in inputs) {
         var inpEl = inputs[k];
+        // Skip display-only fields (not editable)
+        if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__display-value')) continue;
         // Connection checkbox/radio list
         if (inpEl.classList && inpEl.classList.contains('scw-bid-cr-modal__checkbox-list')) {
           var addCbs = inpEl.querySelectorAll('input[type="checkbox"]:checked, input[type="radio"]:checked');
@@ -15733,7 +15793,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
-    setTimeout(function () { inputs.productName.focus(); }, 50);
+    var firstInput = modal.querySelector('input, select, textarea');
+    if (firstInput) setTimeout(function () { firstInput.focus(); }, 50);
   }
 
   // ── Init: rehydrate from sessionStorage immediately ────
@@ -16094,9 +16155,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   var COPY_TOAST_ID  = 'scw-bid-review-copy-toast';
   var COPY_CSS_ID    = 'scw-bid-review-copy-css';
-  var COPY_POLL_MS   = 5000;     // poll every 5s
+  var COPY_POLL_MS    = 5000;     // poll every 5s
   var COPY_TIMEOUT_MS = 120000;  // stop after 2 minutes
-  var _copyPollTimer = null;
+  var _copyPollTimer  = null;
 
   function injectCopyToastStyle() {
     if (document.getElementById(COPY_CSS_ID)) return;
@@ -16213,16 +16274,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     ns.submitAction(payload)
       .done(function () {
-        // Webhook responded — schedule final refreshes then stop
+        // Webhook responded 200 — Make scenario is complete.
+        // Stop polling, refresh the grid immediately, and show success.
         if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
         stopCopyPoll();
-        // Two final refreshes to catch any stragglers
-        setTimeout(function () { refreshSilently(); }, 2000);
-        setTimeout(function () {
-          refreshSilently();
-          hideCopyToast();
-          ns.renderToast('SOW updated successfully', 'success');
-        }, 5000);
+        hideCopyToast();
+        refreshSilently();
+        ns.renderToast('SOW updated successfully', 'success');
       })
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing
@@ -25122,7 +25180,7 @@ $(".kn-navigation-bar").hide();
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
         },
-        recordLockField: 'field_2634',
+        // recordLockField disabled — field_2634 lock not used on view_3313
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
@@ -25161,8 +25219,7 @@ $(".kn-navigation-bar").hide();
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
         },
-        recordLockField: 'field_2634',
-        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
+        // recordLockField disabled — field_2634 lock not used on view_3610
         conditionalHide: [
           {
             whenLocked: 'field_1964',
@@ -27192,7 +27249,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /** Check if a td has been explicitly locked/grayed by conditional modules. */
   function isCellLocked(td) {
     if (!td) return false;
-    return td.classList.contains('scw-cond-grayed') || td.classList.contains('scw-cell-locked');
+    return td.classList.contains('scw-cond-grayed')
+        || td.classList.contains('scw-cell-locked')
+        || td.classList.contains(P + '-td-locked');
   }
 
   function getRecordId(tr) {
@@ -27410,7 +27469,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!triggerTd) return;
 
       var locked = triggerTd.classList.contains('scw-cond-grayed')
-                || triggerTd.classList.contains('scw-cell-locked');
+                || triggerTd.classList.contains('scw-cell-locked')
+                || triggerTd.classList.contains(P + '-td-locked');
       if (!locked) return;
 
       // Hide the trigger field's label (e.g. "Qty" label when qty is locked)
@@ -30394,19 +30454,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
       // ── Lock all fields if field_2551 = Yes (row is finalized) ──
+      // Uses a worksheet-specific class (P + '-td-locked') instead of
+      // 'scw-cell-locked' to avoid picking up lock-fields.js CSS
+      // (slategray background + "N/A" badge) that is meant for
+      // individual cell locks, not whole-row finalization.
       var lockTd = tr.querySelector('td.field_2551');
       var isLocked = lockTd && /yes/i.test((lockTd.textContent || '').trim());
       if (isLocked) {
         var allTds = tr.querySelectorAll('td');
         for (var lk = 0; lk < allTds.length; lk++) {
           allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
-          allTds[lk].classList.add('scw-cell-locked');
+          allTds[lk].classList.add(P + '-td-locked');
         }
       }
 
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
         card.classList.add(P + '-locked');
+        // Lock chip containers (radio chips for mounting height, exterior, etc.)
+        var chipContainers = card.querySelectorAll('.' + P + '-radio-chips');
+        for (var lci = 0; lci < chipContainers.length; lci++) {
+          chipContainers[lci].classList.add(P + '-chips-locked');
+        }
+        // Lock chip stacks (boolean chip groups for exterior/plenum)
+        var chipStacks = card.querySelectorAll('.scw-chip-stack, .' + P + '-chips');
+        for (var lsi = 0; lsi < chipStacks.length; lsi++) {
+          chipStacks[lsi].classList.add(P + '-chips-locked');
+        }
+        // Lock toggle chits (existing cabling)
+        var chitHosts = card.querySelectorAll('[data-scw-cabling-src], .' + P + '-sum-chip-host');
+        for (var lhi = 0; lhi < chitHosts.length; lhi++) {
+          chitHosts[lhi].classList.add(P + '-chit-locked');
+        }
         // Block Knack's native inline-edit popup modals on locked rows
         // but allow the toggle-zone (chevron + identity) so the detail panel still opens
         card.addEventListener('click', function (e) {
@@ -30891,7 +30970,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
-          setTimeout(function () { transformView(viewCfg); syncDeleteVisibility(); }, 150);
+          setTimeout(function () {
+            transformView(viewCfg);
+            syncDeleteVisibility();
+            // KTL's hide/show toggle may not fire on SPA navigation,
+            // leaving .ktlHideShowSection without inline display:block.
+            // Backstop: if the section exists and has no display set, force it.
+            var $viewEl = $('#' + viewId);
+            var $section = $viewEl.find('.ktlHideShowSection').first();
+            if ($section.length && !$section[0].style.display) {
+              $section[0].style.display = 'block';
+            }
+          }, 150);
         });
 
       $(document)
@@ -30992,6 +31082,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     changeHtmlField: 'field_2695',
     /** JSON field holding the item data for editing */
     changeJsonField: 'field_2696',
+    /** Revision record HTML/JSON payload fields (view_3823 columns) */
+    revisionHtmlField: 'field_2687',
+    revisionJsonField: 'field_2688',
   };
 
   /** Editable fields in the revision edit modal (mirrors change-requests.js FIELD_DEFS) */
@@ -32039,19 +32132,40 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Merge current + requested for pre-fill (requested wins)
     var current   = data.current   || {};
     var requested = data.requested || {};
+    // Some revision records store revised values in data.fields (object or array)
+    // rather than data.requested. Normalize into a flat lookup.
+    var fieldsLookup = {};
+    if (data.fields) {
+      if (Array.isArray(data.fields)) {
+        for (var fli = 0; fli < data.fields.length; fli++) {
+          var fl = data.fields[fli];
+          if (fl && fl.key && fl.value != null) fieldsLookup[fl.key] = fl.value;
+        }
+      } else if (typeof data.fields === 'object') {
+        fieldsLookup = data.fields;
+      }
+    }
+    console.log('[BidRevInject] Edit modal data keys:', Object.keys(data),
+      '| requested keys:', Object.keys(requested),
+      '| current keys:', Object.keys(current),
+      '| fields type:', Array.isArray(data.fields) ? 'array(' + data.fields.length + ')' : typeof data.fields,
+      '| fieldsLookup keys:', Object.keys(fieldsLookup));
     var prefill = {};
     var prefillIds = {};
     for (var pi = 0; pi < EDIT_FIELDS.length; pi++) {
       var pk = EDIT_FIELDS[pi].key;
+      // Priority: requested > fieldsLookup > top-level data > current
       if (requested[pk] != null) prefill[pk] = requested[pk];
-      else if (current[pk] != null) prefill[pk] = current[pk];
+      else if (fieldsLookup[pk] != null) prefill[pk] = fieldsLookup[pk];
       else if (data[pk] != null) prefill[pk] = data[pk];
+      else if (current[pk] != null) prefill[pk] = current[pk];
       // Pre-fill IDs for connection fields
       if (EDIT_FIELDS[pi].idsKey) {
         var ik = EDIT_FIELDS[pi].idsKey;
         if (requested[ik] && requested[ik].length) prefillIds[pk] = requested[ik];
-        else if (current[ik] && current[ik].length) prefillIds[pk] = current[ik];
+        else if (fieldsLookup[ik] && fieldsLookup[ik].length) prefillIds[pk] = fieldsLookup[ik];
         else if (data[ik] && data[ik].length) prefillIds[pk] = data[ik];
+        else if (current[ik] && current[ik].length) prefillIds[pk] = current[ik];
       }
     }
 
@@ -32294,6 +32408,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var putBody = {};
       putBody[CFG.changeJsonField] = updatedJson;
       putBody[CFG.changeHtmlField] = updatedHtml;
+      // Also update the revision record's own payload fields
+      if (CFG.revisionJsonField) putBody[CFG.revisionJsonField] = updatedJson;
+      if (CFG.revisionHtmlField) putBody[CFG.revisionHtmlField] = updatedHtml;
 
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
@@ -32374,6 +32491,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     editBtn.type = 'button';
     editBtn.className = P + '-btn ' + P + '-btn--edit';
     editBtn.textContent = 'Edit';
+    editBtn.style.display = 'none';
 
     var rejectBtn = document.createElement('button');
     rejectBtn.type = 'button';
@@ -33245,6 +33363,345 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }, 500);
   });
 
+})();
+/*** REVISION ACCEPT / REJECT — view_3820 (scene_1140) ***/
+/**
+ * Adds per-row "Accept" and "Reject" buttons on the Revision Requests
+ * grid (view_3820). Each button POSTs the row's record ID to a Make
+ * webhook with the chosen action, then polls view_3823 + view_3505
+ * to reflect changes as Make processes each revision line item.
+ * When all items are processed, refreshes view_3820.
+ */
+(function () {
+  'use strict';
+
+  var VIEW_ID       = 'view_3820';
+  var WORKSHEET_ID  = 'view_3505';
+  var REVISIONS_ID  = 'view_3823';
+  var WEBHOOK       = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
+  var CSS_ID        = 'scw-rev-accept-reject-css';
+  var EVENT_NS      = '.scwRevAcceptReject';
+  var POLL_MS       = 5000;
+  var POLL_TIMEOUT  = 120000;
+  var TOAST_ID      = 'scw-rev-poll-toast';
+
+  var _pollTimer    = null;
+
+  function injectStyles() {
+    if (document.getElementById(CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = CSS_ID;
+    s.textContent = [
+      '.scw-rev-actions { display: inline-flex; gap: 6px; }',
+      '.scw-rev-actions__btn {',
+      '  padding: 5px 12px; border: none; border-radius: 4px;',
+      '  font: 600 12px/1 system-ui, sans-serif; cursor: pointer;',
+      '  transition: filter .15s; white-space: nowrap;',
+      '}',
+      '.scw-rev-actions__btn:hover { filter: brightness(.88); }',
+      '.scw-rev-actions__btn:disabled { opacity: .5; cursor: not-allowed; }',
+      '.scw-rev-actions__btn--accept { background: #059669; color: #fff; }',
+      '.scw-rev-actions__btn--reject { background: #dc2626; color: #fff; }',
+      '#' + TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 12px 20px;',
+      '  border-radius: 8px; font-size: 13px; font-weight: 500;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  transition: opacity 300ms ease;',
+      '}',
+      '#' + TOAST_ID + ' .scw-rev-spinner {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwRevSpin .8s linear infinite; flex-shrink: 0;',
+      '}',
+      '@keyframes scwRevSpin { to { transform: rotate(360deg); } }',
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  // ── Toast helpers ──
+
+  function showToast(msg) {
+    hideToast(true);
+    var toast = document.createElement('div');
+    toast.id = TOAST_ID;
+    var spinner = document.createElement('span');
+    spinner.className = 'scw-rev-spinner';
+    toast.appendChild(spinner);
+    toast.appendChild(document.createTextNode(msg));
+    document.body.appendChild(toast);
+  }
+
+  function hideToast(instant) {
+    var toast = document.getElementById(TOAST_ID);
+    if (!toast) return;
+    if (instant) { toast.remove(); return; }
+    toast.style.opacity = '0';
+    setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
+  }
+
+  // ── Knack view refresh helpers ──
+
+  function fetchView(viewId) {
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[viewId];
+    if (view && view.model && typeof view.model.fetch === 'function') {
+      view.model.fetch();
+    }
+  }
+
+  function countPendingRevisions() {
+    var viewEl = document.getElementById(REVISIONS_ID);
+    if (!viewEl) return -1;
+    var rows = viewEl.querySelectorAll('table.kn-table-table tbody tr[id]');
+    if (!rows.length) return 0;
+    var pending = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var statusCell = rows[i].querySelector('td.field_2645');
+      var text = statusCell ? (statusCell.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase() : '';
+      if (text === 'pending' || text === '') pending++;
+    }
+    return pending;
+  }
+
+  // ── Polling ──
+
+  function stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  }
+
+  function startPolling(action, pkgName) {
+    stopPolling();
+
+    var initialPending = countPendingRevisions();
+    var label = action === 'accept' ? 'Accepting' : 'Rejecting';
+    showToast(label + ' revisions for ' + pkgName + '\u2026');
+
+    var elapsed = 0;
+    _pollTimer = setInterval(function () {
+      elapsed += POLL_MS;
+
+      // Refresh revision data source + worksheet
+      fetchView(REVISIONS_ID);
+      fetchView(WORKSHEET_ID);
+
+      // Check if all pending items are processed
+      setTimeout(function () {
+        var remaining = countPendingRevisions();
+        if (remaining === 0 || (remaining !== -1 && initialPending > 0 && remaining < initialPending)) {
+          // Progress detected — update initial for next check
+          initialPending = remaining;
+        }
+        if (remaining === 0) {
+          stopPolling();
+          hideToast();
+          fetchView(VIEW_ID);
+        }
+      }, 2000);
+
+      if (elapsed >= POLL_TIMEOUT) {
+        stopPolling();
+        hideToast();
+        fetchView(VIEW_ID);
+      }
+    }, POLL_MS);
+  }
+
+  // ── Webhook ──
+
+  function sendAction(action, recordId, pkgName, btn) {
+    var label = action === 'accept' ? 'Accept' : 'Reject';
+
+    if (!window.confirm(label + ' revision for ' + (pkgName || 'this package') + '?')) return;
+
+    btn.disabled = true;
+    btn.textContent = label + 'ing\u2026';
+
+    var payload = {
+      action: action,
+      recordId: recordId,
+      timestamp: new Date().toISOString(),
+    };
+
+    $.ajax({
+      url: WEBHOOK,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      timeout: 30000,
+      success: function () {
+        btn.textContent = label + 'ed \u2713';
+        startPolling(action, pkgName);
+      },
+      error: function (xhr) {
+        if (xhr && xhr.status === 0) {
+          btn.textContent = label + 'ed \u2713';
+          startPolling(action, pkgName);
+        } else {
+          btn.textContent = 'Failed';
+          setTimeout(function () { btn.textContent = label; btn.disabled = false; }, 3000);
+        }
+      },
+    });
+  }
+
+  // ── Enhance view ──
+
+  function enhance() {
+    var view = document.getElementById(VIEW_ID);
+    if (!view) return;
+
+    var rows = view.querySelectorAll('table.kn-table-table tbody tr[id]');
+    if (!rows.length) return;
+
+    injectStyles();
+
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      var recordId = tr.id;
+      if (!recordId) continue;
+
+      var knackActionLink = tr.querySelector('a.kn-action-link');
+      if (!knackActionLink) continue;
+      var actionTd = knackActionLink.closest('td');
+      if (!actionTd) continue;
+      if (actionTd.querySelector('.scw-rev-actions')) continue;
+
+      var pkgCell = tr.querySelector('td.field_2689');
+      var connSpan = pkgCell ? pkgCell.querySelector('span[data-kn="connection-value"]') : null;
+      var pkgName = connSpan ? (connSpan.textContent || '').trim() : '';
+
+      knackActionLink.style.display = 'none';
+
+      var wrapper = document.createElement('span');
+      wrapper.className = 'scw-rev-actions';
+
+      var rejectBtn = document.createElement('button');
+      rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
+      rejectBtn.textContent = 'Reject All';
+      rejectBtn.addEventListener('click', (function (rid, pname) {
+        return function () { sendAction('reject', rid, pname, this); };
+      })(recordId, pkgName));
+      wrapper.appendChild(rejectBtn);
+
+      var acceptBtn = document.createElement('button');
+      acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
+      acceptBtn.textContent = 'Accept All';
+      acceptBtn.addEventListener('click', (function (rid, pname) {
+        return function () { sendAction('accept', rid, pname, this); };
+      })(recordId, pkgName));
+      wrapper.appendChild(acceptBtn);
+
+      actionTd.appendChild(wrapper);
+    }
+  }
+
+  $(document)
+    .off('knack-view-render.' + VIEW_ID + EVENT_NS)
+    .on('knack-view-render.' + VIEW_ID + EVENT_NS, function () {
+      setTimeout(enhance, 100);
+    });
+})();
+/*** FEATURE: Preview Proposal Button → view_3814 header ***/
+(function () {
+  'use strict';
+
+  var SOURCE_VIEW = 'view_3491';
+  var TARGET_VIEW = 'view_3814';
+  var BTN_MARKER  = 'scw-preview-proposal-btn';
+  var EVENT_NS    = '.scwPreviewProposal';
+  var BTN_LABEL   = 'Preview Proposal';
+
+  var _href = '';
+
+  function scrapeHref() {
+    var el = document.getElementById(SOURCE_VIEW);
+    if (!el) return '';
+    var link = el.querySelector('a.kn-link-page') || el.querySelector('a[href*="proposal"]');
+    return link ? (link.getAttribute('href') || '') : '';
+  }
+
+  function injectOrUpdate() {
+    if (!_href) return;
+
+    var targetEl = document.getElementById(TARGET_VIEW);
+    if (!targetEl) return;
+
+    var accordion = targetEl.closest('.scw-ktl-accordion');
+    if (!accordion) return;
+    var header = accordion.querySelector('.scw-ktl-accordion__header');
+    if (!header) return;
+
+    var existing = header.querySelector('.' + BTN_MARKER);
+    if (existing) {
+      existing.setAttribute('data-link-href', _href);
+      return;
+    }
+
+    var existingBtns = header.querySelectorAll('.scw-acc-action-btn');
+    for (var i = 0; i < existingBtns.length; i++) {
+      if ((existingBtns[i].textContent || '').trim() === BTN_LABEL) {
+        existingBtns[i].classList.add(BTN_MARKER);
+        existingBtns[i].setAttribute('data-link-href', _href);
+        existingBtns[i].addEventListener('click', clickHandler);
+        return;
+      }
+    }
+
+    var actions = header.querySelector('.scw-acc-actions');
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.className = 'scw-acc-actions';
+      var chevron = header.querySelector('.scw-acc-chevron');
+      if (chevron) {
+        header.insertBefore(actions, chevron);
+      } else {
+        header.appendChild(actions);
+      }
+    }
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'scw-acc-action-btn ' + BTN_MARKER;
+    btn.setAttribute('data-link-href', _href);
+    btn.textContent = BTN_LABEL;
+    btn.addEventListener('click', clickHandler);
+    actions.appendChild(btn);
+  }
+
+  function clickHandler(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    var href = this.getAttribute('data-link-href');
+    if (href) window.location.hash = href;
+  }
+
+  function tryInject() {
+    _href = scrapeHref();
+    injectOrUpdate();
+  }
+
+  $(document)
+    .off('knack-view-render.' + SOURCE_VIEW + EVENT_NS)
+    .on('knack-view-render.' + SOURCE_VIEW + EVENT_NS, function () {
+      _href = scrapeHref();
+      setTimeout(injectOrUpdate, 300);
+    });
+
+  $(document)
+    .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
+    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
+      setTimeout(tryInject, 500);
+    });
+
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      _href = '';
+      setTimeout(tryInject, 2000);
+    });
 })();
 /*** SCW SURVEY WORKSHEET — PDF EXPORT (view_3800) ***/
 /*
