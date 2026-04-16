@@ -415,16 +415,13 @@
         if (field === CFG.productField) return;
         this.readOnly = true;
         this.tabIndex = -1;
-        this.style.opacity = '0.5';
         this.style.cursor = 'default';
         this.style.pointerEvents = 'none';
-        this.style.background = '#f1f5f9';
       });
 
       // Lock toggleChit (Existing Cabling, Exterior)
       $card.find('.' + WS_P + '-cabling-chit').each(function () {
         this.style.pointerEvents = 'none';
-        this.style.opacity = '0.5';
         this.style.cursor = 'default';
       });
 
@@ -433,7 +430,6 @@
         var field = this.getAttribute('data-field-key') || '';
         if (field === CFG.productField) return;
         this.style.pointerEvents = 'none';
-        this.style.opacity = '0.5';
       });
     });
 
