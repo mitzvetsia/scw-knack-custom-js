@@ -122,6 +122,7 @@
           limitQtyOne:      cell.limitQtyOne,
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
+          rawRecord:        cell._rawRecord || null,
         });
       } else if (!row.sowItem && cell) {
         // NEW: create SOW item from bid data
@@ -150,6 +151,7 @@
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
           displayLabel:     row.displayLabel,
+          rawRecord:        cell._rawRecord || null,
         });
       } else if (row.sowItem && !cell) {
         // Removal: SOW item not covered by this bid package
