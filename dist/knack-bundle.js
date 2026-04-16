@@ -32687,53 +32687,65 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // lock classes so the visual treatment is consistent.
 
   var WS_P = 'scw-ws'; // device-worksheet CSS prefix
+  var LOCK_ATTR = 'data-scw-cr-locked';
 
   function lockNewItemFields() {
     var $view = $('#' + CFG.worksheetView);
     if (!$view.length) return;
+
+    var locked = 0;
 
     $view.find('tr.scw-ws-row').each(function () {
       var $tr = $(this);
       var recordId = $tr.attr('id');
       if (!recordId) return;
 
-      // Read field_2586 from the original data row (sibling tr before .scw-ws-row)
-      var $dataRow = $tr.prev('tr[data-scw-worksheet]');
-      if (!$dataRow.length) return;
-      var $countTd = $dataRow.find('td.' + CFG.addCountField);
-      var countVal = $countTd.length ? parseInt($countTd.text().trim(), 10) : -1;
-
-      // Only lock when field_2586 = 0
-      if (countVal !== 0) return;
-
       var $card = $tr.find('.scw-ws-card');
       if (!$card.length) return;
 
-      // Lock directEdit inputs/textareas (except field_1949)
-      $card.find('input[data-scw-direct-edit], textarea[data-scw-direct-edit]').each(function () {
+      // Use the delete wrapper visibility as the source of truth:
+      // visibility:hidden means field_2586 > 0 (existing item, editable)
+      // visible (no inline style) means field_2586 = 0 (new item, lock it)
+      var $deleteWrap = $card.find('.' + WS_P + '-sum-delete');
+      if (!$deleteWrap.length) return;
+      var isNewItem = $deleteWrap[0].style.visibility !== 'hidden';
+      if (!isNewItem) return;
+
+      // Already locked this render cycle
+      if ($card[0].hasAttribute(LOCK_ATTR)) return;
+      $card[0].setAttribute(LOCK_ATTR, '1');
+
+      locked++;
+
+      // Lock ALL directEdit inputs/textareas (except product field)
+      $card.find('input[data-field], textarea[data-field]').each(function () {
         var field = this.getAttribute('data-field') || '';
-        if (field === CFG.productField) return; // skip product
+        if (field === CFG.productField) return;
         this.readOnly = true;
-        this.style.opacity = '0.6';
+        this.tabIndex = -1;
+        this.style.opacity = '0.5';
         this.style.cursor = 'default';
         this.style.pointerEvents = 'none';
+        this.style.background = '#f1f5f9';
       });
 
-      // Lock toggleChit (cabling/exterior)
+      // Lock toggleChit (Existing Cabling, Exterior)
       $card.find('.' + WS_P + '-cabling-chit').each(function () {
         this.style.pointerEvents = 'none';
-        this.style.opacity = '0.6';
+        this.style.opacity = '0.5';
         this.style.cursor = 'default';
       });
 
-      // Lock nativeEdit tds (except field_1949)
+      // Lock nativeEdit tds (except product field)
       $card.find('td.cell-edit').each(function () {
         var field = this.getAttribute('data-field-key') || '';
         if (field === CFG.productField) return;
-        this.classList.remove('cell-edit');
-        this.classList.add(WS_P + '-native-locked');
+        this.style.pointerEvents = 'none';
+        this.style.opacity = '0.5';
       });
     });
+
+    if (CFG.debug && locked) console.log('[SalesCR] Locked fields on', locked, 'new-item rows');
   }
 
   // ═══════════════════════════════════════════════════════════
