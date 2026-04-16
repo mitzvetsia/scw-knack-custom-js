@@ -3705,26 +3705,20 @@ window.SCW = window.SCW || {};
  *
  * ── How pairing works ────────────────────────────────────────────────────────
  *
- * At knack-scene-render time (before KTL wraps any tables) the DOM is in its
- * pristine Knack-builder order.  discoverMenuPairings() walks every kn-menu
- * on the page and pairs it with the table/list/report view it belongs to:
+ * Pairing is EXPLICIT, not proximity-based.  The table/form/list view that
+ * lives inside an accordion must declare which menu to absorb via a KTL
+ * keyword in its Knack view title or description:
  *
- *   Pattern B — menu + table in the same view-group:
- *     menu.nextElementSibling  ──▶  first kn-table / kn-list / kn-report
+ *   _scwMenu=view_3777
  *
- *   Pattern A — menu in a "header" group, table in the next group:
- *     viewGroup contains only kn-menu + optional kn-rich_text
- *     nextElementSibling view-group  ──▶  first table therein
+ * At enhance-time the code reads the keyword from KTL's pre-parsed cache
+ * (window.ktlKeywords) or falls back to scraping the Knack model.  If the
+ * keyword is absent the accordion gets no action buttons and nearby menus
+ * remain visible and independent — safe by default.
  *
- * The resulting map  { tableViewId → menuViewId }  is cached for the life of
- * the scene.  When KTL later wraps a table inside .scw-ktl-accordion, a
- * MutationObserver fires enhance() which looks up the pairing by the inner
- * view's ID — fully deterministic, no timing guesses.
+ * Multiple menus can be absorbed by a single accordion by comma-separating:
  *
- * ── Safety valves ────────────────────────────────────────────────────────────
- *
- *   MENU_EXCLUDE — standalone menus that must never be consumed
- *   MENU_MAP     — explicit { tableViewId: menuViewId } overrides
+ *   _scwMenu=view_3777,view_3482
  *
  *********************************************************************************/
 (function () {
@@ -3736,19 +3730,9 @@ window.SCW = window.SCW || {};
   var HIDDEN_CLASS = 'scw-acc-menu-src-hidden';
   var EVENT_NS = '.scwAccMenuInject';
   var LOG = '[SCW AccMenuInject]';
-
-  // ── Configuration ──────────────────────────────────
-  // Standalone menus that must NEVER be paired with an accordion.
-  var MENU_EXCLUDE = {
-    'view_3815': true
-  };
-
-  // Explicit overrides — takes priority over auto-discovery.
-  // Format: { tableViewId: menuViewId }
-  var MENU_MAP = {};
+  var KEYWORD = '_scwMenu';
 
   // ── State ──────────────────────────────────────────
-  var _menuPairings = {};      // tableViewId → { menuId, strategy }
   var _debounceTimer = null;
   var _sceneObserver = null;
   var modelInspected = {};
@@ -3838,103 +3822,93 @@ window.SCW = window.SCW || {};
   }
 
   // ══════════════════════════════════════════════════════════════
-  // PAIRING DISCOVERY — runs once per scene on pristine DOM
+  // KEYWORD LOOKUP — reads _scwMenu from KTL keyword cache or
+  // falls back to scraping the Knack view model description
   // ══════════════════════════════════════════════════════════════
 
-  function discoverMenuPairings() {
-    _menuPairings = {};
-    var claimed = {};
-    var menus = document.querySelectorAll('.kn-view.kn-menu');
-    console.log(LOG, 'discoverMenuPairings() — found', menus.length, 'menu(s)');
-
-    for (var i = 0; i < menus.length; i++) {
-      var menu = menus[i];
-      if (!menu.id) continue;
-      if (MENU_EXCLUDE[menu.id]) {
-        console.log(LOG, '  skip excluded menu', menu.id);
-        continue;
-      }
-
-      var viewGroup = menu.closest('.view-group');
-      if (!viewGroup) continue;
-
-      // ── Pattern B: table in the same view-group, after the menu ──
-      //    Handles both pristine DOM (table is a direct sibling) and
-      //    post-KTL DOM (table is wrapped in .scw-ktl-accordion).
-      var paired = false;
-      var sibling = menu.nextElementSibling;
-      while (sibling) {
-        // KTL may have already wrapped the table in an accordion
-        if (sibling.classList.contains('scw-ktl-accordion')) {
-          var innerView = sibling.querySelector('[id^="view_"].kn-view');
-          if (innerView && !claimed[innerView.id] &&
-              (innerView.classList.contains('kn-table') ||
-               innerView.classList.contains('kn-list') ||
-               innerView.classList.contains('kn-report'))) {
-            _menuPairings[innerView.id] = { menuId: menu.id, strategy: 'sibling' };
-            claimed[innerView.id] = true;
-            paired = true;
-            console.log(LOG, '  pair (B-wrapped)', menu.id, '→', innerView.id);
-          }
-          break;
-        }
-        // Unwrapped view — pristine DOM
-        if (sibling.id && sibling.classList.contains('kn-view')) {
-          if (sibling.classList.contains('kn-table') ||
-              sibling.classList.contains('kn-list') ||
-              sibling.classList.contains('kn-report')) {
-            if (!claimed[sibling.id]) {
-              _menuPairings[sibling.id] = { menuId: menu.id, strategy: 'sibling' };
-              claimed[sibling.id] = true;
-              paired = true;
-              console.log(LOG, '  pair (B)', menu.id, '→', sibling.id);
+  /**
+   * Read _scwMenu keyword for a view.  Returns an array of menu view IDs
+   * (e.g. ['view_3777']) or null if the keyword is not set.
+   *
+   * Lookup order:
+   *   1. window.ktlKeywords[viewKey]._scwMenu  (KTL pre-parsed cache)
+   *   2. Knack view model description / title   (raw text scrape)
+   */
+  function readMenuKeyword(viewKey) {
+    // ── 1. KTL keyword cache ──
+    try {
+      var kw = window.ktlKeywords;
+      if (kw && kw[viewKey] && kw[viewKey][KEYWORD]) {
+        var entries = kw[viewKey][KEYWORD];
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          var val;
+          if (typeof entry === 'string') {
+            val = entry;
+          } else if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+            var p = entry.params;
+            if (Array.isArray(p) && p.length > 0) {
+              val = Array.isArray(p[0]) ? p[0][0] : p[0];
             }
-            break;
+            if (!val && entry.paramStr) {
+              val = entry.paramStr.replace(/^\[|\]$/g, '');
+            }
+          } else if (Array.isArray(entry)) {
+            val = Array.isArray(entry[0]) ? entry[0][0] : entry[0];
           }
-          // Skip rich_text labels between menu and table; stop on anything else
-          if (!sibling.classList.contains('kn-rich_text')) break;
-        }
-        sibling = sibling.nextElementSibling;
-      }
-      if (paired) continue;
-
-      // ── Pattern A: menu-only group → table in the next view-group ──
-      var isHeaderGroup = true;
-      var groupViews = viewGroup.querySelectorAll('.kn-view');
-      for (var gv = 0; gv < groupViews.length; gv++) {
-        if (!groupViews[gv].classList.contains('kn-menu') &&
-            !groupViews[gv].classList.contains('kn-rich_text')) {
-          isHeaderGroup = false;
-          break;
-        }
-      }
-      if (!isHeaderGroup) continue;
-
-      var nextGroup = viewGroup.nextElementSibling;
-      if (nextGroup && nextGroup.classList.contains('view-group')) {
-        var tables = nextGroup.querySelectorAll(
-          '.kn-view.kn-table, .kn-view.kn-list, .kn-view.kn-report'
-        );
-        for (var t = 0; t < tables.length; t++) {
-          if (tables[t].id && !claimed[tables[t].id]) {
-            _menuPairings[tables[t].id] = { menuId: menu.id, strategy: 'prev-group' };
-            claimed[tables[t].id] = true;
-            console.log(LOG, '  pair (A)', menu.id, '→', tables[t].id);
-            break;
+          if (val) {
+            var ids = val.split(',').map(function (s) { return s.trim(); })
+                        .filter(function (s) { return /^view_\d+$/.test(s); });
+            if (ids.length) {
+              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
+              return ids;
+            }
           }
         }
       }
-    }
+    } catch (e) { /* ignore */ }
 
-    // Explicit overrides always win
-    for (var key in MENU_MAP) {
-      if (MENU_MAP.hasOwnProperty(key)) {
-        _menuPairings[key] = { menuId: MENU_MAP[key], strategy: 'config' };
-        console.log(LOG, '  pair (cfg)', MENU_MAP[key], '→', key);
+    // ── 2. Knack model fallback — scrape description / title ──
+    try {
+      var model = getViewModel(viewKey);
+      if (model) {
+        var attrs = model.attributes || model;
+        var sources = [attrs.description, attrs.title, attrs.name];
+        for (var s = 0; s < sources.length; s++) {
+          if (typeof sources[s] !== 'string') continue;
+          var match = sources[s].match(/_scwMenu=([^\s<]+)/i);
+          if (match) {
+            var ids2 = match[1].split(',').map(function (v) { return v.trim(); })
+                          .filter(function (v) { return /^view_\d+$/.test(v); });
+            if (ids2.length) {
+              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
+              return ids2;
+            }
+          }
+        }
       }
-    }
+    } catch (e) { /* ignore */ }
 
-    console.log(LOG, 'Pairings:', JSON.stringify(_menuPairings));
+    return null;
+  }
+
+  /**
+   * Find a Knack view model by view key.
+   */
+  function getViewModel(viewKey) {
+    try {
+      if (window.Knack && Knack.views && Knack.views[viewKey] && Knack.views[viewKey].model) {
+        return Knack.views[viewKey].model;
+      }
+      var scene = Knack && Knack.router && Knack.router.scene_view;
+      var collection = scene && scene.model && scene.model.views;
+      if (!collection || !collection.models) return null;
+      for (var i = 0; i < collection.models.length; i++) {
+        var m = collection.models[i];
+        if (m && m.attributes && m.attributes.key === viewKey) return m;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -3977,8 +3951,8 @@ window.SCW = window.SCW || {};
           var text = item.name || item.label || item.text || item.title || '';
           var href = '';
           if (item.scene) {
-            var s = item.scene;
-            href = '#' + (typeof s === 'object' ? (s.slug || s.key || '') : s);
+            var sc = item.scene;
+            href = '#' + (typeof sc === 'object' ? (sc.slug || sc.key || '') : sc);
           } else if (item.scene_key) {
             href = '#' + item.scene_key;
           }
@@ -4056,20 +4030,15 @@ window.SCW = window.SCW || {};
   }
 
   // ══════════════════════════════════════════════════════════════
-  // ENHANCE — inject buttons using the pre-computed pairing map
+  // ENHANCE — inject buttons using _scwMenu keyword lookups
   // ══════════════════════════════════════════════════════════════
 
   function enhance() {
-    // Re-discover pairings every time — handles views that rendered after
-    // the initial scene-render, and tables already wrapped by KTL.
-    discoverMenuPairings();
-
     var accordions = document.querySelectorAll('.scw-ktl-accordion');
-    console.log(LOG, 'enhance() — found', accordions.length, 'accordion(s)',
-      '| pairings:', Object.keys(_menuPairings).length);
+    console.log(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
 
     var injected = 0;
-    var skipped = { noHeader: 0, alreadyInjected: 0, noPairing: 0, noMenuEl: 0,
+    var skipped = { noHeader: 0, alreadyInjected: 0, noKeyword: 0, noMenuEl: 0,
                     menuHidden: 0, emptyMenu: 0 };
 
     for (var i = 0; i < accordions.length; i++) {
@@ -4079,65 +4048,92 @@ window.SCW = window.SCW || {};
         if (!header) { skipped.noHeader++; continue; }
         if (header.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
 
-        // Find the inner view — the table/list that KTL wrapped
+        // Find the inner view — the table/list/form that KTL wrapped
         var innerView = accordion.querySelector('[id^="view_"]');
         var innerViewId = innerView ? innerView.id : null;
+        if (!innerViewId) { skipped.noKeyword++; continue; }
 
-        // Look up pre-computed pairing
-        var pairing = innerViewId ? _menuPairings[innerViewId] : null;
-        if (!pairing) { skipped.noPairing++; continue; }
+        // Read _scwMenu keyword for this view
+        var menuIds = readMenuKeyword(innerViewId);
+        if (!menuIds || !menuIds.length) { skipped.noKeyword++; continue; }
 
-        var menuView = document.getElementById(pairing.menuId);
-        if (!menuView) { skipped.noMenuEl++; continue; }
-        if (menuView.classList.contains(HIDDEN_CLASS)) { skipped.menuHidden++; continue; }
+        // Collect links from all declared menus
+        var allActionLinks = [];  // { text, index, menuViewId }
+        var allModelLinks = [];   // { text, href, menuViewId }
+        var menuElements = [];    // DOM elements to hide after injection
 
-        // ── Collect action links from DOM ──
-        var domLinks = menuView.querySelectorAll('a');
-        var actionLinks = [];
-        for (var j = 0; j < domLinks.length; j++) {
-          var text = (domLinks[j].textContent || '').trim();
-          if (text) actionLinks.push({ text: text, index: j });
-        }
+        for (var mi = 0; mi < menuIds.length; mi++) {
+          var menuViewId = menuIds[mi];
+          var menuView = document.getElementById(menuViewId);
+          if (!menuView) { skipped.noMenuEl++; continue; }
+          if (menuView.classList.contains(HIDDEN_CLASS)) { skipped.menuHidden++; continue; }
 
-        var useModelData = false;
-        var modelLinks = null;
-
-        if (!actionLinks.length) {
-          modelLinks = extractMenuLinksFromKnack(menuView.id);
-          if (modelLinks && modelLinks.length) {
-            useModelData = true;
-            console.log(LOG, '  accordion', innerViewId,
-              '→ menu', menuView.id, 'via', pairing.strategy,
-              '— using', modelLinks.length, 'link(s) from model');
-          } else {
-            skipped.emptyMenu++;
-            continue;
+          // Try DOM links first
+          var domLinks = menuView.querySelectorAll('a');
+          var hasDOM = false;
+          for (var j = 0; j < domLinks.length; j++) {
+            var text = (domLinks[j].textContent || '').trim();
+            if (text) {
+              allActionLinks.push({ text: text, index: j, menuViewId: menuViewId });
+              hasDOM = true;
+            }
           }
-        } else {
-          console.log(LOG, '  accordion', innerViewId,
-            '→ menu', menuView.id, 'via', pairing.strategy,
-            '— injecting', actionLinks.length, 'button(s)');
+
+          // Fall back to Knack model
+          if (!hasDOM) {
+            var modelLinks = extractMenuLinksFromKnack(menuViewId);
+            if (modelLinks && modelLinks.length) {
+              for (var ml = 0; ml < modelLinks.length; ml++) {
+                allModelLinks.push({
+                  text: modelLinks[ml].text, href: modelLinks[ml].href,
+                  index: ml, menuViewId: menuViewId
+                });
+              }
+              console.log(LOG, '  accordion', innerViewId,
+                '← menu', menuViewId, '— using', modelLinks.length, 'link(s) from model');
+            }
+          } else {
+            console.log(LOG, '  accordion', innerViewId,
+              '← menu', menuViewId, '— injecting', domLinks.length, 'button(s) from DOM');
+          }
+
+          menuElements.push(menuView);
         }
+
+        // Build combined button list
+        var buttonDefs = [];
+        for (var ai = 0; ai < allActionLinks.length; ai++) {
+          buttonDefs.push({
+            text: allActionLinks[ai].text,
+            index: allActionLinks[ai].index,
+            href: '',
+            menuViewId: allActionLinks[ai].menuViewId,
+            fromModel: false
+          });
+        }
+        for (var mli = 0; mli < allModelLinks.length; mli++) {
+          buttonDefs.push({
+            text: allModelLinks[mli].text,
+            index: allModelLinks[mli].index,
+            href: allModelLinks[mli].href,
+            menuViewId: allModelLinks[mli].menuViewId,
+            fromModel: true
+          });
+        }
+
+        if (!buttonDefs.length) { skipped.emptyMenu++; continue; }
 
         // ── Build button container ──
         var container = document.createElement('div');
         container.className = 'scw-acc-actions';
-        container.setAttribute(MENU_SRC, menuView.id);
-
-        var buttonDefs = useModelData
-          ? modelLinks.map(function (ml, idx) {
-              return { text: ml.text, index: idx, href: ml.href, fromModel: true };
-            })
-          : actionLinks.map(function (al) {
-              return { text: al.text, index: al.index, href: '', fromModel: false };
-            });
+        container.setAttribute(MENU_SRC, menuIds.join(','));
 
         for (var k = 0; k < buttonDefs.length; k++) {
           var def = buttonDefs[k];
           var btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'scw-acc-action-btn';
-          btn.setAttribute('data-menu-view', menuView.id);
+          btn.setAttribute('data-menu-view', def.menuViewId);
           btn.setAttribute('data-link-index', String(def.index));
 
           if (def.fromModel) {
@@ -4204,7 +4200,10 @@ window.SCW = window.SCW || {};
           header.appendChild(container);
         }
 
-        menuView.classList.add(HIDDEN_CLASS);
+        // Hide absorbed menus
+        for (var h = 0; h < menuElements.length; h++) {
+          menuElements[h].classList.add(HIDDEN_CLASS);
+        }
         header.setAttribute(INJECTED, '1');
         injected++;
       } catch (err) {
@@ -4256,9 +4255,6 @@ window.SCW = window.SCW || {};
       console.log(LOG, 'scene-render', sceneId);
       modelInspected = {};
 
-      // Build pairings from pristine DOM (before KTL reshuffles)
-      discoverMenuPairings();
-
       // Watch for .scw-ktl-accordion elements being created
       var root = document.getElementById('kn-' + sceneId) || document.body;
       startAccordionObserver(root);
@@ -4275,8 +4271,7 @@ window.SCW = window.SCW || {};
     });
 
   $(document).ready(function () {
-    console.log(LOG, 'document.ready — initial discovery');
-    discoverMenuPairings();
+    console.log(LOG, 'document.ready — initial enhance');
     startAccordionObserver(document.body);
     scheduleEnhance(500);
     setTimeout(enhance, 3000);
