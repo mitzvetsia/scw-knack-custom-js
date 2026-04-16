@@ -96,6 +96,9 @@
         var fk = TF[f].key;
         var raw = attrs[fk + '_raw'] != null ? attrs[fk + '_raw'] : attrs[fk];
         snap[fk] = H.normVal(TF[f], raw);
+        if (TF[f].type === 'connection') {
+          snap[fk + '_ids'] = H.extractIds(raw);
+        }
       }
       snap._label    = H.readableVal(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
       snap._product  = H.readableVal(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
@@ -130,9 +133,12 @@
         var fk = TF[f].key;
         var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
         base[fk] = H.normVal(TF[f], raw);
+        if (TF[f].type === 'connection') {
+          base[fk + '_ids'] = H.extractIds(raw);
+        }
       }
-      base._label    = H.stripHtml(record[CFG.labelField + '_raw']   || record[CFG.labelField]   || '');
-      base._product  = H.stripHtml(record[CFG.productField + '_raw'] || record[CFG.productField] || '');
+      base._label    = H.readableVal(record[CFG.labelField + '_raw']   || record[CFG.labelField]   || '');
+      base._product  = H.readableVal(record[CFG.productField + '_raw'] || record[CFG.productField] || '');
       base._addCount = record[CFG.addCountField] || 0;
       baseline[id] = base;
       if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
@@ -143,15 +149,20 @@
     var existing = pending[id];
     if (existing && existing.action === 'remove') return;
 
-    // Diff tracked fields against baseline
+    // Diff tracked fields against baseline; capture IDs for connection fields
     var changes = {};
+    var newIds  = {};   // fk → [ids] for connection fields that changed
     var hasChanges = false;
     for (var f = 0; f < TF.length; f++) {
-      var fk = TF[f].key;
+      var def = TF[f];
+      var fk  = def.key;
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
-      var newVal = H.normVal(TF[f], raw);
+      var newVal = H.normVal(def, raw);
       if (String(newVal) !== String(base[fk])) {
         changes[fk] = newVal;
+        if (def.type === 'connection') {
+          newIds[fk] = H.extractIds(raw);
+        }
         hasChanges = true;
       }
     }
@@ -169,11 +180,25 @@
         existing.requested[rk] = changes[rk];
         if (existing.current[rk] == null) existing.current[rk] = base[rk];
       }
+      for (var ik in newIds) {
+        existing.requested[ik + '_ids'] = newIds[ik];
+        if (existing.current[ik + '_ids'] == null && base[ik + '_ids']) {
+          existing.current[ik + '_ids'] = base[ik + '_ids'];
+        }
+      }
       if (CFG.debug) console.log('[SalesCR] Updated existing CR for', id, ':', changes);
     } else {
-      // New CR
+      // New CR — copy values AND IDs for connection fields
       var current = {};
-      for (var ck in changes) current[ck] = base[ck];
+      var requested = {};
+      for (var ck in changes) {
+        current[ck] = base[ck];
+        requested[ck] = changes[ck];
+      }
+      for (var nk in newIds) {
+        requested[nk + '_ids'] = newIds[nk];
+        if (base[nk + '_ids']) current[nk + '_ids'] = base[nk + '_ids'];
+      }
 
       pending[id] = {
         rowId:        id,
@@ -181,7 +206,7 @@
         productName:  base._product || '',
         action:       isAdd ? 'add' : 'revise',
         current:      current,
-        requested:    changes,
+        requested:    requested,
         changeNotes:  '',
       };
       if (CFG.debug) console.log('[SalesCR] Created new CR for', id, ':', changes);

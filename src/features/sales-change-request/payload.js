@@ -43,13 +43,23 @@
         for (var f = 0; f < TF.length; f++) {
           var def = TF[f];
           if (r[def.key] == null) continue;
-          fields.push({
+          var fieldEntry = {
             field: def.key,
             label: def.label,
             from:  c[def.key] != null ? c[def.key] : null,
             to:    r[def.key],
-          });
+          };
+          // Include record IDs for connection fields so Make can look up
+          // per-product flags (e.g., "requires requote on swap")
+          if (def.type === 'connection') {
+            if (c[def.key + '_ids']) fieldEntry.fromIds = c[def.key + '_ids'];
+            if (r[def.key + '_ids']) fieldEntry.toIds   = r[def.key + '_ids'];
+          }
+          fields.push(fieldEntry);
           entry[def.key] = r[def.key];
+          if (def.type === 'connection' && r[def.key + '_ids']) {
+            entry[def.key + '_ids'] = r[def.key + '_ids'];
+          }
         }
         entry.fields = fields;
       }

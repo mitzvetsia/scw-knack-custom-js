@@ -167,6 +167,16 @@
     return stripHtml(raw);
   }
 
+  /** Extract record IDs from a connection _raw array. Returns [] otherwise. */
+  function extractIds(raw) {
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+
   function fmtCurrency(v) {
     if (v == null || v === 0) return '$0.00';
     return '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -265,6 +275,7 @@
     escHtml:          escHtml,
     stripHtml:        stripHtml,
     readableVal:      readableVal,
+    extractIds:       extractIds,
     fmtCurrency:      fmtCurrency,
     normVal:          normVal,
     formatFieldValue: formatFieldValue,
