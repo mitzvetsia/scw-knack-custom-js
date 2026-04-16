@@ -211,21 +211,21 @@
       var wrapper = document.createElement('span');
       wrapper.className = 'scw-rev-actions';
 
-      var acceptBtn = document.createElement('button');
-      acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
-      acceptBtn.textContent = 'Accept';
-      acceptBtn.addEventListener('click', (function (rid, pname) {
-        return function () { sendAction('accept', rid, pname, this); };
-      })(recordId, pkgName));
-      wrapper.appendChild(acceptBtn);
-
       var rejectBtn = document.createElement('button');
       rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
-      rejectBtn.textContent = 'Reject';
+      rejectBtn.textContent = 'Reject All';
       rejectBtn.addEventListener('click', (function (rid, pname) {
         return function () { sendAction('reject', rid, pname, this); };
       })(recordId, pkgName));
       wrapper.appendChild(rejectBtn);
+
+      var acceptBtn = document.createElement('button');
+      acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
+      acceptBtn.textContent = 'Accept All';
+      acceptBtn.addEventListener('click', (function (rid, pname) {
+        return function () { sendAction('accept', rid, pname, this); };
+      })(recordId, pkgName));
+      wrapper.appendChild(acceptBtn);
 
       actionTd.appendChild(wrapper);
     }

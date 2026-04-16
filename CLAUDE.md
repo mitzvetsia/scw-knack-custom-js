@@ -234,6 +234,7 @@ The `preserve-scroll-on-refresh.js` module acts as a post-edit coordinator:
 - Use `!important` sparingly in CSS, but it's often necessary to override Knack's inline styles
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`
 - Config objects at the top of each file — keep logic generic, keep config specific
+- **Button ordering**: destructive/negative action first, positive/primary action last. Examples: Edit | Cancel, Reject | Accept, Cancel | Submit. The primary action is always the rightmost button.
 
 ## Context Hygiene (Read This First)
 
