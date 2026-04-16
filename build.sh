@@ -68,6 +68,7 @@ cat \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/bid-revision-inject.js \
+  src/features/revision-accept-reject.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
