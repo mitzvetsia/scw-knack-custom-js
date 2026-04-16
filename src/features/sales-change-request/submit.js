@@ -52,13 +52,12 @@
     });
   }
 
-  /** Save draft: immediate write to field_2707 (no webhook). */
+  /** Save draft: immediate write to field_2707 (no debounce). */
   function saveDraft() {
     var count = ns.pendingCount();
     if (!count) { ns.showToast('No pending changes to save', 'info'); return; }
 
-    // Force immediate persist to Knack field
-    ns.persist();
+    ns.forceSaveDraft();
     ns.showToast('Draft saved', 'success');
   }
 

@@ -31220,6 +31220,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     debouncedSaveDraft();
   }
 
+  /** Force immediate write to field_2707 (no debounce). */
+  function forceSaveDraft() {
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+    var count = Object.keys(_pending).length;
+    if (CFG.debug) console.log('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
+    writeDraftField(count ? _pending : null);
+  }
+
   function pendingCount() { return Object.keys(_pending).length; }
 
   /** Rehydrate pending state from field_2707. Called by init after
@@ -31360,6 +31368,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   };
 
   ns.persist             = persist;
+  ns.forceSaveDraft      = forceSaveDraft;
   ns.pendingCount        = pendingCount;
   ns.showToast           = showToast;
   ns.setDraftRecordId    = setDraftRecordId;
@@ -33084,13 +33093,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
-  /** Save draft: immediate write to field_2707 (no webhook). */
+  /** Save draft: immediate write to field_2707 (no debounce). */
   function saveDraft() {
     var count = ns.pendingCount();
     if (!count) { ns.showToast('No pending changes to save', 'info'); return; }
 
-    // Force immediate persist to Knack field
-    ns.persist();
+    ns.forceSaveDraft();
     ns.showToast('Draft saved', 'success');
   }
 
