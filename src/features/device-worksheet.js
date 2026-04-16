@@ -5134,6 +5134,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     applyConditionalHide(card, tr, viewCfg);
 
     // ── Apply showWhenFieldIsYes visibility ──
+    // Skip when the row is fully locked (field_2551 = Yes) — locked rows
+    // show all fields as read-only regardless of showWhenFieldIsYes guards.
+    var isRowLocked = !!card.querySelector('td.scw-cell-locked');
     var fNames = Object.keys(viewCfg.fields);
     // Check if this row's bucket rule has a descLabel (Services/Assumptions) —
     // if so, skip all showWhenFieldIsYes guards; bucket hideFields handles hiding instead.
@@ -5142,6 +5145,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var swi = 0; swi < fNames.length; swi++) {
       var swDesc = viewCfg.fields[fNames[swi]];
       if (!swDesc.showWhenFieldIsYes) continue;
+      if (isRowLocked) continue;
       if (swBucketRule && swBucketRule.descLabel) continue;
       var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
