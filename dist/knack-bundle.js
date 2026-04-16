@@ -32737,11 +32737,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         this.style.cursor = 'default';
       });
 
-      // Lock nativeEdit tds (except product field)
+      // Lock nativeEdit tds (except product field) — white bg for connection fields
       $card.find('td.cell-edit').each(function () {
         var field = this.getAttribute('data-field-key') || '';
         if (field === CFG.productField) return;
         this.style.pointerEvents = 'none';
+        this.style.background = '#fff';
       });
     });
 
