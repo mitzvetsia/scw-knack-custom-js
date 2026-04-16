@@ -243,6 +243,8 @@
         if (state.hasNote && state.action !== 'note') {
           btn.classList.add(P + '-action-btn--has-note');
         }
+      } else if (addOnly) {
+        btn.innerHTML = '<i class="fa fa-plus" style="font-size:14px;"></i>';
       } else {
         btn.innerHTML = '<i class="fa fa-ellipsis-v" style="font-size:14px;"></i>';
       }
