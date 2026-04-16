@@ -317,8 +317,7 @@
           left:  ['connectedDevice', 'mountingHardware'],
           right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
         },
-        recordLockField: 'field_2634',
-        lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634'],
+        // recordLockField disabled — field_2634 lock not used on view_3610
         conditionalHide: [
           {
             whenLocked: 'field_1964',
