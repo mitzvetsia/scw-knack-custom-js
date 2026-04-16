@@ -3858,10 +3858,13 @@ window.SCW = window.SCW || {};
     }
 
     // ── 1. KTL keyword cache ──
+    // KTL may lowercase keyword names (e.g. _scwMenu → _scwmenu).
+    // Check both the exact name and the lowercased version.
     try {
       var kw = window.ktlKeywords;
-      if (kw && kw[viewKey] && kw[viewKey][KEYWORD]) {
-        var entries = kw[viewKey][KEYWORD];
+      var vkw = kw && kw[viewKey];
+      var entries = vkw && (vkw[KEYWORD] || vkw[KEYWORD.toLowerCase()]);
+      if (entries) {
         for (var i = 0; i < entries.length; i++) {
           var entry = entries[i];
           var val;
@@ -3887,6 +3890,17 @@ window.SCW = window.SCW || {};
             }
           }
         }
+      }
+    } catch (e) { /* ignore */ }
+
+    // Debug: log what KTL actually has for this view so we can diagnose misses
+    try {
+      var kwDbg = window.ktlKeywords;
+      if (kwDbg && kwDbg[viewKey]) {
+        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
+          Object.keys(kwDbg[viewKey]).join(', '));
+      } else {
+        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
       }
     } catch (e) { /* ignore */ }
 
