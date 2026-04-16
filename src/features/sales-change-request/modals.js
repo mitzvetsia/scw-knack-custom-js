@@ -163,8 +163,89 @@
     setTimeout(function () { ta.focus(); }, 50);
   }
 
+  // ── Per-row note (tied to a specific line item) ─────
+
+  function openRowNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var base = S.baseline()[recordId] || {};
+    var label = base._label || recordId;
+    var product = base._product || '';
+
+    // Check for existing note on this row
+    var noteKey = 'note_' + recordId;
+    var existing = S.pending()[noteKey];
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    // Header
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      existing ? 'Edit Note' : 'Add Note'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Add a note about this line item. It will be included in the change request.'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Note about this item\u2026';
+    ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    // Footer
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save',
+      existing ? 'Update Note' : 'Add Note');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+
+      var pending = S.pending();
+      pending[noteKey] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'note',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast(existing ? 'Note updated' : 'Note added', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
   // ── Public API ──
-  ns.openNote   = openNoteModal;
-  ns.openRemove = openRemoveModal;
+  ns.openNote    = openNoteModal;
+  ns.openRowNote = openRowNoteModal;
+  ns.openRemove  = openRemoveModal;
 
 })();

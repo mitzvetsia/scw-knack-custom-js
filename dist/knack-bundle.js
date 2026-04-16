@@ -31090,6 +31090,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Any inline edit on these fields in the worksheet creates
     // or updates a pending "revise" (or "add") change request.
     trackedFields: [
+      { key: 'field_1949', label: 'Product',           type: 'text' },
       { key: 'field_1964', label: 'Quantity',          type: 'number' },
       { key: 'field_2261', label: 'Custom Discount %', type: 'number', pct: true },
       { key: 'field_2262', label: 'Custom Discount $', type: 'number', currency: true },
@@ -31282,7 +31283,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 })();
 /*** SALES CHANGE REQUEST — STYLES ***/
 /**
- * CSS injection for badges, cards, action bar, modals, and revision strips.
+ * CSS injection for action menu, cards, action bar, modals, and revision strips.
  *
  * Reads : SCW.salesCR.CONFIG
  */
@@ -31296,17 +31297,66 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (document.getElementById(CFG.cssId)) return;
 
     var css = [
-      /* ── Badge on summary row ── */
-      '.' + P + '-badge {',
-      '  display: inline-flex; align-items: center; gap: 4px;',
-      '  padding: 2px 8px; border-radius: 10px;',
-      '  font-size: 11px; font-weight: 600; white-space: nowrap;',
-      '  margin-left: 6px; vertical-align: middle; cursor: default;',
+      /* ── Action menu icon (replaces delete slot) ── */
+      '.' + P + '-action-wrap {',
+      '  display: inline-flex; align-items: center;',
+      '  justify-content: center; align-self: flex-start;',
+      '  flex-shrink: 0; position: relative;',
+      '  min-width: 22px; padding: 5px 4px 0 4px;',
       '}',
-      '.' + P + '-badge--revise { background: #dbeafe; color: #1e40af; }',
-      '.' + P + '-badge--add    { background: #dcfce7; color: #166534; }',
-      '.' + P + '-badge--remove { background: #fee2e2; color: #991b1b; }',
-      '.' + P + '-badge--note   { background: #fef3c7; color: #92400e; }',
+      '.' + P + '-action-btn {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 24px; height: 24px; border-radius: 12px;',
+      '  border: 1.5px solid #cbd5e1; background: #fff;',
+      '  color: #94a3b8; font-size: 14px; cursor: pointer;',
+      '  transition: all .15s; line-height: 1; padding: 0;',
+      '}',
+      '.' + P + '-action-btn:hover {',
+      '  border-color: #94a3b8; color: #475569; background: #f1f5f9;',
+      '}',
+      '.' + P + '-action-btn--revise {',
+      '  border-color: #93c5fd; background: #dbeafe; color: #1e40af;',
+      '}',
+      '.' + P + '-action-btn--add {',
+      '  border-color: #86efac; background: #dcfce7; color: #166534;',
+      '}',
+      '.' + P + '-action-btn--remove {',
+      '  border-color: #fca5a5; background: #fee2e2; color: #991b1b;',
+      '}',
+      '.' + P + '-action-btn--note {',
+      '  border-color: #fcd34d; background: #fef3c7; color: #92400e;',
+      '}',
+      '.' + P + '-action-btn--has-note {',
+      '  box-shadow: 0 0 0 2px #fbbf24;',
+      '}',
+
+      /* ── Popover menu ── */
+      '.' + P + '-popover {',
+      '  position: absolute; top: 100%; right: 0; z-index: 10001;',
+      '  margin-top: 4px; min-width: 160px;',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
+      '  box-shadow: 0 8px 24px rgba(0,0,0,.15);',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '  overflow: hidden;',
+      '}',
+      '.' + P + '-popover-item {',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  padding: 8px 14px; cursor: pointer;',
+      '  color: #334155; white-space: nowrap;',
+      '  transition: background .1s;',
+      '}',
+      '.' + P + '-popover-item:hover { background: #f1f5f9; }',
+      '.' + P + '-popover-item--remove { color: #dc2626; }',
+      '.' + P + '-popover-item--remove:hover { background: #fef2f2; }',
+      '.' + P + '-popover-item--clear { color: #94a3b8; font-size: 12px; }',
+      '.' + P + '-popover-item--clear:hover { background: #f8fafc; }',
+      '.' + P + '-popover-sep {',
+      '  height: 1px; background: #e2e8f0; margin: 2px 0;',
+      '}',
+      '.' + P + '-popover-icon {',
+      '  width: 16px; text-align: center; flex-shrink: 0;',
+      '  font-size: 12px;',
+      '}',
 
       /* ── Pending card in detail panel ── */
       '.' + P + '-card {',
@@ -31335,20 +31385,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  color: inherit; opacity: .5; cursor: pointer; padding: 0; line-height: 1;',
       '}',
       '.' + P + '-card-dismiss:hover { opacity: 1; }',
-
-      /* ── Per-row action buttons (inside detail panel) ── */
-      '.' + P + '-row-actions {',
-      '  display: flex; gap: 8px; padding: 8px 12px;',
-      '  border-top: 1px solid #e5e7eb;',
-      '}',
-      '.' + P + '-row-btn {',
-      '  padding: 4px 12px; border-radius: 4px; border: 1px solid #cbd5e1;',
-      '  background: #fff; color: #475569; font-size: 11px; font-weight: 600;',
-      '  cursor: pointer; transition: all .15s;',
-      '}',
-      '.' + P + '-row-btn:hover { background: #f1f5f9; border-color: #94a3b8; }',
-      '.' + P + '-row-btn--remove { border-color: #fca5a5; color: #dc2626; }',
-      '.' + P + '-row-btn--remove:hover { background: #fef2f2; }',
 
       /* ── Floating action bar ── */
       '#' + CFG.barId + ' {',
@@ -31844,9 +31880,90 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setTimeout(function () { ta.focus(); }, 50);
   }
 
+  // ── Per-row note (tied to a specific line item) ─────
+
+  function openRowNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var base = S.baseline()[recordId] || {};
+    var label = base._label || recordId;
+    var product = base._product || '';
+
+    // Check for existing note on this row
+    var noteKey = 'note_' + recordId;
+    var existing = S.pending()[noteKey];
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    // Header
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      existing ? 'Edit Note' : 'Add Note'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      (label ? label + ' \u2014 ' : '') + (product || 'Item')));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Add a note about this line item. It will be included in the change request.'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Note about this item\u2026';
+    ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    // Footer
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save',
+      existing ? 'Update Note' : 'Add Note');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+
+      var pending = S.pending();
+      pending[noteKey] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'note',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast(existing ? 'Note updated' : 'Note added', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
   // ── Public API ──
-  ns.openNote   = openNoteModal;
-  ns.openRemove = openRemoveModal;
+  ns.openNote    = openNoteModal;
+  ns.openRowNote = openRowNoteModal;
+  ns.openRemove  = openRemoveModal;
 
 })();
 /*** SALES CHANGE REQUEST — PAYLOAD BUILDERS ***/
@@ -32037,11 +32154,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 })();
 /*** SALES CHANGE REQUEST — RENDER ***/
 /**
- * Injects pending-CR badges and cards onto worksheet rows, per-row
- * action buttons into detail panels, and the floating action bar.
+ * Injects per-row action menus (in the delete-button slot), pending-CR
+ * cards into detail panels, and the floating action bar.
+ *
+ * The action menu replaces the Knack delete icon with a "..." button
+ * that opens a popover with: Add Note, Request Removal, Clear.
+ * When a pending CR exists the icon shows the action-type color.
  *
  * Reads : SCW.salesCR.CONFIG, ._state, ._h, .pendingCount,
- *         .openNote, .openRemove, .submit, .saveDraft
+ *         .openNote, .openRowNote, .openRemove, .submitToWebhook
  * Writes: SCW.salesCR.renderUI, .renderActionBar
  */
 (function () {
@@ -32054,8 +32175,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
 
+  // Track the currently-open popover so we can close it
+  var _openPopover = null;
+
+  // Close any open popover on outside click
+  $(document).on('click' + CFG.eventNs + 'Pop', function (e) {
+    if (_openPopover && !_openPopover.contains(e.target)) {
+      _openPopover.remove();
+      _openPopover = null;
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════
-  //  BUILD PENDING-CR CARD (for detail panel)
+  //  PENDING-CR CARD (detail panel)
   // ═══════════════════════════════════════════════════════════
 
   function buildCard(pendingKey, item) {
@@ -32068,9 +32200,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                    :                       'PENDING CHANGE';
     card.appendChild(H.el('div', P + '-card-header', headerText));
 
-    // Dismiss
+    // Dismiss X
     var dismiss = H.el('button', P + '-card-dismiss', '\u00d7');
-    dismiss.title = 'Remove';
+    dismiss.title = 'Remove this change';
     dismiss.addEventListener('click', function (e) {
       e.stopPropagation();
       var pending = S.pending();
@@ -32089,13 +32221,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return card;
     }
 
-    // Revise / Add — show field diffs
+    // Revise / Add — field diffs
     var r = item.requested || {};
     var c = item.current || {};
     for (var f = 0; f < TF.length; f++) {
       var def = TF[f];
       if (r[def.key] == null) continue;
-
       var row = H.el('div', P + '-card-field');
       row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
       if (action === 'revise' && c[def.key] != null) {
@@ -32113,78 +32244,146 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  INJECT BADGES + CARDS ONTO WORKSHEET ROWS
+  //  ACTION MENU (popover in delete-button slot)
   // ═══════════════════════════════════════════════════════════
 
-  function injectBadgesAndCards() {
+  function buildPopover(recordId) {
+    var pop = H.el('div', P + '-popover');
+    var pending = S.pending();
+    var hasCR    = !!pending[recordId];
+    var hasNote  = !!pending['note_' + recordId];
+
+    // Add Note (per-row)
+    var noteItem = H.el('div', P + '-popover-item');
+    noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
+    noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
+    noteItem.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closePopover();
+      ns.openRowNote(recordId);
+    });
+    pop.appendChild(noteItem);
+
+    // Request Removal
+    if (!hasCR || pending[recordId].action !== 'remove') {
+      var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
+      removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
+      removeItem.appendChild(document.createTextNode('Request Removal'));
+      removeItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openRemove(recordId);
+      });
+      pop.appendChild(removeItem);
+    }
+
+    // Clear (if any pending CR or note on this row)
+    if (hasCR || hasNote) {
+      pop.appendChild(H.el('div', P + '-popover-sep'));
+      var clearItem = H.el('div', P + '-popover-item ' + P + '-popover-item--clear');
+      clearItem.appendChild(H.el('span', P + '-popover-icon', '\u00d7'));
+      clearItem.appendChild(document.createTextNode('Clear'));
+      clearItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        if (hasCR)   delete pending[recordId];
+        if (hasNote) delete pending['note_' + recordId];
+        ns.persist();
+        if (ns.refresh) ns.refresh();
+      });
+      pop.appendChild(clearItem);
+    }
+
+    return pop;
+  }
+
+  function closePopover() {
+    if (_openPopover) {
+      _openPopover.remove();
+      _openPopover = null;
+    }
+  }
+
+  /** Determine the dominant action state for a row (CR + note combined). */
+  function rowActionState(recordId) {
+    var pending = S.pending();
+    var cr   = pending[recordId];
+    var note = pending['note_' + recordId];
+    if (cr) return { action: cr.action, hasNote: !!note };
+    if (note) return { action: 'note', hasNote: true };
+    return null;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  INJECT ACTION MENUS + CARDS
+  // ═══════════════════════════════════════════════════════════
+
+  function injectActionMenusAndCards() {
     var $view = $('#' + CFG.worksheetView);
     if (!$view.length) return;
 
-    // Clean previous injections
-    $view.find('.' + P + '-badge').remove();
+    // Clean previous
+    $view.find('.' + P + '-action-wrap').remove();
     $view.find('.' + P + '-card').remove();
-    $view.find('.' + P + '-row-actions').remove();
 
     var pending = S.pending();
-    var ids = Object.keys(pending);
 
-    for (var i = 0; i < ids.length; i++) {
-      var key  = ids[i];
-      var item = pending[key];
-      if (!item.rowId) continue; // skip freeform notes
-
-      var $row = $view.find('tr#' + item.rowId);
-      if (!$row.length) continue;
-
-      var $card = $row.find('.scw-ws-card');
-      if (!$card.length) $card = $row;
-
-      // Badge on summary row
-      var $summary = $card.find('.scw-ws-summary-row');
-      if (!$summary.length) $summary = $card.find('.scw-ws-summary');
-      if ($summary.length) {
-        var badgeText = item.action === 'add'    ? 'ADD'
-                      : item.action === 'remove' ? 'REMOVE'
-                      :                            'CHANGE';
-        $summary[0].appendChild(
-          H.el('span', P + '-badge ' + P + '-badge--' + item.action, badgeText)
-        );
-      }
-
-      // Card in detail panel
-      var $detail = $card.find('.scw-ws-detail');
-      if ($detail.length) {
-        $detail[0].appendChild(buildCard(key, item));
-      }
-    }
-
-    // Per-row action buttons
-    injectRowActions($view);
-  }
-
-  function injectRowActions($view) {
     $view.find('tr[id]').each(function () {
       var $tr = $(this);
       var recordId = $tr.attr('id');
       if (!recordId || recordId.indexOf('kn-') === 0) return;
 
-      var $card   = $tr.find('.scw-ws-card');
+      var $card = $tr.find('.scw-ws-card');
       if (!$card.length) return;
+
+      // Find the delete wrapper in the summary row
+      var $deleteWrap = $card.find('.scw-ws-sum-delete');
+      if (!$deleteWrap.length) return;
+
+      // Build action button
+      var state = rowActionState(recordId);
+      var wrap = H.el('span', P + '-action-wrap');
+      var btn  = H.el('button', P + '-action-btn', '\u22EE'); // vertical ellipsis
+
+      if (state) {
+        btn.classList.add(P + '-action-btn--' + state.action);
+        if (state.hasNote && state.action !== 'note') {
+          btn.classList.add(P + '-action-btn--has-note');
+        }
+      }
+
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        closePopover();
+
+        var pop = buildPopover(recordId);
+        wrap.appendChild(pop);
+        _openPopover = pop;
+      });
+
+      wrap.appendChild(btn);
+
+      // Insert after the delete wrapper
+      $deleteWrap.after(wrap);
+
+      // Inject cards into detail panel
       var $detail = $card.find('.scw-ws-detail');
       if (!$detail.length) return;
-      if ($detail.find('.' + P + '-row-actions').length) return;
 
-      var actions = H.el('div', P + '-row-actions');
-
-      var removeBtn = H.el('button', P + '-row-btn ' + P + '-row-btn--remove', 'Request Removal');
-      removeBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        ns.openRemove(recordId);
-      });
-      actions.appendChild(removeBtn);
-
-      $detail[0].appendChild(actions);
+      // CR card (revise/add/remove)
+      if (pending[recordId]) {
+        $detail[0].appendChild(buildCard(recordId, pending[recordId]));
+      }
+      // Note card (per-row)
+      var noteKey = 'note_' + recordId;
+      if (pending[noteKey]) {
+        $detail[0].appendChild(buildCard(noteKey, pending[noteKey]));
+      }
     });
+
+    // Also show global (non-row) note cards somewhere — in the action bar area
+    // (handled by renderActionBar)
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -32217,7 +32416,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     bar.appendChild(H.el('div', P + '-bar-spacer'));
 
-    // Add Note
+    // Add Note (global)
     var noteBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--note', 'Add Note');
     noteBtn.addEventListener('click', function () { ns.openNote(); });
     bar.appendChild(noteBtn);
@@ -32252,12 +32451,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ═══════════════════════════════════════════════════════════
 
   function renderUI() {
-    injectBadgesAndCards();
+    injectActionMenusAndCards();
     renderActionBar();
   }
 
   // ── Public API ──
-  ns.renderUI       = renderUI;
+  ns.renderUI        = renderUI;
   ns.renderActionBar = renderActionBar;
 
 })();

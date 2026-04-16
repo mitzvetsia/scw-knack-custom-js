@@ -43,6 +43,7 @@
     // Any inline edit on these fields in the worksheet creates
     // or updates a pending "revise" (or "add") change request.
     trackedFields: [
+      { key: 'field_1949', label: 'Product',           type: 'text' },
       { key: 'field_1964', label: 'Quantity',          type: 'number' },
       { key: 'field_2261', label: 'Custom Discount %', type: 'number', pct: true },
       { key: 'field_2262', label: 'Custom Discount $', type: 'number', currency: true },

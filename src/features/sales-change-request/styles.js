@@ -1,6 +1,6 @@
 /*** SALES CHANGE REQUEST — STYLES ***/
 /**
- * CSS injection for badges, cards, action bar, modals, and revision strips.
+ * CSS injection for action menu, cards, action bar, modals, and revision strips.
  *
  * Reads : SCW.salesCR.CONFIG
  */
@@ -14,17 +14,66 @@
     if (document.getElementById(CFG.cssId)) return;
 
     var css = [
-      /* ── Badge on summary row ── */
-      '.' + P + '-badge {',
-      '  display: inline-flex; align-items: center; gap: 4px;',
-      '  padding: 2px 8px; border-radius: 10px;',
-      '  font-size: 11px; font-weight: 600; white-space: nowrap;',
-      '  margin-left: 6px; vertical-align: middle; cursor: default;',
+      /* ── Action menu icon (replaces delete slot) ── */
+      '.' + P + '-action-wrap {',
+      '  display: inline-flex; align-items: center;',
+      '  justify-content: center; align-self: flex-start;',
+      '  flex-shrink: 0; position: relative;',
+      '  min-width: 22px; padding: 5px 4px 0 4px;',
       '}',
-      '.' + P + '-badge--revise { background: #dbeafe; color: #1e40af; }',
-      '.' + P + '-badge--add    { background: #dcfce7; color: #166534; }',
-      '.' + P + '-badge--remove { background: #fee2e2; color: #991b1b; }',
-      '.' + P + '-badge--note   { background: #fef3c7; color: #92400e; }',
+      '.' + P + '-action-btn {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 24px; height: 24px; border-radius: 12px;',
+      '  border: 1.5px solid #cbd5e1; background: #fff;',
+      '  color: #94a3b8; font-size: 14px; cursor: pointer;',
+      '  transition: all .15s; line-height: 1; padding: 0;',
+      '}',
+      '.' + P + '-action-btn:hover {',
+      '  border-color: #94a3b8; color: #475569; background: #f1f5f9;',
+      '}',
+      '.' + P + '-action-btn--revise {',
+      '  border-color: #93c5fd; background: #dbeafe; color: #1e40af;',
+      '}',
+      '.' + P + '-action-btn--add {',
+      '  border-color: #86efac; background: #dcfce7; color: #166534;',
+      '}',
+      '.' + P + '-action-btn--remove {',
+      '  border-color: #fca5a5; background: #fee2e2; color: #991b1b;',
+      '}',
+      '.' + P + '-action-btn--note {',
+      '  border-color: #fcd34d; background: #fef3c7; color: #92400e;',
+      '}',
+      '.' + P + '-action-btn--has-note {',
+      '  box-shadow: 0 0 0 2px #fbbf24;',
+      '}',
+
+      /* ── Popover menu ── */
+      '.' + P + '-popover {',
+      '  position: absolute; top: 100%; right: 0; z-index: 10001;',
+      '  margin-top: 4px; min-width: 160px;',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
+      '  box-shadow: 0 8px 24px rgba(0,0,0,.15);',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '  overflow: hidden;',
+      '}',
+      '.' + P + '-popover-item {',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  padding: 8px 14px; cursor: pointer;',
+      '  color: #334155; white-space: nowrap;',
+      '  transition: background .1s;',
+      '}',
+      '.' + P + '-popover-item:hover { background: #f1f5f9; }',
+      '.' + P + '-popover-item--remove { color: #dc2626; }',
+      '.' + P + '-popover-item--remove:hover { background: #fef2f2; }',
+      '.' + P + '-popover-item--clear { color: #94a3b8; font-size: 12px; }',
+      '.' + P + '-popover-item--clear:hover { background: #f8fafc; }',
+      '.' + P + '-popover-sep {',
+      '  height: 1px; background: #e2e8f0; margin: 2px 0;',
+      '}',
+      '.' + P + '-popover-icon {',
+      '  width: 16px; text-align: center; flex-shrink: 0;',
+      '  font-size: 12px;',
+      '}',
 
       /* ── Pending card in detail panel ── */
       '.' + P + '-card {',
@@ -53,20 +102,6 @@
       '  color: inherit; opacity: .5; cursor: pointer; padding: 0; line-height: 1;',
       '}',
       '.' + P + '-card-dismiss:hover { opacity: 1; }',
-
-      /* ── Per-row action buttons (inside detail panel) ── */
-      '.' + P + '-row-actions {',
-      '  display: flex; gap: 8px; padding: 8px 12px;',
-      '  border-top: 1px solid #e5e7eb;',
-      '}',
-      '.' + P + '-row-btn {',
-      '  padding: 4px 12px; border-radius: 4px; border: 1px solid #cbd5e1;',
-      '  background: #fff; color: #475569; font-size: 11px; font-weight: 600;',
-      '  cursor: pointer; transition: all .15s;',
-      '}',
-      '.' + P + '-row-btn:hover { background: #f1f5f9; border-color: #94a3b8; }',
-      '.' + P + '-row-btn--remove { border-color: #fca5a5; color: #dc2626; }',
-      '.' + P + '-row-btn--remove:hover { background: #fef2f2; }',
 
       /* ── Floating action bar ── */
       '#' + CFG.barId + ' {',
