@@ -72,8 +72,9 @@
                    :                       'CHANGE';
     var headerEl = H.el('div', P + '-card-header');
     headerEl.textContent = headerText;
-    if (item.displayLabel || item.productName) {
-      headerEl.textContent += ' \u2014 ' + (item.displayLabel || item.productName);
+    var itemName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || '';
+    if (itemName && itemName.indexOf('[object') === -1) {
+      headerEl.textContent += ' \u2014 ' + itemName;
     }
     card.appendChild(headerEl);
 

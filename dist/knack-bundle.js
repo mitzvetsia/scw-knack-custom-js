@@ -31827,8 +31827,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var item = pending[recordId] || pending['note_' + recordId];
     var base = S.baseline()[recordId] || {};
 
-    var label = (item && item.displayLabel) || base._label || '';
-    var product = (item && item.productName) || base._product || '';
+    var label = H.readableVal((item && item.displayLabel) || base._label || '');
+    var product = H.readableVal((item && item.productName) || base._product || '');
+
+    // Sanitize any leftover [object Object] from stale sessionStorage
+    if (label.indexOf('[object') !== -1) label = '';
+    if (product.indexOf('[object') !== -1) product = '';
 
     // Fallback: read from the DOM card
     if (!label && !product) {
@@ -32536,8 +32540,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                    :                       'CHANGE';
     var headerEl = H.el('div', P + '-card-header');
     headerEl.textContent = headerText;
-    if (item.displayLabel || item.productName) {
-      headerEl.textContent += ' \u2014 ' + (item.displayLabel || item.productName);
+    var itemName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || '';
+    if (itemName && itemName.indexOf('[object') === -1) {
+      headerEl.textContent += ' \u2014 ' + itemName;
     }
     card.appendChild(headerEl);
 

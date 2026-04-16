@@ -23,8 +23,12 @@
     var item = pending[recordId] || pending['note_' + recordId];
     var base = S.baseline()[recordId] || {};
 
-    var label = (item && item.displayLabel) || base._label || '';
-    var product = (item && item.productName) || base._product || '';
+    var label = H.readableVal((item && item.displayLabel) || base._label || '');
+    var product = H.readableVal((item && item.productName) || base._product || '');
+
+    // Sanitize any leftover [object Object] from stale sessionStorage
+    if (label.indexOf('[object') !== -1) label = '';
+    if (product.indexOf('[object') !== -1) product = '';
 
     // Fallback: read from the DOM card
     if (!label && !product) {
