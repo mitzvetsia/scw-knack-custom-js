@@ -1,18 +1,18 @@
 /*** SALES CHANGE REQUEST — RENDER ***/
 /**
  * Injects per-row action menus (in the delete-button slot), pending-CR
- * cards into detail panels, and the floating action bar.
+ * cards into detail panels, and a sticky action bar pinned to the bottom
+ * of the view_3586 accordion.
  *
- * The action menu sits next to the Knack delete icon. When delete is
- * hidden (field_2586 > 0) it offers: Add Note, Request Removal, Clear.
- * When delete is visible (field_2586 = 0, new item) it only offers Add Note
- * since the item itself is the "add" change request.
+ * The action bar lives INSIDE the accordion body so it:
+ *   - Matches the view width (no wider)
+ *   - Sticks to viewport bottom while scrolling through the view
+ *   - Stops at the bottom of the accordion when you scroll past
  *
- * The popover renders as a portal on document.body to avoid stacking-
- * context / overflow issues with accordion containers.
+ * Clicking the pending count expands a change summary panel.
  *
  * Reads : SCW.salesCR.CONFIG, ._state, ._h, .pendingCount,
- *         .openNote, .openRowNote, .openRemove, .submitToWebhook
+ *         .openNote, .openRowNote, .openAddNote, .openRemove, .submitToWebhook
  * Writes: SCW.salesCR.renderUI, .renderActionBar
  */
 (function () {
@@ -25,11 +25,10 @@
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
 
-  // Currently-open popover (rendered on document.body)
   var _openPopover = null;
   var _popoverAnchor = null;
+  var _panelOpen = false;
 
-  // Close popover on outside click or scroll
   $(document).on('click' + CFG.eventNs + 'Pop', function (e) {
     if (!_openPopover) return;
     if (_openPopover.contains(e.target)) return;
@@ -41,18 +40,24 @@
   });
 
   // ═══════════════════════════════════════════════════════════
-  //  PENDING-CR CARD (detail panel)
+  //  PENDING-CR CARD (detail panel + changes panel)
   // ═══════════════════════════════════════════════════════════
 
-  function buildCard(pendingKey, item) {
+  function buildCard(pendingKey, item, opts) {
+    opts = opts || {};
     var action = item.action || 'revise';
     var card = H.el('div', P + '-card ' + P + '-card--' + action);
 
-    var headerText = action === 'add'    ? 'PENDING ADD'
-                   : action === 'remove' ? 'PENDING REMOVAL'
+    var headerText = action === 'add'    ? 'ADD'
+                   : action === 'remove' ? 'REMOVAL'
                    : action === 'note'   ? 'NOTE'
-                   :                       'PENDING CHANGE';
-    card.appendChild(H.el('div', P + '-card-header', headerText));
+                   :                       'CHANGE';
+    var headerEl = H.el('div', P + '-card-header');
+    headerEl.textContent = headerText;
+    if (item.displayLabel || item.productName) {
+      headerEl.textContent += ' \u2014 ' + (item.displayLabel || item.productName);
+    }
+    card.appendChild(headerEl);
 
     // Dismiss X
     var dismiss = H.el('button', P + '-card-dismiss', '\u00d7');
@@ -70,12 +75,24 @@
       card.appendChild(H.el('div', P + '-card-notes', item.changeNotes || 'Requesting removal'));
       return card;
     }
-    if (action === 'note') {
-      card.appendChild(H.el('div', P + '-card-notes', item.changeNotes || ''));
+    if (action === 'note' || action === 'add') {
+      if (item.changeNotes) {
+        card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
+      }
+      // Show field diffs if present (add items from auto-detection)
+      var r = item.requested || {};
+      for (var f = 0; f < TF.length; f++) {
+        var def = TF[f];
+        if (r[def.key] == null) continue;
+        var row = H.el('div', P + '-card-field');
+        row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
+        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[def.key])));
+        card.appendChild(row);
+      }
       return card;
     }
 
-    // Revise / Add — field diffs
+    // Revise — field diffs
     var r = item.requested || {};
     var c = item.current || {};
     for (var f = 0; f < TF.length; f++) {
@@ -83,7 +100,7 @@
       if (r[def.key] == null) continue;
       var row = H.el('div', P + '-card-field');
       row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
-      if (action === 'revise' && c[def.key] != null) {
+      if (c[def.key] != null) {
         row.appendChild(H.el('span', P + '-card-from', H.formatFieldValue(def, c[def.key])));
         row.appendChild(H.el('span', P + '-card-arrow', '\u2192'));
       }
@@ -101,10 +118,6 @@
   //  POPOVER (portal on document.body)
   // ═══════════════════════════════════════════════════════════
 
-  /**
-   * @param {string} recordId
-   * @param {boolean} addOnly - true for field_2586=0 rows (only note allowed)
-   */
   function buildPopover(recordId, addOnly) {
     var pop = H.el('div', P + '-popover');
     var pending = S.pending();
@@ -112,7 +125,6 @@
     var hasNote  = !!pending['note_' + recordId];
 
     if (addOnly) {
-      // ADD-only rows: single "Add" action (opens note modal, creates add CR)
       var addItem = H.el('div', P + '-popover-item');
       addItem.appendChild(H.el('span', P + '-popover-icon', '+'));
       addItem.appendChild(document.createTextNode(hasNote ? 'Edit Add Request' : 'Add'));
@@ -123,7 +135,6 @@
       });
       pop.appendChild(addItem);
     } else {
-      // Add Note (per-row)
       var noteItem = H.el('div', P + '-popover-item');
       noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
       noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
@@ -134,7 +145,6 @@
       });
       pop.appendChild(noteItem);
 
-      // Request Removal
       if (!hasCR || pending[recordId].action !== 'remove') {
         var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
         removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
@@ -148,7 +158,6 @@
       }
     }
 
-    // Clear (if any pending CR or note on this row)
     if (hasCR || hasNote) {
       pop.appendChild(H.el('div', P + '-popover-sep'));
       var clearItem = H.el('div', P + '-popover-item ' + P + '-popover-item--clear');
@@ -184,7 +193,6 @@
     }
   }
 
-  /** Determine the dominant action state for a row (CR + note combined). */
   function rowActionState(recordId) {
     var pending = S.pending();
     var cr   = pending[recordId];
@@ -202,7 +210,6 @@
     var $view = $('#' + CFG.worksheetView);
     if (!$view.length) return;
 
-    // Clean previous
     $view.find('.' + P + '-action-wrap').remove();
     $view.find('.' + P + '-card').remove();
 
@@ -219,17 +226,13 @@
       var $deleteWrap = $card.find('.scw-ws-sum-delete');
       if (!$deleteWrap.length) return;
 
-      // field_2586 = 0 → delete is visible → ADD-only mode (just notes)
-      // field_2586 > 0 → delete is hidden → full CR menu
       var deleteVisible = $deleteWrap[0].style.visibility !== 'hidden';
       var addOnly = deleteVisible;
 
-      // Build action button
       var state = rowActionState(recordId);
       var wrap = H.el('span', P + '-action-wrap');
       var btn  = H.el('button', P + '-action-btn');
 
-      // Icon varies by state
       if (state) {
         var iconCls = state.action === 'add'    ? 'fa-plus'
                     : state.action === 'remove' ? 'fa-minus-circle'
@@ -259,7 +262,7 @@
       wrap.appendChild(btn);
       $deleteWrap.after(wrap);
 
-      // Inject cards into detail panel
+      // Cards in detail panel
       var $detail = $card.find('.scw-ws-detail');
       if (!$detail.length) return;
 
@@ -274,63 +277,98 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  FLOATING ACTION BAR
+  //  STICKY ACTION BAR (inside view_3586 accordion)
   // ═══════════════════════════════════════════════════════════
 
   function renderActionBar() {
     var bar = document.getElementById(CFG.barId);
 
     if (!S.onPage()) {
-      if (bar) bar.classList.add('is-hidden');
+      if (bar) bar.remove();
       return;
     }
+
+    // Find the accordion body that contains view_3586
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) {
+      if (bar) bar.remove();
+      return;
+    }
+    var $accBody = $view.closest('.scw-ktl-accordion__body');
+    var container = $accBody.length ? $accBody[0] : $view[0].parentNode;
 
     if (!bar) {
       bar = H.el('div');
       bar.id = CFG.barId;
-      document.body.appendChild(bar);
+    }
+
+    // Move bar into the accordion body if not already there
+    if (bar.parentNode !== container) {
+      container.appendChild(bar);
     }
 
     var count = ns.pendingCount();
     bar.innerHTML = '';
-    bar.classList.remove('is-hidden');
 
-    // Count
+    // ── Top row: count + buttons ──
+    var topRow = H.el('div', P + '-bar-top');
+
+    // Clickable count (toggles panel)
     var countEl = H.el('div', P + '-bar-count');
+    countEl.style.cursor = count > 0 ? 'pointer' : 'default';
+    var chevron = H.el('span', P + '-bar-chevron' + (_panelOpen ? ' is-open' : ''));
+    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+    if (count > 0) countEl.appendChild(chevron);
     countEl.appendChild(H.el('span', P + '-bar-num', String(count)));
     countEl.appendChild(document.createTextNode(' pending change' + (count === 1 ? '' : 's')));
-    bar.appendChild(countEl);
+    if (count > 0) {
+      countEl.addEventListener('click', function () {
+        _panelOpen = !_panelOpen;
+        renderActionBar();
+      });
+    }
+    topRow.appendChild(countEl);
 
-    bar.appendChild(H.el('div', P + '-bar-spacer'));
+    topRow.appendChild(H.el('div', P + '-bar-spacer'));
 
-    // Add Note (global)
     var noteBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--note', 'Add Note');
     noteBtn.addEventListener('click', function () { ns.openNote(); });
-    bar.appendChild(noteBtn);
+    topRow.appendChild(noteBtn);
 
-    // Clear
     if (count > 0) {
       var clearBtn = H.el('button', P + '-bar-btn--clear', 'Clear all');
       clearBtn.addEventListener('click', function () {
         if (window.confirm('Clear all ' + count + ' pending change(s)?')) {
           ns.clear();
+          _panelOpen = false;
           ns.showToast('All changes cleared', 'info');
         }
       });
-      bar.appendChild(clearBtn);
+      topRow.appendChild(clearBtn);
     }
 
-    // Save Draft
     var draftBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--draft', 'Save Draft');
     draftBtn.disabled = count === 0;
     draftBtn.addEventListener('click', function () { ns.submitToWebhook(true); });
-    bar.appendChild(draftBtn);
+    topRow.appendChild(draftBtn);
 
-    // Submit
     var submitBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--submit', 'Submit Changes');
     submitBtn.disabled = count === 0;
     submitBtn.addEventListener('click', function () { ns.submitToWebhook(false); });
-    bar.appendChild(submitBtn);
+    topRow.appendChild(submitBtn);
+
+    bar.appendChild(topRow);
+
+    // ── Expandable changes panel ──
+    if (_panelOpen && count > 0) {
+      var panel = H.el('div', P + '-bar-panel');
+      var pending = S.pending();
+      var keys = Object.keys(pending);
+      for (var i = 0; i < keys.length; i++) {
+        panel.appendChild(buildCard(keys[i], pending[keys[i]]));
+      }
+      bar.appendChild(panel);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -342,7 +380,6 @@
     renderActionBar();
   }
 
-  // ── Public API ──
   ns.renderUI        = renderUI;
   ns.renderActionBar = renderActionBar;
 
