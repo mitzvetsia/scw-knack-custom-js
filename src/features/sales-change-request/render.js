@@ -372,11 +372,69 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  LOCK FIELDS ON field_2586 = 0 ROWS
+  // ═══════════════════════════════════════════════════════════
+  // New items (field_2586 = 0) should be read-only on everything
+  // EXCEPT field_1949 (product). Uses device-worksheet's existing
+  // lock classes so the visual treatment is consistent.
+
+  var WS_P = 'scw-ws'; // device-worksheet CSS prefix
+
+  function lockNewItemFields() {
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) return;
+
+    $view.find('tr.scw-ws-row').each(function () {
+      var $tr = $(this);
+      var recordId = $tr.attr('id');
+      if (!recordId) return;
+
+      // Read field_2586 from the original data row (sibling tr before .scw-ws-row)
+      var $dataRow = $tr.prev('tr[data-scw-worksheet]');
+      if (!$dataRow.length) return;
+      var $countTd = $dataRow.find('td.' + CFG.addCountField);
+      var countVal = $countTd.length ? parseInt($countTd.text().trim(), 10) : -1;
+
+      // Only lock when field_2586 = 0
+      if (countVal !== 0) return;
+
+      var $card = $tr.find('.scw-ws-card');
+      if (!$card.length) return;
+
+      // Lock directEdit inputs/textareas (except field_1949)
+      $card.find('input[data-scw-direct-edit], textarea[data-scw-direct-edit]').each(function () {
+        var field = this.getAttribute('data-field') || '';
+        if (field === CFG.productField) return; // skip product
+        this.readOnly = true;
+        this.style.opacity = '0.6';
+        this.style.cursor = 'default';
+        this.style.pointerEvents = 'none';
+      });
+
+      // Lock toggleChit (cabling/exterior)
+      $card.find('.' + WS_P + '-cabling-chit').each(function () {
+        this.style.pointerEvents = 'none';
+        this.style.opacity = '0.6';
+        this.style.cursor = 'default';
+      });
+
+      // Lock nativeEdit tds (except field_1949)
+      $card.find('td.cell-edit').each(function () {
+        var field = this.getAttribute('data-field-key') || '';
+        if (field === CFG.productField) return;
+        this.classList.remove('cell-edit');
+        this.classList.add(WS_P + '-native-locked');
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  COMBINED REFRESH
   // ═══════════════════════════════════════════════════════════
 
   function renderUI() {
     injectActionMenusAndCards();
+    lockNewItemFields();
     renderActionBar();
   }
 
