@@ -10632,8 +10632,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  color: #1e293b;',
       '  overflow-x: auto;',
       '  -webkit-overflow-scrolling: touch;',
-      '  padding: 12px 16px 8px;',
-      '  margin: 0 12px;',
+      '  padding: 0;',
+      '  margin: 0;',
       '}',
 
       /* ── SOW sections ────────────────────────────────────────── */
