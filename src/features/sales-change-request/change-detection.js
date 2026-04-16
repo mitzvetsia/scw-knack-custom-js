@@ -20,41 +20,91 @@
   //  BASELINE SNAPSHOT
   // ═══════════════════════════════════════════════════════════
 
-  function buildBaseline() {
+  /** Try to get the records array from a Knack view model. */
+  function getModelRecords(viewKey) {
     try {
-      var viewModel = Knack.models[CFG.worksheetView];
-      if (!viewModel || !viewModel.data) return;
-
-      var recs = viewModel.data.models || viewModel.data;
-      if (!recs || !recs.length) return;
-
-      var baseline = S.baseline();
-      var pending  = S.pending();
-
-      for (var i = 0; i < recs.length; i++) {
-        var attrs = recs[i].attributes || recs[i];
-        var id = attrs.id;
-        if (!id) continue;
-        // Don't overwrite baseline for records with pending CRs
-        if (pending[id]) continue;
-
-        var snap = {};
-        for (var f = 0; f < TF.length; f++) {
-          var fk = TF[f].key;
-          var raw = attrs[fk + '_raw'] != null ? attrs[fk + '_raw'] : attrs[fk];
-          snap[fk] = H.normVal(TF[f], raw);
+      var vm = Knack.models[viewKey];
+      if (!vm) return null;
+      // Backbone collection
+      if (vm.data && vm.data.models) {
+        var out = [];
+        for (var i = 0; i < vm.data.models.length; i++) {
+          out.push(vm.data.models[i].attributes || vm.data.models[i]);
         }
-        snap._label    = H.stripHtml(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
-        snap._product  = H.stripHtml(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
-        snap._addCount = attrs[CFG.addCountField] || 0;
-
-        baseline[id] = snap;
+        return out;
       }
+      // Plain array
+      if (vm.data && Array.isArray(vm.data)) return vm.data;
+      // toJSON
+      if (vm.data && typeof vm.data.toJSON === 'function') return vm.data.toJSON();
+    } catch (e) {}
+    return null;
+  }
 
-      if (CFG.debug) console.log('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
-    } catch (e) {
-      if (CFG.debug) console.warn('[SalesCR] buildBaseline error:', e);
+  /** Fallback: scrape field values from the DOM table (before transform). */
+  function scrapeBaselineFromDOM() {
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) return null;
+
+    var records = [];
+    $view.find('tbody tr[id]').each(function () {
+      var $tr = $(this);
+      var id = $tr.attr('id');
+      if (!id || id.indexOf('kn-') === 0) return;
+
+      var rec = { id: id };
+      for (var f = 0; f < TF.length; f++) {
+        var fk = TF[f].key;
+        var $td = $tr.find('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if ($td.length) {
+          rec[fk] = H.stripHtml($td.text());
+        }
+      }
+      // Identity fields
+      var $labelTd = $tr.find('td.' + CFG.labelField + ', td[data-field-key="' + CFG.labelField + '"]');
+      rec[CFG.labelField] = $labelTd.length ? H.stripHtml($labelTd.text()) : '';
+      var $prodTd = $tr.find('td.' + CFG.productField + ', td[data-field-key="' + CFG.productField + '"]');
+      rec[CFG.productField] = $prodTd.length ? H.stripHtml($prodTd.text()) : '';
+      var $countTd = $tr.find('td.' + CFG.addCountField + ', td[data-field-key="' + CFG.addCountField + '"]');
+      rec[CFG.addCountField] = $countTd.length ? H.stripHtml($countTd.text()) : '0';
+
+      records.push(rec);
+    });
+
+    return records.length ? records : null;
+  }
+
+  function buildBaseline() {
+    var baseline = S.baseline();
+    var pending  = S.pending();
+
+    // Try Knack model first, fall back to DOM scraping
+    var records = getModelRecords(CFG.worksheetView) || scrapeBaselineFromDOM();
+    if (!records || !records.length) {
+      if (CFG.debug) console.warn('[SalesCR] buildBaseline: no records found');
+      return;
     }
+
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i];
+      var id = attrs.id;
+      if (!id) continue;
+      if (pending[id]) continue;
+
+      var snap = {};
+      for (var f = 0; f < TF.length; f++) {
+        var fk = TF[f].key;
+        var raw = attrs[fk + '_raw'] != null ? attrs[fk + '_raw'] : attrs[fk];
+        snap[fk] = H.normVal(TF[f], raw);
+      }
+      snap._label    = H.stripHtml(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
+      snap._product  = H.stripHtml(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
+      snap._addCount = attrs[CFG.addCountField] || 0;
+
+      baseline[id] = snap;
+    }
+
+    if (CFG.debug) console.log('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -65,11 +115,15 @@
     if (!record || !record.id) return;
     var id = record.id;
 
+    if (CFG.debug) console.log('[SalesCR] Cell update on', id);
+
     var baseline = S.baseline();
     var pending  = S.pending();
     var base     = baseline[id];
 
-    // No baseline yet — snapshot now (miss this first edit's "before")
+    // No baseline yet — snapshot the CURRENT (post-edit) state.
+    // We'll miss the diff for this first edit, but subsequent edits
+    // on this record will diff correctly.
     if (!base) {
       base = {};
       for (var f = 0; f < TF.length; f++) {
@@ -81,13 +135,13 @@
       base._product  = H.stripHtml(record[CFG.productField + '_raw'] || record[CFG.productField] || '');
       base._addCount = record[CFG.addCountField] || 0;
       baseline[id] = base;
-      if (CFG.debug) console.log('[SalesCR] Late baseline for', id);
+      if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
       return;
     }
 
-    // Don't auto-update remove or note CRs
+    // Don't auto-update remove CRs (user explicitly chose removal)
     var existing = pending[id];
-    if (existing && (existing.action === 'remove' || existing.action === 'note')) return;
+    if (existing && existing.action === 'remove') return;
 
     // Diff tracked fields against baseline
     var changes = {};
@@ -102,7 +156,10 @@
       }
     }
 
-    if (!hasChanges) return;
+    if (!hasChanges) {
+      if (CFG.debug) console.log('[SalesCR] No tracked-field changes for', id);
+      return;
+    }
 
     var isAdd = S.isAddMode() && parseFloat(base._addCount) !== 0;
 
@@ -112,6 +169,7 @@
         existing.requested[rk] = changes[rk];
         if (existing.current[rk] == null) existing.current[rk] = base[rk];
       }
+      if (CFG.debug) console.log('[SalesCR] Updated existing CR for', id, ':', changes);
     } else {
       // New CR
       var current = {};
@@ -126,11 +184,11 @@
         requested:    changes,
         changeNotes:  '',
       };
+      if (CFG.debug) console.log('[SalesCR] Created new CR for', id, ':', changes);
     }
 
     ns.persist();
     if (ns.refresh) ns.refresh();
-    if (CFG.debug) console.log('[SalesCR] Auto CR for', id, ':', changes);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -141,7 +199,6 @@
     var $pv = $('#' + CFG.proposalView);
     if (!$pv.length) { S.setAddMode(false); return; }
 
-    // Try data-field-key attribute first, then class-based selector
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
     if (!$cell.length) $cell = $pv.find('.field_' + CFG.addModeField.replace('field_', ''));
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
@@ -152,7 +209,6 @@
     if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + val + ')');
   }
 
-  /** Auto-create "add" CRs for records with field_2586 != 0 when in add mode. */
   function detectAddRecords() {
     if (!S.isAddMode()) return;
 

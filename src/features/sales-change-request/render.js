@@ -190,7 +190,7 @@
     var cr   = pending[recordId];
     var note = pending['note_' + recordId];
     if (cr) return { action: cr.action, hasNote: !!note };
-    if (note) return { action: 'note', hasNote: true };
+    if (note) return { action: note.action || 'note', hasNote: true };
     return null;
   }
 
