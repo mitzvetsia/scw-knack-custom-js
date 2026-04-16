@@ -3732,6 +3732,17 @@ window.SCW = window.SCW || {};
   var LOG = '[SCW AccMenuInject]';
   var KEYWORD = '_scwMenu';
 
+  // ── Configuration: accordion view → menu view(s) ──
+  // Primary lookup. Format: { innerViewId: 'menuViewId' }
+  // Comma-separate for multiple: { innerViewId: 'view_A,view_B' }
+  var MENU_MAP = {
+    'view_3476': 'view_3777',           // Site Maps ← menu
+    'view_3522': 'view_3482',           // Additional Photos ← menu
+    'view_3602': 'view_3654',           // MDF & IDFs ← menu
+    'view_3586': 'view_3450',           // SOW Line Items ← menu
+    'view_3471': 'view_3787',           // Licenses ← menu
+  };
+
   // ── State ──────────────────────────────────────────
   var _debounceTimer = null;
   var _sceneObserver = null;
@@ -3831,10 +3842,21 @@ window.SCW = window.SCW || {};
    * (e.g. ['view_3777']) or null if the keyword is not set.
    *
    * Lookup order:
+   *   0. MENU_MAP hardcoded config           (most reliable)
    *   1. window.ktlKeywords[viewKey]._scwMenu  (KTL pre-parsed cache)
    *   2. Knack view model description / title   (raw text scrape)
    */
   function readMenuKeyword(viewKey) {
+    // ── 0. Hardcoded config map ──
+    if (MENU_MAP[viewKey]) {
+      var ids0 = MENU_MAP[viewKey].split(',').map(function (s) { return s.trim(); })
+                    .filter(function (s) { return /^view_\d+$/.test(s); });
+      if (ids0.length) {
+        console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
+        return ids0;
+      }
+    }
+
     // ── 1. KTL keyword cache ──
     try {
       var kw = window.ktlKeywords;
