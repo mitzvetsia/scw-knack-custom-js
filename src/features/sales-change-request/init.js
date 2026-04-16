@@ -13,6 +13,9 @@
   var CFG = ns.CONFIG;
   var S   = ns._state;
 
+  // Track which scene we're on so we only reset when truly navigating away
+  var _activeScene = '';
+
   // ── Combined refresh (called after any mutation) ──────
 
   function refresh() {
@@ -23,9 +26,13 @@
   ns.refresh = refresh;
 
   // ── Worksheet view render ─────────────────────────────
+  // Fires on initial load AND on re-renders triggered by
+  // refresh-on-inline-edit.js (model.fetch after cell updates).
+  // We re-inject UI every time since re-render wipes the DOM.
 
   SCW.onViewRender(CFG.worksheetView, function () {
     S.setOnPage(true);
+    _activeScene = Knack.router.current_scene_key || '';
     ns.injectStyles();
     ns.buildBaseline();
 
@@ -38,6 +45,9 @@
   }, CFG.eventNs);
 
   // ── Cell update → auto-create CR ──────────────────────
+  // Fires BEFORE the view re-renders. We capture the change here;
+  // the subsequent view-render will re-inject the UI with the
+  // updated pending state.
 
   $(document)
     .off('knack-cell-update.' + CFG.worksheetView + CFG.eventNs)
@@ -64,13 +74,21 @@
     }, 300);
   }, CFG.eventNs);
 
-  // ── Scene change → reset page flag, hide action bar ───
+  // ── Scene change → only reset when navigating AWAY ────
+  // refresh-on-inline-edit.js triggers model.fetch() on sibling
+  // views after any cell update, which can fire scene-render on
+  // the SAME scene. We must not wipe state when that happens.
 
   $(document)
     .off('knack-scene-render.any' + CFG.eventNs)
     .on('knack-scene-render.any' + CFG.eventNs, function () {
+      var newScene = Knack.router.current_scene_key || '';
+      if (_activeScene && newScene === _activeScene) return;
+
+      // Truly navigated away
       S.setOnPage(false);
       S.setBaseline({});
+      _activeScene = '';
       ns.renderActionBar();
     });
 
