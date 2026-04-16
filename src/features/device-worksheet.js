@@ -5570,6 +5570,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
         card.classList.add(P + '-locked');
+        // Lock chip containers (radio chips for mounting height, exterior, etc.)
+        var chipContainers = card.querySelectorAll('.' + P + '-radio-chips');
+        for (var lci = 0; lci < chipContainers.length; lci++) {
+          chipContainers[lci].classList.add(P + '-chips-locked');
+        }
+        // Lock chip stacks (boolean chip groups for exterior/plenum)
+        var chipStacks = card.querySelectorAll('.scw-chip-stack, .' + P + '-chips');
+        for (var lsi = 0; lsi < chipStacks.length; lsi++) {
+          chipStacks[lsi].classList.add(P + '-chips-locked');
+        }
+        // Lock toggle chits (existing cabling)
+        var chitHosts = card.querySelectorAll('[data-scw-cabling-src], .' + P + '-sum-chip-host');
+        for (var lhi = 0; lhi < chitHosts.length; lhi++) {
+          chitHosts[lhi].classList.add(P + '-chit-locked');
+        }
         // Block Knack's native inline-edit popup modals on locked rows
         // but allow the toggle-zone (chevron + identity) so the detail panel still opens
         card.addEventListener('click', function (e) {
