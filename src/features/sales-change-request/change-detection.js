@@ -97,8 +97,8 @@
         var raw = attrs[fk + '_raw'] != null ? attrs[fk + '_raw'] : attrs[fk];
         snap[fk] = H.normVal(TF[f], raw);
       }
-      snap._label    = H.stripHtml(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
-      snap._product  = H.stripHtml(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
+      snap._label    = H.readableVal(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
+      snap._product  = H.readableVal(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
       snap._addCount = attrs[CFG.addCountField] || 0;
 
       baseline[id] = snap;

@@ -68,6 +68,16 @@
     return String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
   }
 
+  /** Extract a human-readable string from a Knack field value.
+   *  Handles connection _raw arrays, HTML strings, and plain text. */
+  function readableVal(raw) {
+    if (raw == null || raw === '') return '';
+    if (Array.isArray(raw)) {
+      return raw.map(function (r) { return r.identifier || r.id || String(r); }).join(', ');
+    }
+    return stripHtml(raw);
+  }
+
   function fmtCurrency(v) {
     if (v == null || v === 0) return '$0.00';
     return '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -154,6 +164,7 @@
     el:               el,
     escHtml:          escHtml,
     stripHtml:        stripHtml,
+    readableVal:      readableVal,
     fmtCurrency:      fmtCurrency,
     normVal:          normVal,
     formatFieldValue: formatFieldValue,

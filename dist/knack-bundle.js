@@ -31189,6 +31189,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
   }
 
+  /** Extract a human-readable string from a Knack field value.
+   *  Handles connection _raw arrays, HTML strings, and plain text. */
+  function readableVal(raw) {
+    if (raw == null || raw === '') return '';
+    if (Array.isArray(raw)) {
+      return raw.map(function (r) { return r.identifier || r.id || String(r); }).join(', ');
+    }
+    return stripHtml(raw);
+  }
+
   function fmtCurrency(v) {
     if (v == null || v === 0) return '$0.00';
     return '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -31275,6 +31285,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     el:               el,
     escHtml:          escHtml,
     stripHtml:        stripHtml,
+    readableVal:      readableVal,
     fmtCurrency:      fmtCurrency,
     normVal:          normVal,
     formatFieldValue: formatFieldValue,
@@ -31637,8 +31648,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var raw = attrs[fk + '_raw'] != null ? attrs[fk + '_raw'] : attrs[fk];
         snap[fk] = H.normVal(TF[f], raw);
       }
-      snap._label    = H.stripHtml(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
-      snap._product  = H.stripHtml(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
+      snap._label    = H.readableVal(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
+      snap._product  = H.readableVal(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
       snap._addCount = attrs[CFG.addCountField] || 0;
 
       baseline[id] = snap;
