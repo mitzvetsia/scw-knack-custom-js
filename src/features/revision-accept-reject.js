@@ -79,7 +79,9 @@
       var recordId = tr.id;
       if (!recordId) continue;
 
-      var actionTd = tr.querySelector('td.kn-table-action-link');
+      var knackActionLink = tr.querySelector('a.kn-action-link');
+      if (!knackActionLink) continue;
+      var actionTd = knackActionLink.closest('td');
       if (!actionTd) continue;
       if (actionTd.querySelector('.scw-rev-actions')) continue;
 
