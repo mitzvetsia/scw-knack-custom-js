@@ -6055,6 +6055,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
           setTimeout(function () { transformView(viewCfg); syncDeleteVisibility(); }, 150);
+          // Second pass after SPA navigation settles (form redirects
+          // can leave the browser mid-layout when the first pass runs).
+          setTimeout(function () { transformView(viewCfg); }, 600);
         });
 
       $(document)
