@@ -97,6 +97,8 @@
     debouncedSaveDraft();
   }
 
+  function pendingCount() { return Object.keys(_pending).length; }
+
   /** Rehydrate pending state from field_2707. Called by init after
    *  the worksheet view renders and we know the SOW record ID. */
   function rehydrateFromKnack() {
