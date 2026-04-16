@@ -31303,6 +31303,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  justify-content: center; align-self: flex-start;',
       '  flex-shrink: 0; position: relative;',
       '  min-width: 22px; padding: 5px 4px 0 4px;',
+      '  overflow: visible;',
       '}',
       '.' + P + '-action-btn {',
       '  display: inline-flex; align-items: center; justify-content: center;',
@@ -32299,6 +32300,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function closePopover() {
     if (_openPopover) {
+      // Remove z-index boost from ancestor card
+      var boosted = _openPopover.closest('.' + P + '-action-wrap');
+      if (boosted) {
+        var parentCard = boosted.closest('.scw-ws-card');
+        if (parentCard) parentCard.style.zIndex = '';
+        var parentTr = boosted.closest('tr');
+        if (parentTr) parentTr.style.zIndex = '';
+      }
       _openPopover.remove();
       _openPopover = null;
     }
@@ -32340,6 +32349,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var $deleteWrap = $card.find('.scw-ws-sum-delete');
       if (!$deleteWrap.length) return;
 
+      // Skip rows where the delete button is visible (field_2586 = 0)
+      if ($deleteWrap[0].style.visibility !== 'hidden') return;
+
       // Build action button
       var state = rowActionState(recordId);
       var wrap = H.el('span', P + '-action-wrap');
@@ -32356,6 +32368,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         e.stopPropagation();
         e.preventDefault();
         closePopover();
+
+        // Boost z-index on ancestor elements so popover escapes overflow
+        var parentCard = wrap.closest('.scw-ws-card');
+        if (parentCard) parentCard.style.zIndex = '10002';
+        var parentTr = wrap.closest('tr');
+        if (parentTr) parentTr.style.zIndex = '10002';
 
         var pop = buildPopover(recordId);
         wrap.appendChild(pop);

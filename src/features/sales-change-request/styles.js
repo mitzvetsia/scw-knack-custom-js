@@ -20,6 +20,7 @@
       '  justify-content: center; align-self: flex-start;',
       '  flex-shrink: 0; position: relative;',
       '  min-width: 22px; padding: 5px 4px 0 4px;',
+      '  overflow: visible;',
       '}',
       '.' + P + '-action-btn {',
       '  display: inline-flex; align-items: center; justify-content: center;',
