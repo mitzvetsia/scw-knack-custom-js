@@ -31327,9 +31327,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '}',
       '.' + P + '-action-btn--remove:hover { background: #b91c1c; }',
       '.' + P + '-action-btn--note {',
-      '  background: #f59e0b; color: #fff;',
+      '  background: #60a5fa; color: #fff;',
       '}',
-      '.' + P + '-action-btn--note:hover { background: #d97706; }',
+      '.' + P + '-action-btn--note:hover { background: #3b82f6; }',
       '.' + P + '-action-btn--has-note {',
       '  box-shadow: 0 0 0 2px #fbbf24;',
       '}',
@@ -31369,7 +31369,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.' + P + '-card--revise { background: #eff6ff;  border: 1px solid #3b82f633; color: #1e40af; }',
       '.' + P + '-card--add    { background: #f0fdf4;  border: 1px solid #16a34a33; color: #166534; }',
       '.' + P + '-card--remove { background: #fef2f2;  border: 1px solid #dc262633; color: #991b1b; }',
-      '.' + P + '-card--note   { background: #fffbeb;  border: 1px solid #f59e0b33; color: #92400e; }',
+      '.' + P + '-card--note   { background: #eff6ff;  border: 1px solid #60a5fa33; color: #1e40af; }',
       '.' + P + '-card-header {',
       '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
       '  letter-spacing: .04em; margin-bottom: 4px;',
@@ -31419,7 +31419,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.' + P + '-bar-btn:hover { filter: brightness(.92); }',
       '.' + P + '-bar-btn--draft  { background: #e2e8f0; color: #475569; }',
       '.' + P + '-bar-btn--submit { background: #3b82f6; color: #fff; }',
-      '.' + P + '-bar-btn--note   { background: #f59e0b; color: #fff; }',
+      '.' + P + '-bar-btn--note   { background: #60a5fa; color: #fff; }',
       '.' + P + '-bar-btn--clear  {',
       '  background: none; border: none; color: #94a3b8;',
       '  font-size: 12px; cursor: pointer; text-decoration: underline;',
@@ -32468,8 +32468,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (state) {
         var iconCls = state.action === 'add'    ? 'fa-plus'
                     : state.action === 'remove' ? 'fa-minus-circle'
-                    : state.action === 'note'   ? 'fa-sticky-note'
-                    :                             'fa-pencil-square';
+                    : state.action === 'note'   ? 'fa-comment'
+                    :                             'fa-pencil';
         btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
         btn.classList.add(P + '-action-btn--' + state.action);
         if (state.hasNote && state.action !== 'note') {

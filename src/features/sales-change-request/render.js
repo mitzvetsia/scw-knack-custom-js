@@ -233,8 +233,8 @@
       if (state) {
         var iconCls = state.action === 'add'    ? 'fa-plus'
                     : state.action === 'remove' ? 'fa-minus-circle'
-                    : state.action === 'note'   ? 'fa-sticky-note'
-                    :                             'fa-pencil-square';
+                    : state.action === 'note'   ? 'fa-comment'
+                    :                             'fa-pencil';
         btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
         btn.classList.add(P + '-action-btn--' + state.action);
         if (state.hasNote && state.action !== 'note') {
