@@ -47,6 +47,24 @@
     opts = opts || {};
     var action = item.action || 'revise';
     var card = H.el('div', P + '-card ' + P + '-card--' + action);
+    card.style.cursor = 'pointer';
+    card.title = 'Click to edit';
+
+    // Click card → open appropriate edit modal
+    card.addEventListener('click', function (e) {
+      if (e.target.closest('.' + P + '-card-dismiss')) return;
+      if (item.action === 'add' && item.rowId) {
+        ns.openAddNote(item.rowId);
+      } else if (item.action === 'remove' && item.rowId) {
+        ns.openRemove(item.rowId);
+      } else if (item.action === 'note' && item.rowId) {
+        ns.openRowNote(item.rowId);
+      } else if (item.action === 'note' && !item.rowId) {
+        ns.openEditGlobalNote(pendingKey);
+      } else if (item.action === 'revise' && item.rowId) {
+        ns.openEditReviseNote(item.rowId);
+      }
+    });
 
     var headerText = action === 'add'    ? 'ADD'
                    : action === 'remove' ? 'REMOVAL'

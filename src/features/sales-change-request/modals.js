@@ -320,10 +320,126 @@
     setTimeout(function () { ta.focus(); }, 50);
   }
 
+  // ── Edit global (non-row) note by pending key ──────
+
+  function openEditGlobalNoteModal(pendingKey) {
+    ns.injectStyles();
+    closeModal();
+
+    var pending = S.pending();
+    var existing = pending[pendingKey];
+    if (!existing) return;
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Edit Note'));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.rows = 4;
+    ta.value = existing.changeNotes || '';
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Update Note');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+      existing.changeNotes = text;
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast('Note updated', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Edit note on a revise CR ──────────────────────
+
+  function openEditReviseNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var pending = S.pending();
+    var item = pending[recordId];
+    if (!item) return;
+
+    var label = item.displayLabel || item.productName || recordId;
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Edit Change Note'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', label));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Add or edit a note for this change request.'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Additional notes about this change\u2026';
+    ta.rows = 3;
+    ta.value = item.changeNotes || '';
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Save Note');
+    saveBtn.addEventListener('click', function () {
+      item.changeNotes = ta.value.trim();
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast('Note saved', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
   // ── Public API ──
-  ns.openNote    = openNoteModal;
-  ns.openRowNote = openRowNoteModal;
-  ns.openAddNote = openAddNoteModal;
-  ns.openRemove  = openRemoveModal;
+  ns.openNote           = openNoteModal;
+  ns.openRowNote        = openRowNoteModal;
+  ns.openAddNote        = openAddNoteModal;
+  ns.openRemove         = openRemoveModal;
+  ns.openEditGlobalNote = openEditGlobalNoteModal;
+  ns.openEditReviseNote = openEditReviseNoteModal;
 
 })();
