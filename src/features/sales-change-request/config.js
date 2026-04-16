@@ -63,7 +63,7 @@
     // ── Persistence ────────────────────────────────────────
     storageKey:       'scw-sales-cr-pending',
     draftField:       'field_2707',  // paragraph field on SOW record for cross-session draft
-    draftView:        'view_3491',  // view on the same page that has the SOW record (for API calls)
+    draftView:        'view_3841',  // editable view on the same page for SOW record API calls
 
     // ── Debug / styling ────────────────────────────────────
     debug:            true,
