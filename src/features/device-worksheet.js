@@ -2348,7 +2348,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   /** Check if a td has been explicitly locked/grayed by conditional modules. */
   function isCellLocked(td) {
     if (!td) return false;
-    return td.classList.contains('scw-cond-grayed') || td.classList.contains('scw-cell-locked');
+    return td.classList.contains('scw-cond-grayed')
+        || td.classList.contains('scw-cell-locked')
+        || td.classList.contains(P + '-td-locked');
   }
 
   function getRecordId(tr) {
@@ -2566,7 +2568,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!triggerTd) return;
 
       var locked = triggerTd.classList.contains('scw-cond-grayed')
-                || triggerTd.classList.contains('scw-cell-locked');
+                || triggerTd.classList.contains('scw-cell-locked')
+                || triggerTd.classList.contains(P + '-td-locked');
       if (!locked) return;
 
       // Hide the trigger field's label (e.g. "Qty" label when qty is locked)
@@ -5134,9 +5137,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     applyConditionalHide(card, tr, viewCfg);
 
     // ── Apply showWhenFieldIsYes visibility ──
-    // Skip when the row is fully locked (field_2551 = Yes) — locked rows
-    // show all fields as read-only regardless of showWhenFieldIsYes guards.
-    var isRowLocked = !!card.querySelector('td.scw-cell-locked');
     var fNames = Object.keys(viewCfg.fields);
     // Check if this row's bucket rule has a descLabel (Services/Assumptions) —
     // if so, skip all showWhenFieldIsYes guards; bucket hideFields handles hiding instead.
@@ -5145,7 +5145,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var swi = 0; swi < fNames.length; swi++) {
       var swDesc = viewCfg.fields[fNames[swi]];
       if (!swDesc.showWhenFieldIsYes) continue;
-      if (isRowLocked) continue;
       if (swBucketRule && swBucketRule.descLabel) continue;
       var guardTd = tr.querySelector('td.' + swDesc.showWhenFieldIsYes)
                  || card.querySelector('td[data-field-key="' + swDesc.showWhenFieldIsYes + '"]');
@@ -5554,13 +5553,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
       // ── Lock all fields if field_2551 = Yes (row is finalized) ──
+      // Uses a worksheet-specific class (P + '-td-locked') instead of
+      // 'scw-cell-locked' to avoid picking up lock-fields.js CSS
+      // (slategray background + "N/A" badge) that is meant for
+      // individual cell locks, not whole-row finalization.
       var lockTd = tr.querySelector('td.field_2551');
       var isLocked = lockTd && /yes/i.test((lockTd.textContent || '').trim());
       if (isLocked) {
         var allTds = tr.querySelectorAll('td');
         for (var lk = 0; lk < allTds.length; lk++) {
           allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
-          allTds[lk].classList.add('scw-cell-locked');
+          allTds[lk].classList.add(P + '-td-locked');
         }
       }
 
