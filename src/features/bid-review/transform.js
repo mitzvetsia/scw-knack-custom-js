@@ -19,7 +19,7 @@
 
   /** Strip HTML tags from a string — Knack wraps connection values in <span>. */
   function stripHtml(str) {
-    if (!str) return '';
+    if (str == null || str === '') return '';
     return String(str).replace(/<[^>]*>/g, '').trim();
   }
 
