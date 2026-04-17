@@ -148,30 +148,35 @@
 
     injectStyles();
 
-    // Inject header cell
-    $mount.find('.scw-bid-review__header-row').each(function () {
-      var $headerRow = $(this);
-      if ($headerRow.find('.' + P + '-header').length) return;
-
+    // Inject into header rows (3-row layout)
+    // Row 1 (titles): insert TH after Line Item
+    $mount.find('.scw-bid-review__header-titles').each(function () {
+      if ($(this).find('.' + P + '-header').length) return;
       var th = document.createElement('th');
       th.className = P + '-header';
+      th.textContent = CFG.colHeaderText;
+      $(this).find('th').first().after(th);
+    });
 
-      // Unified header: status placeholder + title + Convert All button
-      th.appendChild(elDiv('scw-bid-review__col-status', '\u00a0'));
-      th.appendChild(elDiv('scw-bid-review__col-title', CFG.colHeaderText));
+    // Row 2 (details): insert empty TD
+    $mount.find('.scw-bid-review__header-details').each(function () {
+      if ($(this).find('.' + P + '-detail-placeholder').length) return;
+      var td = document.createElement('td');
+      td.className = P + '-detail-placeholder';
+      $(this).find('td').first().after(td);
+    });
 
-      var btnWrap = document.createElement('div');
-      btnWrap.className = 'scw-bid-review__col-buttons';
+    // Row 3 (actions): insert TD with Convert All button
+    $mount.find('.scw-bid-review__header-actions').each(function () {
+      if ($(this).find('.' + P + '-action-header').length) return;
+      var td = document.createElement('td');
+      td.className = P + '-action-header scw-bid-review__header-action-cell';
       var convertBtn = document.createElement('button');
       convertBtn.className = 'scw-bid-review__btn scw-bid-review__btn--adopt';
       convertBtn.textContent = 'Convert All \u2192';
-      convertBtn.setAttribute('data-sr-convert-all', '1');
       convertBtn.addEventListener('click', handleConvertAll);
-      btnWrap.appendChild(convertBtn);
-      th.appendChild(btnWrap);
-
-      var $firstTh = $headerRow.find('th').first();
-      $firstTh.after(th);
+      td.appendChild(convertBtn);
+      $(this).find('td').first().after(td);
     });
 
     // Inject data cells — match on data-sow-item-id (SOW line item ID)

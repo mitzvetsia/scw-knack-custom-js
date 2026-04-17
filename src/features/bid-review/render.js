@@ -125,42 +125,38 @@
 
   // ── table header for a SOW grid ─────────────────────────────
 
-  function buildHeaderRow(sowGrid) {
-    var tr = el('tr', 'scw-bid-review__header-row');
+  function buildHeaderRows(sowGrid) {
+    var rows = [];
+    var colCount = 2 + sowGrid.packages.length + 1; // line item + sow + packages + CR
 
-    // ── LINE ITEM ──
-    var liTh = el('th', 'scw-bid-review__sow-header');
-    liTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
-    liTh.appendChild(el('div', 'scw-bid-review__col-title', 'Line Item'));
-    tr.appendChild(liTh);
-
-    // ── SOW DETAIL ──
-    var sowTh = el('th', 'scw-bid-review__sow-detail-header');
-    sowTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
-    sowTh.appendChild(el('div', 'scw-bid-review__col-title', 'SOW'));
-    tr.appendChild(sowTh);
-
-    // ── BID PACKAGE columns ──
+    // ═══ ROW 1: Column titles ═══
+    var r1 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-titles');
+    r1.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
+    // Sales Revisions column injected externally — leave gap
+    r1.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW'));
     for (var i = 0; i < sowGrid.packages.length; i++) {
-      var pkg = sowGrid.packages[i];
+      r1.appendChild(el('th', 'scw-bid-review__pkg-header', 'Bid'));
+    }
+    r1.appendChild(el('th', 'scw-bid-review__actions-header', 'Sub Bid Revisions'));
+    rows.push(r1);
 
-      var th = el('th', 'scw-bid-review__pkg-header');
+    // ═══ ROW 2: Details (status, name, links) ═══
+    var r2 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-details');
+    r2.appendChild(el('td', '')); // line item
+    r2.appendChild(el('td', '')); // sow
 
-      // Status badge
+    for (var j = 0; j < sowGrid.packages.length; j++) {
+      var pkg = sowGrid.packages[j];
+      var td = el('td', 'scw-bid-review__header-detail-cell');
+
       var statusVal = pkg.bidStatus || '';
       if (statusVal) {
         var badge = el('span', 'scw-bid-review__status-badge');
         badge.textContent = statusVal;
         badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
-        th.appendChild(badge);
-      } else {
-        th.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+        td.appendChild(badge);
       }
 
-      // Title: "BID"
-      th.appendChild(el('div', 'scw-bid-review__col-title', 'Bid'));
-
-      // Subtitle: "BD-# [PDF icon]" on same row
       var subtitle = el('div', 'scw-bid-review__col-subtitle');
       subtitle.appendChild(document.createTextNode(pkg.name));
       if (pkg.pdfUrl) {
@@ -172,65 +168,66 @@
         pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
         subtitle.appendChild(pdfLink);
       }
-      th.appendChild(subtitle);
+      td.appendChild(subtitle);
 
-      // Pending CR link
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
-        var links = el('div', 'scw-bid-review__col-links');
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;
         crLink.className = 'scw-bid-review__cr-link';
         crLink.textContent = pkg.crPendingCount + ' pending CR' + (pkg.crPendingCount !== 1 ? 's' : '');
-        links.appendChild(crLink);
-        th.appendChild(links);
+        td.appendChild(crLink);
       }
 
-      // Buttons (stacked)
-      var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
+      r2.appendChild(td);
+    }
+
+    r2.appendChild(el('td', '')); // CR column
+    rows.push(r2);
+
+    // ═══ ROW 3: Action buttons ═══
+    var r3 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-actions');
+    r3.appendChild(el('td', '')); // line item
+    r3.appendChild(el('td', '')); // sow
+
+    for (var k = 0; k < sowGrid.packages.length; k++) {
+      var pkg2 = sowGrid.packages[k];
+      var statusVal2 = pkg2.bidStatus || '';
+      var isSubmitted = /^submitted$/i.test(String(statusVal2).trim());
+      var actionTd = el('td', 'scw-bid-review__header-action-cell');
+
       if (isSubmitted) {
-        var actions = el('div', 'scw-bid-review__col-buttons');
-        actions.appendChild(btn(
+        actionTd.appendChild(btn(
           'Sync to SOW', 'adopt',
-          { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+          { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
-        actions.appendChild(btn(
+        actionTd.appendChild(btn(
           'Create new SOW', 'create',
-          { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+          { 'data-action': 'package_create_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
-        th.appendChild(actions);
       }
 
-      tr.appendChild(th);
+      r3.appendChild(actionTd);
     }
 
-    // ── SUB BID REVISIONS (Change Requests) ──
-    var crTh = el('th', 'scw-bid-review__actions-header');
-    crTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
-    crTh.appendChild(el('div', 'scw-bid-review__col-title', 'Sub Bid Revisions'));
-
+    // CR column buttons
+    var crTd = el('td', 'scw-bid-review__header-action-cell');
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
-    var hasPending = Object.keys(pending).length > 0;
-
-    if (hasPending) {
-      var crActions = el('div', 'scw-bid-review__col-buttons');
-
-      var pkgIds = Object.keys(pending);
-      for (var si = 0; si < pkgIds.length; si++) {
-        var sPkg = pending[pkgIds[si]];
-        if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
-        crActions.appendChild(btn(
-          'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
-          { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
-        ));
-      }
-
-      crActions.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
-      crTh.appendChild(crActions);
+    var pkgIds = Object.keys(pending);
+    for (var si = 0; si < pkgIds.length; si++) {
+      var sPkg = pending[pkgIds[si]];
+      if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
+      crTd.appendChild(btn(
+        'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
+        { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
+      ));
     }
+    if (pkgIds.length) {
+      crTd.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
+    }
+    r3.appendChild(crTd);
+    rows.push(r3);
 
-    tr.appendChild(crTh);
-
-    return tr;
+    return rows;
   }
 
   // ── cabling visibility helper ─────────────────────────────────
@@ -914,7 +911,10 @@
       var table = el('table', 'scw-bid-review__table');
 
       var thead = document.createElement('thead');
-      thead.appendChild(buildHeaderRow(sowGrid));
+      var headerRows = buildHeaderRows(sowGrid);
+      for (var hi = 0; hi < headerRows.length; hi++) {
+        thead.appendChild(headerRows[hi]);
+      }
       table.appendChild(thead);
 
       var tbody = document.createElement('tbody');
