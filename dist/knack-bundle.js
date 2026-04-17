@@ -17214,6 +17214,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           var crLabel = action === 'add'    ? 'Add \u2192'
                       : action === 'remove' ? 'Remove \u2192'
                       :                       'Revise \u2192';
+          var crMod   = action === 'add'    ? 'create'
+                      : action === 'remove' ? 'remove'
+                      :                       'revise';
           var crChoices = [];
           for (var cp = 0; cp < packages.length; cp++) {
             crChoices.push({
@@ -17226,7 +17229,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
               }
             });
           }
-          actions.appendChild(buildSROverflow(crLabel, 'create', crChoices));
+          actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
 
           item.appendChild(actions);
           td.appendChild(item);
