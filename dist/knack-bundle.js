@@ -31045,6 +31045,2434 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 // ============================================================
 // End Device Worksheet
 // ============================================================
+/*** SALES CHANGE REQUEST — CONFIGURATION ***/
+/**
+ * Centralized config for the Sales Change Request feature.
+ * All view IDs, field keys, webhook URLs, and tuning knobs live here.
+ *
+ * Writes: SCW.salesCR.CONFIG
+ */
+(function () {
+  'use strict';
+
+  var ns = (window.SCW.salesCR = window.SCW.salesCR || {});
+
+  ns.CONFIG = {
+    // ── Knack scene / views ────────────────────────────────
+    worksheetView:    'view_3586',   // SOW line-item device worksheet (primary grid)
+    proposalView:     'view_3491',   // Proposal details — has field_2706 (add-mode flag)
+    revisionView:     'view_3837',   // Submitted revision line items (data source, hidden)
+
+    // ── Add-mode detection ─────────────────────────────────
+    // When field_2706 = "Yes" on the proposal view, records in the
+    // worksheet where field_2586 != 0 are treated as "add" change requests.
+    addModeField:     'field_2706',  // on proposalView — "Yes" = revisions active
+    addCountField:    'field_2586',  // on worksheetView — != 0 → treat as "add" CR
+
+    // ── Display / identity fields (worksheetView) ──────────
+    labelField:       'field_1950',  // display label (e.g. "E-003")
+    productField:     'field_1949',  // product name
+    bucketField:      'field_2219',  // proposal bucket (grouping)
+    laborHoursField:  'field_1981',  // product-specific default labor hours
+
+    // ── Make webhooks ──────────────────────────────────────
+    submitWebhook:    'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_SUBMIT',
+    draftWebhook:     'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_DRAFT',
+
+    // ── Revision injection (view_3837 → view_3586) ─────────
+    // These are the same revision-request-line-item fields used
+    // by bid-revision-inject.js (view_3823 → view_3505).
+    revSowItemField:  'field_2644',  // connection: revision → SOW line item
+    revStatusField:   'field_2645',  // revision status text
+    revHtmlField:     'field_2695',  // rich-text HTML card
+    revJsonField:     'field_2696',  // JSON data
+
+    // ── Fields tracked for automatic change detection ──────
+    // Any inline edit on these fields in the worksheet creates
+    // or updates a pending "revise" (or "add") change request.
+    trackedFields: [
+      { key: 'field_1949', label: 'Product',           type: 'connection' },
+      { key: 'field_1964', label: 'Quantity',          type: 'number' },
+      { key: 'field_2261', label: 'Custom Discount %', type: 'number', pct: true },
+      { key: 'field_2262', label: 'Custom Discount $', type: 'number', currency: true },
+      { key: 'field_2020', label: 'Labor Description', type: 'text' },
+      { key: 'field_1953', label: 'SCW Notes',         type: 'text' },
+      { key: 'field_2461', label: 'Existing Cabling',  type: 'boolean' },
+      { key: 'field_1984', label: 'Exterior',          type: 'boolean' },
+      { key: 'field_1965', label: 'Drop Length',       type: 'text' },
+      { key: 'field_1951', label: 'Drop Number',       type: 'number' },
+      { key: 'field_2240', label: 'Drop Prefix',       type: 'text' },
+    ],
+
+    // ── Timing ─────────────────────────────────────────────
+    uiDelay:          500,     // ms after view render before injecting UI
+    toastDuration:    3000,    // ms before toast auto-dismiss
+
+    // ── Persistence ────────────────────────────────────────
+    storageKey:       'scw-sales-cr-pending',
+    draftField:       'field_2707',  // paragraph field on SOW record for cross-session draft
+    draftView:        'view_3841',  // editable view on the same page for SOW record API calls
+
+    // ── Debug / styling ────────────────────────────────────
+    debug:            true,
+    eventNs:          '.scwSalesCR',
+    cssId:            'scw-sales-cr-css',
+    barId:            'scw-sales-cr-bar',
+    prefix:           'scw-scr',   // CSS class prefix
+  };
+
+})();
+/*** SALES CHANGE REQUEST — STATE + HELPERS ***/
+/**
+ * Shared state, persistence (sessionStorage), DOM/format helpers,
+ * and toast notifications.
+ *
+ * Reads : SCW.salesCR.CONFIG
+ * Writes: SCW.salesCR  (state helpers + public getters)
+ */
+(function () {
+  'use strict';
+
+  var ns  = (window.SCW.salesCR = window.SCW.salesCR || {});
+  var CFG = ns.CONFIG;
+  var P   = CFG.prefix;   // CSS class prefix
+
+  // ═══════════════════════════════════════════════════════════
+  //  STATE
+  // ═══════════════════════════════════════════════════════════
+
+  // id → { rowId, displayLabel, productName, action, current, requested, changeNotes }
+  var _pending  = {};
+  // recordId → { fieldKey: normalised value, _label, _product, _addCount }
+  var _baseline = {};
+  // true when field_2706 = "Yes" on proposalView
+  var _isAddMode = false;
+  // records loaded from view_3837
+  var _revisionData = [];
+  // true when worksheetView is on the current page
+  var _onPage = false;
+
+  // ── SessionStorage persistence (write-through cache) ───
+  function ssave() {
+    try { sessionStorage.setItem(CFG.storageKey, JSON.stringify(_pending)); } catch (e) {}
+  }
+  function sload() {
+    try {
+      var r = sessionStorage.getItem(CFG.storageKey);
+      if (r) _pending = JSON.parse(r);
+    } catch (e) {}
+  }
+
+  // ── Knack field persistence (field_2707 on SOW record) ──
+  // Mirrors the bid-review pattern: debounced writes to a paragraph
+  // field for cross-session durability.
+  var _saveTimer = null;
+  var _sowRecordId = '';   // set by init when the page loads
+  var SAVE_DEBOUNCE = 3000;
+
+  function setDraftRecordId(id) { _sowRecordId = id; }
+
+  /** Extract the SOW record ID from the URL hash.
+   *  URL pattern: #.../scope-of-work-details/<sowId>/... */
+  function detectSowRecordId() {
+    var hash = window.location.hash || '';
+    var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
+    if (match) {
+      _sowRecordId = match[1];
+      if (CFG.debug) console.log('[SalesCR] SOW record ID:', _sowRecordId);
+    }
+  }
+
+  function readDraftField() {
+    if (!_sowRecordId) return $.Deferred().resolve(null).promise();
+    return SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.draftView, _sowRecordId),
+      type: 'GET',
+    }).then(function (resp) {
+      var raw = resp[CFG.draftField + '_raw'] || resp[CFG.draftField] || '';
+      if (typeof raw === 'string') raw = raw.replace(/<[^>]*>/g, '').trim();
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    });
+  }
+
+  function writeDraftField(data) {
+    if (!_sowRecordId) return;
+    var body = {};
+    body[CFG.draftField] = data ? JSON.stringify(data) : '';
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.draftView, _sowRecordId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+    });
+  }
+
+  function debouncedSaveDraft() {
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function () {
+      _saveTimer = null;
+      var count = Object.keys(_pending).length;
+      writeDraftField(count ? _pending : null);
+    }, SAVE_DEBOUNCE);
+  }
+
+  function persist() {
+    ssave();
+    debouncedSaveDraft();
+  }
+
+  /** Force immediate write to field_2707 (no debounce). */
+  function forceSaveDraft() {
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+    var count = Object.keys(_pending).length;
+    if (CFG.debug) console.log('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
+    writeDraftField(count ? _pending : null);
+  }
+
+  function pendingCount() { return Object.keys(_pending).length; }
+
+  /** Rehydrate pending state from field_2707. Called by init after
+   *  the worksheet view renders and we know the SOW record ID. */
+  function rehydrateFromKnack() {
+    if (!_sowRecordId) return;
+    readDraftField().then(function (data) {
+      if (!data || typeof data !== 'object') return;
+      // Merge Knack data with any sessionStorage data (sessionStorage wins on conflicts)
+      var knackKeys = Object.keys(data);
+      var merged = false;
+      for (var i = 0; i < knackKeys.length; i++) {
+        if (!_pending[knackKeys[i]]) {
+          _pending[knackKeys[i]] = data[knackKeys[i]];
+          merged = true;
+        }
+      }
+      if (merged) {
+        ssave();
+        if (ns.refresh) ns.refresh();
+        if (CFG.debug) console.log('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
+      }
+    }).fail(function () {
+      if (CFG.debug) console.warn('[SalesCR] Knack rehydration failed — using sessionStorage');
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DOM HELPERS
+  // ═══════════════════════════════════════════════════════════
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  VALUE HELPERS
+  // ═══════════════════════════════════════════════════════════
+
+  function stripHtml(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+  }
+
+  /** Extract a human-readable string from a Knack field value.
+   *  Handles connection _raw arrays, HTML strings, and plain text. */
+  function readableVal(raw) {
+    if (raw == null || raw === '') return '';
+    if (Array.isArray(raw)) {
+      return raw.map(function (r) { return r.identifier || r.id || String(r); }).join(', ');
+    }
+    return stripHtml(raw);
+  }
+
+  /** Extract record IDs from a connection _raw array. Returns [] otherwise. */
+  function extractIds(raw) {
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+
+  function fmtCurrency(v) {
+    if (v == null || v === 0) return '$0.00';
+    return '$' + Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /** Normalise a raw Knack field value for comparison / display. */
+  function normVal(def, raw) {
+    if (raw == null || raw === '') return '';
+    if (def.type === 'number') {
+      var n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
+      return isFinite(n) ? n : 0;
+    }
+    if (def.type === 'connection') {
+      if (Array.isArray(raw)) return raw.map(function (r) { return r.identifier || r.id; }).join(', ');
+    }
+    return stripHtml(raw);
+  }
+
+  /** Human-readable display of a field value. */
+  function formatFieldValue(def, v) {
+    if (v === '' || v == null) return '\u2014';
+    if (def.currency) return fmtCurrency(v);
+    if (def.pct) return v + '%';
+    return String(v);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  TOAST
+  // ═══════════════════════════════════════════════════════════
+
+  var _toastTimer = null;
+
+  function showToast(msg, type) {
+    var id = P + '-toast';
+    var prev = document.getElementById(id);
+    if (prev) prev.remove();
+    if (_toastTimer) clearTimeout(_toastTimer);
+
+    var bg = type === 'success' ? '#16a34a' : type === 'error' ? '#dc2626' : '#0891b2';
+    var t = el('div', '', msg);
+    t.id = id;
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
+      'background:' + bg + ';color:#fff;padding:10px 20px;border-radius:8px;' +
+      'font:600 13px/1.3 system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:100002;';
+    document.body.appendChild(t);
+
+    _toastTimer = setTimeout(function () {
+      t.style.opacity = '0';
+      t.style.transition = 'opacity 300ms';
+      setTimeout(function () { if (t.parentNode) t.remove(); }, 300);
+    }, CFG.toastDuration);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  REHYDRATE ON LOAD
+  // ═══════════════════════════════════════════════════════════
+
+  sload();
+
+  // Force-save to Knack on tab close so no changes are lost
+  window.addEventListener('beforeunload', function () {
+    if (Object.keys(_pending).length && _sowRecordId) {
+      forceSaveDraft();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  //  EXPOSE ON NAMESPACE
+  // ═══════════════════════════════════════════════════════════
+
+  // State accessors (used by sibling modules)
+  ns._state = {
+    pending:      function ()  { return _pending; },
+    setPending:   function (p) { _pending = p; },
+    baseline:     function ()  { return _baseline; },
+    setBaseline:  function (b) { _baseline = b; },
+    isAddMode:    function ()  { return _isAddMode; },
+    setAddMode:   function (v) { _isAddMode = v; },
+    revisionData: function ()  { return _revisionData; },
+    setRevisionData: function (d) { _revisionData = d; },
+    onPage:       function ()  { return _onPage; },
+    setOnPage:    function (v) { _onPage = v; },
+  };
+
+  ns.persist             = persist;
+  ns.forceSaveDraft      = forceSaveDraft;
+  ns.pendingCount        = pendingCount;
+  ns.showToast           = showToast;
+  ns.setDraftRecordId    = setDraftRecordId;
+  ns.detectSowRecordId   = detectSowRecordId;
+  ns.rehydrateFromKnack  = rehydrateFromKnack;
+
+  // Helpers (used by sibling modules)
+  ns._h = {
+    el:               el,
+    escHtml:          escHtml,
+    stripHtml:        stripHtml,
+    readableVal:      readableVal,
+    extractIds:       extractIds,
+    fmtCurrency:      fmtCurrency,
+    normVal:          normVal,
+    formatFieldValue: formatFieldValue,
+  };
+
+})();
+/*** SALES CHANGE REQUEST — STYLES ***/
+/**
+ * CSS injection for action menu, cards, action bar, modals, and revision strips.
+ *
+ * Reads : SCW.salesCR.CONFIG
+ */
+(function () {
+  'use strict';
+
+  var CFG = window.SCW.salesCR.CONFIG;
+  var P   = CFG.prefix;
+
+  function inject() {
+    if (document.getElementById(CFG.cssId)) return;
+
+    var css = [
+      /* ── Action menu icon (next to delete slot) ── */
+      '.' + P + '-action-wrap {',
+      '  display: inline-flex; align-items: center;',
+      '  justify-content: center; align-self: flex-start;',
+      '  flex-shrink: 0;',
+      '  min-width: 22px; padding: 5px 4px 0 4px;',
+      '}',
+      '.' + P + '-action-btn {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 26px; height: 26px; border-radius: 5px;',
+      '  border: none; background: #e2e8f0;',
+      '  color: #64748b; cursor: pointer;',
+      '  transition: all .15s; line-height: 1; padding: 0;',
+      '}',
+      '.' + P + '-action-btn:hover {',
+      '  background: #cbd5e1; color: #334155;',
+      '}',
+      '.' + P + '-action-btn--revise {',
+      '  background: #3b82f6; color: #fff;',
+      '}',
+      '.' + P + '-action-btn--revise:hover { background: #2563eb; }',
+      '.' + P + '-action-btn--add {',
+      '  background: #16a34a; color: #fff;',
+      '}',
+      '.' + P + '-action-btn--add:hover { background: #15803d; }',
+      '.' + P + '-action-btn--remove {',
+      '  background: #dc2626; color: #fff;',
+      '}',
+      '.' + P + '-action-btn--remove:hover { background: #b91c1c; }',
+      '.' + P + '-action-btn--note {',
+      '  background: #60a5fa; color: #fff;',
+      '}',
+      '.' + P + '-action-btn--note:hover { background: #3b82f6; }',
+      '.' + P + '-action-btn--has-note {',
+      '  box-shadow: 0 0 0 2px #fbbf24;',
+      '}',
+
+      /* ── Popover menu (portal on document.body) ── */
+      '.' + P + '-popover {',
+      '  z-index: 100000; min-width: 170px;',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
+      '  box-shadow: 0 8px 24px rgba(0,0,0,.15);',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '  overflow: hidden;',
+      '}',
+      '.' + P + '-popover-item {',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  padding: 8px 14px; cursor: pointer;',
+      '  color: #334155; white-space: nowrap;',
+      '  transition: background .1s;',
+      '}',
+      '.' + P + '-popover-item:hover { background: #f1f5f9; }',
+      '.' + P + '-popover-item--remove { color: #dc2626; }',
+      '.' + P + '-popover-item--remove:hover { background: #fef2f2; }',
+      '.' + P + '-popover-item--clear { color: #94a3b8; font-size: 12px; }',
+      '.' + P + '-popover-item--clear:hover { background: #f8fafc; }',
+      '.' + P + '-popover-sep {',
+      '  height: 1px; background: #e2e8f0; margin: 2px 0;',
+      '}',
+      '.' + P + '-popover-icon {',
+      '  width: 16px; text-align: center; flex-shrink: 0;',
+      '  font-size: 12px;',
+      '}',
+
+      /* ── Pending card in detail panel ── */
+      '.' + P + '-card {',
+      '  margin: 8px 12px; padding: 10px 14px;',
+      '  border-radius: 6px; font-size: 12px; position: relative;',
+      '}',
+      '.' + P + '-card--revise { background: #eff6ff;  border: 1px solid #3b82f633; color: #1e40af; }',
+      '.' + P + '-card--add    { background: #f0fdf4;  border: 1px solid #16a34a33; color: #166534; }',
+      '.' + P + '-card--remove { background: #fef2f2;  border: 1px solid #dc262633; color: #991b1b; }',
+      '.' + P + '-card--note   { background: #eff6ff;  border: 1px solid #60a5fa33; color: #1e40af; }',
+      '.' + P + '-card-header {',
+      '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
+      '  letter-spacing: .04em; margin-bottom: 4px;',
+      '}',
+      '.' + P + '-card-field {',
+      '  display: flex; gap: 6px; align-items: baseline; margin: 2px 0;',
+      '}',
+      '.' + P + '-card-label  { font-weight: 600; min-width: 100px; flex-shrink: 0; }',
+      '.' + P + '-card-from   { color: #94a3b8; text-decoration: line-through; }',
+      '.' + P + '-card-arrow  { color: #94a3b8; }',
+      '.' + P + '-card-to     { font-weight: 600; }',
+      '.' + P + '-card-notes  { font-style: italic; margin-top: 4px; font-size: 11px; }',
+      '.' + P + '-card-dismiss {',
+      '  position: absolute; top: 6px; right: 8px;',
+      '  background: none; border: none; font-size: 16px;',
+      '  color: inherit; opacity: .5; cursor: pointer; padding: 0; line-height: 1;',
+      '}',
+      '.' + P + '-card-dismiss:hover { opacity: 1; }',
+
+      /* ── Sticky action bar (inside accordion body) ── */
+      '#' + CFG.barId + ' {',
+      '  position: sticky; bottom: 0; z-index: 100;',
+      '  background: #fff; border-top: 2px solid #3b82f6;',
+      '  box-shadow: 0 -4px 12px rgba(0,0,0,.1);',
+      '  font: 13px/1.3 system-ui, -apple-system, sans-serif;',
+      '  margin-top: 8px;',
+      '}',
+      '.' + P + '-bar-top {',
+      '  display: flex; align-items: center; gap: 12px;',
+      '  padding: 10px 16px;',
+      '}',
+      '.' + P + '-bar-count {',
+      '  font-weight: 700; color: #0f172a;',
+      '  display: flex; align-items: center; gap: 6px;',
+      '}',
+      '.' + P + '-bar-chevron {',
+      '  display: inline-flex; transition: transform .2s;',
+      '  color: #64748b;',
+      '}',
+      '.' + P + '-bar-chevron.is-open { transform: rotate(90deg); }',
+      '.' + P + '-bar-num {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 22px; height: 22px; border-radius: 11px;',
+      '  background: #3b82f6; color: #fff; font-size: 12px; font-weight: 700;',
+      '  padding: 0 6px;',
+      '}',
+      '.' + P + '-bar-spacer { flex: 1; }',
+      '.' + P + '-bar-btn {',
+      '  padding: 7px 18px; border: none; border-radius: 5px;',
+      '  font: 600 13px/1 system-ui, sans-serif; cursor: pointer;',
+      '  transition: filter .15s;',
+      '}',
+      '.' + P + '-bar-btn:hover { filter: brightness(.92); }',
+      '.' + P + '-bar-btn--draft  { background: #e2e8f0; color: #475569; }',
+      '.' + P + '-bar-btn--submit { background: #3b82f6; color: #fff; }',
+      '.' + P + '-bar-btn--note   { background: #60a5fa; color: #fff; }',
+      '.' + P + '-bar-btn--clear  {',
+      '  background: none; border: none; color: #94a3b8;',
+      '  font-size: 12px; cursor: pointer; text-decoration: underline;',
+      '  padding: 4px 8px;',
+      '}',
+      '.' + P + '-bar-btn:disabled { opacity: .5; cursor: not-allowed; }',
+
+      /* ── Expandable changes panel ── */
+      '.' + P + '-bar-panel {',
+      '  border-top: 1px solid #e2e8f0;',
+      '  padding: 8px 16px 12px;',
+      '  max-height: 50vh; overflow-y: auto;',
+      '  display: flex; flex-direction: column; gap: 6px;',
+      '}',
+      '.' + P + '-bar-panel .' + P + '-card {',
+      '  margin: 0;',
+      '}',
+
+      /* ── Hide revision source view ── */
+      '#' + CFG.revisionView + ' { display: none !important; }',
+
+      /* ── Revision badge & strip (submitted items on rows) ── */
+      '.' + P + '-rev-badge {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 2px 8px; border-radius: 10px;',
+      '  background: #fef3c7; color: #92400e;',
+      '  font-size: 11px; font-weight: 600; white-space: nowrap;',
+      '  margin-left: 6px; vertical-align: middle;',
+      '}',
+      '.' + P + '-rev-strip {',
+      '  margin: 8px 12px 4px; padding: 10px 14px;',
+      '  background: #fffbeb; border-radius: 6px;',
+      '  font-size: 12px; color: #78350f;',
+      '}',
+      '.' + P + '-rev-strip-header {',
+      '  font-weight: 700; font-size: 11px; text-transform: uppercase;',
+      '  letter-spacing: .04em; color: #92400e; margin-bottom: 6px;',
+      '}',
+      '.' + P + '-rev-html-card { width: 100%; }',
+      '.' + P + '-rev-html-card > div { max-width: 100% !important; }',
+
+      /* ── Modal (shared by note + remove modals) ── */
+      '.' + P + '-overlay {',
+      '  position: fixed; inset: 0; z-index: 100001;',
+      '  background: rgba(0,0,0,.45);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '}',
+      '.' + P + '-modal {',
+      '  background: #fff; border-radius: 10px;',
+      '  box-shadow: 0 8px 32px rgba(0,0,0,.25);',
+      '  width: 480px; max-width: 94vw; max-height: 90vh;',
+      '  display: flex; flex-direction: column;',
+      '  font: 13px/1.45 system-ui, -apple-system, sans-serif;',
+      '  color: #1e293b;',
+      '}',
+      '.' + P + '-modal__header {',
+      '  display: flex; align-items: flex-start; gap: 8px;',
+      '  padding: 16px 20px 12px; border-bottom: 1px solid #e2e8f0;',
+      '  position: relative;',
+      '}',
+      '.' + P + '-modal__title    { font-size: 16px; font-weight: 700; color: #0f172a; }',
+      '.' + P + '-modal__subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }',
+      '.' + P + '-modal__close {',
+      '  position: absolute; top: 12px; right: 14px;',
+      '  background: none; border: none; font-size: 22px;',
+      '  color: #94a3b8; cursor: pointer; line-height: 1; padding: 0 4px;',
+      '}',
+      '.' + P + '-modal__close:hover { color: #334155; }',
+      '.' + P + '-modal__body {',
+      '  padding: 16px 20px; overflow-y: auto; flex: 1 1 auto;',
+      '}',
+      '.' + P + '-modal__hint {',
+      '  font-size: 12px; color: #64748b; margin-bottom: 12px;',
+      '}',
+      '.' + P + '-modal__label {',
+      '  display: block; font-size: 11px; font-weight: 600;',
+      '  color: #475569; margin-bottom: 3px;',
+      '}',
+      '.' + P + '-modal__textarea {',
+      '  display: block; width: 100%; box-sizing: border-box;',
+      '  padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 5px;',
+      '  font: inherit; font-size: 13px; color: #1e293b; background: #f8fafc;',
+      '  resize: vertical; min-height: 80px;',
+      '}',
+      '.' + P + '-modal__textarea:focus {',
+      '  outline: none; border-color: #3b82f6;',
+      '  box-shadow: 0 0 0 2px rgba(59,130,246,.15);',
+      '}',
+      '.' + P + '-modal__footer {',
+      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  padding: 12px 20px; border-top: 1px solid #e2e8f0;',
+      '}',
+      '.' + P + '-modal__btn {',
+      '  padding: 8px 16px; border: none; border-radius: 5px;',
+      '  font: 600 13px/1 system-ui, sans-serif; cursor: pointer;',
+      '  transition: filter .15s;',
+      '}',
+      '.' + P + '-modal__btn:hover { filter: brightness(.92); }',
+      '.' + P + '-modal__btn--cancel { background: #e2e8f0; color: #475569; }',
+      '.' + P + '-modal__btn--save   { background: #3b82f6; color: #fff; }',
+      '.' + P + '-modal__btn--remove { background: #dc2626; color: #fff; }',
+    ].join('\n');
+
+    var s = document.createElement('style');
+    s.id = CFG.cssId;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  window.SCW.salesCR.injectStyles = inject;
+
+})();
+/*** SALES CHANGE REQUEST — CHANGE DETECTION ***/
+/**
+ * Baseline snapshot of record state on view render, automatic
+ * change-request creation on knack-cell-update, and add-mode
+ * detection (field_2706 + field_2586).
+ *
+ * Reads : SCW.salesCR.CONFIG, ._state, ._h, .persist, .refresh
+ * Writes: SCW.salesCR.buildBaseline, .onCellUpdate, .checkAddMode, .detectAddRecords
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+  var H   = ns._h;
+  var TF  = CFG.trackedFields;
+
+  // ═══════════════════════════════════════════════════════════
+  //  BASELINE SNAPSHOT
+  // ═══════════════════════════════════════════════════════════
+
+  /** Try to get the records array from a Knack view model. */
+  function getModelRecords(viewKey) {
+    try {
+      var vm = Knack.models[viewKey];
+      if (!vm) return null;
+      // Backbone collection
+      if (vm.data && vm.data.models) {
+        var out = [];
+        for (var i = 0; i < vm.data.models.length; i++) {
+          out.push(vm.data.models[i].attributes || vm.data.models[i]);
+        }
+        return out;
+      }
+      // Plain array
+      if (vm.data && Array.isArray(vm.data)) return vm.data;
+      // toJSON
+      if (vm.data && typeof vm.data.toJSON === 'function') return vm.data.toJSON();
+    } catch (e) {}
+    return null;
+  }
+
+  /** Fallback: scrape field values from the DOM table (before transform). */
+  function scrapeBaselineFromDOM() {
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) return null;
+
+    var records = [];
+    $view.find('tbody tr[id]').each(function () {
+      var $tr = $(this);
+      var id = $tr.attr('id');
+      if (!id || id.indexOf('kn-') === 0) return;
+
+      var rec = { id: id };
+      for (var f = 0; f < TF.length; f++) {
+        var fk = TF[f].key;
+        var $td = $tr.find('td.' + fk + ', td[data-field-key="' + fk + '"]');
+        if ($td.length) {
+          rec[fk] = H.stripHtml($td.text());
+        }
+      }
+      // Identity fields
+      var $labelTd = $tr.find('td.' + CFG.labelField + ', td[data-field-key="' + CFG.labelField + '"]');
+      rec[CFG.labelField] = $labelTd.length ? H.stripHtml($labelTd.text()) : '';
+      var $prodTd = $tr.find('td.' + CFG.productField + ', td[data-field-key="' + CFG.productField + '"]');
+      rec[CFG.productField] = $prodTd.length ? H.stripHtml($prodTd.text()) : '';
+      var $countTd = $tr.find('td.' + CFG.addCountField + ', td[data-field-key="' + CFG.addCountField + '"]');
+      rec[CFG.addCountField] = $countTd.length ? H.stripHtml($countTd.text()) : '0';
+
+      records.push(rec);
+    });
+
+    return records.length ? records : null;
+  }
+
+  function buildBaseline() {
+    var baseline = S.baseline();
+    var pending  = S.pending();
+
+    // Try Knack model first, fall back to DOM scraping
+    var records = getModelRecords(CFG.worksheetView) || scrapeBaselineFromDOM();
+    if (!records || !records.length) {
+      if (CFG.debug) console.warn('[SalesCR] buildBaseline: no records found');
+      return;
+    }
+
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i];
+      var id = attrs.id;
+      if (!id) continue;
+      if (pending[id]) continue;
+
+      var snap = {};
+      for (var f = 0; f < TF.length; f++) {
+        var fk = TF[f].key;
+        var raw = attrs[fk + '_raw'] != null ? attrs[fk + '_raw'] : attrs[fk];
+        snap[fk] = H.normVal(TF[f], raw);
+        if (TF[f].type === 'connection') {
+          snap[fk + '_ids'] = H.extractIds(raw);
+        }
+      }
+      snap._label      = H.readableVal(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
+      snap._product    = H.readableVal(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
+      snap._addCount   = attrs[CFG.addCountField] || 0;
+      // Metadata for Make routing (bucket + labor hours)
+      var bucketRaw    = attrs[CFG.bucketField + '_raw'] || attrs[CFG.bucketField];
+      snap._bucketId   = H.extractIds(bucketRaw)[0] || '';
+      snap._bucketName = H.readableVal(bucketRaw);
+      var lhRaw        = attrs[CFG.laborHoursField + '_raw'] != null ? attrs[CFG.laborHoursField + '_raw'] : attrs[CFG.laborHoursField];
+      snap._laborHours = typeof lhRaw === 'number' ? lhRaw : parseFloat(String(lhRaw || '0').replace(/[^0-9.\-]/g, '')) || 0;
+
+      baseline[id] = snap;
+    }
+
+    if (CFG.debug) console.log('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  CELL UPDATE → AUTO-CREATE CR
+  // ═══════════════════════════════════════════════════════════
+
+  function onCellUpdate(event, view, record) {
+    if (!record || !record.id) return;
+    var id = record.id;
+
+    if (CFG.debug) console.log('[SalesCR] Cell update on', id);
+
+    var baseline = S.baseline();
+    var pending  = S.pending();
+    var base     = baseline[id];
+
+    // No baseline yet — snapshot the CURRENT (post-edit) state.
+    // We'll miss the diff for this first edit, but subsequent edits
+    // on this record will diff correctly.
+    if (!base) {
+      base = {};
+      for (var f = 0; f < TF.length; f++) {
+        var fk = TF[f].key;
+        var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
+        base[fk] = H.normVal(TF[f], raw);
+        if (TF[f].type === 'connection') {
+          base[fk + '_ids'] = H.extractIds(raw);
+        }
+      }
+      base._label      = H.readableVal(record[CFG.labelField + '_raw']   || record[CFG.labelField]   || '');
+      base._product    = H.readableVal(record[CFG.productField + '_raw'] || record[CFG.productField] || '');
+      base._addCount   = record[CFG.addCountField] || 0;
+      var lbRaw        = record[CFG.bucketField + '_raw'] || record[CFG.bucketField];
+      base._bucketId   = H.extractIds(lbRaw)[0] || '';
+      base._bucketName = H.readableVal(lbRaw);
+      var lhRaw2       = record[CFG.laborHoursField + '_raw'] != null ? record[CFG.laborHoursField + '_raw'] : record[CFG.laborHoursField];
+      base._laborHours = typeof lhRaw2 === 'number' ? lhRaw2 : parseFloat(String(lhRaw2 || '0').replace(/[^0-9.\-]/g, '')) || 0;
+      baseline[id] = base;
+      if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
+      return;
+    }
+
+    // Don't auto-update remove CRs (user explicitly chose removal)
+    var existing = pending[id];
+    if (existing && existing.action === 'remove') return;
+
+    // Diff tracked fields against baseline; capture IDs for connection fields
+    var changes = {};
+    var newIds  = {};   // fk → [ids] for connection fields that changed
+    var hasChanges = false;
+    for (var f = 0; f < TF.length; f++) {
+      var def = TF[f];
+      var fk  = def.key;
+      var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
+      var newVal = H.normVal(def, raw);
+      if (String(newVal) !== String(base[fk])) {
+        changes[fk] = newVal;
+        if (def.type === 'connection') {
+          newIds[fk] = H.extractIds(raw);
+        }
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges) {
+      if (CFG.debug) console.log('[SalesCR] No tracked-field changes for', id);
+      return;
+    }
+
+    var isAdd = S.isAddMode() && parseFloat(base._addCount) !== 0;
+
+    if (existing) {
+      // Update existing CR — merge new changes, keep original "current"
+      for (var rk in changes) {
+        existing.requested[rk] = changes[rk];
+        if (existing.current[rk] == null) existing.current[rk] = base[rk];
+      }
+      for (var ik in newIds) {
+        existing.requested[ik + '_ids'] = newIds[ik];
+        if (existing.current[ik + '_ids'] == null && base[ik + '_ids']) {
+          existing.current[ik + '_ids'] = base[ik + '_ids'];
+        }
+      }
+      if (CFG.debug) console.log('[SalesCR] Updated existing CR for', id, ':', changes);
+    } else {
+      // New CR — copy values AND IDs for connection fields
+      var current = {};
+      var requested = {};
+      for (var ck in changes) {
+        current[ck] = base[ck];
+        requested[ck] = changes[ck];
+      }
+      for (var nk in newIds) {
+        requested[nk + '_ids'] = newIds[nk];
+        if (base[nk + '_ids']) current[nk + '_ids'] = base[nk + '_ids'];
+      }
+
+      pending[id] = {
+        rowId:        id,
+        displayLabel: base._label || '',
+        productName:  base._product || '',
+        bucketId:     base._bucketId || '',
+        bucketName:   base._bucketName || '',
+        laborHours:   base._laborHours || 0,
+        action:       isAdd ? 'add' : 'revise',
+        current:      current,
+        requested:    requested,
+        changeNotes:  '',
+      };
+      if (CFG.debug) console.log('[SalesCR] Created new CR for', id, ':', changes);
+    }
+
+    ns.persist();
+    if (ns.refresh) ns.refresh();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ADD-MODE DETECTION
+  // ═══════════════════════════════════════════════════════════
+
+  function checkAddMode() {
+    var $pv = $('#' + CFG.proposalView);
+    if (!$pv.length) { S.setAddMode(false); return; }
+
+    var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    if (!$cell.length) $cell = $pv.find('.field_' + CFG.addModeField.replace('field_', ''));
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+
+    var val = H.stripHtml($cell.text());
+    S.setAddMode(/^yes$/i.test(val));
+
+    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + val + ')');
+  }
+
+  function detectAddRecords() {
+    if (!S.isAddMode()) return;
+
+    var baseline = S.baseline();
+    var pending  = S.pending();
+    var keys     = Object.keys(baseline);
+    var added    = 0;
+
+    for (var i = 0; i < keys.length; i++) {
+      var id   = keys[i];
+      var base = baseline[id];
+      if (!base) continue;
+      if (pending[id]) continue;
+
+      var count = parseFloat(base._addCount);
+      if (count === 0 || isNaN(count)) continue;
+
+      pending[id] = {
+        rowId:        id,
+        displayLabel: base._label || '',
+        productName:  base._product || '',
+        action:       'add',
+        current:      {},
+        requested:    {},
+        changeNotes:  '',
+      };
+      added++;
+    }
+
+    if (added) {
+      ns.persist();
+      if (CFG.debug) console.log('[SalesCR] Auto-detected', added, 'add records');
+    }
+  }
+
+  // ── Public API ──
+  ns.buildBaseline    = buildBaseline;
+  ns.onCellUpdate     = onCellUpdate;
+  ns.checkAddMode     = checkAddMode;
+  ns.detectAddRecords = detectAddRecords;
+
+})();
+/*** SALES CHANGE REQUEST — MODALS ***/
+/**
+ * Freeform-note modal and remove-from-proposal modal.
+ *
+ * Reads : SCW.salesCR.CONFIG, ._state, ._h, .injectStyles, .persist,
+ *         .showToast, .refresh
+ * Writes: SCW.salesCR.openNote, .openRemove
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+  var H   = ns._h;
+  var P   = CFG.prefix;
+
+  var MODAL_ID = P + '-overlay';
+
+  /** Resolve display label + product for a record from pending, baseline, or DOM. */
+  function resolveIdentity(recordId) {
+    var pending = S.pending();
+    var item = pending[recordId] || pending['note_' + recordId];
+    var base = S.baseline()[recordId] || {};
+
+    var label = H.readableVal((item && item.displayLabel) || base._label || '');
+    var product = H.readableVal((item && item.productName) || base._product || '');
+
+    // Sanitize any leftover [object Object] from stale sessionStorage
+    if (label.indexOf('[object') !== -1) label = '';
+    if (product.indexOf('[object') !== -1) product = '';
+
+    // Fallback: read from the DOM card
+    if (!label && !product) {
+      var $row = $('#' + recordId);
+      if ($row.length) {
+        var $labelTd = $row.find('td[data-field-key="' + CFG.labelField + '"]');
+        if ($labelTd.length) label = H.stripHtml($labelTd.text());
+        var $prodTd = $row.find('td[data-field-key="' + CFG.productField + '"]');
+        if ($prodTd.length) product = H.stripHtml($prodTd.text());
+      }
+    }
+
+    return { label: label, product: product };
+  }
+
+  function closeModal() {
+    var o = document.getElementById(MODAL_ID);
+    if (o) o.remove();
+  }
+
+  // ── Freeform note (not tied to a specific row) ─────────
+
+  function openNoteModal() {
+    ns.injectStyles();
+    closeModal();
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    // Header
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Add Change Request Note'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle',
+      'Freeform note \u2014 not tied to a specific line item'));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Describe the change you need. This note will be included in the change request submission.'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Describe the changes needed\u2026';
+    ta.rows = 4;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    // Footer
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Add Note');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+
+      var noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+      var pending = S.pending();
+      pending[noteId] = {
+        rowId: null,
+        displayLabel: null,
+        productName: null,
+        action: 'note',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast('Note added to change request', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Remove from proposal (per-row) ────────────────────
+
+  function openRemoveModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var id = resolveIdentity(recordId);
+    var label = id.label;
+    var product = id.product;
+    var existing = S.pending()[recordId];
+    var isEdit = existing && existing.action === 'remove';
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    // Header
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      isEdit ? 'Edit Removal Request' : 'Request Removal'));
+    var subtitle = product || label || 'Item';
+    if (label && product) subtitle = label + ' \u2014 ' + product;
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Request that this line item be removed. A note is optional.'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Reason (optional)'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Why should this item be removed\u2026';
+    ta.rows = 3;
+    if (isEdit && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    // Footer
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var removeBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--remove', 'Request Removal');
+    removeBtn.addEventListener('click', function () {
+      var pending = S.pending();
+      pending[recordId] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'remove',
+        current: {},
+        requested: {},
+        changeNotes: ta.value.trim(),
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast('Removal added to change request', 'success');
+    });
+    footer.appendChild(removeBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Per-row note (tied to a specific line item) ─────
+
+  function openRowNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var id = resolveIdentity(recordId);
+    var label = id.label;
+    var product = id.product;
+
+    var noteKey = 'note_' + recordId;
+    var existing = S.pending()[noteKey];
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      existing ? 'Edit Note' : 'Add Note'));
+    var subtitle = product || label || 'Item';
+    if (label && product) subtitle = label + ' \u2014 ' + product;
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', subtitle));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    // Body
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Add a note about this line item. It will be included in the change request.'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Note about this item\u2026';
+    ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    // Footer
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save',
+      existing ? 'Update Note' : 'Add Note');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+
+      var pending = S.pending();
+      pending[noteKey] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'note',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast(existing ? 'Note updated' : 'Note added', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Add request (field_2586=0 rows — note required) ─────
+
+  function openAddNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var id = resolveIdentity(recordId);
+    var label = id.label;
+    var product = id.product;
+
+    var noteKey = 'note_' + recordId;
+    var existing = S.pending()[noteKey];
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title',
+      existing ? 'Edit Add Request' : 'Add to Change Request'));
+    var addSubtitle = product || label || 'Item';
+    if (label && product) addSubtitle = label + ' \u2014 ' + product;
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', addSubtitle));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'This item will be submitted as a new addition. Please include a note describing the add request.'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Note (required)'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Describe why this item is being added\u2026';
+    ta.rows = 3;
+    if (existing && existing.changeNotes) ta.value = existing.changeNotes;
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save',
+      existing ? 'Update' : 'Add');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('A note is required for add requests', 'error'); return; }
+
+      var pending = S.pending();
+      pending[noteKey] = {
+        rowId: recordId,
+        displayLabel: label,
+        productName: product,
+        action: 'add',
+        current: {},
+        requested: {},
+        changeNotes: text,
+      };
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast(existing ? 'Add request updated' : 'Add request created', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Edit global (non-row) note by pending key ──────
+
+  function openEditGlobalNoteModal(pendingKey) {
+    ns.injectStyles();
+    closeModal();
+
+    var pending = S.pending();
+    var existing = pending[pendingKey];
+    if (!existing) return;
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Edit Note'));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.rows = 4;
+    ta.value = existing.changeNotes || '';
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Update Note');
+    saveBtn.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+      existing.changeNotes = text;
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast('Note updated', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Edit note on a revise CR ──────────────────────
+
+  function openEditReviseNoteModal(recordId) {
+    ns.injectStyles();
+    closeModal();
+
+    var pending = S.pending();
+    var item = pending[recordId];
+    if (!item) return;
+
+    var id = resolveIdentity(recordId);
+    var label = id.product || id.label || item.displayLabel || item.productName || 'Item';
+
+    var overlay = H.el('div', P + '-overlay');
+    overlay.id = MODAL_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = H.el('div', P + '-modal');
+
+    var header = H.el('div', P + '-modal__header');
+    var hLeft = H.el('div');
+    hLeft.appendChild(H.el('div', P + '-modal__title', 'Edit Change Note'));
+    hLeft.appendChild(H.el('div', P + '-modal__subtitle', label));
+    header.appendChild(hLeft);
+    var closeBtn = H.el('button', P + '-modal__close', '\u00d7');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = H.el('div', P + '-modal__body');
+    body.appendChild(H.el('div', P + '-modal__hint',
+      'Add or edit a note for this change request.'));
+    var ta = document.createElement('textarea');
+    ta.className = P + '-modal__textarea';
+    ta.placeholder = 'Additional notes about this change\u2026';
+    ta.rows = 3;
+    ta.value = item.changeNotes || '';
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var footer = H.el('div', P + '-modal__footer');
+    var cancelBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+    var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Save Note');
+    saveBtn.addEventListener('click', function () {
+      item.changeNotes = ta.value.trim();
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+      closeModal();
+      ns.showToast('Note saved', 'success');
+    });
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  // ── Public API ──
+  ns.openNote           = openNoteModal;
+  ns.openRowNote        = openRowNoteModal;
+  ns.openAddNote        = openAddNoteModal;
+  ns.openRemove         = openRemoveModal;
+  ns.openEditGlobalNote = openEditGlobalNoteModal;
+  ns.openEditReviseNote = openEditReviseNoteModal;
+
+})();
+/*** SALES CHANGE REQUEST — PAYLOAD BUILDERS ***/
+/**
+ * Builds the clean JSON payload and self-contained HTML payload
+ * for webhook submission.
+ *
+ * Reads : SCW.salesCR.CONFIG, ._state, ._h
+ * Writes: SCW.salesCR.buildPayload, .buildHtml
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+  var H   = ns._h;
+  var TF  = CFG.trackedFields;
+
+  // ═══════════════════════════════════════════════════════════
+  //  JSON PAYLOAD
+  // ═══════════════════════════════════════════════════════════
+
+  function buildPayload(isDraft) {
+    var pending = S.pending();
+    var ids = Object.keys(pending);
+    var items = [];
+
+    for (var i = 0; i < ids.length; i++) {
+      var it = pending[ids[i]];
+      var entry = {
+        action:       it.action,
+        rowId:        it.rowId || null,
+        displayLabel: it.displayLabel || '',
+        productName:  it.productName || '',
+        changeNotes:  it.changeNotes || '',
+        bucketId:     it.bucketId || '',
+        bucketName:   it.bucketName || '',
+        laborHours:   it.laborHours || 0,
+      };
+
+      if (it.action === 'revise' || it.action === 'add') {
+        entry.current = it.current || {};
+        var fields = [];
+        var r = it.requested || {};
+        var c = it.current || {};
+
+        for (var f = 0; f < TF.length; f++) {
+          var def = TF[f];
+          if (r[def.key] == null) continue;
+          var fieldEntry = {
+            field: def.key,
+            label: def.label,
+            from:  c[def.key] != null ? c[def.key] : null,
+            to:    r[def.key],
+          };
+          // Include record IDs for connection fields so Make can look up
+          // per-product flags (e.g., "requires requote on swap")
+          if (def.type === 'connection') {
+            if (c[def.key + '_ids']) fieldEntry.fromIds = c[def.key + '_ids'];
+            if (r[def.key + '_ids']) fieldEntry.toIds   = r[def.key + '_ids'];
+          }
+          fields.push(fieldEntry);
+          entry[def.key] = r[def.key];
+          if (def.type === 'connection' && r[def.key + '_ids']) {
+            entry[def.key + '_ids'] = r[def.key + '_ids'];
+          }
+        }
+        entry.fields = fields;
+      }
+
+      items.push(entry);
+    }
+
+    return {
+      actionType: 'sales_change_request',
+      isDraft:    isDraft,
+      timestamp:  new Date().toISOString(),
+      itemCount:  items.length,
+      items:      items,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  HTML PAYLOAD
+  // ═══════════════════════════════════════════════════════════
+
+  function buildHtml() {
+    var pending = S.pending();
+    var ids = Object.keys(pending);
+    if (!ids.length) return '';
+
+    var esc = H.escHtml;
+    var h = [];
+
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:720px;">');
+
+    // Header
+    h.push('<div style="border-bottom:2px solid #3b82f6;padding-bottom:8px;margin-bottom:16px;">');
+    h.push('<div style="font-size:18px;font-weight:700;color:#0f172a;">Sales Change Request</div>');
+    h.push('<div style="font-size:13px;color:#64748b;margin-top:2px;">');
+    h.push(ids.length + ' item(s) &mdash; ' + esc(new Date().toLocaleString()));
+    h.push('</div></div>');
+
+    // Group by action
+    var groups = { revise: [], add: [], remove: [], note: [] };
+    for (var i = 0; i < ids.length; i++) {
+      var it = pending[ids[i]];
+      if (groups[it.action]) groups[it.action].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
+      { key: 'note',   title: 'Notes',           color: '#f59e0b', bg: '#fffbeb', icon: '\u270D' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      h.push('<div style="margin-bottom:20px;">');
+      h.push('<div style="font-size:14px;font-weight:700;color:' + sec.color + ';margin-bottom:8px;">');
+      h.push(esc(sec.icon) + ' ' + esc(sec.title) + ' (' + arr.length + ')');
+      h.push('</div>');
+
+      for (var j = 0; j < arr.length; j++) {
+        var item = arr[j];
+        h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:10px 14px;margin-bottom:8px;">');
+
+        // Item header (label + product)
+        if (item.displayLabel || item.productName) {
+          h.push('<div style="font-weight:600;font-size:13px;margin-bottom:4px;">');
+          h.push(esc(item.displayLabel || ''));
+          if (item.productName && item.productName !== item.displayLabel) {
+            h.push(' <span style="font-weight:400;color:#64748b;">&mdash; ' + esc(item.productName) + '</span>');
+          }
+          h.push('</div>');
+        }
+
+        if (sec.key === 'note' || sec.key === 'remove') {
+          // Note / removal — just show text
+          if (item.changeNotes) {
+            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+          } else if (sec.key === 'remove') {
+            h.push('<div style="font-size:12px;color:#64748b;">Requesting removal</div>');
+          }
+        } else {
+          // Revise / Add — field-change table
+          var r = item.requested || {};
+          var c = item.current || {};
+          var hasFields = false;
+          for (var fk in r) { if (r.hasOwnProperty(fk)) { hasFields = true; break; } }
+
+          if (hasFields) {
+            h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">');
+            for (var fi = 0; fi < TF.length; fi++) {
+              var def = TF[fi];
+              if (r[def.key] == null) continue;
+              var fromStr = c[def.key] != null ? esc(H.formatFieldValue(def, c[def.key])) : '&mdash;';
+              var toStr = esc(H.formatFieldValue(def, r[def.key]));
+
+              h.push('<tr>');
+              h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + esc(def.label) + '</td>');
+              if (sec.key === 'revise') {
+                h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
+                h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+              }
+              h.push('<td style="padding:3px 8px;font-weight:600;color:' + sec.color + ';">' + toStr + '</td>');
+              h.push('</tr>');
+            }
+            h.push('</table>');
+          }
+
+          if (item.changeNotes) {
+            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+          }
+        }
+
+        h.push('</div>'); // card
+      }
+
+      h.push('</div>'); // section
+    }
+
+    // Footer
+    h.push('<div style="font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:12px;">');
+    h.push('Generated ' + esc(new Date().toLocaleString()));
+    h.push('</div>');
+
+    h.push('</div>');
+    return h.join('');
+  }
+
+  // ── Public API ──
+  ns.buildPayload = buildPayload;
+  ns.buildHtml    = buildHtml;
+
+})();
+/*** SALES CHANGE REQUEST — RENDER ***/
+/**
+ * Injects per-row action menus (in the delete-button slot), pending-CR
+ * cards into detail panels, and a sticky action bar pinned to the bottom
+ * of the view_3586 accordion.
+ *
+ * The action bar lives INSIDE the accordion body so it:
+ *   - Matches the view width (no wider)
+ *   - Sticks to viewport bottom while scrolling through the view
+ *   - Stops at the bottom of the accordion when you scroll past
+ *
+ * Clicking the pending count expands a change summary panel.
+ *
+ * Reads : SCW.salesCR.CONFIG, ._state, ._h, .pendingCount,
+ *         .openNote, .openRowNote, .openAddNote, .openRemove, .submitToWebhook
+ * Writes: SCW.salesCR.renderUI, .renderActionBar
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+  var H   = ns._h;
+  var P   = CFG.prefix;
+  var TF  = CFG.trackedFields;
+
+  var _openPopover = null;
+  var _popoverAnchor = null;
+  var _panelOpen = false;
+
+  $(document).on('click' + CFG.eventNs + 'Pop', function (e) {
+    if (!_openPopover) return;
+    if (_openPopover.contains(e.target)) return;
+    if (_popoverAnchor && _popoverAnchor.contains(e.target)) return;
+    closePopover();
+  });
+  $(window).on('scroll' + CFG.eventNs + 'Pop', function () {
+    if (_openPopover) closePopover();
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  //  PENDING-CR CARD (detail panel + changes panel)
+  // ═══════════════════════════════════════════════════════════
+
+  function buildCard(pendingKey, item, opts) {
+    opts = opts || {};
+    var action = item.action || 'revise';
+    var card = H.el('div', P + '-card ' + P + '-card--' + action);
+    card.style.cursor = 'pointer';
+    card.title = 'Click to edit';
+
+    // Click card → open appropriate edit modal
+    card.addEventListener('click', function (e) {
+      if (e.target.closest('.' + P + '-card-dismiss')) return;
+      if (item.action === 'add' && item.rowId) {
+        ns.openAddNote(item.rowId);
+      } else if (item.action === 'remove' && item.rowId) {
+        ns.openRemove(item.rowId);
+      } else if (item.action === 'note' && item.rowId) {
+        ns.openRowNote(item.rowId);
+      } else if (item.action === 'note' && !item.rowId) {
+        ns.openEditGlobalNote(pendingKey);
+      } else if (item.action === 'revise' && item.rowId) {
+        ns.openEditReviseNote(item.rowId);
+      }
+    });
+
+    var headerText = action === 'add'    ? 'ADD'
+                   : action === 'remove' ? 'REMOVAL'
+                   : action === 'note'   ? 'NOTE'
+                   :                       'CHANGE';
+    var headerEl = H.el('div', P + '-card-header');
+    headerEl.textContent = headerText;
+    var itemName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || '';
+    if (itemName && itemName.indexOf('[object') === -1) {
+      headerEl.textContent += ' \u2014 ' + itemName;
+    }
+    card.appendChild(headerEl);
+
+    // Dismiss X
+    var dismiss = H.el('button', P + '-card-dismiss', '\u00d7');
+    dismiss.title = 'Remove this change';
+    dismiss.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var pending = S.pending();
+      delete pending[pendingKey];
+      ns.persist();
+      if (ns.refresh) ns.refresh();
+    });
+    card.appendChild(dismiss);
+
+    if (action === 'remove') {
+      card.appendChild(H.el('div', P + '-card-notes', item.changeNotes || 'Requesting removal'));
+      return card;
+    }
+    if (action === 'note' || action === 'add') {
+      if (item.changeNotes) {
+        card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
+      }
+      // Show field diffs if present (add items from auto-detection)
+      var r = item.requested || {};
+      for (var f = 0; f < TF.length; f++) {
+        var def = TF[f];
+        if (r[def.key] == null) continue;
+        var row = H.el('div', P + '-card-field');
+        row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
+        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[def.key])));
+        card.appendChild(row);
+      }
+      return card;
+    }
+
+    // Revise — field diffs
+    var r = item.requested || {};
+    var c = item.current || {};
+    for (var f = 0; f < TF.length; f++) {
+      var def = TF[f];
+      if (r[def.key] == null) continue;
+      var row = H.el('div', P + '-card-field');
+      row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
+      if (c[def.key] != null) {
+        row.appendChild(H.el('span', P + '-card-from', H.formatFieldValue(def, c[def.key])));
+        row.appendChild(H.el('span', P + '-card-arrow', '\u2192'));
+      }
+      row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[def.key])));
+      card.appendChild(row);
+    }
+
+    if (item.changeNotes) {
+      card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
+    }
+    return card;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  POPOVER (portal on document.body)
+  // ═══════════════════════════════════════════════════════════
+
+  function buildPopover(recordId, addOnly) {
+    var pop = H.el('div', P + '-popover');
+    var pending = S.pending();
+    var hasCR    = !!pending[recordId];
+    var hasNote  = !!pending['note_' + recordId];
+
+    if (addOnly) {
+      var addItem = H.el('div', P + '-popover-item');
+      addItem.appendChild(H.el('span', P + '-popover-icon', '+'));
+      addItem.appendChild(document.createTextNode(hasNote ? 'Edit Add Request' : 'Add'));
+      addItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openAddNote(recordId);
+      });
+      pop.appendChild(addItem);
+    } else {
+      var noteItem = H.el('div', P + '-popover-item');
+      noteItem.appendChild(H.el('span', P + '-popover-icon', '\u270D'));
+      noteItem.appendChild(document.createTextNode(hasNote ? 'Edit Note' : 'Add Note'));
+      noteItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        ns.openRowNote(recordId);
+      });
+      pop.appendChild(noteItem);
+
+      if (!hasCR || pending[recordId].action !== 'remove') {
+        var removeItem = H.el('div', P + '-popover-item ' + P + '-popover-item--remove');
+        removeItem.appendChild(H.el('span', P + '-popover-icon', '\u2212'));
+        removeItem.appendChild(document.createTextNode('Request Removal'));
+        removeItem.addEventListener('click', function (e) {
+          e.stopPropagation();
+          closePopover();
+          ns.openRemove(recordId);
+        });
+        pop.appendChild(removeItem);
+      }
+    }
+
+    if (hasCR || hasNote) {
+      pop.appendChild(H.el('div', P + '-popover-sep'));
+      var clearItem = H.el('div', P + '-popover-item ' + P + '-popover-item--clear');
+      clearItem.appendChild(H.el('span', P + '-popover-icon', '\u00d7'));
+      clearItem.appendChild(document.createTextNode('Clear'));
+      clearItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePopover();
+        if (hasCR)   delete pending[recordId];
+        if (hasNote) delete pending['note_' + recordId];
+        ns.persist();
+        if (ns.refresh) ns.refresh();
+      });
+      pop.appendChild(clearItem);
+    }
+
+    return pop;
+  }
+
+  function positionPopover(pop, anchorEl) {
+    var rect = anchorEl.getBoundingClientRect();
+    pop.style.position = 'fixed';
+    pop.style.top  = (rect.bottom + 4) + 'px';
+    pop.style.right = (window.innerWidth - rect.right) + 'px';
+    pop.style.left = 'auto';
+  }
+
+  function closePopover() {
+    if (_openPopover) {
+      _openPopover.remove();
+      _openPopover = null;
+      _popoverAnchor = null;
+    }
+  }
+
+  function rowActionState(recordId) {
+    var pending = S.pending();
+    var cr   = pending[recordId];
+    var note = pending['note_' + recordId];
+    if (cr) return { action: cr.action, hasNote: !!note };
+    if (note) return { action: note.action || 'note', hasNote: true };
+    return null;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  INJECT ACTION MENUS + CARDS
+  // ═══════════════════════════════════════════════════════════
+
+  function injectActionMenusAndCards() {
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) return;
+
+    $view.find('.' + P + '-action-wrap').remove();
+    $view.find('.' + P + '-card').remove();
+
+    var pending = S.pending();
+
+    $view.find('tr[id]').each(function () {
+      var $tr = $(this);
+      var recordId = $tr.attr('id');
+      if (!recordId || recordId.indexOf('kn-') === 0) return;
+
+      var $card = $tr.find('.scw-ws-card');
+      if (!$card.length) return;
+
+      var $deleteWrap = $card.find('.scw-ws-sum-delete');
+      if (!$deleteWrap.length) return;
+
+      var deleteVisible = $deleteWrap[0].style.visibility !== 'hidden';
+      var addOnly = deleteVisible;
+
+      var state = rowActionState(recordId);
+      var wrap = H.el('span', P + '-action-wrap');
+      var btn  = H.el('button', P + '-action-btn');
+
+      if (state) {
+        var iconCls = state.action === 'add'    ? 'fa-plus'
+                    : state.action === 'remove' ? 'fa-minus-circle'
+                    : state.action === 'note'   ? 'fa-comment'
+                    :                             'fa-pencil';
+        btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
+        btn.classList.add(P + '-action-btn--' + state.action);
+        if (state.hasNote && state.action !== 'note') {
+          btn.classList.add(P + '-action-btn--has-note');
+        }
+      } else if (addOnly) {
+        btn.innerHTML = '<i class="fa fa-plus" style="font-size:14px;"></i>';
+      } else {
+        btn.innerHTML = '<i class="fa fa-ellipsis-v" style="font-size:14px;"></i>';
+      }
+
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        closePopover();
+
+        var pop = buildPopover(recordId, addOnly);
+        positionPopover(pop, btn);
+        document.body.appendChild(pop);
+        _openPopover = pop;
+        _popoverAnchor = btn;
+      });
+
+      wrap.appendChild(btn);
+      $deleteWrap.after(wrap);
+
+      // Cards in detail panel
+      var $detail = $card.find('.scw-ws-detail');
+      if (!$detail.length) return;
+
+      if (pending[recordId]) {
+        $detail[0].appendChild(buildCard(recordId, pending[recordId]));
+      }
+      var noteKey = 'note_' + recordId;
+      if (pending[noteKey]) {
+        $detail[0].appendChild(buildCard(noteKey, pending[noteKey]));
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  STICKY ACTION BAR (inside view_3586 accordion)
+  // ═══════════════════════════════════════════════════════════
+
+  function renderActionBar() {
+    var bar = document.getElementById(CFG.barId);
+
+    if (!S.onPage()) {
+      if (bar) bar.remove();
+      return;
+    }
+
+    // Find the accordion body that contains view_3586
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) {
+      if (bar) bar.remove();
+      return;
+    }
+    var $accBody = $view.closest('.scw-ktl-accordion__body');
+    var container = $accBody.length ? $accBody[0] : $view[0].parentNode;
+
+    if (!bar) {
+      bar = H.el('div');
+      bar.id = CFG.barId;
+    }
+
+    // Move bar into the accordion body if not already there
+    if (bar.parentNode !== container) {
+      container.appendChild(bar);
+    }
+
+    var count = ns.pendingCount();
+    bar.innerHTML = '';
+
+    // ── Top row: count + buttons ──
+    var topRow = H.el('div', P + '-bar-top');
+
+    // Clickable count (toggles panel)
+    var countEl = H.el('div', P + '-bar-count');
+    countEl.style.cursor = count > 0 ? 'pointer' : 'default';
+    var chevron = H.el('span', P + '-bar-chevron' + (_panelOpen ? ' is-open' : ''));
+    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+    if (count > 0) countEl.appendChild(chevron);
+    countEl.appendChild(H.el('span', P + '-bar-num', String(count)));
+    countEl.appendChild(document.createTextNode(' pending change' + (count === 1 ? '' : 's')));
+    if (count > 0) {
+      countEl.addEventListener('click', function () {
+        _panelOpen = !_panelOpen;
+        renderActionBar();
+      });
+    }
+    topRow.appendChild(countEl);
+
+    topRow.appendChild(H.el('div', P + '-bar-spacer'));
+
+    var noteBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--note', 'Add Note');
+    noteBtn.addEventListener('click', function () { ns.openNote(); });
+    topRow.appendChild(noteBtn);
+
+    if (count > 0) {
+      var clearBtn = H.el('button', P + '-bar-btn--clear', 'Clear all');
+      clearBtn.addEventListener('click', function () {
+        if (window.confirm('Clear all ' + count + ' pending change(s)?')) {
+          ns.clear();
+          _panelOpen = false;
+          ns.showToast('All changes cleared', 'info');
+        }
+      });
+      topRow.appendChild(clearBtn);
+    }
+
+    var submitBtn = H.el('button', P + '-bar-btn ' + P + '-bar-btn--submit', 'Submit Changes');
+    submitBtn.disabled = count === 0;
+    submitBtn.addEventListener('click', function () { ns.submitToWebhook(); });
+    topRow.appendChild(submitBtn);
+
+    bar.appendChild(topRow);
+
+    // ── Expandable changes panel ──
+    if (_panelOpen && count > 0) {
+      var panel = H.el('div', P + '-bar-panel');
+      var pending = S.pending();
+      var keys = Object.keys(pending);
+      for (var i = 0; i < keys.length; i++) {
+        panel.appendChild(buildCard(keys[i], pending[keys[i]]));
+      }
+      bar.appendChild(panel);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  LOCK FIELDS ON field_2586 = 0 ROWS
+  // ═══════════════════════════════════════════════════════════
+  // New items (field_2586 = 0) should be read-only on everything
+  // EXCEPT field_1949 (product). Uses device-worksheet's existing
+  // lock classes so the visual treatment is consistent.
+
+  var WS_P = 'scw-ws'; // device-worksheet CSS prefix
+  var LOCK_ATTR = 'data-scw-cr-locked';
+
+  function lockNewItemFields() {
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) return;
+
+    var locked = 0;
+
+    $view.find('tr.scw-ws-row').each(function () {
+      var $tr = $(this);
+      var recordId = $tr.attr('id');
+      if (!recordId) return;
+
+      var $card = $tr.find('.scw-ws-card');
+      if (!$card.length) return;
+
+      // Delete wrapper visibility maps to field_2586:
+      // visible (no inline style) = field_2586 = 0 (new item, fully editable)
+      // visibility:hidden = field_2586 > 0 (existing item, lock all except product)
+      var $deleteWrap = $card.find('.' + WS_P + '-sum-delete');
+      if (!$deleteWrap.length) return;
+      var isExisting = $deleteWrap[0].style.visibility === 'hidden';
+      if (!isExisting) return;
+
+      // Already locked this render cycle
+      if ($card[0].hasAttribute(LOCK_ATTR)) return;
+      $card[0].setAttribute(LOCK_ATTR, '1');
+
+      locked++;
+
+      // Lock ALL directEdit inputs/textareas (except product + discount %)
+      var editableFields = {};
+      editableFields[CFG.productField] = true;  // field_1949
+      editableFields['field_2261'] = true;       // Custom Discount %
+      $card.find('input[data-field], textarea[data-field]').each(function () {
+        var field = this.getAttribute('data-field') || '';
+        if (editableFields[field]) return;
+        this.readOnly = true;
+        this.tabIndex = -1;
+        this.style.cursor = 'default';
+        this.style.pointerEvents = 'none';
+        this.style.background = '#fff';
+      });
+
+      // Lock toggleChit (Existing Cabling, Exterior)
+      $card.find('.' + WS_P + '-cabling-chit').each(function () {
+        this.style.pointerEvents = 'none';
+        this.style.cursor = 'default';
+      });
+
+      // Lock nativeEdit tds (except product field) — white bg for connection fields
+      $card.find('td.cell-edit').each(function () {
+        var field = this.getAttribute('data-field-key') || '';
+        if (field === CFG.productField) return;
+        this.style.pointerEvents = 'none';
+        this.style.background = '#fff';
+      });
+    });
+
+    if (CFG.debug && locked) console.log('[SalesCR] Locked fields on', locked, 'new-item rows');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  COMBINED REFRESH
+  // ═══════════════════════════════════════════════════════════
+
+  function renderUI() {
+    injectActionMenusAndCards();
+    lockNewItemFields();
+    renderActionBar();
+  }
+
+  ns.renderUI        = renderUI;
+  ns.renderActionBar = renderActionBar;
+
+})();
+/*** SALES CHANGE REQUEST — SUBMIT ***/
+/**
+ * Webhook submission for final submissions, and draft save to Knack field.
+ *
+ * Save Draft: writes pending JSON to field_2707 immediately (no webhook).
+ * Submit: posts to webhook, then clears pending + draft field.
+ *
+ * Reads : SCW.salesCR.CONFIG, ._state, .pendingCount, .persist,
+ *         .buildPayload, .buildHtml, .showToast, .refresh
+ * Writes: SCW.salesCR.submitToWebhook, .saveDraft, .clear
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+
+  function submitToWebhook() {
+    var count = ns.pendingCount();
+    if (!count) { ns.showToast('No pending changes to submit', 'info'); return; }
+
+    if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
+
+    var payload = ns.buildPayload(false);
+    var html    = ns.buildHtml();
+    payload.html = html;
+
+    if (CFG.debug) {
+      console.log('[SalesCR] Submit:', payload);
+    }
+
+    SCW.knackAjax({
+      url:  CFG.submitWebhook,
+      type: 'POST',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
+        clearPending();
+        ns.showToast('Change request submitted', 'success');
+      },
+      error: function (xhr) {
+        if (xhr && xhr.status === 0) {
+          if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
+          clearPending();
+          ns.showToast('Change request submitted', 'success');
+        } else {
+          console.error('[SalesCR] Submit failed:', xhr.status, xhr.responseText);
+          ns.showToast('Failed to submit \u2014 please try again', 'error');
+        }
+      },
+    });
+  }
+
+  /** Save draft: immediate write to field_2707 (no debounce). */
+  function saveDraft() {
+    var count = ns.pendingCount();
+    if (!count) { ns.showToast('No pending changes to save', 'info'); return; }
+
+    ns.forceSaveDraft();
+    ns.showToast('Draft saved', 'success');
+  }
+
+  function clearPending() {
+    var pending = S.pending();
+    var keys = Object.keys(pending);
+    for (var i = 0; i < keys.length; i++) delete pending[keys[i]];
+    ns.persist();  // clears sessionStorage + writes empty to field_2707
+    if (ns.refresh) ns.refresh();
+  }
+
+  // ── Public API ──
+  ns.submitToWebhook = submitToWebhook;
+  ns.saveDraft       = saveDraft;
+  ns.clear           = clearPending;
+
+})();
+/*** SALES CHANGE REQUEST — REVISION INJECTION ***/
+/**
+ * Reads submitted revision line items from view_3837 and injects
+ * badges + detail strips onto matching SOW rows in view_3586,
+ * mirroring how bid-revision-inject.js handles view_3823 → view_3505.
+ *
+ * view_3837 is hidden via CSS (see styles.js) and treated purely
+ * as a data source.
+ *
+ * Reads : SCW.salesCR.CONFIG, ._state, ._h
+ * Writes: SCW.salesCR.loadRevisions, .injectRevisions
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+  var H   = ns._h;
+  var P   = CFG.prefix;
+
+  // ═══════════════════════════════════════════════════════════
+  //  LOAD REVISION DATA FROM view_3837 DOM
+  // ═══════════════════════════════════════════════════════════
+
+  function loadRevisions() {
+    var $revView = $('#' + CFG.revisionView);
+    if (!$revView.length) { S.setRevisionData([]); return; }
+
+    var data = [];
+
+    $revView.find('tbody tr[id]').each(function () {
+      var $tr = $(this);
+      var id  = $tr.attr('id');
+      if (!id) return;
+
+      // Connection field → SOW line item record ID
+      var $sowCell = $tr.find('td.' + CFG.revSowItemField);
+      var sowSpan  = $sowCell.length
+        ? $sowCell[0].querySelector('span[data-kn="connection-value"]')
+        : null;
+      var sowItemId = sowSpan ? sowSpan.className.trim() : '';
+
+      // Status
+      var status = H.stripHtml($tr.find('td.' + CFG.revStatusField).text());
+
+      // Rich-text HTML card
+      var $htmlCell = $tr.find('td.' + CFG.revHtmlField);
+      var htmlContent = '';
+      if ($htmlCell.length) {
+        // Navigate into the col-N wrapper to get the actual HTML
+        var $inner = $htmlCell.find('span[class^="col-"]');
+        htmlContent = ($inner.length ? $inner : $htmlCell).html() || '';
+      }
+
+      // JSON data
+      var jsonText = H.stripHtml($tr.find('td.' + CFG.revJsonField).text());
+      var jsonData = null;
+      try { jsonData = JSON.parse(jsonText); } catch (e) { /* not valid JSON */ }
+
+      data.push({
+        id:        id,
+        sowItemId: sowItemId,
+        status:    status,
+        html:      htmlContent,
+        json:      jsonData,
+      });
+    });
+
+    S.setRevisionData(data);
+    if (CFG.debug) console.log('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  INJECT REVISION BADGES + STRIPS INTO view_3586
+  // ═══════════════════════════════════════════════════════════
+
+  function injectRevisions() {
+    var revData = S.revisionData();
+    if (!revData || !revData.length) return;
+
+    var $view = $('#' + CFG.worksheetView);
+    if (!$view.length) return;
+
+    // Clean previous
+    $view.find('.' + P + '-rev-badge').remove();
+    $view.find('.' + P + '-rev-strip').remove();
+
+    // Group by SOW item ID
+    var bySow = {};
+    for (var i = 0; i < revData.length; i++) {
+      var rev = revData[i];
+      if (!rev.sowItemId) continue;
+      if (!bySow[rev.sowItemId]) bySow[rev.sowItemId] = [];
+      bySow[rev.sowItemId].push(rev);
+    }
+
+    var sowIds = Object.keys(bySow);
+    for (var s = 0; s < sowIds.length; s++) {
+      var sowId = sowIds[s];
+      var revs  = bySow[sowId];
+
+      var $row = $view.find('tr#' + sowId);
+      if (!$row.length) continue;
+
+      var $card = $row.find('.scw-ws-card');
+      if (!$card.length) continue;
+
+      // Badge on summary
+      var $summary = $card.find('.scw-ws-summary-row');
+      if (!$summary.length) $summary = $card.find('.scw-ws-summary');
+      if ($summary.length) {
+        var badge = H.el('span', P + '-rev-badge', 'REVISION (' + revs.length + ')');
+        $summary[0].appendChild(badge);
+      }
+
+      // Detail strips
+      var $detail = $card.find('.scw-ws-detail');
+      if (!$detail.length) continue;
+
+      for (var r = 0; r < revs.length; r++) {
+        var rev = revs[r];
+        var strip = H.el('div', P + '-rev-strip');
+
+        strip.appendChild(H.el('div', P + '-rev-strip-header',
+          'Submitted Revision' + (rev.status ? ' \u2014 ' + rev.status : '')));
+
+        if (rev.html) {
+          var htmlWrap = H.el('div', P + '-rev-html-card');
+          htmlWrap.innerHTML = rev.html;
+          strip.appendChild(htmlWrap);
+        } else if (rev.json) {
+          // Fallback: render JSON fields as simple key-value pairs
+          var jsonWrap = H.el('div');
+          var fields = rev.json.fields || [];
+          for (var fi = 0; fi < fields.length; fi++) {
+            var fld = fields[fi];
+            var row = H.el('div', P + '-card-field');
+            row.appendChild(H.el('span', P + '-card-label', (fld.label || fld.field) + ':'));
+            if (fld.from != null) {
+              row.appendChild(H.el('span', P + '-card-from', String(fld.from)));
+              row.appendChild(H.el('span', P + '-card-arrow', '\u2192'));
+            }
+            row.appendChild(H.el('span', P + '-card-to', String(fld.to)));
+            jsonWrap.appendChild(row);
+          }
+          if (rev.json.changeNotes) {
+            jsonWrap.appendChild(H.el('div', P + '-card-notes',
+              '\u201c' + rev.json.changeNotes + '\u201d'));
+          }
+          strip.appendChild(jsonWrap);
+        }
+
+        $detail[0].appendChild(strip);
+      }
+    }
+  }
+
+  // ── Public API ──
+  ns.loadRevisions   = loadRevisions;
+  ns.injectRevisions = injectRevisions;
+
+})();
+/*** SALES CHANGE REQUEST — INIT ***/
+/**
+ * Event bindings: wires view-render, cell-update, and scene-change
+ * events to the sales change request pipeline.
+ *
+ * Reads : SCW.salesCR.* (all sibling modules)
+ * Writes: SCW.salesCR.refresh (combined refresh entry point)
+ */
+(function () {
+  'use strict';
+
+  var ns  = window.SCW.salesCR;
+  var CFG = ns.CONFIG;
+  var S   = ns._state;
+
+  // Track which scene we're on so we only reset when truly navigating away
+  var _activeScene = '';
+
+  // ── Combined refresh (called after any mutation) ──────
+
+  function refresh() {
+    ns.renderUI();
+    ns.injectRevisions();
+  }
+
+  ns.refresh = refresh;
+
+  // ── Worksheet view render ─────────────────────────────
+  // Fires on initial load AND on re-renders triggered by
+  // refresh-on-inline-edit.js (model.fetch after cell updates).
+  // We re-inject UI every time since re-render wipes the DOM.
+
+  var _rehydrated = false;
+
+  SCW.onViewRender(CFG.worksheetView, function () {
+    S.setOnPage(true);
+    _activeScene = Knack.router.current_scene_key || '';
+    ns.injectStyles();
+    ns.buildBaseline();
+
+    // Detect SOW record ID from URL and rehydrate from Knack (once per page)
+    if (!_rehydrated) {
+      _rehydrated = true;
+      ns.detectSowRecordId();
+      ns.rehydrateFromKnack();
+    }
+
+    // Inject UI after device-worksheet transform (uses 150ms)
+    setTimeout(function () {
+      ns.checkAddMode();
+      ns.detectAddRecords();
+      refresh();
+    }, CFG.uiDelay);
+  }, CFG.eventNs);
+
+  // ── Cell update → auto-create CR ──────────────────────
+  // Device-worksheet uses direct AJAX PUT (not model.updateRecord),
+  // so knack-cell-update never fires. We intercept successful PUT
+  // responses to the worksheet view's records URL instead.
+
+  $(document).on('knack-cell-update.' + CFG.worksheetView + CFG.eventNs, ns.onCellUpdate);
+
+  // Intercept AJAX PUT responses for view_3586 records
+  $(document).ajaxComplete(function (event, xhr, settings) {
+    if (!S.onPage()) return;
+    if (settings.type !== 'PUT') return;
+    var url = settings.url || '';
+    if (url.indexOf(CFG.worksheetView) === -1) return;
+    if (xhr.status !== 200) return;
+
+    try {
+      var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
+               : JSON.parse(xhr.responseText);
+      if (resp && resp.id) {
+        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
+        ns.onCellUpdate(null, null, resp);
+      }
+    } catch (e) {}
+  });
+
+  // ── Proposal view render → check add mode ─────────────
+
+  SCW.onViewRender(CFG.proposalView, function () {
+    setTimeout(function () {
+      ns.checkAddMode();
+      if (S.isAddMode() && Object.keys(S.baseline()).length) {
+        ns.detectAddRecords();
+        refresh();
+      }
+    }, 300);
+  }, CFG.eventNs);
+
+  // ── Revision view render → load + inject ──────────────
+
+  SCW.onViewRender(CFG.revisionView, function () {
+    setTimeout(function () {
+      ns.loadRevisions();
+      ns.injectRevisions();
+    }, 300);
+  }, CFG.eventNs);
+
+  // ── Scene change → only reset when navigating AWAY ────
+  // refresh-on-inline-edit.js triggers model.fetch() on sibling
+  // views after any cell update, which can fire scene-render on
+  // the SAME scene. We must not wipe state when that happens.
+
+  $(document)
+    .off('knack-scene-render.any' + CFG.eventNs)
+    .on('knack-scene-render.any' + CFG.eventNs, function () {
+      var newScene = Knack.router.current_scene_key || '';
+      if (_activeScene && newScene === _activeScene) return;
+
+      // Truly navigated away
+      S.setOnPage(false);
+      S.setBaseline({});
+      _activeScene = '';
+      _rehydrated = false;
+      ns.renderActionBar();
+    });
+
+  // ── Expose remaining public API ───────────────────────
+
+  ns.getPending   = function () { return S.pending(); };
+  ns.getBaseline  = function () { return S.baseline(); };
+
+  if (CFG.debug) console.log('[SalesCR] Module initialized');
+
+})();
 /*** BID REVISION INJECTION — view_3823 → view_3505 ***/
 /**
  * Reads bid-revision line items from view_3823 and injects a compact

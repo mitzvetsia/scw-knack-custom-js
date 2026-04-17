@@ -235,6 +235,7 @@ The `preserve-scroll-on-refresh.js` module acts as a post-edit coordinator:
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`
 - Config objects at the top of each file — keep logic generic, keep config specific
 - **Button ordering**: destructive/negative action first, positive/primary action last. Examples: Edit | Cancel, Reject | Accept, Cancel | Submit. The primary action is always the rightmost button.
+- **Read-only / locked fields**: when programmatically making a field non-editable, keep it fully readable — no reduced opacity, no graying out. Instead, set `pointer-events: none`, `readOnly = true`, and give the input a **white background** (`background: #fff`) to visually distinguish it from editable inputs (which have a light-gray background). The field should look normal but clearly not interactive.
 
 ## Context Hygiene (Read This First)
 

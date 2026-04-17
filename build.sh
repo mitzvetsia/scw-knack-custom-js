@@ -67,6 +67,16 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/sales-change-request/config.js \
+  src/features/sales-change-request/state.js \
+  src/features/sales-change-request/styles.js \
+  src/features/sales-change-request/change-detection.js \
+  src/features/sales-change-request/modals.js \
+  src/features/sales-change-request/payload.js \
+  src/features/sales-change-request/render.js \
+  src/features/sales-change-request/submit.js \
+  src/features/sales-change-request/revision-inject.js \
+  src/features/sales-change-request/init.js \
   src/features/bid-revision-inject.js \
   src/features/revision-accept-reject.js \
   src/features/preview-proposal-btn.js \
