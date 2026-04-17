@@ -1448,8 +1448,26 @@
       surveyId:    pkg.surveyId || '',
       sowId:       pkg.sowId,
       sowName:     pkg.sowName || '',
+      user:        getUser(),
       items:       items,
     };
+  }
+
+  /** Safe read of Knack's logged-in user attributes. */
+  function getUser() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes
+        ? Knack.getUserAttributes()
+        : null;
+      if (!u || typeof u !== 'object') return null;
+      return {
+        id:    u.id || '',
+        name:  u.name || '',
+        email: u.email || '',
+      };
+    } catch (e) {
+      return null;
+    }
   }
 
   /**

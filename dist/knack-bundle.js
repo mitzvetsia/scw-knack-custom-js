@@ -15275,8 +15275,26 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       surveyId:    pkg.surveyId || '',
       sowId:       pkg.sowId,
       sowName:     pkg.sowName || '',
+      user:        getUser(),
       items:       items,
     };
+  }
+
+  /** Safe read of Knack's logged-in user attributes. */
+  function getUser() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes
+        ? Knack.getUserAttributes()
+        : null;
+      if (!u || typeof u !== 'object') return null;
+      return {
+        id:    u.id || '',
+        name:  u.name || '',
+        email: u.email || '',
+      };
+    } catch (e) {
+      return null;
+    }
   }
 
   /**
@@ -32720,6 +32738,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var TF  = CFG.trackedFields;
 
   // ═══════════════════════════════════════════════════════════
+  //  LOGGED-IN USER
+  // ═══════════════════════════════════════════════════════════
+
+  /** Safe read of Knack's logged-in user attributes. */
+  function getUser() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes
+        ? Knack.getUserAttributes()
+        : null;
+      if (!u || typeof u !== 'object') return null;
+      return {
+        id:    u.id || '',
+        name:  u.name || '',
+        email: u.email || '',
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  PER-ITEM HELPERS
   // ═══════════════════════════════════════════════════════════
 
@@ -32913,6 +32952,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       isDraft:    isDraft,
       timestamp:  new Date().toISOString(),
       sowId:      S.sowRecordId() || '',
+      user:       getUser(),
       itemCount:  items.length,
       items:      items,
     };
