@@ -893,9 +893,11 @@ window.SCW = window.SCW || {};
   // ── Strategy C: MutationObserver for modal add/remove ─
 
   function isModalEl(node) {
-    if (node.nodeType !== 1 || !node.id) return false;
-    return node.id.indexOf('kn-modal-bg') === 0 ||
-           node.id.indexOf('kn-page-modal') === 0;
+    if (node.nodeType !== 1) return false;
+    var id = typeof node.id === 'string' ? node.id : '';
+    if (!id) return false;
+    return id.indexOf('kn-modal-bg') === 0 ||
+           id.indexOf('kn-page-modal') === 0;
   }
 
   function initObserver() {
