@@ -33963,6 +33963,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var entry = {
         action:       it.action,
         rowId:        it.rowId || null,
+        sowItemId:    it.action !== 'add' ? (it.rowId || '') : '',
         displayLabel: H.readableVal(it.displayLabel) || '',
         productName:  H.readableVal(it.productName) || '',
         changeNotes:  it.changeNotes || '',
