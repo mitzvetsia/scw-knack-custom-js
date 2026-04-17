@@ -429,6 +429,7 @@
       var editableFields = {};
       editableFields[CFG.productField] = true;  // field_1949
       editableFields['field_2261'] = true;       // Custom Discount %
+      editableFields['field_1953'] = true;       // SCW Notes
       $card.find('input[data-field], textarea[data-field]').each(function () {
         var field = this.getAttribute('data-field') || '';
         if (editableFields[field]) return;

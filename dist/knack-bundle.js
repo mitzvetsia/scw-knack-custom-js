@@ -32744,7 +32744,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Add Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+      // Note is optional
 
       var noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
       var pending = S.pending();
@@ -32900,7 +32900,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       existing ? 'Update Note' : 'Add Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+      // Note is optional
 
       var pending = S.pending();
       pending[noteKey] = {
@@ -32960,7 +32960,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var body = H.el('div', P + '-modal__body');
     body.appendChild(H.el('div', P + '-modal__hint',
       'This item will be submitted as a new addition. Please include a note describing the add request.'));
-    body.appendChild(H.el('label', P + '-modal__label', 'Note (required)'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Note (optional)'));
     var ta = document.createElement('textarea');
     ta.className = P + '-modal__textarea';
     ta.placeholder = 'Describe why this item is being added\u2026';
@@ -32978,7 +32978,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       existing ? 'Update' : 'Add');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      if (!text) { ns.showToast('A note is required for add requests', 'error'); return; }
+      // Note is optional
 
       var pending = S.pending();
       pending[noteKey] = {
@@ -33043,7 +33043,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Update Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
+      // Note is optional
       existing.changeNotes = text;
       ns.persist();
       if (ns.refresh) ns.refresh();
@@ -33913,6 +33913,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var editableFields = {};
       editableFields[CFG.productField] = true;  // field_1949
       editableFields['field_2261'] = true;       // Custom Discount %
+      editableFields['field_1953'] = true;       // SCW Notes
       $card.find('input[data-field], textarea[data-field]').each(function () {
         var field = this.getAttribute('data-field') || '';
         if (editableFields[field]) return;
