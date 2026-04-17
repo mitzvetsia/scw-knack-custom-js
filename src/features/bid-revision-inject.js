@@ -1656,15 +1656,69 @@
       var item = document.createElement('div');
       item.className = P + '-item';
 
-      if (rev.changeHtml) {
-        // Pre-built HTML card from change request payload
+      // Build structured card matching scw-bid-cr-card style
+      var json = rev.changeJson || null;
+      if (json && typeof json === 'string') {
+        try { json = JSON.parse(json); } catch (e) { json = null; }
+      }
+
+      if (json && json.action) {
+        var action = json.action;
+        var cardMod = action === 'remove' ? ' scw-bid-cr-card--removal'
+                    : action === 'add'    ? ' scw-bid-cr-card--add'
+                    :                       '';
+        var card = document.createElement('div');
+        card.className = 'scw-bid-cr-card' + cardMod;
+
+        var headerText = action === 'remove' ? 'Pending Removal'
+                       : action === 'add'    ? 'Pending Add'
+                       :                       'Pending Change';
+        var hdr = document.createElement('div');
+        hdr.className = 'scw-bid-cr-card__header';
+        hdr.textContent = headerText;
+        card.appendChild(hdr);
+
+        if (json.displayLabel || json.productName) {
+          var lbl = document.createElement('div');
+          lbl.className = 'scw-bid-cr-card__item-label';
+          lbl.textContent = json.displayLabel || json.productName;
+          card.appendChild(lbl);
+        }
+
+        if (json.fields && json.fields.length) {
+          for (var fi = 0; fi < json.fields.length; fi++) {
+            var f = json.fields[fi];
+            var row = document.createElement('div');
+            row.className = 'scw-bid-cr-card__row';
+            if (action === 'revise' && f.from != null) {
+              row.textContent = f.label + ': ' + f.from + ' \u2192 ' + f.to;
+            } else {
+              row.textContent = f.label + ': ' + f.to;
+            }
+            card.appendChild(row);
+          }
+        } else if (action === 'remove') {
+          var rmRow = document.createElement('div');
+          rmRow.className = 'scw-bid-cr-card__row';
+          rmRow.textContent = 'Requesting removal';
+          card.appendChild(rmRow);
+        }
+
+        if (json.changeNotes) {
+          var notes = document.createElement('div');
+          notes.className = 'scw-bid-cr-card__notes';
+          notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+          card.appendChild(notes);
+        }
+
+        item.appendChild(card);
+      } else if (rev.changeHtml) {
         var htmlWrap = document.createElement('div');
         htmlWrap.className = P + '-html-card';
         htmlWrap.innerHTML = rev.changeHtml;
         postProcessHtmlCard(htmlWrap);
         item.appendChild(htmlWrap);
       } else {
-        // Fallback: tag-based rendering for older records
         var row = document.createElement('div');
         row.className = P + '-row';
 

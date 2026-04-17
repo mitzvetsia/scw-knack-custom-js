@@ -14,7 +14,7 @@
   var CONFIG = {
     LINE_ITEM_BUCKET_FIELD: 'field_2219',
     PRODUCT_CELL_FIELD: 'field_1949',
-    VIEWS: ['view_3456', 'view_3586', 'view_3610'],
+    VIEWS: ['view_3456', 'view_3505', 'view_3586', 'view_3610'],
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,
     DEBUG: false
