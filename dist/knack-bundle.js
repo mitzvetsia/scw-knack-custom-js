@@ -20883,17 +20883,17 @@ $(".kn-navigation-bar").hide();
   var EVENT_NS = '.scwProdBucketFilter';
   var LOG_PREFIX = '[scwProdBucketFilter]';
 
-  // ── CONFIG ──────────────────────────────────────────────────────
+  // ── CONFIG ───────────────���──────────────────────────────────────
   var CONFIG = {
     PRODUCT_OBJECT: 'object_8',
     PRODUCT_BUCKET_FIELD: 'field_133',
     LINE_ITEM_BUCKET_FIELD: 'field_2219',
     PRODUCT_CELL_FIELD: 'field_1949',
     VIEWS: ['view_3456', 'view_3586', 'view_3610'],
-    DEBUG: false
+    DEBUG: true
   };
 
-  // ── STATE ──────────────────────────────────────────────────────
+  // ── STATE ───────────────��──────────────────────────────────────
   var _productBucketMap = null;   // productId → [bucketId, ...]
   var _fetchInFlight = false;
   var _lastClickedTr = null;
@@ -20911,6 +20911,7 @@ $(".kn-navigation-bar").hide();
     if (_fetchInFlight) return;
     _fetchInFlight = true;
 
+    log('Fetching products from', CONFIG.PRODUCT_OBJECT, '...');
     var map = {};
 
     function fetchPage(page) {
@@ -20920,11 +20921,22 @@ $(".kn-navigation-bar").hide();
         return;
       }
 
+      var url = '/v1/objects/' + CONFIG.PRODUCT_OBJECT + '/records?rows_per_page=1000&page=' + page;
+      log('GET', url);
+
       SCW.knackAjax({
-        url: '/v1/objects/' + CONFIG.PRODUCT_OBJECT + '/records?rows_per_page=1000&page=' + page,
+        url: url,
         type: 'GET',
         success: function (res) {
           var records = res.records || [];
+          log('Page', page, ':', records.length, 'records, total_pages:', res.total_pages);
+
+          if (records.length && CONFIG.DEBUG) {
+            log('Sample record keys:', Object.keys(records[0]).join(', '));
+            log('Sample field_133_raw:', JSON.stringify(records[0][CONFIG.PRODUCT_BUCKET_FIELD + '_raw']));
+            log('Sample field_133:', JSON.stringify(records[0][CONFIG.PRODUCT_BUCKET_FIELD]));
+          }
+
           for (var i = 0; i < records.length; i++) {
             var rec = records[i];
             var raw = rec[CONFIG.PRODUCT_BUCKET_FIELD + '_raw'];
@@ -20948,9 +20960,9 @@ $(".kn-navigation-bar").hide();
             if (callback) callback(map);
           }
         },
-        error: function () {
+        error: function (xhr) {
           _fetchInFlight = false;
-          console.warn(LOG_PREFIX, 'Failed to fetch products from', CONFIG.PRODUCT_OBJECT);
+          console.warn(LOG_PREFIX, 'Failed to fetch products:', xhr.status, xhr.responseText);
         }
       });
     }
@@ -20958,12 +20970,21 @@ $(".kn-navigation-bar").hide();
     fetchPage(1);
   }
 
-  // ── READ BUCKET ID FROM A TABLE ROW ──────────────────────────
+  // ── READ BUCKET ID FROM A TABLE ROW ──────��───────────────────
   function readRowBucketId(tr) {
     var cell = tr.querySelector('td.' + CONFIG.LINE_ITEM_BUCKET_FIELD);
-    if (!cell) return '';
+    if (!cell) {
+      log('No td.' + CONFIG.LINE_ITEM_BUCKET_FIELD + ' found in row. Classes on tds:',
+        Array.prototype.map.call(tr.querySelectorAll('td'), function (td) {
+          return td.className;
+        }).join(' | '));
+      return '';
+    }
     var span = cell.querySelector('span[data-kn="connection-value"]');
-    if (!span) return '';
+    if (!span) {
+      log('No connection-value span in bucket cell. Cell HTML:', cell.innerHTML.substring(0, 200));
+      return '';
+    }
     return (span.className || '').trim();
   }
 
@@ -20978,9 +20999,10 @@ $(".kn-navigation-bar").hide();
     return false;
   }
 
-  // ── FILTER POPOVER OPTIONS ───────────────────────────────────
+  // ── FILTER POPOVER OPTIONS ─────���─────────────────────────────
   function filterPopover(popover) {
-    if (!_lastClickedTr || !_productBucketMap) return;
+    if (!_lastClickedTr) { log('filterPopover: no _lastClickedTr'); return; }
+    if (!_productBucketMap) { log('filterPopover: map not loaded yet'); return; }
 
     var bucketId = readRowBucketId(_lastClickedTr);
     if (!bucketId) {
@@ -20989,11 +21011,17 @@ $(".kn-navigation-bar").hide();
     }
 
     log('Filtering for bucket', bucketId);
+
+    // Dump popover structure for debugging
+    log('Popover classes:', popover.className);
+    log('Popover children:', popover.innerHTML.substring(0, 500));
+
     var hidden = 0;
 
     // Pattern 1: radio/checkbox controls inside .conn_inputs
     var controls = popover.querySelectorAll('.conn_inputs .control');
     if (controls.length) {
+      log('Found', controls.length, 'controls in .conn_inputs');
       for (var i = 0; i < controls.length; i++) {
         var input = controls[i].querySelector('input[type="radio"], input[type="checkbox"]');
         if (!input || !input.value) continue;
@@ -21012,6 +21040,7 @@ $(".kn-navigation-bar").hide();
     var select = popover.querySelector('select');
     if (select) {
       var opts = select.querySelectorAll('option');
+      log('Found select with', opts.length, 'options');
       for (var j = 0; j < opts.length; j++) {
         if (!opts[j].value) continue;
         if (!productMatchesBucket(opts[j].value, bucketId)) {
@@ -21025,17 +21054,18 @@ $(".kn-navigation-bar").hide();
       }
       $(select).trigger('chosen:updated').trigger('liszt:updated');
       log('Hidden', hidden, 'of', opts.length, 'options (select)');
+      return;
     }
+
+    log('No .conn_inputs controls or select found in popover');
   }
 
   // ── CAPTURE CLICK ON PRODUCT CELL ────────────────────────────
-  // Fires in capture phase before Knack opens its inline-edit popover,
-  // so we know which row to filter against.
   document.addEventListener('click', function (e) {
     var td = e.target.closest
-      ? e.target.closest('td.' + CONFIG.PRODUCT_CELL_FIELD + '.cell-edit')
+      ? e.target.closest('td.' + CONFIG.PRODUCT_CELL_FIELD)
       : null;
-    if (!td) { _lastClickedTr = null; return; }
+    if (!td) return;
 
     var viewEl = td.closest('[id^="view_"]');
     if (!viewEl || CONFIG.VIEWS.indexOf(viewEl.id) === -1) return;
@@ -21044,11 +21074,10 @@ $(".kn-navigation-bar").hide();
     if (!tr || !tr.id) return;
 
     _lastClickedTr = tr;
-    log('Product cell clicked in', viewEl.id, 'row', tr.id);
+    log('Product cell clicked in', viewEl.id, 'row', tr.id, 'td classes:', td.className);
   }, true);
 
-  // ── OBSERVE POPOVER OPEN ─────────────────────────────────────
-  // Re-applies filter whenever options change (covers lazy-load / search).
+  // ── OBSERVE POPOVER OPEN ──────────────────���──────────────────
   function watchPopoverContent(popover) {
     if (_popoverObserver) { _popoverObserver.disconnect(); _popoverObserver = null; }
 
@@ -21064,19 +21093,20 @@ $(".kn-navigation-bar").hide();
   }
 
   var _bodyObserver = new MutationObserver(function (mutations) {
-    if (!_lastClickedTr) return;
-
     for (var m = 0; m < mutations.length; m++) {
       var mutation = mutations[m];
 
       // Class change: kn-popover gets drop-open added
       if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
         var el = mutation.target;
-        if (el.classList.contains('kn-popover') && el.classList.contains('drop-open')) {
-          setTimeout(function () {
-            filterPopover(el);
-            watchPopoverContent(el);
-          }, 60);
+        if (el.classList.contains('kn-popover')) {
+          log('Popover class change detected:', el.className);
+          if (el.classList.contains('drop-open') && _lastClickedTr) {
+            setTimeout(function () {
+              filterPopover(el);
+              watchPopoverContent(el);
+            }, 100);
+          }
         }
       }
 
@@ -21086,12 +21116,15 @@ $(".kn-navigation-bar").hide();
           var node = mutation.addedNodes[n];
           if (node.nodeType !== 1) continue;
           if (node.classList.contains('kn-popover')) {
-            (function (p) {
-              setTimeout(function () {
-                filterPopover(p);
-                watchPopoverContent(p);
-              }, 60);
-            })(node);
+            log('New popover node added to DOM');
+            if (_lastClickedTr) {
+              (function (p) {
+                setTimeout(function () {
+                  filterPopover(p);
+                  watchPopoverContent(p);
+                }, 100);
+              })(node);
+            }
           }
         }
       }
@@ -21105,13 +21138,16 @@ $(".kn-navigation-bar").hide();
     attributeFilter: ['class']
   });
 
-  // ── INIT: FETCH ON FIRST RELEVANT VIEW RENDER ───────────────
+  // ── INIT: FETCH ON FIRST RELEVANT VIEW RENDER ──��────────────
   var _fetched = false;
 
-  function onViewRender() {
-    if (_fetched) return;
-    _fetched = true;
-    fetchProductBuckets(null);
+  function onViewRender(event, view) {
+    var viewId = view && view.key ? view.key : '?';
+    log('View rendered:', viewId);
+    if (!_fetched) {
+      _fetched = true;
+      fetchProductBuckets(null);
+    }
   }
 
   for (var i = 0; i < CONFIG.VIEWS.length; i++) {
@@ -21119,6 +21155,8 @@ $(".kn-navigation-bar").hide();
       .off('knack-view-render.' + CONFIG.VIEWS[i] + EVENT_NS)
       .on('knack-view-render.' + CONFIG.VIEWS[i] + EVENT_NS, onViewRender);
   }
+
+  log('Module loaded, watching views:', CONFIG.VIEWS.join(', '));
 })();
 /*** END FILTER INLINE-EDIT PRODUCT OPTIONS BY ROW BUCKET ***/
 // ============================================================
