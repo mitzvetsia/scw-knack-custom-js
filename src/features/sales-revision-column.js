@@ -50,7 +50,7 @@
 
       '.' + P + '-cell {',
       '  vertical-align: top; padding: 8px 10px;',
-      '  min-width: 200px;',
+      '  min-width: 200px; overflow: visible;',
       '}',
 
       '.' + P + '-card {',
@@ -191,17 +191,55 @@
       if (revs.length) {
         for (var r = 0; r < revs.length; r++) {
           var rev = revs[r];
+          var json = rev.json || {};
+          var action = json.action || '';
           var item = document.createElement('div');
-          item.className = P + '-card';
 
-          // HTML card
-          if (rev.html) {
-            var cardWrap = document.createElement('div');
-            cardWrap.innerHTML = rev.html;
-            item.appendChild(cardWrap);
+          // Build card matching scw-bid-cr-card structure
+          var cardMod = action === 'remove' ? '--removal'
+                      : action === 'add'    ? ''
+                      :                       '';
+          var card = document.createElement('div');
+          card.className = 'scw-bid-cr-card' + (cardMod ? ' scw-bid-cr-card' + cardMod : '');
+
+          var headerText = action === 'remove' ? 'Sales: Remove'
+                         : action === 'add'    ? 'Sales: Add'
+                         :                       'Sales: Revise';
+          var header = document.createElement('div');
+          header.className = 'scw-bid-cr-card__header';
+          header.textContent = headerText;
+          card.appendChild(header);
+
+          if (json.displayLabel || json.productName) {
+            var label = document.createElement('div');
+            label.className = 'scw-bid-cr-card__item-label';
+            label.textContent = json.displayLabel || json.productName;
+            card.appendChild(label);
           }
 
-          var action = (rev.json && rev.json.action) || '';
+          if (json.fields && json.fields.length) {
+            for (var fi = 0; fi < json.fields.length; fi++) {
+              var f = json.fields[fi];
+              var row = document.createElement('div');
+              row.className = 'scw-bid-cr-card__row';
+              row.textContent = f.label + ': ' + (f.from || '\u2014') + ' \u2192 ' + f.to;
+              card.appendChild(row);
+            }
+          } else if (action === 'remove') {
+            var removeRow = document.createElement('div');
+            removeRow.className = 'scw-bid-cr-card__row';
+            removeRow.textContent = 'Requesting removal';
+            card.appendChild(removeRow);
+          }
+
+          if (json.changeNotes) {
+            var notes = document.createElement('div');
+            notes.className = 'scw-bid-cr-card__notes';
+            notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+            card.appendChild(notes);
+          }
+
+          item.appendChild(card);
 
           // Build overflow menus matching the CR column style
           var actions = document.createElement('div');
