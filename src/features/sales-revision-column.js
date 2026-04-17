@@ -552,11 +552,19 @@
       url: SCW.knackRecordUrl(CFG.revisionView, revId),
       type: 'PUT',
       data: JSON.stringify(knackData),
-      success: function () { console.log('[SalesRevCol] Updated record', revId, 'to Rejected'); },
-      error: function () { console.warn('[SalesRevCol] Failed to update record', revId); },
+      success: function () {
+        console.log('[SalesRevCol] Updated record', revId, 'to Rejected');
+        afterReject(btn);
+      },
+      error: function () {
+        console.warn('[SalesRevCol] Failed to update record', revId);
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+        setTimeout(function () { btn.textContent = 'Reject'; }, 3000);
+      },
     });
 
-    // 2. Send webhook with full item data
+    // 2. Send webhook with full item data (fire-and-forget)
     var item = JSON.parse(JSON.stringify(updatedJson));
     item.lineItemId = revId;
     if (!item.action) item.action = 'revise';
@@ -577,28 +585,22 @@
       contentType: 'application/json',
       data: JSON.stringify(payload),
       timeout: 30000,
-      success: function () { afterReject(btn); },
-      error: function (xhr) {
-        if (xhr && xhr.status === 0) {
-          afterReject(btn);
-        } else {
-          btn.textContent = 'Failed';
-          btn.disabled = false;
-          setTimeout(function () { btn.textContent = 'Reject'; }, 3000);
-        }
-      },
     });
   }
 
   function afterReject(btn) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
-    // Refresh the revision data view after a short delay
+    // Refresh revision data view → triggers column rebuild
     setTimeout(function () {
       if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
         Knack.views[CFG.revisionView].model.fetch();
       }
-    }, 2000);
+      // Refresh the comparison grid
+      if (window.SCW && SCW.bidReview && SCW.bidReview.rerender) {
+        SCW.bidReview.rerender();
+      }
+    }, 1500);
   }
 
   function handleSRAction(e) {
