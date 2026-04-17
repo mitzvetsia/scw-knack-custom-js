@@ -2172,15 +2172,20 @@
     _injectRetries = 0;
 
     // Reserve space for action button on ALL rows (prevents layout shift)
+    // Insert AFTER the delete column wrapper (sibling, not child)
     for (var wi = 0; wi < wsRows.length; wi++) {
       var wsCard = wsRows[wi].querySelector('.scw-ws-card');
       if (!wsCard) continue;
-      var delWrap = wsCard.querySelector('.scw-ws-sum-delete');
-      if (delWrap && !wsCard.querySelector('.scw-scr-action-wrap')) {
+      if (wsCard.querySelector('.scw-scr-action-wrap')) continue;
+      var delBtn = wsCard.querySelector('.scw-ws-sum-delete');
+      if (!delBtn) continue;
+      // The delete button is inside a column wrapper span — insert after that wrapper
+      var delCol = delBtn.parentNode;
+      if (delCol && delCol.parentNode) {
         var placeholder = document.createElement('span');
         placeholder.className = 'scw-scr-action-wrap';
         placeholder.style.alignSelf = 'center';
-        delWrap.parentNode.insertBefore(placeholder, delWrap.nextSibling);
+        delCol.parentNode.insertBefore(placeholder, delCol.nextSibling);
       }
     }
 
