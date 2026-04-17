@@ -53,6 +53,7 @@ cat \
   src/features/sales-edit-proposal-refresh-controls.js \
   src/features/exception-grid-handler.js \
   src/features/set_unified_product_field.js \
+  src/features/filter-products-by-bucket.js \
   src/features/force-negative-display.js \
   src/features/refresh-on-inline-edit.js \
   src/features/refresh-view-on-form-submit.js \
