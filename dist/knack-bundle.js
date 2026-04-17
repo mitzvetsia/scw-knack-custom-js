@@ -11284,12 +11284,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__overflow-trigger--create {',
-      '  border-color: #93c5fd;',
-      '  color: #2563eb;',
+      '  border-color: #86efac;',
+      '  color: #16a34a;',
       '}',
       '.scw-bid-review__overflow-trigger--create:hover {',
-      '  background: #eff6ff;',
-      '  border-color: #60a5fa;',
+      '  background: #f0fdf4;',
+      '  border-color: #4ade80;',
       '}',
 
       '.scw-bid-review__overflow-menu {',
