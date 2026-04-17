@@ -17256,6 +17256,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     mountSelector:   '#bid-review-matrix',
     eventNs:         '.scwSalesRevCol',
     cssId:           'scw-sales-rev-col-css',
+    rejectWebhook:   'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5',
   };
 
   var P = 'scw-sr-col';
@@ -17292,6 +17293,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.' + P + '-actions {',
       '  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;',
       '}',
+
+      '.scw-bid-review__overflow-trigger--reject {',
+      '  background: #dc2626 !important; color: #fff !important;',
+      '  border: none; border-radius: 4px; padding: 4px 10px;',
+      '  font: 600 11px/1 system-ui, sans-serif; cursor: pointer;',
+      '  white-space: nowrap;',
+      '}',
+      '.scw-bid-review__overflow-trigger--reject:hover { filter: brightness(.88); }',
+      '.scw-bid-review__overflow-trigger--reject:disabled { opacity: .5; cursor: not-allowed; }',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -17542,6 +17552,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           }
           actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
 
+          // Reject button — simple, no overflow
+          var rejectBtn = document.createElement('button');
+          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+          rejectBtn.textContent = 'Reject';
+          rejectBtn.setAttribute('data-rev-id', rev.id);
+          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+          rejectBtn.setAttribute('data-rev-json', revJsonStr);
+          rejectBtn.addEventListener('click', handleRejectClick);
+          actions.appendChild(rejectBtn);
+
           item.appendChild(actions);
           td.appendChild(item);
         }
@@ -17710,6 +17730,104 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       overlay.appendChild(modal);
       document.body.appendChild(overlay);
     }
+  }
+
+  function handleRejectClick(e) {
+    e.stopPropagation();
+    var btn = this;
+    var revId = btn.getAttribute('data-rev-id');
+    var revReqId = btn.getAttribute('data-rev-request-id');
+    var revJson = {};
+    try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+
+    var label = revJson.displayLabel || revJson.productName || 'this item';
+    if (!window.confirm('Reject revision for ' + label + '?')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Rejecting\u2026';
+
+    // Build updated JSON with rejection stamp
+    var updatedJson = JSON.parse(JSON.stringify(revJson));
+    updatedJson.status = 'Rejected by Ops';
+    updatedJson.rejectedAt = new Date().toISOString();
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) updatedJson.rejectedBy = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    // Build rejection HTML stamp to prepend to existing card
+    var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
+      + 'background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
+      + 'color:#991b1b;font-weight:600;">'
+      + '\u274c Rejected by Ops &mdash; ' + new Date().toLocaleString()
+      + '</div>';
+
+    // Find the existing HTML from the card in the DOM
+    var cardEl = btn.closest('.' + P + '-item');
+    var existingHtml = '';
+    if (cardEl) {
+      var cardDiv = cardEl.querySelector('.' + P + '-card');
+      if (cardDiv) existingHtml = cardDiv.innerHTML;
+    }
+    var newHtml = stampHtml + existingHtml;
+
+    // 1. Update Knack record: field_2645 (status), field_2695 (HTML), field_2696 (JSON)
+    var knackData = {};
+    knackData[CFG.statusField] = 'Rejected by Ops';
+    knackData[CFG.htmlField] = newHtml;
+    knackData[CFG.jsonField] = JSON.stringify(updatedJson);
+
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revId),
+      type: 'PUT',
+      data: JSON.stringify(knackData),
+      success: function () { console.log('[SalesRevCol] Updated record', revId, 'to Rejected'); },
+      error: function () { console.warn('[SalesRevCol] Failed to update record', revId); },
+    });
+
+    // 2. Send webhook with full item data
+    var item = JSON.parse(JSON.stringify(updatedJson));
+    item.lineItemId = revId;
+    if (!item.action) item.action = 'revise';
+
+    var payload = {
+      action: 'reject',
+      timestamp: new Date().toISOString(),
+      totalItems: 1,
+      revisionRequests: [{
+        revisionRequestId: revReqId || '',
+        items: [item],
+      }],
+    };
+
+    $.ajax({
+      url: CFG.rejectWebhook,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      timeout: 30000,
+      success: function () { afterReject(btn); },
+      error: function (xhr) {
+        if (xhr && xhr.status === 0) {
+          afterReject(btn);
+        } else {
+          btn.textContent = 'Failed';
+          btn.disabled = false;
+          setTimeout(function () { btn.textContent = 'Reject'; }, 3000);
+        }
+      },
+    });
+  }
+
+  function afterReject(btn) {
+    btn.textContent = 'Rejected \u2713';
+    btn.style.opacity = '0.6';
+    // Refresh the revision data view after a short delay
+    setTimeout(function () {
+      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+        Knack.views[CFG.revisionView].model.fetch();
+      }
+    }, 2000);
   }
 
   function handleSRAction(e) {
