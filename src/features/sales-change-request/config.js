@@ -26,6 +26,7 @@
     labelField:       'field_1950',  // display label (e.g. "E-003")
     productField:     'field_1949',  // product name
     bucketField:      'field_2219',  // proposal bucket (grouping)
+    laborHoursField:  'field_1981',  // product-specific default labor hours
 
     // ── Make webhooks ──────────────────────────────────────
     submitWebhook:    'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_SUBMIT',

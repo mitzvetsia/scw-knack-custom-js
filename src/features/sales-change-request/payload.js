@@ -32,6 +32,9 @@
         displayLabel: it.displayLabel || '',
         productName:  it.productName || '',
         changeNotes:  it.changeNotes || '',
+        bucketId:     it.bucketId || '',
+        bucketName:   it.bucketName || '',
+        laborHours:   it.laborHours || 0,
       };
 
       if (it.action === 'revise' || it.action === 'add') {

@@ -31073,6 +31073,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     labelField:       'field_1950',  // display label (e.g. "E-003")
     productField:     'field_1949',  // product name
     bucketField:      'field_2219',  // proposal bucket (grouping)
+    laborHoursField:  'field_1981',  // product-specific default labor hours
 
     // ── Make webhooks ──────────────────────────────────────
     submitWebhook:    'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_SUBMIT',
@@ -31764,9 +31765,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           snap[fk + '_ids'] = H.extractIds(raw);
         }
       }
-      snap._label    = H.readableVal(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
-      snap._product  = H.readableVal(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
-      snap._addCount = attrs[CFG.addCountField] || 0;
+      snap._label      = H.readableVal(attrs[CFG.labelField + '_raw']   || attrs[CFG.labelField]   || '');
+      snap._product    = H.readableVal(attrs[CFG.productField + '_raw'] || attrs[CFG.productField] || '');
+      snap._addCount   = attrs[CFG.addCountField] || 0;
+      // Metadata for Make routing (bucket + labor hours)
+      var bucketRaw    = attrs[CFG.bucketField + '_raw'] || attrs[CFG.bucketField];
+      snap._bucketId   = H.extractIds(bucketRaw)[0] || '';
+      snap._bucketName = H.readableVal(bucketRaw);
+      var lhRaw        = attrs[CFG.laborHoursField + '_raw'] != null ? attrs[CFG.laborHoursField + '_raw'] : attrs[CFG.laborHoursField];
+      snap._laborHours = typeof lhRaw === 'number' ? lhRaw : parseFloat(String(lhRaw || '0').replace(/[^0-9.\-]/g, '')) || 0;
 
       baseline[id] = snap;
     }
@@ -31801,9 +31808,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           base[fk + '_ids'] = H.extractIds(raw);
         }
       }
-      base._label    = H.readableVal(record[CFG.labelField + '_raw']   || record[CFG.labelField]   || '');
-      base._product  = H.readableVal(record[CFG.productField + '_raw'] || record[CFG.productField] || '');
-      base._addCount = record[CFG.addCountField] || 0;
+      base._label      = H.readableVal(record[CFG.labelField + '_raw']   || record[CFG.labelField]   || '');
+      base._product    = H.readableVal(record[CFG.productField + '_raw'] || record[CFG.productField] || '');
+      base._addCount   = record[CFG.addCountField] || 0;
+      var lbRaw        = record[CFG.bucketField + '_raw'] || record[CFG.bucketField];
+      base._bucketId   = H.extractIds(lbRaw)[0] || '';
+      base._bucketName = H.readableVal(lbRaw);
+      var lhRaw2       = record[CFG.laborHoursField + '_raw'] != null ? record[CFG.laborHoursField + '_raw'] : record[CFG.laborHoursField];
+      base._laborHours = typeof lhRaw2 === 'number' ? lhRaw2 : parseFloat(String(lhRaw2 || '0').replace(/[^0-9.\-]/g, '')) || 0;
       baseline[id] = base;
       if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
       return;
@@ -31868,6 +31880,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         rowId:        id,
         displayLabel: base._label || '',
         productName:  base._product || '',
+        bucketId:     base._bucketId || '',
+        bucketName:   base._bucketName || '',
+        laborHours:   base._laborHours || 0,
         action:       isAdd ? 'add' : 'revise',
         current:      current,
         requested:    requested,
@@ -32452,6 +32467,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         displayLabel: it.displayLabel || '',
         productName:  it.productName || '',
         changeNotes:  it.changeNotes || '',
+        bucketId:     it.bucketId || '',
+        bucketName:   it.bucketName || '',
+        laborHours:   it.laborHours || 0,
       };
 
       if (it.action === 'revise' || it.action === 'add') {
