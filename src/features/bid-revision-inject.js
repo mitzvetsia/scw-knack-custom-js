@@ -1029,13 +1029,11 @@
                  : action === 'remove' ? 'scw-scr-action-btn--remove'
                  :                       'scw-scr-action-btn--revise';
 
-    var btn = document.createElement('span');
+    var btn = document.createElement('button');
     btn.className = 'scw-scr-action-btn ' + colorCls;
-    btn.style.cursor = 'default';
+    btn.type = 'button';
     btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
-    if (revisions.length > 1) {
-      btn.title = revisions.length + ' revisions';
-    }
+    btn.title = revisions.length + ' revision' + (revisions.length !== 1 ? 's' : '') + ' — click to expand';
     return btn;
   }
 
@@ -2173,6 +2171,7 @@
       if (deleteWrap && !card.querySelector('.scw-scr-action-wrap')) {
         var wrap = document.createElement('span');
         wrap.className = 'scw-scr-action-wrap';
+        wrap.style.alignSelf = 'center';
         var iconBtn = makeBadge(revisions);
         iconBtn.style.cursor = 'pointer';
         iconBtn.addEventListener('click', (function (cardEl) {
