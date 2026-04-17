@@ -34720,6 +34720,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       /* Hide the source view entirely */
       '#' + CFG.revisionView + ' { display: none !important; }',
 
+      /* Action button icon (mirrors scw-scr-action-btn from sales CR) */
+      '.scw-scr-action-wrap {',
+      '  display: inline-flex !important; align-items: center !important;',
+      '  justify-content: center !important;',
+      '  flex-shrink: 0; min-width: 22px; padding: 5px 4px 0 4px;',
+      '}',
+      '.scw-scr-action-btn {',
+      '  display: inline-flex !important; align-items: center !important; justify-content: center !important;',
+      '  width: 26px !important; height: 26px !important; border-radius: 5px !important;',
+      '  border: none !important; background: #e2e8f0 !important;',
+      '  color: #64748b !important; cursor: pointer !important;',
+      '  line-height: 1 !important; padding: 0 !important;',
+      '  box-shadow: none !important; min-width: 0 !important;',
+      '  transition: all .15s;',
+      '}',
+      '.scw-scr-action-btn--revise { background: #3b82f6 !important; color: #fff !important; }',
+      '.scw-scr-action-btn--add { background: #16a34a !important; color: #fff !important; }',
+      '.scw-scr-action-btn--remove { background: #dc2626 !important; color: #fff !important; }',
+
       /* Badge on the summary row */
       '.' + BADGE_CLS + ' {',
       '  display: inline-flex; align-items: center; gap: 4px;',
