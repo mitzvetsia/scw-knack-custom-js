@@ -17748,7 +17748,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // Build updated JSON with rejection stamp
     var updatedJson = JSON.parse(JSON.stringify(revJson));
-    updatedJson.status = 'Rejected by Ops';
+    updatedJson.status = 'Rejected';
     updatedJson.rejectedAt = new Date().toISOString();
     try {
       var u = Knack.getUserAttributes();
@@ -17759,7 +17759,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
       + 'background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
       + 'color:#991b1b;font-weight:600;">'
-      + '\u274c Rejected by Ops &mdash; ' + new Date().toLocaleString()
+      + '\u274c Rejected &mdash; ' + new Date().toLocaleString()
       + '</div>';
 
     // Find the existing HTML from the card in the DOM
@@ -17773,7 +17773,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // 1. Update Knack record: field_2645 (status), field_2695 (HTML), field_2696 (JSON)
     var knackData = {};
-    knackData[CFG.statusField] = 'Rejected by Ops';
+    knackData[CFG.statusField] = 'Rejected';
     knackData[CFG.htmlField] = newHtml;
     knackData[CFG.jsonField] = JSON.stringify(updatedJson);
 
