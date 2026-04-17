@@ -218,14 +218,16 @@
             actions.appendChild(applyBtn);
           }
 
-          // All types get "Create Bid CR"
           var crVariant = action === 'remove' ? '--remove'
                         : action === 'add'    ? '--create'
                         :                       '--revise';
+          var crLabel   = action === 'add'    ? 'Create Add CR'
+                        : action === 'remove' ? 'Create Remove CR'
+                        :                       'Create Bid CR';
           var bidCrBtn = document.createElement('button');
           bidCrBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger' + crVariant;
           bidCrBtn.type = 'button';
-          bidCrBtn.textContent = 'Create Bid CR';
+          bidCrBtn.textContent = crLabel;
           bidCrBtn.setAttribute('data-rev-id', rev.id);
           bidCrBtn.setAttribute('data-sow-item-id', rev.sowItemId);
           bidCrBtn.setAttribute('data-rev-json', JSON.stringify(rev.json || {}));

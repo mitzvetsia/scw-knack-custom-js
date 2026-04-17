@@ -16765,22 +16765,27 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
-    // Get available packages for this row
+    // Get available packages: use cellsByPackage for revise/remove,
+    // but for ADD items (noBid) offer ALL packages from the grid
     var pkgIds = Object.keys(row.cellsByPackage);
+    if (!pkgIds.length && grid.packages) {
+      for (var pi = 0; pi < grid.packages.length; pi++) {
+        pkgIds.push(grid.packages[pi].id);
+      }
+    }
     if (!pkgIds.length) {
-      if (ns.renderToast) ns.renderToast('No bid packages available for this item', 'error');
+      if (ns.renderToast) ns.renderToast('No bid packages available', 'error');
       return;
     }
 
-    // If only one package, use it directly; otherwise let the user pick
-    if (pkgIds.length === 1) {
-      executeBidCR(grid, row, pkgIds[0], action, notes);
+    // Always show picker so user selects the target bid
+    var choices = [];
+    for (var p = 0; p < pkgIds.length; p++) {
+      choices.push({ id: pkgIds[p], name: findPackageName(grid, pkgIds[p]) });
+    }
+    if (choices.length === 1) {
+      executeBidCR(grid, row, choices[0].id, action, notes);
     } else {
-      // Show a simple picker
-      var choices = [];
-      for (var p = 0; p < pkgIds.length; p++) {
-        choices.push({ id: pkgIds[p], name: findPackageName(grid, pkgIds[p]) });
-      }
       showPackagePicker(choices, function (pkgId) {
         executeBidCR(grid, row, pkgId, action, notes);
       });
@@ -16789,7 +16794,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   function executeBidCR(grid, row, pkgId, action, notes) {
     var cell = row.cellsByPackage[pkgId];
-    if (!cell) return;
 
     var params = {
       rowId:        row.id,
@@ -16801,14 +16805,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
-      cell:         cell,
+      cell:         cell || {},
     };
 
     if (action === 'remove') {
+      if (!cell) return;
       params.prefillNotes = notes;
       ns.changeRequests.openRemove(params);
+    } else if (action === 'add') {
+      // Add to bid — use the add-item flow
+      params.sowProduct    = row.sowProduct || row.productName || '';
+      params.sowQty        = row.sowQty || '';
+      params.sowLaborDesc  = row.sowLaborDesc || '';
+      params.sowFee        = row.sowFee || '';
+      params.sowExistCabling = row.sowExistCabling || '';
+      params.sowPlenum     = row.sowPlenum || '';
+      params.sowExterior   = row.sowExterior || '';
+      params.sowDropLength = row.sowDropLength || '';
+      params.sowConduit    = row.sowConduit || '';
+      params.sowMdfIdf     = row.sowMdfIdf || '';
+      params.sowMapConn    = row.sowMapConn || '';
+      params.connOptions   = {};
+      params.visibility    = { qty: true, cabling: true, connDevice: true };
+      params.gridRows      = grid.rows;
+      ns.changeRequests.openAddItem(params);
     } else {
-      // Open change request modal for revise/add
+      if (!cell) return;
       params.connOptions = {};
       params.visibility = { qty: true, cabling: true, connDevice: true };
       ns.changeRequests.open(params);
@@ -17179,14 +17201,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             actions.appendChild(applyBtn);
           }
 
-          // All types get "Create Bid CR"
           var crVariant = action === 'remove' ? '--remove'
                         : action === 'add'    ? '--create'
                         :                       '--revise';
+          var crLabel   = action === 'add'    ? 'Create Add CR'
+                        : action === 'remove' ? 'Create Remove CR'
+                        :                       'Create Bid CR';
           var bidCrBtn = document.createElement('button');
           bidCrBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger' + crVariant;
           bidCrBtn.type = 'button';
-          bidCrBtn.textContent = 'Create Bid CR';
+          bidCrBtn.textContent = crLabel;
           bidCrBtn.setAttribute('data-rev-id', rev.id);
           bidCrBtn.setAttribute('data-sow-item-id', rev.sowItemId);
           bidCrBtn.setAttribute('data-rev-json', JSON.stringify(rev.json || {}));
