@@ -1398,6 +1398,8 @@
         changeNotes:  it.changeNotes || '',
       };
 
+      if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
+
       // Proposal bucket + sort order (for ordering ADD items in revision view)
       if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
       if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
