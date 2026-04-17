@@ -2168,10 +2168,23 @@
 
       var revisions = revMap[siId];
 
-      // Badge → append to the identity / product area in the summary
-      var identity = card.querySelector('.scw-ws-identity');
-      if (identity) {
-        identity.appendChild(makeBadge(revisions));
+      // Action icon → insert after delete wrapper (like view_3586)
+      var deleteWrap = card.querySelector('.scw-ws-sum-delete');
+      if (deleteWrap && !card.querySelector('.scw-scr-action-wrap')) {
+        var wrap = document.createElement('span');
+        wrap.className = 'scw-scr-action-wrap';
+        var iconBtn = makeBadge(revisions);
+        iconBtn.style.cursor = 'pointer';
+        iconBtn.addEventListener('click', (function (cardEl) {
+          return function (e) {
+            e.stopPropagation();
+            // Toggle the accordion open
+            var chevron = cardEl.querySelector('.scw-ws-chevron');
+            if (chevron) chevron.click();
+          };
+        })(card));
+        wrap.appendChild(iconBtn);
+        deleteWrap.parentNode.insertBefore(wrap, deleteWrap.nextSibling);
       }
 
       // Revision strip → inside the detail panel (visible when expanded)
@@ -2291,6 +2304,8 @@
       }
       card.appendChild(hdr);
 
+      // Field diffs: try json.fields first, fall back to rev.changes
+      var hasFields = false;
       if (json && json.fields && json.fields.length) {
         for (var fi = 0; fi < json.fields.length; fi++) {
           var f = json.fields[fi];
@@ -2301,8 +2316,26 @@
             : f.label + ': ' + f.to;
           row.textContent = fromTo;
           card.appendChild(row);
+          hasFields = true;
         }
-      } else if (action === 'remove') {
+      }
+      if (!hasFields && rev.changes && rev.changes.length) {
+        for (var ci = 0; ci < rev.changes.length; ci++) {
+          var ch = rev.changes[ci];
+          var chRow = document.createElement('div');
+          chRow.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+          chRow.textContent = ch.label + ': ' + ch.value;
+          card.appendChild(chRow);
+          hasFields = true;
+        }
+      }
+      if (!hasFields && rev.changeHtml) {
+        var htmlWrap = document.createElement('div');
+        htmlWrap.innerHTML = rev.changeHtml;
+        card.appendChild(htmlWrap);
+        hasFields = true;
+      }
+      if (!hasFields && action === 'remove') {
         var rmRow = document.createElement('div');
         rmRow.textContent = 'Requesting removal';
         card.appendChild(rmRow);
