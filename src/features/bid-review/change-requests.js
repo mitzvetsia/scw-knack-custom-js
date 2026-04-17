@@ -1737,6 +1737,7 @@
     ta.className = 'scw-bid-cr-modal__textarea';
     ta.placeholder = 'Why should this item be removed\u2026';
     ta.rows = 3;
+    if (params.prefillNotes) ta.value = params.prefillNotes;
     notesRow.appendChild(ta);
     body.appendChild(notesRow);
     modal.appendChild(body);

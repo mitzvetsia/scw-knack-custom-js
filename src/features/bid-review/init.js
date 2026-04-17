@@ -888,7 +888,7 @@
     };
 
     if (action === 'remove') {
-      // Pre-fill notes and open remove modal
+      params.prefillNotes = notes;
       ns.changeRequests.openRemove(params);
     } else {
       // Open change request modal for revise/add

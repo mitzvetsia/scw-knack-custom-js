@@ -15568,6 +15568,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ta.className = 'scw-bid-cr-modal__textarea';
     ta.placeholder = 'Why should this item be removed\u2026';
     ta.rows = 3;
+    if (params.prefillNotes) ta.value = params.prefillNotes;
     notesRow.appendChild(ta);
     body.appendChild(notesRow);
     modal.appendChild(body);
@@ -16804,7 +16805,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     };
 
     if (action === 'remove') {
-      // Pre-fill notes and open remove modal
+      params.prefillNotes = notes;
       ns.changeRequests.openRemove(params);
     } else {
       // Open change request modal for revise/add
@@ -17020,25 +17021,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.' + P + '-card > div > div { max-width: 100% !important; }',
 
       '.' + P + '-actions {',
-      '  display: flex; flex-direction: column; gap: 4px; margin-top: 6px;',
-      '}',
-
-      /* Mirror the bid-review overflow-trigger button style */
-      '.' + P + '-btn {',
-      '  display: flex; align-items: center; gap: 4px;',
-      '  padding: 4px 10px; border-radius: 4px; border: none;',
-      '  font-size: 11px; font-weight: 600; cursor: pointer;',
-      '  transition: filter .15s; width: 100%; text-align: left;',
-      '}',
-      '.' + P + '-btn:hover { filter: brightness(.92); }',
-      '.' + P + '-btn--apply {',
-      '  background: #16a34a; color: #fff;',
-      '}',
-      '.' + P + '-btn--add-bid {',
-      '  background: #16a34a; color: #fff;',
-      '}',
-      '.' + P + '-btn--bid-cr {',
-      '  background: #3b82f6; color: #fff;',
+      '  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;',
       '}',
     ].join('\n');
 
@@ -17179,24 +17162,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             item.appendChild(cardWrap);
           }
 
-          // Determine action type from JSON
           var action = (rev.json && rev.json.action) || '';
 
-          // Action buttons
           var actions = document.createElement('div');
           actions.className = P + '-actions';
 
-          if (action === 'add') {
-            var addBidBtn = document.createElement('button');
-            addBidBtn.className = P + '-btn ' + P + '-btn--add-bid';
-            addBidBtn.textContent = 'RQ Add to Bid';
-            addBidBtn.setAttribute('data-rev-id', rev.id);
-            addBidBtn.setAttribute('data-sow-item-id', rev.sowItemId);
-            addBidBtn.addEventListener('click', handleApply);
-            actions.appendChild(addBidBtn);
-          } else {
+          // Only REVISE gets an "Apply" button
+          if (action === 'revise') {
             var applyBtn = document.createElement('button');
-            applyBtn.className = P + '-btn ' + P + '-btn--apply';
+            applyBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
+            applyBtn.type = 'button';
             applyBtn.textContent = 'Apply';
             applyBtn.setAttribute('data-rev-id', rev.id);
             applyBtn.setAttribute('data-sow-item-id', rev.sowItemId);
@@ -17204,8 +17179,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             actions.appendChild(applyBtn);
           }
 
+          // All types get "Create Bid CR"
+          var crVariant = action === 'remove' ? '--remove'
+                        : action === 'add'    ? '--create'
+                        :                       '--revise';
           var bidCrBtn = document.createElement('button');
-          bidCrBtn.className = P + '-btn ' + P + '-btn--bid-cr';
+          bidCrBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger' + crVariant;
+          bidCrBtn.type = 'button';
           bidCrBtn.textContent = 'Create Bid CR';
           bidCrBtn.setAttribute('data-rev-id', rev.id);
           bidCrBtn.setAttribute('data-sow-item-id', rev.sowItemId);
