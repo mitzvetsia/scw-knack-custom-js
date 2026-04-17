@@ -17,7 +17,7 @@
     VIEWS: ['view_3456', 'view_3586', 'view_3610'],
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,
-    DEBUG: true
+    DEBUG: false
   };
 
   var _lastClickedTr = null;
