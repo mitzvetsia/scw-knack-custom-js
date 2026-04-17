@@ -32768,7 +32768,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Add Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      // Note is optional
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
 
       var noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
       var pending = S.pending();
@@ -32924,7 +32924,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       existing ? 'Update Note' : 'Add Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      // Note is optional
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
 
       var pending = S.pending();
       pending[noteKey] = {
@@ -33067,7 +33067,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Update Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      // Note is optional
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
       existing.changeNotes = text;
       ns.persist();
       if (ns.refresh) ns.refresh();
@@ -33954,10 +33954,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         this.style.cursor = 'default';
       });
 
-      // Lock nativeEdit tds (except product field) — white bg for connection fields
+      // Lock nativeEdit tds (except whitelisted fields) — white bg for connection fields
       $card.find('td.cell-edit').each(function () {
         var field = this.getAttribute('data-field-key') || '';
-        if (field === CFG.productField) return;
+        if (editableFields[field]) return;
         this.style.pointerEvents = 'none';
         this.style.background = '#fff';
       });

@@ -93,7 +93,7 @@
     var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Add Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      // Note is optional
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
 
       var noteId = 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
       var pending = S.pending();
@@ -249,7 +249,7 @@
       existing ? 'Update Note' : 'Add Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      // Note is optional
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
 
       var pending = S.pending();
       pending[noteKey] = {
@@ -392,7 +392,7 @@
     var saveBtn = H.el('button', P + '-modal__btn ' + P + '-modal__btn--save', 'Update Note');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      // Note is optional
+      if (!text) { ns.showToast('Please enter a note', 'error'); return; }
       existing.changeNotes = text;
       ns.persist();
       if (ns.refresh) ns.refresh();

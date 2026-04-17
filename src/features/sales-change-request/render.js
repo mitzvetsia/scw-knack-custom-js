@@ -446,10 +446,10 @@
         this.style.cursor = 'default';
       });
 
-      // Lock nativeEdit tds (except product field) — white bg for connection fields
+      // Lock nativeEdit tds (except whitelisted fields) — white bg for connection fields
       $card.find('td.cell-edit').each(function () {
         var field = this.getAttribute('data-field-key') || '';
-        if (field === CFG.productField) return;
+        if (editableFields[field]) return;
         this.style.pointerEvents = 'none';
         this.style.background = '#fff';
       });
