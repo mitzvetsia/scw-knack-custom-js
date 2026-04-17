@@ -31259,7 +31259,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     laborHoursField:  'field_1981',  // product-specific default labor hours
 
     // ── Make webhooks ──────────────────────────────────────
-    submitWebhook:    'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_SUBMIT',
+    submitWebhook:    'https://hook.us1.make.com/jlbup3quzdjcsfzyyr38vxjo51et050a',
     draftWebhook:     'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_DRAFT',
 
     // ── Revision injection (view_3837 → view_3586) ─────────
