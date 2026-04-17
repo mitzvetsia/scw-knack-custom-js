@@ -40,8 +40,6 @@
   function injectStyles() {
     if (document.getElementById(CFG.cssId)) return;
     var css = [
-      '#' + CFG.revisionView + ' { display: none !important; }',
-
       '.' + P + '-header {',
       '  background: #f0f9ff; color: #0c4a6e;',
       '  padding: 10px 12px;',

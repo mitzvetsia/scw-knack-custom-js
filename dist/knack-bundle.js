@@ -16907,39 +16907,67 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
-    // Map sales/SOW field keys → bid CR modal logical keys
-    var SALES_TO_BID = {
-      field_1949: 'productName',
-      field_1964: 'qty',
-      field_2150: 'rate',
-      field_2020: 'laborDesc',
-      field_2461: 'bidExistCabling',
-      field_1984: 'bidExterior',
-      field_1983: 'bidPlenum',
-      field_1965: 'bidDropLength',
-      field_2035: 'bidConduit',
+    // Read values from the revision line item record in view_3842 DOM
+    var REV_FIELD_MAP = {
+      rate:            'field_2648',
+      laborDesc:       'field_2649',
+      bidExistCabling: 'field_2650',
+      bidExterior:     'field_2651',
+      bidPlenum:       'field_2652',
+      bidConduit:      'field_2718',
+      bidDropLength:   'field_2719',
     };
+
+    function readRevisionRecord(revRecordId) {
+      var requested = {};
+      if (!revRecordId) return requested;
+      var tr = document.getElementById(revRecordId);
+      if (!tr) {
+        var viewEl = document.getElementById('view_3842');
+        if (viewEl) tr = viewEl.querySelector('tr[id="' + revRecordId + '"]');
+      }
+      if (!tr) return requested;
+
+      for (var logicalKey in REV_FIELD_MAP) {
+        var fk = REV_FIELD_MAP[logicalKey];
+        var td = tr.querySelector('td.' + fk);
+        if (!td) continue;
+        var val = (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+        if (val && val !== '&nbsp;') requested[logicalKey] = val;
+      }
+
+      // Connection fields: bidConnDevice (field_2646), bidConnTo (field_2647), bidMdfIdf (field_2720)
+      var connFields = [
+        { key: 'bidConnDevice', field: 'field_2646', idsKey: 'bidConnDeviceIds' },
+        { key: 'bidConnTo',     field: 'field_2647', idsKey: 'bidConnToIds' },
+        { key: 'bidMdfIdf',     field: 'field_2720', idsKey: 'bidMdfIdfIds' },
+      ];
+      for (var ci = 0; ci < connFields.length; ci++) {
+        var cf = connFields[ci];
+        var ctd = tr.querySelector('td.' + cf.field);
+        if (!ctd) continue;
+        var spans = ctd.querySelectorAll('span[data-kn="connection-value"]');
+        if (!spans.length) continue;
+        var labels = [], ids = [];
+        for (var si = 0; si < spans.length; si++) {
+          var cid = (spans[si].className || '').trim();
+          var lbl = (spans[si].textContent || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(cid)) { ids.push(cid); labels.push(lbl); }
+        }
+        if (labels.length) requested[cf.key] = labels.join(', ');
+        if (ids.length) requested[cf.idsKey] = ids;
+      }
+
+      return requested;
+    }
 
     function doOpen(pkgId) {
       var action = opts.action || 'revise';
       var revJson = opts.revJson || {};
       var notes = revJson.changeNotes || opts.changeNotes || '';
 
-      // Pre-seed a pending item with revision values mapped to
-      // the modal's logical keys so fields display correctly.
-      if (action !== 'remove' && revJson.fields && revJson.fields.length) {
-        var requested = {};
-        for (var fi = 0; fi < revJson.fields.length; fi++) {
-          var f = revJson.fields[fi];
-          var logicalKey = SALES_TO_BID[f.field] || f.field;
-          if (f.to != null) requested[logicalKey] = f.to;
-        }
-        // Also map top-level keys from the JSON
-        for (var sk in SALES_TO_BID) {
-          if (revJson[sk] != null && !requested[SALES_TO_BID[sk]]) {
-            requested[SALES_TO_BID[sk]] = revJson[sk];
-          }
-        }
+      if (action !== 'remove') {
+        var requested = readRevisionRecord(opts.revisionRecordId);
 
         var cell = row.cellsByPackage[pkgId] || {};
         var pkgName = findPackageName(grid, pkgId);
@@ -17310,8 +17338,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function injectStyles() {
     if (document.getElementById(CFG.cssId)) return;
     var css = [
-      '#' + CFG.revisionView + ' { display: none !important; }',
-
       '.' + P + '-header {',
       '  background: #f0f9ff; color: #0c4a6e;',
       '  padding: 10px 12px;',
