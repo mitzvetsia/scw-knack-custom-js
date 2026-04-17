@@ -112,6 +112,14 @@
       '.scw-bid-review__pkg-header,',
       '.scw-bid-review__actions-header {',
       '}',
+      '.scw-bid-review__sow-detail-header {',
+      '  text-align: center;',
+      '  font-size: 12px;',
+      '}',
+      '.scw-bid-review__header-details .scw-bid-review__header-detail-cell {',
+      '  text-align: center;',
+      '  padding-top: 10px;',
+      '}',
 
       /* ── unified column header (3-row layout) ─────────── */
       '.scw-bid-review__header-row th,',
