@@ -1008,6 +1008,7 @@
           requested:    requested,
           changeNotes:  rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          revisionFields: (rev.revJson && rev.revJson.fields) || [],
         };
       }
 

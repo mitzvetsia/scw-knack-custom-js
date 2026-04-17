@@ -1135,6 +1135,28 @@
       card.appendChild(row);
     }
 
+    // Fallback: render revisionFields from sales revision data
+    // (when FIELD_DEFS keys don't match the sales CR field keys)
+    if (item.revisionFields && item.revisionFields.length) {
+      var hadFieldDefs = false;
+      for (var rfi = 0; rfi < FIELD_DEFS.length; rfi++) {
+        if (hasValue(r[FIELD_DEFS[rfi].key])) { hadFieldDefs = true; break; }
+      }
+      if (!hadFieldDefs) {
+        for (var rf = 0; rf < item.revisionFields.length; rf++) {
+          var rvf = item.revisionFields[rf];
+          var rvRow = el('div', 'scw-bid-cr-card__row');
+          rvRow.appendChild(el('span', 'scw-bid-cr-card__label', rvf.label + ':'));
+          if (rvf.from != null) {
+            rvRow.appendChild(el('span', 'scw-bid-cr-card__from', String(rvf.from)));
+            rvRow.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
+          }
+          rvRow.appendChild(el('span', 'scw-bid-cr-card__to', String(rvf.to)));
+          card.appendChild(rvRow);
+        }
+      }
+    }
+
     if (item.changeNotes) {
       var notes = el('div', 'scw-bid-cr-card__notes', '\u201c' + item.changeNotes + '\u201d');
       card.appendChild(notes);
