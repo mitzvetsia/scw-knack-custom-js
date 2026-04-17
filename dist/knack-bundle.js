@@ -17406,21 +17406,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var pkgs = [];
     var $mount = $(CFG.mountSelector);
     $mount.find('.scw-bid-review__pkg-header').each(function () {
-      var $name = $(this).find('.scw-bid-review__pkg-name');
-      var name = $name.length ? $name.contents().first().text().trim() : '';
+      // Read package name from subtitle (BD-#) or old pkg-name element
+      var $subtitle = $(this).find('.scw-bid-review__col-subtitle');
+      var $nameOld = $(this).find('.scw-bid-review__pkg-name');
+      var name = '';
+      if ($subtitle.length) {
+        name = $subtitle.contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+      }
+      if (!name && $nameOld.length) {
+        name = $nameOld.contents().first().text().trim();
+      }
       // Get package ID from any action button in the header
       var $actionBtn = $(this).find('button[data-package-id]');
       var id = $actionBtn.length ? $actionBtn.attr('data-package-id') : '';
       if (name && id) pkgs.push({ id: id, name: name });
     });
-    // Fallback: read from data rows
+    // Fallback: read from data rows in the CR column
     if (!pkgs.length) {
       var seen = {};
-      $mount.find('button[data-package-id]').each(function () {
+      $mount.find('.scw-bid-review__overflow-item[data-package-id]').each(function () {
         var id = this.getAttribute('data-package-id');
+        var name = this.textContent.trim();
         if (id && !seen[id]) {
           seen[id] = true;
-          pkgs.push({ id: id, name: id });
+          pkgs.push({ id: id, name: name || id });
         }
       });
     }
