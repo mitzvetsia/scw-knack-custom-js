@@ -2303,6 +2303,29 @@
 
     topRow.appendChild(countEl);
     topRow.appendChild(document.createElement('div')).style.flex = '1';
+
+    // Accept All button
+    var acceptBtn = document.createElement('button');
+    acceptBtn.className = 'scw-scr-bar-btn scw-scr-bar-btn--submit';
+    acceptBtn.textContent = 'Accept All';
+    acceptBtn.style.cssText = 'padding:7px 18px;border:none;border-radius:5px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;background:#16a34a;color:#fff;';
+    acceptBtn.addEventListener('click', function () {
+      if (!window.confirm('Accept all ' + allRevs.length + ' revision(s)?')) return;
+      fireRevisionAction('accept', allRevs, acceptBtn);
+    });
+    topRow.appendChild(acceptBtn);
+
+    // Reject All button
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'scw-scr-bar-btn';
+    rejectBtn.textContent = 'Reject All';
+    rejectBtn.style.cssText = 'padding:7px 18px;border:none;border-radius:5px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;background:#dc2626;color:#fff;';
+    rejectBtn.addEventListener('click', function () {
+      if (!window.confirm('Reject all ' + allRevs.length + ' revision(s)?')) return;
+      fireRevisionAction('reject', allRevs, rejectBtn);
+    });
+    topRow.appendChild(rejectBtn);
+
     bar.appendChild(topRow);
 
     // Expandable panel
@@ -2361,12 +2384,6 @@
           hasFields = true;
         }
       }
-      if (!hasFields && rev.changeHtml) {
-        var htmlWrap = document.createElement('div');
-        htmlWrap.innerHTML = rev.changeHtml;
-        card.appendChild(htmlWrap);
-        hasFields = true;
-      }
       if (!hasFields && action === 'remove') {
         var rmRow = document.createElement('div');
         rmRow.textContent = 'Requesting removal';
@@ -2385,6 +2402,68 @@
 
     bar.appendChild(panel);
     container.appendChild(bar);
+  }
+
+  var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
+
+  function fireRevisionAction(action, revs, btn) {
+    btn.disabled = true;
+    btn.textContent = action === 'accept' ? 'Accepting...' : 'Rejecting...';
+
+    // Get the parent revision request ID from the first revision
+    var parentId = '';
+    if (revs.length && revs[0].changeJson) {
+      var j = revs[0].changeJson;
+      if (typeof j === 'string') { try { j = JSON.parse(j); } catch (e) { j = null; } }
+    }
+    // The revision request record ID — read from the DOM (field_2643 on view_3823)
+    var revView = document.getElementById(CFG.revisionView);
+    if (revView && revs.length) {
+      var firstRow = revView.querySelector('tr#' + revs[0].id);
+      if (firstRow) {
+        var connSpan = firstRow.querySelector('td.field_2643 span[data-kn="connection-value"]');
+        if (connSpan) parentId = connSpan.className.trim();
+      }
+    }
+
+    var payload = {
+      action: action,
+      revisionRequestId: parentId,
+      itemIds: revs.map(function (r) { return r.id; }),
+    };
+
+    SCW.knackAjax({
+      url: REV_ACTION_WEBHOOK,
+      type: 'POST',
+      data: JSON.stringify(payload),
+      success: function () {
+        btn.textContent = action === 'accept' ? 'Accepted' : 'Rejected';
+        setTimeout(function () {
+          // Refresh the views
+          if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+            Knack.views[CFG.revisionView].model.fetch();
+          }
+          for (var t = 0; t < CFG.targetViews.length; t++) {
+            if (Knack.views[CFG.targetViews[t]] && Knack.views[CFG.targetViews[t]].model) {
+              Knack.views[CFG.targetViews[t]].model.fetch();
+            }
+          }
+        }, 3000);
+      },
+      error: function (xhr) {
+        if (xhr && xhr.status === 0) {
+          btn.textContent = action === 'accept' ? 'Accepted' : 'Rejected';
+          setTimeout(function () {
+            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+              Knack.views[CFG.revisionView].model.fetch();
+            }
+          }, 3000);
+        } else {
+          btn.textContent = 'Failed — retry';
+          btn.disabled = false;
+        }
+      }
+    });
   }
 
   /**
