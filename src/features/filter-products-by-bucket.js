@@ -73,122 +73,68 @@
     return false;
   }
 
-  // ── FIND THE ACTIVE POPOVER ──────────────────────────────────
-  function findOpenPopover() {
-    var all = document.querySelectorAll('.kn-popover.drop-open');
-    for (var i = 0; i < all.length; i++) {
-      var el = all[i];
-      if (el.querySelector('.conn_inputs') || el.querySelector('select') || el.querySelector('.chzn-results') || el.querySelector('.kn-search')) {
-        return el;
-      }
-    }
-    return all.length ? all[all.length - 1] : null;
+  // ── FIND THE CHOSEN SELECT INSIDE THE POPOVER ────────────────
+  function findSelect() {
+    // The cell-editor form contains the select for field_1949
+    var select = document.querySelector('#connection-picker-chosen-' + CONFIG.PRODUCT_CELL_FIELD + ' select');
+    if (select && select.options.length > 1) return select;
+
+    // Fallback: any select with chzn-select inside a cell-editor
+    select = document.querySelector('#cell-editor select.chzn-select');
+    if (select && select.options.length > 1) return select;
+
+    return null;
   }
 
-  // ── INSPECT + FILTER ─────────────────────────────────────────
-  function tryFilter(popover) {
+  // ── FILTER THE SELECT OPTIONS + REFRESH CHOSEN ───────────────
+  function tryFilter() {
     var map = getMap();
     if (!map || !_lastClickedTr) return false;
 
     var bucketId = readRowBucketId(_lastClickedTr);
     if (!bucketId) { log('No bucket on row'); return false; }
 
-    // Dump full HTML for diagnosis (only once per click)
-    if (!popover._scwDumped) {
-      popover._scwDumped = true;
-      log('=== POPOVER FULL HTML ===');
-      log(popover.innerHTML);
-      log('=== END POPOVER HTML ===');
-    }
+    var select = findSelect();
+    if (!select) { log('Select not found or not populated yet'); return false; }
 
+    var opts = select.options;
+    var hexPattern = /^[a-f0-9]{24}$/;
     var hidden = 0;
+    var shown = 0;
     var total = 0;
-    var foundOptions = false;
 
-    // Strategy 1: .conn_inputs .control with radio/checkbox that have values
-    var controls = popover.querySelectorAll('.conn_inputs .control');
-    if (controls.length) {
-      var hasRealValues = false;
-      for (var c = 0; c < controls.length; c++) {
-        var inp = controls[c].querySelector('input[type="radio"], input[type="checkbox"]');
-        if (inp && inp.value) { hasRealValues = true; break; }
-      }
-      if (hasRealValues) {
-        foundOptions = true;
-        total = controls.length;
-        for (var i = 0; i < controls.length; i++) {
-          var input = controls[i].querySelector('input[type="radio"], input[type="checkbox"]');
-          if (!input || !input.value) continue;
-          if (!productMatchesBucket(input.value, bucketId)) {
-            controls[i].style.display = 'none';
-            hidden++;
-          } else {
-            controls[i].style.display = '';
-          }
-        }
-        log('Controls: hidden', hidden, 'of', total, 'for bucket', bucketId);
+    for (var i = 0; i < opts.length; i++) {
+      var val = opts[i].value;
+      if (!val || !hexPattern.test(val)) continue;  // skip placeholder
+      total++;
+
+      if (!productMatchesBucket(val, bucketId)) {
+        opts[i].disabled = true;
+        opts[i].style.display = 'none';
+        opts[i].setAttribute('data-scw-hidden', '1');
+        hidden++;
+      } else {
+        opts[i].disabled = false;
+        opts[i].style.display = '';
+        opts[i].removeAttribute('data-scw-hidden');
+        shown++;
       }
     }
 
-    // Strategy 2: Chosen.js result list items (<li> in .chzn-results)
-    if (!foundOptions) {
-      var chosenItems = popover.querySelectorAll('.chzn-results li, .chosen-results li');
-      if (chosenItems.length) {
-        foundOptions = true;
-        total = chosenItems.length;
-        for (var j = 0; j < chosenItems.length; j++) {
-          var li = chosenItems[j];
-          var dataId = li.getAttribute('data-option-array-index') || li.getAttribute('id') || '';
-          log('  Chosen li[' + j + '] id:', li.id, '| data-option-array-index:', li.getAttribute('data-option-array-index'), '| text:', (li.textContent || '').substring(0, 40));
-        }
-        log('Found', total, 'Chosen list items (inspect IDs above for filtering strategy)');
+    if (total === 0) {
+      log('Select has', opts.length, 'options but none with hex IDs — still loading?');
+      // Log first few option values for diagnosis
+      for (var d = 0; d < Math.min(5, opts.length); d++) {
+        log('  option[' + d + '] value:', opts[d].value, '| text:', (opts[d].textContent || '').substring(0, 40));
       }
+      return false;
     }
 
-    // Strategy 3: plain <select> options
-    if (!foundOptions) {
-      var selects = popover.querySelectorAll('select');
-      for (var s = 0; s < selects.length; s++) {
-        var opts = selects[s].querySelectorAll('option');
-        if (opts.length > 1) {
-          foundOptions = true;
-          total = opts.length;
-          for (var k = 0; k < opts.length; k++) {
-            if (!opts[k].value) continue;
-            log('  option[' + k + '] value:', opts[k].value, '| text:', (opts[k].textContent || '').substring(0, 40));
-            if (!productMatchesBucket(opts[k].value, bucketId)) {
-              opts[k].disabled = true;
-              opts[k].style.display = 'none';
-              hidden++;
-            } else {
-              opts[k].disabled = false;
-              opts[k].style.display = '';
-            }
-          }
-          $(selects[s]).trigger('chosen:updated').trigger('liszt:updated');
-          log('Select: hidden', hidden, 'of', total, 'for bucket', bucketId);
-        }
-      }
-    }
+    // Refresh Chosen to reflect hidden options
+    $(select).trigger('chosen:updated').trigger('liszt:updated');
 
-    // Strategy 4: any element with a 24-char hex ID (Knack record IDs)
-    if (!foundOptions) {
-      var allInputs = popover.querySelectorAll('input[value]');
-      var hexPattern = /^[a-f0-9]{24}$/;
-      var hexFound = 0;
-      for (var h = 0; h < allInputs.length; h++) {
-        if (hexPattern.test(allInputs[h].value)) {
-          hexFound++;
-          log('  Found hex input:', allInputs[h].type, 'value:', allInputs[h].value, 'name:', allInputs[h].name);
-        }
-      }
-      if (hexFound) {
-        log('Found', hexFound, 'inputs with hex record IDs');
-        foundOptions = true;
-      }
-    }
-
-    return foundOptions;
+    log('Filtered: hidden', hidden, ', shown', shown, 'of', total, 'products for bucket', bucketId);
+    return true;
   }
 
   // ── POLL UNTIL OPTIONS LOAD ──────────────────────────────────
@@ -199,22 +145,15 @@
     _pollTimer = setInterval(function () {
       elapsed += CONFIG.POLL_INTERVAL;
 
-      var popover = findOpenPopover();
-      if (!popover) {
-        if (elapsed > 1000) { log('Poll: popover closed, stopping'); stopPolling(); }
-        return;
-      }
-
-      var done = tryFilter(popover);
+      var done = tryFilter();
       if (done) {
-        log('Poll: complete after', elapsed, 'ms');
+        log('Filter applied after', elapsed, 'ms');
         stopPolling();
         return;
       }
 
       if (elapsed >= CONFIG.POLL_MAX) {
-        log('Poll: timed out at', elapsed, 'ms — dumping final state');
-        log('Final popover HTML:', popover.innerHTML);
+        log('Timed out after', elapsed, 'ms');
         stopPolling();
       }
     }, CONFIG.POLL_INTERVAL);
