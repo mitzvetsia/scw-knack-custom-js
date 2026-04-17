@@ -17530,6 +17530,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
           }
 
+          // Reject button — first in row
+          var rejectBtn = document.createElement('button');
+          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+          rejectBtn.textContent = 'Reject';
+          rejectBtn.setAttribute('data-rev-id', rev.id);
+          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+          rejectBtn.setAttribute('data-rev-json', revJsonStr);
+          rejectBtn.addEventListener('click', handleRejectClick);
+          actions.appendChild(rejectBtn);
+
           // CR button — green (create) for all types, label varies
           var crLabel = action === 'add'    ? 'Add \u2192'
                       : action === 'remove' ? 'Remove \u2192'
@@ -17551,16 +17561,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             });
           }
           actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
-
-          // Reject button — simple, no overflow
-          var rejectBtn = document.createElement('button');
-          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
-          rejectBtn.textContent = 'Reject';
-          rejectBtn.setAttribute('data-rev-id', rev.id);
-          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
-          rejectBtn.setAttribute('data-rev-json', revJsonStr);
-          rejectBtn.addEventListener('click', handleRejectClick);
-          actions.appendChild(rejectBtn);
 
           item.appendChild(actions);
           td.appendChild(item);
