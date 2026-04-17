@@ -158,7 +158,24 @@
   //  INJECT COLUMN INTO BID COMPARISON GRID
   // ═══════════════════════════════════════════════════════════
 
+  function removeColumn() {
+    var $mount = $(CFG.mountSelector);
+    if (!$mount.length) return;
+    $mount.find('.' + P + '-header, .' + P + '-detail-placeholder, .' + P + '-action-header, .' + P + '-cell').remove();
+    // Undo colspan bumps
+    $mount.find('td[data-sr-bumped]').each(function () {
+      var span = parseInt($(this).attr('colspan'), 10) || 2;
+      $(this).attr('colspan', span - 1);
+    });
+    $mount.find('[data-sr-bumped]').removeAttr('data-sr-bumped');
+    // Also remove jQuery data flag
+    $mount.find('td').removeData('sr-bumped');
+  }
+
   function injectColumn() {
+    // Always clean up previous injection before rebuilding
+    removeColumn();
+
     if (!_revisionData.length) return;
 
     var $mount = $(CFG.mountSelector);
@@ -594,14 +611,12 @@
   function afterReject(btn) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
-    // Refresh revision data view → triggers column rebuild
+    // Refresh revision data view — its view-render event triggers
+    // loadRevisions() + injectColumn(), and scw-bid-review-rendered
+    // re-injects the column after any grid rebuild.
     setTimeout(function () {
       if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
         Knack.views[CFG.revisionView].model.fetch();
-      }
-      // Refresh the comparison grid
-      if (window.SCW && SCW.bidReview && SCW.bidReview.rerender) {
-        SCW.bidReview.rerender();
       }
     }, 1500);
   }
