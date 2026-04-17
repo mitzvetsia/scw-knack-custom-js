@@ -35652,13 +35652,33 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Build the badge element: "N revision(s)"
+   * Build the badge element: colored action icon matching revision type.
+   * Mirrors view_3586's scw-scr-action-btn style.
+   * @param {Array} revisions — array of revision objects for this row
    */
-  function makeBadge(count) {
-    var badge = document.createElement('span');
-    badge.className = BADGE_CLS;
-    badge.textContent = count + ' revision' + (count !== 1 ? 's' : '');
-    return badge;
+  function makeBadge(revisions) {
+    var action = 'revise';
+    if (revisions.length) {
+      var json = revisions[0].changeJson;
+      if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+      if (json && json.action) action = json.action;
+    }
+
+    var iconCls = action === 'add'    ? 'fa-plus'
+                : action === 'remove' ? 'fa-minus-circle'
+                :                       'fa-pencil';
+    var colorCls = action === 'add'    ? 'scw-scr-action-btn--add'
+                 : action === 'remove' ? 'scw-scr-action-btn--remove'
+                 :                       'scw-scr-action-btn--revise';
+
+    var btn = document.createElement('span');
+    btn.className = 'scw-scr-action-btn ' + colorCls;
+    btn.style.cursor = 'default';
+    btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
+    if (revisions.length > 1) {
+      btn.title = revisions.length + ' revisions';
+    }
+    return btn;
   }
 
   // ── EDIT MODAL ──────────────────────────────────────────
@@ -36298,69 +36318,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var item = document.createElement('div');
       item.className = P + '-item';
 
-      // Build structured card matching scw-bid-cr-card style
-      var json = rev.changeJson || null;
-      if (json && typeof json === 'string') {
-        try { json = JSON.parse(json); } catch (e) { json = null; }
-      }
-
-      if (json && json.action) {
-        var action = json.action;
-        var cardMod = action === 'remove' ? ' scw-bid-cr-card--removal'
-                    : action === 'add'    ? ' scw-bid-cr-card--add'
-                    :                       '';
-        var card = document.createElement('div');
-        card.className = 'scw-bid-cr-card' + cardMod;
-
-        var headerText = action === 'remove' ? 'Pending Removal'
-                       : action === 'add'    ? 'Pending Add'
-                       :                       'Pending Change';
-        var hdr = document.createElement('div');
-        hdr.className = 'scw-bid-cr-card__header';
-        hdr.textContent = headerText;
-        card.appendChild(hdr);
-
-        if (json.displayLabel || json.productName) {
-          var lbl = document.createElement('div');
-          lbl.className = 'scw-bid-cr-card__item-label';
-          lbl.textContent = json.displayLabel || json.productName;
-          card.appendChild(lbl);
-        }
-
-        if (json.fields && json.fields.length) {
-          for (var fi = 0; fi < json.fields.length; fi++) {
-            var f = json.fields[fi];
-            var row = document.createElement('div');
-            row.className = 'scw-bid-cr-card__row';
-            if (action === 'revise' && f.from != null) {
-              row.textContent = f.label + ': ' + f.from + ' \u2192 ' + f.to;
-            } else {
-              row.textContent = f.label + ': ' + f.to;
-            }
-            card.appendChild(row);
-          }
-        } else if (action === 'remove') {
-          var rmRow = document.createElement('div');
-          rmRow.className = 'scw-bid-cr-card__row';
-          rmRow.textContent = 'Requesting removal';
-          card.appendChild(rmRow);
-        }
-
-        if (json.changeNotes) {
-          var notes = document.createElement('div');
-          notes.className = 'scw-bid-cr-card__notes';
-          notes.textContent = '\u201c' + json.changeNotes + '\u201d';
-          card.appendChild(notes);
-        }
-
-        item.appendChild(card);
-      } else if (rev.changeHtml) {
+      if (rev.changeHtml) {
+        // Pre-built HTML card from change request payload
         var htmlWrap = document.createElement('div');
         htmlWrap.className = P + '-html-card';
         htmlWrap.innerHTML = rev.changeHtml;
         postProcessHtmlCard(htmlWrap);
         item.appendChild(htmlWrap);
       } else {
+        // Fallback: tag-based rendering for older records
         var row = document.createElement('div');
         row.className = P + '-row';
 
@@ -36847,7 +36813,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Badge → append to the identity / product area in the summary
       var identity = card.querySelector('.scw-ws-identity');
       if (identity) {
-        identity.appendChild(makeBadge(revisions.length));
+        identity.appendChild(makeBadge(revisions));
       }
 
       // Revision strip → inside the detail panel (visible when expanded)
@@ -36872,6 +36838,130 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Inject change/add count badges into group headers
     injectGroupBadges(viewEl, siIds, revMap, orphaned);
+
+    // Build floating revision bar (mirrors scw-sales-cr-bar)
+    buildRevisionBar(viewEl, revMap, orphaned);
+  }
+
+  // ── FLOATING REVISION BAR ─────────────────────────────────
+  var REV_BAR_ID = 'scw-rev-bar';
+  var _revBarOpen = false;
+
+  function buildRevisionBar(viewEl, revMap, orphaned) {
+    // Remove existing bar
+    var existing = document.getElementById(REV_BAR_ID);
+    if (existing) existing.remove();
+
+    // Collect all revisions into flat list
+    var allRevs = [];
+    var siIds = Object.keys(revMap);
+    for (var i = 0; i < siIds.length; i++) {
+      var revs = revMap[siIds[i]];
+      for (var r = 0; r < revs.length; r++) allRevs.push(revs[r]);
+    }
+    for (var o = 0; o < orphaned.length; o++) allRevs.push(orphaned[o]);
+
+    if (!allRevs.length) return;
+
+    // Find accordion body to inject into
+    var $view = $(viewEl);
+    var $accBody = $view.closest('.scw-ktl-accordion__body');
+    var container = $accBody.length ? $accBody[0] : viewEl.parentNode;
+
+    var bar = document.createElement('div');
+    bar.id = REV_BAR_ID;
+    bar.style.cssText = 'position:sticky;bottom:0;z-index:100;background:#fff;border-top:2px solid #3b82f6;box-shadow:0 -4px 12px rgba(0,0,0,.1);font:13px/1.3 system-ui,-apple-system,sans-serif;margin-top:8px;';
+
+    // Top row: count + buttons
+    var topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 16px;';
+
+    // Clickable count
+    var countEl = document.createElement('div');
+    countEl.style.cssText = 'font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;cursor:pointer;';
+
+    var chevron = document.createElement('span');
+    chevron.className = 'scw-scr-bar-chevron' + (_revBarOpen ? ' is-open' : '');
+    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+    countEl.appendChild(chevron);
+
+    var numEl = document.createElement('span');
+    numEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;background:#3b82f6;color:#fff;font-size:12px;font-weight:700;padding:0 6px;';
+    numEl.textContent = String(allRevs.length);
+    countEl.appendChild(numEl);
+    countEl.appendChild(document.createTextNode(' pending revision' + (allRevs.length === 1 ? '' : 's')));
+
+    countEl.addEventListener('click', function () {
+      _revBarOpen = !_revBarOpen;
+      var panel = bar.querySelector('.scw-rev-bar-panel');
+      if (panel) panel.style.display = _revBarOpen ? 'flex' : 'none';
+      chevron.className = 'scw-scr-bar-chevron' + (_revBarOpen ? ' is-open' : '');
+    });
+
+    topRow.appendChild(countEl);
+    topRow.appendChild(document.createElement('div')).style.flex = '1';
+    bar.appendChild(topRow);
+
+    // Expandable panel
+    var panel = document.createElement('div');
+    panel.className = 'scw-rev-bar-panel';
+    panel.style.cssText = 'display:' + (_revBarOpen ? 'flex' : 'none') + ';flex-direction:column;gap:6px;border-top:1px solid #e2e8f0;padding:8px 16px 12px;max-height:50vh;overflow-y:auto;';
+
+    for (var j = 0; j < allRevs.length; j++) {
+      var rev = allRevs[j];
+      var json = rev.changeJson;
+      if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+
+      var action = (json && json.action) || 'revise';
+      var cardMod = action === 'remove' ? ' scw-scr-card--remove'
+                  : action === 'add'    ? ' scw-scr-card--add'
+                  :                       ' scw-scr-card--revise';
+
+      var card = document.createElement('div');
+      card.className = 'scw-scr-card' + cardMod;
+      card.style.cssText = 'margin:0;padding:10px 14px;border-radius:6px;font-size:12px;position:relative;';
+
+      var headerText = action === 'add'    ? 'ADD'
+                     : action === 'remove' ? 'REMOVAL'
+                     :                       'CHANGE';
+      var hdr = document.createElement('div');
+      hdr.className = 'scw-scr-card-header';
+      hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;';
+      hdr.textContent = headerText;
+      if (json && (json.displayLabel || json.productName)) {
+        hdr.textContent += ' \u2014 ' + (json.displayLabel || json.productName);
+      }
+      card.appendChild(hdr);
+
+      if (json && json.fields && json.fields.length) {
+        for (var fi = 0; fi < json.fields.length; fi++) {
+          var f = json.fields[fi];
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+          var fromTo = action === 'revise' && f.from != null
+            ? f.label + ': ' + f.from + ' \u2192 ' + f.to
+            : f.label + ': ' + f.to;
+          row.textContent = fromTo;
+          card.appendChild(row);
+        }
+      } else if (action === 'remove') {
+        var rmRow = document.createElement('div');
+        rmRow.textContent = 'Requesting removal';
+        card.appendChild(rmRow);
+      }
+
+      if (json && json.changeNotes) {
+        var notes = document.createElement('div');
+        notes.style.cssText = 'font-style:italic;margin-top:4px;font-size:11px;';
+        notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+        card.appendChild(notes);
+      }
+
+      panel.appendChild(card);
+    }
+
+    bar.appendChild(panel);
+    container.appendChild(bar);
   }
 
   /**
