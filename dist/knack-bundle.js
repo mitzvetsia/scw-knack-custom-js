@@ -36814,6 +36814,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     _injectRetries = 0;
 
+    // Reserve space for action button on ALL rows (prevents layout shift)
+    for (var wi = 0; wi < wsRows.length; wi++) {
+      var wsCard = wsRows[wi].querySelector('.scw-ws-card');
+      if (!wsCard) continue;
+      var delWrap = wsCard.querySelector('.scw-ws-sum-delete');
+      if (delWrap && !wsCard.querySelector('.scw-scr-action-wrap')) {
+        var placeholder = document.createElement('span');
+        placeholder.className = 'scw-scr-action-wrap';
+        placeholder.style.alignSelf = 'center';
+        delWrap.parentNode.insertBefore(placeholder, delWrap.nextSibling);
+      }
+    }
+
     var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
@@ -36828,12 +36841,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       var revisions = revMap[siId];
 
-      // Action icon → insert after delete wrapper (like view_3586)
-      var deleteWrap = card.querySelector('.scw-ws-sum-delete');
-      if (deleteWrap && !card.querySelector('.scw-scr-action-wrap')) {
-        var wrap = document.createElement('span');
-        wrap.className = 'scw-scr-action-wrap';
-        wrap.style.alignSelf = 'center';
+      // Action icon → fill the placeholder wrap created above
+      var wrap = card.querySelector('.scw-scr-action-wrap');
+      if (wrap && !wrap.childNodes.length) {
         var iconBtn = makeBadge(revisions);
         iconBtn.style.cursor = 'pointer';
         iconBtn.addEventListener('click', (function (cardEl) {
@@ -36845,7 +36855,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           };
         })(card));
         wrap.appendChild(iconBtn);
-        deleteWrap.parentNode.insertBefore(wrap, deleteWrap.nextSibling);
       }
 
       // Revision strip → inside the detail panel (visible when expanded)
