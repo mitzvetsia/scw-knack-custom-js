@@ -14,7 +14,6 @@
   var CONFIG = {
     LINE_ITEM_BUCKET_FIELD: 'field_2219',
     PRODUCT_CELL_FIELD: 'field_1949',
-    VIEWS: ['view_3456', 'view_3586', 'view_3610'],
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,
     DEBUG: false
@@ -44,9 +43,10 @@
       }
     }
     var recordId = tr.id;
-    if (!recordId) return '';
-    for (var v = 0; v < CONFIG.VIEWS.length; v++) {
-      var view = Knack.views[CONFIG.VIEWS[v]];
+    if (!recordId || typeof Knack === 'undefined') return '';
+    var viewKeys = Object.keys(Knack.views || {});
+    for (var v = 0; v < viewKeys.length; v++) {
+      var view = Knack.views[viewKeys[v]];
       if (!view || !view.model || !view.model.data) continue;
       var records = view.model.data.models || view.model.data;
       if (!records) continue;
@@ -169,9 +169,6 @@
       ? e.target.closest('td.' + CONFIG.PRODUCT_CELL_FIELD)
       : null;
     if (!td) return;
-
-    var viewEl = td.closest('[id^="view_"]');
-    if (!viewEl || CONFIG.VIEWS.indexOf(viewEl.id) === -1) return;
 
     var tr = td.closest('tr');
     if (!tr || !tr.id) return;
