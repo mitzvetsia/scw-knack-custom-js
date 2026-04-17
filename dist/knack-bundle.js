@@ -17339,6 +17339,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
+      // Skip rejected/accepted items
+      if (/^rejected$/i.test(status) || /^accepted$/i.test(status)) return;
+
       var $htmlCell = $tr.find('td.' + CFG.htmlField);
       var htmlContent = '';
       if ($htmlCell.length) {
