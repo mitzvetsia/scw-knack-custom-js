@@ -20979,8 +20979,14 @@ $(".kn-navigation-bar").hide();
       total = controls.length;
       for (var i = 0; i < controls.length; i++) {
         var input = controls[i].querySelector('input[type="radio"], input[type="checkbox"]');
-        if (!input || !input.value) continue;
-        if (!productMatchesBucket(input.value, bucketId)) {
+        var label = (controls[i].textContent || '').trim();
+        if (!input) { log('  control[' + i + '] no input found, label:', label); continue; }
+        var val = input.value || '';
+        var inMap = map[val] ? map[val].join(',') : 'NOT IN MAP';
+        var matches = productMatchesBucket(val, bucketId);
+        log('  control[' + i + '] value:', val, '| label:', label.substring(0, 40), '| buckets:', inMap, '| match:', matches);
+        if (!val) continue;
+        if (!matches) {
           controls[i].style.display = 'none';
           hidden++;
         } else {
