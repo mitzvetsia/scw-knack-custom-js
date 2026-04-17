@@ -16871,8 +16871,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (!_state || !ns.changeRequests) return;
 
     var sowItemId  = opts.sowItemId || '';
-    var action     = opts.action || 'revise';
-    var notes      = opts.changeNotes || '';
 
     // Find the grid row that matches this SOW item
     var grid = null, row = null;
@@ -16893,8 +16891,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
-    // Get available packages: use cellsByPackage for revise/remove,
-    // but for ADD items (noBid) offer ALL packages from the grid
     var pkgIds = Object.keys(row.cellsByPackage);
     if (!pkgIds.length && grid.packages) {
       for (var pi = 0; pi < grid.packages.length; pi++) {
@@ -16906,17 +16902,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
-    // Always show picker so user selects the target bid
+    // Build single-item revision array for batchConvertRevisions
+    var revItem = {
+      sowItemId:        opts.sowItemId || '',
+      action:           opts.action || 'revise',
+      changeNotes:      opts.changeNotes || '',
+      revJson:          opts.revJson || {},
+      revisionRecordId: opts.revisionRecordId || '',
+    };
+
+    function doConvert(pkgId) {
+      var count = ns.batchConvertRevisions([revItem], pkgId);
+      if (ns.renderToast && count) {
+        ns.renderToast('Revision converted to pending bid CR', 'success');
+      }
+    }
+
     var choices = [];
     for (var p = 0; p < pkgIds.length; p++) {
       choices.push({ id: pkgIds[p], name: findPackageName(grid, pkgIds[p]) });
     }
     if (choices.length === 1) {
-      executeBidCR(grid, row, choices[0].id, action, notes);
+      doConvert(choices[0].id);
     } else {
-      showPackagePicker(choices, function (pkgId) {
-        executeBidCR(grid, row, pkgId, action, notes);
-      });
+      showPackagePicker(choices, doConvert);
     }
   };
 
@@ -17705,13 +17714,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (action === 'create-bid-cr') {
       var revJson = {};
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+      var revId = this.getAttribute('data-rev-id');
 
       if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
         SCW.bidReview.createBidCRFromRevision({
-          sowItemId:   sowItemId,
-          action:      revJson.action || 'revise',
-          changeNotes: revJson.changeNotes || '',
-          revJson:     revJson,
+          sowItemId:        sowItemId,
+          action:           revJson.action || 'revise',
+          changeNotes:      revJson.changeNotes || '',
+          revJson:          revJson,
+          revisionRecordId: revId || '',
         });
       }
     }

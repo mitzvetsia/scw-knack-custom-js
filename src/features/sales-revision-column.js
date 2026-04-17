@@ -494,13 +494,15 @@
     if (action === 'create-bid-cr') {
       var revJson = {};
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+      var revId = this.getAttribute('data-rev-id');
 
       if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
         SCW.bidReview.createBidCRFromRevision({
-          sowItemId:   sowItemId,
-          action:      revJson.action || 'revise',
-          changeNotes: revJson.changeNotes || '',
-          revJson:     revJson,
+          sowItemId:        sowItemId,
+          action:           revJson.action || 'revise',
+          changeNotes:      revJson.changeNotes || '',
+          revJson:          revJson,
+          revisionRecordId: revId || '',
         });
       }
     }
