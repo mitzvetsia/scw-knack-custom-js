@@ -2344,57 +2344,59 @@
                   :                       ' scw-scr-card--revise';
 
       var card = document.createElement('div');
-      card.className = 'scw-scr-card' + cardMod;
-      card.style.cssText = 'margin:0;padding:10px 14px;border-radius:6px;font-size:12px;position:relative;';
+      card.style.cssText = 'margin:0;';
 
-      var headerText = action === 'add'    ? 'ADD'
-                     : action === 'remove' ? 'REMOVAL'
-                     :                       'CHANGE';
-      var hdr = document.createElement('div');
-      hdr.className = 'scw-scr-card-header';
-      hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;';
-      hdr.textContent = headerText;
-      if (json && (json.displayLabel || json.productName)) {
-        hdr.textContent += ' \u2014 ' + (json.displayLabel || json.productName);
-      }
-      card.appendChild(hdr);
+      // Prefer the pre-built HTML card from field_2695
+      if (rev.changeHtml) {
+        card.innerHTML = rev.changeHtml;
+      } else {
+        // Fallback: structured card
+        card.className = 'scw-scr-card' + cardMod;
+        card.style.cssText = 'margin:0;padding:10px 14px;border-radius:6px;font-size:12px;position:relative;';
 
-      // Field diffs: try json.fields first, fall back to rev.changes
-      var hasFields = false;
-      if (json && json.fields && json.fields.length) {
-        for (var fi = 0; fi < json.fields.length; fi++) {
-          var f = json.fields[fi];
-          var row = document.createElement('div');
-          row.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
-          var fromTo = action === 'revise' && f.from != null
-            ? f.label + ': ' + f.from + ' \u2192 ' + f.to
-            : f.label + ': ' + f.to;
-          row.textContent = fromTo;
-          card.appendChild(row);
-          hasFields = true;
+        var headerText = action === 'add'    ? 'ADD'
+                       : action === 'remove' ? 'REMOVAL'
+                       :                       'CHANGE';
+        var hdr = document.createElement('div');
+        hdr.className = 'scw-scr-card-header';
+        hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;';
+        hdr.textContent = headerText;
+        if (json && (json.displayLabel || json.productName)) {
+          hdr.textContent += ' \u2014 ' + (json.displayLabel || json.productName);
         }
-      }
-      if (!hasFields && rev.changes && rev.changes.length) {
-        for (var ci = 0; ci < rev.changes.length; ci++) {
-          var ch = rev.changes[ci];
-          var chRow = document.createElement('div');
-          chRow.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
-          chRow.textContent = ch.label + ': ' + ch.value;
-          card.appendChild(chRow);
-          hasFields = true;
-        }
-      }
-      if (!hasFields && action === 'remove') {
-        var rmRow = document.createElement('div');
-        rmRow.textContent = 'Requesting removal';
-        card.appendChild(rmRow);
-      }
+        card.appendChild(hdr);
 
-      if (json && json.changeNotes) {
-        var notes = document.createElement('div');
-        notes.style.cssText = 'font-style:italic;margin-top:4px;font-size:11px;';
-        notes.textContent = '\u201c' + json.changeNotes + '\u201d';
-        card.appendChild(notes);
+        if (json && json.fields && json.fields.length) {
+          for (var fi = 0; fi < json.fields.length; fi++) {
+            var f = json.fields[fi];
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+            var fromTo = action === 'revise' && f.from != null
+              ? f.label + ': ' + f.from + ' \u2192 ' + f.to
+              : f.label + ': ' + f.to;
+            row.textContent = fromTo;
+            card.appendChild(row);
+          }
+        } else if (rev.changes && rev.changes.length) {
+          for (var ci = 0; ci < rev.changes.length; ci++) {
+            var ch = rev.changes[ci];
+            var chRow = document.createElement('div');
+            chRow.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+            chRow.textContent = ch.label + ': ' + ch.value;
+            card.appendChild(chRow);
+          }
+        } else if (action === 'remove') {
+          var rmRow = document.createElement('div');
+          rmRow.textContent = 'Requesting removal';
+          card.appendChild(rmRow);
+        }
+
+        if (json && json.changeNotes) {
+          var notes = document.createElement('div');
+          notes.style.cssText = 'font-style:italic;margin-top:4px;font-size:11px;';
+          notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+          card.appendChild(notes);
+        }
       }
 
       panel.appendChild(card);
