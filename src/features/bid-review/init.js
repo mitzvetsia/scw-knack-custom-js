@@ -916,31 +916,37 @@
       var revJson = opts.revJson || {};
       var notes = revJson.changeNotes || opts.changeNotes || '';
 
-      if (action !== 'remove') {
-        var requested = readRevisionRecord(opts.revisionRecordId);
+      // Read revision values from view_3842 DOM row
+      var revData = readRevisionRecord(opts.revisionRecordId);
 
-        var cell = row.cellsByPackage[pkgId] || {};
-        var pkgName = findPackageName(grid, pkgId);
-        var surveyId = findPackageSurveyId(grid, pkgId);
-
-        var item = {
-          rowId:        row.id,
-          bidRecordId:  cell.id || null,
-          sowItemId:    row.sowItem || '',
-          displayLabel: row.displayLabel,
-          productName:  requested.productName || row.productName || cell.productName || '',
-          current:      {},
-          requested:    requested,
-          changeNotes:  notes,
-          salesRevisionId: opts.revisionRecordId || '',
-          salesRevisionRequestId: opts.revisionRequestId || '',
+      if (action === 'add') {
+        // Overlay revision data onto the row as sow* params so the
+        // add modal prefills from the revision record, not the SOW.
+        row._revOverlay = {
+          sowProduct:      revData.productName || row.sowProduct || '',
+          sowQty:          revData.qty || row.sowQty || '',
+          sowFee:          revData.rate || row.sowFee || '',
+          sowLaborDesc:    revData.laborDesc || row.sowLaborDesc || '',
+          sowExistCabling: revData.bidExistCabling || row.sowExistCabling || '',
+          sowPlenum:       revData.bidPlenum || row.sowPlenum || '',
+          sowExterior:     revData.bidExterior || row.sowExterior || '',
+          sowDropLength:   revData.bidDropLength || row.sowDropLength || '',
+          sowConduit:      revData.bidConduit || row.sowConduit || '',
+          sowMdfIdf:       revData.bidMdfIdf || row.sowMdfIdf || '',
+          sowMdfIdfIds:    revData.bidMdfIdfIds || row.sowMdfIdfIds || [],
         };
-        if (action === 'add') item.addToBid = true;
-
-        ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
+      } else if (action !== 'remove') {
+        // For REVISE: merge revision data into a copy of the cell
+        var cell = row.cellsByPackage[pkgId];
+        if (cell) {
+          for (var rk in revData) {
+            if (revData[rk] != null && revData[rk] !== '') cell[rk] = revData[rk];
+          }
+        }
       }
 
       executeBidCR(grid, row, pkgId, action, notes);
+      delete row._revOverlay;
     }
 
     var choices = [];
@@ -976,16 +982,19 @@
       ns.changeRequests.openRemove(params);
     } else if (action === 'add') {
       // Add to bid — use the add-item flow
-      params.sowProduct    = row.sowProduct || row.productName || '';
-      params.sowQty        = row.sowQty || '';
-      params.sowLaborDesc  = row.sowLaborDesc || '';
-      params.sowFee        = row.sowFee || '';
-      params.sowExistCabling = row.sowExistCabling || '';
-      params.sowPlenum     = row.sowPlenum || '';
-      params.sowExterior   = row.sowExterior || '';
-      params.sowDropLength = row.sowDropLength || '';
-      params.sowConduit    = row.sowConduit || '';
-      params.sowMdfIdf     = row.sowMdfIdf || '';
+      // If _revOverlay exists (from sales revision), use revision data as prefill
+      var ov = row._revOverlay || {};
+      params.sowProduct    = ov.sowProduct || row.sowProduct || row.productName || '';
+      params.sowQty        = ov.sowQty || row.sowQty || '';
+      params.sowLaborDesc  = ov.sowLaborDesc || row.sowLaborDesc || '';
+      params.sowFee        = ov.sowFee || row.sowFee || '';
+      params.sowExistCabling = ov.sowExistCabling || row.sowExistCabling || '';
+      params.sowPlenum     = ov.sowPlenum || row.sowPlenum || '';
+      params.sowExterior   = ov.sowExterior || row.sowExterior || '';
+      params.sowDropLength = ov.sowDropLength || row.sowDropLength || '';
+      params.sowConduit    = ov.sowConduit || row.sowConduit || '';
+      params.sowMdfIdf     = ov.sowMdfIdf || row.sowMdfIdf || '';
+      params.sowMdfIdfIds  = ov.sowMdfIdfIds || row.sowMdfIdfIds || [];
       params.sowMapConn    = row.sowMapConn || '';
       params.connOptions   = {};
       params.visibility    = { qty: true, cabling: true, connDevice: true };
