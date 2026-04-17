@@ -55,6 +55,7 @@
       { key: 'field_1965', label: 'Drop Length',       type: 'text' },
       { key: 'field_1951', label: 'Drop Number',       type: 'number' },
       { key: 'field_2240', label: 'Drop Prefix',       type: 'text' },
+      { key: 'field_2150', label: 'Sub Bid',           type: 'number', currency: true },
     ],
 
     // ── Timing ─────────────────────────────────────────────
