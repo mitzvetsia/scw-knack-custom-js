@@ -39557,8 +39557,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     $('#' + VIEW_ALWAYS_HIDE).hide();
   }
 
+  function formatDescriptions(container) {
+    var descs = (container || document).querySelectorAll('.kn-description');
+    for (var i = 0; i < descs.length; i++) {
+      var el = descs[i];
+      if (el.getAttribute('data-scw-formatted')) continue;
+      el.setAttribute('data-scw-formatted', '1');
+      el.style.paddingLeft = '5px';
+      el.style.paddingRight = '5px';
+      var html = el.innerHTML;
+      html = html.replace(/(^|<br\s*\/?>)\s*-\s*/gi, '$1\u2022 ');
+      el.innerHTML = html;
+    }
+  }
+
   $(document).on('knack-scene-render.scene_1116.scwPlaybookToggle', function () {
     toggle();
+    formatDescriptions();
+  });
+
+  $(document).on('knack-scene-render.scene_977.scwPlaybookToggle', function () {
+    formatDescriptions();
   });
 
   $(document).on(
