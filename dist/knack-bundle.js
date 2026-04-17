@@ -20895,12 +20895,14 @@ $(".kn-navigation-bar").hide();
     LINE_ITEM_BUCKET_FIELD: 'field_2219',
     PRODUCT_CELL_FIELD: 'field_1949',
     VIEWS: ['view_3456', 'view_3586', 'view_3610'],
+    POLL_INTERVAL: 150,
+    POLL_MAX: 5000,
     DEBUG: true
   };
 
   // ── STATE ──────────────────────────────────────────────────────
   var _lastClickedTr = null;
-  var _popoverObserver = null;
+  var _pollTimer = null;
 
   function log() {
     if (!CONFIG.DEBUG || !window.console) return;
@@ -20914,7 +20916,6 @@ $(".kn-navigation-bar").hide();
 
   // ── READ BUCKET ID FROM A TABLE ROW ──────────────────────────
   function readRowBucketId(tr) {
-    // Try DOM first
     var cell = tr.querySelector('td.' + CONFIG.LINE_ITEM_BUCKET_FIELD);
     if (cell) {
       var span = cell.querySelector('span[data-kn="connection-value"]');
@@ -20924,7 +20925,6 @@ $(".kn-navigation-bar").hide();
       }
     }
 
-    // Fallback: Knack model
     var recordId = tr.id;
     if (!recordId) return '';
     for (var v = 0; v < CONFIG.VIEWS.length; v++) {
@@ -20949,43 +20949,69 @@ $(".kn-navigation-bar").hide();
     var map = getMap();
     if (!map || !productId || !bucketId) return true;
     var buckets = map[productId];
-    if (!buckets) return true;   // unknown product — let it through
+    if (!buckets) return true;
     for (var i = 0; i < buckets.length; i++) {
       if (buckets[i] === bucketId) return true;
     }
     return false;
   }
 
+  // ── FIND THE OPEN POPOVER ────────────────────────────────────
+  function findOpenPopover() {
+    var popovers = document.querySelectorAll('.kn-popover.drop-open');
+    for (var i = 0; i < popovers.length; i++) {
+      if (popovers[i].querySelector('.conn_inputs') || popovers[i].querySelector('select')) {
+        return popovers[i];
+      }
+    }
+    return null;
+  }
+
+  // ── CHECK IF OPTIONS ARE LOADED ──────────────────────────────
+  function optionsAreLoaded(popover) {
+    var controls = popover.querySelectorAll('.conn_inputs .control');
+    if (!controls.length) return false;
+    for (var i = 0; i < controls.length; i++) {
+      var input = controls[i].querySelector('input[type="radio"], input[type="checkbox"]');
+      if (input && input.value) return true;
+      var label = (controls[i].textContent || '').trim().toLowerCase();
+      if (label === 'loading...' || label === 'loading') return false;
+    }
+    return false;
+  }
+
   // ── FILTER POPOVER OPTIONS ───────────────────────────────────
   function filterPopover(popover) {
-    if (!_lastClickedTr) { log('filterPopover: no _lastClickedTr'); return; }
     var map = getMap();
-    if (!map) { log('filterPopover: SCW.productBucketMap not available yet'); return; }
+    if (!map || !_lastClickedTr) return false;
 
     var bucketId = readRowBucketId(_lastClickedTr);
     if (!bucketId) {
       log('No bucket on row — skipping filter');
-      return;
+      return false;
     }
 
-    log('Filtering for bucket', bucketId, '| map size:', Object.keys(map).length);
-
-    var hidden = 0;
-    var total = 0;
-
-    // Pattern 1: radio/checkbox controls inside .conn_inputs
+    // Check controls
     var controls = popover.querySelectorAll('.conn_inputs .control');
     if (controls.length) {
-      total = controls.length;
+      if (!optionsAreLoaded(popover)) {
+        log('Options still loading... will retry');
+        return false;
+      }
+
+      var hidden = 0;
+      var total = controls.length;
+
       for (var i = 0; i < controls.length; i++) {
         var input = controls[i].querySelector('input[type="radio"], input[type="checkbox"]');
-        var label = (controls[i].textContent || '').trim();
-        if (!input) { log('  control[' + i + '] no input found, label:', label); continue; }
-        var val = input.value || '';
-        var inMap = map[val] ? map[val].join(',') : 'NOT IN MAP';
+        if (!input || !input.value) continue;
+        var val = input.value;
         var matches = productMatchesBucket(val, bucketId);
-        log('  control[' + i + '] value:', val, '| label:', label.substring(0, 40), '| buckets:', inMap, '| match:', matches);
-        if (!val) continue;
+        if (CONFIG.DEBUG) {
+          var label = (controls[i].textContent || '').trim();
+          var inMap = map[val] ? map[val].join(',') : 'NOT IN MAP';
+          log('  [' + i + '] value:', val, '| label:', label.substring(0, 40), '| buckets:', inMap, '| match:', matches);
+        }
         if (!matches) {
           controls[i].style.display = 'none';
           hidden++;
@@ -20993,33 +21019,71 @@ $(".kn-navigation-bar").hide();
           controls[i].style.display = '';
         }
       }
-      log('Hidden', hidden, 'of', total, 'controls');
-      return;
+
+      log('Filtered: hidden', hidden, 'of', total, 'for bucket', bucketId);
+      return true;
     }
 
-    // Pattern 2: Chosen.js <select>
+    // Check select
     var select = popover.querySelector('select');
     if (select) {
       var opts = select.querySelectorAll('option');
-      total = opts.length;
+      if (!opts.length) return false;
+
+      var hiddenS = 0;
       for (var j = 0; j < opts.length; j++) {
         if (!opts[j].value) continue;
         if (!productMatchesBucket(opts[j].value, bucketId)) {
           opts[j].disabled = true;
           opts[j].style.display = 'none';
-          hidden++;
+          hiddenS++;
         } else {
           opts[j].disabled = false;
           opts[j].style.display = '';
         }
       }
       $(select).trigger('chosen:updated').trigger('liszt:updated');
-      log('Hidden', hidden, 'of', total, 'select options');
-      return;
+      log('Filtered select: hidden', hiddenS, 'of', opts.length);
+      return true;
     }
 
-    log('Popover HTML (first 500):', popover.innerHTML.substring(0, 500));
-    log('No .conn_inputs controls or select found');
+    return false;
+  }
+
+  // ── POLL UNTIL OPTIONS LOAD, THEN FILTER ─────────────────────
+  function startPolling() {
+    stopPolling();
+    var elapsed = 0;
+
+    _pollTimer = setInterval(function () {
+      elapsed += CONFIG.POLL_INTERVAL;
+
+      var popover = findOpenPopover();
+      if (!popover) {
+        log('Poll: no open popover found, stopping');
+        stopPolling();
+        return;
+      }
+
+      var done = filterPopover(popover);
+      if (done) {
+        log('Poll: filter applied after', elapsed, 'ms');
+        stopPolling();
+        return;
+      }
+
+      if (elapsed >= CONFIG.POLL_MAX) {
+        log('Poll: timed out after', elapsed, 'ms');
+        stopPolling();
+      }
+    }, CONFIG.POLL_INTERVAL);
+  }
+
+  function stopPolling() {
+    if (_pollTimer) {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+    }
   }
 
   // ── CAPTURE CLICK ON PRODUCT CELL ────────────────────────────
@@ -21037,60 +21101,10 @@ $(".kn-navigation-bar").hide();
 
     _lastClickedTr = tr;
     log('Product cell clicked in', viewEl.id, 'row', tr.id);
+
+    // Start polling for options to load
+    startPolling();
   }, true);
-
-  // ── OBSERVE POPOVER OPEN ─────────────────────────────────────
-  function watchPopoverContent(popover) {
-    if (_popoverObserver) { _popoverObserver.disconnect(); _popoverObserver = null; }
-
-    var target = popover.querySelector('.drop-content') || popover;
-    var timer = 0;
-
-    _popoverObserver = new MutationObserver(function () {
-      clearTimeout(timer);
-      timer = setTimeout(function () { filterPopover(popover); }, 30);
-    });
-
-    _popoverObserver.observe(target, { childList: true, subtree: true });
-  }
-
-  var _bodyObserver = new MutationObserver(function (mutations) {
-    for (var m = 0; m < mutations.length; m++) {
-      var mutation = mutations[m];
-
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        var el = mutation.target;
-        if (el.classList.contains('kn-popover') && el.classList.contains('drop-open') && _lastClickedTr) {
-          setTimeout(function () {
-            filterPopover(el);
-            watchPopoverContent(el);
-          }, 100);
-        }
-      }
-
-      if (mutation.type === 'childList') {
-        for (var n = 0; n < mutation.addedNodes.length; n++) {
-          var node = mutation.addedNodes[n];
-          if (node.nodeType !== 1) continue;
-          if (node.classList.contains('kn-popover') && _lastClickedTr) {
-            (function (p) {
-              setTimeout(function () {
-                filterPopover(p);
-                watchPopoverContent(p);
-              }, 100);
-            })(node);
-          }
-        }
-      }
-    }
-  });
-
-  _bodyObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class']
-  });
 
   log('Module loaded, waiting for SCW.productBucketMap');
 })();
