@@ -1042,7 +1042,7 @@
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId, pkgName) {
-    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.addToBid ? ' scw-bid-cr-card--add' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
 

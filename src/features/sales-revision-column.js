@@ -197,7 +197,7 @@
 
           // Build card matching scw-bid-cr-card structure
           var cardMod = action === 'remove' ? '--removal'
-                      : action === 'add'    ? ''
+                      : action === 'add'    ? '--add'
                       :                       '';
           var card = document.createElement('div');
           card.className = 'scw-bid-cr-card' + (cardMod ? ' scw-bid-cr-card' + cardMod : '');

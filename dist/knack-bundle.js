@@ -11330,6 +11330,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-cr-card--removal .scw-bid-cr-card__header {',
       '  color: #dc2626;',
       '}',
+      '.scw-bid-cr-card--add {',
+      '  background: #f0fdf4;',
+      '  border-color: #86efac;',
+      '  border-left-color: #16a34a;',
+      '}',
+      '.scw-bid-cr-card--add .scw-bid-cr-card__header {',
+      '  color: #16a34a;',
+      '}',
 
       '.scw-bid-cr-card__header {',
       '  font-weight: 700;',
@@ -14873,7 +14881,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId, pkgName) {
-    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.addToBid ? ' scw-bid-cr-card--add' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
 
@@ -17180,7 +17188,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
           // Build card matching scw-bid-cr-card structure
           var cardMod = action === 'remove' ? '--removal'
-                      : action === 'add'    ? ''
+                      : action === 'add'    ? '--add'
                       :                       '';
           var card = document.createElement('div');
           card.className = 'scw-bid-cr-card' + (cardMod ? ' scw-bid-cr-card' + cardMod : '');
