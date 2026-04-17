@@ -2081,6 +2081,10 @@
     buildSummaryCard: buildSummaryCard,
     submitForPackage: submitChangeRequest,
     clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
+    /** Silently add a pending item (no modal). Used by Convert All. */
+    addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
+      addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId);
+    },
   };
 
 })();

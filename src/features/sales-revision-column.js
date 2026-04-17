@@ -403,29 +403,73 @@
   //  ACTION HANDLERS
   // ═══════════════════════════════════════════════════════════
 
-  /** Convert all sales revisions to their equivalent bid CRs. */
+  /** Convert all sales revisions to pending bid CRs — pick package first. */
   function handleConvertAll(e) {
     e.stopPropagation();
-    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.createBidCRFromRevision) {
-      console.warn('[SalesRevCol] createBidCRFromRevision not available');
+    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.batchConvertRevisions) {
+      console.warn('[SalesRevCol] batchConvertRevisions not available');
       return;
     }
 
-    var count = 0;
-    for (var i = 0; i < _revisionData.length; i++) {
-      var rev = _revisionData[i];
-      if (!rev.sowItemId || !rev.json) continue;
-      SCW.bidReview.createBidCRFromRevision({
-        sowItemId:   rev.sowItemId,
-        action:      rev.json.action || 'revise',
-        changeNotes: rev.json.changeNotes || '',
-        revJson:     rev.json,
-      });
-      count++;
+    var packages = getGridPackages();
+    if (!packages.length) {
+      if (SCW.bidReview.renderToast) SCW.bidReview.renderToast('No bid packages available', 'error');
+      return;
     }
 
-    if (SCW.bidReview.renderToast) {
-      SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to bid CRs', 'success');
+    // Build revision data for batch
+    var revItems = [];
+    for (var i = 0; i < _revisionData.length; i++) {
+      var rev = _revisionData[i];
+      if (!rev.sowItemId) continue;
+      revItems.push({
+        sowItemId:         rev.sowItemId,
+        action:            (rev.json && rev.json.action) || 'revise',
+        changeNotes:       (rev.json && rev.json.changeNotes) || '',
+        revJson:           rev.json || {},
+        revisionRecordId:  rev.id,
+      });
+    }
+
+    if (!revItems.length) {
+      if (SCW.bidReview.renderToast) SCW.bidReview.renderToast('No revisions to convert', 'info');
+      return;
+    }
+
+    function doConvert(pkgId) {
+      var count = SCW.bidReview.batchConvertRevisions(revItems, pkgId);
+      if (SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to pending bid CRs', 'success');
+      }
+    }
+
+    if (packages.length === 1) {
+      doConvert(packages[0].id);
+    } else {
+      // Show package picker
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+      overlay.addEventListener('click', function (ev) { if (ev.target === overlay) overlay.remove(); });
+
+      var modal = document.createElement('div');
+      modal.style.cssText = 'background:#fff;border-radius:10px;padding:20px;min-width:240px;font:13px/1.45 system-ui,sans-serif;';
+      modal.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">Convert ' + revItems.length + ' revision(s) to which bid?</div>';
+
+      for (var p = 0; p < packages.length; p++) {
+        var btn = document.createElement('button');
+        btn.style.cssText = 'display:block;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#1e293b;font:600 13px/1 system-ui,sans-serif;cursor:pointer;text-align:left;';
+        btn.textContent = packages[p].name;
+        btn.setAttribute('data-pkg-id', packages[p].id);
+        btn.addEventListener('click', function () {
+          var pkgId = this.getAttribute('data-pkg-id');
+          overlay.remove();
+          doConvert(pkgId);
+        });
+        modal.appendChild(btn);
+      }
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
     }
   }
 

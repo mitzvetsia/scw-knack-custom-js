@@ -16014,6 +16014,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     buildSummaryCard: buildSummaryCard,
     submitForPackage: submitChangeRequest,
     clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
+    /** Silently add a pending item (no modal). Used by Convert All. */
+    addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
+      addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId);
+    },
   };
 
 })();
@@ -16939,6 +16943,105 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
   }
 
+  /**
+   * Batch-convert an array of sales revision data into pending bid CRs
+   * for a specific package. No modals — items are created silently.
+   *
+   * @param {Array} revisions — [{sowItemId, action, changeNotes, revJson, revisionRecordId}]
+   * @param {string} pkgId    — target bid package
+   */
+  ns.batchConvertRevisions = function (revisions, pkgId) {
+    if (!_state || !ns.changeRequests) return 0;
+
+    var count = 0;
+    for (var i = 0; i < revisions.length; i++) {
+      var rev = revisions[i];
+      var action = rev.action || 'revise';
+      var sowItemId = rev.sowItemId || '';
+
+      // Find matching grid row
+      var grid = null, row = null;
+      for (var g = 0; g < _state.sowGrids.length; g++) {
+        var sg = _state.sowGrids[g];
+        for (var r = 0; r < sg.rows.length; r++) {
+          if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+            grid = sg; row = sg.rows[r]; break;
+          }
+        }
+        if (row) break;
+      }
+      if (!grid || !row) continue;
+
+      var cell = row.cellsByPackage[pkgId] || {};
+      var pkgName = findPackageName(grid, pkgId);
+      var surveyId = findPackageSurveyId(grid, pkgId);
+
+      var item;
+      if (action === 'remove') {
+        item = {
+          rowId:         row.id,
+          bidRecordId:   cell.id || null,
+          sowItemId:     row.sowItem || '',
+          displayLabel:  row.displayLabel,
+          productName:   row.productName || cell.productName || '',
+          removeFromBid: true,
+          current:       {},
+          requested:     {},
+          changeNotes:   rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+        };
+      } else if (action === 'add') {
+        var req = {};
+        if (rev.revJson) {
+          req.productName = rev.revJson.productName || row.sowProduct || '';
+          if (row.sowQty) req.qty = row.sowQty;
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  null,
+          sowItemId:    row.sowItem || row.id,
+          displayLabel: row.displayLabel || row.sowProduct || '',
+          productName:  req.productName || row.sowProduct || row.productName || '',
+          addToBid:     true,
+          current:      {},
+          requested:    req,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+        };
+      } else {
+        // Revise — snapshot current from cell, apply revision fields
+        var current = {};
+        var requested = {};
+        if (rev.revJson && rev.revJson.fields) {
+          for (var fi = 0; fi < rev.revJson.fields.length; fi++) {
+            var f = rev.revJson.fields[fi];
+            if (f.from != null) current[f.field] = f.from;
+            requested[f.field] = f.to;
+            if (f.fromIds) current[f.field + 'Ids'] = f.fromIds;
+            if (f.toIds) requested[f.field + 'Ids'] = f.toIds;
+          }
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  cell.id || null,
+          sowItemId:    row.sowItem || '',
+          displayLabel: row.displayLabel,
+          productName:  row.productName || cell.productName || '',
+          current:      current,
+          requested:    requested,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+        };
+      }
+
+      ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
+      count++;
+    }
+
+    if (ns.rerender) ns.rerender();
+    return count;
+  };
+
   function showPackagePicker(choices, onSelect) {
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
@@ -17488,29 +17591,73 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   //  ACTION HANDLERS
   // ═══════════════════════════════════════════════════════════
 
-  /** Convert all sales revisions to their equivalent bid CRs. */
+  /** Convert all sales revisions to pending bid CRs — pick package first. */
   function handleConvertAll(e) {
     e.stopPropagation();
-    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.createBidCRFromRevision) {
-      console.warn('[SalesRevCol] createBidCRFromRevision not available');
+    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.batchConvertRevisions) {
+      console.warn('[SalesRevCol] batchConvertRevisions not available');
       return;
     }
 
-    var count = 0;
-    for (var i = 0; i < _revisionData.length; i++) {
-      var rev = _revisionData[i];
-      if (!rev.sowItemId || !rev.json) continue;
-      SCW.bidReview.createBidCRFromRevision({
-        sowItemId:   rev.sowItemId,
-        action:      rev.json.action || 'revise',
-        changeNotes: rev.json.changeNotes || '',
-        revJson:     rev.json,
-      });
-      count++;
+    var packages = getGridPackages();
+    if (!packages.length) {
+      if (SCW.bidReview.renderToast) SCW.bidReview.renderToast('No bid packages available', 'error');
+      return;
     }
 
-    if (SCW.bidReview.renderToast) {
-      SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to bid CRs', 'success');
+    // Build revision data for batch
+    var revItems = [];
+    for (var i = 0; i < _revisionData.length; i++) {
+      var rev = _revisionData[i];
+      if (!rev.sowItemId) continue;
+      revItems.push({
+        sowItemId:         rev.sowItemId,
+        action:            (rev.json && rev.json.action) || 'revise',
+        changeNotes:       (rev.json && rev.json.changeNotes) || '',
+        revJson:           rev.json || {},
+        revisionRecordId:  rev.id,
+      });
+    }
+
+    if (!revItems.length) {
+      if (SCW.bidReview.renderToast) SCW.bidReview.renderToast('No revisions to convert', 'info');
+      return;
+    }
+
+    function doConvert(pkgId) {
+      var count = SCW.bidReview.batchConvertRevisions(revItems, pkgId);
+      if (SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to pending bid CRs', 'success');
+      }
+    }
+
+    if (packages.length === 1) {
+      doConvert(packages[0].id);
+    } else {
+      // Show package picker
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+      overlay.addEventListener('click', function (ev) { if (ev.target === overlay) overlay.remove(); });
+
+      var modal = document.createElement('div');
+      modal.style.cssText = 'background:#fff;border-radius:10px;padding:20px;min-width:240px;font:13px/1.45 system-ui,sans-serif;';
+      modal.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">Convert ' + revItems.length + ' revision(s) to which bid?</div>';
+
+      for (var p = 0; p < packages.length; p++) {
+        var btn = document.createElement('button');
+        btn.style.cssText = 'display:block;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#1e293b;font:600 13px/1 system-ui,sans-serif;cursor:pointer;text-align:left;';
+        btn.textContent = packages[p].name;
+        btn.setAttribute('data-pkg-id', packages[p].id);
+        btn.addEventListener('click', function () {
+          var pkgId = this.getAttribute('data-pkg-id');
+          overlay.remove();
+          doConvert(pkgId);
+        });
+        modal.appendChild(btn);
+      }
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
     }
   }
 

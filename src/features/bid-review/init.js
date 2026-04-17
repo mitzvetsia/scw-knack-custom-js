@@ -920,6 +920,105 @@
     }
   }
 
+  /**
+   * Batch-convert an array of sales revision data into pending bid CRs
+   * for a specific package. No modals — items are created silently.
+   *
+   * @param {Array} revisions — [{sowItemId, action, changeNotes, revJson, revisionRecordId}]
+   * @param {string} pkgId    — target bid package
+   */
+  ns.batchConvertRevisions = function (revisions, pkgId) {
+    if (!_state || !ns.changeRequests) return 0;
+
+    var count = 0;
+    for (var i = 0; i < revisions.length; i++) {
+      var rev = revisions[i];
+      var action = rev.action || 'revise';
+      var sowItemId = rev.sowItemId || '';
+
+      // Find matching grid row
+      var grid = null, row = null;
+      for (var g = 0; g < _state.sowGrids.length; g++) {
+        var sg = _state.sowGrids[g];
+        for (var r = 0; r < sg.rows.length; r++) {
+          if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+            grid = sg; row = sg.rows[r]; break;
+          }
+        }
+        if (row) break;
+      }
+      if (!grid || !row) continue;
+
+      var cell = row.cellsByPackage[pkgId] || {};
+      var pkgName = findPackageName(grid, pkgId);
+      var surveyId = findPackageSurveyId(grid, pkgId);
+
+      var item;
+      if (action === 'remove') {
+        item = {
+          rowId:         row.id,
+          bidRecordId:   cell.id || null,
+          sowItemId:     row.sowItem || '',
+          displayLabel:  row.displayLabel,
+          productName:   row.productName || cell.productName || '',
+          removeFromBid: true,
+          current:       {},
+          requested:     {},
+          changeNotes:   rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+        };
+      } else if (action === 'add') {
+        var req = {};
+        if (rev.revJson) {
+          req.productName = rev.revJson.productName || row.sowProduct || '';
+          if (row.sowQty) req.qty = row.sowQty;
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  null,
+          sowItemId:    row.sowItem || row.id,
+          displayLabel: row.displayLabel || row.sowProduct || '',
+          productName:  req.productName || row.sowProduct || row.productName || '',
+          addToBid:     true,
+          current:      {},
+          requested:    req,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+        };
+      } else {
+        // Revise — snapshot current from cell, apply revision fields
+        var current = {};
+        var requested = {};
+        if (rev.revJson && rev.revJson.fields) {
+          for (var fi = 0; fi < rev.revJson.fields.length; fi++) {
+            var f = rev.revJson.fields[fi];
+            if (f.from != null) current[f.field] = f.from;
+            requested[f.field] = f.to;
+            if (f.fromIds) current[f.field + 'Ids'] = f.fromIds;
+            if (f.toIds) requested[f.field + 'Ids'] = f.toIds;
+          }
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  cell.id || null,
+          sowItemId:    row.sowItem || '',
+          displayLabel: row.displayLabel,
+          productName:  row.productName || cell.productName || '',
+          current:      current,
+          requested:    requested,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+        };
+      }
+
+      ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
+      count++;
+    }
+
+    if (ns.rerender) ns.rerender();
+    return count;
+  };
+
   function showPackagePicker(choices, onSelect) {
     var overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
