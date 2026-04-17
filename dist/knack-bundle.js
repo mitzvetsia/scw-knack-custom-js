@@ -10766,7 +10766,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  text-align: center;',
       '}',
       '.scw-bid-review__header-action-cell .scw-bid-review__btn {',
-      '  margin: 2px auto;',
+      '  display: block;',
+      '  width: 100%;',
+      '  margin: 3px 0;',
       '}',
       '.scw-bid-review__col-status {',
       '  font-size: 10px;',
@@ -10874,12 +10876,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__btn--adopt {',
-      '  background: #16a34a;',
+      '  background: #0891b2;',
       '  color: #fff;',
       '}',
 
       '.scw-bid-review__btn--create {',
-      '  background: #2563eb;',
+      '  background: #0891b2;',
       '  color: #fff;',
       '}',
 
