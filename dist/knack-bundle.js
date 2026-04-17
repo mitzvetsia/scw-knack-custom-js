@@ -16728,6 +16728,118 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
   };
 
+  /**
+   * Create a bid CR from a sales revision record.
+   * Called by the sales-revision-column when user clicks "Create Bid CR".
+   *
+   * @param {Object} opts
+   * @param {string} opts.sowItemId  — SOW line item record ID (field_2708)
+   * @param {string} opts.action     — 'remove' | 'revise' | 'add'
+   * @param {string} opts.changeNotes — pre-filled notes from the revision
+   * @param {Object} opts.revJson    — full revision JSON data
+   */
+  ns.createBidCRFromRevision = function (opts) {
+    if (!_state || !ns.changeRequests) return;
+
+    var sowItemId  = opts.sowItemId || '';
+    var action     = opts.action || 'revise';
+    var notes      = opts.changeNotes || '';
+
+    // Find the grid row that matches this SOW item
+    var grid = null, row = null;
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var sg = _state.sowGrids[g];
+      for (var r = 0; r < sg.rows.length; r++) {
+        if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+          grid = sg;
+          row = sg.rows[r];
+          break;
+        }
+      }
+      if (row) break;
+    }
+
+    if (!grid || !row) {
+      if (ns.renderToast) ns.renderToast('Could not find matching grid row', 'error');
+      return;
+    }
+
+    // Get available packages for this row
+    var pkgIds = Object.keys(row.cellsByPackage);
+    if (!pkgIds.length) {
+      if (ns.renderToast) ns.renderToast('No bid packages available for this item', 'error');
+      return;
+    }
+
+    // If only one package, use it directly; otherwise let the user pick
+    if (pkgIds.length === 1) {
+      executeBidCR(grid, row, pkgIds[0], action, notes);
+    } else {
+      // Show a simple picker
+      var choices = [];
+      for (var p = 0; p < pkgIds.length; p++) {
+        choices.push({ id: pkgIds[p], name: findPackageName(grid, pkgIds[p]) });
+      }
+      showPackagePicker(choices, function (pkgId) {
+        executeBidCR(grid, row, pkgId, action, notes);
+      });
+    }
+  };
+
+  function executeBidCR(grid, row, pkgId, action, notes) {
+    var cell = row.cellsByPackage[pkgId];
+    if (!cell) return;
+
+    var params = {
+      rowId:        row.id,
+      pkgId:        pkgId,
+      pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
+      sowId:        grid.sowId,
+      sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
+      displayLabel: row.displayLabel,
+      productName:  row.productName,
+      cell:         cell,
+    };
+
+    if (action === 'remove') {
+      // Pre-fill notes and open remove modal
+      ns.changeRequests.openRemove(params);
+    } else {
+      // Open change request modal for revise/add
+      params.connOptions = {};
+      params.visibility = { qty: true, cabling: true, connDevice: true };
+      ns.changeRequests.open(params);
+    }
+  }
+
+  function showPackagePicker(choices, onSelect) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:10px;padding:20px;min-width:240px;font:13px/1.45 system-ui,sans-serif;';
+    modal.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">Select Bid Package</div>';
+
+    for (var i = 0; i < choices.length; i++) {
+      var btn = document.createElement('button');
+      btn.style.cssText = 'display:block;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#1e293b;font:600 13px/1 system-ui,sans-serif;cursor:pointer;text-align:left;';
+      btn.textContent = choices[i].name;
+      btn.setAttribute('data-pkg-id', choices[i].id);
+      btn.addEventListener('click', function () {
+        var pkgId = this.getAttribute('data-pkg-id');
+        overlay.remove();
+        onSelect(pkgId);
+      });
+      modal.appendChild(btn);
+    }
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
   // ── force views to load 1000 records per page ───────────────
 
   /**
@@ -17125,13 +17237,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   function handleCreateBidCR(e) {
-    var revId     = this.getAttribute('data-rev-id');
     var sowItemId = this.getAttribute('data-sow-item-id');
     var revJson   = {};
     try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
-    console.log('[SalesRevCol] Create Bid CR from revision', revId, revJson);
-    if (window.SCW && SCW.bidReview && SCW.bidReview.renderToast) {
-      SCW.bidReview.renderToast('Create Bid CR — not yet implemented', 'info');
+
+    if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
+      SCW.bidReview.createBidCRFromRevision({
+        sowItemId:   sowItemId,
+        action:      revJson.action || 'revise',
+        changeNotes: revJson.changeNotes || '',
+        revJson:     revJson,
+      });
     }
   }
 

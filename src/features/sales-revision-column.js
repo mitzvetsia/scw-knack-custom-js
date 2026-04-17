@@ -277,13 +277,17 @@
   }
 
   function handleCreateBidCR(e) {
-    var revId     = this.getAttribute('data-rev-id');
     var sowItemId = this.getAttribute('data-sow-item-id');
     var revJson   = {};
     try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
-    console.log('[SalesRevCol] Create Bid CR from revision', revId, revJson);
-    if (window.SCW && SCW.bidReview && SCW.bidReview.renderToast) {
-      SCW.bidReview.renderToast('Create Bid CR — not yet implemented', 'info');
+
+    if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
+      SCW.bidReview.createBidCRFromRevision({
+        sowItemId:   sowItemId,
+        action:      revJson.action || 'revise',
+        changeNotes: revJson.changeNotes || '',
+        revJson:     revJson,
+      });
     }
   }
 
