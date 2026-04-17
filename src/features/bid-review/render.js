@@ -1024,6 +1024,9 @@
 
     restoreAccordionState(mount, snap);
 
+    // Notify other modules that the grid has been built
+    $(document).trigger('scw-bid-review-rendered');
+
     return mount;
   };
 
