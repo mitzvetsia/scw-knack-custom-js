@@ -228,9 +228,9 @@
           }
 
           // CR button — green (create) for all types, label varies
-          var crLabel = action === 'add'    ? 'Add to Bid'
-                      : action === 'remove' ? 'Remove from Bid'
-                      :                       'Revise Bid';
+          var crLabel = action === 'add'    ? 'Add \u2192'
+                      : action === 'remove' ? 'Remove \u2192'
+                      :                       'Revise \u2192';
           var crChoices = [];
           for (var cp = 0; cp < packages.length; cp++) {
             crChoices.push({
