@@ -75,7 +75,7 @@
     modelView.sort = sortArr;
 
     if (typeof view.model.fetch === 'function') {
-      view.model.fetch();
+      try { view.model.fetch(); } catch (e) { /* model may lack a URL */ }
     }
   }
 
