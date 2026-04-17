@@ -1,7 +1,11 @@
 /*** SALES CHANGE REQUEST — PAYLOAD BUILDERS ***/
 /**
- * Builds the clean JSON payload and self-contained HTML payload
- * for webhook submission.
+ * Builds the webhook payload. Each item carries:
+ *   - .json  — stringified clean JSON snapshot (no HTML)
+ *   - .html  — self-contained inline-styled HTML card
+ *
+ * The top-level payload also has a combined .html wrapping all items.
+ * Modelled on bid-review/change-requests.js buildSubmitPayload + buildItemHtml.
  *
  * Reads : SCW.salesCR.CONFIG, ._state, ._h
  * Writes: SCW.salesCR.buildPayload, .buildHtml
@@ -16,7 +20,106 @@
   var TF  = CFG.trackedFields;
 
   // ═══════════════════════════════════════════════════════════
-  //  JSON PAYLOAD
+  //  PER-ITEM HELPERS
+  // ═══════════════════════════════════════════════════════════
+
+  var PALETTES = {
+    revise: { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' },
+    add:    { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'ADD' },
+    remove: { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' },
+    note:   { color: '#60a5fa', bg: '#eff6ff', border: '#60a5fa33', badge: '#dbeafe', badgeText: '#1e40af', label: 'NOTE' },
+  };
+
+  /** Build the fields array for one pending item (from→to diffs). */
+  function buildItemFields(it) {
+    var fields = [];
+    var r = it.requested || {};
+    var c = it.current   || {};
+
+    for (var f = 0; f < TF.length; f++) {
+      var def = TF[f];
+      if (r[def.key] == null) continue;
+      var entry = {
+        field: def.key,
+        label: def.label,
+        from:  c[def.key] != null ? c[def.key] : null,
+        to:    r[def.key],
+      };
+      if (def.type === 'connection') {
+        if (c[def.key + '_ids']) entry.fromIds = c[def.key + '_ids'];
+        if (r[def.key + '_ids']) entry.toIds   = r[def.key + '_ids'];
+      }
+      fields.push(entry);
+    }
+    return fields;
+  }
+
+  /** Build a self-contained HTML card for one item. */
+  function buildItemHtml(item, fieldList) {
+    var action  = item.action || 'revise';
+    var palette = PALETTES[action] || PALETTES.revise;
+    var esc     = H.escHtml;
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
+    h.push('<div style="background:' + palette.bg + ';border:1px solid ' + palette.border + ';border-radius:6px;padding:10px 14px;">');
+
+    // Badge + item header
+    h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">');
+    h.push('<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + palette.badge + ';color:' + palette.badgeText + ';font-size:10px;font-weight:700;letter-spacing:0.5px;">' + palette.label + '</span>');
+    var displayName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || 'Item';
+    h.push('<span style="font-weight:600;font-size:13px;">' + esc(displayName) + '</span>');
+    var prodName = H.readableVal(item.productName);
+    if (prodName && item.displayLabel && prodName !== displayName) {
+      h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + esc(prodName) + '</span>');
+    }
+    h.push('</div>');
+
+    if (action === 'remove') {
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+      } else {
+        h.push('<div style="font-size:12px;color:#64748b;">Requesting removal</div>');
+      }
+    } else if (action === 'note') {
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+      }
+    } else if (fieldList && fieldList.length) {
+      // Revise or Add — field changes table
+      h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var def = null;
+        for (var di = 0; di < TF.length; di++) {
+          if (TF[di].key === f.field) { def = TF[di]; break; }
+        }
+        var fromStr = f.from != null ? esc(H.formatFieldValue(def || {}, f.from)) : '&mdash;';
+        var toStr   = esc(H.formatFieldValue(def || {}, f.to));
+
+        h.push('<tr>');
+        h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + esc(f.label) + '</td>');
+        if (action === 'revise') {
+          h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
+          h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+        }
+        h.push('<td style="padding:3px 8px;font-weight:600;color:' + palette.color + ';">' + toStr + '</td>');
+        h.push('</tr>');
+      }
+      h.push('</table>');
+
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;border-top:1px solid ' + palette.border + ';padding-top:4px;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+      }
+    }
+
+    h.push('</div>');
+    h.push('</div>');
+    return h.join('');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PAYLOAD (per-item json + html)
   // ═══════════════════════════════════════════════════════════
 
   function buildPayload(isDraft) {
@@ -26,46 +129,41 @@
 
     for (var i = 0; i < ids.length; i++) {
       var it = pending[ids[i]];
+
+      // Base entry — IDs, labels, metadata
       var entry = {
         action:       it.action,
         rowId:        it.rowId || null,
-        displayLabel: it.displayLabel || '',
-        productName:  it.productName || '',
+        displayLabel: H.readableVal(it.displayLabel) || '',
+        productName:  H.readableVal(it.productName) || '',
         changeNotes:  it.changeNotes || '',
         bucketId:     it.bucketId || '',
         bucketName:   it.bucketName || '',
         laborHours:   it.laborHours || 0,
       };
 
-      if (it.action === 'revise' || it.action === 'add') {
-        entry.current = it.current || {};
-        var fields = [];
-        var r = it.requested || {};
-        var c = it.current || {};
+      // Snapshot of current + requested values
+      entry.current   = it.current   || {};
+      entry.requested = it.requested || {};
 
-        for (var f = 0; f < TF.length; f++) {
-          var def = TF[f];
-          if (r[def.key] == null) continue;
-          var fieldEntry = {
-            field: def.key,
-            label: def.label,
-            from:  c[def.key] != null ? c[def.key] : null,
-            to:    r[def.key],
-          };
-          // Include record IDs for connection fields so Make can look up
-          // per-product flags (e.g., "requires requote on swap")
-          if (def.type === 'connection') {
-            if (c[def.key + '_ids']) fieldEntry.fromIds = c[def.key + '_ids'];
-            if (r[def.key + '_ids']) fieldEntry.toIds   = r[def.key + '_ids'];
-          }
-          fields.push(fieldEntry);
-          entry[def.key] = r[def.key];
-          if (def.type === 'connection' && r[def.key + '_ids']) {
-            entry[def.key + '_ids'] = r[def.key + '_ids'];
-          }
+      // Flatten requested values + build fields array
+      var fieldList = buildItemFields(it);
+      var r = it.requested || {};
+      for (var f = 0; f < TF.length; f++) {
+        var def = TF[f];
+        if (r[def.key] == null) continue;
+        entry[def.key] = r[def.key];
+        if (def.type === 'connection' && r[def.key + '_ids']) {
+          entry[def.key + '_ids'] = r[def.key + '_ids'];
         }
-        entry.fields = fields;
       }
+      entry.fields = fieldList;
+
+      // Per-item JSON snapshot (stringified BEFORE html is added)
+      entry.json = JSON.stringify(entry);
+
+      // Per-item HTML card
+      entry.html = buildItemHtml(it, fieldList);
 
       items.push(entry);
     }
@@ -80,7 +178,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  HTML PAYLOAD
+  //  COMBINED HTML (full submission document)
   // ═══════════════════════════════════════════════════════════
 
   function buildHtml() {
@@ -108,79 +206,30 @@
     }
 
     var sections = [
-      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
-      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
-      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
-      { key: 'note',   title: 'Notes',           color: '#f59e0b', bg: '#fffbeb', icon: '\u270D' },
+      { key: 'revise', title: 'Revisions',      icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',    icon: '+' },
+      { key: 'remove', title: 'Items to Remove', icon: '\u2212' },
+      { key: 'note',   title: 'Notes',           icon: '\u270D' },
     ];
 
     for (var si = 0; si < sections.length; si++) {
       var sec = sections[si];
       var arr = groups[sec.key];
       if (!arr || !arr.length) continue;
+      var palette = PALETTES[sec.key];
 
       h.push('<div style="margin-bottom:20px;">');
-      h.push('<div style="font-size:14px;font-weight:700;color:' + sec.color + ';margin-bottom:8px;">');
+      h.push('<div style="font-size:14px;font-weight:700;color:' + palette.color + ';margin-bottom:8px;">');
       h.push(esc(sec.icon) + ' ' + esc(sec.title) + ' (' + arr.length + ')');
       h.push('</div>');
 
       for (var j = 0; j < arr.length; j++) {
-        var item = arr[j];
-        h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:10px 14px;margin-bottom:8px;">');
-
-        // Item header (label + product)
-        if (item.displayLabel || item.productName) {
-          h.push('<div style="font-weight:600;font-size:13px;margin-bottom:4px;">');
-          h.push(esc(item.displayLabel || ''));
-          if (item.productName && item.productName !== item.displayLabel) {
-            h.push(' <span style="font-weight:400;color:#64748b;">&mdash; ' + esc(item.productName) + '</span>');
-          }
-          h.push('</div>');
-        }
-
-        if (sec.key === 'note' || sec.key === 'remove') {
-          // Note / removal — just show text
-          if (item.changeNotes) {
-            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
-          } else if (sec.key === 'remove') {
-            h.push('<div style="font-size:12px;color:#64748b;">Requesting removal</div>');
-          }
-        } else {
-          // Revise / Add — field-change table
-          var r = item.requested || {};
-          var c = item.current || {};
-          var hasFields = false;
-          for (var fk in r) { if (r.hasOwnProperty(fk)) { hasFields = true; break; } }
-
-          if (hasFields) {
-            h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">');
-            for (var fi = 0; fi < TF.length; fi++) {
-              var def = TF[fi];
-              if (r[def.key] == null) continue;
-              var fromStr = c[def.key] != null ? esc(H.formatFieldValue(def, c[def.key])) : '&mdash;';
-              var toStr = esc(H.formatFieldValue(def, r[def.key]));
-
-              h.push('<tr>');
-              h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + esc(def.label) + '</td>');
-              if (sec.key === 'revise') {
-                h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
-                h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
-              }
-              h.push('<td style="padding:3px 8px;font-weight:600;color:' + sec.color + ';">' + toStr + '</td>');
-              h.push('</tr>');
-            }
-            h.push('</table>');
-          }
-
-          if (item.changeNotes) {
-            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
-          }
-        }
-
-        h.push('</div>'); // card
+        var fieldList = buildItemFields(arr[j]);
+        h.push(buildItemHtml(arr[j], fieldList));
+        h.push('<div style="height:6px;"></div>');
       }
 
-      h.push('</div>'); // section
+      h.push('</div>');
     }
 
     // Footer
