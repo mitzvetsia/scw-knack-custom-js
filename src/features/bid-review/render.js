@@ -197,11 +197,11 @@
 
       if (isSubmitted) {
         actionTd.appendChild(btn(
-          'Sync to SOW', 'adopt',
+          '\u2190 Sync to SOW', 'adopt',
           { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
         actionTd.appendChild(btn(
-          'Create new SOW', 'create',
+          '+ Create new SOW', 'create',
           { 'data-action': 'package_create_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
       }
