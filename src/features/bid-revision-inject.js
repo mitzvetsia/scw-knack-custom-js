@@ -2369,6 +2369,7 @@
       // Prefer the pre-built HTML card from field_2695
       if (rev.changeHtml) {
         card.innerHTML = rev.changeHtml;
+        postProcessHtmlCard(card);
       } else {
         // Fallback: structured card
         card.className = 'scw-scr-card' + cardMod;
