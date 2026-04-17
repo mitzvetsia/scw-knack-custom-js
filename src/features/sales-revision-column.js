@@ -42,10 +42,10 @@
 
       '.' + P + '-header {',
       '  background: #f0f9ff; color: #0c4a6e;',
-      '  font-size: 12px; font-weight: 700; text-transform: uppercase;',
-      '  letter-spacing: .04em; padding: 10px 12px;',
+      '  padding: 10px 12px;',
       '  min-width: 200px; vertical-align: top;',
       '  border-bottom: 2px solid #0ea5e9;',
+      '  text-align: center;',
       '}',
 
       '.' + P + '-cell {',
