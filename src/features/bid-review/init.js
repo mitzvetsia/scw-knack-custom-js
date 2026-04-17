@@ -857,11 +857,61 @@
       return;
     }
 
-    // Open the standard CR modal — it loads current values from
-    // the bid cell. User can review and adjust before confirming.
+    // Map sales/SOW field keys → bid CR modal logical keys
+    var SALES_TO_BID = {
+      field_1949: 'productName',
+      field_1964: 'qty',
+      field_2150: 'rate',
+      field_2020: 'laborDesc',
+      field_2461: 'bidExistCabling',
+      field_1984: 'bidExterior',
+      field_1983: 'bidPlenum',
+      field_1965: 'bidDropLength',
+      field_2035: 'bidConduit',
+    };
+
     function doOpen(pkgId) {
       var action = opts.action || 'revise';
-      var notes = (opts.revJson && opts.revJson.changeNotes) || opts.changeNotes || '';
+      var revJson = opts.revJson || {};
+      var notes = revJson.changeNotes || opts.changeNotes || '';
+
+      // Pre-seed a pending item with revision values mapped to
+      // the modal's logical keys so fields display correctly.
+      if (action !== 'remove' && revJson.fields && revJson.fields.length) {
+        var requested = {};
+        for (var fi = 0; fi < revJson.fields.length; fi++) {
+          var f = revJson.fields[fi];
+          var logicalKey = SALES_TO_BID[f.field] || f.field;
+          if (f.to != null) requested[logicalKey] = f.to;
+        }
+        // Also map top-level keys from the JSON
+        for (var sk in SALES_TO_BID) {
+          if (revJson[sk] != null && !requested[SALES_TO_BID[sk]]) {
+            requested[SALES_TO_BID[sk]] = revJson[sk];
+          }
+        }
+
+        var cell = row.cellsByPackage[pkgId] || {};
+        var pkgName = findPackageName(grid, pkgId);
+        var surveyId = findPackageSurveyId(grid, pkgId);
+
+        var item = {
+          rowId:        row.id,
+          bidRecordId:  cell.id || null,
+          sowItemId:    row.sowItem || '',
+          displayLabel: row.displayLabel,
+          productName:  requested.productName || row.productName || cell.productName || '',
+          current:      {},
+          requested:    requested,
+          changeNotes:  notes,
+          salesRevisionId: opts.revisionRecordId || '',
+          salesRevisionRequestId: opts.revisionRequestId || '',
+        };
+        if (action === 'add') item.addToBid = true;
+
+        ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
+      }
+
       executeBidCR(grid, row, pkgId, action, notes);
     }
 

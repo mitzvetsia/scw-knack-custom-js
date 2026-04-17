@@ -168,8 +168,6 @@
       $(this).attr('colspan', span - 1);
     });
     $mount.find('[data-sr-bumped]').removeAttr('data-sr-bumped');
-    // Also remove jQuery data flag
-    $mount.find('td').removeData('sr-bumped');
   }
 
   function injectColumn() {
@@ -224,10 +222,10 @@
       // Group/subgroup header rows — bump colspan
       if ($tr.hasClass('scw-bid-review__group-header') || $tr.hasClass('scw-bid-review__subgroup-header')) {
         var $td = $tr.find('td[colspan]');
-        if ($td.length && !$td.data('sr-bumped')) {
+        if ($td.length && !$td.attr('data-sr-bumped')) {
           var span = parseInt($td.attr('colspan'), 10) || 1;
           $td.attr('colspan', span + 1);
-          $td.data('sr-bumped', true);
+          $td.attr('data-sr-bumped', '1');
         }
         return;
       }
