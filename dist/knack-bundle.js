@@ -17186,36 +17186,47 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
           var action = (rev.json && rev.json.action) || '';
 
+          // Build overflow menus matching the CR column style
           var actions = document.createElement('div');
-          actions.className = P + '-actions';
+          actions.className = 'scw-bid-review__action-menus';
 
-          // Only REVISE gets an "Apply" button
+          // Gather package choices from the grid
+          var packages = getGridPackages();
+          var revJsonStr = JSON.stringify(rev.json || {});
+
+          // Only REVISE gets an "Apply" overflow
           if (action === 'revise') {
-            var applyBtn = document.createElement('button');
-            applyBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
-            applyBtn.type = 'button';
-            applyBtn.textContent = 'Apply';
-            applyBtn.setAttribute('data-rev-id', rev.id);
-            applyBtn.setAttribute('data-sow-item-id', rev.sowItemId);
-            applyBtn.addEventListener('click', handleApply);
-            actions.appendChild(applyBtn);
+            var applyChoices = [];
+            for (var ap = 0; ap < packages.length; ap++) {
+              applyChoices.push({
+                label: packages[ap].name,
+                attrs: {
+                  'data-sr-action': 'apply',
+                  'data-rev-id': rev.id,
+                  'data-sow-item-id': rev.sowItemId,
+                }
+              });
+            }
+            actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
           }
 
-          var crVariant = action === 'remove' ? '--remove'
-                        : action === 'add'    ? '--create'
-                        :                       '--revise';
-          var crLabel   = action === 'add'    ? 'Create Add CR'
-                        : action === 'remove' ? 'Create Remove CR'
-                        :                       'Create Bid CR';
-          var bidCrBtn = document.createElement('button');
-          bidCrBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger' + crVariant;
-          bidCrBtn.type = 'button';
-          bidCrBtn.textContent = crLabel;
-          bidCrBtn.setAttribute('data-rev-id', rev.id);
-          bidCrBtn.setAttribute('data-sow-item-id', rev.sowItemId);
-          bidCrBtn.setAttribute('data-rev-json', JSON.stringify(rev.json || {}));
-          bidCrBtn.addEventListener('click', handleCreateBidCR);
-          actions.appendChild(bidCrBtn);
+          // CR button — green (create) for all types, label varies
+          var crLabel = action === 'add'    ? 'Add to Bid'
+                      : action === 'remove' ? 'Remove from Bid'
+                      :                       'Revise Bid';
+          var crChoices = [];
+          for (var cp = 0; cp < packages.length; cp++) {
+            crChoices.push({
+              label: packages[cp].name,
+              attrs: {
+                'data-sr-action': 'create-bid-cr',
+                'data-rev-id': rev.id,
+                'data-sow-item-id': rev.sowItemId,
+                'data-rev-json': revJsonStr,
+              }
+            });
+          }
+          actions.appendChild(buildSROverflow(crLabel, 'create', crChoices));
 
           item.appendChild(actions);
           td.appendChild(item);
@@ -17228,30 +17239,108 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  OVERFLOW MENU (mirrors bid-review buildOverflowMenu)
+  // ═══════════════════════════════════════════════════════════
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function buildSROverflow(triggerLabel, triggerMod, choices) {
+    var container = document.createElement('div');
+    container.className = 'scw-bid-review__overflow';
+
+    var trigger = document.createElement('button');
+    trigger.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--' + triggerMod;
+    trigger.type = 'button';
+    trigger.innerHTML = '<span class="scw-bid-review__overflow-dots">\u22EE</span> ' + esc(triggerLabel);
+    container.appendChild(trigger);
+
+    var menu = document.createElement('div');
+    menu.className = 'scw-bid-review__overflow-menu';
+    for (var i = 0; i < choices.length; i++) {
+      var ch = choices[i];
+      var itemEl = document.createElement('button');
+      itemEl.className = 'scw-bid-review__overflow-item';
+      itemEl.type = 'button';
+      itemEl.textContent = ch.label;
+      var keys = Object.keys(ch.attrs);
+      for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], ch.attrs[keys[k]]);
+      itemEl.addEventListener('click', handleSRAction);
+      menu.appendChild(itemEl);
+    }
+    container.appendChild(menu);
+
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var allOpen = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var j = 0; j < allOpen.length; j++) {
+        if (allOpen[j] !== container) allOpen[j].classList.remove('scw-bid-review__overflow--open');
+      }
+      container.classList.toggle('scw-bid-review__overflow--open');
+    });
+
+    return container;
+  }
+
+  /** Read all bid packages from the grid's header row. */
+  function getGridPackages() {
+    var pkgs = [];
+    var $mount = $(CFG.mountSelector);
+    $mount.find('.scw-bid-review__pkg-header').each(function () {
+      var $name = $(this).find('.scw-bid-review__pkg-name');
+      var name = $name.length ? $name.contents().first().text().trim() : '';
+      // Get package ID from any action button in the header
+      var $actionBtn = $(this).find('button[data-package-id]');
+      var id = $actionBtn.length ? $actionBtn.attr('data-package-id') : '';
+      if (name && id) pkgs.push({ id: id, name: name });
+    });
+    // Fallback: read from data rows
+    if (!pkgs.length) {
+      var seen = {};
+      $mount.find('button[data-package-id]').each(function () {
+        var id = this.getAttribute('data-package-id');
+        if (id && !seen[id]) {
+          seen[id] = true;
+          pkgs.push({ id: id, name: id });
+        }
+      });
+    }
+    return pkgs;
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  ACTION HANDLERS
   // ═══════════════════════════════════════════════════════════
 
-  function handleApply(e) {
-    var revId     = this.getAttribute('data-rev-id');
+  function handleSRAction(e) {
+    e.stopPropagation();
+    // Close overflow
+    var overflow = this.closest('.scw-bid-review__overflow');
+    if (overflow) overflow.classList.remove('scw-bid-review__overflow--open');
+
+    var action = this.getAttribute('data-sr-action');
+    var revId  = this.getAttribute('data-rev-id');
     var sowItemId = this.getAttribute('data-sow-item-id');
-    console.log('[SalesRevCol] Apply revision', revId, 'to SOW item', sowItemId);
-    if (window.SCW && SCW.bidReview && SCW.bidReview.renderToast) {
-      SCW.bidReview.renderToast('Apply — not yet implemented', 'info');
+
+    if (action === 'apply') {
+      console.log('[SalesRevCol] Apply revision', revId, 'to SOW item', sowItemId);
+      if (window.SCW && SCW.bidReview && SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast('Apply — not yet implemented', 'info');
+      }
+      return;
     }
-  }
 
-  function handleCreateBidCR(e) {
-    var sowItemId = this.getAttribute('data-sow-item-id');
-    var revJson   = {};
-    try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+    if (action === 'create-bid-cr') {
+      var revJson = {};
+      try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
 
-    if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
-      SCW.bidReview.createBidCRFromRevision({
-        sowItemId:   sowItemId,
-        action:      revJson.action || 'revise',
-        changeNotes: revJson.changeNotes || '',
-        revJson:     revJson,
-      });
+      if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
+        SCW.bidReview.createBidCRFromRevision({
+          sowItemId:   sowItemId,
+          action:      revJson.action || 'revise',
+          changeNotes: revJson.changeNotes || '',
+          revJson:     revJson,
+        });
+      }
     }
   }
 
