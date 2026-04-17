@@ -259,6 +259,7 @@
     setRevisionData: function (d) { _revisionData = d; },
     onPage:       function ()  { return _onPage; },
     setOnPage:    function (v) { _onPage = v; },
+    sowRecordId:  function ()  { return _sowRecordId; },
   };
 
   ns.persist             = persist;

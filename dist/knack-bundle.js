@@ -31569,6 +31569,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setRevisionData: function (d) { _revisionData = d; },
     onPage:       function ()  { return _onPage; },
     setOnPage:    function (v) { _onPage = v; },
+    sowRecordId:  function ()  { return _sowRecordId; },
   };
 
   ns.persist             = persist;
@@ -32793,6 +32794,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       actionType: 'sales_change_request',
       isDraft:    isDraft,
       timestamp:  new Date().toISOString(),
+      sowId:      S.sowRecordId() || '',
       itemCount:  items.length,
       items:      items,
     };

@@ -172,6 +172,7 @@
       actionType: 'sales_change_request',
       isDraft:    isDraft,
       timestamp:  new Date().toISOString(),
+      sowId:      S.sowRecordId() || '',
       itemCount:  items.length,
       items:      items,
     };
