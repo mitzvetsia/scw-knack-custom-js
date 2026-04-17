@@ -112,6 +112,30 @@
       '.scw-bid-review__actions-header {',
       '}',
 
+      /* ── unified column header layout ───────────────────── */
+      '.scw-bid-review__col-status {',
+      '  font-size: 10px;',
+      '  min-height: 18px;',
+      '}',
+      '.scw-bid-review__col-title {',
+      '  font-size: 12px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: .04em;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.scw-bid-review__col-links {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 2px;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.scw-bid-review__col-buttons {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 4px;',
+      '}',
+
       /* ── package column header ─────────────────────────────── */
 
       '.scw-bid-review__pkg-name {',

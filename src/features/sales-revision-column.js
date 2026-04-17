@@ -155,7 +155,20 @@
 
       var th = document.createElement('th');
       th.className = P + '-header';
-      th.textContent = CFG.colHeaderText;
+
+      // Unified header: status placeholder + title + Convert All button
+      th.appendChild(elDiv('scw-bid-review__col-status', '\u00a0'));
+      th.appendChild(elDiv('scw-bid-review__col-title', CFG.colHeaderText));
+
+      var btnWrap = document.createElement('div');
+      btnWrap.className = 'scw-bid-review__col-buttons';
+      var convertBtn = document.createElement('button');
+      convertBtn.className = 'scw-bid-review__btn scw-bid-review__btn--adopt';
+      convertBtn.textContent = 'Convert All \u2192';
+      convertBtn.setAttribute('data-sr-convert-all', '1');
+      convertBtn.addEventListener('click', handleConvertAll);
+      btnWrap.appendChild(convertBtn);
+      th.appendChild(btnWrap);
 
       var $firstTh = $headerRow.find('th').first();
       $firstTh.after(th);
@@ -302,6 +315,13 @@
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  function elDiv(cls, text) {
+    var d = document.createElement('div');
+    if (cls) d.className = cls;
+    if (text != null) d.textContent = text;
+    return d;
+  }
+
   function buildSROverflow(triggerLabel, triggerMod, choices) {
     var container = document.createElement('div');
     container.className = 'scw-bid-review__overflow';
@@ -368,6 +388,32 @@
   // ═══════════════════════════════════════════════════════════
   //  ACTION HANDLERS
   // ═══════════════════════════════════════════════════════════
+
+  /** Convert all sales revisions to their equivalent bid CRs. */
+  function handleConvertAll(e) {
+    e.stopPropagation();
+    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.createBidCRFromRevision) {
+      console.warn('[SalesRevCol] createBidCRFromRevision not available');
+      return;
+    }
+
+    var count = 0;
+    for (var i = 0; i < _revisionData.length; i++) {
+      var rev = _revisionData[i];
+      if (!rev.sowItemId || !rev.json) continue;
+      SCW.bidReview.createBidCRFromRevision({
+        sowItemId:   rev.sowItemId,
+        action:      rev.json.action || 'revise',
+        changeNotes: rev.json.changeNotes || '',
+        revJson:     rev.json,
+      });
+      count++;
+    }
+
+    if (SCW.bidReview.renderToast) {
+      SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to bid CRs', 'success');
+    }
+  }
 
   function handleSRAction(e) {
     e.stopPropagation();

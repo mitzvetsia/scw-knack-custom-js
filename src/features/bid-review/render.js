@@ -128,54 +128,62 @@
   function buildHeaderRow(sowGrid) {
     var tr = el('tr', 'scw-bid-review__header-row');
 
-    // Line item column header
-    tr.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
+    // ── LINE ITEM ──
+    var liTh = el('th', 'scw-bid-review__sow-header');
+    liTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+    liTh.appendChild(el('div', 'scw-bid-review__col-title', 'Line Item'));
+    tr.appendChild(liTh);
 
-    // SOW detail column header
-    tr.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW Detail'));
+    // ── SOW DETAIL ──
+    var sowTh = el('th', 'scw-bid-review__sow-detail-header');
+    sowTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+    sowTh.appendChild(el('div', 'scw-bid-review__col-title', 'SOW'));
+    tr.appendChild(sowTh);
 
-    // One header per bid package
+    // ── BID PACKAGE columns ──
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkg = sowGrid.packages[i];
-      var elig = sowGrid.eligibility[pkg.id] || { adoptable: 0, creatable: 0, total: 0 };
 
       var th = el('th', 'scw-bid-review__pkg-header');
 
-      var nameRow = el('div', 'scw-bid-review__pkg-name');
-      nameRow.textContent = pkg.name;
+      // Status badge
+      var statusVal = pkg.bidStatus || '';
+      if (statusVal) {
+        var badge = el('span', 'scw-bid-review__status-badge');
+        badge.textContent = statusVal;
+        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
+        th.appendChild(badge);
+      } else {
+        th.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+      }
+
+      // Title
+      th.appendChild(el('div', 'scw-bid-review__col-title', pkg.name));
+
+      // Links row
+      var links = el('div', 'scw-bid-review__col-links');
       if (pkg.pdfUrl) {
         var pdfLink = document.createElement('a');
         pdfLink.href = pkg.pdfUrl;
         pdfLink.target = '_blank';
         pdfLink.title = pkg.pdfFilename || 'View PDF';
         pdfLink.className = 'scw-bid-review__pdf-link';
-        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
-        nameRow.appendChild(pdfLink);
+        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> PDF';
+        links.appendChild(pdfLink);
       }
-      // Status badge inline with name
-      var statusVal = pkg.bidStatus || '';
-      if (statusVal) {
-        var badge = el('span', 'scw-bid-review__status-badge');
-        badge.textContent = statusVal;
-        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
-        nameRow.appendChild(badge);
-      }
-      th.appendChild(nameRow);
-
-      // Pending change request link
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;
         crLink.className = 'scw-bid-review__cr-link';
-        crLink.textContent = pkg.crPendingCount + ' pending change request' +
-          (pkg.crPendingCount !== 1 ? 's' : '');
-        th.appendChild(crLink);
+        crLink.textContent = pkg.crPendingCount + ' pending CR' + (pkg.crPendingCount !== 1 ? 's' : '');
+        links.appendChild(crLink);
       }
+      if (links.childNodes.length) th.appendChild(links);
 
-      // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
+      // Buttons (stacked)
       var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
       if (isSubmitted) {
-        var actions = el('div', 'scw-bid-review__pkg-actions');
+        var actions = el('div', 'scw-bid-review__col-buttons');
         actions.appendChild(btn(
           'Sync to SOW', 'adopt',
           { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
@@ -190,29 +198,27 @@
       tr.appendChild(th);
     }
 
-    // Change Requests column header (with Clear All + Submit controls)
+    // ── SUB BID REVISIONS (Change Requests) ──
     var crTh = el('th', 'scw-bid-review__actions-header');
-    crTh.appendChild(el('div', 'scw-bid-review__cr-col-title', 'Change Requests'));
+    crTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+    crTh.appendChild(el('div', 'scw-bid-review__col-title', 'Sub Bid Revisions'));
 
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
     var hasPending = Object.keys(pending).length > 0;
 
     if (hasPending) {
-      var crActions = el('div', 'scw-bid-review__cr-col-actions');
+      var crActions = el('div', 'scw-bid-review__col-buttons');
 
-      // Per-package submit buttons
       var pkgIds = Object.keys(pending);
       for (var si = 0; si < pkgIds.length; si++) {
         var sPkg = pending[pkgIds[si]];
         if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
-        var subBtn = btn(
+        crActions.appendChild(btn(
           'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
           { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
-        );
-        crActions.appendChild(subBtn);
+        ));
       }
 
-      // Clear All
       crActions.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
       crTh.appendChild(crActions);
     }

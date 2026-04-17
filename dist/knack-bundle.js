@@ -10733,6 +10733,30 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-review__actions-header {',
       '}',
 
+      /* ── unified column header layout ───────────────────── */
+      '.scw-bid-review__col-status {',
+      '  font-size: 10px;',
+      '  min-height: 18px;',
+      '}',
+      '.scw-bid-review__col-title {',
+      '  font-size: 12px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: .04em;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.scw-bid-review__col-links {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 2px;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.scw-bid-review__col-buttons {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 4px;',
+      '}',
+
       /* ── package column header ─────────────────────────────── */
 
       '.scw-bid-review__pkg-name {',
@@ -12707,54 +12731,62 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function buildHeaderRow(sowGrid) {
     var tr = el('tr', 'scw-bid-review__header-row');
 
-    // Line item column header
-    tr.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
+    // ── LINE ITEM ──
+    var liTh = el('th', 'scw-bid-review__sow-header');
+    liTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+    liTh.appendChild(el('div', 'scw-bid-review__col-title', 'Line Item'));
+    tr.appendChild(liTh);
 
-    // SOW detail column header
-    tr.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW Detail'));
+    // ── SOW DETAIL ──
+    var sowTh = el('th', 'scw-bid-review__sow-detail-header');
+    sowTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+    sowTh.appendChild(el('div', 'scw-bid-review__col-title', 'SOW'));
+    tr.appendChild(sowTh);
 
-    // One header per bid package
+    // ── BID PACKAGE columns ──
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkg = sowGrid.packages[i];
-      var elig = sowGrid.eligibility[pkg.id] || { adoptable: 0, creatable: 0, total: 0 };
 
       var th = el('th', 'scw-bid-review__pkg-header');
 
-      var nameRow = el('div', 'scw-bid-review__pkg-name');
-      nameRow.textContent = pkg.name;
+      // Status badge
+      var statusVal = pkg.bidStatus || '';
+      if (statusVal) {
+        var badge = el('span', 'scw-bid-review__status-badge');
+        badge.textContent = statusVal;
+        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
+        th.appendChild(badge);
+      } else {
+        th.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+      }
+
+      // Title
+      th.appendChild(el('div', 'scw-bid-review__col-title', pkg.name));
+
+      // Links row
+      var links = el('div', 'scw-bid-review__col-links');
       if (pkg.pdfUrl) {
         var pdfLink = document.createElement('a');
         pdfLink.href = pkg.pdfUrl;
         pdfLink.target = '_blank';
         pdfLink.title = pkg.pdfFilename || 'View PDF';
         pdfLink.className = 'scw-bid-review__pdf-link';
-        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
-        nameRow.appendChild(pdfLink);
+        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> PDF';
+        links.appendChild(pdfLink);
       }
-      // Status badge inline with name
-      var statusVal = pkg.bidStatus || '';
-      if (statusVal) {
-        var badge = el('span', 'scw-bid-review__status-badge');
-        badge.textContent = statusVal;
-        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
-        nameRow.appendChild(badge);
-      }
-      th.appendChild(nameRow);
-
-      // Pending change request link
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;
         crLink.className = 'scw-bid-review__cr-link';
-        crLink.textContent = pkg.crPendingCount + ' pending change request' +
-          (pkg.crPendingCount !== 1 ? 's' : '');
-        th.appendChild(crLink);
+        crLink.textContent = pkg.crPendingCount + ' pending CR' + (pkg.crPendingCount !== 1 ? 's' : '');
+        links.appendChild(crLink);
       }
+      if (links.childNodes.length) th.appendChild(links);
 
-      // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
+      // Buttons (stacked)
       var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
       if (isSubmitted) {
-        var actions = el('div', 'scw-bid-review__pkg-actions');
+        var actions = el('div', 'scw-bid-review__col-buttons');
         actions.appendChild(btn(
           'Sync to SOW', 'adopt',
           { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
@@ -12769,29 +12801,27 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       tr.appendChild(th);
     }
 
-    // Change Requests column header (with Clear All + Submit controls)
+    // ── SUB BID REVISIONS (Change Requests) ──
     var crTh = el('th', 'scw-bid-review__actions-header');
-    crTh.appendChild(el('div', 'scw-bid-review__cr-col-title', 'Change Requests'));
+    crTh.appendChild(el('div', 'scw-bid-review__col-status', '\u00a0'));
+    crTh.appendChild(el('div', 'scw-bid-review__col-title', 'Sub Bid Revisions'));
 
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
     var hasPending = Object.keys(pending).length > 0;
 
     if (hasPending) {
-      var crActions = el('div', 'scw-bid-review__cr-col-actions');
+      var crActions = el('div', 'scw-bid-review__col-buttons');
 
-      // Per-package submit buttons
       var pkgIds = Object.keys(pending);
       for (var si = 0; si < pkgIds.length; si++) {
         var sPkg = pending[pkgIds[si]];
         if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
-        var subBtn = btn(
+        crActions.appendChild(btn(
           'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
           { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
-        );
-        crActions.appendChild(subBtn);
+        ));
       }
 
-      // Clear All
       crActions.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
       crTh.appendChild(crActions);
     }
@@ -17146,7 +17176,20 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       var th = document.createElement('th');
       th.className = P + '-header';
-      th.textContent = CFG.colHeaderText;
+
+      // Unified header: status placeholder + title + Convert All button
+      th.appendChild(elDiv('scw-bid-review__col-status', '\u00a0'));
+      th.appendChild(elDiv('scw-bid-review__col-title', CFG.colHeaderText));
+
+      var btnWrap = document.createElement('div');
+      btnWrap.className = 'scw-bid-review__col-buttons';
+      var convertBtn = document.createElement('button');
+      convertBtn.className = 'scw-bid-review__btn scw-bid-review__btn--adopt';
+      convertBtn.textContent = 'Convert All \u2192';
+      convertBtn.setAttribute('data-sr-convert-all', '1');
+      convertBtn.addEventListener('click', handleConvertAll);
+      btnWrap.appendChild(convertBtn);
+      th.appendChild(btnWrap);
 
       var $firstTh = $headerRow.find('th').first();
       $firstTh.after(th);
@@ -17293,6 +17336,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  function elDiv(cls, text) {
+    var d = document.createElement('div');
+    if (cls) d.className = cls;
+    if (text != null) d.textContent = text;
+    return d;
+  }
+
   function buildSROverflow(triggerLabel, triggerMod, choices) {
     var container = document.createElement('div');
     container.className = 'scw-bid-review__overflow';
@@ -17359,6 +17409,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ═══════════════════════════════════════════════════════════
   //  ACTION HANDLERS
   // ═══════════════════════════════════════════════════════════
+
+  /** Convert all sales revisions to their equivalent bid CRs. */
+  function handleConvertAll(e) {
+    e.stopPropagation();
+    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.createBidCRFromRevision) {
+      console.warn('[SalesRevCol] createBidCRFromRevision not available');
+      return;
+    }
+
+    var count = 0;
+    for (var i = 0; i < _revisionData.length; i++) {
+      var rev = _revisionData[i];
+      if (!rev.sowItemId || !rev.json) continue;
+      SCW.bidReview.createBidCRFromRevision({
+        sowItemId:   rev.sowItemId,
+        action:      rev.json.action || 'revise',
+        changeNotes: rev.json.changeNotes || '',
+        revJson:     rev.json,
+      });
+      count++;
+    }
+
+    if (SCW.bidReview.renderToast) {
+      SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to bid CRs', 'success');
+    }
+  }
 
   function handleSRAction(e) {
     e.stopPropagation();
