@@ -35721,7 +35721,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    return { id: rec.id, editHref: editHref, changeHtml: changeHtml, changeJson: changeJson, changes: changes };
+    return {
+      id: rec.id,
+      parentRequestId: rec._parentRequestId || '',
+      parentRequestLabel: rec._parentRequestLabel || '',
+      editHref: editHref,
+      changeHtml: changeHtml,
+      changeJson: changeJson,
+      changes: changes,
+    };
   }
 
   /**
@@ -35820,6 +35828,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
           if (connId) {
             rec[CFG.surveyItemField + '_raw'] = [{ id: connId, identifier: span.textContent.trim() }];
+          }
+        }
+      }
+      // Extract field_2643 (parent revision request connection)
+      var prCell = tr.querySelector('td.field_2643');
+      if (prCell) {
+        var prSpan = prCell.querySelector('span[data-kn="connection-value"]');
+        if (prSpan) {
+          var prClass = (prSpan.className || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(prClass)) {
+            rec._parentRequestId = prClass;
+            rec._parentRequestLabel = (prSpan.textContent || '').trim();
           }
         }
       }
@@ -37235,64 +37255,86 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
 
+  function buildRevisionItem(rev) {
+    var json = rev.changeJson;
+    if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+    var item = {
+      lineItemId: rev.id,
+      action: (json && json.action) || 'revise',
+    };
+    if (json) {
+      if (json.displayLabel) item.displayLabel = json.displayLabel;
+      if (json.productName)  item.productName  = json.productName;
+      if (json.changeNotes)  item.changeNotes  = json.changeNotes;
+      if (json.fields)       item.fields       = json.fields;
+      if (json.bucketId)     item.bucketId     = json.bucketId;
+      if (json.bucketName)   item.bucketName   = json.bucketName;
+    }
+    return item;
+  }
+
   function fireRevisionAction(action, revs, btn) {
     btn.disabled = true;
-    btn.textContent = action === 'accept' ? 'Accepting...' : 'Rejecting...';
+    btn.textContent = action === 'accept' ? 'Accepting\u2026' : 'Rejecting\u2026';
 
-    // Get the parent revision request ID from the first revision
-    var parentId = '';
-    if (revs.length && revs[0].changeJson) {
-      var j = revs[0].changeJson;
-      if (typeof j === 'string') { try { j = JSON.parse(j); } catch (e) { j = null; } }
-    }
-    // The revision request record ID — read from the DOM (field_2643 on view_3823)
-    var revView = document.getElementById(CFG.revisionView);
-    if (revView && revs.length) {
-      var firstRow = revView.querySelector('tr#' + revs[0].id);
-      if (firstRow) {
-        var connSpan = firstRow.querySelector('td.field_2643 span[data-kn="connection-value"]');
-        if (connSpan) parentId = connSpan.className.trim();
+    // Group items by parent revision request
+    var byParent = {};
+    for (var i = 0; i < revs.length; i++) {
+      var parentId = revs[i].parentRequestId || '_unknown';
+      if (!byParent[parentId]) {
+        byParent[parentId] = {
+          revisionRequestId: revs[i].parentRequestId || '',
+          revisionRequestLabel: revs[i].parentRequestLabel || '',
+          items: [],
+        };
       }
+      byParent[parentId].items.push(buildRevisionItem(revs[i]));
     }
+
+    var revisionRequests = [];
+    var keys = Object.keys(byParent);
+    for (var k = 0; k < keys.length; k++) revisionRequests.push(byParent[keys[k]]);
 
     var payload = {
       action: action,
-      revisionRequestId: parentId,
-      itemIds: revs.map(function (r) { return r.id; }),
+      timestamp: new Date().toISOString(),
+      totalItems: revs.length,
+      revisionRequests: revisionRequests,
     };
+
+    console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
 
     SCW.knackAjax({
       url: REV_ACTION_WEBHOOK,
       type: 'POST',
       data: JSON.stringify(payload),
       success: function () {
-        btn.textContent = action === 'accept' ? 'Accepted' : 'Rejected';
-        setTimeout(function () {
-          // Refresh the views
-          if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-            Knack.views[CFG.revisionView].model.fetch();
-          }
-          for (var t = 0; t < CFG.targetViews.length; t++) {
-            if (Knack.views[CFG.targetViews[t]] && Knack.views[CFG.targetViews[t]].model) {
-              Knack.views[CFG.targetViews[t]].model.fetch();
-            }
-          }
-        }, 3000);
+        btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
+        refreshAfterAction();
       },
       error: function (xhr) {
         if (xhr && xhr.status === 0) {
-          btn.textContent = action === 'accept' ? 'Accepted' : 'Rejected';
-          setTimeout(function () {
-            if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-              Knack.views[CFG.revisionView].model.fetch();
-            }
-          }, 3000);
+          btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
+          refreshAfterAction();
         } else {
-          btn.textContent = 'Failed — retry';
+          btn.textContent = 'Failed \u2014 retry';
           btn.disabled = false;
         }
       }
     });
+  }
+
+  function refreshAfterAction() {
+    setTimeout(function () {
+      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+        Knack.views[CFG.revisionView].model.fetch();
+      }
+      for (var t = 0; t < CFG.targetViews.length; t++) {
+        if (Knack.views[CFG.targetViews[t]] && Knack.views[CFG.targetViews[t]].model) {
+          Knack.views[CFG.targetViews[t]].model.fetch();
+        }
+      }
+    }, 3000);
   }
 
   /**
