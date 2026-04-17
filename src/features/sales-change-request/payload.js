@@ -118,8 +118,47 @@
     return h.join('');
   }
 
+  /** Build a plain-text version of one item (ClickUp-safe, no HTML). */
+  function buildItemPlainText(item, fieldList) {
+    var action = (item.action || 'revise').toUpperCase();
+    var displayName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || 'Item';
+    var prodName = H.readableVal(item.productName);
+
+    var lines = [];
+    var header = action + ' — ' + displayName;
+    if (prodName && item.displayLabel && prodName !== displayName) {
+      header += ' (' + prodName + ')';
+    }
+    lines.push(header);
+
+    if (action === 'REMOVE') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+      else lines.push('  Requesting removal');
+    } else if (action === 'NOTE') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    } else if (fieldList && fieldList.length) {
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var def = null;
+        for (var di = 0; di < TF.length; di++) {
+          if (TF[di].key === f.field) { def = TF[di]; break; }
+        }
+        var fromStr = f.from != null ? H.formatFieldValue(def || {}, f.from) : '—';
+        var toStr   = H.formatFieldValue(def || {}, f.to);
+        if (action === 'REVISE') {
+          lines.push('  ' + f.label + ': ' + fromStr + ' → ' + toStr);
+        } else {
+          lines.push('  ' + f.label + ': ' + toStr);
+        }
+      }
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    }
+
+    return lines.join('\n');
+  }
+
   // ═══════════════════════════════════════════════════════════
-  //  PAYLOAD (per-item json + html)
+  //  PAYLOAD (per-item json + html + plainText)
   // ═══════════════════════════════════════════════════════════
 
   function buildPayload(isDraft) {
@@ -159,11 +198,12 @@
       }
       entry.fields = fieldList;
 
-      // Per-item JSON snapshot (stringified BEFORE html is added)
+      // Per-item JSON snapshot (stringified BEFORE html/plainText are added)
       entry.json = JSON.stringify(entry);
 
-      // Per-item HTML card
-      entry.html = buildItemHtml(it, fieldList);
+      // Per-item HTML card + plain-text version (ClickUp-safe)
+      entry.html      = buildItemHtml(it, fieldList);
+      entry.plainText = buildItemPlainText(it, fieldList);
 
       items.push(entry);
     }
@@ -176,6 +216,49 @@
       itemCount:  items.length,
       items:      items,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  COMBINED PLAIN TEXT (ClickUp-safe)
+  // ═══════════════════════════════════════════════════════════
+
+  function buildPlainText() {
+    var pending = S.pending();
+    var ids = Object.keys(pending);
+    if (!ids.length) return '';
+
+    var lines = [];
+    lines.push('SALES CHANGE REQUEST');
+    lines.push(ids.length + ' item(s) — ' + new Date().toLocaleString());
+    lines.push('────────────────────');
+    lines.push('');
+
+    var groups = { revise: [], add: [], remove: [], note: [] };
+    for (var i = 0; i < ids.length; i++) {
+      var it = pending[ids[i]];
+      if (groups[it.action]) groups[it.action].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'REVISIONS' },
+      { key: 'add',    title: 'ITEMS TO ADD' },
+      { key: 'remove', title: 'ITEMS TO REMOVE' },
+      { key: 'note',   title: 'NOTES' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      lines.push(sec.title + ' (' + arr.length + ')');
+      for (var j = 0; j < arr.length; j++) {
+        lines.push(buildItemPlainText(arr[j], buildItemFields(arr[j])));
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -243,7 +326,8 @@
   }
 
   // ── Public API ──
-  ns.buildPayload = buildPayload;
-  ns.buildHtml    = buildHtml;
+  ns.buildPayload   = buildPayload;
+  ns.buildHtml      = buildHtml;
+  ns.buildPlainText = buildPlainText;
 
 })();

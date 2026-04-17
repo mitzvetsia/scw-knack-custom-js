@@ -15132,6 +15132,43 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return h.join('');
   }
 
+  /** Build a plain-text version of one item (ClickUp-safe). */
+  function buildItemPlainText(item, fieldList) {
+    var action = itemActionType(item);
+    var label  = (action === 'add' ? 'ADD' : action === 'remove' ? 'REMOVE' : 'REVISE');
+    var displayName = item.displayLabel || item.productName || 'Item';
+
+    var lines = [];
+    var header = label + ' — ' + displayName;
+    if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+      header += ' (' + item.productName + ')';
+    }
+    lines.push(header);
+
+    if (action === 'remove') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+      else lines.push('  Requesting removal');
+    } else if (fieldList && fieldList.length) {
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var isCurrency = false;
+        for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
+          if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+        }
+        var fromStr = f.from != null ? (isCurrency ? fmtCurrencyHtml(f.from) : String(f.from)) : '—';
+        var toStr   = isCurrency ? fmtCurrencyHtml(f.to) : String(f.to);
+        if (action === 'revise') {
+          lines.push('  ' + f.label + ': ' + fromStr + ' → ' + toStr);
+        } else {
+          lines.push('  ' + f.label + ': ' + toStr);
+        }
+      }
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    }
+
+    return lines.join('\n');
+  }
+
   function buildSubmitPayload(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg) return null;
@@ -15220,11 +15257,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Detailed from→to diffs
       entry.fields = fieldList;
 
-      // Per-item JSON snapshot (stringified before HTML is added)
+      // Per-item JSON snapshot (stringified before HTML/plainText are added)
       entry.json = JSON.stringify(entry);
 
-      // Per-item HTML card for display in view_3505
-      entry.html = buildItemHtml(it, fieldList);
+      // Per-item HTML card for display in view_3505 + plain-text for ClickUp
+      entry.html      = buildItemHtml(it, fieldList);
+      entry.plainText = buildItemPlainText(it, fieldList);
 
       items.push(entry);
     }
@@ -15380,6 +15418,45 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return h.join('');
   }
 
+  /** Build a plain-text ClickUp-safe version of the whole change request. */
+  function buildSubmitPlainText(pkgId) {
+    var pkg = _pending[pkgId];
+    if (!pkg) return '';
+
+    var lines = [];
+    lines.push('CHANGE REQUEST');
+    lines.push(pkg.pkgName + (pkg.sowName ? ' — ' + pkg.sowName : ''));
+    lines.push(pkg.items.length + ' item(s) — ' + new Date().toLocaleString());
+    lines.push('────────────────────');
+    lines.push('');
+
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < pkg.items.length; i++) {
+      var it = pkg.items[i];
+      var at = itemActionType(it);
+      if (groups[at]) groups[at].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'REVISIONS' },
+      { key: 'add',    title: 'ITEMS TO ADD' },
+      { key: 'remove', title: 'ITEMS TO REMOVE' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+      lines.push(sec.title + ' (' + arr.length + ')');
+      for (var j = 0; j < arr.length; j++) {
+        lines.push(buildItemPlainText(arr[j], buildItemFields(arr[j])));
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function submitChangeRequest(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg || !pkg.items.length) return;
@@ -15387,8 +15464,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       pkg.items.length + ' item(s) will be sent.')) return;
 
     var payload = buildSubmitPayload(pkgId);
-    var html    = buildSubmitHtml(pkgId);
-    payload.html = html;
+    payload.html      = buildSubmitHtml(pkgId);
+    payload.plainText = buildSubmitPlainText(pkgId);
+    var html = payload.html;
 
     if (CFG.debug) {
       console.log('[BidReview CR] Submitting:', payload);
@@ -32740,8 +32818,47 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return h.join('');
   }
 
+  /** Build a plain-text version of one item (ClickUp-safe, no HTML). */
+  function buildItemPlainText(item, fieldList) {
+    var action = (item.action || 'revise').toUpperCase();
+    var displayName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || 'Item';
+    var prodName = H.readableVal(item.productName);
+
+    var lines = [];
+    var header = action + ' — ' + displayName;
+    if (prodName && item.displayLabel && prodName !== displayName) {
+      header += ' (' + prodName + ')';
+    }
+    lines.push(header);
+
+    if (action === 'REMOVE') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+      else lines.push('  Requesting removal');
+    } else if (action === 'NOTE') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    } else if (fieldList && fieldList.length) {
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var def = null;
+        for (var di = 0; di < TF.length; di++) {
+          if (TF[di].key === f.field) { def = TF[di]; break; }
+        }
+        var fromStr = f.from != null ? H.formatFieldValue(def || {}, f.from) : '—';
+        var toStr   = H.formatFieldValue(def || {}, f.to);
+        if (action === 'REVISE') {
+          lines.push('  ' + f.label + ': ' + fromStr + ' → ' + toStr);
+        } else {
+          lines.push('  ' + f.label + ': ' + toStr);
+        }
+      }
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    }
+
+    return lines.join('\n');
+  }
+
   // ═══════════════════════════════════════════════════════════
-  //  PAYLOAD (per-item json + html)
+  //  PAYLOAD (per-item json + html + plainText)
   // ═══════════════════════════════════════════════════════════
 
   function buildPayload(isDraft) {
@@ -32781,11 +32898,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       entry.fields = fieldList;
 
-      // Per-item JSON snapshot (stringified BEFORE html is added)
+      // Per-item JSON snapshot (stringified BEFORE html/plainText are added)
       entry.json = JSON.stringify(entry);
 
-      // Per-item HTML card
-      entry.html = buildItemHtml(it, fieldList);
+      // Per-item HTML card + plain-text version (ClickUp-safe)
+      entry.html      = buildItemHtml(it, fieldList);
+      entry.plainText = buildItemPlainText(it, fieldList);
 
       items.push(entry);
     }
@@ -32798,6 +32916,49 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       itemCount:  items.length,
       items:      items,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  COMBINED PLAIN TEXT (ClickUp-safe)
+  // ═══════════════════════════════════════════════════════════
+
+  function buildPlainText() {
+    var pending = S.pending();
+    var ids = Object.keys(pending);
+    if (!ids.length) return '';
+
+    var lines = [];
+    lines.push('SALES CHANGE REQUEST');
+    lines.push(ids.length + ' item(s) — ' + new Date().toLocaleString());
+    lines.push('────────────────────');
+    lines.push('');
+
+    var groups = { revise: [], add: [], remove: [], note: [] };
+    for (var i = 0; i < ids.length; i++) {
+      var it = pending[ids[i]];
+      if (groups[it.action]) groups[it.action].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'REVISIONS' },
+      { key: 'add',    title: 'ITEMS TO ADD' },
+      { key: 'remove', title: 'ITEMS TO REMOVE' },
+      { key: 'note',   title: 'NOTES' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      lines.push(sec.title + ' (' + arr.length + ')');
+      for (var j = 0; j < arr.length; j++) {
+        lines.push(buildItemPlainText(arr[j], buildItemFields(arr[j])));
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -32865,8 +33026,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Public API ──
-  ns.buildPayload = buildPayload;
-  ns.buildHtml    = buildHtml;
+  ns.buildPayload   = buildPayload;
+  ns.buildHtml      = buildHtml;
+  ns.buildPlainText = buildPlainText;
 
 })();
 /*** SALES CHANGE REQUEST — RENDER ***/
@@ -33367,8 +33529,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
 
     var payload = ns.buildPayload(false);
-    var html    = ns.buildHtml();
-    payload.html = html;
+    payload.html      = ns.buildHtml();
+    payload.plainText = ns.buildPlainText();
 
     if (CFG.debug) {
       console.log('[SalesCR] Submit:', payload);
