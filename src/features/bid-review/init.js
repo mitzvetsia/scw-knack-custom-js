@@ -859,11 +859,12 @@
 
     // Build single-item revision array for batchConvertRevisions
     var revItem = {
-      sowItemId:        opts.sowItemId || '',
-      action:           opts.action || 'revise',
-      changeNotes:      opts.changeNotes || '',
-      revJson:          opts.revJson || {},
-      revisionRecordId: opts.revisionRecordId || '',
+      sowItemId:            opts.sowItemId || '',
+      action:               opts.action || 'revise',
+      changeNotes:          opts.changeNotes || '',
+      revJson:              opts.revJson || {},
+      revisionRecordId:     opts.revisionRecordId || '',
+      revisionRequestId:    opts.revisionRequestId || '',
     };
 
     function doConvert(pkgId) {
@@ -975,6 +976,7 @@
           requested:     {},
           changeNotes:   rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
         };
       } else if (action === 'add') {
         var req = {};
@@ -993,6 +995,7 @@
           requested:    req,
           changeNotes:  rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
         };
       } else {
         // Revise — snapshot current from cell, apply revision fields
@@ -1017,6 +1020,7 @@
           requested:    requested,
           changeNotes:  rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
           revisionFields: (rev.revJson && rev.revJson.fields) || [],
         };
       }

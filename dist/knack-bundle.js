@@ -15334,6 +15334,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       };
 
       if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
+      if (it.salesRevisionRequestId) entry.salesRevisionRequestId = it.salesRevisionRequestId;
 
       // Proposal bucket + sort order (for ordering ADD items in revision view)
       if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
@@ -16908,11 +16909,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     // Build single-item revision array for batchConvertRevisions
     var revItem = {
-      sowItemId:        opts.sowItemId || '',
-      action:           opts.action || 'revise',
-      changeNotes:      opts.changeNotes || '',
-      revJson:          opts.revJson || {},
-      revisionRecordId: opts.revisionRecordId || '',
+      sowItemId:            opts.sowItemId || '',
+      action:               opts.action || 'revise',
+      changeNotes:          opts.changeNotes || '',
+      revJson:              opts.revJson || {},
+      revisionRecordId:     opts.revisionRecordId || '',
+      revisionRequestId:    opts.revisionRequestId || '',
     };
 
     function doConvert(pkgId) {
@@ -17024,6 +17026,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           requested:     {},
           changeNotes:   rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
         };
       } else if (action === 'add') {
         var req = {};
@@ -17042,6 +17045,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           requested:    req,
           changeNotes:  rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
         };
       } else {
         // Revise — snapshot current from cell, apply revision fields
@@ -17066,6 +17070,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           requested:    requested,
           changeNotes:  rev.changeNotes || '',
           salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
           revisionFields: (rev.revJson && rev.revJson.fields) || [],
         };
       }
@@ -17242,6 +17247,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   var CFG = {
     revisionView:    'view_3842',
     sowItemField:    'field_2708',
+    parentReqField:  'field_2643',
     htmlField:       'field_2695',
     jsonField:       'field_2696',
     statusField:     'field_2645',
@@ -17315,6 +17321,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         : null;
       var sowItemId = sowSpan ? sowSpan.className.trim() : '';
 
+      var $prCell = $tr.find('td.' + CFG.parentReqField);
+      var prSpan  = $prCell.length
+        ? $prCell[0].querySelector('span[data-kn="connection-value"]')
+        : null;
+      var parentRequestId = prSpan ? prSpan.className.trim() : '';
+
       var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
       var $htmlCell = $tr.find('td.' + CFG.htmlField);
@@ -17329,11 +17341,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       try { jsonData = JSON.parse(jsonText); } catch (e) {}
 
       _revisionData.push({
-        id:        id,
-        sowItemId: sowItemId,
-        status:    status,
-        html:      htmlContent,
-        json:      jsonData,
+        id:              id,
+        sowItemId:        sowItemId,
+        parentRequestId:  parentRequestId,
+        status:           status,
+        html:             htmlContent,
+        json:             jsonData,
       });
     });
 
@@ -17521,6 +17534,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
               attrs: {
                 'data-sr-action': 'create-bid-cr',
                 'data-rev-id': rev.id,
+                'data-rev-request-id': rev.parentRequestId || '',
                 'data-sow-item-id': rev.sowItemId,
                 'data-rev-json': revJsonStr,
               }
@@ -17647,11 +17661,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var rev = _revisionData[i];
       if (!rev.sowItemId) continue;
       revItems.push({
-        sowItemId:         rev.sowItemId,
-        action:            (rev.json && rev.json.action) || 'revise',
-        changeNotes:       (rev.json && rev.json.changeNotes) || '',
-        revJson:           rev.json || {},
-        revisionRecordId:  rev.id,
+        sowItemId:            rev.sowItemId,
+        action:               (rev.json && rev.json.action) || 'revise',
+        changeNotes:          (rev.json && rev.json.changeNotes) || '',
+        revJson:              rev.json || {},
+        revisionRecordId:     rev.id,
+        revisionRequestId:    rev.parentRequestId || '',
       });
     }
 
@@ -17719,14 +17734,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var revJson = {};
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
       var revId = this.getAttribute('data-rev-id');
+      var revReqId = this.getAttribute('data-rev-request-id');
 
       if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
         SCW.bidReview.createBidCRFromRevision({
-          sowItemId:        sowItemId,
-          action:           revJson.action || 'revise',
-          changeNotes:      revJson.changeNotes || '',
-          revJson:          revJson,
-          revisionRecordId: revId || '',
+          sowItemId:            sowItemId,
+          action:               revJson.action || 'revise',
+          changeNotes:          revJson.changeNotes || '',
+          revJson:              revJson,
+          revisionRecordId:     revId || '',
+          revisionRequestId:    revReqId || '',
         });
       }
     }

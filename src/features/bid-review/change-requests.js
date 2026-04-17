@@ -1399,6 +1399,7 @@
       };
 
       if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
+      if (it.salesRevisionRequestId) entry.salesRevisionRequestId = it.salesRevisionRequestId;
 
       // Proposal bucket + sort order (for ordering ADD items in revision view)
       if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;

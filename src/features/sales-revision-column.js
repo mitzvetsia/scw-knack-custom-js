@@ -18,6 +18,7 @@
   var CFG = {
     revisionView:    'view_3842',
     sowItemField:    'field_2708',
+    parentReqField:  'field_2643',
     htmlField:       'field_2695',
     jsonField:       'field_2696',
     statusField:     'field_2645',
@@ -91,6 +92,12 @@
         : null;
       var sowItemId = sowSpan ? sowSpan.className.trim() : '';
 
+      var $prCell = $tr.find('td.' + CFG.parentReqField);
+      var prSpan  = $prCell.length
+        ? $prCell[0].querySelector('span[data-kn="connection-value"]')
+        : null;
+      var parentRequestId = prSpan ? prSpan.className.trim() : '';
+
       var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
 
       var $htmlCell = $tr.find('td.' + CFG.htmlField);
@@ -105,11 +112,12 @@
       try { jsonData = JSON.parse(jsonText); } catch (e) {}
 
       _revisionData.push({
-        id:        id,
-        sowItemId: sowItemId,
-        status:    status,
-        html:      htmlContent,
-        json:      jsonData,
+        id:              id,
+        sowItemId:        sowItemId,
+        parentRequestId:  parentRequestId,
+        status:           status,
+        html:             htmlContent,
+        json:             jsonData,
       });
     });
 
@@ -297,6 +305,7 @@
               attrs: {
                 'data-sr-action': 'create-bid-cr',
                 'data-rev-id': rev.id,
+                'data-rev-request-id': rev.parentRequestId || '',
                 'data-sow-item-id': rev.sowItemId,
                 'data-rev-json': revJsonStr,
               }
@@ -423,11 +432,12 @@
       var rev = _revisionData[i];
       if (!rev.sowItemId) continue;
       revItems.push({
-        sowItemId:         rev.sowItemId,
-        action:            (rev.json && rev.json.action) || 'revise',
-        changeNotes:       (rev.json && rev.json.changeNotes) || '',
-        revJson:           rev.json || {},
-        revisionRecordId:  rev.id,
+        sowItemId:            rev.sowItemId,
+        action:               (rev.json && rev.json.action) || 'revise',
+        changeNotes:          (rev.json && rev.json.changeNotes) || '',
+        revJson:              rev.json || {},
+        revisionRecordId:     rev.id,
+        revisionRequestId:    rev.parentRequestId || '',
       });
     }
 
@@ -495,14 +505,16 @@
       var revJson = {};
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
       var revId = this.getAttribute('data-rev-id');
+      var revReqId = this.getAttribute('data-rev-request-id');
 
       if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
         SCW.bidReview.createBidCRFromRevision({
-          sowItemId:        sowItemId,
-          action:           revJson.action || 'revise',
-          changeNotes:      revJson.changeNotes || '',
-          revJson:          revJson,
-          revisionRecordId: revId || '',
+          sowItemId:            sowItemId,
+          action:               revJson.action || 'revise',
+          changeNotes:          revJson.changeNotes || '',
+          revJson:              revJson,
+          revisionRecordId:     revId || '',
+          revisionRequestId:    revReqId || '',
         });
       }
     }
