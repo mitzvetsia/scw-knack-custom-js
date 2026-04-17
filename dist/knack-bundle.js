@@ -16907,49 +16907,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       return;
     }
 
-    // Pre-seed a pending item with the revision data so the modal
-    // opens with the revision values pre-filled.
+    // Open the standard CR modal — it loads current values from
+    // the bid cell. User can review and adjust before confirming.
     function doOpen(pkgId) {
       var action = opts.action || 'revise';
-      var revJson = opts.revJson || {};
-      var notes = revJson.changeNotes || opts.changeNotes || '';
-
-      // For revise/add, pre-seed a pending item from revision fields
-      // so the modal opens pre-filled with the requested changes.
-      if (action !== 'remove' && revJson.fields && revJson.fields.length) {
-        var requested = {};
-        var current = {};
-        for (var fi = 0; fi < revJson.fields.length; fi++) {
-          var f = revJson.fields[fi];
-          if (f.to != null) requested[f.field] = f.to;
-          if (f.from != null) current[f.field] = f.from;
-          if (f.toIds) requested[f.field + 'Ids'] = f.toIds;
-          if (f.fromIds) current[f.field + 'Ids'] = f.fromIds;
-        }
-        var cell = row.cellsByPackage[pkgId] || {};
-        var pkgName = findPackageName(grid, pkgId);
-        var surveyId = findPackageSurveyId(grid, pkgId);
-
-        var item = {
-          rowId:        row.id,
-          bidRecordId:  cell.id || null,
-          sowItemId:    row.sowItem || '',
-          displayLabel: row.displayLabel,
-          productName:  row.productName || cell.productName || '',
-          current:      current,
-          requested:    requested,
-          changeNotes:  notes,
-          salesRevisionId: opts.revisionRecordId || '',
-          salesRevisionRequestId: opts.revisionRequestId || '',
-          revisionFields: revJson.fields || [],
-        };
-
-        if (action === 'add') item.addToBid = true;
-
-        ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
-      }
-
-      // Open the modal (will find the pre-seeded pending item)
+      var notes = (opts.revJson && opts.revJson.changeNotes) || opts.changeNotes || '';
       executeBidCR(grid, row, pkgId, action, notes);
     }
 
