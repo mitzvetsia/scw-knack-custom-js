@@ -2432,18 +2432,9 @@
   function buildRevisionItem(rev) {
     var json = rev.changeJson;
     if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
-    var item = {
-      lineItemId: rev.id,
-      action: (json && json.action) || 'revise',
-    };
-    if (json) {
-      if (json.displayLabel) item.displayLabel = json.displayLabel;
-      if (json.productName)  item.productName  = json.productName;
-      if (json.changeNotes)  item.changeNotes  = json.changeNotes;
-      if (json.fields)       item.fields       = json.fields;
-      if (json.bucketId)     item.bucketId     = json.bucketId;
-      if (json.bucketName)   item.bucketName   = json.bucketName;
-    }
+    var item = json ? JSON.parse(JSON.stringify(json)) : {};
+    item.lineItemId = rev.id;
+    if (!item.action) item.action = 'revise';
     return item;
   }
 
