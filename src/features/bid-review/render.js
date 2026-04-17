@@ -655,6 +655,7 @@
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
+    if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
 
     // Line item label cell
     // Only show displayLabel (field_2365) for Camera / Reader buckets
