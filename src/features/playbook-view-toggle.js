@@ -12,6 +12,7 @@
   var FIELD = 'field_1747';
   var VIEW_SHOW_WHEN_FILLED = 'view_3829';
   var VIEW_SHOW_WHEN_BLANK  = 'view_3831';
+  var VIEW_ALWAYS_HIDE      = 'view_3830';
 
   function toggle() {
     var val = '';
@@ -26,6 +27,7 @@
     var filled = val.length > 0;
     $('#' + VIEW_SHOW_WHEN_FILLED).toggle(filled);
     $('#' + VIEW_SHOW_WHEN_BLANK).toggle(!filled);
+    $('#' + VIEW_ALWAYS_HIDE).hide();
   }
 
   $(document).on('knack-scene-render.scene_1116.scwPlaybookToggle', function () {
