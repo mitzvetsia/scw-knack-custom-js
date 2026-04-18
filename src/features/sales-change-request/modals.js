@@ -329,14 +329,26 @@
       var text = ta.value.trim();
       // Note is optional
 
+      // Snapshot all tracked field values from baseline into requested
+      var base = S.baseline()[recordId] || {};
+      var req = {};
+      for (var tf = 0; tf < CFG.trackedFields.length; tf++) {
+        var fk = CFG.trackedFields[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) req[fk + '_ids'] = base[fk + '_ids'];
+      }
+
       var pending = S.pending();
       pending[noteKey] = {
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        bucketId: base._bucketId || '',
+        bucketName: base._bucketName || '',
+        laborHours: base._laborHours || 0,
         action: 'add',
         current: {},
-        requested: {},
+        requested: req,
         changeNotes: text,
       };
       ns.persist();

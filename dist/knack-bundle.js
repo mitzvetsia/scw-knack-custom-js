@@ -32524,10 +32524,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       { key: 'field_1984', label: 'Exterior',          type: 'boolean' },
       { key: 'field_1965', label: 'Drop Length',       type: 'text' },
       { key: 'field_1951', label: 'Drop Number',       type: 'number' },
-      { key: 'field_2240', label: 'Drop Prefix',       type: 'text' },
-      { key: 'field_2150', label: 'Sub Bid',           type: 'number', currency: true },
+      { key: 'field_2240', label: 'Drop Prefix',       type: 'connection' },
+      { key: 'field_2150', label: 'Sub Bid',           type: 'number' },
       { key: 'field_1957', label: 'Connected Devices', type: 'connection' },
       { key: 'field_2197', label: 'Connected To',      type: 'connection' },
+      { key: 'field_2219', label: 'Proposal Bucket',   type: 'connection' },
     ],
 
     // ── Timing ─────────────────────────────────────────────
@@ -33358,15 +33359,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var count = parseFloat(base._addCount);
       if (count === 0 || isNaN(count)) continue;
 
+      // Snapshot all tracked field values into requested — the whole record is new
+      var req = {};
+      var reqIds = {};
+      for (var tf = 0; tf < TF.length; tf++) {
+        var fk = TF[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) reqIds[fk] = base[fk + '_ids'];
+      }
       pending[id] = {
         rowId:        id,
         displayLabel: base._label || '',
         productName:  base._product || '',
+        bucketId:     base._bucketId || '',
+        bucketName:   base._bucketName || '',
+        laborHours:   base._laborHours || 0,
         action:       'add',
         current:      {},
-        requested:    {},
+        requested:    req,
         changeNotes:  '',
       };
+      for (var ik in reqIds) pending[id].requested[ik + '_ids'] = reqIds[ik];
       added++;
     }
 
@@ -33714,14 +33727,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var text = ta.value.trim();
       // Note is optional
 
+      // Snapshot all tracked field values from baseline into requested
+      var base = S.baseline()[recordId] || {};
+      var req = {};
+      for (var tf = 0; tf < CFG.trackedFields.length; tf++) {
+        var fk = CFG.trackedFields[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) req[fk + '_ids'] = base[fk + '_ids'];
+      }
+
       var pending = S.pending();
       pending[noteKey] = {
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        bucketId: base._bucketId || '',
+        bucketName: base._bucketName || '',
+        laborHours: base._laborHours || 0,
         action: 'add',
         current: {},
-        requested: {},
+        requested: req,
         changeNotes: text,
       };
       ns.persist();

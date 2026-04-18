@@ -265,15 +265,27 @@
       var count = parseFloat(base._addCount);
       if (count === 0 || isNaN(count)) continue;
 
+      // Snapshot all tracked field values into requested — the whole record is new
+      var req = {};
+      var reqIds = {};
+      for (var tf = 0; tf < TF.length; tf++) {
+        var fk = TF[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) reqIds[fk] = base[fk + '_ids'];
+      }
       pending[id] = {
         rowId:        id,
         displayLabel: base._label || '',
         productName:  base._product || '',
+        bucketId:     base._bucketId || '',
+        bucketName:   base._bucketName || '',
+        laborHours:   base._laborHours || 0,
         action:       'add',
         current:      {},
-        requested:    {},
+        requested:    req,
         changeNotes:  '',
       };
+      for (var ik in reqIds) pending[id].requested[ik + '_ids'] = reqIds[ik];
       added++;
     }
 
