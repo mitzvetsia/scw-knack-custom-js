@@ -83,7 +83,7 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/preview-proposal-btn.js \
   src/features/survey-worksheet-pdf-export.js \
-  src/features/playbook-view-toggle.js \
+  src/features/connected-device-bid-check.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/grid-direct-edit.js \
