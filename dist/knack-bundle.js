@@ -17285,7 +17285,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             var connTo2 = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
             connDevOpts2.push({ id: cc.id, identifier: lbl, currentConnTo: connTo2 || null });
           }
-          if (cc.bidMapConn === 'Yes' && !seenTo2[cc.id]) {
+          if (cc.mapConnections && !seenTo2[cc.id]) {
             seenTo2[cc.id] = true;
             connToOpts2.push({ id: cc.id, identifier: lbl });
           }
