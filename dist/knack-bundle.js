@@ -40514,7 +40514,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     s.textContent = [
       '.' + WARN_CLS + ' {',
       '  display: flex; align-items: center; gap: 5px;',
-      '  margin-top: 4px; padding: 4px 8px;',
+      '  margin-top: 0; margin-bottom: 8px; padding: 4px 8px;',
       '  font-size: 11px; font-weight: 500; color: #b45309;',
       '}',
       '.' + WARN_CLS + ' svg {',
@@ -40612,7 +40612,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (warnSlot && !warnSlot.querySelector('.scw-conn-bid-warn-icon')) {
           var icon = document.createElement('span');
           icon.className = 'scw-cr-hdr-warning scw-conn-bid-warn-icon';
-          icon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          icon.style.cssText = 'color:#b45309;display:inline-flex;align-items:center;';
+          icon.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
           icon.title = 'Connected device ' + reason;
           warnSlot.appendChild(icon);
         }
