@@ -749,22 +749,26 @@
     var sowData = {};
     for (var sk in jr) {
       if (sk.indexOf('_ids') !== -1) continue; // skip ID arrays
-      sowData[sk] = jr[sk];
+      var sv = jr[sk];
+      if (sv == null || sv === '' || sv === '\u00a0') continue;
       // For connection fields, use the _ids array as the value
       if (jr[sk + '_ids'] && jr[sk + '_ids'].length) {
         sowData[sk] = jr[sk + '_ids'];
+      } else {
+        sowData[sk] = sv;
       }
     }
 
     // Build survey update data (map SOW keys → survey keys)
     var surveyData = {};
     for (var sowKey in SOW_TO_SURVEY) {
-      if (jr[sowKey] == null) continue;
+      var sowVal = jr[sowKey];
+      if (sowVal == null || sowVal === '' || sowVal === '\u00a0') continue;
       var surveyKey = SOW_TO_SURVEY[sowKey];
       if (jr[sowKey + '_ids'] && jr[sowKey + '_ids'].length) {
         surveyData[surveyKey] = jr[sowKey + '_ids'];
       } else {
-        surveyData[surveyKey] = jr[sowKey];
+        surveyData[surveyKey] = sowVal;
       }
     }
 

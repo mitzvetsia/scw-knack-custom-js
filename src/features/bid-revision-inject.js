@@ -2460,10 +2460,10 @@
     var json = rev.changeJson;
     if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
     var item = json ? JSON.parse(JSON.stringify(json)) : {};
+
     item.revisionLineItemId = rev.id;
     item.parentRequestId = rev.parentRequestId || '';
     if (!item.action) item.action = 'revise';
-    // Include the pre-built HTML card + plain text from the revision record
     if (rev.changeHtml) item.html = rev.changeHtml;
     if (rev.changes && rev.changes.length && !item.fields) {
       item.fields = rev.changes.map(function (c) {
