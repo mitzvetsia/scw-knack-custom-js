@@ -14221,13 +14221,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  background: #f8fafc; max-height: 160px; overflow-y: auto;',
       '}',
       '.scw-bid-cr-modal__checkbox-item {',
-      '  display: flex; align-items: center; gap: 6px;',
+      '  display: flex; align-items: flex-start; gap: 6px;',
       '  font-size: 13px; color: #1e293b; cursor: pointer;',
-      '  padding: 3px 0;',
+      '  padding: 3px 0; flex-wrap: wrap;',
       '}',
-      '.scw-bid-cr-modal__checkbox-item input { margin: 0; cursor: pointer; }',
-      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; flex: 1; }',
-      '.scw-bid-cr-modal__conn-info { font-size: 11px; color: #94a3b8; font-style: italic; white-space: nowrap; }',
+      '.scw-bid-cr-modal__checkbox-item input { margin: 3px 0 0; cursor: pointer; flex-shrink: 0; }',
+      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; }',
+      '.scw-bid-cr-modal__conn-info { font-size: 11px; color: #94a3b8; font-style: italic; width: 100%; padding-left: 20px; }',
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
       '}',
@@ -14412,7 +14412,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             if (lockedIdSet[rec.id]) cbLabel.style.opacity = '0.6';
             item.appendChild(cbLabel);
             if (rec.currentConnTo) {
-              var connInfo = el('span', 'scw-bid-cr-modal__conn-info', '\u2192 ' + rec.currentConnTo);
+              var connInfo = el('div', 'scw-bid-cr-modal__conn-info', '\u2192 ' + rec.currentConnTo);
               item.appendChild(connInfo);
             }
             inp.appendChild(item);
