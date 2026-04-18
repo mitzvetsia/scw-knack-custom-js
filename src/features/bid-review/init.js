@@ -638,6 +638,41 @@
       }
     }
 
+    // Supplemental pass: read ALL survey records from the Knack model
+    // to catch items the grid transform dropped (e.g. duplicate SOW items)
+    try {
+      var surveyModel = Knack.views[CFG.viewKey] && Knack.views[CFG.viewKey].model;
+      var surveyRecords = surveyModel && surveyModel.data && surveyModel.data.models;
+      if (surveyRecords) {
+        for (var sri = 0; sri < surveyRecords.length; sri++) {
+          var sr = surveyRecords[sri];
+          var srAttrs = sr.attributes || sr;
+          var srId = sr.id || srAttrs.id;
+          if (!srId || seenDev[srId] || srId === cell.id) continue;
+
+          // Check if Camera or Reader bucket
+          var srBucket = srAttrs[CFG.fieldKeys.proposalBucket + '_raw'];
+          var srBucketId = Array.isArray(srBucket) && srBucket.length ? srBucket[0].id : '';
+          if (srBucketId !== CAM_READER_BUCKET_ID) continue;
+
+          seenDev[srId] = true;
+          var srLabel = srAttrs[CFG.fieldKeys.displayLabel] || '';
+          if (typeof srLabel === 'string') srLabel = srLabel.replace(/<[^>]*>/g, '').trim();
+          var srProduct = srAttrs.field_2379 || '';
+          if (typeof srProduct === 'string') srProduct = srProduct.replace(/<[^>]*>/g, '').trim();
+          var srDisplay = srLabel && srProduct ? srLabel + ' \u2014 ' + srProduct
+                        : srLabel || srProduct || srId;
+
+          var srConnTo = srAttrs[CFG.fieldKeys.bidConnTo + '_raw'];
+          var srConnToLabel = Array.isArray(srConnTo) && srConnTo.length
+            ? srConnTo.map(function (c) { return c.identifier || c.id; }).join(', ')
+            : null;
+
+          connDevOpts.push({ id: srId, identifier: srDisplay, currentConnTo: srConnToLabel });
+        }
+      }
+    } catch (ex) {}
+
     if (CFG.debug) {
       console.log('[BidReview] connDevOpts:', connDevOpts.length,
                   'connToOpts:', connToOpts.length);
