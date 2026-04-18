@@ -271,10 +271,17 @@
           header.textContent = headerText;
           card.appendChild(header);
 
-          if (json.displayLabel || json.productName) {
+          // For product name: prefer requested value if product changed
+          var cardProduct = json.productName || '';
+          var jr = json.requested || {};
+          if (jr.field_1949) cardProduct = jr.field_1949;
+
+          if (json.displayLabel || cardProduct) {
             var label = document.createElement('div');
             label.className = 'scw-bid-cr-card__item-label';
-            label.textContent = json.displayLabel || json.productName;
+            label.textContent = json.displayLabel
+              ? (json.displayLabel + (cardProduct && cardProduct !== json.displayLabel ? ' (' + cardProduct + ')' : ''))
+              : cardProduct;
             card.appendChild(label);
           }
 
