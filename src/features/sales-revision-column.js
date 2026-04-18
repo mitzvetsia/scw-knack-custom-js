@@ -360,7 +360,37 @@
           var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
                      && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
 
-          // CR button — only show Revise if item is on the bid
+          // Not on bid: show Acknowledge button (accepts without creating CR)
+          if (!isOnBid && action === 'revise') {
+            var ackBtn = document.createElement('button');
+            ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
+            ackBtn.textContent = 'Acknowledge';
+            ackBtn.setAttribute('data-rev-id', rev.id);
+            ackBtn.addEventListener('click', function () {
+              var aid = this.getAttribute('data-rev-id');
+              this.disabled = true;
+              this.textContent = 'Updating\u2026';
+              var self = this;
+              var statusData = {};
+              statusData[CFG.statusField] = 'Accepted';
+              SCW.knackAjax({
+                url: SCW.knackRecordUrl(CFG.revisionView, aid),
+                type: 'PUT',
+                data: JSON.stringify(statusData),
+                success: function () {
+                  self.textContent = 'Acknowledged \u2713';
+                  afterReject(self);
+                },
+                error: function () {
+                  self.textContent = 'Failed';
+                  self.disabled = false;
+                },
+              });
+            });
+            actions.appendChild(ackBtn);
+          }
+
+          // CR button — Revise only if on bid; Add/Remove always shown
           if (action !== 'revise' || isOnBid) {
             var crLabel = action === 'add'    ? 'Add \u2192'
                         : action === 'remove' ? 'Remove \u2192'
@@ -382,6 +412,24 @@
               });
             }
             actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
+          }
+
+          // Not on bid + revise: also offer Add to bid
+          if (!isOnBid && action === 'revise') {
+            var addChoices = [];
+            for (var addp = 0; addp < packages.length; addp++) {
+              addChoices.push({
+                label: packages[addp].name,
+                attrs: {
+                  'data-sr-action': 'create-bid-cr',
+                  'data-rev-id': rev.id,
+                  'data-rev-request-id': rev.parentRequestId || '',
+                  'data-sow-item-id': rev.sowItemId,
+                  'data-rev-json': JSON.stringify($.extend({}, rev.json || {}, { action: 'add' })),
+                }
+              });
+            }
+            actions.appendChild(buildSROverflow('Add \u2192', 'create', addChoices));
           }
 
           item.appendChild(actions);
