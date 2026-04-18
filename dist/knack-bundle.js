@@ -38167,8 +38167,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       item[idsKey] = ids || [];
     }
 
-    // Carry over fields array and html
+    // Carry over fields array, html, and connection classification arrays
     if (cr.fields) item.fields = cr.fields;
+    if (cr.ConnDevices_surveyitem) item.ConnDevices_surveyitem = cr.ConnDevices_surveyitem;
+    if (cr.ConnDevices_sowitem)    item.ConnDevices_sowitem    = cr.ConnDevices_sowitem;
+    if (cr.ConnTO_surveyitem)     item.ConnTO_surveyitem      = cr.ConnTO_surveyitem;
+    if (cr.ConnTO_sowitem)        item.ConnTO_sowitem          = cr.ConnTO_sowitem;
+    if (cr.current)               item.current                = cr.current;
+    if (cr.requested)             item.requested              = cr.requested;
     if (rev.changeHtml) item.html = rev.changeHtml;
     if (rev.changes && rev.changes.length && !item.fields) {
       item.fields = rev.changes.map(function (c) {
