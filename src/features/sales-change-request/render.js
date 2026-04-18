@@ -270,6 +270,11 @@
       var deleteVisible = $deleteWrap[0].style.visibility !== 'hidden';
       var addOnly = deleteVisible;
 
+      // Skip rows with no survey association (field_2586=0) — no action button
+      var baseline = S.baseline();
+      var rowBase = baseline[recordId];
+      if (rowBase && parseFloat(rowBase._addCount) === 0) return;
+
       var state = rowActionState(recordId);
       var wrap = H.el('span', P + '-action-wrap');
       var btn  = H.el('button', P + '-action-btn');
