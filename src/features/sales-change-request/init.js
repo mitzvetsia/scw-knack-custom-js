@@ -73,7 +73,18 @@
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
         if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
-        ns.onCellUpdate(null, null, resp);
+        // Delay to let Knack model absorb the response (connection _raw fields)
+        setTimeout(function () {
+          var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
+          var records = model && model.data && model.data.models;
+          var fresh = null;
+          if (records) {
+            for (var ri = 0; ri < records.length; ri++) {
+              if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
+            }
+          }
+          ns.onCellUpdate(null, null, fresh || resp);
+        }, 500);
       }
     } catch (e) {}
   });

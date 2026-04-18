@@ -32526,6 +32526,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       { key: 'field_1951', label: 'Drop Number',       type: 'number' },
       { key: 'field_2240', label: 'Drop Prefix',       type: 'text' },
       { key: 'field_2150', label: 'Sub Bid',           type: 'number', currency: true },
+      { key: 'field_1957', label: 'Connected Devices', type: 'connection' },
+      { key: 'field_2197', label: 'Connected To',      type: 'connection' },
     ],
 
     // ── Timing ─────────────────────────────────────────────
@@ -35004,7 +35006,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
         if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
-        ns.onCellUpdate(null, null, resp);
+        // Delay to let Knack model absorb the response (connection _raw fields)
+        setTimeout(function () {
+          var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
+          var records = model && model.data && model.data.models;
+          var fresh = null;
+          if (records) {
+            for (var ri = 0; ri < records.length; ri++) {
+              if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
+            }
+          }
+          ns.onCellUpdate(null, null, fresh || resp);
+        }, 500);
       }
     } catch (e) {}
   });

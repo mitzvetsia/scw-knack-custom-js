@@ -56,6 +56,8 @@
       { key: 'field_1951', label: 'Drop Number',       type: 'number' },
       { key: 'field_2240', label: 'Drop Prefix',       type: 'text' },
       { key: 'field_2150', label: 'Sub Bid',           type: 'number', currency: true },
+      { key: 'field_1957', label: 'Connected Devices', type: 'connection' },
+      { key: 'field_2197', label: 'Connected To',      type: 'connection' },
     ],
 
     // ── Timing ─────────────────────────────────────────────
