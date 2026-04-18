@@ -17141,8 +17141,32 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ns.changeRequests.openAddItem(params);
     } else {
       if (!cell) return;
-      params.connOptions = {};
-      params.visibility = { qty: true, cabling: true, connDevice: true };
+      // Build connection options from grid rows (same as normal revise flow)
+      var connDevOpts2 = [], connToOpts2 = [];
+      var seenDev2 = {}, seenTo2 = {};
+      var CAM_READER = '6481e5ba38f283002898113c';
+      for (var cri = 0; cri < grid.rows.length; cri++) {
+        var cr = grid.rows[cri];
+        var cpkgs = Object.keys(cr.cellsByPackage);
+        for (var cpi = 0; cpi < cpkgs.length; cpi++) {
+          var cc = cr.cellsByPackage[cpkgs[cpi]];
+          if (!cc.id || cc.id === cell.id) continue;
+          var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
+          if (cr.proposalBucketId === CAM_READER && !seenDev2[cc.id]) {
+            seenDev2[cc.id] = true;
+            connDevOpts2.push({ id: cc.id, identifier: lbl });
+          }
+          if (cc.bidMapConn === 'Yes' && !seenTo2[cc.id]) {
+            seenTo2[cc.id] = true;
+            connToOpts2.push({ id: cc.id, identifier: lbl });
+          }
+        }
+      }
+      var showConn2 = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
+      var isCamReader2 = (row.proposalBucketId === CAM_READER);
+      params.connOptions = { bidConnDevice: connDevOpts2, bidConnTo: connToOpts2, bidMdfIdf: buildMdfIdfOptions() };
+      params.visibility = { qty: true, cabling: isCamReader2, connDevice: showConn2 };
+      params.gridRows = grid.rows;
       ns.changeRequests.open(params);
     }
   }
@@ -17741,26 +17765,28 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
           }
 
-          // Reject button — first in row
-          var rejectBtn = document.createElement('button');
-          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
-          rejectBtn.textContent = 'Reject';
-          rejectBtn.setAttribute('data-rev-id', rev.id);
-          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
-          rejectBtn.setAttribute('data-rev-json', revJsonStr);
-          rejectBtn.addEventListener('click', handleRejectClick);
-          actions.appendChild(rejectBtn);
-
           // Check if item is on the bid (has a non-missing bid cell)
           var gridRow = $tr.closest('tr[data-row-id]');
           var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
                      && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
 
-          // Not on bid: show Acknowledge button (accepts without creating CR)
+          // Reject button — only for on-bid items or add/remove actions
+          if (isOnBid || action !== 'revise') {
+            var rejectBtn = document.createElement('button');
+            rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+            rejectBtn.textContent = 'Reject';
+            rejectBtn.setAttribute('data-rev-id', rev.id);
+            rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+            rejectBtn.setAttribute('data-rev-json', revJsonStr);
+            rejectBtn.addEventListener('click', handleRejectClick);
+            actions.appendChild(rejectBtn);
+          }
+
+          // Not on bid + revise: show Clear button
           if (!isOnBid && action === 'revise') {
             var ackBtn = document.createElement('button');
             ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
-            ackBtn.textContent = 'Acknowledge';
+            ackBtn.textContent = 'Clear';
             ackBtn.setAttribute('data-rev-id', rev.id);
             ackBtn.addEventListener('click', function () {
               var aid = this.getAttribute('data-rev-id');

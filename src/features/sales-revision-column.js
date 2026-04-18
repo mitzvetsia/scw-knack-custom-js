@@ -345,26 +345,28 @@
             actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
           }
 
-          // Reject button — first in row
-          var rejectBtn = document.createElement('button');
-          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
-          rejectBtn.textContent = 'Reject';
-          rejectBtn.setAttribute('data-rev-id', rev.id);
-          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
-          rejectBtn.setAttribute('data-rev-json', revJsonStr);
-          rejectBtn.addEventListener('click', handleRejectClick);
-          actions.appendChild(rejectBtn);
-
           // Check if item is on the bid (has a non-missing bid cell)
           var gridRow = $tr.closest('tr[data-row-id]');
           var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
                      && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
 
-          // Not on bid: show Acknowledge button (accepts without creating CR)
+          // Reject button — only for on-bid items or add/remove actions
+          if (isOnBid || action !== 'revise') {
+            var rejectBtn = document.createElement('button');
+            rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+            rejectBtn.textContent = 'Reject';
+            rejectBtn.setAttribute('data-rev-id', rev.id);
+            rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+            rejectBtn.setAttribute('data-rev-json', revJsonStr);
+            rejectBtn.addEventListener('click', handleRejectClick);
+            actions.appendChild(rejectBtn);
+          }
+
+          // Not on bid + revise: show Clear button
           if (!isOnBid && action === 'revise') {
             var ackBtn = document.createElement('button');
             ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
-            ackBtn.textContent = 'Acknowledge';
+            ackBtn.textContent = 'Clear';
             ackBtn.setAttribute('data-rev-id', rev.id);
             ackBtn.addEventListener('click', function () {
               var aid = this.getAttribute('data-rev-id');

@@ -1048,8 +1048,32 @@
       ns.changeRequests.openAddItem(params);
     } else {
       if (!cell) return;
-      params.connOptions = {};
-      params.visibility = { qty: true, cabling: true, connDevice: true };
+      // Build connection options from grid rows (same as normal revise flow)
+      var connDevOpts2 = [], connToOpts2 = [];
+      var seenDev2 = {}, seenTo2 = {};
+      var CAM_READER = '6481e5ba38f283002898113c';
+      for (var cri = 0; cri < grid.rows.length; cri++) {
+        var cr = grid.rows[cri];
+        var cpkgs = Object.keys(cr.cellsByPackage);
+        for (var cpi = 0; cpi < cpkgs.length; cpi++) {
+          var cc = cr.cellsByPackage[cpkgs[cpi]];
+          if (!cc.id || cc.id === cell.id) continue;
+          var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
+          if (cr.proposalBucketId === CAM_READER && !seenDev2[cc.id]) {
+            seenDev2[cc.id] = true;
+            connDevOpts2.push({ id: cc.id, identifier: lbl });
+          }
+          if (cc.bidMapConn === 'Yes' && !seenTo2[cc.id]) {
+            seenTo2[cc.id] = true;
+            connToOpts2.push({ id: cc.id, identifier: lbl });
+          }
+        }
+      }
+      var showConn2 = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
+      var isCamReader2 = (row.proposalBucketId === CAM_READER);
+      params.connOptions = { bidConnDevice: connDevOpts2, bidConnTo: connToOpts2, bidMdfIdf: buildMdfIdfOptions() };
+      params.visibility = { qty: true, cabling: isCamReader2, connDevice: showConn2 };
+      params.gridRows = grid.rows;
       ns.changeRequests.open(params);
     }
   }
