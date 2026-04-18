@@ -25,6 +25,11 @@
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
 
+  var DISPLAY_FIELDS = {
+    field_1949: true, field_1964: true, field_1953: true,
+    field_2461: true, field_1984: true, field_1957: true, field_2197: true,
+  };
+
   var _openPopover = null;
   var _popoverAnchor = null;
   var _panelOpen = false;
@@ -98,10 +103,11 @@
       if (item.changeNotes) {
         card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
       }
-      // Show field diffs if present (add items from auto-detection)
+      // Show field diffs if present (filtered to display fields)
       var r = item.requested || {};
       for (var f = 0; f < TF.length; f++) {
         var def = TF[f];
+        if (!DISPLAY_FIELDS[def.key]) continue;
         if (r[def.key] == null) continue;
         var row = H.el('div', P + '-card-field');
         row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
@@ -111,11 +117,12 @@
       return card;
     }
 
-    // Revise — field diffs
+    // Revise — field diffs (filtered to display fields)
     var r = item.requested || {};
     var c = item.current || {};
     for (var f = 0; f < TF.length; f++) {
       var def = TF[f];
+      if (!DISPLAY_FIELDS[def.key]) continue;
       if (r[def.key] == null) continue;
       var row = H.el('div', P + '-card-field');
       row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
