@@ -170,6 +170,16 @@
       var fk  = def.key;
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
+      if (CFG.debug && fk === 'field_1953') {
+        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+          raw_exists: record[fk + '_raw'] != null,
+          raw_val: record[fk + '_raw'],
+          plain_val: record[fk],
+          newVal: newVal,
+          baseVal: base[fk],
+          match: String(newVal) === String(base[fk])
+        }));
+      }
       if (String(newVal) !== String(base[fk])) {
         changes[fk] = newVal;
         if (def.type === 'connection') {

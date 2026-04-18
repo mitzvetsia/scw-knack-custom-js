@@ -33325,6 +33325,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var fk  = def.key;
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
+      if (CFG.debug && fk === 'field_1953') {
+        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+          raw_exists: record[fk + '_raw'] != null,
+          raw_val: record[fk + '_raw'],
+          plain_val: record[fk],
+          newVal: newVal,
+          baseVal: base[fk],
+          match: String(newVal) === String(base[fk])
+        }));
+      }
       if (String(newVal) !== String(base[fk])) {
         changes[fk] = newVal;
         if (def.type === 'connection') {
@@ -35163,7 +35173,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
-        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
+        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
         // Delay to let Knack model absorb the response (connection _raw fields)
         setTimeout(function () {
           var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
@@ -35174,6 +35184,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
             }
           }
+          if (CFG.debug) console.log('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
+            'field_1953:', fresh ? fresh.field_1953 : resp.field_1953);
           ns.onCellUpdate(null, null, fresh || resp);
         }, 500);
       }
