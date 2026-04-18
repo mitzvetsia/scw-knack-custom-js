@@ -16732,10 +16732,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       for (var cp = 0; cp < cpkgs.length; cp++) {
         var cc = cr.cellsByPackage[cpkgs[cp]];
-        var ccId = cc.id || cr.id;
-        if (!ccId || ccId === cell.id) continue; // skip self
+        if (!cc.id || cc.id === cell.id) continue; // skip self
 
-        var lbl = cr.displayLabel || cr.productName || cc.productName || ccId;
+        var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
         if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
             && lbl.indexOf(cr.productName) === -1) {
           lbl = cr.displayLabel + ' \u2014 ' + cr.productName;
@@ -16744,11 +16743,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
 
         // Connected Devices: show ALL Camera/Reader items with current connection info
-        if (isCamReader && !seenDev[ccId]) {
-          seenDev[ccId] = true;
+        if (isCamReader && !seenDev[cc.id]) {
+          seenDev[cc.id] = true;
           var connTo = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
           connDevOpts.push({
-            id: ccId,
+            id: cc.id,
             identifier: lbl,
             currentConnTo: connTo || null,
           });
@@ -16759,17 +16758,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           seenTo[cc.id] = true;
           connToOpts.push({ id: cc.id, identifier: lbl });
         }
-      }
-
-      // Fallback: camera/reader row not picked up via package cells
-      if (cr.proposalBucketId === CAM_READER_BUCKET_ID && !seenDev[cr.id]) {
-        seenDev[cr.id] = true;
-        var fbLbl = cr.displayLabel || cr.productName || cr.id;
-        if (cr.productName && cr.displayLabel && cr.displayLabel !== cr.productName
-            && fbLbl.indexOf(cr.productName) === -1) {
-          fbLbl = cr.displayLabel + ' \u2014 ' + cr.productName;
-        }
-        connDevOpts.push({ id: cr.id, identifier: fbLbl, currentConnTo: null });
       }
     }
 
