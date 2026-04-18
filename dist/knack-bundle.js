@@ -27715,6 +27715,7 @@ td.${P}-sum-check input[type="checkbox"] {
 }
 .${P}-warn-slot .scw-cr-hdr-warning {
   margin-left: 0;
+  margin-top: 5px;
 }
 
 /* Label + Product identity block */
@@ -27741,6 +27742,7 @@ td.${P}-sum-check input[type="checkbox"] {
   white-space: nowrap;
   flex-shrink: 0;
   line-height: 1.4;
+  margin-top: 5px;
 }
 .${P}-warn-chit svg {
   width: 13px;
@@ -30950,7 +30952,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (hasStackedFields) {
       // Wrap in column-flex with empty label so chevron aligns with value row
       var chevWrap = document.createElement('span');
-      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;margin-top:2px;';
       var chevSpacer = document.createElement('span');
       chevSpacer.className = P + '-sum-label';
       chevSpacer.innerHTML = '&nbsp;';
