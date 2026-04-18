@@ -977,7 +977,10 @@
         }
       }
 
-      executeBidCR(grid, row, pkgId, action, notes);
+      executeBidCR(grid, row, pkgId, action, notes, {
+        salesRevisionId: opts.revisionRecordId || '',
+        salesRevisionRequestId: opts.revisionRequestId || '',
+      });
       delete row._revOverlay;
     }
 
@@ -992,7 +995,7 @@
     }
   };
 
-  function executeBidCR(grid, row, pkgId, action, notes) {
+  function executeBidCR(grid, row, pkgId, action, notes, revMeta) {
     var cell = row.cellsByPackage[pkgId];
 
     var params = {
@@ -1006,6 +1009,7 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell || {},
+      revMeta:      revMeta || null,
     };
 
     if (action === 'remove') {

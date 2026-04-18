@@ -652,6 +652,7 @@
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
       if (existing && existing.reciprocalLockedIds) newItem.reciprocalLockedIds = existing.reciprocalLockedIds;
+      applyRevMeta(newItem, params);
 
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
 
@@ -694,7 +695,7 @@
           if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
           if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
 
-          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          var nbaItem = {
             rowId:        nba.rowId,
             bidRecordId:  null,
             sowItemId:    nba.rowId,
@@ -706,7 +707,9 @@
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid — connected from ' + (params.displayLabel || params.productName),
-          }, params.surveyId);
+          };
+          applyRevMeta(nbaItem, params);
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, nbaItem, params.surveyId);
         }
         if (noBidAdds.length) {
           ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
@@ -731,6 +734,13 @@
   }
 
   // ── Pending management ─────────────────────────────────
+  function applyRevMeta(item, params) {
+    var rm = params && params.revMeta;
+    if (!rm) return;
+    if (rm.salesRevisionId) item.salesRevisionId = rm.salesRevisionId;
+    if (rm.salesRevisionRequestId) item.salesRevisionRequestId = rm.salesRevisionRequestId;
+  }
+
   function addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId) {
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: surveyId || '', items: [] };
     if (surveyId && !_pending[pkgId].surveyId) _pending[pkgId].surveyId = surveyId;
@@ -1796,7 +1806,7 @@
     footer.lastChild.addEventListener('click', closeModal);
     var removeBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--remove', 'Remove from Bid');
     removeBtn.addEventListener('click', function () {
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+      var rmItem = {
         rowId:         params.rowId,
         bidRecordId:   params.cell.id,
         sowItemId:     params.sowItemId || '',
@@ -1806,7 +1816,9 @@
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
-      }, params.surveyId);
+      };
+      applyRevMeta(rmItem, params);
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, rmItem, params.surveyId);
       closeModal();
       ns.renderToast('Removal added to change request', 'success');
     });
@@ -2042,6 +2054,7 @@
       // Preserve reciprocal metadata when editing a reciprocal add-to-bid item
       if (existing && existing.reciprocal)       newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+      applyRevMeta(newItem, params);
 
       // Clear old reciprocals from this source before saving (handles edits)
       var isRecipItem = existing && existing.reciprocalSource;
@@ -2084,7 +2097,7 @@
             nbaBucket = nbaRow.proposalBucket || '';
             nbaBucketId = nbaRow.proposalBucketId || '';
           }
-          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          var nbaItem2 = {
             rowId:        nba.rowId,
             bidRecordId:  null,
             sowItemId:    nba.rowId,
@@ -2099,7 +2112,9 @@
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid \u2014 connected from ' + (displayLabel || product),
-          }, params.surveyId);
+          };
+          applyRevMeta(nbaItem2, params);
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, nbaItem2, params.surveyId);
         }
         ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
       }
