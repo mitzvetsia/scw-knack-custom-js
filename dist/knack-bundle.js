@@ -17727,6 +17727,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
                   'data-sr-action': 'apply',
                   'data-rev-id': rev.id,
                   'data-sow-item-id': rev.sowItemId,
+                  'data-rev-json': revJsonStr,
                 }
               });
             }
@@ -18040,6 +18041,117 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }, 1500);
   }
 
+  // ═══════════════════════════════════════════════════════════
+  //  APPLY REVISION — write changes to SOW + survey records
+  // ═══════════════════════════════════════════════════════════
+
+  // SOW field key → survey field key mapping
+  var SOW_TO_SURVEY = {
+    field_1949: 'field_2627',  // product (connection)
+    field_1964: 'field_2399',  // qty
+    field_2020: 'field_2409',  // labor description
+    field_2461: 'field_2370',  // existing cabling
+    field_1984: 'field_2372',  // exterior
+    field_1983: 'field_2371',  // plenum
+    field_1965: 'field_2367',  // drop length
+    field_2035: 'field_2368',  // conduit
+    field_2150: 'field_2400',  // sub bid / rate
+    field_1946: 'field_2375',  // MDF/IDF (connection — different field!)
+    field_1957: 'field_2380',  // connected devices (connection)
+    field_2197: 'field_2381',  // connected to (connection)
+  };
+
+  var SOW_VIEW = 'view_3728';
+  var SURVEY_VIEW = 'view_3680';
+
+  function applyRevisionToRecords(sowItemId, revJson, btn) {
+    if (!sowItemId || !revJson) return;
+    var jr = revJson.requested || {};
+    var fields = revJson.fields || [];
+    if (!Object.keys(jr).length && !fields.length) {
+      if (SCW.bidReview && SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast('No field changes to apply', 'info');
+      }
+      return;
+    }
+
+    // Find the survey item ID from the grid row
+    var $gridRow = $('[data-sow-item-id="' + sowItemId + '"]');
+    var surveyItemId = $gridRow.attr('data-row-id') || '';
+
+    // Build SOW update data (use field keys directly from requested)
+    var sowData = {};
+    for (var sk in jr) {
+      if (sk.indexOf('_ids') !== -1) continue; // skip ID arrays
+      sowData[sk] = jr[sk];
+      // For connection fields, use the _ids array as the value
+      if (jr[sk + '_ids'] && jr[sk + '_ids'].length) {
+        sowData[sk] = jr[sk + '_ids'];
+      }
+    }
+
+    // Build survey update data (map SOW keys → survey keys)
+    var surveyData = {};
+    for (var sowKey in SOW_TO_SURVEY) {
+      if (jr[sowKey] == null) continue;
+      var surveyKey = SOW_TO_SURVEY[sowKey];
+      if (jr[sowKey + '_ids'] && jr[sowKey + '_ids'].length) {
+        surveyData[surveyKey] = jr[sowKey + '_ids'];
+      } else {
+        surveyData[surveyKey] = jr[sowKey];
+      }
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Applying\u2026'; }
+
+    var done = 0;
+    var errors = 0;
+    var total = (Object.keys(sowData).length ? 1 : 0) + (surveyItemId && Object.keys(surveyData).length ? 1 : 0);
+
+    function checkDone() {
+      done++;
+      if (done < total) return;
+      if (btn) btn.textContent = errors ? 'Partial \u2713' : 'Applied \u2713';
+      if (SCW.bidReview && SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast(
+          errors ? 'Applied with errors — check console' : 'Revision applied to records',
+          errors ? 'error' : 'success'
+        );
+      }
+      // Refresh views after a short delay
+      setTimeout(function () {
+        if (Knack.views[SOW_VIEW] && Knack.views[SOW_VIEW].model) Knack.views[SOW_VIEW].model.fetch();
+        if (Knack.views[SURVEY_VIEW] && Knack.views[SURVEY_VIEW].model) Knack.views[SURVEY_VIEW].model.fetch();
+      }, 1500);
+    }
+
+    // Update SOW record
+    if (Object.keys(sowData).length) {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(SOW_VIEW, sowItemId),
+        type: 'PUT',
+        data: JSON.stringify(sowData),
+        success: function () { console.log('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
+        error: function () { console.warn('[SalesRevCol] SOW update failed:', sowItemId); errors++; checkDone(); },
+      });
+    }
+
+    // Update survey record
+    if (surveyItemId && Object.keys(surveyData).length) {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(SURVEY_VIEW, surveyItemId),
+        type: 'PUT',
+        data: JSON.stringify(surveyData),
+        success: function () { console.log('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
+        error: function () { console.warn('[SalesRevCol] Survey update failed:', surveyItemId); errors++; checkDone(); },
+      });
+    }
+
+    if (!total) {
+      if (btn) btn.textContent = 'Nothing to apply';
+    }
+  }
+
   function handleSRAction(e) {
     e.stopPropagation();
     // Close overflow
@@ -18051,10 +18163,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var sowItemId = this.getAttribute('data-sow-item-id');
 
     if (action === 'apply') {
-      console.log('[SalesRevCol] Apply revision', revId, 'to SOW item', sowItemId);
-      if (window.SCW && SCW.bidReview && SCW.bidReview.renderToast) {
-        SCW.bidReview.renderToast('Apply — not yet implemented', 'info');
-      }
+      var revJson = {};
+      try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+      applyRevisionToRecords(sowItemId, revJson, this);
       return;
     }
 
