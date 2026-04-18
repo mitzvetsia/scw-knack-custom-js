@@ -34643,6 +34643,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         e.preventDefault();
         closePopover();
 
+        // If there's already a pending revise CR, go straight to edit note
+        if (state && state.action === 'revise') {
+          ns.openEditReviseNote(recordId);
+          return;
+        }
+
         var pop = buildPopover(recordId, addOnly);
         positionPopover(pop, btn);
         document.body.appendChild(pop);
