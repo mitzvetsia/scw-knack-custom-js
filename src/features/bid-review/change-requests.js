@@ -645,6 +645,8 @@
         rowId: params.rowId, bidRecordId: cell.id,
         sowItemId: params.sowItemId || '',
         displayLabel: params.displayLabel, productName: cell.productName,
+        proposalBucket: params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
         current: current, requested: requested, changeNotes: cn,
       };
       // Preserve ALL reciprocal metadata so cascade-delete + locking still works
@@ -1411,9 +1413,9 @@
       if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
       if (it.salesRevisionRequestId) entry.salesRevisionRequestId = it.salesRevisionRequestId;
 
-      // Proposal bucket + sort order (for ordering ADD items in revision view)
-      if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
-      if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
+      // Proposal bucket + sort order
+      entry.proposalBucket   = it.proposalBucket || '';
+      entry.proposalBucketId = it.proposalBucketId || '';
       entry.sortOrder = it.sortOrder != null ? it.sortOrder : 0;
       if (it.sowMapConn)       entry.sowMapConn        = it.sowMapConn;
 
@@ -1812,6 +1814,8 @@
         sowItemId:     params.sowItemId || '',
         displayLabel:  params.displayLabel,
         productName:   params.cell.productName,
+        proposalBucket: params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
         removeFromBid: true,
         current:       {},
         requested:     {},

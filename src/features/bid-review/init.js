@@ -1010,6 +1010,8 @@
       productName:  row.productName,
       cell:         cell || {},
       revMeta:      revMeta || null,
+      proposalBucket:   row.proposalBucket || '',
+      proposalBucketId: row.proposalBucketId || '',
     };
 
     if (action === 'remove') {
