@@ -15470,9 +15470,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var revisionGroups = [];
     var revReqIds = Object.keys(revGroups);
     for (var rgi = 0; rgi < revReqIds.length; rgi++) {
+      var grpItems = revGroups[revReqIds[rgi]];
       revisionGroups.push({
         revisionRequestId: revReqIds[rgi],
-        items: revGroups[revReqIds[rgi]],
+        items: grpItems,
+        json: JSON.stringify(grpItems),
+        html: buildGroupHtml(grpItems, pkg.pkgName, pkg.sowName),
       });
     }
 
@@ -15487,8 +15490,56 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       user:           getUser(),
       revisionGroups: revisionGroups,
       newItems:       newItems,
+      newItemsJson:   JSON.stringify(newItems),
+      newItemsHtml:   newItems.length ? buildGroupHtml(newItems, pkg.pkgName, pkg.sowName) : '',
       items:          items,
     };
+  }
+
+  function buildGroupHtml(groupItems, pkgName, sowName) {
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < groupItems.length; i++) {
+      var act = groupItems[i].action || 'revise';
+      if (groups[act]) groups[act].push(groupItems[i]);
+    }
+
+    var sectionOrder = [
+      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
+    ];
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:720px;">');
+
+    for (var si = 0; si < sectionOrder.length; si++) {
+      var sec = sectionOrder[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      h.push('<div style="margin-bottom:12px;">');
+      h.push('<div style="font-size:13px;font-weight:700;color:' + sec.color + ';margin-bottom:6px;">');
+      h.push(sec.icon + ' ' + escHtml(sec.title) + ' (' + arr.length + ')');
+      h.push('</div>');
+
+      for (var j = 0; j < arr.length; j++) {
+        var it = arr[j];
+        // Use the per-item HTML if available
+        if (it.html) {
+          h.push(it.html);
+          h.push('<div style="height:4px;"></div>');
+        } else {
+          var label = it.displayLabel || it.productName || 'Item';
+          h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:8px 12px;margin-bottom:4px;">');
+          h.push('<div style="font-weight:600;font-size:13px;">' + escHtml(label) + '</div>');
+          h.push('</div>');
+        }
+      }
+      h.push('</div>');
+    }
+
+    h.push('</div>');
+    return h.join('');
   }
 
   /** Safe read of Knack's logged-in user attributes. */
