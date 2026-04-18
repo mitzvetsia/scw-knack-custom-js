@@ -1419,20 +1419,57 @@
       entry.sortOrder = it.sortOrder != null ? it.sortOrder : 0;
       if (it.sowMapConn)       entry.sowMapConn        = it.sowMapConn;
 
-      // Snapshot of current item data (before changes)
-      entry.current = it.current || {};
-
-      // Flatten ALL field values onto the item (requested wins, falls back to current)
+      // 1. CR requested values (what the change request asks for)
       var r = it.requested || {};
-      var c = it.current || {};
+      entry.requested = {};
       for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
         var d = FIELD_DEFS[fi];
-        var val = hasValue(r[d.key]) ? r[d.key] : (hasValue(c[d.key]) ? c[d.key] : null);
-        entry[d.key] = val;
+        if (hasValue(r[d.key])) {
+          entry.requested[d.key] = r[d.key];
+          entry[d.key] = r[d.key];
+        }
         if (d.type === 'connection' && d.idsKey) {
-          entry[d.idsKey] = r[d.idsKey] || c[d.idsKey] || [];
-          if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
-          if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
+          if (r[d.idsKey]) {
+            entry.requested[d.idsKey] = r[d.idsKey];
+            entry[d.idsKey] = r[d.idsKey];
+          }
+          if (r[d.key + 'AddIds'])    entry[d.key + 'AddIds']    = r[d.key + 'AddIds'];
+          if (r[d.key + 'ChangeIds']) entry[d.key + 'ChangeIds'] = r[d.key + 'ChangeIds'];
+        }
+      }
+
+      // 2. Current survey/bid record values (from the grid cell)
+      var cell = (ns.lookupCell && ns.lookupCell(it.rowId, pkgId)) || {};
+      entry.surveyRecord = {};
+      for (var si = 0; si < FIELD_DEFS.length; si++) {
+        var sd = FIELD_DEFS[si];
+        if (hasValue(cell[sd.key])) entry.surveyRecord[sd.key] = cell[sd.key];
+        if (sd.type === 'connection' && sd.idsKey && cell[sd.idsKey]) {
+          entry.surveyRecord[sd.idsKey] = cell[sd.idsKey];
+        }
+      }
+
+      // 3. For ADD items: SOW record values (what the SOW line item has)
+      if (itemActionType(it) === 'add') {
+        var c = it.current || {};
+        entry.sowRecord = {};
+        for (var oi = 0; oi < FIELD_DEFS.length; oi++) {
+          var od = FIELD_DEFS[oi];
+          if (hasValue(c[od.key])) entry.sowRecord[od.key] = c[od.key];
+          if (od.type === 'connection' && od.idsKey && c[od.idsKey]) {
+            entry.sowRecord[od.idsKey] = c[od.idsKey];
+          }
+        }
+      }
+
+      // Backwards compat: flatten requested over survey fallback onto entry
+      for (var bfi = 0; bfi < FIELD_DEFS.length; bfi++) {
+        var bd = FIELD_DEFS[bfi];
+        if (!hasValue(entry[bd.key]) && hasValue(cell[bd.key])) {
+          entry[bd.key] = cell[bd.key];
+        }
+        if (bd.type === 'connection' && bd.idsKey && !entry[bd.idsKey] && cell[bd.idsKey]) {
+          entry[bd.idsKey] = cell[bd.idsKey];
         }
       }
 

@@ -812,6 +812,17 @@
     }
   };
 
+  ns.lookupCell = function (rowId, pkgId) {
+    if (!_state) return null;
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var rows = _state.sowGrids[g].rows;
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].id === rowId) return rows[r].cellsByPackage[pkgId] || null;
+      }
+    }
+    return null;
+  };
+
   /**
    * Create a bid CR from a sales revision record.
    * Called by the sales-revision-column when user clicks "Create Bid CR".
