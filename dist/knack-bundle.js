@@ -37107,7 +37107,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (allEntries[ei].id === revisionId) { revEntry = allEntries[ei]; break; }
     }
 
-    var item = revEntry ? buildRevisionItem(revEntry) : { lineItemId: revisionId };
+    var item = revEntry ? buildRevisionItem(revEntry) : { revisionLineItemId: revisionId };
 
     var payload = {
       actionType:  'revision_response',
@@ -37971,7 +37971,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var json = rev.changeJson;
     if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
     var item = json ? JSON.parse(JSON.stringify(json)) : {};
-    item.lineItemId = rev.id;
+    item.revisionLineItemId = rev.id;
     item.parentRequestId = rev.parentRequestId || '';
     if (!item.action) item.action = 'revise';
     // Include the pre-built HTML card + plain text from the revision record
