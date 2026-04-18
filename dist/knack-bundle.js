@@ -33963,11 +33963,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return fields;
   }
 
+  // Fields shown in the HTML card on view_3586 (subset of trackedFields)
+  var DISPLAY_FIELDS = {
+    field_1949: true, field_1964: true, field_1953: true,
+    field_2461: true, field_1984: true, field_1957: true, field_2197: true,
+  };
+
   /** Build a self-contained HTML card for one item. */
   function buildItemHtml(item, fieldList) {
     var action  = item.action || 'revise';
     var palette = PALETTES[action] || PALETTES.revise;
     var esc     = H.escHtml;
+
+    // Filter to display-only fields
+    var displayFields = [];
+    if (fieldList) {
+      for (var df = 0; df < fieldList.length; df++) {
+        if (DISPLAY_FIELDS[fieldList[df].field]) displayFields.push(fieldList[df]);
+      }
+    }
 
     var h = [];
     h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
@@ -33994,11 +34008,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (item.changeNotes) {
         h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
       }
-    } else if (fieldList && fieldList.length) {
-      // Revise or Add — field changes table
+    } else if (displayFields.length) {
+      // Revise or Add — field changes table (filtered to display fields)
       h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
-      for (var fi = 0; fi < fieldList.length; fi++) {
-        var f = fieldList[fi];
+      for (var fi = 0; fi < displayFields.length; fi++) {
+        var f = displayFields[fi];
         var def = null;
         for (var di = 0; di < TF.length; di++) {
           if (TF[di].key === f.field) { def = TF[di]; break; }
