@@ -1692,6 +1692,12 @@
                   Knack.views[vk].model.fetch();
                 }
               }
+              // Direct re-inject in case model.fetch doesn't trigger view render
+              setTimeout(function () {
+                for (var vi2 = 0; vi2 < CFG.targetViews.length; vi2++) {
+                  inject(CFG.targetViews[vi2]);
+                }
+              }, 1500);
             };
 
             // Listen for view_3823 re-render before refreshing targets
@@ -2670,11 +2676,13 @@
         if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
           Knack.views[CFG.revisionView].model.fetch();
         }
-        for (var t = 0; t < CFG.targetViews.length; t++) {
-          if (Knack.views[CFG.targetViews[t]] && Knack.views[CFG.targetViews[t]].model) {
-            Knack.views[CFG.targetViews[t]].model.fetch();
+        // Also directly re-inject after a delay to catch cases where
+        // model.fetch doesn't trigger knack-view-render
+        setTimeout(function () {
+          for (var t = 0; t < CFG.targetViews.length; t++) {
+            inject(CFG.targetViews[t]);
           }
-        }
+        }, 1500);
       }, 1000);
     }
 
