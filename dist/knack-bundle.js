@@ -17748,23 +17748,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           var packages = getGridPackages();
           var revJsonStr = JSON.stringify(rev.json || {});
 
-          // Only REVISE gets an "Apply" overflow
-          if (action === 'revise') {
-            var applyChoices = [];
-            for (var ap = 0; ap < packages.length; ap++) {
-              applyChoices.push({
-                label: packages[ap].name,
-                attrs: {
-                  'data-sr-action': 'apply',
-                  'data-rev-id': rev.id,
-                  'data-sow-item-id': rev.sowItemId,
-                  'data-rev-json': revJsonStr,
-                }
-              });
-            }
-            actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
-          }
-
           // Check if item is on the bid (has a non-missing bid cell)
           var gridRow = $tr.closest('tr[data-row-id]');
           var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
@@ -17780,6 +17763,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             rejectBtn.setAttribute('data-rev-json', revJsonStr);
             rejectBtn.addEventListener('click', handleRejectClick);
             actions.appendChild(rejectBtn);
+          }
+
+          // Apply — only for on-bid revise items
+          if (isOnBid && action === 'revise') {
+            var applyChoices = [];
+            for (var ap = 0; ap < packages.length; ap++) {
+              applyChoices.push({
+                label: packages[ap].name,
+                attrs: {
+                  'data-sr-action': 'apply',
+                  'data-rev-id': rev.id,
+                  'data-sow-item-id': rev.sowItemId,
+                  'data-rev-json': revJsonStr,
+                }
+              });
+            }
+            actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
           }
 
           // Not on bid + revise: show Clear button
@@ -17800,8 +17800,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
                 type: 'PUT',
                 data: JSON.stringify(statusData),
                 success: function () {
-                  self.textContent = 'Acknowledged \u2713';
-                  afterReject(self);
+                  self.textContent = 'Cleared \u2713';
+                  self.style.opacity = '0.6';
+                  setTimeout(function () {
+                    if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+                      Knack.views[CFG.revisionView].model.fetch();
+                    }
+                  }, 1500);
                 },
                 error: function () {
                   self.textContent = 'Failed';
