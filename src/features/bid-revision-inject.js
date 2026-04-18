@@ -2458,58 +2458,138 @@
 
   var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
 
+  // Survey record field keys (on view_3505 / view_3680 records)
+  var SURVEY_FK = {
+    productName:     'field_2379',
+    qty:             'field_2399',
+    rate:            'field_2400',
+    laborDesc:       'field_2409',
+    bidExistCabling: 'field_2370',
+    bidPlenum:       'field_2371',
+    bidExterior:     'field_2372',
+    bidDropLength:   'field_2367',
+    bidConduit:      'field_2368',
+    bidConnDevice:   'field_2380',
+    bidConnTo:       'field_2381',
+    bidMdfIdf:       'field_2375',
+  };
+  // SOW field keys (from SOW line item, read through survey record's connected fields)
+  var SOW_FK = {
+    productName:     'field_1958',
+    qty:             'field_1964',
+    laborDesc:       'field_2019',
+    bidExistCabling: 'field_2461',
+    bidPlenum:       'field_1983',
+    bidExterior:     'field_1984',
+    bidDropLength:   'field_1965',
+    bidConduit:      'field_2035',
+    bidMdfIdf:       'field_1946',
+  };
+  var ALL_FIELD_KEYS = Object.keys(SURVEY_FK);
+
+  function readModelRecord(viewKey, recordId) {
+    try {
+      var v = Knack.views[viewKey];
+      if (!v || !v.model || !v.model.data) return null;
+      var models = v.model.data.models || [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i].id === recordId) return models[i].attributes || models[i].toJSON();
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function readFieldVal(rec, fieldKey) {
+    if (!rec) return null;
+    var raw = rec[fieldKey + '_raw'];
+    if (raw != null) {
+      if (Array.isArray(raw) && raw.length) {
+        return raw.map(function (r) { return r.identifier || r.id || r; }).join(', ');
+      }
+      if (typeof raw === 'object' && raw.identifier) return raw.identifier;
+      return raw;
+    }
+    var plain = rec[fieldKey];
+    if (plain == null || plain === '' || plain === '&nbsp;' || plain === '\u00a0') return null;
+    return String(plain).replace(/<[^>]*>/g, '').trim() || null;
+  }
+
+  function readFieldIds(rec, fieldKey) {
+    if (!rec) return [];
+    var raw = rec[fieldKey + '_raw'];
+    if (Array.isArray(raw)) return raw.map(function (r) { return r.id || r; });
+    return [];
+  }
+
   function buildRevisionItem(rev) {
     var json = rev.changeJson;
     if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
-    var item = json ? JSON.parse(JSON.stringify(json)) : {};
+    var cr = json ? JSON.parse(JSON.stringify(json)) : {};
 
-    item.revisionLineItemId = rev.id;
-    item.parentRequestId = rev.parentRequestId || '';
-    item.surveyItemId = rev.surveyItemId || '';
-    if (!item.action) item.action = 'revise';
+    // Read live survey record from the target view's Knack model
+    var surveyId = rev.surveyItemId || cr.bidRecordId || cr.rowId || '';
+    var surveyRec = null;
+    for (var tvi = 0; tvi < CFG.targetViews.length && !surveyRec; tvi++) {
+      surveyRec = readModelRecord(CFG.targetViews[tvi], surveyId);
+    }
+
+    // Read SOW record (survey record has SOW connection field_2404)
+    var sowRec = null;
+    if (surveyRec) {
+      var sowRaw = surveyRec.field_2404_raw;
+      var sowId = Array.isArray(sowRaw) && sowRaw.length ? sowRaw[0].id : null;
+      if (sowId) {
+        // SOW items might be on a view on this page (view_3728-ish) — not guaranteed
+        // Fall back to reading SOW fields from the survey record itself (they're connected)
+      }
+    }
+
+    // Build flat item: CR value → survey value → SOW value
+    var item = {
+      action:              cr.action || 'revise',
+      revisionLineItemId:  rev.id,
+      parentRequestId:     rev.parentRequestId || '',
+      surveyItemId:        surveyId,
+      rowId:               cr.rowId || surveyId,
+      bidRecordId:         cr.bidRecordId || surveyId,
+      sowItemId:           cr.sowItemId || '',
+      displayLabel:        cr.displayLabel || '',
+      productName:         cr.productName || '',
+      changeNotes:         cr.changeNotes || '',
+      proposalBucket:      cr.proposalBucket || '',
+      proposalBucketId:    cr.proposalBucketId || '',
+    };
+
+    // Populate all fields with layered fallback
+    for (var fi = 0; fi < ALL_FIELD_KEYS.length; fi++) {
+      var logicalKey = ALL_FIELD_KEYS[fi];
+      var surveyFK = SURVEY_FK[logicalKey];
+      var sowFK = SOW_FK[logicalKey];
+
+      // Layer 1: CR requested value
+      var val = cr[logicalKey] != null && cr[logicalKey] !== '' ? cr[logicalKey] : null;
+      // Layer 2: live survey record
+      if (val == null && surveyRec) val = readFieldVal(surveyRec, surveyFK);
+      // Layer 3: SOW value (read from survey record's connected SOW fields)
+      if (val == null && surveyRec && sowFK) val = readFieldVal(surveyRec, sowFK);
+
+      item[logicalKey] = val;
+
+      // Connection IDs: same layered approach
+      var idsKey = logicalKey + 'Ids';
+      var ids = (cr[idsKey] && cr[idsKey].length) ? cr[idsKey] : null;
+      if (!ids && surveyRec) ids = readFieldIds(surveyRec, surveyFK);
+      if (!ids && surveyRec && sowFK) ids = readFieldIds(surveyRec, sowFK);
+      item[idsKey] = ids || [];
+    }
+
+    // Carry over fields array and html
+    if (cr.fields) item.fields = cr.fields;
     if (rev.changeHtml) item.html = rev.changeHtml;
     if (rev.changes && rev.changes.length && !item.fields) {
       item.fields = rev.changes.map(function (c) {
         return { label: c.label, to: c.value };
       });
-    }
-
-    // Layer live grid data: surveyRecord from the current bid cell
-    if (window.SCW && SCW.bidReview && SCW.bidReview.lookupCell) {
-      var rowId = item.bidRecordId || item.rowId || rev.surveyItemId || '';
-      // Try all packages to find the cell
-      var cell = null;
-      try {
-        var state = SCW.bidReview._state || null;
-        if (!state) {
-          // Try direct lookup with known IDs
-          cell = SCW.bidReview.lookupCell(rowId, null);
-        } else {
-          for (var gi = 0; gi < state.sowGrids.length && !cell; gi++) {
-            var rows = state.sowGrids[gi].rows;
-            for (var ri = 0; ri < rows.length && !cell; ri++) {
-              if (rows[ri].id !== rowId) continue;
-              var pkgs = Object.keys(rows[ri].cellsByPackage);
-              for (var pi = 0; pi < pkgs.length; pi++) {
-                cell = rows[ri].cellsByPackage[pkgs[pi]];
-                if (cell && cell.id) break;
-              }
-            }
-          }
-        }
-      } catch (ex) {}
-
-      if (cell) {
-        item.surveyRecord = {};
-        var bidFields = ['productName', 'qty', 'rate', 'laborDesc',
-          'bidExistCabling', 'bidPlenum', 'bidExterior', 'bidDropLength',
-          'bidConduit', 'bidConnDevice', 'bidConnDeviceIds',
-          'bidConnTo', 'bidConnToIds', 'bidMdfIdf', 'bidMdfIdfIds'];
-        for (var bf = 0; bf < bidFields.length; bf++) {
-          var bk = bidFields[bf];
-          if (cell[bk] != null && cell[bk] !== '') item.surveyRecord[bk] = cell[bk];
-        }
-      }
     }
 
     return item;
