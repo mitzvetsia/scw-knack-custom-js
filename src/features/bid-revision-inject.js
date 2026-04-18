@@ -952,10 +952,12 @@
 
       if (!siId) {
         // No survey item connection — orphaned add request
+        entry.surveyItemId = '';
         orphaned.push(entry);
         continue;
       }
 
+      entry.surveyItemId = siId;
       if (!map[siId]) map[siId] = [];
       map[siId].push(entry);
     }
@@ -2463,6 +2465,7 @@
 
     item.revisionLineItemId = rev.id;
     item.parentRequestId = rev.parentRequestId || '';
+    item.surveyItemId = rev.surveyItemId || '';
     if (!item.action) item.action = 'revise';
     if (rev.changeHtml) item.html = rev.changeHtml;
     if (rev.changes && rev.changes.length && !item.fields) {
@@ -2470,6 +2473,45 @@
         return { label: c.label, to: c.value };
       });
     }
+
+    // Layer live grid data: surveyRecord from the current bid cell
+    if (window.SCW && SCW.bidReview && SCW.bidReview.lookupCell) {
+      var rowId = item.bidRecordId || item.rowId || rev.surveyItemId || '';
+      // Try all packages to find the cell
+      var cell = null;
+      try {
+        var state = SCW.bidReview._state || null;
+        if (!state) {
+          // Try direct lookup with known IDs
+          cell = SCW.bidReview.lookupCell(rowId, null);
+        } else {
+          for (var gi = 0; gi < state.sowGrids.length && !cell; gi++) {
+            var rows = state.sowGrids[gi].rows;
+            for (var ri = 0; ri < rows.length && !cell; ri++) {
+              if (rows[ri].id !== rowId) continue;
+              var pkgs = Object.keys(rows[ri].cellsByPackage);
+              for (var pi = 0; pi < pkgs.length; pi++) {
+                cell = rows[ri].cellsByPackage[pkgs[pi]];
+                if (cell && cell.id) break;
+              }
+            }
+          }
+        }
+      } catch (ex) {}
+
+      if (cell) {
+        item.surveyRecord = {};
+        var bidFields = ['productName', 'qty', 'rate', 'laborDesc',
+          'bidExistCabling', 'bidPlenum', 'bidExterior', 'bidDropLength',
+          'bidConduit', 'bidConnDevice', 'bidConnDeviceIds',
+          'bidConnTo', 'bidConnToIds', 'bidMdfIdf', 'bidMdfIdfIds'];
+        for (var bf = 0; bf < bidFields.length; bf++) {
+          var bk = bidFields[bf];
+          if (cell[bk] != null && cell[bk] !== '') item.surveyRecord[bk] = cell[bk];
+        }
+      }
+    }
+
     return item;
   }
 
