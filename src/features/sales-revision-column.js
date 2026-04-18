@@ -347,27 +347,34 @@
           rejectBtn.addEventListener('click', handleRejectClick);
           actions.appendChild(rejectBtn);
 
-          // CR button — green (create) for all types, label varies
-          var crLabel = action === 'add'    ? 'Add \u2192'
-                      : action === 'remove' ? 'Remove \u2192'
-                      :                       'Revise \u2192';
-          var crMod   = action === 'add'    ? 'create'
-                      : action === 'remove' ? 'remove'
-                      :                       'revise';
-          var crChoices = [];
-          for (var cp = 0; cp < packages.length; cp++) {
-            crChoices.push({
-              label: packages[cp].name,
-              attrs: {
-                'data-sr-action': 'create-bid-cr',
-                'data-rev-id': rev.id,
-                'data-rev-request-id': rev.parentRequestId || '',
-                'data-sow-item-id': rev.sowItemId,
-                'data-rev-json': revJsonStr,
-              }
-            });
+          // Check if item is on the bid (has a non-missing bid cell)
+          var gridRow = $tr.closest('tr[data-row-id]');
+          var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
+                     && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
+
+          // CR button — only show Revise if item is on the bid
+          if (action !== 'revise' || isOnBid) {
+            var crLabel = action === 'add'    ? 'Add \u2192'
+                        : action === 'remove' ? 'Remove \u2192'
+                        :                       'Revise \u2192';
+            var crMod   = action === 'add'    ? 'create'
+                        : action === 'remove' ? 'remove'
+                        :                       'revise';
+            var crChoices = [];
+            for (var cp = 0; cp < packages.length; cp++) {
+              crChoices.push({
+                label: packages[cp].name,
+                attrs: {
+                  'data-sr-action': 'create-bid-cr',
+                  'data-rev-id': rev.id,
+                  'data-rev-request-id': rev.parentRequestId || '',
+                  'data-sow-item-id': rev.sowItemId,
+                  'data-rev-json': revJsonStr,
+                }
+              });
+            }
+            actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
           }
-          actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
 
           item.appendChild(actions);
           td.appendChild(item);
