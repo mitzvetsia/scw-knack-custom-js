@@ -1422,15 +1422,15 @@
       // Snapshot of current item data (before changes)
       entry.current = it.current || {};
 
-      // Flatten requested values directly onto the item
-      // (field key → "to" value, connection Ids arrays included)
+      // Flatten ALL field values onto the item (requested wins, falls back to current)
       var r = it.requested || {};
+      var c = it.current || {};
       for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
         var d = FIELD_DEFS[fi];
-        if (!hasValue(r[d.key])) continue;
-        entry[d.key] = r[d.key];
+        var val = hasValue(r[d.key]) ? r[d.key] : (hasValue(c[d.key]) ? c[d.key] : null);
+        entry[d.key] = val;
         if (d.type === 'connection' && d.idsKey) {
-          if (r[d.idsKey])              entry[d.idsKey]              = r[d.idsKey];
+          entry[d.idsKey] = r[d.idsKey] || c[d.idsKey] || [];
           if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
           if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
         }
