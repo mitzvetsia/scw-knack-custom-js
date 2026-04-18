@@ -82,6 +82,7 @@
     'field_1964',  // Quantity (conditional)
     'field_1953',  // SCW Notes
     'field_1946',  // MDF/IDF (Headend)
+    'field_1957',  // Connected Devices
     'field_2197',  // Connected To
     'field_2020',  // Labor Description
     'field_2461',  // Existing Cabling
