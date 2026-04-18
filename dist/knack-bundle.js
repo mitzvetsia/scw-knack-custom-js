@@ -36587,6 +36587,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     console.log('[BidRevInject] Revision map:', Object.keys(map).length,
                 'matched,', orphaned.length, 'orphaned');
+    console.log('[BidRevInject] Orphaned items:', orphaned.length);
+    for (var dbg = 0; dbg < orphaned.length; dbg++) {
+      console.log('[BidRevInject]   orphan', dbg, orphaned[dbg].id,
+        'mdfIdf:', getRevMdfIdf(orphaned[dbg]),
+        'json:', orphaned[dbg].changeJson ? 'present' : 'null');
+    }
     return { map: map, orphaned: orphaned };
   }
 
@@ -37604,9 +37610,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    * Extract the MDF/IDF label from a revision entry's JSON data.
    */
   function getRevMdfIdf(rev) {
-    if (rev.changeJson && rev.changeJson.bidMdfIdf) return rev.changeJson.bidMdfIdf;
-    if (rev.changeJson && rev.changeJson.requested && rev.changeJson.requested.bidMdfIdf) return rev.changeJson.requested.bidMdfIdf;
-    if (rev.changeJson && rev.changeJson.current && rev.changeJson.current.bidMdfIdf) return rev.changeJson.current.bidMdfIdf;
+    var json = rev.changeJson;
+    if (typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+    if (json && json.bidMdfIdf) return json.bidMdfIdf;
+    if (json && json.requested && json.requested.bidMdfIdf) return json.requested.bidMdfIdf;
+    if (json && json.current && json.current.bidMdfIdf) return json.current.bidMdfIdf;
+    // Fallback: SOW field key from sales CR
+    if (json && json.requested && json.requested.field_1946) return json.requested.field_1946;
+    if (json && json.field_1946) return json.field_1946;
     return '';
   }
 
