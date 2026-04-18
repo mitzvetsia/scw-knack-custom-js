@@ -1051,7 +1051,29 @@
       params.sowConnTo        = ov.sowConnTo || '';
       params.sowConnToIds     = ov.sowConnToIds || [];
       params.sowMapConn    = row.sowMapConn || '';
-      params.connOptions   = {};
+      // Build connection options from grid rows
+      var addConnDev = [], addConnTo = [];
+      var addSeenDev = {}, addSeenTo = {};
+      var ADD_CAM = '6481e5ba38f283002898113c';
+      for (var aci = 0; aci < grid.rows.length; aci++) {
+        var acr = grid.rows[aci];
+        var acpkgs = Object.keys(acr.cellsByPackage);
+        for (var acpi = 0; acpi < acpkgs.length; acpi++) {
+          var acc = acr.cellsByPackage[acpkgs[acpi]];
+          if (!acc.id) continue;
+          var acLbl = acr.displayLabel || acr.productName || acc.productName || acc.id;
+          if (acr.proposalBucketId === ADD_CAM && !addSeenDev[acc.id]) {
+            addSeenDev[acc.id] = true;
+            var acConnTo = acc.bidConnTo ? String(acc.bidConnTo).trim() : '';
+            addConnDev.push({ id: acc.id, identifier: acLbl, currentConnTo: acConnTo || null });
+          }
+          if (acc.mapConnections && !addSeenTo[acc.id]) {
+            addSeenTo[acc.id] = true;
+            addConnTo.push({ id: acc.id, identifier: acLbl });
+          }
+        }
+      }
+      params.connOptions = { bidConnDevice: addConnDev, bidConnTo: addConnTo, bidMdfIdf: buildMdfIdfOptions() };
       // Visibility: connDevice only if field_2231=Yes on SOW row;
       // cabling (includes Connected To) only if bucket is Camera or Reader
       var showConn = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
