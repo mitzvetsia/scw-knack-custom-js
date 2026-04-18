@@ -32529,6 +32529,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       { key: 'field_1957', label: 'Connected Devices', type: 'connection' },
       { key: 'field_2197', label: 'Connected To',      type: 'connection' },
       { key: 'field_2219', label: 'Proposal Bucket',   type: 'connection' },
+      { key: 'field_1946', label: 'MDF/IDF',            type: 'connection' },
     ],
 
     // ── Timing ─────────────────────────────────────────────
@@ -33966,7 +33967,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // Fields shown in the HTML card on view_3586 (subset of trackedFields)
   var DISPLAY_FIELDS = {
     field_1949: true, field_1964: true, field_1953: true,
-    field_2461: true, field_1984: true, field_1957: true, field_2197: true,
+    field_2461: true, field_1984: true, field_1957: true, field_2197: true, field_1946: true,
   };
 
   /** Build a self-contained HTML card for one item. */
@@ -34285,7 +34286,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   var DISPLAY_FIELDS = {
     field_1949: true, field_1964: true, field_1953: true,
-    field_2461: true, field_1984: true, field_1957: true, field_2197: true,
+    field_2461: true, field_1984: true, field_1957: true, field_2197: true, field_1946: true,
   };
 
   var _openPopover = null;

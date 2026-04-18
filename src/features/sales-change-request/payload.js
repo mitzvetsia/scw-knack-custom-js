@@ -78,7 +78,7 @@
   // Fields shown in the HTML card on view_3586 (subset of trackedFields)
   var DISPLAY_FIELDS = {
     field_1949: true, field_1964: true, field_1953: true,
-    field_2461: true, field_1984: true, field_1957: true, field_2197: true,
+    field_2461: true, field_1984: true, field_1957: true, field_2197: true, field_1946: true,
   };
 
   /** Build a self-contained HTML card for one item. */

@@ -59,6 +59,7 @@
       { key: 'field_1957', label: 'Connected Devices', type: 'connection' },
       { key: 'field_2197', label: 'Connected To',      type: 'connection' },
       { key: 'field_2219', label: 'Proposal Bucket',   type: 'connection' },
+      { key: 'field_1946', label: 'MDF/IDF',            type: 'connection' },
     ],
 
     // ── Timing ─────────────────────────────────────────────
