@@ -40519,16 +40519,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var viewEl = document.getElementById(VIEW_ID);
     if (!viewEl) return;
 
-    // Collect all record IDs on this bid
-    var bidRecordIds = {};
+    var BID_FIELD = 'field_2415';
     var model = Knack.views[VIEW_ID] && Knack.views[VIEW_ID].model;
-    if (model && model.data) {
-      var models = model.data.models || [];
-      for (var i = 0; i < models.length; i++) {
-        if (models[i].id) bidRecordIds[models[i].id] = true;
+    if (!model || !model.data) return;
+    var records = model.data.models || [];
+    if (!records.length) return;
+
+    // Build map: record ID → bid package ID(s)
+    var bidByRecord = {};
+    for (var i = 0; i < records.length; i++) {
+      var a = records[i].attributes || records[i];
+      var id = records[i].id || a.id;
+      if (!id) continue;
+      var bidRaw = a[BID_FIELD + '_raw'];
+      var bidIds = [];
+      if (Array.isArray(bidRaw)) {
+        for (var bi = 0; bi < bidRaw.length; bi++) {
+          if (bidRaw[bi].id) bidIds.push(bidRaw[bi].id);
+        }
       }
+      bidByRecord[id] = bidIds;
     }
-    if (!Object.keys(bidRecordIds).length) return;
 
     injectStyles();
 
@@ -40537,31 +40548,44 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var oi = 0; oi < old.length; oi++) old[oi].remove();
     var oldIcons = viewEl.querySelectorAll('.scw-conn-bid-warn-icon');
     for (var oii = 0; oii < oldIcons.length; oii++) oldIcons[oii].remove();
+    var oldBadge = document.querySelector('.scw-conn-bid-warn-badge');
+    if (oldBadge) oldBadge.remove();
 
-    // Check each record's Connected To field
-    var records = (model && model.data && model.data.models) || [];
     var warnCount = 0;
 
     for (var ri = 0; ri < records.length; ri++) {
       var rec = records[ri];
       var attrs = rec.attributes || rec;
+      var recId = rec.id || attrs.id;
       var raw = attrs[CONN_TO_FIELD + '_raw'];
       if (!raw || !Array.isArray(raw) || !raw.length) continue;
 
+      var myBids = bidByRecord[recId] || [];
+      if (!myBids.length) continue; // this record isn't on a bid itself
+
       for (var ci = 0; ci < raw.length; ci++) {
         var connId = raw[ci].id;
-        if (!connId || bidRecordIds[connId]) continue;
+        if (!connId) continue;
 
-        // Connected record is NOT on this bid
+        var connBids = bidByRecord[connId] || [];
+        // Check if connected device shares at least one bid with this record
+        var sameBid = false;
+        for (var mb = 0; mb < myBids.length && !sameBid; mb++) {
+          for (var cb = 0; cb < connBids.length; cb++) {
+            if (myBids[mb] === connBids[cb]) { sameBid = true; break; }
+          }
+        }
+        if (sameBid) continue;
+
+        // Connected device is not on the same bid (or has no bid)
         warnCount++;
         var connLabel = raw[ci].identifier || connId;
+        var reason = connBids.length ? 'on a different bid' : 'not assigned to any bid';
 
-        // Find the card for this record
-        var wsRow = viewEl.querySelector('tr.scw-ws-row[id="' + rec.id + '"]');
+        var wsRow = viewEl.querySelector('tr.scw-ws-row[id="' + recId + '"]');
         if (!wsRow) continue;
 
-        // Add warning to the Connected Device field area
-        var connField = wsRow.querySelector('[data-scw-field="field_2197"], [data-scw-field="field_2381"]');
+        var connField = wsRow.querySelector('[data-scw-field="field_2381"]');
         if (!connField) {
           var connTd = wsRow.querySelector('td.' + CONN_TO_FIELD);
           if (connTd) connField = connTd.closest('.scw-ws-field') || connTd;
@@ -40569,21 +40593,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (connField) {
           var warnMsg = document.createElement('div');
           warnMsg.className = WARN_CLS;
-          warnMsg.textContent = '\u26A0 "' + connLabel + '" is not on this bid';
+          warnMsg.textContent = '\u26A0 "' + connLabel + '" is ' + reason;
           connField.appendChild(warnMsg);
         }
 
-        // Add warning icon to card header warn-slot
         var warnSlot = wsRow.querySelector('.scw-ws-warn-slot');
         if (warnSlot && !warnSlot.querySelector('.scw-conn-bid-warn-icon')) {
           var icon = document.createElement('span');
           icon.className = 'scw-cr-hdr-warning scw-conn-bid-warn-icon';
           icon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
-          icon.title = 'Connected device is not on this bid';
+          icon.title = 'Connected device ' + reason;
           warnSlot.appendChild(icon);
         }
 
-        break; // one warning per record is enough
+        break;
       }
     }
 
