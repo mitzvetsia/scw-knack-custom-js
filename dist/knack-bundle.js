@@ -17291,7 +17291,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           }
         }
       }
-      var showConn2 = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
+      var showConn2 = cell.mapConnections || row.sowMapConn === 'Yes' || row.sowMapConn === 'true';
       var isCamReader2 = (row.proposalBucketId === CAM_READER);
       params.connOptions = { bidConnDevice: connDevOpts2, bidConnTo: connToOpts2, bidMdfIdf: buildMdfIdfOptions() };
       params.visibility = { qty: true, cabling: isCamReader2, connDevice: showConn2 };
