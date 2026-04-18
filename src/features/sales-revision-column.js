@@ -675,7 +675,7 @@
   var SOW_VIEW = 'view_3728';
   var SURVEY_VIEW = 'view_3680';
 
-  function applyRevisionToRecords(sowItemId, revJson, btn) {
+  function applyRevisionToRecords(sowItemId, revJson, revLineItemId, btn) {
     if (!sowItemId || !revJson) return;
     var jr = revJson.requested || {};
     var fields = revJson.fields || [];
@@ -717,7 +717,9 @@
 
     var done = 0;
     var errors = 0;
-    var total = (Object.keys(sowData).length ? 1 : 0) + (surveyItemId && Object.keys(surveyData).length ? 1 : 0);
+    var total = (Object.keys(sowData).length ? 1 : 0)
+              + (surveyItemId && Object.keys(surveyData).length ? 1 : 0)
+              + (revLineItemId ? 1 : 0);
 
     function checkDone() {
       done++;
@@ -729,10 +731,10 @@
           errors ? 'error' : 'success'
         );
       }
-      // Refresh views after a short delay
       setTimeout(function () {
         if (Knack.views[SOW_VIEW] && Knack.views[SOW_VIEW].model) Knack.views[SOW_VIEW].model.fetch();
         if (Knack.views[SURVEY_VIEW] && Knack.views[SURVEY_VIEW].model) Knack.views[SURVEY_VIEW].model.fetch();
+        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) Knack.views[CFG.revisionView].model.fetch();
       }, 1500);
     }
 
@@ -758,6 +760,19 @@
       });
     }
 
+    // Update revision line item status to Accepted
+    if (revLineItemId) {
+      var statusData = {};
+      statusData[CFG.statusField] = 'Accepted';
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(CFG.revisionView, revLineItemId),
+        type: 'PUT',
+        data: JSON.stringify(statusData),
+        success: function () { console.log('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
+        error: function () { console.warn('[SalesRevCol] Revision status update failed:', revLineItemId); errors++; checkDone(); },
+      });
+    }
+
     if (!total) {
       if (btn) btn.textContent = 'Nothing to apply';
     }
@@ -776,7 +791,8 @@
     if (action === 'apply') {
       var revJson = {};
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
-      applyRevisionToRecords(sowItemId, revJson, this);
+      var applyRevId = this.getAttribute('data-rev-id');
+      applyRevisionToRecords(sowItemId, revJson, applyRevId, this);
       return;
     }
 
