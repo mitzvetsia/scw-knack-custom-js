@@ -15773,10 +15773,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       bidConduit:      req.bidConduit || params.sowConduit || '',
       bidMdfIdf:       req.bidMdfIdf || params.sowMdfIdf || '',
       bidMdfIdfIds:    req.bidMdfIdfIds || params.sowMdfIdfIds || [],
-      bidConnDevice:      req.bidConnDevice || '',
-      bidConnDeviceIds:   req.bidConnDeviceIds || [],
-      bidConnTo:          req.bidConnTo || '',
-      bidConnToIds:       req.bidConnToIds || [],
+      bidConnDevice:      req.bidConnDevice || params.sowConnDevice || '',
+      bidConnDeviceIds:   req.bidConnDeviceIds || params.sowConnDeviceIds || [],
+      bidConnTo:          req.bidConnTo || params.sowConnTo || '',
+      bidConnToIds:       req.bidConnToIds || params.sowConnToIds || [],
     };
 
     // Connection options for addable connection fields (e.g. MDF/IDF)
@@ -16974,6 +16974,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         field_2461: 'sowExistCabling', field_1984: 'sowExterior',
         field_1983: 'sowPlenum',       field_1965: 'sowDropLength',
         field_2035: 'sowConduit',      field_1946: 'sowMdfIdf',
+        field_1957: 'sowConnDevice',   field_2197: 'sowConnTo',
       };
       var mapped = {};
       for (var sk in SALES_MAP) {
@@ -16982,6 +16983,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       }
       // Top-level JSON fields as fallback
       if (!mapped.sowProduct && revJson.productName) mapped.sowProduct = revJson.productName;
+      // Normalize boolean "true"/"false" → "Yes"/"No"
+      var boolKeys = ['sowExistCabling', 'sowExterior', 'sowPlenum'];
+      for (var bi = 0; bi < boolKeys.length; bi++) {
+        var bv = mapped[boolKeys[bi]];
+        if (bv === 'true') mapped[boolKeys[bi]] = 'Yes';
+        else if (bv === 'false') mapped[boolKeys[bi]] = 'No';
+      }
 
       if (action === 'add') {
         row._revOverlay = {
@@ -16996,6 +17004,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           sowConduit:      mapped.sowConduit || row.sowConduit || '',
           sowMdfIdf:       mapped.sowMdfIdf || row.sowMdfIdf || '',
           sowMdfIdfIds:    mapped.sowMdfIdfIds || row.sowMdfIdfIds || [],
+          sowConnDevice:   mapped.sowConnDevice || '',
+          sowConnDeviceIds: mapped.sowConnDeviceIds || [],
+          sowConnTo:       mapped.sowConnTo || '',
+          sowConnToIds:    mapped.sowConnToIds || [],
         };
       } else if (action !== 'remove') {
         // For REVISE: merge JSON values into the cell using bid logical keys
@@ -17065,9 +17077,17 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       params.sowConduit    = ov.sowConduit || row.sowConduit || '';
       params.sowMdfIdf     = ov.sowMdfIdf || row.sowMdfIdf || '';
       params.sowMdfIdfIds  = ov.sowMdfIdfIds || row.sowMdfIdfIds || [];
+      params.sowConnDevice    = ov.sowConnDevice || '';
+      params.sowConnDeviceIds = ov.sowConnDeviceIds || [];
+      params.sowConnTo        = ov.sowConnTo || '';
+      params.sowConnToIds     = ov.sowConnToIds || [];
       params.sowMapConn    = row.sowMapConn || '';
       params.connOptions   = {};
-      params.visibility    = { qty: true, cabling: true, connDevice: true };
+      // Visibility: connDevice only if field_2231=Yes on SOW row;
+      // cabling (includes Connected To) only if bucket is Camera or Reader
+      var showConn = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
+      var isCamReader = (row.proposalBucketId === '6481e5ba38f283002898113c');
+      params.visibility    = { qty: true, cabling: isCamReader, connDevice: showConn };
       params.gridRows      = grid.rows;
       ns.changeRequests.openAddItem(params);
     } else {

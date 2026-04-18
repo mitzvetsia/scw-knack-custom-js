@@ -1838,10 +1838,10 @@
       bidConduit:      req.bidConduit || params.sowConduit || '',
       bidMdfIdf:       req.bidMdfIdf || params.sowMdfIdf || '',
       bidMdfIdfIds:    req.bidMdfIdfIds || params.sowMdfIdfIds || [],
-      bidConnDevice:      req.bidConnDevice || '',
-      bidConnDeviceIds:   req.bidConnDeviceIds || [],
-      bidConnTo:          req.bidConnTo || '',
-      bidConnToIds:       req.bidConnToIds || [],
+      bidConnDevice:      req.bidConnDevice || params.sowConnDevice || '',
+      bidConnDeviceIds:   req.bidConnDeviceIds || params.sowConnDeviceIds || [],
+      bidConnTo:          req.bidConnTo || params.sowConnTo || '',
+      bidConnToIds:       req.bidConnToIds || params.sowConnToIds || [],
     };
 
     // Connection options for addable connection fields (e.g. MDF/IDF)
