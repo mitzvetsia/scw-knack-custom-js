@@ -1465,16 +1465,40 @@
       items.push(entry);
     }
 
+    // Group items: by salesRevisionRequestId, or into newItems
+    var revGroups = {};
+    var newItems = [];
+    for (var gi = 0; gi < items.length; gi++) {
+      var gItem = items[gi];
+      var revReqId = gItem.salesRevisionRequestId;
+      if (revReqId) {
+        if (!revGroups[revReqId]) revGroups[revReqId] = [];
+        revGroups[revReqId].push(gItem);
+      } else {
+        newItems.push(gItem);
+      }
+    }
+    var revisionGroups = [];
+    var revReqIds = Object.keys(revGroups);
+    for (var rgi = 0; rgi < revReqIds.length; rgi++) {
+      revisionGroups.push({
+        revisionRequestId: revReqIds[rgi],
+        items: revGroups[revReqIds[rgi]],
+      });
+    }
+
     return {
-      actionType:  'change_request',
-      timestamp:   new Date().toISOString(),
-      packageId:   pkgId,
-      packageName: pkg.pkgName,
-      surveyId:    pkg.surveyId || '',
-      sowId:       pkg.sowId,
-      sowName:     pkg.sowName || '',
-      user:        getUser(),
-      items:       items,
+      actionType:     'change_request',
+      timestamp:      new Date().toISOString(),
+      packageId:      pkgId,
+      packageName:    pkg.pkgName,
+      surveyId:       pkg.surveyId || '',
+      sowId:          pkg.sowId,
+      sowName:        pkg.sowName || '',
+      user:           getUser(),
+      revisionGroups: revisionGroups,
+      newItems:       newItems,
+      items:          items,
     };
   }
 
