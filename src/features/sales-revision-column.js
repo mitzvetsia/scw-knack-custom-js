@@ -333,8 +333,8 @@
           var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
                      && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
 
-          // Reject button — only for on-bid items or add/remove actions
-          if (isOnBid || action !== 'revise') {
+          // Reject button — only for add/remove actions (not revise)
+          if (action !== 'revise') {
             var rejectBtn = document.createElement('button');
             rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
             rejectBtn.textContent = 'Reject';
