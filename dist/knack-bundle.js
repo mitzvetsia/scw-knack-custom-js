@@ -17360,6 +17360,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   var P = 'scw-sr-col';
   var _revisionData = [];
 
+  // Ordered fields to display in revision cards on the comparison grid
+  var CARD_DISPLAY = [
+    'field_1949', 'field_1964', 'field_1953', 'field_1946',
+    'field_1957', 'field_2197', 'field_2020',
+    'field_2461', 'field_1984', 'field_1965', 'field_2150',
+  ];
+  var CARD_DISPLAY_SET = {};
+  for (var cdi = 0; cdi < CARD_DISPLAY.length; cdi++) CARD_DISPLAY_SET[CARD_DISPLAY[cdi]] = true;
+
   // ═══════════════════════════════════════════════════════════
   //  CSS
   // ═══════════════════════════════════════════════════════════
@@ -17597,11 +17606,22 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           }
 
           if (json.fields && json.fields.length) {
-            for (var fi = 0; fi < json.fields.length; fi++) {
-              var f = json.fields[fi];
+            // Build lookup, then walk in display order
+            var fByKey = {};
+            for (var fbi = 0; fbi < json.fields.length; fbi++) fByKey[json.fields[fbi].field] = json.fields[fbi];
+            for (var di = 0; di < CARD_DISPLAY.length; di++) {
+              var f = fByKey[CARD_DISPLAY[di]];
+              if (!f) continue;
+              var fval = f.to != null ? String(f.to) : '';
+              if (!fval || fval === '\u00a0') continue;
+              if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
               var row = document.createElement('div');
               row.className = 'scw-bid-cr-card__row';
-              row.textContent = f.label + ': ' + (f.from || '\u2014') + ' \u2192 ' + f.to;
+              if (action === 'revise' || action === 'add') {
+                row.textContent = f.label + ': ' + (f.from != null ? f.from : '\u2014') + ' \u2192 ' + f.to;
+              } else {
+                row.textContent = f.label + ': ' + f.to;
+              }
               card.appendChild(row);
             }
           } else if (action === 'remove') {
