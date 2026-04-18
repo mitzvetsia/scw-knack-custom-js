@@ -16966,31 +16966,51 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var revJson = opts.revJson || {};
       var notes = revJson.changeNotes || opts.changeNotes || '';
 
-      // Read revision values from view_3842 DOM row
-      var revData = readRevisionRecord(opts.revisionRecordId);
+      // Map JSON requested fields (sales CR field keys → bid modal keys)
+      var jr = revJson.requested || {};
+      var SALES_MAP = {
+        field_1949: 'sowProduct',      field_1964: 'sowQty',
+        field_2150: 'sowFee',          field_2020: 'sowLaborDesc',
+        field_2461: 'sowExistCabling', field_1984: 'sowExterior',
+        field_1983: 'sowPlenum',       field_1965: 'sowDropLength',
+        field_2035: 'sowConduit',      field_1946: 'sowMdfIdf',
+      };
+      var mapped = {};
+      for (var sk in SALES_MAP) {
+        if (jr[sk] != null && jr[sk] !== '') mapped[SALES_MAP[sk]] = jr[sk];
+        if (jr[sk + '_ids']) mapped[SALES_MAP[sk] + 'Ids'] = jr[sk + '_ids'];
+      }
+      // Top-level JSON fields as fallback
+      if (!mapped.sowProduct && revJson.productName) mapped.sowProduct = revJson.productName;
 
       if (action === 'add') {
-        // Overlay revision data onto the row as sow* params so the
-        // add modal prefills from the revision record, not the SOW.
         row._revOverlay = {
-          sowProduct:      revData.productName || row.sowProduct || '',
-          sowQty:          revData.qty || row.sowQty || '',
-          sowFee:          revData.rate || row.sowFee || '',
-          sowLaborDesc:    revData.laborDesc || row.sowLaborDesc || '',
-          sowExistCabling: revData.bidExistCabling || row.sowExistCabling || '',
-          sowPlenum:       revData.bidPlenum || row.sowPlenum || '',
-          sowExterior:     revData.bidExterior || row.sowExterior || '',
-          sowDropLength:   revData.bidDropLength || row.sowDropLength || '',
-          sowConduit:      revData.bidConduit || row.sowConduit || '',
-          sowMdfIdf:       revData.bidMdfIdf || row.sowMdfIdf || '',
-          sowMdfIdfIds:    revData.bidMdfIdfIds || row.sowMdfIdfIds || [],
+          sowProduct:      mapped.sowProduct || row.sowProduct || '',
+          sowQty:          mapped.sowQty || row.sowQty || '',
+          sowFee:          mapped.sowFee || row.sowFee || '',
+          sowLaborDesc:    mapped.sowLaborDesc || row.sowLaborDesc || '',
+          sowExistCabling: mapped.sowExistCabling || row.sowExistCabling || '',
+          sowPlenum:       mapped.sowPlenum || row.sowPlenum || '',
+          sowExterior:     mapped.sowExterior || row.sowExterior || '',
+          sowDropLength:   mapped.sowDropLength || row.sowDropLength || '',
+          sowConduit:      mapped.sowConduit || row.sowConduit || '',
+          sowMdfIdf:       mapped.sowMdfIdf || row.sowMdfIdf || '',
+          sowMdfIdfIds:    mapped.sowMdfIdfIds || row.sowMdfIdfIds || [],
         };
       } else if (action !== 'remove') {
-        // For REVISE: merge revision data into a copy of the cell
+        // For REVISE: merge JSON values into the cell using bid logical keys
+        var BID_MAP = {
+          field_1949: 'productName', field_1964: 'qty', field_2150: 'rate',
+          field_2020: 'laborDesc', field_2461: 'bidExistCabling',
+          field_1984: 'bidExterior', field_1983: 'bidPlenum',
+          field_1965: 'bidDropLength', field_2035: 'bidConduit',
+          field_1946: 'bidMdfIdf',
+        };
         var cell = row.cellsByPackage[pkgId];
         if (cell) {
-          for (var rk in revData) {
-            if (revData[rk] != null && revData[rk] !== '') cell[rk] = revData[rk];
+          for (var bk in BID_MAP) {
+            if (jr[bk] != null && jr[bk] !== '') cell[BID_MAP[bk]] = jr[bk];
+            if (jr[bk + '_ids']) cell[BID_MAP[bk] + 'Ids'] = jr[bk + '_ids'];
           }
         }
       }
@@ -33964,11 +33984,45 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return fields;
   }
 
-  // Fields shown in the HTML card on view_3586 (subset of trackedFields)
-  var DISPLAY_FIELDS = {
-    field_1949: true, field_1964: true, field_1953: true,
-    field_2461: true, field_1984: true, field_1957: true, field_2197: true, field_1946: true,
-  };
+  // Ordered fields shown in the HTML card (view_3586 + revision cards).
+  // Quantity only shows if > 1. Empty values are skipped.
+  var DISPLAY_ORDER = [
+    'field_1949',  // Product
+    'field_1964',  // Quantity (conditional)
+    'field_1953',  // SCW Notes
+    'field_1946',  // MDF/IDF (Headend)
+    'field_2197',  // Connected To
+    'field_2020',  // Labor Description
+    'field_2461',  // Existing Cabling
+    'field_1984',  // Exterior
+    'field_1965',  // Drop Length
+    'field_2150',  // Sub Bid
+  ];
+  var DISPLAY_SET = {};
+  for (var ds = 0; ds < DISPLAY_ORDER.length; ds++) DISPLAY_SET[DISPLAY_ORDER[ds]] = true;
+
+  function filterDisplayFields(fieldList) {
+    if (!fieldList) return [];
+    // Build lookup by field key
+    var byKey = {};
+    for (var i = 0; i < fieldList.length; i++) byKey[fieldList[i].field] = fieldList[i];
+    // Walk display order, skip empty and qty<=1
+    var out = [];
+    for (var d = 0; d < DISPLAY_ORDER.length; d++) {
+      var fk = DISPLAY_ORDER[d];
+      var f = byKey[fk];
+      if (!f) continue;
+      var val = f.to != null ? String(f.to) : '';
+      if (!val || val === '—' || val === '\u00a0') continue;
+      // Quantity: only show if > 1
+      if (fk === 'field_1964') {
+        var n = parseFloat(val);
+        if (isNaN(n) || n <= 1) continue;
+      }
+      out.push(f);
+    }
+    return out;
+  }
 
   /** Build a self-contained HTML card for one item. */
   function buildItemHtml(item, fieldList) {
@@ -33976,13 +34030,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var palette = PALETTES[action] || PALETTES.revise;
     var esc     = H.escHtml;
 
-    // Filter to display-only fields
-    var displayFields = [];
-    if (fieldList) {
-      for (var df = 0; df < fieldList.length; df++) {
-        if (DISPLAY_FIELDS[fieldList[df].field]) displayFields.push(fieldList[df]);
-      }
-    }
+    var displayFields = filterDisplayFields(fieldList);
 
     var h = [];
     h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
@@ -34284,10 +34332,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
 
-  var DISPLAY_FIELDS = {
-    field_1949: true, field_1964: true, field_1953: true,
-    field_2461: true, field_1984: true, field_1957: true, field_2197: true, field_1946: true,
-  };
+  // view_3586 display: the sales-side SOW editing page
+  var DISPLAY_ORDER = [
+    'field_1949', 'field_1964', 'field_1953',
+    'field_2461', 'field_1984',
+    'field_1957', 'field_2197', 'field_1946',
+  ];
+  var DISPLAY_SET = {};
+  for (var ds = 0; ds < DISPLAY_ORDER.length; ds++) DISPLAY_SET[DISPLAY_ORDER[ds]] = true;
+
+  // Build a TF-like def lookup by key for ordered iteration
+  var TF_BY_KEY = {};
+  for (var ti = 0; ti < TF.length; ti++) TF_BY_KEY[TF[ti].key] = TF[ti];
 
   var _openPopover = null;
   var _popoverAnchor = null;
@@ -34362,27 +34418,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (item.changeNotes) {
         card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
       }
-      // Show field diffs if present (filtered to display fields)
       var r = item.requested || {};
-      for (var f = 0; f < TF.length; f++) {
-        var def = TF[f];
-        if (!DISPLAY_FIELDS[def.key]) continue;
-        if (r[def.key] == null) continue;
+      for (var f = 0; f < DISPLAY_ORDER.length; f++) {
+        var fk = DISPLAY_ORDER[f];
+        var def = TF_BY_KEY[fk];
+        if (!def) continue;
+        if (r[fk] == null) continue;
+        var val = String(r[fk]);
+        if (!val || val === '\u00a0') continue;
+        if (fk === 'field_1964' && (parseFloat(val) <= 1 || isNaN(parseFloat(val)))) continue;
         var row = H.el('div', P + '-card-field');
         row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
-        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[def.key])));
+        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[fk])));
         card.appendChild(row);
       }
       return card;
     }
 
-    // Revise — field diffs (filtered to display fields)
+    // Revise — field diffs (ordered, filtered)
     var r = item.requested || {};
     var c = item.current || {};
-    for (var f = 0; f < TF.length; f++) {
-      var def = TF[f];
-      if (!DISPLAY_FIELDS[def.key]) continue;
-      if (r[def.key] == null) continue;
+    for (var f = 0; f < DISPLAY_ORDER.length; f++) {
+      var fk = DISPLAY_ORDER[f];
+      var def = TF_BY_KEY[fk];
+      if (!def) continue;
+      if (r[fk] == null) continue;
+      var val = String(r[fk]);
+      if (!val || val === '\u00a0') continue;
+      if (fk === 'field_1964' && (parseFloat(val) <= 1 || isNaN(parseFloat(val)))) continue;
       var row = H.el('div', P + '-card-field');
       row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
       if (c[def.key] != null) {

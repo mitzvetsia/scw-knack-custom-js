@@ -75,11 +75,45 @@
     return fields;
   }
 
-  // Fields shown in the HTML card on view_3586 (subset of trackedFields)
-  var DISPLAY_FIELDS = {
-    field_1949: true, field_1964: true, field_1953: true,
-    field_2461: true, field_1984: true, field_1957: true, field_2197: true, field_1946: true,
-  };
+  // Ordered fields shown in the HTML card (view_3586 + revision cards).
+  // Quantity only shows if > 1. Empty values are skipped.
+  var DISPLAY_ORDER = [
+    'field_1949',  // Product
+    'field_1964',  // Quantity (conditional)
+    'field_1953',  // SCW Notes
+    'field_1946',  // MDF/IDF (Headend)
+    'field_2197',  // Connected To
+    'field_2020',  // Labor Description
+    'field_2461',  // Existing Cabling
+    'field_1984',  // Exterior
+    'field_1965',  // Drop Length
+    'field_2150',  // Sub Bid
+  ];
+  var DISPLAY_SET = {};
+  for (var ds = 0; ds < DISPLAY_ORDER.length; ds++) DISPLAY_SET[DISPLAY_ORDER[ds]] = true;
+
+  function filterDisplayFields(fieldList) {
+    if (!fieldList) return [];
+    // Build lookup by field key
+    var byKey = {};
+    for (var i = 0; i < fieldList.length; i++) byKey[fieldList[i].field] = fieldList[i];
+    // Walk display order, skip empty and qty<=1
+    var out = [];
+    for (var d = 0; d < DISPLAY_ORDER.length; d++) {
+      var fk = DISPLAY_ORDER[d];
+      var f = byKey[fk];
+      if (!f) continue;
+      var val = f.to != null ? String(f.to) : '';
+      if (!val || val === '—' || val === '\u00a0') continue;
+      // Quantity: only show if > 1
+      if (fk === 'field_1964') {
+        var n = parseFloat(val);
+        if (isNaN(n) || n <= 1) continue;
+      }
+      out.push(f);
+    }
+    return out;
+  }
 
   /** Build a self-contained HTML card for one item. */
   function buildItemHtml(item, fieldList) {
@@ -87,13 +121,7 @@
     var palette = PALETTES[action] || PALETTES.revise;
     var esc     = H.escHtml;
 
-    // Filter to display-only fields
-    var displayFields = [];
-    if (fieldList) {
-      for (var df = 0; df < fieldList.length; df++) {
-        if (DISPLAY_FIELDS[fieldList[df].field]) displayFields.push(fieldList[df]);
-      }
-    }
+    var displayFields = filterDisplayFields(fieldList);
 
     var h = [];
     h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');

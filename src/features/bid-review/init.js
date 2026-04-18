@@ -916,31 +916,51 @@
       var revJson = opts.revJson || {};
       var notes = revJson.changeNotes || opts.changeNotes || '';
 
-      // Read revision values from view_3842 DOM row
-      var revData = readRevisionRecord(opts.revisionRecordId);
+      // Map JSON requested fields (sales CR field keys → bid modal keys)
+      var jr = revJson.requested || {};
+      var SALES_MAP = {
+        field_1949: 'sowProduct',      field_1964: 'sowQty',
+        field_2150: 'sowFee',          field_2020: 'sowLaborDesc',
+        field_2461: 'sowExistCabling', field_1984: 'sowExterior',
+        field_1983: 'sowPlenum',       field_1965: 'sowDropLength',
+        field_2035: 'sowConduit',      field_1946: 'sowMdfIdf',
+      };
+      var mapped = {};
+      for (var sk in SALES_MAP) {
+        if (jr[sk] != null && jr[sk] !== '') mapped[SALES_MAP[sk]] = jr[sk];
+        if (jr[sk + '_ids']) mapped[SALES_MAP[sk] + 'Ids'] = jr[sk + '_ids'];
+      }
+      // Top-level JSON fields as fallback
+      if (!mapped.sowProduct && revJson.productName) mapped.sowProduct = revJson.productName;
 
       if (action === 'add') {
-        // Overlay revision data onto the row as sow* params so the
-        // add modal prefills from the revision record, not the SOW.
         row._revOverlay = {
-          sowProduct:      revData.productName || row.sowProduct || '',
-          sowQty:          revData.qty || row.sowQty || '',
-          sowFee:          revData.rate || row.sowFee || '',
-          sowLaborDesc:    revData.laborDesc || row.sowLaborDesc || '',
-          sowExistCabling: revData.bidExistCabling || row.sowExistCabling || '',
-          sowPlenum:       revData.bidPlenum || row.sowPlenum || '',
-          sowExterior:     revData.bidExterior || row.sowExterior || '',
-          sowDropLength:   revData.bidDropLength || row.sowDropLength || '',
-          sowConduit:      revData.bidConduit || row.sowConduit || '',
-          sowMdfIdf:       revData.bidMdfIdf || row.sowMdfIdf || '',
-          sowMdfIdfIds:    revData.bidMdfIdfIds || row.sowMdfIdfIds || [],
+          sowProduct:      mapped.sowProduct || row.sowProduct || '',
+          sowQty:          mapped.sowQty || row.sowQty || '',
+          sowFee:          mapped.sowFee || row.sowFee || '',
+          sowLaborDesc:    mapped.sowLaborDesc || row.sowLaborDesc || '',
+          sowExistCabling: mapped.sowExistCabling || row.sowExistCabling || '',
+          sowPlenum:       mapped.sowPlenum || row.sowPlenum || '',
+          sowExterior:     mapped.sowExterior || row.sowExterior || '',
+          sowDropLength:   mapped.sowDropLength || row.sowDropLength || '',
+          sowConduit:      mapped.sowConduit || row.sowConduit || '',
+          sowMdfIdf:       mapped.sowMdfIdf || row.sowMdfIdf || '',
+          sowMdfIdfIds:    mapped.sowMdfIdfIds || row.sowMdfIdfIds || [],
         };
       } else if (action !== 'remove') {
-        // For REVISE: merge revision data into a copy of the cell
+        // For REVISE: merge JSON values into the cell using bid logical keys
+        var BID_MAP = {
+          field_1949: 'productName', field_1964: 'qty', field_2150: 'rate',
+          field_2020: 'laborDesc', field_2461: 'bidExistCabling',
+          field_1984: 'bidExterior', field_1983: 'bidPlenum',
+          field_1965: 'bidDropLength', field_2035: 'bidConduit',
+          field_1946: 'bidMdfIdf',
+        };
         var cell = row.cellsByPackage[pkgId];
         if (cell) {
-          for (var rk in revData) {
-            if (revData[rk] != null && revData[rk] !== '') cell[rk] = revData[rk];
+          for (var bk in BID_MAP) {
+            if (jr[bk] != null && jr[bk] !== '') cell[BID_MAP[bk]] = jr[bk];
+            if (jr[bk + '_ids']) cell[BID_MAP[bk] + 'Ids'] = jr[bk + '_ids'];
           }
         }
       }
