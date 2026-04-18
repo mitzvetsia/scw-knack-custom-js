@@ -161,12 +161,6 @@
     var existing = pending[id];
     if (existing && existing.action === 'remove') return;
 
-    // Skip items with no survey association (field_2586=0) — nothing for ops to apply
-    if (base && parseFloat(base._addCount) === 0) {
-      if (CFG.debug) console.log('[SalesCR] Skipping CR for', id, '— no survey item (field_2586=0)');
-      return;
-    }
-
     // Diff tracked fields against baseline; capture IDs for connection fields
     var changes = {};
     var newIds  = {};   // fk → [ids] for connection fields that changed
