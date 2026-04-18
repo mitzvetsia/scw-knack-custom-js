@@ -14227,6 +14227,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
       '.scw-bid-cr-modal__checkbox-item input { margin: 0; cursor: pointer; }',
       '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; flex: 1; }',
+      '.scw-bid-cr-modal__conn-info { font-size: 11px; color: #94a3b8; font-style: italic; white-space: nowrap; }',
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
       '}',
@@ -14410,6 +14411,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             if (rec.noBid) cbLabel.style.fontStyle = 'italic';
             if (lockedIdSet[rec.id]) cbLabel.style.opacity = '0.6';
             item.appendChild(cbLabel);
+            if (rec.currentConnTo) {
+              var connInfo = el('span', 'scw-bid-cr-modal__conn-info', '\u2192 ' + rec.currentConnTo);
+              item.appendChild(connInfo);
+            }
             inp.appendChild(item);
           }
         }
@@ -16712,12 +16717,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
         var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items — skip if claimed elsewhere
-        if (nbIsCamReader) {
-          console.log('[ClaimedDevices] noBid cam/reader:', cr.id, nbLbl, 'claimed?', !!claimed[cr.id]);
-        }
-        if (nbIsCamReader && !seenDev[cr.id] && !claimed[cr.id]) {
+        if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
-          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id, currentConnTo: null });
         }
         // Connected To: noBid items with mapConnections flag (field_2231)
         var nbMapConn = /^yes$/i.test(String(cr.sowMapConn || '').trim());
@@ -16739,13 +16741,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
 
         var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
-        var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
-        // Connected Devices: Camera/Reader with no existing "Connected To",
-        // not claimed by another record, or currently selected on this record
-        if (!seenDev[cc.id] && ((isCamReader && connToBlank && !claimed[cc.id]) || curDevSet[cc.id])) {
+        // Connected Devices: show ALL Camera/Reader items with current connection info
+        if (isCamReader && !seenDev[cc.id]) {
           seenDev[cc.id] = true;
-          connDevOpts.push({ id: cc.id, identifier: lbl });
+          var connTo = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+          connDevOpts.push({
+            id: cc.id,
+            identifier: lbl,
+            currentConnTo: connTo || null,
+          });
         }
 
         // Connected To: items where field_2374 (mapConnections) is Yes, or currently selected
@@ -17204,7 +17209,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
           if (cr.proposalBucketId === CAM_READER && !seenDev2[cc.id]) {
             seenDev2[cc.id] = true;
-            connDevOpts2.push({ id: cc.id, identifier: lbl });
+            var connTo2 = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+            connDevOpts2.push({ id: cc.id, identifier: lbl, currentConnTo: connTo2 || null });
           }
           if (cc.bidMapConn === 'Yes' && !seenTo2[cc.id]) {
             seenTo2[cc.id] = true;
@@ -40509,12 +40515,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.' + WARN_CLS + ' {',
       '  display: flex; align-items: center; gap: 5px;',
       '  margin-top: 4px; padding: 4px 8px;',
-      '  background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;',
-      '  font-size: 11px; font-weight: 500; color: #991b1b;',
+      '  font-size: 11px; font-weight: 500; color: #b45309;',
       '}',
       '.' + WARN_CLS + ' svg {',
       '  flex-shrink: 0; width: 14px; height: 14px;',
-      '  stroke: #dc2626; fill: none;',
+      '  stroke: #b45309; fill: none;',
       '}',
     ].join('\n');
     document.head.appendChild(s);

@@ -582,12 +582,9 @@
         }
         var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items — skip if claimed elsewhere
-        if (nbIsCamReader) {
-          console.log('[ClaimedDevices] noBid cam/reader:', cr.id, nbLbl, 'claimed?', !!claimed[cr.id]);
-        }
-        if (nbIsCamReader && !seenDev[cr.id] && !claimed[cr.id]) {
+        if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
-          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id, currentConnTo: null });
         }
         // Connected To: noBid items with mapConnections flag (field_2231)
         var nbMapConn = /^yes$/i.test(String(cr.sowMapConn || '').trim());
@@ -609,13 +606,16 @@
         }
 
         var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
-        var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
-        // Connected Devices: Camera/Reader with no existing "Connected To",
-        // not claimed by another record, or currently selected on this record
-        if (!seenDev[cc.id] && ((isCamReader && connToBlank && !claimed[cc.id]) || curDevSet[cc.id])) {
+        // Connected Devices: show ALL Camera/Reader items with current connection info
+        if (isCamReader && !seenDev[cc.id]) {
           seenDev[cc.id] = true;
-          connDevOpts.push({ id: cc.id, identifier: lbl });
+          var connTo = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+          connDevOpts.push({
+            id: cc.id,
+            identifier: lbl,
+            currentConnTo: connTo || null,
+          });
         }
 
         // Connected To: items where field_2374 (mapConnections) is Yes, or currently selected
@@ -1074,7 +1074,8 @@
           var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
           if (cr.proposalBucketId === CAM_READER && !seenDev2[cc.id]) {
             seenDev2[cc.id] = true;
-            connDevOpts2.push({ id: cc.id, identifier: lbl });
+            var connTo2 = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+            connDevOpts2.push({ id: cc.id, identifier: lbl, currentConnTo: connTo2 || null });
           }
           if (cc.bidMapConn === 'Yes' && !seenTo2[cc.id]) {
             seenTo2[cc.id] = true;

@@ -22,12 +22,11 @@
       '.' + WARN_CLS + ' {',
       '  display: flex; align-items: center; gap: 5px;',
       '  margin-top: 4px; padding: 4px 8px;',
-      '  background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;',
-      '  font-size: 11px; font-weight: 500; color: #991b1b;',
+      '  font-size: 11px; font-weight: 500; color: #b45309;',
       '}',
       '.' + WARN_CLS + ' svg {',
       '  flex-shrink: 0; width: 14px; height: 14px;',
-      '  stroke: #dc2626; fill: none;',
+      '  stroke: #b45309; fill: none;',
       '}',
     ].join('\n');
     document.head.appendChild(s);
