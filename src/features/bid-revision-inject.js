@@ -1581,15 +1581,42 @@
    */
   function submitRevisionAction(revisionId, action, reason, wrapEl, extra) {
     extra = extra || {};
+
+    // Build full item data from the revision record
+    var revEntry = null;
+    var result = buildRevisionMap();
+    var allEntries = [];
+    var siIds = Object.keys(result.map);
+    for (var mi = 0; mi < siIds.length; mi++) {
+      var arr = result.map[siIds[mi]];
+      for (var ai = 0; ai < arr.length; ai++) allEntries.push(arr[ai]);
+    }
+    for (var oi = 0; oi < result.orphaned.length; oi++) allEntries.push(result.orphaned[oi]);
+    for (var ei = 0; ei < allEntries.length; ei++) {
+      if (allEntries[ei].id === revisionId) { revEntry = allEntries[ei]; break; }
+    }
+
+    var item = revEntry ? buildRevisionItem(revEntry) : { lineItemId: revisionId };
+
     var payload = {
       actionType:  'revision_response',
-      revisionId:  revisionId,
+      action:      action,
       outcome:     extra.outcome || action,
       timestamp:   new Date().toISOString(),
+      totalItems:  1,
+      revisionRequests: [{
+        revisionRequestId: (revEntry && revEntry.parentRequestId) || '',
+        items: [item],
+      }],
     };
     if (reason)         payload.reason   = reason;
     if (extra.modified) payload.modified = extra.modified;
     if (extra.notes)    payload.notes    = extra.notes;
+
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
 
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
@@ -2434,7 +2461,15 @@
     if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
     var item = json ? JSON.parse(JSON.stringify(json)) : {};
     item.lineItemId = rev.id;
+    item.parentRequestId = rev.parentRequestId || '';
     if (!item.action) item.action = 'revise';
+    // Include the pre-built HTML card + plain text from the revision record
+    if (rev.changeHtml) item.html = rev.changeHtml;
+    if (rev.changes && rev.changes.length && !item.fields) {
+      item.fields = rev.changes.map(function (c) {
+        return { label: c.label, to: c.value };
+      });
+    }
     return item;
   }
 
@@ -2461,11 +2496,18 @@
     for (var k = 0; k < keys.length; k++) revisionRequests.push(byParent[keys[k]]);
 
     var payload = {
+      actionType: 'revision_response',
       action: action,
       timestamp: new Date().toISOString(),
       totalItems: revs.length,
       revisionRequests: revisionRequests,
     };
+
+    // Add user info
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
 
     console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
 
