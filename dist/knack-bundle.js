@@ -37202,6 +37202,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     spinner.textContent = '\u23F3 Processing\u2026';
     wrapEl.appendChild(spinner);
 
+    // Update field_2645 directly first, then fire webhook
+    var directStatus = {};
+    directStatus['field_2645'] = extra.outcome === 'rejected' ? 'Rejected' : 'Accepted';
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revisionId),
+      type: 'PUT',
+      data: JSON.stringify(directStatus),
+      success: function () { console.log('[BidRevInject] Status updated:', revisionId); },
+      error: function () { console.warn('[BidRevInject] Status update failed:', revisionId); },
+    });
+
     SCW.knackAjax({
       url:  webhookUrl,
       type: 'POST',
@@ -38198,37 +38209,49 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
 
-    SCW.knackAjax({
-      url: REV_ACTION_WEBHOOK,
-      type: 'POST',
-      data: JSON.stringify(payload),
-      success: function () {
-        btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
-        refreshAfterAction();
-      },
-      error: function (xhr) {
-        if (xhr && xhr.status === 0) {
-          btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
-          refreshAfterAction();
-        } else {
-          btn.textContent = 'Failed \u2014 retry';
-          btn.disabled = false;
-        }
-      }
-    });
-  }
+    // 1. Update field_2645 on each revision line item directly
+    var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
+    var statusDone = 0;
+    var statusTotal = revs.length;
 
-  function refreshAfterAction() {
-    setTimeout(function () {
-      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-        Knack.views[CFG.revisionView].model.fetch();
-      }
-      for (var t = 0; t < CFG.targetViews.length; t++) {
-        if (Knack.views[CFG.targetViews[t]] && Knack.views[CFG.targetViews[t]].model) {
-          Knack.views[CFG.targetViews[t]].model.fetch();
+    function onAllStatusUpdated() {
+      // 2. Fire webhook (fire-and-forget)
+      SCW.knackAjax({
+        url: REV_ACTION_WEBHOOK,
+        type: 'POST',
+        data: JSON.stringify(payload),
+      });
+
+      btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
+
+      // 3. Refresh view_3823 → triggers re-inject
+      setTimeout(function () {
+        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+          Knack.views[CFG.revisionView].model.fetch();
         }
-      }
-    }, 3000);
+        for (var t = 0; t < CFG.targetViews.length; t++) {
+          if (Knack.views[CFG.targetViews[t]] && Knack.views[CFG.targetViews[t]].model) {
+            Knack.views[CFG.targetViews[t]].model.fetch();
+          }
+        }
+      }, 1000);
+    }
+
+    var statusData = {};
+    statusData['field_2645'] = statusVal;
+    for (var si = 0; si < revs.length; si++) {
+      (function (revId) {
+        SCW.knackAjax({
+          url: SCW.knackRecordUrl(CFG.revisionView, revId),
+          type: 'PUT',
+          data: JSON.stringify(statusData),
+          success: function () { statusDone++; if (statusDone >= statusTotal) onAllStatusUpdated(); },
+          error: function () { statusDone++; if (statusDone >= statusTotal) onAllStatusUpdated(); },
+        });
+      })(revs[si].id);
+    }
+
+    if (!statusTotal) onAllStatusUpdated();
   }
 
   /**
