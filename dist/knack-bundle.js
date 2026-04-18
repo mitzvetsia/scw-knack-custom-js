@@ -17872,25 +17872,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             actions.appendChild(rejectBtn);
           }
 
-          // Apply — only for on-bid revise items
-          if (isOnBid && action === 'revise') {
-            var applyChoices = [];
-            for (var ap = 0; ap < packages.length; ap++) {
-              applyChoices.push({
-                label: packages[ap].name,
-                attrs: {
-                  'data-sr-action': 'apply',
-                  'data-rev-id': rev.id,
-                  'data-sow-item-id': rev.sowItemId,
-                  'data-rev-json': revJsonStr,
-                }
-              });
-            }
-            actions.appendChild(buildSROverflow('Apply', 'adopt', applyChoices));
-          }
-
-          // Not on bid + revise: show Clear button
-          if (!isOnBid && action === 'revise') {
+          // Revise items: show Clear button (on-bid and not-on-bid)
+          if (action === 'revise') {
             var ackBtn = document.createElement('button');
             ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
             ackBtn.textContent = 'Clear';
