@@ -24,7 +24,6 @@
       '  margin-top: 4px; padding: 4px 8px;',
       '  background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px;',
       '  font-size: 11px; font-weight: 500; color: #991b1b;',
-      '  width: 100%;',
       '}',
       '.' + WARN_CLS + ' svg {',
       '  flex-shrink: 0; width: 14px; height: 14px;',
@@ -114,7 +113,7 @@
           warnMsg.className = WARN_CLS;
           warnMsg.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
             + '<span>\u201c' + connLabel + '\u201d is ' + reason + '</span>';
-          connFieldWrap.appendChild(warnMsg);
+          connFieldWrap.after(warnMsg);
         }
 
         var warnSlot = wsRow.querySelector('.scw-ws-warn-slot');
