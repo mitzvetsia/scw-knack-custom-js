@@ -33245,6 +33245,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var id = attrs.id;
       if (!id) continue;
       if (pending[id]) continue;
+      if (baseline[id]) continue;
 
       var snap = {};
       for (var f = 0; f < TF.length; f++) {
