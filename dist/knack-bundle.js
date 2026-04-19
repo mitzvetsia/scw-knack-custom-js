@@ -8819,6 +8819,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   $(document).on('knack-scene-render.any' + NS, function (event, scene) {
     if (scene.key !== SCENE_ID) {
       document.body.classList.remove('scw-hide-crumbtrail');
+      var oldBtn = document.getElementById(BTN_ID);
+      if (oldBtn) oldBtn.remove();
     }
   });
 
