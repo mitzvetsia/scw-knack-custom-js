@@ -28842,9 +28842,10 @@ td.${P}-sum-move {
   min-width: 44px;
   letter-spacing: 0;
 }
-/* Hide the empty label placeholders inside stacked chit groups so the
-   three chits sit flush without label-height gaps between them. */
-.${P}-sum-group--chit-stack .${P}-sum-group--cabling > .${P}-sum-label {
+/* Keep the first chit's empty label spacer so the top of the stack
+   aligns with the top of other labeled summary inputs (Sub Bid, +Hrs,
+   etc.); hide the rest so the chits below stack flush. */
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling:not(:first-child) > .${P}-sum-label {
   display: none;
 }
 
