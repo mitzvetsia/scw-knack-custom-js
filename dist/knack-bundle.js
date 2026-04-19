@@ -33616,6 +33616,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (del) {
           del.style.visibility = shouldHide ? 'hidden' : '';
         }
+        // Also disable the KTL bulk-edit row checkbox so this row can't
+        // be picked up by "Delete Selected: N". Uncheck it first in case
+        // it was already selected before the protection kicked in.
+        var cbCell = card.querySelector('.' + P + '-sum-check');
+        var cb = cbCell ? cbCell.querySelector('input[type="checkbox"]') : null;
+        if (cb) {
+          if (shouldHide) {
+            cb.checked = false;
+            cb.disabled = true;
+            cb.setAttribute('data-scw-bulk-blocked', '1');
+            cbCell.style.visibility = 'hidden';
+            cbCell.title = 'Cannot delete: line items exist';
+          } else if (cb.getAttribute('data-scw-bulk-blocked') === '1') {
+            cb.disabled = false;
+            cb.removeAttribute('data-scw-bulk-blocked');
+            cbCell.style.visibility = '';
+            cbCell.removeAttribute('title');
+          }
+        }
       }
     });
   }
