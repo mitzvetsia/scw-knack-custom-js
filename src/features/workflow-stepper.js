@@ -135,6 +135,14 @@
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      /* Completed + locked (no re-trigger): keep normal appearance,
+         only block clicks. No opacity fade, no gray icon. */
+      '.scw-step-action.is-completed.is-disabled {' +
+      '  opacity: 1; cursor: default; pointer-events: none;' +
+      '}' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
+      '  color: #16a34a; opacity: 1;' +
+      '}' +
 
       /* ── Hide original menu view ── */
       '.scw-step-menu-hidden { display: none !important; }';
