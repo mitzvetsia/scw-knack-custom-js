@@ -4519,7 +4519,7 @@ window.SCW = window.SCW || {};
       type: 'accordion',
       viewKey: 'view_2924',
       label: 'Project Playbook',
-      completed: { field: 'field_1747', value: 'No' }
+      completed: { field: 'field_1747', value: 'Complete' }
     },
     {
       type: 'action',
@@ -4528,7 +4528,7 @@ window.SCW = window.SCW || {};
       menuView: 'view_3828',
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
-      disabled: { field: 'field_1747', notValue: 'No', message: 'Complete the Project Playbook first' }
+      disabled: { field: 'field_1747', notValue: 'Complete', message: 'Complete the Project Playbook first' }
     },
     {
       type: 'accordion',
