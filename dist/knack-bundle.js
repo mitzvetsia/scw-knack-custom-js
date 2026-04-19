@@ -27816,7 +27816,9 @@ $(".kn-navigation-bar").hide();
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ],
-        // ── Override: cameras/readers rows mirror view_3313's config ──
+        // ── Override: cameras/readers rows mirror view_3313's config.
+        //    Only includes fields that exist on view_3610's raw table
+        //    (MCB/Cat/Vars/Existing Cabling are view_3313-only). ──
         bucketOverride: {
           overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
           fields: {
@@ -27824,12 +27826,7 @@ $(".kn-navigation-bar").hide();
             label:            { key: 'field_1950', type: 'readOnly',    summary: true },
             product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
             sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-            mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
             laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-            laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
-            laborVariables:   { key: 'field_1972', type: 'multiChip',   summary: true, label: 'Vars', group: 'right', groupCls: 'sum-group--vars',
-                                options: ['Exterior', 'High Traffic', 'Plenum'], feeTrigger: true },
-            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
             subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
             plusHrs:          { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
             plusMat:          { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
@@ -27848,8 +27845,7 @@ $(".kn-navigation-bar").hide();
                                 linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
             subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
           },
-          summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
-                           'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+          summaryLayout: ['laborDescription', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
           detailLayout: {
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
             right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
