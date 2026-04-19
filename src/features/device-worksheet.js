@@ -6159,7 +6159,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             cb.disabled = true;
             cb.setAttribute('data-scw-bulk-blocked', '1');
             cbCell.style.visibility = 'hidden';
-            cbCell.title = 'Cannot delete: line items exist';
+            cbCell.title = 'Cannot delete — line item is on a survey';
           } else if (cb.getAttribute('data-scw-bulk-blocked') === '1') {
             cb.disabled = false;
             cb.removeAttribute('data-scw-bulk-blocked');
