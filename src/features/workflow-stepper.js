@@ -275,10 +275,64 @@
     }
   }
 
+  // ── Playbook form display rules (view_2924) ──────────────
+  var PLAYBOOK_VIEW = 'view_2924';
+  var ACCESS_CONTROL_ID = '6977d26243bab906665fe872';
+  var CAMERAS_ID = '6977d25a3a701a1a3e4c9d70';
+
+  function getConnectionVal(fieldKey) {
+    var hidden = document.querySelector('#' + PLAYBOOK_VIEW + ' input.connection[name="' + fieldKey + '"]');
+    if (hidden) {
+      var v = decodeURIComponent(hidden.value || '').replace(/"/g, '').trim();
+      if (v) return v;
+    }
+    var select = document.getElementById(PLAYBOOK_VIEW + '-' + fieldKey);
+    if (select) return (select.value || '').trim();
+    return '';
+  }
+
+  function getRadioVal(fieldKey) {
+    var checked = document.querySelector('#' + PLAYBOOK_VIEW + ' input[name="' + PLAYBOOK_VIEW + '-' + fieldKey + '"]:checked');
+    return checked ? checked.value : '';
+  }
+
+  function setFieldVisible(fieldKey, visible) {
+    var wrap = document.querySelector('#' + PLAYBOOK_VIEW + ' #kn-input-' + fieldKey);
+    if (wrap) wrap.style.display = visible ? '' : 'none';
+  }
+
+  function applyPlaybookRules() {
+    var projectType = getConnectionVal('field_2228');
+
+    // field_1756 (locking hardware): only for Access Control
+    setFieldVisible('field_1756', projectType === ACCESS_CONTROL_ID);
+
+    // field_1752 (multiple buildings): only for Cameras
+    setFieldVisible('field_1752', projectType === CAMERAS_ID);
+
+    // field_1753 (building assumptions): only when field_1752 = Yes
+    var multiBuilding = getRadioVal('field_1752');
+    setFieldVisible('field_1753', projectType === CAMERAS_ID && /^yes$/i.test(multiBuilding));
+  }
+
+  function bindPlaybookRules() {
+    var form = document.getElementById(PLAYBOOK_VIEW);
+    if (!form || form.getAttribute('data-scw-playbook-rules') === '1') return;
+    form.setAttribute('data-scw-playbook-rules', '1');
+
+    // Connection field change (Chosen.js)
+    $(form).on('change' + NS, 'select[name="field_2228"], input[name="field_2228"]', applyPlaybookRules);
+    // Radio change for field_1752
+    $(form).on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
+
+    applyPlaybookRules();
+  }
+
   // ── Init ─────────────────────────────────────────────────
   function init() {
     injectStyles();
     setTimeout(applySteps, 500);
+    setTimeout(bindPlaybookRules, 600);
   }
 
   // Collapse accordion and refresh steps after form submit
@@ -299,6 +353,9 @@
 
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender(SOURCE_VIEW, init, NS);
+    SCW.onViewRender(PLAYBOOK_VIEW, function () {
+      setTimeout(bindPlaybookRules, 200);
+    }, NS);
   }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
