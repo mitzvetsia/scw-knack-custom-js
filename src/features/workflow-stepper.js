@@ -28,7 +28,7 @@
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
-      disabled: { field: 'field_2723', notValue: 'Yes', message: 'Not available yet' }
+      disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
     },
     {
       type: 'action',
