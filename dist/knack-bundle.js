@@ -1776,12 +1776,11 @@ window.SCW = window.SCW || {};
       if (previewMenu) {
         var previewLink = previewMenu.querySelector('a.kn-link-page');
         if (previewLink) {
-          var previewBtn = document.createElement('a');
-          previewBtn.href = previewLink.getAttribute('href') || '#';
-          previewBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;margin-top:2px;';
-          previewBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-          previewBtn.appendChild(document.createTextNode('Preview Proposal'));
-          wrap.appendChild(previewBtn);
+          var previewHdr = document.createElement('a');
+          previewHdr.href = previewLink.getAttribute('href') || '#';
+          previewHdr.style.cssText = 'display:block;font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-top:10px;text-decoration:none;';
+          previewHdr.textContent = 'Preview Draft Proposal';
+          wrap.appendChild(previewHdr);
         }
       }
 
