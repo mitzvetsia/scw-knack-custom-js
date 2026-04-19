@@ -28,14 +28,16 @@
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
-      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Not available yet' }
+      disabled: { field: 'field_2723', notValue: 'Yes', message: 'Not available yet' }
     },
     {
-      type: 'accordion',
-      viewKey: 'view_3862',
-      label: 'Site Survey',
+      type: 'action',
+      id: 'review-site-survey',
+      label: 'Review Site Survey Report',
+      menuView: 'view_3862',
+      insertAfter: 'view_3853',
       activeIcon: 'eye',
-      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Not available yet' }
+      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Site survey not yet requested' }
     }
   ];
 
