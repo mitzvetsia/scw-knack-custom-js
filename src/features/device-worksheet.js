@@ -4527,17 +4527,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (moveDesc && moveDesc.type === 'moveIcon') {
       var moveTd = findCell(tr, moveDesc.key);
       if (moveTd) {
-        if (!moveTd.querySelector('.fa-home')) {
+        if (!moveTd.querySelector('.fa-exchange')) {
           moveTd.innerHTML =
-            '<i class="fa fa-home" aria-hidden="true" title="Change MDF/IDF" ' +
-              'style="font-size:20px; line-height:1; color:rgba(237,131,38,1); cursor:pointer;"></i>';
+            '<i class="fa fa-exchange" aria-hidden="true" title="Change MDF/IDF" ' +
+              'style="font-size:18px; line-height:1; color:rgba(237,131,38,1); cursor:pointer;"></i>';
         }
         moveTd.classList.add(P + '-sum-move');
         var moveWrap = document.createElement('span');
         moveWrap.className = P + '-sum-group ' + P + '-sum-group--move';
         var moveLabel = document.createElement('span');
         moveLabel.className = P + '-sum-label';
-        moveLabel.innerHTML = '&nbsp;';
+        moveLabel.textContent = 'IDF';
         moveWrap.appendChild(moveLabel);
         moveWrap.appendChild(moveTd);
         rightGroup.appendChild(moveWrap);
