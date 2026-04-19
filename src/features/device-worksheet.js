@@ -4527,15 +4527,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (moveDesc && moveDesc.type === 'moveIcon') {
       var moveTd = findCell(tr, moveDesc.key);
       if (moveTd) {
-        if (!moveTd.querySelector('.fa-server')) {
+        if (!moveTd.querySelector('.fa-home')) {
           moveTd.innerHTML =
-            '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
-              '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
-              '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
-                '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-                '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-              '</span>' +
-            '</span>';
+            '<i class="fa fa-home" aria-hidden="true" title="Change MDF/IDF" ' +
+              'style="font-size:20px; line-height:1; color:rgba(237,131,38,1); cursor:pointer;"></i>';
         }
         moveTd.classList.add(P + '-sum-move');
         var moveWrap = document.createElement('span');
