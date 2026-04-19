@@ -364,6 +364,7 @@
             product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
             sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
             laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
             exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
             plenumChit:       { key: 'field_1983', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Plenum' },
             subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
@@ -384,7 +385,7 @@
                                 linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
             subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
           },
-          summaryLayout: ['laborDescription', 'exteriorChit', 'plenumChit', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+          summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
           detailLayout: {
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
             right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
