@@ -46,9 +46,12 @@
 /* ── Side-by-side layout ── */
 .${P}-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
-  align-items: stretch;
+  align-items: start;
+}
+@media (max-width: 600px) {
+  .${P}-layout { grid-template-columns: 1fr; }
 }
 .${P}-layout-left {
   display: flex;
