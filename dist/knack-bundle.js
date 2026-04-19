@@ -35621,11 +35621,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
+  // Check if the sales CR module should be active (field_2706 = Yes on proposal view)
+  function isModuleActive() {
+    var $pv = $('#' + CFG.proposalView);
+    if (!$pv.length) return false;
+    var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').trim();
+    return /^yes$/i.test(val);
+  }
+
   var _rehydrated = false;
 
   SCW.onViewRender(CFG.worksheetView, function () {
-    S.setOnPage(true);
     _activeScene = Knack.router.current_scene_key || '';
+
+    // Only activate if field_2706 = Yes
+    if (!isModuleActive()) {
+      S.setOnPage(false);
+      return;
+    }
+
+    S.setOnPage(true);
     ns.injectStyles();
     ns.buildBaseline();
 
@@ -35686,6 +35703,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   SCW.onViewRender(CFG.proposalView, function () {
     setTimeout(function () {
+      // Re-check activation — field_2706 may have rendered after worksheet
+      if (isModuleActive() && !S.onPage()) {
+        S.setOnPage(true);
+        ns.injectStyles();
+        ns.buildBaseline();
+        if (!_rehydrated) {
+          _rehydrated = true;
+          ns.detectSowRecordId();
+          ns.rehydrateFromKnack();
+        }
+        refresh();
+      }
       ns.checkAddMode();
       if (S.isAddMode() && Object.keys(S.baseline()).length) {
         ns.detectAddRecords();
