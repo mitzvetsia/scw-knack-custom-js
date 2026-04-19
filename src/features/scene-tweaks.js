@@ -12,6 +12,15 @@
    SCENE 1116 — Sales Edit Proposal
    ══════════════════════════════════════════════════════════════ */
 
+/* ── Hide scene until transforms settle, then fade in ── */
+#kn-scene_1116 {
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+#kn-scene_1116.scw-scene-ready {
+  opacity: 1;
+}
+
 /* ── Totals details view (view_3418) — card ── */
 #view_3418 {
   background: #fff;
@@ -265,30 +274,225 @@
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
 
     view.appendChild(layout);
+
+    // ── Published proposal info (from view_3814) ──
+    injectProposalInfo(layout);
+  }
+
+  function getProposalFromModel() {
+    var view = Knack.views.view_3814;
+    if (!view || !view.model) return null;
+    var data = view.model.data;
+    if (!data) return null;
+
+    // Backbone Collection → .models array
+    var records = data.models || data;
+    // model.toJSON() fallback
+    if (typeof data.toJSON === 'function' && (!records || !records.length)) {
+      records = data.toJSON();
+    }
+    if (!records || !records.length) return null;
+
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i].attributes || records[i];
+      var status = (attrs.field_2658 || '').replace(/<[^>]*>/g, '').trim();
+      if (/published/i.test(status)) return attrs;
+    }
+    return null;
+  }
+
+  function getProposalFromDOM() {
+    var viewEl = document.getElementById('view_3814');
+    if (!viewEl) return null;
+    var rows = viewEl.querySelectorAll('tbody tr');
+    if (!rows.length) return null;
+
+    for (var i = 0; i < rows.length; i++) {
+      var statusCell = rows[i].querySelector('td.field_2658');
+      if (!statusCell) continue;
+      var statusText = (statusCell.textContent || '').trim();
+      if (!/published/i.test(statusText)) continue;
+
+      var nameCell = rows[i].querySelector('td.field_2665');
+      var expCell = rows[i].querySelector('td.field_2659');
+      var pdfCell = rows[i].querySelector('td.field_2681');
+      var linkEl = rows[i].querySelector('a.kn-link-page');
+
+      var pdfUrl = '';
+      var pdfName = '';
+      if (pdfCell) {
+        var pdfLink = pdfCell.querySelector('a');
+        if (pdfLink) {
+          pdfUrl = pdfLink.getAttribute('href') || '';
+          pdfName = (pdfLink.textContent || '').trim();
+        }
+      }
+
+      return {
+        proposalName: nameCell ? (nameCell.textContent || '').trim() : '',
+        expDate: expCell ? (expCell.textContent || '').trim() : '',
+        pdfUrl: pdfUrl,
+        pdfName: pdfName,
+        viewLink: linkEl ? (linkEl.getAttribute('href') || '') : '',
+        id: rows[i].id || ''
+      };
+    }
+    return null;
+  }
+
+  function injectProposalInfo(container) {
+    var old = container.querySelector('.scw-totals-proposal');
+    if (old) old.remove();
+
+    try {
+      var proposalName, expDate, pdfUrl, pdfName, viewLink;
+
+      // DOM scrape first — most reliable since we can see the rendered table
+      var domData = getProposalFromDOM();
+      if (domData) {
+        proposalName = domData.proposalName;
+        expDate = domData.expDate;
+        pdfUrl = domData.pdfUrl;
+        pdfName = domData.pdfName;
+        viewLink = domData.viewLink;
+      }
+
+      // Fall back to Knack model if DOM didn't yield results
+      if (!proposalName && !pdfUrl) {
+        var pub = getProposalFromModel();
+        if (pub) {
+          proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
+          expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
+          pdfUrl = '';
+          pdfName = '';
+          var pdfRaw = pub.field_2681 || '';
+          if (typeof pdfRaw === 'string') {
+            var m = pdfRaw.match(/href="([^"]+)"/);
+            if (m) pdfUrl = m[1];
+            var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
+            if (m2) pdfName = m2[1];
+          }
+          if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
+            pdfUrl = pub.field_2681_raw.url;
+            pdfName = pub.field_2681_raw.filename || 'Download PDF';
+          }
+          viewLink = '';
+          var viewEl = document.getElementById('view_3814');
+          if (viewEl && pub.id) {
+            var row = viewEl.querySelector('tr#' + pub.id);
+            if (row) {
+              var link = row.querySelector('a.kn-link-page');
+              if (link) viewLink = link.getAttribute('href') || '';
+            }
+          }
+        }
+      }
+
+      if (!proposalName && !pdfUrl) return;
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-totals-proposal';
+      wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;text-align:right;padding-right:10px;';
+
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
+      hdr.textContent = 'Published Proposal';
+      wrap.appendChild(hdr);
+
+      if (proposalName) {
+        var nameRow = document.createElement('div');
+        nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
+        if (viewLink) {
+          var nameLink = document.createElement('a');
+          nameLink.href = viewLink;
+          nameLink.textContent = proposalName;
+          nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
+          nameRow.appendChild(nameLink);
+        } else {
+          nameRow.textContent = proposalName;
+        }
+        wrap.appendChild(nameRow);
+      }
+
+      if (expDate) {
+        var expRow = document.createElement('div');
+        expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
+        expRow.textContent = 'Expires: ' + expDate;
+        wrap.appendChild(expRow);
+      }
+
+      if (pdfUrl) {
+        var pdfRow = document.createElement('a');
+        pdfRow.href = pdfUrl;
+        pdfRow.target = '_blank';
+        pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
+        pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+        pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
+        wrap.appendChild(pdfRow);
+      }
+
+      // Pull Preview Proposal link from view_3815
+      var previewMenu = document.getElementById('view_3815');
+      if (previewMenu) {
+        var previewLink = previewMenu.querySelector('a.kn-link-page');
+        if (previewLink) {
+          var previewHdr = document.createElement('a');
+          previewHdr.href = previewLink.getAttribute('href') || '#';
+          previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:10px;text-decoration:none;';
+          previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+          previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
+          wrap.appendChild(previewHdr);
+        }
+      }
+
+      container.appendChild(wrap);
+    } catch (e) {
+      console.warn('[scw-totals] injectProposalInfo error:', e);
+    }
   }
 
   // Expose for external callers (e.g. refresh-view-on-form-submit.js)
   window.SCW = window.SCW || {};
   SCW.restructureTotals = restructureTotals;
 
+  // ── Scene reveal ──
+  var _revealTimer = null;
+  function revealScene() {
+    var scene = document.getElementById('kn-scene_1116');
+    if (scene) scene.classList.add('scw-scene-ready');
+  }
+  function scheduleReveal() {
+    clearTimeout(_revealTimer);
+    _revealTimer = setTimeout(revealScene, 600);
+  }
+
   // ── Bind ──
   // Debounced wrapper so we only run once after all views finish rendering
   var _totalsTimer = null;
   function debouncedTotals() {
     clearTimeout(_totalsTimer);
-    _totalsTimer = setTimeout(restructureTotals, 300);
+    _totalsTimer = setTimeout(function () {
+      restructureTotals();
+      scheduleReveal();
+    }, 300);
   }
 
   if (window.SCW && SCW.onViewRender) {
     // Trigger after the totals container renders
     SCW.onViewRender('view_3418', debouncedTotals, NS);
+    SCW.onViewRender('view_3814', debouncedTotals, NS);
     // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
     }
   } else {
     $(document).ready(function () {
-      setTimeout(restructureTotals, 1000);
+      setTimeout(function () { restructureTotals(); revealScene(); }, 1000);
     });
   }
+
+  // Safety fallback — always reveal after 3s even if views haven't rendered
+  $(document).on('knack-scene-render.scene_1116' + NS, function () {
+    setTimeout(revealScene, 3000);
+  });
 })();

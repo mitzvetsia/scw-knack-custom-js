@@ -77,6 +77,25 @@
       /* Hide the source view entirely */
       '#' + CFG.revisionView + ' { display: none !important; }',
 
+      /* Action button icon (mirrors scw-scr-action-btn from sales CR) */
+      '.scw-scr-action-wrap {',
+      '  display: inline-flex !important; align-items: center !important;',
+      '  justify-content: center !important;',
+      '  flex-shrink: 0; min-width: 22px; padding: 5px 4px 0 4px;',
+      '}',
+      '.scw-scr-action-btn {',
+      '  display: inline-flex !important; align-items: center !important; justify-content: center !important;',
+      '  width: 26px !important; height: 26px !important; border-radius: 5px !important;',
+      '  border: none !important; background: #e2e8f0 !important;',
+      '  color: #64748b !important; cursor: pointer !important;',
+      '  line-height: 1 !important; padding: 0 !important;',
+      '  box-shadow: none !important; min-width: 0 !important;',
+      '  transition: all .15s;',
+      '}',
+      '.scw-scr-action-btn--revise { background: #3b82f6 !important; color: #fff !important; }',
+      '.scw-scr-action-btn--add { background: #16a34a !important; color: #fff !important; }',
+      '.scw-scr-action-btn--remove { background: #dc2626 !important; color: #fff !important; }',
+
       /* Badge on the summary row */
       '.' + BADGE_CLS + ' {',
       '  display: inline-flex; align-items: center; gap: 4px;',
@@ -875,7 +894,15 @@
       }
     }
 
-    return { id: rec.id, editHref: editHref, changeHtml: changeHtml, changeJson: changeJson, changes: changes };
+    return {
+      id: rec.id,
+      parentRequestId: rec._parentRequestId || '',
+      parentRequestLabel: rec._parentRequestLabel || '',
+      editHref: editHref,
+      changeHtml: changeHtml,
+      changeJson: changeJson,
+      changes: changes,
+    };
   }
 
   /**
@@ -925,10 +952,12 @@
 
       if (!siId) {
         // No survey item connection — orphaned add request
+        entry.surveyItemId = '';
         orphaned.push(entry);
         continue;
       }
 
+      entry.surveyItemId = siId;
       if (!map[siId]) map[siId] = [];
       map[siId].push(entry);
     }
@@ -977,6 +1006,18 @@
           }
         }
       }
+      // Extract field_2643 (parent revision request connection)
+      var prCell = tr.querySelector('td.field_2643');
+      if (prCell) {
+        var prSpan = prCell.querySelector('span[data-kn="connection-value"]');
+        if (prSpan) {
+          var prClass = (prSpan.className || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(prClass)) {
+            rec._parentRequestId = prClass;
+            rec._parentRequestLabel = (prSpan.textContent || '').trim();
+          }
+        }
+      }
       // Extract each data field
       var fKeys = Object.keys(CFG.fields);
       for (var fi = 0; fi < fKeys.length; fi++) {
@@ -1010,13 +1051,31 @@
   }
 
   /**
-   * Build the badge element: "N revision(s)"
+   * Build the badge element: colored action icon matching revision type.
+   * Mirrors view_3586's scw-scr-action-btn style.
+   * @param {Array} revisions — array of revision objects for this row
    */
-  function makeBadge(count) {
-    var badge = document.createElement('span');
-    badge.className = BADGE_CLS;
-    badge.textContent = count + ' revision' + (count !== 1 ? 's' : '');
-    return badge;
+  function makeBadge(revisions) {
+    var action = 'revise';
+    if (revisions.length) {
+      var json = revisions[0].changeJson;
+      if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+      if (json && json.action) action = json.action;
+    }
+
+    var iconCls = action === 'add'    ? 'fa-plus'
+                : action === 'remove' ? 'fa-minus-circle'
+                :                       'fa-pencil';
+    var colorCls = action === 'add'    ? 'scw-scr-action-btn--add'
+                 : action === 'remove' ? 'scw-scr-action-btn--remove'
+                 :                       'scw-scr-action-btn--revise';
+
+    var btn = document.createElement('button');
+    btn.className = 'scw-scr-action-btn ' + colorCls;
+    btn.type = 'button';
+    btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
+    btn.title = revisions.length + ' revision' + (revisions.length !== 1 ? 's' : '') + ' — click to expand';
+    return btn;
   }
 
   // ── EDIT MODAL ──────────────────────────────────────────
@@ -1524,15 +1583,42 @@
    */
   function submitRevisionAction(revisionId, action, reason, wrapEl, extra) {
     extra = extra || {};
+
+    // Build full item data from the revision record
+    var revEntry = null;
+    var result = buildRevisionMap();
+    var allEntries = [];
+    var siIds = Object.keys(result.map);
+    for (var mi = 0; mi < siIds.length; mi++) {
+      var arr = result.map[siIds[mi]];
+      for (var ai = 0; ai < arr.length; ai++) allEntries.push(arr[ai]);
+    }
+    for (var oi = 0; oi < result.orphaned.length; oi++) allEntries.push(result.orphaned[oi]);
+    for (var ei = 0; ei < allEntries.length; ei++) {
+      if (allEntries[ei].id === revisionId) { revEntry = allEntries[ei]; break; }
+    }
+
+    var item = revEntry ? buildRevisionItem(revEntry) : { revisionLineItemId: revisionId };
+
     var payload = {
       actionType:  'revision_response',
-      revisionId:  revisionId,
+      action:      action,
       outcome:     extra.outcome || action,
       timestamp:   new Date().toISOString(),
+      totalItems:  1,
+      revisionRequests: [{
+        revisionRequestId: (revEntry && revEntry.parentRequestId) || '',
+        items: [item],
+      }],
     };
     if (reason)         payload.reason   = reason;
     if (extra.modified) payload.modified = extra.modified;
     if (extra.notes)    payload.notes    = extra.notes;
+
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
 
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
@@ -1550,6 +1636,17 @@
     spinner.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#f1f5f9;color:#475569;';
     spinner.textContent = '\u23F3 Processing\u2026';
     wrapEl.appendChild(spinner);
+
+    // Update field_2645 directly first, then fire webhook
+    var directStatus = {};
+    directStatus['field_2645'] = extra.outcome === 'rejected' ? 'Rejected' : 'Accepted';
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revisionId),
+      type: 'PUT',
+      data: JSON.stringify(directStatus),
+      success: function () { console.log('[BidRevInject] Status updated:', revisionId); },
+      error: function () { console.warn('[BidRevInject] Status update failed:', revisionId); },
+    });
 
     SCW.knackAjax({
       url:  webhookUrl,
@@ -1595,6 +1692,12 @@
                   Knack.views[vk].model.fetch();
                 }
               }
+              // Direct re-inject in case model.fetch doesn't trigger view render
+              setTimeout(function () {
+                for (var vi2 = 0; vi2 < CFG.targetViews.length; vi2++) {
+                  inject(CFG.targetViews[vi2]);
+                }
+              }, 1500);
             };
 
             // Listen for view_3823 re-render before refreshing targets
@@ -2134,6 +2237,24 @@
     }
     _injectRetries = 0;
 
+    // Reserve space for action button on ALL rows (prevents layout shift)
+    // Insert AFTER the delete column wrapper (sibling, not child)
+    for (var wi = 0; wi < wsRows.length; wi++) {
+      var wsCard = wsRows[wi].querySelector('.scw-ws-card');
+      if (!wsCard) continue;
+      if (wsCard.querySelector('.scw-scr-action-wrap')) continue;
+      var delBtn = wsCard.querySelector('.scw-ws-sum-delete');
+      if (!delBtn) continue;
+      // The delete button is inside a column wrapper span — insert after that wrapper
+      var delCol = delBtn.parentNode;
+      if (delCol && delCol.parentNode) {
+        var placeholder = document.createElement('span');
+        placeholder.className = 'scw-scr-action-wrap';
+        placeholder.style.alignSelf = 'center';
+        delCol.parentNode.insertBefore(placeholder, delCol.nextSibling);
+      }
+    }
+
     var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
@@ -2148,10 +2269,20 @@
 
       var revisions = revMap[siId];
 
-      // Badge → append to the identity / product area in the summary
-      var identity = card.querySelector('.scw-ws-identity');
-      if (identity) {
-        identity.appendChild(makeBadge(revisions.length));
+      // Action icon → fill the placeholder wrap created above
+      var wrap = card.querySelector('.scw-scr-action-wrap');
+      if (wrap && !wrap.childNodes.length) {
+        var iconBtn = makeBadge(revisions);
+        iconBtn.style.cursor = 'pointer';
+        iconBtn.addEventListener('click', (function (cardEl) {
+          return function (e) {
+            e.stopPropagation();
+            // Toggle the accordion open
+            var chevron = cardEl.querySelector('.scw-ws-chevron');
+            if (chevron) chevron.click();
+          };
+        })(card));
+        wrap.appendChild(iconBtn);
       }
 
       // Revision strip → inside the detail panel (visible when expanded)
@@ -2176,6 +2307,400 @@
 
     // Inject change/add count badges into group headers
     injectGroupBadges(viewEl, siIds, revMap, orphaned);
+
+    // Build floating revision bar (mirrors scw-sales-cr-bar)
+    buildRevisionBar(viewEl, revMap, orphaned);
+  }
+
+  // ── FLOATING REVISION BAR ─────────────────────────────────
+  var REV_BAR_ID = 'scw-rev-bar';
+  var _revBarOpen = false;
+
+  function buildRevisionBar(viewEl, revMap, orphaned) {
+    // Remove existing bar
+    var existing = document.getElementById(REV_BAR_ID);
+    if (existing) existing.remove();
+
+    // Collect all revisions into flat list
+    var allRevs = [];
+    var siIds = Object.keys(revMap);
+    for (var i = 0; i < siIds.length; i++) {
+      var revs = revMap[siIds[i]];
+      for (var r = 0; r < revs.length; r++) allRevs.push(revs[r]);
+    }
+    for (var o = 0; o < orphaned.length; o++) allRevs.push(orphaned[o]);
+
+    if (!allRevs.length) return;
+
+    // Find accordion body to inject into
+    var $view = $(viewEl);
+    var $accBody = $view.closest('.scw-ktl-accordion__body');
+    var container = $accBody.length ? $accBody[0] : viewEl.parentNode;
+
+    var bar = document.createElement('div');
+    bar.id = REV_BAR_ID;
+    bar.style.cssText = 'position:sticky;bottom:0;z-index:100;background:#fff;border-top:2px solid #3b82f6;box-shadow:0 -4px 12px rgba(0,0,0,.1);font:13px/1.3 system-ui,-apple-system,sans-serif;margin-top:8px;';
+
+    // Top row: count + buttons
+    var topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 16px;';
+
+    // Clickable count
+    var countEl = document.createElement('div');
+    countEl.style.cssText = 'font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;cursor:pointer;';
+
+    var chevron = document.createElement('span');
+    chevron.className = 'scw-scr-bar-chevron' + (_revBarOpen ? ' is-open' : '');
+    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+    countEl.appendChild(chevron);
+
+    var numEl = document.createElement('span');
+    numEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;background:#3b82f6;color:#fff;font-size:12px;font-weight:700;padding:0 6px;';
+    numEl.textContent = String(allRevs.length);
+    countEl.appendChild(numEl);
+    countEl.appendChild(document.createTextNode(' pending revision' + (allRevs.length === 1 ? '' : 's')));
+
+    countEl.addEventListener('click', function () {
+      _revBarOpen = !_revBarOpen;
+      var panel = bar.querySelector('.scw-rev-bar-panel');
+      if (panel) panel.style.display = _revBarOpen ? 'flex' : 'none';
+      chevron.className = 'scw-scr-bar-chevron' + (_revBarOpen ? ' is-open' : '');
+    });
+
+    topRow.appendChild(countEl);
+    topRow.appendChild(document.createElement('div')).style.flex = '1';
+
+    // Accept All button
+    var acceptBtn = document.createElement('button');
+    acceptBtn.className = 'scw-scr-bar-btn scw-scr-bar-btn--submit';
+    acceptBtn.textContent = 'Accept All';
+    acceptBtn.style.cssText = 'padding:7px 18px;border:none;border-radius:5px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;background:#16a34a;color:#fff;';
+    acceptBtn.addEventListener('click', function () {
+      if (!window.confirm('Accept all ' + allRevs.length + ' revision(s)?')) return;
+      fireRevisionAction('accept', allRevs, acceptBtn);
+    });
+    topRow.appendChild(acceptBtn);
+
+    // Reject All button
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'scw-scr-bar-btn';
+    rejectBtn.textContent = 'Reject All';
+    rejectBtn.style.cssText = 'padding:7px 18px;border:none;border-radius:5px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;background:#dc2626;color:#fff;';
+    rejectBtn.addEventListener('click', function () {
+      if (!window.confirm('Reject all ' + allRevs.length + ' revision(s)?')) return;
+      fireRevisionAction('reject', allRevs, rejectBtn);
+    });
+    topRow.appendChild(rejectBtn);
+
+    bar.appendChild(topRow);
+
+    // Expandable panel
+    var panel = document.createElement('div');
+    panel.className = 'scw-rev-bar-panel';
+    panel.style.cssText = 'display:' + (_revBarOpen ? 'flex' : 'none') + ';flex-direction:column;gap:6px;border-top:1px solid #e2e8f0;padding:8px 16px 12px;max-height:50vh;overflow-y:auto;';
+
+    for (var j = 0; j < allRevs.length; j++) {
+      var rev = allRevs[j];
+      var json = rev.changeJson;
+      if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+
+      var action = (json && json.action) || 'revise';
+      var cardMod = action === 'remove' ? ' scw-scr-card--remove'
+                  : action === 'add'    ? ' scw-scr-card--add'
+                  :                       ' scw-scr-card--revise';
+
+      var card = document.createElement('div');
+      card.style.cssText = 'margin:0;';
+
+      // Prefer the pre-built HTML card from field_2695
+      if (rev.changeHtml) {
+        card.innerHTML = rev.changeHtml;
+        postProcessHtmlCard(card);
+      } else {
+        // Fallback: structured card
+        card.className = 'scw-scr-card' + cardMod;
+        card.style.cssText = 'margin:0;padding:10px 14px;border-radius:6px;font-size:12px;position:relative;';
+
+        var headerText = action === 'add'    ? 'ADD'
+                       : action === 'remove' ? 'REMOVAL'
+                       :                       'CHANGE';
+        var hdr = document.createElement('div');
+        hdr.className = 'scw-scr-card-header';
+        hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;';
+        hdr.textContent = headerText;
+        if (json && (json.displayLabel || json.productName)) {
+          hdr.textContent += ' \u2014 ' + (json.displayLabel || json.productName);
+        }
+        card.appendChild(hdr);
+
+        if (json && json.fields && json.fields.length) {
+          for (var fi = 0; fi < json.fields.length; fi++) {
+            var f = json.fields[fi];
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+            var fromTo = action === 'revise' && f.from != null
+              ? f.label + ': ' + f.from + ' \u2192 ' + f.to
+              : f.label + ': ' + f.to;
+            row.textContent = fromTo;
+            card.appendChild(row);
+          }
+        } else if (rev.changes && rev.changes.length) {
+          for (var ci = 0; ci < rev.changes.length; ci++) {
+            var ch = rev.changes[ci];
+            var chRow = document.createElement('div');
+            chRow.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+            chRow.textContent = ch.label + ': ' + ch.value;
+            card.appendChild(chRow);
+          }
+        } else if (action === 'remove') {
+          var rmRow = document.createElement('div');
+          rmRow.textContent = 'Requesting removal';
+          card.appendChild(rmRow);
+        }
+
+        if (json && json.changeNotes) {
+          var notes = document.createElement('div');
+          notes.style.cssText = 'font-style:italic;margin-top:4px;font-size:11px;';
+          notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+          card.appendChild(notes);
+        }
+      }
+
+      panel.appendChild(card);
+    }
+
+    bar.appendChild(panel);
+    container.appendChild(bar);
+  }
+
+  var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
+
+  // Survey record field keys (on view_3505 / view_3680 records)
+  var SURVEY_FK = {
+    productName:     'field_2379',
+    qty:             'field_2399',
+    rate:            'field_2400',
+    laborDesc:       'field_2409',
+    bidExistCabling: 'field_2370',
+    bidPlenum:       'field_2371',
+    bidExterior:     'field_2372',
+    bidDropLength:   'field_2367',
+    bidConduit:      'field_2368',
+    bidConnDevice:   'field_2380',
+    bidConnTo:       'field_2381',
+    bidMdfIdf:       'field_2375',
+  };
+  // SOW field keys (from SOW line item, read through survey record's connected fields)
+  var SOW_FK = {
+    productName:     'field_1958',
+    qty:             'field_1964',
+    laborDesc:       'field_2019',
+    bidExistCabling: 'field_2461',
+    bidPlenum:       'field_1983',
+    bidExterior:     'field_1984',
+    bidDropLength:   'field_1965',
+    bidConduit:      'field_2035',
+    bidMdfIdf:       'field_1946',
+  };
+  var ALL_FIELD_KEYS = Object.keys(SURVEY_FK);
+
+  function readModelRecord(viewKey, recordId) {
+    try {
+      var v = Knack.views[viewKey];
+      if (!v || !v.model || !v.model.data) return null;
+      var models = v.model.data.models || [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i].id === recordId) return models[i].attributes || models[i].toJSON();
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function readFieldVal(rec, fieldKey) {
+    if (!rec) return null;
+    var raw = rec[fieldKey + '_raw'];
+    if (raw != null) {
+      if (Array.isArray(raw) && raw.length) {
+        return raw.map(function (r) { return r.identifier || r.id || r; }).join(', ');
+      }
+      if (typeof raw === 'object' && raw.identifier) return raw.identifier;
+      return raw;
+    }
+    var plain = rec[fieldKey];
+    if (plain == null || plain === '' || plain === '&nbsp;' || plain === '\u00a0') return null;
+    return String(plain).replace(/<[^>]*>/g, '').trim() || null;
+  }
+
+  function readFieldIds(rec, fieldKey) {
+    if (!rec) return [];
+    var raw = rec[fieldKey + '_raw'];
+    if (Array.isArray(raw)) return raw.map(function (r) { return r.id || r; });
+    return [];
+  }
+
+  function buildRevisionItem(rev) {
+    var json = rev.changeJson;
+    if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+    var cr = json ? JSON.parse(JSON.stringify(json)) : {};
+
+    // Read live survey record from the target view's Knack model
+    var surveyId = rev.surveyItemId || cr.bidRecordId || cr.rowId || '';
+    var surveyRec = null;
+    for (var tvi = 0; tvi < CFG.targetViews.length && !surveyRec; tvi++) {
+      surveyRec = readModelRecord(CFG.targetViews[tvi], surveyId);
+    }
+
+    // Read SOW record (survey record has SOW connection field_2404)
+    var sowRec = null;
+    if (surveyRec) {
+      var sowRaw = surveyRec.field_2404_raw;
+      var sowId = Array.isArray(sowRaw) && sowRaw.length ? sowRaw[0].id : null;
+      if (sowId) {
+        // SOW items might be on a view on this page (view_3728-ish) — not guaranteed
+        // Fall back to reading SOW fields from the survey record itself (they're connected)
+      }
+    }
+
+    // Build flat item: CR value → survey value → SOW value
+    var item = {
+      action:              cr.action || 'revise',
+      revisionLineItemId:  rev.id,
+      parentRequestId:     rev.parentRequestId || '',
+      surveyItemId:        surveyId,
+      rowId:               cr.rowId || surveyId,
+      bidRecordId:         cr.bidRecordId || surveyId,
+      sowItemId:           cr.sowItemId || '',
+      displayLabel:        cr.displayLabel || '',
+      productName:         cr.productName || '',
+      changeNotes:         cr.changeNotes || '',
+      proposalBucket:      cr.proposalBucket || '',
+      proposalBucketId:    cr.proposalBucketId || '',
+    };
+
+    // Populate all fields with layered fallback
+    for (var fi = 0; fi < ALL_FIELD_KEYS.length; fi++) {
+      var logicalKey = ALL_FIELD_KEYS[fi];
+      var surveyFK = SURVEY_FK[logicalKey];
+      var sowFK = SOW_FK[logicalKey];
+
+      // Layer 1: CR requested value
+      var val = cr[logicalKey] != null && cr[logicalKey] !== '' ? cr[logicalKey] : null;
+      // Layer 2: live survey record
+      if (val == null && surveyRec) val = readFieldVal(surveyRec, surveyFK);
+      // Layer 3: SOW value (read from survey record's connected SOW fields)
+      if (val == null && surveyRec && sowFK) val = readFieldVal(surveyRec, sowFK);
+
+      item[logicalKey] = val;
+
+      // Connection IDs: same layered approach
+      var idsKey = logicalKey + 'Ids';
+      var ids = (cr[idsKey] && cr[idsKey].length) ? cr[idsKey] : null;
+      if (!ids && surveyRec) ids = readFieldIds(surveyRec, surveyFK);
+      if (!ids && surveyRec && sowFK) ids = readFieldIds(surveyRec, sowFK);
+      item[idsKey] = ids || [];
+    }
+
+    // Carry over fields array, html, and connection classification arrays
+    if (cr.fields) item.fields = cr.fields;
+    if (cr.ConnDevices_surveyitem) item.ConnDevices_surveyitem = cr.ConnDevices_surveyitem;
+    if (cr.ConnDevices_sowitem)    item.ConnDevices_sowitem    = cr.ConnDevices_sowitem;
+    if (cr.ConnTO_surveyitem)     item.ConnTO_surveyitem      = cr.ConnTO_surveyitem;
+    if (cr.ConnTO_sowitem)        item.ConnTO_sowitem          = cr.ConnTO_sowitem;
+    if (cr.current)               item.current                = cr.current;
+    if (cr.requested)             item.requested              = cr.requested;
+    if (rev.changeHtml) item.html = rev.changeHtml;
+    if (rev.changes && rev.changes.length && !item.fields) {
+      item.fields = rev.changes.map(function (c) {
+        return { label: c.label, to: c.value };
+      });
+    }
+
+    return item;
+  }
+
+  function fireRevisionAction(action, revs, btn) {
+    btn.disabled = true;
+    btn.textContent = action === 'accept' ? 'Accepting\u2026' : 'Rejecting\u2026';
+
+    // Group items by parent revision request
+    var byParent = {};
+    for (var i = 0; i < revs.length; i++) {
+      var parentId = revs[i].parentRequestId || '_unknown';
+      if (!byParent[parentId]) {
+        byParent[parentId] = {
+          revisionRequestId: revs[i].parentRequestId || '',
+          revisionRequestLabel: revs[i].parentRequestLabel || '',
+          items: [],
+        };
+      }
+      byParent[parentId].items.push(buildRevisionItem(revs[i]));
+    }
+
+    var revisionRequests = [];
+    var keys = Object.keys(byParent);
+    for (var k = 0; k < keys.length; k++) revisionRequests.push(byParent[keys[k]]);
+
+    var payload = {
+      actionType: 'revision_response',
+      action: action,
+      timestamp: new Date().toISOString(),
+      totalItems: revs.length,
+      revisionRequests: revisionRequests,
+    };
+
+    // Add user info
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
+
+    // 1. Update field_2645 on each revision line item directly
+    var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
+    var statusDone = 0;
+    var statusTotal = revs.length;
+
+    function onAllStatusUpdated() {
+      // 2. Fire webhook (fire-and-forget)
+      SCW.knackAjax({
+        url: REV_ACTION_WEBHOOK,
+        type: 'POST',
+        data: JSON.stringify(payload),
+      });
+
+      btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
+
+      // 3. Refresh view_3823 → triggers re-inject
+      setTimeout(function () {
+        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+          Knack.views[CFG.revisionView].model.fetch();
+        }
+        // Also directly re-inject after a delay to catch cases where
+        // model.fetch doesn't trigger knack-view-render
+        setTimeout(function () {
+          for (var t = 0; t < CFG.targetViews.length; t++) {
+            inject(CFG.targetViews[t]);
+          }
+        }, 1500);
+      }, 1000);
+    }
+
+    var statusData = {};
+    statusData['field_2645'] = statusVal;
+    for (var si = 0; si < revs.length; si++) {
+      (function (revId) {
+        SCW.knackAjax({
+          url: SCW.knackRecordUrl(CFG.revisionView, revId),
+          type: 'PUT',
+          data: JSON.stringify(statusData),
+          success: function () { statusDone++; if (statusDone >= statusTotal) onAllStatusUpdated(); },
+          error: function () { statusDone++; if (statusDone >= statusTotal) onAllStatusUpdated(); },
+        });
+      })(revs[si].id);
+    }
+
+    if (!statusTotal) onAllStatusUpdated();
   }
 
   /**

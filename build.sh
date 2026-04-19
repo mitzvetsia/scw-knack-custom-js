@@ -17,6 +17,7 @@ cat \
   src/features/extract-hsv-color.js \
   src/features/ktl-accordion/ktl-accordion.js \
   src/features/accordion-menu-inject.js \
+  src/features/workflow-stepper.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
   src/features/ratking/post-inline-edit-behavior.js \
@@ -36,6 +37,7 @@ cat \
   src/features/bid-review/actions.js \
   src/features/bid-review/change-requests.js \
   src/features/bid-review/init.js \
+  src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/select-all-checkboxes.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
@@ -82,6 +84,7 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/preview-proposal-btn.js \
   src/features/survey-worksheet-pdf-export.js \
+  src/features/connected-device-bid-check.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/grid-direct-edit.js \

@@ -147,7 +147,11 @@ window.SCW = window.SCW || {};
     if (xhr.status === 401 || xhr.status === 403) {
       var url = settings.url || '';
       if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
-        showSessionToast();
+        var body = '';
+        try { body = xhr.responseText || ''; } catch (e) {}
+        if (/invalid token|reauthenticate/i.test(body)) {
+          showSessionToast();
+        }
       }
     }
   });
@@ -160,8 +164,12 @@ window.SCW = window.SCW || {};
         if (response.status === 401 || response.status === 403) {
           var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
           if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
-            console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
-            showSessionToast();
+            response.clone().text().then(function (body) {
+              if (/invalid token|reauthenticate/i.test(body)) {
+                console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
+                showSessionToast();
+              }
+            });
           }
         }
         return response;
@@ -893,9 +901,11 @@ window.SCW = window.SCW || {};
   // ── Strategy C: MutationObserver for modal add/remove ─
 
   function isModalEl(node) {
-    if (node.nodeType !== 1 || !node.id) return false;
-    return node.id.indexOf('kn-modal-bg') === 0 ||
-           node.id.indexOf('kn-page-modal') === 0;
+    if (node.nodeType !== 1) return false;
+    var id = typeof node.id === 'string' ? node.id : '';
+    if (!id) return false;
+    return id.indexOf('kn-modal-bg') === 0 ||
+           id.indexOf('kn-page-modal') === 0;
   }
 
   function initObserver() {
@@ -1351,6 +1361,15 @@ window.SCW = window.SCW || {};
    SCENE 1116 — Sales Edit Proposal
    ══════════════════════════════════════════════════════════════ */
 
+/* ── Hide scene until transforms settle, then fade in ── */
+#kn-scene_1116 {
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+#kn-scene_1116.scw-scene-ready {
+  opacity: 1;
+}
+
 /* ── Totals details view (view_3418) — card ── */
 #view_3418 {
   background: #fff;
@@ -1604,32 +1623,227 @@ window.SCW = window.SCW || {};
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
 
     view.appendChild(layout);
+
+    // ── Published proposal info (from view_3814) ──
+    injectProposalInfo(layout);
+  }
+
+  function getProposalFromModel() {
+    var view = Knack.views.view_3814;
+    if (!view || !view.model) return null;
+    var data = view.model.data;
+    if (!data) return null;
+
+    // Backbone Collection → .models array
+    var records = data.models || data;
+    // model.toJSON() fallback
+    if (typeof data.toJSON === 'function' && (!records || !records.length)) {
+      records = data.toJSON();
+    }
+    if (!records || !records.length) return null;
+
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i].attributes || records[i];
+      var status = (attrs.field_2658 || '').replace(/<[^>]*>/g, '').trim();
+      if (/published/i.test(status)) return attrs;
+    }
+    return null;
+  }
+
+  function getProposalFromDOM() {
+    var viewEl = document.getElementById('view_3814');
+    if (!viewEl) return null;
+    var rows = viewEl.querySelectorAll('tbody tr');
+    if (!rows.length) return null;
+
+    for (var i = 0; i < rows.length; i++) {
+      var statusCell = rows[i].querySelector('td.field_2658');
+      if (!statusCell) continue;
+      var statusText = (statusCell.textContent || '').trim();
+      if (!/published/i.test(statusText)) continue;
+
+      var nameCell = rows[i].querySelector('td.field_2665');
+      var expCell = rows[i].querySelector('td.field_2659');
+      var pdfCell = rows[i].querySelector('td.field_2681');
+      var linkEl = rows[i].querySelector('a.kn-link-page');
+
+      var pdfUrl = '';
+      var pdfName = '';
+      if (pdfCell) {
+        var pdfLink = pdfCell.querySelector('a');
+        if (pdfLink) {
+          pdfUrl = pdfLink.getAttribute('href') || '';
+          pdfName = (pdfLink.textContent || '').trim();
+        }
+      }
+
+      return {
+        proposalName: nameCell ? (nameCell.textContent || '').trim() : '',
+        expDate: expCell ? (expCell.textContent || '').trim() : '',
+        pdfUrl: pdfUrl,
+        pdfName: pdfName,
+        viewLink: linkEl ? (linkEl.getAttribute('href') || '') : '',
+        id: rows[i].id || ''
+      };
+    }
+    return null;
+  }
+
+  function injectProposalInfo(container) {
+    var old = container.querySelector('.scw-totals-proposal');
+    if (old) old.remove();
+
+    try {
+      var proposalName, expDate, pdfUrl, pdfName, viewLink;
+
+      // DOM scrape first — most reliable since we can see the rendered table
+      var domData = getProposalFromDOM();
+      if (domData) {
+        proposalName = domData.proposalName;
+        expDate = domData.expDate;
+        pdfUrl = domData.pdfUrl;
+        pdfName = domData.pdfName;
+        viewLink = domData.viewLink;
+      }
+
+      // Fall back to Knack model if DOM didn't yield results
+      if (!proposalName && !pdfUrl) {
+        var pub = getProposalFromModel();
+        if (pub) {
+          proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
+          expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
+          pdfUrl = '';
+          pdfName = '';
+          var pdfRaw = pub.field_2681 || '';
+          if (typeof pdfRaw === 'string') {
+            var m = pdfRaw.match(/href="([^"]+)"/);
+            if (m) pdfUrl = m[1];
+            var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
+            if (m2) pdfName = m2[1];
+          }
+          if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
+            pdfUrl = pub.field_2681_raw.url;
+            pdfName = pub.field_2681_raw.filename || 'Download PDF';
+          }
+          viewLink = '';
+          var viewEl = document.getElementById('view_3814');
+          if (viewEl && pub.id) {
+            var row = viewEl.querySelector('tr#' + pub.id);
+            if (row) {
+              var link = row.querySelector('a.kn-link-page');
+              if (link) viewLink = link.getAttribute('href') || '';
+            }
+          }
+        }
+      }
+
+      if (!proposalName && !pdfUrl) return;
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-totals-proposal';
+      wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;text-align:right;padding-right:10px;';
+
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
+      hdr.textContent = 'Published Proposal';
+      wrap.appendChild(hdr);
+
+      if (proposalName) {
+        var nameRow = document.createElement('div');
+        nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
+        if (viewLink) {
+          var nameLink = document.createElement('a');
+          nameLink.href = viewLink;
+          nameLink.textContent = proposalName;
+          nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
+          nameRow.appendChild(nameLink);
+        } else {
+          nameRow.textContent = proposalName;
+        }
+        wrap.appendChild(nameRow);
+      }
+
+      if (expDate) {
+        var expRow = document.createElement('div');
+        expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
+        expRow.textContent = 'Expires: ' + expDate;
+        wrap.appendChild(expRow);
+      }
+
+      if (pdfUrl) {
+        var pdfRow = document.createElement('a');
+        pdfRow.href = pdfUrl;
+        pdfRow.target = '_blank';
+        pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
+        pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+        pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
+        wrap.appendChild(pdfRow);
+      }
+
+      // Pull Preview Proposal link from view_3815
+      var previewMenu = document.getElementById('view_3815');
+      if (previewMenu) {
+        var previewLink = previewMenu.querySelector('a.kn-link-page');
+        if (previewLink) {
+          var previewHdr = document.createElement('a');
+          previewHdr.href = previewLink.getAttribute('href') || '#';
+          previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:10px;text-decoration:none;';
+          previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+          previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
+          wrap.appendChild(previewHdr);
+        }
+      }
+
+      container.appendChild(wrap);
+    } catch (e) {
+      console.warn('[scw-totals] injectProposalInfo error:', e);
+    }
   }
 
   // Expose for external callers (e.g. refresh-view-on-form-submit.js)
   window.SCW = window.SCW || {};
   SCW.restructureTotals = restructureTotals;
 
+  // ── Scene reveal ──
+  var _revealTimer = null;
+  function revealScene() {
+    var scene = document.getElementById('kn-scene_1116');
+    if (scene) scene.classList.add('scw-scene-ready');
+  }
+  function scheduleReveal() {
+    clearTimeout(_revealTimer);
+    _revealTimer = setTimeout(revealScene, 600);
+  }
+
   // ── Bind ──
   // Debounced wrapper so we only run once after all views finish rendering
   var _totalsTimer = null;
   function debouncedTotals() {
     clearTimeout(_totalsTimer);
-    _totalsTimer = setTimeout(restructureTotals, 300);
+    _totalsTimer = setTimeout(function () {
+      restructureTotals();
+      scheduleReveal();
+    }, 300);
   }
 
   if (window.SCW && SCW.onViewRender) {
     // Trigger after the totals container renders
     SCW.onViewRender('view_3418', debouncedTotals, NS);
+    SCW.onViewRender('view_3814', debouncedTotals, NS);
     // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
     }
   } else {
     $(document).ready(function () {
-      setTimeout(restructureTotals, 1000);
+      setTimeout(function () { restructureTotals(); revealScene(); }, 1000);
     });
   }
+
+  // Safety fallback — always reveal after 3s even if views haven't rendered
+  $(document).on('knack-scene-render.scene_1116' + NS, function () {
+    setTimeout(revealScene, 3000);
+  });
 })();
 /*** Percent Field Format — global % field handling ***/
 /*** TEMPORARILY DISABLED — revisit later ***/
@@ -1839,9 +2053,12 @@ window.SCW = window.SCW || {};
 /* ── Side-by-side layout ── */
 .${P}-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   align-items: stretch;
+}
+@media (max-width: 600px) {
+  .${P}-layout { grid-template-columns: 1fr; }
 }
 .${P}-layout-left {
   display: flex;
@@ -4315,6 +4532,398 @@ window.SCW = window.SCW || {};
 
 })();
 /*** END FEATURE: Accordion Menu Button Injection ********************************/
+/*** WORKFLOW STEPPER — unified step states on scene_1116 ***/
+(function () {
+  'use strict';
+
+  var NS = '.scwStepper';
+  var STYLE_ID = 'scw-workflow-stepper-css';
+  var SCENE_ID = 'scene_1116';
+  var SOURCE_VIEW = 'view_3827';
+
+  // ── Step definitions ─────────────────────────────────────
+  var STEPS = [
+    {
+      type: 'accordion',
+      viewKey: 'view_2924',
+      label: 'Project Playbook',
+      completed: { field: 'field_2724', value: 'Yes' }
+    },
+    {
+      type: 'action',
+      id: 'initiate-install',
+      label: 'Initiate Installation Project',
+      menuView: 'view_3828',
+      insertAfter: 'view_2924',
+      completed: { field: 'field_1199', hasValue: true },
+      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
+    },
+    {
+      type: 'accordion',
+      viewKey: 'view_3853',
+      label: 'Request Site Survey',
+      disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
+    },
+    {
+      type: 'action',
+      id: 'review-site-survey',
+      label: 'Review Site Survey Report',
+      menuView: 'view_3862',
+      insertAfter: 'view_3853',
+      activeIcon: 'eye',
+      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Site survey not yet requested' }
+    }
+  ];
+
+  // ── Icons ────────────────────────────────────────────────
+  var CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+
+  var CHECK_CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+    '<polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+  var EYE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+    '<circle cx="12" cy="12" r="3"/></svg>';
+
+  var LOCK_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+  var LOCK_SM_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+  // ── CSS ──────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent =
+      /* ── Fix empty Knack column in view-group-4 ── */
+      '#kn-scene_1116 .view-group-4 > .view-column:empty {' +
+      '  display: none !important;' +
+      '}' +
+
+      /* ── Completed accordion ── */
+      '.scw-step-completed .scw-acc-icon { color: #16a34a !important; opacity: 1 !important; }' +
+
+      /* ── Disabled accordion ── */
+      '.scw-step-disabled {' +
+      '  opacity: 0.45; pointer-events: none; cursor: default;' +
+      '}' +
+      '.scw-step-disabled .scw-ktl-accordion__header { cursor: default; }' +
+      '.scw-step-disabled .scw-acc-icon { color: #94a3b8 !important; }' +
+
+      /* ── Disabled message (inline in header/step) ── */
+      '.scw-step-disabled-msg {' +
+      '  display: flex; align-items: center; gap: 5px;' +
+      '  font-size: 11px; color: #94a3b8; font-weight: 500;' +
+      '  margin-left: auto; flex-shrink: 0; white-space: nowrap;' +
+      '}' +
+
+      /* ── Action step row (matches accordion header) ── */
+      '.scw-step-action {' +
+      '  position: relative; display: flex; align-items: center;' +
+      '  width: 100%; min-height: 44px;' +
+      '  padding: 14px 16px 14px 22px;' +
+      '  background: #fff; cursor: pointer; user-select: none;' +
+      '  box-sizing: border-box; transition: background 180ms ease;' +
+      '  border: 1px solid #e5e7eb; border-radius: 14px;' +
+      '  margin-bottom: 8px; text-decoration: none; color: inherit;' +
+      '}' +
+      '.scw-step-action::before {' +
+      '  content: ""; position: absolute; left: 0; top: 0; bottom: 0;' +
+      '  width: 6px; background: var(--scw-step-accent, #295f91);' +
+      '  border-radius: 14px 0 0 14px;' +
+      '}' +
+      '.scw-step-action:hover { background: rgba(41,95,145,0.06); }' +
+      '.scw-step-action .scw-step-icon {' +
+      '  flex: 0 0 auto; display: inline-flex; align-items: center;' +
+      '  justify-content: center; width: 28px; margin-right: 6px;' +
+      '  color: var(--scw-step-accent, #295f91); opacity: .75;' +
+      '}' +
+      '.scw-step-action .scw-step-title {' +
+      '  flex: 1 1 auto; font-size: 14px; font-weight: 600;' +
+      '  color: #1e293b; white-space: nowrap; overflow: hidden;' +
+      '  text-overflow: ellipsis;' +
+      '}' +
+
+      /* ── Action step states ── */
+      '.scw-step-action.is-completed {' +
+      '  --scw-step-accent: #16a34a;' +
+      '}' +
+      '.scw-step-action.is-completed .scw-step-icon { color: #16a34a; opacity: 1; }' +
+      '.scw-step-action.is-disabled {' +
+      '  opacity: 0.45; pointer-events: none; cursor: default;' +
+      '}' +
+      '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+
+      /* ── Hide original menu view ── */
+      '.scw-step-menu-hidden { display: none !important; }';
+
+    document.head.appendChild(style);
+  }
+
+  // ── Read field value from source view DOM ────────────────
+  function readField(fieldKey) {
+    var view = document.getElementById(SOURCE_VIEW);
+    if (!view) return '';
+    var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+    if (cell) return (cell.textContent || '').trim();
+    return '';
+  }
+
+  // ── Check a condition ────────────────────────────────────
+  function conditionMet(cond) {
+    if (!cond) return false;
+    var val = readField(cond.field);
+    if (cond.hasValue) return val.length > 0;
+    if (cond.value !== undefined) return val.toLowerCase() === cond.value.toLowerCase();
+    if (cond.notValue !== undefined) return val.toLowerCase() !== cond.notValue.toLowerCase();
+    return false;
+  }
+
+  // ── Find accordion wrapper by inner view key ─────────────
+  function findAccordion(viewKey) {
+    var hdr = document.querySelector('.scw-ktl-accordion__header[data-view-key="' + viewKey + '"]');
+    return hdr ? hdr.closest('.scw-ktl-accordion') : null;
+  }
+
+  // ── Extract link href from a menu view ───────────────────
+  function getMenuHref(menuViewId) {
+    var menu = document.getElementById(menuViewId);
+    if (!menu) return '';
+    var link = menu.querySelector('a.kn-link-page, a.kn-link');
+    return link ? (link.getAttribute('href') || '') : '';
+  }
+
+  // ── Build a standalone action step element ───────────────
+  function buildActionStep(step) {
+    var href = getMenuHref(step.menuView);
+    var el = document.createElement('a');
+    el.id = 'scw-step-' + step.id;
+    el.className = 'scw-step-action';
+    if (href) el.href = href;
+
+    var icon = document.createElement('span');
+    icon.className = 'scw-step-icon';
+    icon.innerHTML = CIRCLE_SVG;
+    el.appendChild(icon);
+
+    var title = document.createElement('span');
+    title.className = 'scw-step-title';
+    title.textContent = step.label;
+    el.appendChild(title);
+
+    return el;
+  }
+
+  // ── Pick the right icon for a state ──────────────────────
+  var ACTIVE_ICONS = { eye: EYE_SVG };
+
+  function getIcon(isCompleted, isDisabled, step) {
+    if (isDisabled) return LOCK_SVG;
+    if (isCompleted) return CHECK_CIRCLE_SVG;
+    if (step && step.activeIcon && ACTIVE_ICONS[step.activeIcon]) return ACTIVE_ICONS[step.activeIcon];
+    return CIRCLE_SVG;
+  }
+
+  // ── Apply states to an accordion step ────────────────────
+  function applyAccordionState(step) {
+    var wrap = findAccordion(step.viewKey);
+    if (!wrap) return;
+    var hdr = wrap.querySelector('.scw-ktl-accordion__header');
+    var iconEl = hdr.querySelector('.scw-acc-icon');
+
+    var isCompleted = step.completed ? conditionMet(step.completed) : false;
+    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+
+    // Icon
+    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, isDisabled, step);
+
+    // Completed class
+    wrap.classList.toggle('scw-step-completed', isCompleted && !isDisabled);
+
+    // Disabled class + message
+    wrap.classList.toggle('scw-step-disabled', isDisabled);
+    var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
+    if (isDisabled && !msgEl && step.disabled.message) {
+      var msg = document.createElement('span');
+      msg.className = 'scw-step-disabled-msg';
+      msg.setAttribute('data-step', step.viewKey);
+      msg.innerHTML = LOCK_SM_SVG;
+      msg.appendChild(document.createTextNode(step.disabled.message));
+      var chevron = hdr.querySelector('.scw-acc-chevron');
+      if (chevron) hdr.insertBefore(msg, chevron);
+      else hdr.appendChild(msg);
+    } else if (!isDisabled && msgEl) {
+      msgEl.remove();
+    }
+  }
+
+  // ── Apply states to an action step ───────────────────────
+  function applyActionState(step) {
+    var el = document.getElementById('scw-step-' + step.id);
+    if (!el) {
+      el = buildActionStep(step);
+      var afterAcc = findAccordion(step.insertAfter);
+      if (afterAcc) afterAcc.after(el);
+    }
+
+    // Update href
+    var href = getMenuHref(step.menuView);
+    if (href) el.href = href;
+
+    var isCompleted = step.completed ? conditionMet(step.completed) : false;
+    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+
+    // Icon
+    var icon = el.querySelector('.scw-step-icon');
+    if (icon) icon.innerHTML = getIcon(isCompleted, isDisabled, step);
+
+    // Classes
+    el.classList.toggle('is-completed', isCompleted && !isDisabled);
+    el.classList.toggle('is-disabled', isDisabled);
+
+    // Disabled message
+    var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
+    if (isDisabled && !msgEl && step.disabled.message) {
+      var msg = document.createElement('span');
+      msg.className = 'scw-step-disabled-msg';
+      msg.setAttribute('data-step', step.id);
+      msg.innerHTML = LOCK_SM_SVG;
+      msg.appendChild(document.createTextNode(step.disabled.message));
+      el.appendChild(msg);
+    } else if (!isDisabled && msgEl) {
+      msgEl.remove();
+    }
+
+    // Hide original menu view
+    if (step.menuView) {
+      var origMenu = document.getElementById(step.menuView);
+      if (origMenu) origMenu.style.display = 'none';
+      var injected = document.querySelector('.scw-acc-actions[data-scw-menu-src="' + step.menuView + '"]');
+      if (injected) injected.classList.add('scw-step-menu-hidden');
+    }
+  }
+
+  // ── Main apply ───────────────────────────────────────────
+  function applySteps() {
+    for (var i = 0; i < STEPS.length; i++) {
+      var step = STEPS[i];
+      if (step.type === 'accordion') applyAccordionState(step);
+      else if (step.type === 'action') applyActionState(step);
+    }
+  }
+
+  // ── Playbook form display rules (view_2924) ──────────────
+  var PLAYBOOK_VIEW = 'view_2924';
+  var ACCESS_CONTROL_ID = '6977d26243bab906665fe872';
+  var CAMERAS_ID = '6977d25a3a701a1a3e4c9d70';
+
+  function getConnectionVal(fieldKey) {
+    // Read from the <select> first — Chosen.js keeps this in sync
+    var select = document.getElementById(PLAYBOOK_VIEW + '-' + fieldKey);
+    if (select && select.value) return select.value.trim();
+    // Fallback to hidden input
+    var hidden = document.querySelector('#' + PLAYBOOK_VIEW + ' input.connection[name="' + fieldKey + '"]');
+    if (hidden) {
+      var v = decodeURIComponent(hidden.value || '').replace(/[\[\]"]/g, '').trim();
+      if (v) return v;
+    }
+    return '';
+  }
+
+  function getRadioVal(fieldKey) {
+    var checked = document.querySelector('#' + PLAYBOOK_VIEW + ' input[name="' + PLAYBOOK_VIEW + '-' + fieldKey + '"]:checked');
+    return checked ? checked.value : '';
+  }
+
+  function setFieldVisible(fieldKey, visible) {
+    var wrap = document.querySelector('#' + PLAYBOOK_VIEW + ' #kn-input-' + fieldKey);
+    if (wrap) wrap.style.display = visible ? '' : 'none';
+  }
+
+  function applyPlaybookRules() {
+    var projectType = getConnectionVal('field_2228');
+
+    // field_1756 (locking hardware): only for Access Control
+    setFieldVisible('field_1756', projectType === ACCESS_CONTROL_ID);
+
+    // field_1752 (multiple buildings): only for Cameras
+    setFieldVisible('field_1752', projectType === CAMERAS_ID);
+
+    // field_1753 (building assumptions): only when field_1752 = Yes
+    var multiBuilding = getRadioVal('field_1752');
+    setFieldVisible('field_1753', projectType === CAMERAS_ID && /^yes$/i.test(multiBuilding));
+  }
+
+  function bindPlaybookRules() {
+    var form = document.getElementById(PLAYBOOK_VIEW);
+    if (!form || form.getAttribute('data-scw-playbook-rules') === '1') return;
+    form.setAttribute('data-scw-playbook-rules', '1');
+
+    // Connection field change (Chosen.js fires change on the original select)
+    $('#' + PLAYBOOK_VIEW + '-field_2228').on('change' + NS, applyPlaybookRules);
+    // Radio change for field_1752
+    $(form).on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
+
+    applyPlaybookRules();
+  }
+
+  // ── Init ─────────────────────────────────────────────────
+  function init() {
+    injectStyles();
+    setTimeout(applySteps, 500);
+    setTimeout(bindPlaybookRules, 600);
+  }
+
+  // Collapse accordion and refresh steps after form submit
+  function onFormSubmit(viewKey) {
+    var wrap = findAccordion(viewKey);
+    if (wrap && wrap.classList.contains('is-expanded')) {
+      var hdr = wrap.querySelector('.scw-ktl-accordion__header');
+      if (hdr) hdr.click();
+    }
+    // Refresh source view to get updated field values, then re-apply steps
+    if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
+      Knack.views[SOURCE_VIEW].model.fetch({
+        success: function () { setTimeout(applySteps, 300); }
+      });
+    }
+    setTimeout(applySteps, 1500);
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender(SOURCE_VIEW, init, NS);
+    SCW.onViewRender(PLAYBOOK_VIEW, function () {
+      setTimeout(bindPlaybookRules, 200);
+    }, NS);
+  }
+
+  $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
+    setTimeout(init, 800);
+  });
+
+  // Listen for form submissions on step accordion views
+  $(document).on('knack-form-submit.view_2924' + NS, function () {
+    onFormSubmit('view_2924');
+  });
+  $(document).on('knack-form-submit.view_3853' + NS, function () {
+    onFormSubmit('view_3853');
+  });
+})();
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
  * Goal: Make boundaries between “features” obvious without changing behavior.
@@ -4973,6 +5582,7 @@ window.SCW = window.SCW || {};
 /* ============================================================
    SCW Totals helper CSS
    ============================================================ */
+.scw-tbd { color: #94a3b8; font-style: italic; font-weight: 600; }
 tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
 tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
 
@@ -6806,6 +7416,82 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
       $tbody[0].appendChild(gtFragment);
     }
+
+    if (isInstallationMasked()) applyTBDLabels(ctx);
+  }
+
+  // ============================================================
+  // FEATURE: Mask installation values with "TBD"
+  // When field_2725 in view_3861 is not "Yes", zero out labor
+  // cells BEFORE the pipeline so all sums exclude installation,
+  // then label the zeroed cells as "TBD" after.
+  // ============================================================
+
+  function isInstallationMasked() {
+    var view = document.getElementById('view_3861');
+    if (view) {
+      var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
+      if (cell) return !/^yes$/i.test((cell.textContent || '').trim());
+    }
+    if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3861) {
+      var model = Knack.views.view_3861.model;
+      var attrs = model && (model.attributes || (model.toJSON && model.toJSON()) || {});
+      if (attrs.field_2725 !== undefined) {
+        return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
+      }
+    }
+    return false;
+  }
+
+  function zeroLaborCells(ctx) {
+    var $view = $(document.getElementById(ctx.viewId));
+    if (!$view.length) return;
+    var laborKey = ctx.keys.labor;
+    $view.find('tr[id] td.' + laborKey).each(function () {
+      var val = parseFloat(this.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+      if (val !== 0) {
+        $(this).closest('tr').attr('data-scw-had-labor', '1');
+      }
+      this.textContent = '$0.00';
+    });
+  }
+
+  function applyTBDLabels(ctx) {
+    var viewRoot = document.getElementById(ctx.viewId);
+    if (!viewRoot) return;
+    var $view = $(viewRoot);
+    var laborKey = ctx.keys.labor;
+    var costKey = ctx.keys.cost;
+    var TBD = '<span class="scw-tbd">TBD</span>';
+
+    // Data-row labor cells → TBD
+    $view.find('tr[id] td.' + laborKey).each(function () {
+      $(this).html(TBD);
+    });
+
+    // L4 group cost cells → TBD only if data rows in that group had non-zero labor
+    $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
+      var $l4 = $(this);
+      var hadLabor = false;
+      var $next = $l4.next();
+      while ($next.length && !$next.hasClass('kn-table-group') && !$next.hasClass('scw-level-total-row')) {
+        if ($next.attr('data-scw-had-labor') === '1') { hadLabor = true; break; }
+        $next = $next.next();
+      }
+      if (hadLabor) {
+        var $costCell = $l4.find('td.' + costKey);
+        if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
+      }
+    });
+
+    // Installation Total → TBD
+    $view.find('tr.scw-project-totals').each(function () {
+      var $tr = $(this);
+      var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
+      if (label.indexOf('installation') !== -1) {
+        $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
+      }
+    });
   }
 
   // ============================================================
@@ -6839,6 +7525,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           injectCssOnce();
           normalizeField2019ForGrouping(ctx);
 
+          // Pre-pipeline: zero out labor cells so sums exclude installation
+          var masked = isInstallationMasked();
+          if (masked) zeroLaborCells(ctx);
+
           pipelineRunning = true;
           try {
             runTotalsPipeline(ctx);
@@ -6848,6 +7538,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           } finally {
             pipelineRunning = false;
           }
+
+          // Post-pipeline: replace zeroed labor with TBD labels
+          if (masked) applyTBDLabels(ctx);
         }
 
         function totalsAreMissing() {
@@ -6940,7 +7633,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { field: 'field_2638', name: 'bidId' },
+        { name: 'bidId', source: 'url' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
         { field: 'field_2633', name: 'field_2633' },
@@ -8155,6 +8848,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           var _fNum;
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
+            if (spec.source === 'url') {
+              var urlVal = getPageRecordId();
+              if (urlVal) extra[spec.name] = urlVal;
+              continue;
+            }
             _fNum = spec.field.replace('field_', '');
             // If sourceView is specified, scope the search to that view first
             var el = null;
@@ -8647,6 +9345,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   $(document).on('knack-scene-render.any' + NS, function (event, scene) {
     if (scene.key !== SCENE_ID) {
       document.body.classList.remove('scw-hide-crumbtrail');
+      var oldBtn = document.getElementById(BTN_ID);
+      if (oldBtn) oldBtn.remove();
     }
   });
 
@@ -10725,12 +11425,95 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '.scw-bid-review__sow-header {',
       '  width: 100px;',
       '  min-width: 80px;',
+      '  text-align: center;',
       '}',
 
       /* SOW detail, bid columns, and change request column share equal width */
       '.scw-bid-review__sow-detail-header,',
       '.scw-bid-review__pkg-header,',
       '.scw-bid-review__actions-header {',
+      '}',
+      '.scw-bid-review__header-titles th.scw-bid-review__sow-detail-header {',
+      '  text-align: center !important;',
+      '  font-size: 12px !important;',
+      '}',
+      '.scw-bid-review__header-details .scw-bid-review__header-detail-cell {',
+      '  text-align: center;',
+      '  padding-top: 10px;',
+      '}',
+
+      /* ── unified column header (3-row layout) ─────────── */
+      '.scw-bid-review__header-row th,',
+      '.scw-bid-review__header-row td {',
+      '  text-align: center;',
+      '  vertical-align: middle;',
+      '  padding: 4px 8px;',
+      '}',
+      '.scw-bid-review__header-titles th {',
+      '  font-size: 12px !important;',
+      '  font-weight: 700 !important;',
+      '  text-transform: uppercase !important;',
+      '  letter-spacing: .05em !important;',
+      '  text-align: center !important;',
+      '  color: #334155;',
+      '  padding-top: 10px;',
+      '  border-bottom: none;',
+      '}',
+      '.scw-bid-review__header-details td {',
+      '  font-size: 11px;',
+      '  color: #64748b;',
+      '  border-bottom: none;',
+      '  padding-top: 0;',
+      '}',
+      '.scw-bid-review__header-actions td {',
+      '  padding-bottom: 8px;',
+      '}',
+      '.scw-bid-review__header-detail-cell {',
+      '  text-align: center;',
+      '}',
+      '.scw-bid-review__header-action-cell {',
+      '  text-align: center;',
+      '}',
+      '.scw-bid-review__header-action-cell .scw-bid-review__btn {',
+      '  display: block;',
+      '  width: 100%;',
+      '  margin: 3px 0;',
+      '}',
+      '.scw-bid-review__col-status {',
+      '  font-size: 10px;',
+      '  line-height: 1;',
+      '  margin-bottom: 2px;',
+      '}',
+      '.scw-bid-review__col-title {',
+      '  font-size: 11px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: .05em;',
+      '  color: #334155;',
+      '}',
+      '.scw-bid-review__col-subtitle {',
+      '  font-size: 11px;',
+      '  font-weight: 500;',
+      '  color: #64748b;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  gap: 4px;',
+      '  margin-top: 1px;',
+      '}',
+      '.scw-bid-review__col-links {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  gap: 2px;',
+      '  margin-top: 4px;',
+      '}',
+      '.scw-bid-review__col-buttons {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  align-items: center;',
+      '  gap: 3px;',
+      '  margin-top: 6px;',
       '}',
 
       /* ── package column header ─────────────────────────────── */
@@ -10802,12 +11585,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__btn--adopt {',
-      '  background: #16a34a;',
+      '  background: #0891b2;',
       '  color: #fff;',
       '}',
 
       '.scw-bid-review__btn--create {',
-      '  background: #2563eb;',
+      '  background: #0891b2;',
       '  color: #fff;',
       '}',
 
@@ -11240,12 +12023,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
 
       '.scw-bid-review__overflow-trigger--create {',
-      '  border-color: #93c5fd;',
-      '  color: #2563eb;',
+      '  border-color: #86efac;',
+      '  color: #16a34a;',
       '}',
       '.scw-bid-review__overflow-trigger--create:hover {',
-      '  background: #eff6ff;',
-      '  border-color: #60a5fa;',
+      '  background: #f0fdf4;',
+      '  border-color: #4ade80;',
       '}',
 
       '.scw-bid-review__overflow-menu {',
@@ -11329,6 +12112,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '}',
       '.scw-bid-cr-card--removal .scw-bid-cr-card__header {',
       '  color: #dc2626;',
+      '}',
+      '.scw-bid-cr-card--add {',
+      '  background: #f0fdf4;',
+      '  border-color: #86efac;',
+      '  border-left-color: #16a34a;',
+      '}',
+      '.scw-bid-cr-card--add .scw-bid-cr-card__header {',
+      '  color: #16a34a;',
       '}',
 
       '.scw-bid-cr-card__header {',
@@ -12696,101 +13487,109 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   // ── table header for a SOW grid ─────────────────────────────
 
-  function buildHeaderRow(sowGrid) {
-    var tr = el('tr', 'scw-bid-review__header-row');
+  function buildHeaderRows(sowGrid) {
+    var rows = [];
+    var colCount = 2 + sowGrid.packages.length + 1; // line item + sow + packages + CR
 
-    // Line item column header
-    tr.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
-
-    // SOW detail column header
-    tr.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW Detail'));
-
-    // One header per bid package
+    // ═══ ROW 1: Column titles ═══
+    var r1 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-titles');
+    r1.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
+    // Sales Revisions column injected externally — leave gap
+    r1.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW'));
     for (var i = 0; i < sowGrid.packages.length; i++) {
-      var pkg = sowGrid.packages[i];
-      var elig = sowGrid.eligibility[pkg.id] || { adoptable: 0, creatable: 0, total: 0 };
+      r1.appendChild(el('th', 'scw-bid-review__pkg-header', 'Bid'));
+    }
+    r1.appendChild(el('th', 'scw-bid-review__actions-header', 'Sub Bid Revisions'));
+    rows.push(r1);
 
-      var th = el('th', 'scw-bid-review__pkg-header');
+    // ═══ ROW 2: Details (status, name, links) ═══
+    var r2 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-details');
+    r2.appendChild(el('td', '')); // line item
+    r2.appendChild(el('td', '')); // sow
 
-      var nameRow = el('div', 'scw-bid-review__pkg-name');
-      nameRow.textContent = pkg.name;
+    for (var j = 0; j < sowGrid.packages.length; j++) {
+      var pkg = sowGrid.packages[j];
+      var td = el('td', 'scw-bid-review__header-detail-cell');
+
+      var statusVal = pkg.bidStatus || '';
+      if (statusVal) {
+        var badge = el('span', 'scw-bid-review__status-badge');
+        badge.textContent = statusVal;
+        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
+        td.appendChild(badge);
+      }
+
+      var subtitle = el('div', 'scw-bid-review__col-subtitle');
+      subtitle.appendChild(document.createTextNode(pkg.name));
       if (pkg.pdfUrl) {
         var pdfLink = document.createElement('a');
         pdfLink.href = pkg.pdfUrl;
         pdfLink.target = '_blank';
         pdfLink.title = pkg.pdfFilename || 'View PDF';
         pdfLink.className = 'scw-bid-review__pdf-link';
-        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
-        nameRow.appendChild(pdfLink);
+        pdfLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+        subtitle.appendChild(pdfLink);
       }
-      // Status badge inline with name
-      var statusVal = pkg.bidStatus || '';
-      if (statusVal) {
-        var badge = el('span', 'scw-bid-review__status-badge');
-        badge.textContent = statusVal;
-        badge.setAttribute('data-status', statusVal.toLowerCase().replace(/\s+/g, '-'));
-        nameRow.appendChild(badge);
-      }
-      th.appendChild(nameRow);
+      td.appendChild(subtitle);
 
-      // Pending change request link
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;
         crLink.className = 'scw-bid-review__cr-link';
-        crLink.textContent = pkg.crPendingCount + ' pending change request' +
-          (pkg.crPendingCount !== 1 ? 's' : '');
-        th.appendChild(crLink);
+        crLink.textContent = pkg.crPendingCount + ' pending CR' + (pkg.crPendingCount !== 1 ? 's' : '');
+        td.appendChild(crLink);
       }
 
-      // Only show Sync to SOW / Create new SOW when bid status is "Submitted"
-      var isSubmitted = /^submitted$/i.test(String(statusVal).trim());
+      r2.appendChild(td);
+    }
+
+    r2.appendChild(el('td', '')); // CR column
+    rows.push(r2);
+
+    // ═══ ROW 3: Action buttons ═══
+    var r3 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-actions');
+    r3.appendChild(el('td', '')); // line item
+    r3.appendChild(el('td', '')); // sow
+
+    for (var k = 0; k < sowGrid.packages.length; k++) {
+      var pkg2 = sowGrid.packages[k];
+      var statusVal2 = pkg2.bidStatus || '';
+      var isSubmitted = /^submitted$/i.test(String(statusVal2).trim());
+      var actionTd = el('td', 'scw-bid-review__header-action-cell');
+
       if (isSubmitted) {
-        var actions = el('div', 'scw-bid-review__pkg-actions');
-        actions.appendChild(btn(
-          'Sync to SOW', 'adopt',
-          { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+        actionTd.appendChild(btn(
+          '\u2190 Sync to SOW', 'adopt',
+          { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
-        actions.appendChild(btn(
-          'Create new SOW', 'create',
-          { 'data-action': 'package_create_sow', 'data-package-id': pkg.id, 'data-sow-id': sowGrid.sowId }
+        actionTd.appendChild(btn(
+          '+ Create new SOW', 'create',
+          { 'data-action': 'package_create_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
-        th.appendChild(actions);
       }
 
-      tr.appendChild(th);
+      r3.appendChild(actionTd);
     }
 
-    // Change Requests column header (with Clear All + Submit controls)
-    var crTh = el('th', 'scw-bid-review__actions-header');
-    crTh.appendChild(el('div', 'scw-bid-review__cr-col-title', 'Change Requests'));
-
+    // CR column buttons
+    var crTd = el('td', 'scw-bid-review__header-action-cell');
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
-    var hasPending = Object.keys(pending).length > 0;
-
-    if (hasPending) {
-      var crActions = el('div', 'scw-bid-review__cr-col-actions');
-
-      // Per-package submit buttons
-      var pkgIds = Object.keys(pending);
-      for (var si = 0; si < pkgIds.length; si++) {
-        var sPkg = pending[pkgIds[si]];
-        if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
-        var subBtn = btn(
-          'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
-          { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
-        );
-        crActions.appendChild(subBtn);
-      }
-
-      // Clear All
-      crActions.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
-      crTh.appendChild(crActions);
+    var pkgIds = Object.keys(pending);
+    for (var si = 0; si < pkgIds.length; si++) {
+      var sPkg = pending[pkgIds[si]];
+      if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
+      crTd.appendChild(btn(
+        'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
+        { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
+      ));
     }
+    if (pkgIds.length) {
+      crTd.appendChild(btn('Clear All', 'cr-clear sm', { 'data-action': 'cr_clear_all' }));
+    }
+    r3.appendChild(crTd);
+    rows.push(r3);
 
-    tr.appendChild(crTh);
-
-    return tr;
+    return rows;
   }
 
   // ── cabling visibility helper ─────────────────────────────────
@@ -13226,6 +14025,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
+    if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
 
     // Line item label cell
     // Only show displayLabel (field_2365) for Camera / Reader buckets
@@ -13473,7 +14273,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var table = el('table', 'scw-bid-review__table');
 
       var thead = document.createElement('thead');
-      thead.appendChild(buildHeaderRow(sowGrid));
+      var headerRows = buildHeaderRows(sowGrid);
+      for (var hi = 0; hi < headerRows.length; hi++) {
+        thead.appendChild(headerRows[hi]);
+      }
       table.appendChild(thead);
 
       var tbody = document.createElement('tbody');
@@ -13594,6 +14397,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     restoreAccordionState(mount, snap);
+
+    // Notify other modules that the grid has been built
+    $(document).trigger('scw-bid-review-rendered');
 
     return mount;
   };
@@ -14113,12 +14919,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       '  background: #f8fafc; max-height: 160px; overflow-y: auto;',
       '}',
       '.scw-bid-cr-modal__checkbox-item {',
-      '  display: flex; align-items: center; gap: 6px;',
+      '  display: flex; align-items: flex-start; gap: 6px;',
       '  font-size: 13px; color: #1e293b; cursor: pointer;',
-      '  padding: 3px 0;',
+      '  padding: 3px 0; flex-wrap: wrap;',
       '}',
-      '.scw-bid-cr-modal__checkbox-item input { margin: 0; cursor: pointer; }',
-      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; flex: 1; }',
+      '.scw-bid-cr-modal__checkbox-item input { margin: 3px 0 0; cursor: pointer; flex-shrink: 0; }',
+      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; }',
+      '.scw-bid-cr-modal__conn-info { font-size: 11px; color: #94a3b8; font-style: italic; width: 100%; padding-left: 20px; }',
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
       '}',
@@ -14302,6 +15109,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             if (rec.noBid) cbLabel.style.fontStyle = 'italic';
             if (lockedIdSet[rec.id]) cbLabel.style.opacity = '0.6';
             item.appendChild(cbLabel);
+            if (rec.currentConnTo) {
+              var connInfo = el('div', 'scw-bid-cr-modal__conn-info', '\u2192 ' + rec.currentConnTo);
+              item.appendChild(connInfo);
+            }
             inp.appendChild(item);
           }
         }
@@ -14472,6 +15283,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         rowId: params.rowId, bidRecordId: cell.id,
         sowItemId: params.sowItemId || '',
         displayLabel: params.displayLabel, productName: cell.productName,
+        proposalBucket: params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
         current: current, requested: requested, changeNotes: cn,
       };
       // Preserve ALL reciprocal metadata so cascade-delete + locking still works
@@ -14479,6 +15292,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
       if (existing && existing.reciprocalLockedIds) newItem.reciprocalLockedIds = existing.reciprocalLockedIds;
+      applyRevMeta(newItem, params);
 
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
 
@@ -14521,7 +15335,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
           if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
 
-          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          var nbaItem = {
             rowId:        nba.rowId,
             bidRecordId:  null,
             sowItemId:    nba.rowId,
@@ -14533,7 +15347,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid — connected from ' + (params.displayLabel || params.productName),
-          }, params.surveyId);
+          };
+          applyRevMeta(nbaItem, params);
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, nbaItem, params.surveyId);
         }
         if (noBidAdds.length) {
           ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
@@ -14558,6 +15374,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ── Pending management ─────────────────────────────────
+  function applyRevMeta(item, params) {
+    var rm = params && params.revMeta;
+    if (!rm) return;
+    if (rm.salesRevisionId) item.salesRevisionId = rm.salesRevisionId;
+    if (rm.salesRevisionRequestId) item.salesRevisionRequestId = rm.salesRevisionRequestId;
+  }
+
   function addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId) {
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: surveyId || '', items: [] };
     if (surveyId && !_pending[pkgId].surveyId) _pending[pkgId].surveyId = surveyId;
@@ -14869,7 +15692,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId, pkgName) {
-    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.addToBid ? ' scw-bid-cr-card--add' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
 
@@ -14960,6 +15783,28 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
       row.appendChild(el('span', 'scw-bid-cr-card__to', to));
       card.appendChild(row);
+    }
+
+    // Fallback: render revisionFields from sales revision data
+    // (when FIELD_DEFS keys don't match the sales CR field keys)
+    if (item.revisionFields && item.revisionFields.length) {
+      var hadFieldDefs = false;
+      for (var rfi = 0; rfi < FIELD_DEFS.length; rfi++) {
+        if (hasValue(r[FIELD_DEFS[rfi].key])) { hadFieldDefs = true; break; }
+      }
+      if (!hadFieldDefs) {
+        for (var rf = 0; rf < item.revisionFields.length; rf++) {
+          var rvf = item.revisionFields[rf];
+          var rvRow = el('div', 'scw-bid-cr-card__row');
+          rvRow.appendChild(el('span', 'scw-bid-cr-card__label', rvf.label + ':'));
+          if (rvf.from != null) {
+            rvRow.appendChild(el('span', 'scw-bid-cr-card__from', String(rvf.from)));
+            rvRow.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
+          }
+          rvRow.appendChild(el('span', 'scw-bid-cr-card__to', String(rvf.to)));
+          card.appendChild(rvRow);
+        }
+      }
     }
 
     if (item.changeNotes) {
@@ -15132,6 +15977,43 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return h.join('');
   }
 
+  /** Build a plain-text version of one item (ClickUp-safe). */
+  function buildItemPlainText(item, fieldList) {
+    var action = itemActionType(item);
+    var label  = (action === 'add' ? 'ADD' : action === 'remove' ? 'REMOVE' : 'REVISE');
+    var displayName = item.displayLabel || item.productName || 'Item';
+
+    var lines = [];
+    var header = label + ' — ' + displayName;
+    if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+      header += ' (' + item.productName + ')';
+    }
+    lines.push(header);
+
+    if (action === 'remove') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+      else lines.push('  Requesting removal');
+    } else if (fieldList && fieldList.length) {
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var isCurrency = false;
+        for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
+          if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+        }
+        var fromStr = f.from != null ? (isCurrency ? fmtCurrencyHtml(f.from) : String(f.from)) : '—';
+        var toStr   = isCurrency ? fmtCurrencyHtml(f.to) : String(f.to);
+        if (action === 'revise') {
+          lines.push('  ' + f.label + ': ' + fromStr + ' → ' + toStr);
+        } else {
+          lines.push('  ' + f.label + ': ' + toStr);
+        }
+      }
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    }
+
+    return lines.join('\n');
+  }
+
   function buildSubmitPayload(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg) return null;
@@ -15166,26 +16048,66 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         changeNotes:  it.changeNotes || '',
       };
 
-      // Proposal bucket + sort order (for ordering ADD items in revision view)
-      if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
-      if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
+      if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
+      if (it.salesRevisionRequestId) entry.salesRevisionRequestId = it.salesRevisionRequestId;
+
+      // Proposal bucket + sort order
+      entry.proposalBucket   = it.proposalBucket || '';
+      entry.proposalBucketId = it.proposalBucketId || '';
       entry.sortOrder = it.sortOrder != null ? it.sortOrder : 0;
       if (it.sowMapConn)       entry.sowMapConn        = it.sowMapConn;
 
-      // Snapshot of current item data (before changes)
-      entry.current = it.current || {};
-
-      // Flatten requested values directly onto the item
-      // (field key → "to" value, connection Ids arrays included)
+      // 1. CR requested values (what the change request asks for)
       var r = it.requested || {};
+      entry.requested = {};
       for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
         var d = FIELD_DEFS[fi];
-        if (!hasValue(r[d.key])) continue;
-        entry[d.key] = r[d.key];
+        if (hasValue(r[d.key])) {
+          entry.requested[d.key] = r[d.key];
+          entry[d.key] = r[d.key];
+        }
         if (d.type === 'connection' && d.idsKey) {
-          if (r[d.idsKey])              entry[d.idsKey]              = r[d.idsKey];
-          if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
-          if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
+          if (r[d.idsKey]) {
+            entry.requested[d.idsKey] = r[d.idsKey];
+            entry[d.idsKey] = r[d.idsKey];
+          }
+          if (r[d.key + 'AddIds'])    entry[d.key + 'AddIds']    = r[d.key + 'AddIds'];
+          if (r[d.key + 'ChangeIds']) entry[d.key + 'ChangeIds'] = r[d.key + 'ChangeIds'];
+        }
+      }
+
+      // 2. Current survey/bid record values (from the grid cell)
+      var cell = (ns.lookupCell && ns.lookupCell(it.rowId, pkgId)) || {};
+      entry.surveyRecord = {};
+      for (var si = 0; si < FIELD_DEFS.length; si++) {
+        var sd = FIELD_DEFS[si];
+        if (hasValue(cell[sd.key])) entry.surveyRecord[sd.key] = cell[sd.key];
+        if (sd.type === 'connection' && sd.idsKey && cell[sd.idsKey]) {
+          entry.surveyRecord[sd.idsKey] = cell[sd.idsKey];
+        }
+      }
+
+      // 3. For ADD items: SOW record values (what the SOW line item has)
+      if (itemActionType(it) === 'add') {
+        var c = it.current || {};
+        entry.sowRecord = {};
+        for (var oi = 0; oi < FIELD_DEFS.length; oi++) {
+          var od = FIELD_DEFS[oi];
+          if (hasValue(c[od.key])) entry.sowRecord[od.key] = c[od.key];
+          if (od.type === 'connection' && od.idsKey && c[od.idsKey]) {
+            entry.sowRecord[od.idsKey] = c[od.idsKey];
+          }
+        }
+      }
+
+      // Backwards compat: flatten requested over survey fallback onto entry
+      for (var bfi = 0; bfi < FIELD_DEFS.length; bfi++) {
+        var bd = FIELD_DEFS[bfi];
+        if (!hasValue(entry[bd.key]) && hasValue(cell[bd.key])) {
+          entry[bd.key] = cell[bd.key];
+        }
+        if (bd.type === 'connection' && bd.idsKey && !entry[bd.idsKey] && cell[bd.idsKey]) {
+          entry[bd.idsKey] = cell[bd.idsKey];
         }
       }
 
@@ -15220,25 +16142,119 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Detailed from→to diffs
       entry.fields = fieldList;
 
-      // Per-item JSON snapshot (stringified before HTML is added)
+      // Per-item JSON snapshot (stringified before HTML/plainText are added)
       entry.json = JSON.stringify(entry);
 
-      // Per-item HTML card for display in view_3505
-      entry.html = buildItemHtml(it, fieldList);
+      // Per-item HTML card for display in view_3505 + plain-text for ClickUp
+      entry.html      = buildItemHtml(it, fieldList);
+      entry.plainText = buildItemPlainText(it, fieldList);
 
       items.push(entry);
     }
 
+    // Group items: by salesRevisionRequestId, or into newItems
+    var revGroups = {};
+    var newItems = [];
+    for (var gi = 0; gi < items.length; gi++) {
+      var gItem = items[gi];
+      var revReqId = gItem.salesRevisionRequestId;
+      if (revReqId) {
+        if (!revGroups[revReqId]) revGroups[revReqId] = [];
+        revGroups[revReqId].push(gItem);
+      } else {
+        newItems.push(gItem);
+      }
+    }
+    var revisionGroups = [];
+    var revReqIds = Object.keys(revGroups);
+    for (var rgi = 0; rgi < revReqIds.length; rgi++) {
+      var grpItems = revGroups[revReqIds[rgi]];
+      revisionGroups.push({
+        revisionRequestId: revReqIds[rgi],
+        items: grpItems,
+        json: JSON.stringify(grpItems),
+        html: buildGroupHtml(grpItems, pkg.pkgName, pkg.sowName),
+      });
+    }
+
     return {
-      actionType:  'change_request',
-      timestamp:   new Date().toISOString(),
-      packageId:   pkgId,
-      packageName: pkg.pkgName,
-      surveyId:    pkg.surveyId || '',
-      sowId:       pkg.sowId,
-      sowName:     pkg.sowName || '',
-      items:       items,
+      actionType:     'change_request',
+      timestamp:      new Date().toISOString(),
+      packageId:      pkgId,
+      packageName:    pkg.pkgName,
+      surveyId:       pkg.surveyId || '',
+      sowId:          pkg.sowId,
+      sowName:        pkg.sowName || '',
+      user:           getUser(),
+      revisionGroups: revisionGroups,
+      newItems:       newItems,
+      newItemsJson:   JSON.stringify(newItems),
+      newItemsHtml:   newItems.length ? buildGroupHtml(newItems, pkg.pkgName, pkg.sowName) : '',
+      items:          items,
     };
+  }
+
+  function buildGroupHtml(groupItems, pkgName, sowName) {
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < groupItems.length; i++) {
+      var act = groupItems[i].action || 'revise';
+      if (groups[act]) groups[act].push(groupItems[i]);
+    }
+
+    var sectionOrder = [
+      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
+    ];
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:720px;">');
+
+    for (var si = 0; si < sectionOrder.length; si++) {
+      var sec = sectionOrder[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      h.push('<div style="margin-bottom:12px;">');
+      h.push('<div style="font-size:13px;font-weight:700;color:' + sec.color + ';margin-bottom:6px;">');
+      h.push(sec.icon + ' ' + escHtml(sec.title) + ' (' + arr.length + ')');
+      h.push('</div>');
+
+      for (var j = 0; j < arr.length; j++) {
+        var it = arr[j];
+        // Use the per-item HTML if available
+        if (it.html) {
+          h.push(it.html);
+          h.push('<div style="height:4px;"></div>');
+        } else {
+          var label = it.displayLabel || it.productName || 'Item';
+          h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:8px 12px;margin-bottom:4px;">');
+          h.push('<div style="font-weight:600;font-size:13px;">' + escHtml(label) + '</div>');
+          h.push('</div>');
+        }
+      }
+      h.push('</div>');
+    }
+
+    h.push('</div>');
+    return h.join('');
+  }
+
+  /** Safe read of Knack's logged-in user attributes. */
+  function getUser() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes
+        ? Knack.getUserAttributes()
+        : null;
+      if (!u || typeof u !== 'object') return null;
+      return {
+        id:    u.id || '',
+        name:  u.name || '',
+        email: u.email || '',
+      };
+    } catch (e) {
+      return null;
+    }
   }
 
   /**
@@ -15380,6 +16396,45 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return h.join('');
   }
 
+  /** Build a plain-text ClickUp-safe version of the whole change request. */
+  function buildSubmitPlainText(pkgId) {
+    var pkg = _pending[pkgId];
+    if (!pkg) return '';
+
+    var lines = [];
+    lines.push('CHANGE REQUEST');
+    lines.push(pkg.pkgName + (pkg.sowName ? ' — ' + pkg.sowName : ''));
+    lines.push(pkg.items.length + ' item(s) — ' + new Date().toLocaleString());
+    lines.push('────────────────────');
+    lines.push('');
+
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < pkg.items.length; i++) {
+      var it = pkg.items[i];
+      var at = itemActionType(it);
+      if (groups[at]) groups[at].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'REVISIONS' },
+      { key: 'add',    title: 'ITEMS TO ADD' },
+      { key: 'remove', title: 'ITEMS TO REMOVE' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+      lines.push(sec.title + ' (' + arr.length + ')');
+      for (var j = 0; j < arr.length; j++) {
+        lines.push(buildItemPlainText(arr[j], buildItemFields(arr[j])));
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function submitChangeRequest(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg || !pkg.items.length) return;
@@ -15387,8 +16442,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       pkg.items.length + ' item(s) will be sent.')) return;
 
     var payload = buildSubmitPayload(pkgId);
-    var html    = buildSubmitHtml(pkgId);
-    payload.html = html;
+    payload.html      = buildSubmitHtml(pkgId);
+    payload.plainText = buildSubmitPlainText(pkgId);
+    var html = payload.html;
 
     if (CFG.debug) {
       console.log('[BidReview CR] Submitting:', payload);
@@ -15468,6 +16524,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ta.className = 'scw-bid-cr-modal__textarea';
     ta.placeholder = 'Why should this item be removed\u2026';
     ta.rows = 3;
+    if (params.prefillNotes) ta.value = params.prefillNotes;
     notesRow.appendChild(ta);
     body.appendChild(notesRow);
     modal.appendChild(body);
@@ -15477,17 +16534,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     footer.lastChild.addEventListener('click', closeModal);
     var removeBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--remove', 'Remove from Bid');
     removeBtn.addEventListener('click', function () {
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+      var rmItem = {
         rowId:         params.rowId,
         bidRecordId:   params.cell.id,
         sowItemId:     params.sowItemId || '',
         displayLabel:  params.displayLabel,
         productName:   params.cell.productName,
+        proposalBucket: params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
         removeFromBid: true,
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
-      }, params.surveyId);
+      };
+      applyRevMeta(rmItem, params);
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, rmItem, params.surveyId);
       closeModal();
       ns.renderToast('Removal added to change request', 'success');
     });
@@ -15543,10 +16604,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       bidConduit:      req.bidConduit || params.sowConduit || '',
       bidMdfIdf:       req.bidMdfIdf || params.sowMdfIdf || '',
       bidMdfIdfIds:    req.bidMdfIdfIds || params.sowMdfIdfIds || [],
-      bidConnDevice:      req.bidConnDevice || '',
-      bidConnDeviceIds:   req.bidConnDeviceIds || [],
-      bidConnTo:          req.bidConnTo || '',
-      bidConnToIds:       req.bidConnToIds || [],
+      bidConnDevice:      req.bidConnDevice || params.sowConnDevice || '',
+      bidConnDeviceIds:   req.bidConnDeviceIds || params.sowConnDeviceIds || [],
+      bidConnTo:          req.bidConnTo || params.sowConnTo || '',
+      bidConnToIds:       req.bidConnToIds || params.sowConnToIds || [],
     };
 
     // Connection options for addable connection fields (e.g. MDF/IDF)
@@ -15723,6 +16784,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       // Preserve reciprocal metadata when editing a reciprocal add-to-bid item
       if (existing && existing.reciprocal)       newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+      applyRevMeta(newItem, params);
 
       // Clear old reciprocals from this source before saving (handles edits)
       var isRecipItem = existing && existing.reciprocalSource;
@@ -15765,7 +16827,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             nbaBucket = nbaRow.proposalBucket || '';
             nbaBucketId = nbaRow.proposalBucketId || '';
           }
-          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          var nbaItem2 = {
             rowId:        nba.rowId,
             bidRecordId:  null,
             sowItemId:    nba.rowId,
@@ -15780,7 +16842,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid \u2014 connected from ' + (displayLabel || product),
-          }, params.surveyId);
+          };
+          applyRevMeta(nbaItem2, params);
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, nbaItem2, params.surveyId);
         }
         ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
       }
@@ -15811,6 +16875,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     buildSummaryCard: buildSummaryCard,
     submitForPackage: submitChangeRequest,
     clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
+    /** Silently add a pending item (no modal). Used by Convert All. */
+    addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
+      addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId);
+    },
   };
 
 })();
@@ -15846,6 +16914,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
@@ -15877,6 +16946,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
@@ -16396,12 +17466,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
         var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items — skip if claimed elsewhere
-        if (nbIsCamReader) {
-          console.log('[ClaimedDevices] noBid cam/reader:', cr.id, nbLbl, 'claimed?', !!claimed[cr.id]);
-        }
-        if (nbIsCamReader && !seenDev[cr.id] && !claimed[cr.id]) {
+        if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
-          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id, currentConnTo: null });
         }
         // Connected To: noBid items with mapConnections flag (field_2231)
         var nbMapConn = /^yes$/i.test(String(cr.sowMapConn || '').trim());
@@ -16423,13 +17490,16 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
 
         var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
-        var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
-        // Connected Devices: Camera/Reader with no existing "Connected To",
-        // not claimed by another record, or currently selected on this record
-        if (!seenDev[cc.id] && ((isCamReader && connToBlank && !claimed[cc.id]) || curDevSet[cc.id])) {
+        // Connected Devices: show ALL Camera/Reader items with current connection info
+        if (isCamReader && !seenDev[cc.id]) {
           seenDev[cc.id] = true;
-          connDevOpts.push({ id: cc.id, identifier: lbl });
+          var connTo = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+          connDevOpts.push({
+            id: cc.id,
+            identifier: lbl,
+            currentConnTo: connTo || null,
+          });
         }
 
         // Connected To: items where field_2374 (mapConnections) is Yes, or currently selected
@@ -16628,6 +17698,435 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
   };
 
+  ns.lookupCell = function (rowId, pkgId) {
+    if (!_state) return null;
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var rows = _state.sowGrids[g].rows;
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].id === rowId) return rows[r].cellsByPackage[pkgId] || null;
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Create a bid CR from a sales revision record.
+   * Called by the sales-revision-column when user clicks "Create Bid CR".
+   *
+   * @param {Object} opts
+   * @param {string} opts.sowItemId  — SOW line item record ID (field_2708)
+   * @param {string} opts.action     — 'remove' | 'revise' | 'add'
+   * @param {string} opts.changeNotes — pre-filled notes from the revision
+   * @param {Object} opts.revJson    — full revision JSON data
+   */
+  ns.createBidCRFromRevision = function (opts) {
+    if (!_state || !ns.changeRequests) return;
+
+    var sowItemId  = opts.sowItemId || '';
+
+    // Find the grid row that matches this SOW item
+    var grid = null, row = null;
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var sg = _state.sowGrids[g];
+      for (var r = 0; r < sg.rows.length; r++) {
+        if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+          grid = sg;
+          row = sg.rows[r];
+          break;
+        }
+      }
+      if (row) break;
+    }
+
+    if (!grid || !row) {
+      if (ns.renderToast) ns.renderToast('Could not find matching grid row', 'error');
+      return;
+    }
+
+    var pkgIds = Object.keys(row.cellsByPackage);
+    if (!pkgIds.length && grid.packages) {
+      for (var pi = 0; pi < grid.packages.length; pi++) {
+        pkgIds.push(grid.packages[pi].id);
+      }
+    }
+    if (!pkgIds.length) {
+      if (ns.renderToast) ns.renderToast('No bid packages available', 'error');
+      return;
+    }
+
+    // Read values from the revision line item record in view_3842 DOM
+    var REV_FIELD_MAP = {
+      rate:            'field_2648',
+      laborDesc:       'field_2649',
+      bidExistCabling: 'field_2650',
+      bidExterior:     'field_2651',
+      bidPlenum:       'field_2652',
+      bidConduit:      'field_2718',
+      bidDropLength:   'field_2719',
+    };
+
+    function readRevisionRecord(revRecordId) {
+      var requested = {};
+      if (!revRecordId) return requested;
+      var tr = document.getElementById(revRecordId);
+      if (!tr) {
+        var viewEl = document.getElementById('view_3842');
+        if (viewEl) tr = viewEl.querySelector('tr[id="' + revRecordId + '"]');
+      }
+      if (!tr) return requested;
+
+      for (var logicalKey in REV_FIELD_MAP) {
+        var fk = REV_FIELD_MAP[logicalKey];
+        var td = tr.querySelector('td.' + fk);
+        if (!td) continue;
+        var val = (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+        if (val && val !== '&nbsp;') requested[logicalKey] = val;
+      }
+
+      // Connection fields: bidConnDevice (field_2646), bidConnTo (field_2647), bidMdfIdf (field_2720)
+      var connFields = [
+        { key: 'bidConnDevice', field: 'field_2646', idsKey: 'bidConnDeviceIds' },
+        { key: 'bidConnTo',     field: 'field_2647', idsKey: 'bidConnToIds' },
+        { key: 'bidMdfIdf',     field: 'field_2720', idsKey: 'bidMdfIdfIds' },
+      ];
+      for (var ci = 0; ci < connFields.length; ci++) {
+        var cf = connFields[ci];
+        var ctd = tr.querySelector('td.' + cf.field);
+        if (!ctd) continue;
+        var spans = ctd.querySelectorAll('span[data-kn="connection-value"]');
+        if (!spans.length) continue;
+        var labels = [], ids = [];
+        for (var si = 0; si < spans.length; si++) {
+          var cid = (spans[si].className || '').trim();
+          var lbl = (spans[si].textContent || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(cid)) { ids.push(cid); labels.push(lbl); }
+        }
+        if (labels.length) requested[cf.key] = labels.join(', ');
+        if (ids.length) requested[cf.idsKey] = ids;
+      }
+
+      return requested;
+    }
+
+    function doOpen(pkgId) {
+      var action = opts.action || 'revise';
+      var revJson = opts.revJson || {};
+      var notes = revJson.changeNotes || opts.changeNotes || '';
+
+      // Map JSON requested fields (sales CR field keys → bid modal keys)
+      var jr = revJson.requested || {};
+      var SALES_MAP = {
+        field_1949: 'sowProduct',      field_1964: 'sowQty',
+        field_2150: 'sowFee',          field_2020: 'sowLaborDesc',
+        field_2461: 'sowExistCabling', field_1984: 'sowExterior',
+        field_1983: 'sowPlenum',       field_1965: 'sowDropLength',
+        field_2035: 'sowConduit',      field_1946: 'sowMdfIdf',
+        field_1957: 'sowConnDevice',   field_2197: 'sowConnTo',
+      };
+      var mapped = {};
+      for (var sk in SALES_MAP) {
+        if (jr[sk] != null && jr[sk] !== '') mapped[SALES_MAP[sk]] = jr[sk];
+        if (jr[sk + '_ids']) mapped[SALES_MAP[sk] + 'Ids'] = jr[sk + '_ids'];
+      }
+      // Top-level JSON fields as fallback
+      if (!mapped.sowProduct && revJson.productName) mapped.sowProduct = revJson.productName;
+      // Normalize boolean "true"/"false" → "Yes"/"No"
+      var boolKeys = ['sowExistCabling', 'sowExterior', 'sowPlenum'];
+      for (var bi = 0; bi < boolKeys.length; bi++) {
+        var bv = mapped[boolKeys[bi]];
+        if (bv === 'true') mapped[boolKeys[bi]] = 'Yes';
+        else if (bv === 'false') mapped[boolKeys[bi]] = 'No';
+      }
+
+      if (action === 'add') {
+        row._revOverlay = {
+          sowProduct:      mapped.sowProduct || row.sowProduct || '',
+          sowQty:          mapped.sowQty || row.sowQty || '',
+          sowFee:          mapped.sowFee || row.sowFee || '',
+          sowLaborDesc:    mapped.sowLaborDesc || row.sowLaborDesc || '',
+          sowExistCabling: mapped.sowExistCabling || row.sowExistCabling || '',
+          sowPlenum:       mapped.sowPlenum || row.sowPlenum || '',
+          sowExterior:     mapped.sowExterior || row.sowExterior || '',
+          sowDropLength:   mapped.sowDropLength || row.sowDropLength || '',
+          sowConduit:      mapped.sowConduit || row.sowConduit || '',
+          sowMdfIdf:       mapped.sowMdfIdf || row.sowMdfIdf || '',
+          sowMdfIdfIds:    mapped.sowMdfIdfIds || row.sowMdfIdfIds || [],
+          sowConnDevice:   mapped.sowConnDevice || '',
+          sowConnDeviceIds: mapped.sowConnDeviceIds || [],
+          sowConnTo:       mapped.sowConnTo || '',
+          sowConnToIds:    mapped.sowConnToIds || [],
+        };
+      } else if (action !== 'remove') {
+        // For REVISE: merge JSON values into the cell using bid logical keys
+        var BID_MAP = {
+          field_1949: 'productName', field_1964: 'qty', field_2150: 'rate',
+          field_2020: 'laborDesc', field_2461: 'bidExistCabling',
+          field_1984: 'bidExterior', field_1983: 'bidPlenum',
+          field_1965: 'bidDropLength', field_2035: 'bidConduit',
+          field_1946: 'bidMdfIdf',
+        };
+        var cell = row.cellsByPackage[pkgId];
+        if (cell) {
+          for (var bk in BID_MAP) {
+            if (jr[bk] != null && jr[bk] !== '') cell[BID_MAP[bk]] = jr[bk];
+            if (jr[bk + '_ids']) cell[BID_MAP[bk] + 'Ids'] = jr[bk + '_ids'];
+          }
+        }
+      }
+
+      executeBidCR(grid, row, pkgId, action, notes, {
+        salesRevisionId: opts.revisionRecordId || '',
+        salesRevisionRequestId: opts.revisionRequestId || '',
+      });
+      delete row._revOverlay;
+    }
+
+    var choices = [];
+    for (var p = 0; p < pkgIds.length; p++) {
+      choices.push({ id: pkgIds[p], name: findPackageName(grid, pkgIds[p]) });
+    }
+    if (choices.length === 1) {
+      doOpen(choices[0].id);
+    } else {
+      showPackagePicker(choices, doOpen);
+    }
+  };
+
+  function executeBidCR(grid, row, pkgId, action, notes, revMeta) {
+    var cell = row.cellsByPackage[pkgId];
+
+    var params = {
+      rowId:        row.id,
+      pkgId:        pkgId,
+      pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
+      sowId:        grid.sowId,
+      sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
+      displayLabel: row.displayLabel,
+      productName:  row.productName,
+      cell:         cell || {},
+      revMeta:      revMeta || null,
+      proposalBucket:   row.proposalBucket || '',
+      proposalBucketId: row.proposalBucketId || '',
+    };
+
+    if (action === 'remove') {
+      if (!cell) return;
+      params.prefillNotes = notes;
+      ns.changeRequests.openRemove(params);
+    } else if (action === 'add') {
+      // Add to bid — use the add-item flow
+      // If _revOverlay exists (from sales revision), use revision data as prefill
+      var ov = row._revOverlay || {};
+      params.sowProduct    = ov.sowProduct || row.sowProduct || row.productName || '';
+      params.sowQty        = ov.sowQty || row.sowQty || '';
+      params.sowLaborDesc  = ov.sowLaborDesc || row.sowLaborDesc || '';
+      params.sowFee        = ov.sowFee || row.sowFee || '';
+      params.sowExistCabling = ov.sowExistCabling || row.sowExistCabling || '';
+      params.sowPlenum     = ov.sowPlenum || row.sowPlenum || '';
+      params.sowExterior   = ov.sowExterior || row.sowExterior || '';
+      params.sowDropLength = ov.sowDropLength || row.sowDropLength || '';
+      params.sowConduit    = ov.sowConduit || row.sowConduit || '';
+      params.sowMdfIdf     = ov.sowMdfIdf || row.sowMdfIdf || '';
+      params.sowMdfIdfIds  = ov.sowMdfIdfIds || row.sowMdfIdfIds || [];
+      params.sowConnDevice    = ov.sowConnDevice || '';
+      params.sowConnDeviceIds = ov.sowConnDeviceIds || [];
+      params.sowConnTo        = ov.sowConnTo || '';
+      params.sowConnToIds     = ov.sowConnToIds || [];
+      params.sowMapConn    = row.sowMapConn || '';
+      // Build connection options from grid rows
+      var addConnDev = [], addConnTo = [];
+      var addSeenDev = {}, addSeenTo = {};
+      var ADD_CAM = '6481e5ba38f283002898113c';
+      for (var aci = 0; aci < grid.rows.length; aci++) {
+        var acr = grid.rows[aci];
+        var acpkgs = Object.keys(acr.cellsByPackage);
+        for (var acpi = 0; acpi < acpkgs.length; acpi++) {
+          var acc = acr.cellsByPackage[acpkgs[acpi]];
+          if (!acc.id) continue;
+          var acLbl = acr.displayLabel || acr.productName || acc.productName || acc.id;
+          if (acr.proposalBucketId === ADD_CAM && !addSeenDev[acc.id]) {
+            addSeenDev[acc.id] = true;
+            var acConnTo = acc.bidConnTo ? String(acc.bidConnTo).trim() : '';
+            addConnDev.push({ id: acc.id, identifier: acLbl, currentConnTo: acConnTo || null });
+          }
+          if (acc.mapConnections && !addSeenTo[acc.id]) {
+            addSeenTo[acc.id] = true;
+            addConnTo.push({ id: acc.id, identifier: acLbl });
+          }
+        }
+      }
+      params.connOptions = { bidConnDevice: addConnDev, bidConnTo: addConnTo, bidMdfIdf: buildMdfIdfOptions() };
+      // Visibility: connDevice only if field_2231=Yes on SOW row;
+      // cabling (includes Connected To) only if bucket is Camera or Reader
+      var showConn = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
+      var isCamReader = (row.proposalBucketId === '6481e5ba38f283002898113c');
+      params.visibility    = { qty: true, cabling: isCamReader, connDevice: showConn };
+      params.gridRows      = grid.rows;
+      ns.changeRequests.openAddItem(params);
+    } else {
+      if (!cell) return;
+      // Build connection options from grid rows (same as normal revise flow)
+      var connDevOpts2 = [], connToOpts2 = [];
+      var seenDev2 = {}, seenTo2 = {};
+      var CAM_READER = '6481e5ba38f283002898113c';
+      for (var cri = 0; cri < grid.rows.length; cri++) {
+        var cr = grid.rows[cri];
+        var cpkgs = Object.keys(cr.cellsByPackage);
+        for (var cpi = 0; cpi < cpkgs.length; cpi++) {
+          var cc = cr.cellsByPackage[cpkgs[cpi]];
+          if (!cc.id || cc.id === cell.id) continue;
+          var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
+          if (cr.proposalBucketId === CAM_READER && !seenDev2[cc.id]) {
+            seenDev2[cc.id] = true;
+            var connTo2 = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+            connDevOpts2.push({ id: cc.id, identifier: lbl, currentConnTo: connTo2 || null });
+          }
+          if (cc.mapConnections && !seenTo2[cc.id]) {
+            seenTo2[cc.id] = true;
+            connToOpts2.push({ id: cc.id, identifier: lbl });
+          }
+        }
+      }
+      var showConn2 = cell.mapConnections || row.sowMapConn === 'Yes' || row.sowMapConn === 'true';
+      var isCamReader2 = (row.proposalBucketId === CAM_READER);
+      params.connOptions = { bidConnDevice: connDevOpts2, bidConnTo: connToOpts2, bidMdfIdf: buildMdfIdfOptions() };
+      params.visibility = { qty: true, cabling: isCamReader2, connDevice: showConn2 };
+      params.gridRows = grid.rows;
+      ns.changeRequests.open(params);
+    }
+  }
+
+  /**
+   * Batch-convert an array of sales revision data into pending bid CRs
+   * for a specific package. No modals — items are created silently.
+   *
+   * @param {Array} revisions — [{sowItemId, action, changeNotes, revJson, revisionRecordId}]
+   * @param {string} pkgId    — target bid package
+   */
+  ns.batchConvertRevisions = function (revisions, pkgId) {
+    if (!_state || !ns.changeRequests) return 0;
+
+    var count = 0;
+    for (var i = 0; i < revisions.length; i++) {
+      var rev = revisions[i];
+      var action = rev.action || 'revise';
+      var sowItemId = rev.sowItemId || '';
+
+      // Find matching grid row
+      var grid = null, row = null;
+      for (var g = 0; g < _state.sowGrids.length; g++) {
+        var sg = _state.sowGrids[g];
+        for (var r = 0; r < sg.rows.length; r++) {
+          if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+            grid = sg; row = sg.rows[r]; break;
+          }
+        }
+        if (row) break;
+      }
+      if (!grid || !row) continue;
+
+      var cell = row.cellsByPackage[pkgId] || {};
+      var pkgName = findPackageName(grid, pkgId);
+      var surveyId = findPackageSurveyId(grid, pkgId);
+
+      var item;
+      if (action === 'remove') {
+        item = {
+          rowId:         row.id,
+          bidRecordId:   cell.id || null,
+          sowItemId:     row.sowItem || '',
+          displayLabel:  row.displayLabel,
+          productName:   row.productName || cell.productName || '',
+          removeFromBid: true,
+          current:       {},
+          requested:     {},
+          changeNotes:   rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
+        };
+      } else if (action === 'add') {
+        var req = {};
+        if (rev.revJson) {
+          req.productName = rev.revJson.productName || row.sowProduct || '';
+          if (row.sowQty) req.qty = row.sowQty;
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  null,
+          sowItemId:    row.sowItem || row.id,
+          displayLabel: row.displayLabel || row.sowProduct || '',
+          productName:  req.productName || row.sowProduct || row.productName || '',
+          addToBid:     true,
+          current:      {},
+          requested:    req,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
+        };
+      } else {
+        // Revise — snapshot current from cell, apply revision fields
+        var current = {};
+        var requested = {};
+        if (rev.revJson && rev.revJson.fields) {
+          for (var fi = 0; fi < rev.revJson.fields.length; fi++) {
+            var f = rev.revJson.fields[fi];
+            if (f.from != null) current[f.field] = f.from;
+            requested[f.field] = f.to;
+            if (f.fromIds) current[f.field + 'Ids'] = f.fromIds;
+            if (f.toIds) requested[f.field + 'Ids'] = f.toIds;
+          }
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  cell.id || null,
+          sowItemId:    row.sowItem || '',
+          displayLabel: row.displayLabel,
+          productName:  row.productName || cell.productName || '',
+          current:      current,
+          requested:    requested,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
+          revisionFields: (rev.revJson && rev.revJson.fields) || [],
+        };
+      }
+
+      ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
+      count++;
+    }
+
+    if (ns.rerender) ns.rerender();
+    return count;
+  };
+
+  function showPackagePicker(choices, onSelect) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:10px;padding:20px;min-width:240px;font:13px/1.45 system-ui,sans-serif;';
+    modal.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">Select Bid Package</div>';
+
+    for (var i = 0; i < choices.length; i++) {
+      var btn = document.createElement('button');
+      btn.style.cssText = 'display:block;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#1e293b;font:600 13px/1 system-ui,sans-serif;cursor:pointer;text-align:left;';
+      btn.textContent = choices[i].name;
+      btn.setAttribute('data-pkg-id', choices[i].id);
+      btn.addEventListener('click', function () {
+        var pkgId = this.getAttribute('data-pkg-id');
+        overlay.remove();
+        onSelect(pkgId);
+      });
+      modal.appendChild(btn);
+    }
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
   // ── force views to load 1000 records per page ───────────────
 
   /**
@@ -16744,6 +18243,887 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   init();
+
+})();
+/*** SALES REVISION COLUMN — BID COMPARISON GRID ***/
+/**
+ * Injects a "Sales Revisions" column into the bid comparison grid
+ * (scene_1155) between the Line Item and SOW Detail columns.
+ *
+ * Reads revision line items from view_3842 (hidden), joins to grid
+ * rows via field_2708 (connection to SOW line item) matched to
+ * data-sow-item-id on grid rows.
+ *
+ * Each item gets action buttons matching the CR column style.
+ *
+ * Reads:  SCW.bidReview (grid state), Knack DOM (view_3842)
+ * Writes: nothing — purely additive DOM injection
+ */
+(function () {
+  'use strict';
+
+  var CFG = {
+    revisionView:    'view_3842',
+    sowItemField:    'field_2708',
+    parentReqField:  'field_2643',
+    htmlField:       'field_2695',
+    jsonField:       'field_2696',
+    statusField:     'field_2645',
+
+    colHeaderText:   'Sales Revisions',
+    mountSelector:   '#bid-review-matrix',
+    eventNs:         '.scwSalesRevCol',
+    cssId:           'scw-sales-rev-col-css',
+    rejectWebhook:   'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5',
+  };
+
+  var P = 'scw-sr-col';
+  var _revisionData = [];
+
+  // Ordered fields to display in revision cards on the comparison grid
+  var CARD_DISPLAY = [
+    'field_1949', 'field_1964', 'field_1953', 'field_1946',
+    'field_1957', 'field_2197', 'field_2020',
+    'field_2461', 'field_1984', 'field_1965', 'field_2150',
+  ];
+  var CARD_DISPLAY_SET = {};
+  for (var cdi = 0; cdi < CARD_DISPLAY.length; cdi++) CARD_DISPLAY_SET[CARD_DISPLAY[cdi]] = true;
+
+  // ═══════════════════════════════════════════════════════════
+  //  CSS
+  // ═══════════════════════════════════════════════════════════
+
+  function injectStyles() {
+    if (document.getElementById(CFG.cssId)) return;
+    var css = [
+      '.' + P + '-header {',
+      '  background: #f0f9ff; color: #0c4a6e;',
+      '  padding: 10px 12px;',
+      '  min-width: 200px; vertical-align: top;',
+      '  border-bottom: 2px solid #0ea5e9;',
+      '  text-align: center;',
+      '}',
+
+      '.' + P + '-cell {',
+      '  vertical-align: top; padding: 8px 10px;',
+      '  min-width: 200px; overflow: visible;',
+      '}',
+
+      '.' + P + '-card {',
+      '  margin-bottom: 8px; border-radius: 6px; overflow: hidden;',
+      '}',
+      '.' + P + '-card > div { max-width: 100% !important; }',
+      '.' + P + '-card > div > div { max-width: 100% !important; }',
+
+      '.' + P + '-actions {',
+      '  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;',
+      '}',
+
+      '.scw-bid-review__overflow-trigger--reject {',
+      '  background: #dc2626 !important; color: #fff !important;',
+      '  border: none; border-radius: 4px; padding: 4px 10px;',
+      '  font: 600 11px/1 system-ui, sans-serif; cursor: pointer;',
+      '  white-space: nowrap;',
+      '}',
+      '.scw-bid-review__overflow-trigger--reject:hover { filter: brightness(.88); }',
+      '.scw-bid-review__overflow-trigger--reject:disabled { opacity: .5; cursor: not-allowed; }',
+    ].join('\n');
+
+    var s = document.createElement('style');
+    s.id = CFG.cssId;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  LOAD REVISION DATA FROM view_3842
+  // ═══════════════════════════════════════════════════════════
+
+  function loadRevisions() {
+    var $view = $('#' + CFG.revisionView);
+    if (!$view.length) return;
+
+    _revisionData = [];
+
+    $view.find('tbody tr[id]').each(function () {
+      var $tr = $(this);
+      var id  = $tr.attr('id');
+      if (!id) return;
+
+      var $sowCell = $tr.find('td.' + CFG.sowItemField);
+      var sowSpan  = $sowCell.length
+        ? $sowCell[0].querySelector('span[data-kn="connection-value"]')
+        : null;
+      var sowItemId = sowSpan ? sowSpan.className.trim() : '';
+
+      var $prCell = $tr.find('td.' + CFG.parentReqField);
+      var prSpan  = $prCell.length
+        ? $prCell[0].querySelector('span[data-kn="connection-value"]')
+        : null;
+      var parentRequestId = prSpan ? prSpan.className.trim() : '';
+
+      var status = ($tr.find('td.' + CFG.statusField).text() || '').replace(/[\u00a0\s]+/g, ' ').trim();
+
+      // Skip rejected/accepted items
+      if (/^rejected$/i.test(status) || /^accepted$/i.test(status)) return;
+
+      var $htmlCell = $tr.find('td.' + CFG.htmlField);
+      var htmlContent = '';
+      if ($htmlCell.length) {
+        var $inner = $htmlCell.find('span[class^="col-"]');
+        htmlContent = ($inner.length ? $inner : $htmlCell).html() || '';
+      }
+
+      var jsonText = ($tr.find('td.' + CFG.jsonField).text() || '').replace(/<[^>]*>/g, '').trim();
+      var jsonData = null;
+      try { jsonData = JSON.parse(jsonText); } catch (e) {}
+
+      _revisionData.push({
+        id:              id,
+        sowItemId:        sowItemId,
+        parentRequestId:  parentRequestId,
+        status:           status,
+        html:             htmlContent,
+        json:             jsonData,
+      });
+    });
+
+    if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
+      console.log('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  GROUP REVISIONS BY SOW ITEM
+  // ═══════════════════════════════════════════════════════════
+
+  function revisionsBySowItem() {
+    var map = {};
+    for (var i = 0; i < _revisionData.length; i++) {
+      var r = _revisionData[i];
+      if (!r.sowItemId) continue;
+      if (!map[r.sowItemId]) map[r.sowItemId] = [];
+      map[r.sowItemId].push(r);
+    }
+    return map;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  INJECT COLUMN INTO BID COMPARISON GRID
+  // ═══════════════════════════════════════════════════════════
+
+  function removeColumn() {
+    var $mount = $(CFG.mountSelector);
+    if (!$mount.length) return;
+    $mount.find('.' + P + '-header, .' + P + '-detail-placeholder, .' + P + '-action-header, .' + P + '-cell').remove();
+    // Undo colspan bumps
+    $mount.find('td[data-sr-bumped]').each(function () {
+      var span = parseInt($(this).attr('colspan'), 10) || 2;
+      $(this).attr('colspan', span - 1);
+    });
+    $mount.find('[data-sr-bumped]').removeAttr('data-sr-bumped');
+  }
+
+  function injectColumn() {
+    // Always clean up previous injection before rebuilding
+    removeColumn();
+
+    if (!_revisionData.length) return;
+
+    var $mount = $(CFG.mountSelector);
+    if (!$mount.length) return;
+
+    var bySow = revisionsBySowItem();
+    if (!Object.keys(bySow).length) return;
+
+    injectStyles();
+
+    // Inject into header rows (3-row layout)
+    // Row 1 (titles): insert TH after Line Item
+    $mount.find('.scw-bid-review__header-titles').each(function () {
+      if ($(this).find('.' + P + '-header').length) return;
+      var th = document.createElement('th');
+      th.className = P + '-header';
+      th.textContent = CFG.colHeaderText;
+      $(this).find('th').first().after(th);
+    });
+
+    // Row 2 (details): insert empty TD
+    $mount.find('.scw-bid-review__header-details').each(function () {
+      if ($(this).find('.' + P + '-detail-placeholder').length) return;
+      var td = document.createElement('td');
+      td.className = P + '-detail-placeholder';
+      $(this).find('td').first().after(td);
+    });
+
+    // Row 3 (actions): insert TD with Convert All button
+    $mount.find('.scw-bid-review__header-actions').each(function () {
+      if ($(this).find('.' + P + '-action-header').length) return;
+      var td = document.createElement('td');
+      td.className = P + '-action-header scw-bid-review__header-action-cell';
+      var convertBtn = document.createElement('button');
+      convertBtn.className = 'scw-bid-review__btn scw-bid-review__btn--adopt';
+      convertBtn.textContent = 'Convert All \u2192';
+      convertBtn.addEventListener('click', handleConvertAll);
+      td.appendChild(convertBtn);
+      $(this).find('td').first().after(td);
+    });
+
+    // Inject data cells — match on data-sow-item-id (SOW line item ID)
+    $mount.find('tr[data-row-id], tr.scw-bid-review__group-header, tr.scw-bid-review__subgroup-header').each(function () {
+      var $tr = $(this);
+
+      // Group/subgroup header rows — bump colspan
+      if ($tr.hasClass('scw-bid-review__group-header') || $tr.hasClass('scw-bid-review__subgroup-header')) {
+        var $td = $tr.find('td[colspan]');
+        if ($td.length && !$td.attr('data-sr-bumped')) {
+          var span = parseInt($td.attr('colspan'), 10) || 1;
+          $td.attr('colspan', span + 1);
+          $td.attr('data-sr-bumped', '1');
+        }
+        return;
+      }
+
+      if ($tr.find('.' + P + '-cell').length) return;
+
+      // Match using data-sow-item-id (set by bid-review render.js)
+      var sowItemId = $tr.attr('data-sow-item-id') || '';
+      // Fallback: for noBid rows, data-row-id might BE the SOW item ID
+      if (!sowItemId) sowItemId = $tr.attr('data-row-id') || '';
+
+      var revs = bySow[sowItemId] || [];
+
+      var td = document.createElement('td');
+      td.className = P + '-cell';
+
+      if (revs.length) {
+        for (var r = 0; r < revs.length; r++) {
+          var rev = revs[r];
+          var json = rev.json || {};
+          var action = json.action || '';
+          var item = document.createElement('div');
+
+          // Build card matching scw-bid-cr-card structure
+          var cardMod = action === 'remove' ? '--removal'
+                      : action === 'add'    ? '--add'
+                      :                       '';
+          var card = document.createElement('div');
+          card.className = 'scw-bid-cr-card' + (cardMod ? ' scw-bid-cr-card' + cardMod : '');
+
+          var headerText = action === 'remove' ? 'Sales: Remove'
+                         : action === 'add'    ? 'Sales: Add'
+                         :                       'Sales: Revise';
+          var header = document.createElement('div');
+          header.className = 'scw-bid-cr-card__header';
+          header.textContent = headerText;
+          card.appendChild(header);
+
+          // For product name: prefer requested value if product changed
+          var cardProduct = json.productName || '';
+          var jr = json.requested || {};
+          if (jr.field_1949) cardProduct = jr.field_1949;
+
+          if (json.displayLabel || cardProduct) {
+            var label = document.createElement('div');
+            label.className = 'scw-bid-cr-card__item-label';
+            label.textContent = json.displayLabel
+              ? (json.displayLabel + (cardProduct && cardProduct !== json.displayLabel ? ' (' + cardProduct + ')' : ''))
+              : cardProduct;
+            card.appendChild(label);
+          }
+
+          if (json.fields && json.fields.length) {
+            // Build lookup, then walk in display order
+            var fByKey = {};
+            for (var fbi = 0; fbi < json.fields.length; fbi++) fByKey[json.fields[fbi].field] = json.fields[fbi];
+            for (var di = 0; di < CARD_DISPLAY.length; di++) {
+              var f = fByKey[CARD_DISPLAY[di]];
+              if (!f) continue;
+              var fval = f.to != null ? String(f.to) : '';
+              if (!fval || fval === '\u00a0') continue;
+              if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
+              var row = document.createElement('div');
+              row.className = 'scw-bid-cr-card__row';
+              if (action === 'revise' || action === 'add') {
+                row.textContent = f.label + ': ' + (f.from != null ? f.from : '\u2014') + ' \u2192 ' + f.to;
+              } else {
+                row.textContent = f.label + ': ' + f.to;
+              }
+              card.appendChild(row);
+            }
+          } else if (action === 'remove') {
+            var removeRow = document.createElement('div');
+            removeRow.className = 'scw-bid-cr-card__row';
+            removeRow.textContent = 'Requesting removal';
+            card.appendChild(removeRow);
+          }
+
+          if (json.changeNotes) {
+            var notes = document.createElement('div');
+            notes.className = 'scw-bid-cr-card__notes';
+            notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+            card.appendChild(notes);
+          }
+
+          item.appendChild(card);
+
+          // Build overflow menus matching the CR column style
+          var actions = document.createElement('div');
+          actions.className = 'scw-bid-review__action-menus';
+
+          // Gather package choices from the grid
+          var packages = getGridPackages();
+          var revJsonStr = JSON.stringify(rev.json || {});
+
+          // Check if item is on the bid (has a non-missing bid cell)
+          var gridRow = $tr.closest('tr[data-row-id]');
+          var isOnBid = gridRow.length && !gridRow.find('.scw-bid-review__cell--missing').length
+                     && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
+
+          // Reject button — only for add/remove actions (not revise)
+          if (action !== 'revise') {
+            var rejectBtn = document.createElement('button');
+            rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+            rejectBtn.textContent = 'Reject';
+            rejectBtn.setAttribute('data-rev-id', rev.id);
+            rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+            rejectBtn.setAttribute('data-rev-json', revJsonStr);
+            rejectBtn.addEventListener('click', handleRejectClick);
+            actions.appendChild(rejectBtn);
+          }
+
+          // Revise items: show Clear button (on-bid and not-on-bid)
+          if (action === 'revise') {
+            var ackBtn = document.createElement('button');
+            ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
+            ackBtn.textContent = 'Clear';
+            ackBtn.setAttribute('data-rev-id', rev.id);
+            ackBtn.addEventListener('click', function () {
+              var aid = this.getAttribute('data-rev-id');
+              this.disabled = true;
+              this.textContent = 'Updating\u2026';
+              var self = this;
+              var statusData = {};
+              statusData[CFG.statusField] = 'Accepted';
+              SCW.knackAjax({
+                url: SCW.knackRecordUrl(CFG.revisionView, aid),
+                type: 'PUT',
+                data: JSON.stringify(statusData),
+                success: function () {
+                  self.textContent = 'Cleared \u2713';
+                  self.style.opacity = '0.6';
+                  setTimeout(function () {
+                    if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+                      Knack.views[CFG.revisionView].model.fetch();
+                    }
+                  }, 1500);
+                },
+                error: function () {
+                  self.textContent = 'Failed';
+                  self.disabled = false;
+                },
+              });
+            });
+            actions.appendChild(ackBtn);
+          }
+
+          // CR button — Revise only if on bid; Add/Remove always shown
+          if (action !== 'revise' || isOnBid) {
+            var crLabel = action === 'add'    ? 'Add \u2192'
+                        : action === 'remove' ? 'Remove \u2192'
+                        :                       'Revise \u2192';
+            var crMod   = action === 'add'    ? 'create'
+                        : action === 'remove' ? 'remove'
+                        :                       'revise';
+            var crChoices = [];
+            for (var cp = 0; cp < packages.length; cp++) {
+              crChoices.push({
+                label: packages[cp].name,
+                attrs: {
+                  'data-sr-action': 'create-bid-cr',
+                  'data-rev-id': rev.id,
+                  'data-rev-request-id': rev.parentRequestId || '',
+                  'data-sow-item-id': rev.sowItemId,
+                  'data-rev-json': revJsonStr,
+                }
+              });
+            }
+            actions.appendChild(buildSROverflow(crLabel, crMod, crChoices));
+          }
+
+          // Not on bid + revise: also offer Add to bid
+          if (!isOnBid && action === 'revise') {
+            var addChoices = [];
+            for (var addp = 0; addp < packages.length; addp++) {
+              addChoices.push({
+                label: packages[addp].name,
+                attrs: {
+                  'data-sr-action': 'create-bid-cr',
+                  'data-rev-id': rev.id,
+                  'data-rev-request-id': rev.parentRequestId || '',
+                  'data-sow-item-id': rev.sowItemId,
+                  'data-rev-json': JSON.stringify($.extend({}, rev.json || {}, { action: 'add' })),
+                }
+              });
+            }
+            actions.appendChild(buildSROverflow('Add \u2192', 'create', addChoices));
+          }
+
+          item.appendChild(actions);
+          td.appendChild(item);
+        }
+      }
+
+      var $firstTd = $tr.find('td').first();
+      $firstTd.after(td);
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  OVERFLOW MENU (mirrors bid-review buildOverflowMenu)
+  // ═══════════════════════════════════════════════════════════
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function elDiv(cls, text) {
+    var d = document.createElement('div');
+    if (cls) d.className = cls;
+    if (text != null) d.textContent = text;
+    return d;
+  }
+
+  function buildSROverflow(triggerLabel, triggerMod, choices) {
+    var container = document.createElement('div');
+    container.className = 'scw-bid-review__overflow';
+
+    var trigger = document.createElement('button');
+    trigger.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--' + triggerMod;
+    trigger.type = 'button';
+    trigger.innerHTML = '<span class="scw-bid-review__overflow-dots">\u22EE</span> ' + esc(triggerLabel);
+    container.appendChild(trigger);
+
+    var menu = document.createElement('div');
+    menu.className = 'scw-bid-review__overflow-menu';
+    for (var i = 0; i < choices.length; i++) {
+      var ch = choices[i];
+      var itemEl = document.createElement('button');
+      itemEl.className = 'scw-bid-review__overflow-item';
+      itemEl.type = 'button';
+      itemEl.textContent = ch.label;
+      var keys = Object.keys(ch.attrs);
+      for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], ch.attrs[keys[k]]);
+      itemEl.addEventListener('click', handleSRAction);
+      menu.appendChild(itemEl);
+    }
+    container.appendChild(menu);
+
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var allOpen = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var j = 0; j < allOpen.length; j++) {
+        if (allOpen[j] !== container) allOpen[j].classList.remove('scw-bid-review__overflow--open');
+      }
+      container.classList.toggle('scw-bid-review__overflow--open');
+    });
+
+    return container;
+  }
+
+  /** Read all bid packages from the grid's header row. */
+  function getGridPackages() {
+    var pkgs = [];
+    var $mount = $(CFG.mountSelector);
+    $mount.find('.scw-bid-review__pkg-header').each(function () {
+      // Read package name from subtitle (BD-#) or old pkg-name element
+      var $subtitle = $(this).find('.scw-bid-review__col-subtitle');
+      var $nameOld = $(this).find('.scw-bid-review__pkg-name');
+      var name = '';
+      if ($subtitle.length) {
+        name = $subtitle.contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+      }
+      if (!name && $nameOld.length) {
+        name = $nameOld.contents().first().text().trim();
+      }
+      // Get package ID from any action button in the header
+      var $actionBtn = $(this).find('button[data-package-id]');
+      var id = $actionBtn.length ? $actionBtn.attr('data-package-id') : '';
+      if (name && id) pkgs.push({ id: id, name: name });
+    });
+    // Fallback: read from data rows in the CR column
+    if (!pkgs.length) {
+      var seen = {};
+      $mount.find('.scw-bid-review__overflow-item[data-package-id]').each(function () {
+        var id = this.getAttribute('data-package-id');
+        var name = this.textContent.trim();
+        if (id && !seen[id]) {
+          seen[id] = true;
+          pkgs.push({ id: id, name: name || id });
+        }
+      });
+    }
+    return pkgs;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ACTION HANDLERS
+  // ═══════════════════════════════════════════════════════════
+
+  /** Convert all sales revisions to pending bid CRs — pick package first. */
+  function handleConvertAll(e) {
+    e.stopPropagation();
+    if (!window.SCW || !SCW.bidReview || !SCW.bidReview.batchConvertRevisions) {
+      console.warn('[SalesRevCol] batchConvertRevisions not available');
+      return;
+    }
+
+    var packages = getGridPackages();
+    if (!packages.length) {
+      if (SCW.bidReview.renderToast) SCW.bidReview.renderToast('No bid packages available', 'error');
+      return;
+    }
+
+    // Build revision data for batch
+    var revItems = [];
+    for (var i = 0; i < _revisionData.length; i++) {
+      var rev = _revisionData[i];
+      if (!rev.sowItemId) continue;
+      revItems.push({
+        sowItemId:            rev.sowItemId,
+        action:               (rev.json && rev.json.action) || 'revise',
+        changeNotes:          (rev.json && rev.json.changeNotes) || '',
+        revJson:              rev.json || {},
+        revisionRecordId:     rev.id,
+        revisionRequestId:    rev.parentRequestId || '',
+      });
+    }
+
+    if (!revItems.length) {
+      if (SCW.bidReview.renderToast) SCW.bidReview.renderToast('No revisions to convert', 'info');
+      return;
+    }
+
+    function doConvert(pkgId) {
+      var count = SCW.bidReview.batchConvertRevisions(revItems, pkgId);
+      if (SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast('Converted ' + count + ' revision(s) to pending bid CRs', 'success');
+      }
+    }
+
+    if (packages.length === 1) {
+      doConvert(packages[0].id);
+    } else {
+      // Show package picker
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+      overlay.addEventListener('click', function (ev) { if (ev.target === overlay) overlay.remove(); });
+
+      var modal = document.createElement('div');
+      modal.style.cssText = 'background:#fff;border-radius:10px;padding:20px;min-width:240px;font:13px/1.45 system-ui,sans-serif;';
+      modal.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">Convert ' + revItems.length + ' revision(s) to which bid?</div>';
+
+      for (var p = 0; p < packages.length; p++) {
+        var btn = document.createElement('button');
+        btn.style.cssText = 'display:block;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#1e293b;font:600 13px/1 system-ui,sans-serif;cursor:pointer;text-align:left;';
+        btn.textContent = packages[p].name;
+        btn.setAttribute('data-pkg-id', packages[p].id);
+        btn.addEventListener('click', function () {
+          var pkgId = this.getAttribute('data-pkg-id');
+          overlay.remove();
+          doConvert(pkgId);
+        });
+        modal.appendChild(btn);
+      }
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+    }
+  }
+
+  function handleRejectClick(e) {
+    e.stopPropagation();
+    var btn = this;
+    var revId = btn.getAttribute('data-rev-id');
+    var revReqId = btn.getAttribute('data-rev-request-id');
+    var revJson = {};
+    try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+
+    var label = revJson.displayLabel || revJson.productName || 'this item';
+    if (!window.confirm('Reject revision for ' + label + '?')) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Rejecting\u2026';
+
+    // Build updated JSON with rejection stamp
+    var updatedJson = JSON.parse(JSON.stringify(revJson));
+    updatedJson.status = 'Rejected';
+    updatedJson.rejectedAt = new Date().toISOString();
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) updatedJson.rejectedBy = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    // Build rejection HTML stamp to prepend to existing card
+    var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
+      + 'background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
+      + 'color:#991b1b;font-weight:600;">'
+      + '\u274c Rejected &mdash; ' + new Date().toLocaleString()
+      + '</div>';
+
+    // Find the existing HTML from the card in the DOM
+    var cardEl = btn.closest('.' + P + '-item');
+    var existingHtml = '';
+    if (cardEl) {
+      var cardDiv = cardEl.querySelector('.' + P + '-card');
+      if (cardDiv) existingHtml = cardDiv.innerHTML;
+    }
+    var newHtml = stampHtml + existingHtml;
+
+    // 1. Update Knack record: field_2645 (status), field_2695 (HTML), field_2696 (JSON)
+    var knackData = {};
+    knackData[CFG.statusField] = 'Rejected';
+    knackData[CFG.htmlField] = newHtml;
+    knackData[CFG.jsonField] = JSON.stringify(updatedJson);
+
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revId),
+      type: 'PUT',
+      data: JSON.stringify(knackData),
+      success: function () {
+        console.log('[SalesRevCol] Updated record', revId, 'to Rejected');
+        afterReject(btn);
+      },
+      error: function () {
+        console.warn('[SalesRevCol] Failed to update record', revId);
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+        setTimeout(function () { btn.textContent = 'Reject'; }, 3000);
+      },
+    });
+
+    // 2. Send webhook with full item data (fire-and-forget)
+    var item = JSON.parse(JSON.stringify(updatedJson));
+    item.lineItemId = revId;
+    if (!item.action) item.action = 'revise';
+
+    var payload = {
+      action: 'reject',
+      timestamp: new Date().toISOString(),
+      totalItems: 1,
+      revisionRequests: [{
+        revisionRequestId: revReqId || '',
+        items: [item],
+      }],
+    };
+
+    $.ajax({
+      url: CFG.rejectWebhook,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      timeout: 30000,
+    });
+  }
+
+  function afterReject(btn) {
+    btn.textContent = 'Rejected \u2713';
+    btn.style.opacity = '0.6';
+    // Refresh revision data view — its view-render event triggers
+    // loadRevisions() + injectColumn(), and scw-bid-review-rendered
+    // re-injects the column after any grid rebuild.
+    setTimeout(function () {
+      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+        Knack.views[CFG.revisionView].model.fetch();
+      }
+    }, 1500);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  APPLY REVISION — write changes to SOW + survey records
+  // ═══════════════════════════════════════════════════════════
+
+  // SOW field key → survey field key mapping
+  var SOW_TO_SURVEY = {
+    field_1949: 'field_2627',  // product (connection)
+    field_1964: 'field_2399',  // qty
+    field_2020: 'field_2409',  // labor description
+    field_2461: 'field_2370',  // existing cabling
+    field_1984: 'field_2372',  // exterior
+    field_1983: 'field_2371',  // plenum
+    field_1965: 'field_2367',  // drop length
+    field_2035: 'field_2368',  // conduit
+    field_2150: 'field_2400',  // sub bid / rate
+    field_1946: 'field_2375',  // MDF/IDF (connection — different field!)
+    field_1957: 'field_2380',  // connected devices (connection)
+    field_2197: 'field_2381',  // connected to (connection)
+  };
+
+  var SOW_VIEW = 'view_3728';
+  var SURVEY_VIEW = 'view_3680';
+
+  function applyRevisionToRecords(sowItemId, revJson, revLineItemId, btn) {
+    if (!sowItemId || !revJson) return;
+    var jr = revJson.requested || {};
+    var fields = revJson.fields || [];
+    if (!Object.keys(jr).length && !fields.length) {
+      if (SCW.bidReview && SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast('No field changes to apply', 'info');
+      }
+      return;
+    }
+
+    // Find the survey item ID from the grid row
+    var $gridRow = $('[data-sow-item-id="' + sowItemId + '"]');
+    var surveyItemId = $gridRow.attr('data-row-id') || '';
+
+    // Build SOW update data (use field keys directly from requested)
+    var sowData = {};
+    for (var sk in jr) {
+      if (sk.indexOf('_ids') !== -1) continue; // skip ID arrays
+      var sv = jr[sk];
+      if (sv == null || sv === '' || sv === '\u00a0') continue;
+      // For connection fields, use the _ids array as the value
+      if (jr[sk + '_ids'] && jr[sk + '_ids'].length) {
+        sowData[sk] = jr[sk + '_ids'];
+      } else {
+        sowData[sk] = sv;
+      }
+    }
+
+    // Build survey update data (map SOW keys → survey keys)
+    var surveyData = {};
+    for (var sowKey in SOW_TO_SURVEY) {
+      var sowVal = jr[sowKey];
+      if (sowVal == null || sowVal === '' || sowVal === '\u00a0') continue;
+      var surveyKey = SOW_TO_SURVEY[sowKey];
+      if (jr[sowKey + '_ids'] && jr[sowKey + '_ids'].length) {
+        surveyData[surveyKey] = jr[sowKey + '_ids'];
+      } else {
+        surveyData[surveyKey] = sowVal;
+      }
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Applying\u2026'; }
+
+    var done = 0;
+    var errors = 0;
+    var total = (Object.keys(sowData).length ? 1 : 0)
+              + (surveyItemId && Object.keys(surveyData).length ? 1 : 0)
+              + (revLineItemId ? 1 : 0);
+
+    function checkDone() {
+      done++;
+      if (done < total) return;
+      if (btn) btn.textContent = errors ? 'Partial \u2713' : 'Applied \u2713';
+      if (SCW.bidReview && SCW.bidReview.renderToast) {
+        SCW.bidReview.renderToast(
+          errors ? 'Applied with errors — check console' : 'Revision applied to records',
+          errors ? 'error' : 'success'
+        );
+      }
+      setTimeout(function () {
+        if (Knack.views[SOW_VIEW] && Knack.views[SOW_VIEW].model) Knack.views[SOW_VIEW].model.fetch();
+        if (Knack.views[SURVEY_VIEW] && Knack.views[SURVEY_VIEW].model) Knack.views[SURVEY_VIEW].model.fetch();
+        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) Knack.views[CFG.revisionView].model.fetch();
+      }, 1500);
+    }
+
+    // Update SOW record
+    if (Object.keys(sowData).length) {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(SOW_VIEW, sowItemId),
+        type: 'PUT',
+        data: JSON.stringify(sowData),
+        success: function () { console.log('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
+        error: function () { console.warn('[SalesRevCol] SOW update failed:', sowItemId); errors++; checkDone(); },
+      });
+    }
+
+    // Update survey record
+    if (surveyItemId && Object.keys(surveyData).length) {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(SURVEY_VIEW, surveyItemId),
+        type: 'PUT',
+        data: JSON.stringify(surveyData),
+        success: function () { console.log('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
+        error: function () { console.warn('[SalesRevCol] Survey update failed:', surveyItemId); errors++; checkDone(); },
+      });
+    }
+
+    // Update revision line item status to Accepted
+    if (revLineItemId) {
+      var statusData = {};
+      statusData[CFG.statusField] = 'Accepted';
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(CFG.revisionView, revLineItemId),
+        type: 'PUT',
+        data: JSON.stringify(statusData),
+        success: function () { console.log('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
+        error: function () { console.warn('[SalesRevCol] Revision status update failed:', revLineItemId); errors++; checkDone(); },
+      });
+    }
+
+    if (!total) {
+      if (btn) btn.textContent = 'Nothing to apply';
+    }
+  }
+
+  function handleSRAction(e) {
+    e.stopPropagation();
+    // Close overflow
+    var overflow = this.closest('.scw-bid-review__overflow');
+    if (overflow) overflow.classList.remove('scw-bid-review__overflow--open');
+
+    var action = this.getAttribute('data-sr-action');
+    var revId  = this.getAttribute('data-rev-id');
+    var sowItemId = this.getAttribute('data-sow-item-id');
+
+    if (action === 'apply') {
+      var revJson = {};
+      try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+      var applyRevId = this.getAttribute('data-rev-id');
+      applyRevisionToRecords(sowItemId, revJson, applyRevId, this);
+      return;
+    }
+
+    if (action === 'create-bid-cr') {
+      var revJson = {};
+      try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+      var revId = this.getAttribute('data-rev-id');
+      var revReqId = this.getAttribute('data-rev-request-id');
+
+      if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
+        SCW.bidReview.createBidCRFromRevision({
+          sowItemId:            sowItemId,
+          action:               revJson.action || 'revise',
+          changeNotes:          revJson.changeNotes || '',
+          revJson:              revJson,
+          revisionRecordId:     revId || '',
+          revisionRequestId:    revReqId || '',
+        });
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  EVENT BINDINGS
+  // ═══════════════════════════════════════════════════════════
+
+  SCW.onViewRender(CFG.revisionView, function () {
+    setTimeout(function () {
+      loadRevisions();
+      injectColumn();
+    }, 300);
+  }, CFG.eventNs);
+
+  $(document).on('scw-bid-review-rendered' + CFG.eventNs, function () {
+    setTimeout(injectColumn, 100);
+  });
+
+  $(document).on('knack-scene-render.scene_1155' + CFG.eventNs, function () {
+    setTimeout(function () {
+      if (_revisionData.length) injectColumn();
+    }, 1000);
+  });
 
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **********************/
@@ -20892,6 +23272,7 @@ $(".kn-navigation-bar").hide();
   var CONFIG = {
     LINE_ITEM_BUCKET_FIELD: 'field_2219',
     PRODUCT_CELL_FIELD: 'field_1949',
+    VIEWS: ['view_3456', 'view_3505', 'view_3586', 'view_3610'],
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,
     DEBUG: false
@@ -20921,10 +23302,9 @@ $(".kn-navigation-bar").hide();
       }
     }
     var recordId = tr.id;
-    if (!recordId || typeof Knack === 'undefined') return '';
-    var viewKeys = Object.keys(Knack.views || {});
-    for (var v = 0; v < viewKeys.length; v++) {
-      var view = Knack.views[viewKeys[v]];
+    if (!recordId) return '';
+    for (var v = 0; v < CONFIG.VIEWS.length; v++) {
+      var view = Knack.views[CONFIG.VIEWS[v]];
       if (!view || !view.model || !view.model.data) continue;
       var records = view.model.data.models || view.model.data;
       if (!records) continue;
@@ -21047,6 +23427,9 @@ $(".kn-navigation-bar").hide();
       ? e.target.closest('td.' + CONFIG.PRODUCT_CELL_FIELD)
       : null;
     if (!td) return;
+
+    var viewEl = td.closest('[id^="view_"]');
+    if (!viewEl || CONFIG.VIEWS.indexOf(viewEl.id) === -1) return;
 
     var tr = td.closest('tr');
     if (!tr || !tr.id) return;
@@ -25174,7 +27557,7 @@ $(".kn-navigation-bar").hide();
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'labor', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -25208,7 +27591,7 @@ $(".kn-navigation-bar").hide();
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'bid', 'labor'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'labor', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -26086,6 +28469,7 @@ td.${P}-sum-check input[type="checkbox"] {
 }
 .${P}-warn-slot .scw-cr-hdr-warning {
   margin-left: 0;
+  margin-top: 5px;
 }
 
 /* Label + Product identity block */
@@ -26112,6 +28496,7 @@ td.${P}-sum-check input[type="checkbox"] {
   white-space: nowrap;
   flex-shrink: 0;
   line-height: 1.4;
+  margin-top: 5px;
 }
 .${P}-warn-chit svg {
   width: 13px;
@@ -29321,7 +31706,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (hasStackedFields) {
       // Wrap in column-flex with empty label so chevron aligns with value row
       var chevWrap = document.createElement('span');
-      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;';
+      chevWrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;align-self:flex-start;margin-top:2px;';
       var chevSpacer = document.createElement('span');
       chevSpacer.className = P + '-sum-label';
       chevSpacer.innerHTML = '&nbsp;';
@@ -31259,7 +33644,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     laborHoursField:  'field_1981',  // product-specific default labor hours
 
     // ── Make webhooks ──────────────────────────────────────
-    submitWebhook:    'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_SUBMIT',
+    submitWebhook:    'https://hook.us1.make.com/jlbup3quzdjcsfzyyr38vxjo51et050a',
     draftWebhook:     'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_DRAFT',
 
     // ── Revision injection (view_3837 → view_3586) ─────────
@@ -31284,7 +33669,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       { key: 'field_1984', label: 'Exterior',          type: 'boolean' },
       { key: 'field_1965', label: 'Drop Length',       type: 'text' },
       { key: 'field_1951', label: 'Drop Number',       type: 'number' },
-      { key: 'field_2240', label: 'Drop Prefix',       type: 'text' },
+      { key: 'field_2240', label: 'Drop Prefix',       type: 'connection' },
+      { key: 'field_2150', label: 'Sub Bid',           type: 'number' },
+      { key: 'field_1957', label: 'Connected Devices', type: 'connection' },
+      { key: 'field_2197', label: 'Connected To',      type: 'connection' },
+      { key: 'field_2219', label: 'Proposal Bucket',   type: 'connection' },
+      { key: 'field_1946', label: 'MDF/IDF',            type: 'connection' },
     ],
 
     // ── Timing ─────────────────────────────────────────────
@@ -31566,6 +33956,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setRevisionData: function (d) { _revisionData = d; },
     onPage:       function ()  { return _onPage; },
     setOnPage:    function (v) { _onPage = v; },
+    sowRecordId:  function ()  { return _sowRecordId; },
   };
 
   ns.persist             = persist;
@@ -31613,31 +34004,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  min-width: 22px; padding: 5px 4px 0 4px;',
       '}',
       '.' + P + '-action-btn {',
-      '  display: inline-flex; align-items: center; justify-content: center;',
-      '  width: 26px; height: 26px; border-radius: 5px;',
-      '  border: none; background: #e2e8f0;',
-      '  color: #64748b; cursor: pointer;',
-      '  transition: all .15s; line-height: 1; padding: 0;',
+      '  display: inline-flex !important; align-items: center !important; justify-content: center !important;',
+      '  width: 26px !important; height: 26px !important; border-radius: 5px !important;',
+      '  border: none !important; background: #e2e8f0 !important;',
+      '  color: #64748b !important; cursor: pointer !important;',
+      '  transition: all .15s; line-height: 1 !important; padding: 0 !important;',
+      '  box-shadow: none !important; min-width: 0 !important;',
       '}',
       '.' + P + '-action-btn:hover {',
-      '  background: #cbd5e1; color: #334155;',
+      '  background: #cbd5e1 !important; color: #334155 !important;',
       '}',
       '.' + P + '-action-btn--revise {',
-      '  background: #3b82f6; color: #fff;',
+      '  background: #3b82f6 !important; color: #fff !important;',
       '}',
-      '.' + P + '-action-btn--revise:hover { background: #2563eb; }',
+      '.' + P + '-action-btn--revise:hover { background: #2563eb !important; }',
       '.' + P + '-action-btn--add {',
-      '  background: #16a34a; color: #fff;',
+      '  background: #16a34a !important; color: #fff !important;',
       '}',
-      '.' + P + '-action-btn--add:hover { background: #15803d; }',
+      '.' + P + '-action-btn--add:hover { background: #15803d !important; }',
       '.' + P + '-action-btn--remove {',
-      '  background: #dc2626; color: #fff;',
+      '  background: #dc2626 !important; color: #fff !important;',
       '}',
-      '.' + P + '-action-btn--remove:hover { background: #b91c1c; }',
+      '.' + P + '-action-btn--remove:hover { background: #b91c1c !important; }',
       '.' + P + '-action-btn--note {',
-      '  background: #60a5fa; color: #fff;',
+      '  background: #60a5fa !important; color: #fff !important;',
       '}',
-      '.' + P + '-action-btn--note:hover { background: #3b82f6; }',
+      '.' + P + '-action-btn--note:hover { background: #3b82f6 !important; }',
       '.' + P + '-action-btn--has-note {',
       '  box-shadow: 0 0 0 2px #fbbf24;',
       '}',
@@ -31938,6 +34330,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var id = attrs.id;
       if (!id) continue;
       if (pending[id]) continue;
+      if (baseline[id]) continue;
 
       var snap = {};
       for (var f = 0; f < TF.length; f++) {
@@ -32017,6 +34410,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var fk  = def.key;
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
+      if (CFG.debug && fk === 'field_1953') {
+        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+          raw_exists: record[fk + '_raw'] != null,
+          raw_val: record[fk + '_raw'],
+          plain_val: record[fk],
+          newVal: newVal,
+          baseVal: base[fk],
+          match: String(newVal) === String(base[fk])
+        }));
+      }
       if (String(newVal) !== String(base[fk])) {
         changes[fk] = newVal;
         if (def.type === 'connection') {
@@ -32113,15 +34516,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var count = parseFloat(base._addCount);
       if (count === 0 || isNaN(count)) continue;
 
+      // Snapshot all tracked field values into requested — the whole record is new
+      var req = {};
+      var reqIds = {};
+      for (var tf = 0; tf < TF.length; tf++) {
+        var fk = TF[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) reqIds[fk] = base[fk + '_ids'];
+      }
       pending[id] = {
         rowId:        id,
         displayLabel: base._label || '',
         productName:  base._product || '',
+        bucketId:     base._bucketId || '',
+        bucketName:   base._bucketName || '',
+        laborHours:   base._laborHours || 0,
         action:       'add',
         current:      {},
-        requested:    {},
+        requested:    req,
         changeNotes:  '',
       };
+      for (var ik in reqIds) pending[id].requested[ik + '_ids'] = reqIds[ik];
       added++;
     }
 
@@ -32449,7 +34864,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var body = H.el('div', P + '-modal__body');
     body.appendChild(H.el('div', P + '-modal__hint',
       'This item will be submitted as a new addition. Please include a note describing the add request.'));
-    body.appendChild(H.el('label', P + '-modal__label', 'Note (required)'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Note (optional)'));
     var ta = document.createElement('textarea');
     ta.className = P + '-modal__textarea';
     ta.placeholder = 'Describe why this item is being added\u2026';
@@ -32467,16 +34882,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       existing ? 'Update' : 'Add');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      if (!text) { ns.showToast('A note is required for add requests', 'error'); return; }
+      // Note is optional
+
+      // Snapshot all tracked field values from baseline into requested
+      var base = S.baseline()[recordId] || {};
+      var req = {};
+      for (var tf = 0; tf < CFG.trackedFields.length; tf++) {
+        var fk = CFG.trackedFields[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) req[fk + '_ids'] = base[fk + '_ids'];
+      }
 
       var pending = S.pending();
       pending[noteKey] = {
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        bucketId: base._bucketId || '',
+        bucketName: base._bucketName || '',
+        laborHours: base._laborHours || 0,
         action: 'add',
         current: {},
-        requested: {},
+        requested: req,
         changeNotes: text,
       };
       ns.persist();
@@ -32618,8 +35045,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 })();
 /*** SALES CHANGE REQUEST — PAYLOAD BUILDERS ***/
 /**
- * Builds the clean JSON payload and self-contained HTML payload
- * for webhook submission.
+ * Builds the webhook payload. Each item carries:
+ *   - .json  — stringified clean JSON snapshot (no HTML)
+ *   - .html  — self-contained inline-styled HTML card
+ *
+ * The top-level payload also has a combined .html wrapping all items.
+ * Modelled on bid-review/change-requests.js buildSubmitPayload + buildItemHtml.
  *
  * Reads : SCW.salesCR.CONFIG, ._state, ._h
  * Writes: SCW.salesCR.buildPayload, .buildHtml
@@ -32634,7 +35065,209 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var TF  = CFG.trackedFields;
 
   // ═══════════════════════════════════════════════════════════
-  //  JSON PAYLOAD
+  //  LOGGED-IN USER
+  // ═══════════════════════════════════════════════════════════
+
+  /** Safe read of Knack's logged-in user attributes. */
+  function getUser() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes
+        ? Knack.getUserAttributes()
+        : null;
+      if (!u || typeof u !== 'object') return null;
+      return {
+        id:    u.id || '',
+        name:  u.name || '',
+        email: u.email || '',
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PER-ITEM HELPERS
+  // ═══════════════════════════════════════════════════════════
+
+  var PALETTES = {
+    revise: { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' },
+    add:    { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'ADD' },
+    remove: { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' },
+    note:   { color: '#60a5fa', bg: '#eff6ff', border: '#60a5fa33', badge: '#dbeafe', badgeText: '#1e40af', label: 'NOTE' },
+  };
+
+  /** Build the fields array for one pending item (from→to diffs). */
+  function buildItemFields(it) {
+    var fields = [];
+    var r = it.requested || {};
+    var c = it.current   || {};
+
+    for (var f = 0; f < TF.length; f++) {
+      var def = TF[f];
+      if (r[def.key] == null) continue;
+      var entry = {
+        field: def.key,
+        label: def.label,
+        from:  c[def.key] != null ? c[def.key] : null,
+        to:    r[def.key],
+      };
+      if (def.type === 'connection') {
+        if (c[def.key + '_ids']) entry.fromIds = c[def.key + '_ids'];
+        if (r[def.key + '_ids']) entry.toIds   = r[def.key + '_ids'];
+      }
+      fields.push(entry);
+    }
+    return fields;
+  }
+
+  // Ordered fields shown in the HTML card (view_3586 + revision cards).
+  // Quantity only shows if > 1. Empty values are skipped.
+  var DISPLAY_ORDER = [
+    'field_1949',  // Product
+    'field_1964',  // Quantity (conditional)
+    'field_1953',  // SCW Notes
+    'field_1946',  // MDF/IDF (Headend)
+    'field_1957',  // Connected Devices
+    'field_2197',  // Connected To
+    'field_2020',  // Labor Description
+    'field_2461',  // Existing Cabling
+    'field_1984',  // Exterior
+    'field_1965',  // Drop Length
+    'field_2150',  // Sub Bid
+  ];
+  var DISPLAY_SET = {};
+  for (var ds = 0; ds < DISPLAY_ORDER.length; ds++) DISPLAY_SET[DISPLAY_ORDER[ds]] = true;
+
+  function filterDisplayFields(fieldList) {
+    if (!fieldList) return [];
+    // Build lookup by field key
+    var byKey = {};
+    for (var i = 0; i < fieldList.length; i++) byKey[fieldList[i].field] = fieldList[i];
+    // Walk display order, skip empty and qty<=1
+    var out = [];
+    for (var d = 0; d < DISPLAY_ORDER.length; d++) {
+      var fk = DISPLAY_ORDER[d];
+      var f = byKey[fk];
+      if (!f) continue;
+      var val = f.to != null ? String(f.to) : '';
+      if (!val || val === '—' || val === '\u00a0') continue;
+      // Quantity: only show if > 1
+      if (fk === 'field_1964') {
+        var n = parseFloat(val);
+        if (isNaN(n) || n <= 1) continue;
+      }
+      out.push(f);
+    }
+    return out;
+  }
+
+  /** Build a self-contained HTML card for one item. */
+  function buildItemHtml(item, fieldList) {
+    var action  = item.action || 'revise';
+    var palette = PALETTES[action] || PALETTES.revise;
+    var esc     = H.escHtml;
+
+    var displayFields = filterDisplayFields(fieldList);
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
+    h.push('<div style="background:' + palette.bg + ';border:1px solid ' + palette.border + ';border-radius:6px;padding:10px 14px;">');
+
+    // Badge + item header
+    h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">');
+    h.push('<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + palette.badge + ';color:' + palette.badgeText + ';font-size:10px;font-weight:700;letter-spacing:0.5px;">' + palette.label + '</span>');
+    var displayName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || 'Item';
+    h.push('<span style="font-weight:600;font-size:13px;">' + esc(displayName) + '</span>');
+    var prodName = H.readableVal(item.productName);
+    if (prodName && item.displayLabel && prodName !== displayName) {
+      h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + esc(prodName) + '</span>');
+    }
+    h.push('</div>');
+
+    if (action === 'remove') {
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+      } else {
+        h.push('<div style="font-size:12px;color:#64748b;">Requesting removal</div>');
+      }
+    } else if (action === 'note') {
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+      }
+    } else if (displayFields.length) {
+      // Revise or Add — field changes table (filtered to display fields)
+      h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
+      for (var fi = 0; fi < displayFields.length; fi++) {
+        var f = displayFields[fi];
+        var def = null;
+        for (var di = 0; di < TF.length; di++) {
+          if (TF[di].key === f.field) { def = TF[di]; break; }
+        }
+        var fromStr = f.from != null ? esc(H.formatFieldValue(def || {}, f.from)) : '&mdash;';
+        var toStr   = esc(H.formatFieldValue(def || {}, f.to));
+
+        h.push('<tr>');
+        h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + esc(f.label) + '</td>');
+        if (action === 'revise') {
+          h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
+          h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+        }
+        h.push('<td style="padding:3px 8px;font-weight:600;color:' + palette.color + ';">' + toStr + '</td>');
+        h.push('</tr>');
+      }
+      h.push('</table>');
+
+      if (item.changeNotes) {
+        h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;border-top:1px solid ' + palette.border + ';padding-top:4px;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
+      }
+    }
+
+    h.push('</div>');
+    h.push('</div>');
+    return h.join('');
+  }
+
+  /** Build a plain-text version of one item (ClickUp-safe, no HTML). */
+  function buildItemPlainText(item, fieldList) {
+    var action = (item.action || 'revise').toUpperCase();
+    var displayName = H.readableVal(item.displayLabel) || H.readableVal(item.productName) || 'Item';
+    var prodName = H.readableVal(item.productName);
+
+    var lines = [];
+    var header = action + ' — ' + displayName;
+    if (prodName && item.displayLabel && prodName !== displayName) {
+      header += ' (' + prodName + ')';
+    }
+    lines.push(header);
+
+    if (action === 'REMOVE') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+      else lines.push('  Requesting removal');
+    } else if (action === 'NOTE') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    } else if (fieldList && fieldList.length) {
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var def = null;
+        for (var di = 0; di < TF.length; di++) {
+          if (TF[di].key === f.field) { def = TF[di]; break; }
+        }
+        var fromStr = f.from != null ? H.formatFieldValue(def || {}, f.from) : '—';
+        var toStr   = H.formatFieldValue(def || {}, f.to);
+        if (action === 'REVISE') {
+          lines.push('  ' + f.label + ': ' + fromStr + ' → ' + toStr);
+        } else {
+          lines.push('  ' + f.label + ': ' + toStr);
+        }
+      }
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    }
+
+    return lines.join('\n');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  PAYLOAD (per-item json + html + plainText)
   // ═══════════════════════════════════════════════════════════
 
   function buildPayload(isDraft) {
@@ -32644,46 +35277,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     for (var i = 0; i < ids.length; i++) {
       var it = pending[ids[i]];
+
+      // Base entry — IDs, labels, metadata
       var entry = {
         action:       it.action,
         rowId:        it.rowId || null,
-        displayLabel: it.displayLabel || '',
-        productName:  it.productName || '',
+        sowItemId:    it.action !== 'add' ? (it.rowId || '') : '',
+        displayLabel: H.readableVal(it.displayLabel) || '',
+        productName:  H.readableVal(it.productName) || '',
         changeNotes:  it.changeNotes || '',
         bucketId:     it.bucketId || '',
         bucketName:   it.bucketName || '',
         laborHours:   it.laborHours || 0,
       };
 
-      if (it.action === 'revise' || it.action === 'add') {
-        entry.current = it.current || {};
-        var fields = [];
-        var r = it.requested || {};
-        var c = it.current || {};
+      // Snapshot of current + requested values
+      entry.current   = it.current   || {};
+      entry.requested = it.requested || {};
 
-        for (var f = 0; f < TF.length; f++) {
-          var def = TF[f];
-          if (r[def.key] == null) continue;
-          var fieldEntry = {
-            field: def.key,
-            label: def.label,
-            from:  c[def.key] != null ? c[def.key] : null,
-            to:    r[def.key],
-          };
-          // Include record IDs for connection fields so Make can look up
-          // per-product flags (e.g., "requires requote on swap")
-          if (def.type === 'connection') {
-            if (c[def.key + '_ids']) fieldEntry.fromIds = c[def.key + '_ids'];
-            if (r[def.key + '_ids']) fieldEntry.toIds   = r[def.key + '_ids'];
-          }
-          fields.push(fieldEntry);
-          entry[def.key] = r[def.key];
-          if (def.type === 'connection' && r[def.key + '_ids']) {
-            entry[def.key + '_ids'] = r[def.key + '_ids'];
-          }
+      // Flatten requested values + build fields array
+      var fieldList = buildItemFields(it);
+      var r = it.requested || {};
+      for (var f = 0; f < TF.length; f++) {
+        var def = TF[f];
+        if (r[def.key] == null) continue;
+        entry[def.key] = r[def.key];
+        if (def.type === 'connection' && r[def.key + '_ids']) {
+          entry[def.key + '_ids'] = r[def.key + '_ids'];
         }
-        entry.fields = fields;
       }
+      entry.fields = fieldList;
+
+      // Per-item JSON snapshot (stringified BEFORE html/plainText are added)
+      entry.json = JSON.stringify(entry);
+
+      // Per-item HTML card + plain-text version (ClickUp-safe)
+      entry.html      = buildItemHtml(it, fieldList);
+      entry.plainText = buildItemPlainText(it, fieldList);
 
       items.push(entry);
     }
@@ -32692,13 +35322,58 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       actionType: 'sales_change_request',
       isDraft:    isDraft,
       timestamp:  new Date().toISOString(),
+      sowId:      S.sowRecordId() || '',
+      user:       getUser(),
       itemCount:  items.length,
       items:      items,
     };
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  HTML PAYLOAD
+  //  COMBINED PLAIN TEXT (ClickUp-safe)
+  // ═══════════════════════════════════════════════════════════
+
+  function buildPlainText() {
+    var pending = S.pending();
+    var ids = Object.keys(pending);
+    if (!ids.length) return '';
+
+    var lines = [];
+    lines.push('SALES CHANGE REQUEST');
+    lines.push(ids.length + ' item(s) — ' + new Date().toLocaleString());
+    lines.push('────────────────────');
+    lines.push('');
+
+    var groups = { revise: [], add: [], remove: [], note: [] };
+    for (var i = 0; i < ids.length; i++) {
+      var it = pending[ids[i]];
+      if (groups[it.action]) groups[it.action].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'REVISIONS' },
+      { key: 'add',    title: 'ITEMS TO ADD' },
+      { key: 'remove', title: 'ITEMS TO REMOVE' },
+      { key: 'note',   title: 'NOTES' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      lines.push(sec.title + ' (' + arr.length + ')');
+      for (var j = 0; j < arr.length; j++) {
+        lines.push(buildItemPlainText(arr[j], buildItemFields(arr[j])));
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  COMBINED HTML (full submission document)
   // ═══════════════════════════════════════════════════════════
 
   function buildHtml() {
@@ -32726,79 +35401,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var sections = [
-      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
-      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
-      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
-      { key: 'note',   title: 'Notes',           color: '#f59e0b', bg: '#fffbeb', icon: '\u270D' },
+      { key: 'revise', title: 'Revisions',      icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',    icon: '+' },
+      { key: 'remove', title: 'Items to Remove', icon: '\u2212' },
+      { key: 'note',   title: 'Notes',           icon: '\u270D' },
     ];
 
     for (var si = 0; si < sections.length; si++) {
       var sec = sections[si];
       var arr = groups[sec.key];
       if (!arr || !arr.length) continue;
+      var palette = PALETTES[sec.key];
 
       h.push('<div style="margin-bottom:20px;">');
-      h.push('<div style="font-size:14px;font-weight:700;color:' + sec.color + ';margin-bottom:8px;">');
+      h.push('<div style="font-size:14px;font-weight:700;color:' + palette.color + ';margin-bottom:8px;">');
       h.push(esc(sec.icon) + ' ' + esc(sec.title) + ' (' + arr.length + ')');
       h.push('</div>');
 
       for (var j = 0; j < arr.length; j++) {
-        var item = arr[j];
-        h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:10px 14px;margin-bottom:8px;">');
-
-        // Item header (label + product)
-        if (item.displayLabel || item.productName) {
-          h.push('<div style="font-weight:600;font-size:13px;margin-bottom:4px;">');
-          h.push(esc(item.displayLabel || ''));
-          if (item.productName && item.productName !== item.displayLabel) {
-            h.push(' <span style="font-weight:400;color:#64748b;">&mdash; ' + esc(item.productName) + '</span>');
-          }
-          h.push('</div>');
-        }
-
-        if (sec.key === 'note' || sec.key === 'remove') {
-          // Note / removal — just show text
-          if (item.changeNotes) {
-            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
-          } else if (sec.key === 'remove') {
-            h.push('<div style="font-size:12px;color:#64748b;">Requesting removal</div>');
-          }
-        } else {
-          // Revise / Add — field-change table
-          var r = item.requested || {};
-          var c = item.current || {};
-          var hasFields = false;
-          for (var fk in r) { if (r.hasOwnProperty(fk)) { hasFields = true; break; } }
-
-          if (hasFields) {
-            h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">');
-            for (var fi = 0; fi < TF.length; fi++) {
-              var def = TF[fi];
-              if (r[def.key] == null) continue;
-              var fromStr = c[def.key] != null ? esc(H.formatFieldValue(def, c[def.key])) : '&mdash;';
-              var toStr = esc(H.formatFieldValue(def, r[def.key]));
-
-              h.push('<tr>');
-              h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + esc(def.label) + '</td>');
-              if (sec.key === 'revise') {
-                h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
-                h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
-              }
-              h.push('<td style="padding:3px 8px;font-weight:600;color:' + sec.color + ';">' + toStr + '</td>');
-              h.push('</tr>');
-            }
-            h.push('</table>');
-          }
-
-          if (item.changeNotes) {
-            h.push('<div style="font-size:12px;color:#64748b;font-style:italic;margin-top:6px;">&ldquo;' + esc(item.changeNotes) + '&rdquo;</div>');
-          }
-        }
-
-        h.push('</div>'); // card
+        var fieldList = buildItemFields(arr[j]);
+        h.push(buildItemHtml(arr[j], fieldList));
+        h.push('<div style="height:6px;"></div>');
       }
 
-      h.push('</div>'); // section
+      h.push('</div>');
     }
 
     // Footer
@@ -32811,8 +35437,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Public API ──
-  ns.buildPayload = buildPayload;
-  ns.buildHtml    = buildHtml;
+  ns.buildPayload   = buildPayload;
+  ns.buildHtml      = buildHtml;
+  ns.buildPlainText = buildPlainText;
 
 })();
 /*** SALES CHANGE REQUEST — RENDER ***/
@@ -32841,6 +35468,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var H   = ns._h;
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
+
+  // view_3586 display: the sales-side SOW editing page
+  var DISPLAY_ORDER = [
+    'field_1949', 'field_1964', 'field_1953',
+    'field_2461', 'field_1984',
+    'field_1957', 'field_2197', 'field_1946',
+  ];
+  var DISPLAY_SET = {};
+  for (var ds = 0; ds < DISPLAY_ORDER.length; ds++) DISPLAY_SET[DISPLAY_ORDER[ds]] = true;
+
+  // Build a TF-like def lookup by key for ordered iteration
+  var TF_BY_KEY = {};
+  for (var ti = 0; ti < TF.length; ti++) TF_BY_KEY[TF[ti].key] = TF[ti];
 
   var _openPopover = null;
   var _popoverAnchor = null;
@@ -32915,25 +35555,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (item.changeNotes) {
         card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
       }
-      // Show field diffs if present (add items from auto-detection)
       var r = item.requested || {};
-      for (var f = 0; f < TF.length; f++) {
-        var def = TF[f];
-        if (r[def.key] == null) continue;
+      for (var f = 0; f < DISPLAY_ORDER.length; f++) {
+        var fk = DISPLAY_ORDER[f];
+        var def = TF_BY_KEY[fk];
+        if (!def) continue;
+        if (r[fk] == null) continue;
+        var val = String(r[fk]);
+        if (!val || val === '\u00a0') continue;
+        if (fk === 'field_1964' && (parseFloat(val) <= 1 || isNaN(parseFloat(val)))) continue;
         var row = H.el('div', P + '-card-field');
         row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
-        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[def.key])));
+        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[fk])));
         card.appendChild(row);
       }
       return card;
     }
 
-    // Revise — field diffs
+    // Revise — field diffs (ordered, filtered)
     var r = item.requested || {};
     var c = item.current || {};
-    for (var f = 0; f < TF.length; f++) {
-      var def = TF[f];
-      if (r[def.key] == null) continue;
+    for (var f = 0; f < DISPLAY_ORDER.length; f++) {
+      var fk = DISPLAY_ORDER[f];
+      var def = TF_BY_KEY[fk];
+      if (!def) continue;
+      if (r[fk] == null) continue;
+      var val = String(r[fk]);
+      if (!val || val === '\u00a0') continue;
+      if (fk === 'field_1964' && (parseFloat(val) <= 1 || isNaN(parseFloat(val)))) continue;
       var row = H.el('div', P + '-card-field');
       row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
       if (c[def.key] != null) {
@@ -33089,6 +35738,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         e.stopPropagation();
         e.preventDefault();
         closePopover();
+
+        // If there's already a pending revise CR, go straight to edit note
+        if (state && state.action === 'revise') {
+          ns.openEditReviseNote(recordId);
+          return;
+        }
 
         var pop = buildPopover(recordId, addOnly);
         positionPopover(pop, btn);
@@ -33246,6 +35901,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var editableFields = {};
       editableFields[CFG.productField] = true;  // field_1949
       editableFields['field_2261'] = true;       // Custom Discount %
+      editableFields['field_1953'] = true;       // SCW Notes
       $card.find('input[data-field], textarea[data-field]').each(function () {
         var field = this.getAttribute('data-field') || '';
         if (editableFields[field]) return;
@@ -33262,10 +35918,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         this.style.cursor = 'default';
       });
 
-      // Lock nativeEdit tds (except product field) — white bg for connection fields
+      // Lock nativeEdit tds (except whitelisted fields) — white bg for connection fields
       $card.find('td.cell-edit').each(function () {
         var field = this.getAttribute('data-field-key') || '';
-        if (field === CFG.productField) return;
+        if (editableFields[field]) return;
         this.style.pointerEvents = 'none';
         this.style.background = '#fff';
       });
@@ -33313,8 +35969,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
 
     var payload = ns.buildPayload(false);
-    var html    = ns.buildHtml();
-    payload.html = html;
+    payload.html      = ns.buildHtml();
+    payload.plainText = ns.buildPlainText();
 
     if (CFG.debug) {
       console.log('[SalesCR] Submit:', payload);
@@ -33560,11 +36216,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
+  // Check if the sales CR module should be active (field_2706 = Yes on proposal view)
+  function isModuleActive() {
+    var $pv = $('#' + CFG.proposalView);
+    if (!$pv.length) return false;
+    var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').trim();
+    return /^yes$/i.test(val);
+  }
+
   var _rehydrated = false;
 
   SCW.onViewRender(CFG.worksheetView, function () {
-    S.setOnPage(true);
     _activeScene = Knack.router.current_scene_key || '';
+
+    // Only activate if field_2706 = Yes
+    if (!isModuleActive()) {
+      S.setOnPage(false);
+      return;
+    }
+
+    S.setOnPage(true);
     ns.injectStyles();
     ns.buildBaseline();
 
@@ -33602,8 +36275,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
-        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
-        ns.onCellUpdate(null, null, resp);
+        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
+        // Delay to let Knack model absorb the response (connection _raw fields)
+        setTimeout(function () {
+          var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
+          var records = model && model.data && model.data.models;
+          var fresh = null;
+          if (records) {
+            for (var ri = 0; ri < records.length; ri++) {
+              if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
+            }
+          }
+          if (CFG.debug) console.log('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
+            'field_1953:', fresh ? fresh.field_1953 : resp.field_1953);
+          ns.onCellUpdate(null, null, fresh || resp);
+        }, 500);
       }
     } catch (e) {}
   });
@@ -33612,6 +36298,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   SCW.onViewRender(CFG.proposalView, function () {
     setTimeout(function () {
+      // Re-check activation — field_2706 may have rendered after worksheet
+      if (isModuleActive() && !S.onPage()) {
+        S.setOnPage(true);
+        ns.injectStyles();
+        ns.buildBaseline();
+        if (!_rehydrated) {
+          _rehydrated = true;
+          ns.detectSowRecordId();
+          ns.rehydrateFromKnack();
+        }
+        refresh();
+      }
       ns.checkAddMode();
       if (S.isAddMode() && Object.keys(S.baseline()).length) {
         ns.detectAddRecords();
@@ -33734,6 +36432,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var css = [
       /* Hide the source view entirely */
       '#' + CFG.revisionView + ' { display: none !important; }',
+
+      /* Action button icon (mirrors scw-scr-action-btn from sales CR) */
+      '.scw-scr-action-wrap {',
+      '  display: inline-flex !important; align-items: center !important;',
+      '  justify-content: center !important;',
+      '  flex-shrink: 0; min-width: 22px; padding: 5px 4px 0 4px;',
+      '}',
+      '.scw-scr-action-btn {',
+      '  display: inline-flex !important; align-items: center !important; justify-content: center !important;',
+      '  width: 26px !important; height: 26px !important; border-radius: 5px !important;',
+      '  border: none !important; background: #e2e8f0 !important;',
+      '  color: #64748b !important; cursor: pointer !important;',
+      '  line-height: 1 !important; padding: 0 !important;',
+      '  box-shadow: none !important; min-width: 0 !important;',
+      '  transition: all .15s;',
+      '}',
+      '.scw-scr-action-btn--revise { background: #3b82f6 !important; color: #fff !important; }',
+      '.scw-scr-action-btn--add { background: #16a34a !important; color: #fff !important; }',
+      '.scw-scr-action-btn--remove { background: #dc2626 !important; color: #fff !important; }',
 
       /* Badge on the summary row */
       '.' + BADGE_CLS + ' {',
@@ -34533,7 +37250,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    return { id: rec.id, editHref: editHref, changeHtml: changeHtml, changeJson: changeJson, changes: changes };
+    return {
+      id: rec.id,
+      parentRequestId: rec._parentRequestId || '',
+      parentRequestLabel: rec._parentRequestLabel || '',
+      editHref: editHref,
+      changeHtml: changeHtml,
+      changeJson: changeJson,
+      changes: changes,
+    };
   }
 
   /**
@@ -34583,10 +37308,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       if (!siId) {
         // No survey item connection — orphaned add request
+        entry.surveyItemId = '';
         orphaned.push(entry);
         continue;
       }
 
+      entry.surveyItemId = siId;
       if (!map[siId]) map[siId] = [];
       map[siId].push(entry);
     }
@@ -34635,6 +37362,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
         }
       }
+      // Extract field_2643 (parent revision request connection)
+      var prCell = tr.querySelector('td.field_2643');
+      if (prCell) {
+        var prSpan = prCell.querySelector('span[data-kn="connection-value"]');
+        if (prSpan) {
+          var prClass = (prSpan.className || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(prClass)) {
+            rec._parentRequestId = prClass;
+            rec._parentRequestLabel = (prSpan.textContent || '').trim();
+          }
+        }
+      }
       // Extract each data field
       var fKeys = Object.keys(CFG.fields);
       for (var fi = 0; fi < fKeys.length; fi++) {
@@ -34668,13 +37407,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Build the badge element: "N revision(s)"
+   * Build the badge element: colored action icon matching revision type.
+   * Mirrors view_3586's scw-scr-action-btn style.
+   * @param {Array} revisions — array of revision objects for this row
    */
-  function makeBadge(count) {
-    var badge = document.createElement('span');
-    badge.className = BADGE_CLS;
-    badge.textContent = count + ' revision' + (count !== 1 ? 's' : '');
-    return badge;
+  function makeBadge(revisions) {
+    var action = 'revise';
+    if (revisions.length) {
+      var json = revisions[0].changeJson;
+      if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+      if (json && json.action) action = json.action;
+    }
+
+    var iconCls = action === 'add'    ? 'fa-plus'
+                : action === 'remove' ? 'fa-minus-circle'
+                :                       'fa-pencil';
+    var colorCls = action === 'add'    ? 'scw-scr-action-btn--add'
+                 : action === 'remove' ? 'scw-scr-action-btn--remove'
+                 :                       'scw-scr-action-btn--revise';
+
+    var btn = document.createElement('button');
+    btn.className = 'scw-scr-action-btn ' + colorCls;
+    btn.type = 'button';
+    btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:14px;"></i>';
+    btn.title = revisions.length + ' revision' + (revisions.length !== 1 ? 's' : '') + ' — click to expand';
+    return btn;
   }
 
   // ── EDIT MODAL ──────────────────────────────────────────
@@ -35182,15 +37939,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    */
   function submitRevisionAction(revisionId, action, reason, wrapEl, extra) {
     extra = extra || {};
+
+    // Build full item data from the revision record
+    var revEntry = null;
+    var result = buildRevisionMap();
+    var allEntries = [];
+    var siIds = Object.keys(result.map);
+    for (var mi = 0; mi < siIds.length; mi++) {
+      var arr = result.map[siIds[mi]];
+      for (var ai = 0; ai < arr.length; ai++) allEntries.push(arr[ai]);
+    }
+    for (var oi = 0; oi < result.orphaned.length; oi++) allEntries.push(result.orphaned[oi]);
+    for (var ei = 0; ei < allEntries.length; ei++) {
+      if (allEntries[ei].id === revisionId) { revEntry = allEntries[ei]; break; }
+    }
+
+    var item = revEntry ? buildRevisionItem(revEntry) : { revisionLineItemId: revisionId };
+
     var payload = {
       actionType:  'revision_response',
-      revisionId:  revisionId,
+      action:      action,
       outcome:     extra.outcome || action,
       timestamp:   new Date().toISOString(),
+      totalItems:  1,
+      revisionRequests: [{
+        revisionRequestId: (revEntry && revEntry.parentRequestId) || '',
+        items: [item],
+      }],
     };
     if (reason)         payload.reason   = reason;
     if (extra.modified) payload.modified = extra.modified;
     if (extra.notes)    payload.notes    = extra.notes;
+
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
 
     console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
@@ -35208,6 +37992,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     spinner.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;background:#f1f5f9;color:#475569;';
     spinner.textContent = '\u23F3 Processing\u2026';
     wrapEl.appendChild(spinner);
+
+    // Update field_2645 directly first, then fire webhook
+    var directStatus = {};
+    directStatus['field_2645'] = extra.outcome === 'rejected' ? 'Rejected' : 'Accepted';
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revisionId),
+      type: 'PUT',
+      data: JSON.stringify(directStatus),
+      success: function () { console.log('[BidRevInject] Status updated:', revisionId); },
+      error: function () { console.warn('[BidRevInject] Status update failed:', revisionId); },
+    });
 
     SCW.knackAjax({
       url:  webhookUrl,
@@ -35253,6 +38048,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                   Knack.views[vk].model.fetch();
                 }
               }
+              // Direct re-inject in case model.fetch doesn't trigger view render
+              setTimeout(function () {
+                for (var vi2 = 0; vi2 < CFG.targetViews.length; vi2++) {
+                  inject(CFG.targetViews[vi2]);
+                }
+              }, 1500);
             };
 
             // Listen for view_3823 re-render before refreshing targets
@@ -35792,6 +38593,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     _injectRetries = 0;
 
+    // Reserve space for action button on ALL rows (prevents layout shift)
+    // Insert AFTER the delete column wrapper (sibling, not child)
+    for (var wi = 0; wi < wsRows.length; wi++) {
+      var wsCard = wsRows[wi].querySelector('.scw-ws-card');
+      if (!wsCard) continue;
+      if (wsCard.querySelector('.scw-scr-action-wrap')) continue;
+      var delBtn = wsCard.querySelector('.scw-ws-sum-delete');
+      if (!delBtn) continue;
+      // The delete button is inside a column wrapper span — insert after that wrapper
+      var delCol = delBtn.parentNode;
+      if (delCol && delCol.parentNode) {
+        var placeholder = document.createElement('span');
+        placeholder.className = 'scw-scr-action-wrap';
+        placeholder.style.alignSelf = 'center';
+        delCol.parentNode.insertBefore(placeholder, delCol.nextSibling);
+      }
+    }
+
     var injected = 0;
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
@@ -35806,10 +38625,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       var revisions = revMap[siId];
 
-      // Badge → append to the identity / product area in the summary
-      var identity = card.querySelector('.scw-ws-identity');
-      if (identity) {
-        identity.appendChild(makeBadge(revisions.length));
+      // Action icon → fill the placeholder wrap created above
+      var wrap = card.querySelector('.scw-scr-action-wrap');
+      if (wrap && !wrap.childNodes.length) {
+        var iconBtn = makeBadge(revisions);
+        iconBtn.style.cursor = 'pointer';
+        iconBtn.addEventListener('click', (function (cardEl) {
+          return function (e) {
+            e.stopPropagation();
+            // Toggle the accordion open
+            var chevron = cardEl.querySelector('.scw-ws-chevron');
+            if (chevron) chevron.click();
+          };
+        })(card));
+        wrap.appendChild(iconBtn);
       }
 
       // Revision strip → inside the detail panel (visible when expanded)
@@ -35834,6 +38663,400 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Inject change/add count badges into group headers
     injectGroupBadges(viewEl, siIds, revMap, orphaned);
+
+    // Build floating revision bar (mirrors scw-sales-cr-bar)
+    buildRevisionBar(viewEl, revMap, orphaned);
+  }
+
+  // ── FLOATING REVISION BAR ─────────────────────────────────
+  var REV_BAR_ID = 'scw-rev-bar';
+  var _revBarOpen = false;
+
+  function buildRevisionBar(viewEl, revMap, orphaned) {
+    // Remove existing bar
+    var existing = document.getElementById(REV_BAR_ID);
+    if (existing) existing.remove();
+
+    // Collect all revisions into flat list
+    var allRevs = [];
+    var siIds = Object.keys(revMap);
+    for (var i = 0; i < siIds.length; i++) {
+      var revs = revMap[siIds[i]];
+      for (var r = 0; r < revs.length; r++) allRevs.push(revs[r]);
+    }
+    for (var o = 0; o < orphaned.length; o++) allRevs.push(orphaned[o]);
+
+    if (!allRevs.length) return;
+
+    // Find accordion body to inject into
+    var $view = $(viewEl);
+    var $accBody = $view.closest('.scw-ktl-accordion__body');
+    var container = $accBody.length ? $accBody[0] : viewEl.parentNode;
+
+    var bar = document.createElement('div');
+    bar.id = REV_BAR_ID;
+    bar.style.cssText = 'position:sticky;bottom:0;z-index:100;background:#fff;border-top:2px solid #3b82f6;box-shadow:0 -4px 12px rgba(0,0,0,.1);font:13px/1.3 system-ui,-apple-system,sans-serif;margin-top:8px;';
+
+    // Top row: count + buttons
+    var topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 16px;';
+
+    // Clickable count
+    var countEl = document.createElement('div');
+    countEl.style.cssText = 'font-weight:700;color:#0f172a;display:flex;align-items:center;gap:6px;cursor:pointer;';
+
+    var chevron = document.createElement('span');
+    chevron.className = 'scw-scr-bar-chevron' + (_revBarOpen ? ' is-open' : '');
+    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+    countEl.appendChild(chevron);
+
+    var numEl = document.createElement('span');
+    numEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:11px;background:#3b82f6;color:#fff;font-size:12px;font-weight:700;padding:0 6px;';
+    numEl.textContent = String(allRevs.length);
+    countEl.appendChild(numEl);
+    countEl.appendChild(document.createTextNode(' pending revision' + (allRevs.length === 1 ? '' : 's')));
+
+    countEl.addEventListener('click', function () {
+      _revBarOpen = !_revBarOpen;
+      var panel = bar.querySelector('.scw-rev-bar-panel');
+      if (panel) panel.style.display = _revBarOpen ? 'flex' : 'none';
+      chevron.className = 'scw-scr-bar-chevron' + (_revBarOpen ? ' is-open' : '');
+    });
+
+    topRow.appendChild(countEl);
+    topRow.appendChild(document.createElement('div')).style.flex = '1';
+
+    // Accept All button
+    var acceptBtn = document.createElement('button');
+    acceptBtn.className = 'scw-scr-bar-btn scw-scr-bar-btn--submit';
+    acceptBtn.textContent = 'Accept All';
+    acceptBtn.style.cssText = 'padding:7px 18px;border:none;border-radius:5px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;background:#16a34a;color:#fff;';
+    acceptBtn.addEventListener('click', function () {
+      if (!window.confirm('Accept all ' + allRevs.length + ' revision(s)?')) return;
+      fireRevisionAction('accept', allRevs, acceptBtn);
+    });
+    topRow.appendChild(acceptBtn);
+
+    // Reject All button
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'scw-scr-bar-btn';
+    rejectBtn.textContent = 'Reject All';
+    rejectBtn.style.cssText = 'padding:7px 18px;border:none;border-radius:5px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;background:#dc2626;color:#fff;';
+    rejectBtn.addEventListener('click', function () {
+      if (!window.confirm('Reject all ' + allRevs.length + ' revision(s)?')) return;
+      fireRevisionAction('reject', allRevs, rejectBtn);
+    });
+    topRow.appendChild(rejectBtn);
+
+    bar.appendChild(topRow);
+
+    // Expandable panel
+    var panel = document.createElement('div');
+    panel.className = 'scw-rev-bar-panel';
+    panel.style.cssText = 'display:' + (_revBarOpen ? 'flex' : 'none') + ';flex-direction:column;gap:6px;border-top:1px solid #e2e8f0;padding:8px 16px 12px;max-height:50vh;overflow-y:auto;';
+
+    for (var j = 0; j < allRevs.length; j++) {
+      var rev = allRevs[j];
+      var json = rev.changeJson;
+      if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+
+      var action = (json && json.action) || 'revise';
+      var cardMod = action === 'remove' ? ' scw-scr-card--remove'
+                  : action === 'add'    ? ' scw-scr-card--add'
+                  :                       ' scw-scr-card--revise';
+
+      var card = document.createElement('div');
+      card.style.cssText = 'margin:0;';
+
+      // Prefer the pre-built HTML card from field_2695
+      if (rev.changeHtml) {
+        card.innerHTML = rev.changeHtml;
+        postProcessHtmlCard(card);
+      } else {
+        // Fallback: structured card
+        card.className = 'scw-scr-card' + cardMod;
+        card.style.cssText = 'margin:0;padding:10px 14px;border-radius:6px;font-size:12px;position:relative;';
+
+        var headerText = action === 'add'    ? 'ADD'
+                       : action === 'remove' ? 'REMOVAL'
+                       :                       'CHANGE';
+        var hdr = document.createElement('div');
+        hdr.className = 'scw-scr-card-header';
+        hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;';
+        hdr.textContent = headerText;
+        if (json && (json.displayLabel || json.productName)) {
+          hdr.textContent += ' \u2014 ' + (json.displayLabel || json.productName);
+        }
+        card.appendChild(hdr);
+
+        if (json && json.fields && json.fields.length) {
+          for (var fi = 0; fi < json.fields.length; fi++) {
+            var f = json.fields[fi];
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+            var fromTo = action === 'revise' && f.from != null
+              ? f.label + ': ' + f.from + ' \u2192 ' + f.to
+              : f.label + ': ' + f.to;
+            row.textContent = fromTo;
+            card.appendChild(row);
+          }
+        } else if (rev.changes && rev.changes.length) {
+          for (var ci = 0; ci < rev.changes.length; ci++) {
+            var ch = rev.changes[ci];
+            var chRow = document.createElement('div');
+            chRow.style.cssText = 'display:flex;gap:6px;align-items:baseline;margin:2px 0;';
+            chRow.textContent = ch.label + ': ' + ch.value;
+            card.appendChild(chRow);
+          }
+        } else if (action === 'remove') {
+          var rmRow = document.createElement('div');
+          rmRow.textContent = 'Requesting removal';
+          card.appendChild(rmRow);
+        }
+
+        if (json && json.changeNotes) {
+          var notes = document.createElement('div');
+          notes.style.cssText = 'font-style:italic;margin-top:4px;font-size:11px;';
+          notes.textContent = '\u201c' + json.changeNotes + '\u201d';
+          card.appendChild(notes);
+        }
+      }
+
+      panel.appendChild(card);
+    }
+
+    bar.appendChild(panel);
+    container.appendChild(bar);
+  }
+
+  var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
+
+  // Survey record field keys (on view_3505 / view_3680 records)
+  var SURVEY_FK = {
+    productName:     'field_2379',
+    qty:             'field_2399',
+    rate:            'field_2400',
+    laborDesc:       'field_2409',
+    bidExistCabling: 'field_2370',
+    bidPlenum:       'field_2371',
+    bidExterior:     'field_2372',
+    bidDropLength:   'field_2367',
+    bidConduit:      'field_2368',
+    bidConnDevice:   'field_2380',
+    bidConnTo:       'field_2381',
+    bidMdfIdf:       'field_2375',
+  };
+  // SOW field keys (from SOW line item, read through survey record's connected fields)
+  var SOW_FK = {
+    productName:     'field_1958',
+    qty:             'field_1964',
+    laborDesc:       'field_2019',
+    bidExistCabling: 'field_2461',
+    bidPlenum:       'field_1983',
+    bidExterior:     'field_1984',
+    bidDropLength:   'field_1965',
+    bidConduit:      'field_2035',
+    bidMdfIdf:       'field_1946',
+  };
+  var ALL_FIELD_KEYS = Object.keys(SURVEY_FK);
+
+  function readModelRecord(viewKey, recordId) {
+    try {
+      var v = Knack.views[viewKey];
+      if (!v || !v.model || !v.model.data) return null;
+      var models = v.model.data.models || [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i].id === recordId) return models[i].attributes || models[i].toJSON();
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function readFieldVal(rec, fieldKey) {
+    if (!rec) return null;
+    var raw = rec[fieldKey + '_raw'];
+    if (raw != null) {
+      if (Array.isArray(raw) && raw.length) {
+        return raw.map(function (r) { return r.identifier || r.id || r; }).join(', ');
+      }
+      if (typeof raw === 'object' && raw.identifier) return raw.identifier;
+      return raw;
+    }
+    var plain = rec[fieldKey];
+    if (plain == null || plain === '' || plain === '&nbsp;' || plain === '\u00a0') return null;
+    return String(plain).replace(/<[^>]*>/g, '').trim() || null;
+  }
+
+  function readFieldIds(rec, fieldKey) {
+    if (!rec) return [];
+    var raw = rec[fieldKey + '_raw'];
+    if (Array.isArray(raw)) return raw.map(function (r) { return r.id || r; });
+    return [];
+  }
+
+  function buildRevisionItem(rev) {
+    var json = rev.changeJson;
+    if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
+    var cr = json ? JSON.parse(JSON.stringify(json)) : {};
+
+    // Read live survey record from the target view's Knack model
+    var surveyId = rev.surveyItemId || cr.bidRecordId || cr.rowId || '';
+    var surveyRec = null;
+    for (var tvi = 0; tvi < CFG.targetViews.length && !surveyRec; tvi++) {
+      surveyRec = readModelRecord(CFG.targetViews[tvi], surveyId);
+    }
+
+    // Read SOW record (survey record has SOW connection field_2404)
+    var sowRec = null;
+    if (surveyRec) {
+      var sowRaw = surveyRec.field_2404_raw;
+      var sowId = Array.isArray(sowRaw) && sowRaw.length ? sowRaw[0].id : null;
+      if (sowId) {
+        // SOW items might be on a view on this page (view_3728-ish) — not guaranteed
+        // Fall back to reading SOW fields from the survey record itself (they're connected)
+      }
+    }
+
+    // Build flat item: CR value → survey value → SOW value
+    var item = {
+      action:              cr.action || 'revise',
+      revisionLineItemId:  rev.id,
+      parentRequestId:     rev.parentRequestId || '',
+      surveyItemId:        surveyId,
+      rowId:               cr.rowId || surveyId,
+      bidRecordId:         cr.bidRecordId || surveyId,
+      sowItemId:           cr.sowItemId || '',
+      displayLabel:        cr.displayLabel || '',
+      productName:         cr.productName || '',
+      changeNotes:         cr.changeNotes || '',
+      proposalBucket:      cr.proposalBucket || '',
+      proposalBucketId:    cr.proposalBucketId || '',
+    };
+
+    // Populate all fields with layered fallback
+    for (var fi = 0; fi < ALL_FIELD_KEYS.length; fi++) {
+      var logicalKey = ALL_FIELD_KEYS[fi];
+      var surveyFK = SURVEY_FK[logicalKey];
+      var sowFK = SOW_FK[logicalKey];
+
+      // Layer 1: CR requested value
+      var val = cr[logicalKey] != null && cr[logicalKey] !== '' ? cr[logicalKey] : null;
+      // Layer 2: live survey record
+      if (val == null && surveyRec) val = readFieldVal(surveyRec, surveyFK);
+      // Layer 3: SOW value (read from survey record's connected SOW fields)
+      if (val == null && surveyRec && sowFK) val = readFieldVal(surveyRec, sowFK);
+
+      item[logicalKey] = val;
+
+      // Connection IDs: same layered approach
+      var idsKey = logicalKey + 'Ids';
+      var ids = (cr[idsKey] && cr[idsKey].length) ? cr[idsKey] : null;
+      if (!ids && surveyRec) ids = readFieldIds(surveyRec, surveyFK);
+      if (!ids && surveyRec && sowFK) ids = readFieldIds(surveyRec, sowFK);
+      item[idsKey] = ids || [];
+    }
+
+    // Carry over fields array, html, and connection classification arrays
+    if (cr.fields) item.fields = cr.fields;
+    if (cr.ConnDevices_surveyitem) item.ConnDevices_surveyitem = cr.ConnDevices_surveyitem;
+    if (cr.ConnDevices_sowitem)    item.ConnDevices_sowitem    = cr.ConnDevices_sowitem;
+    if (cr.ConnTO_surveyitem)     item.ConnTO_surveyitem      = cr.ConnTO_surveyitem;
+    if (cr.ConnTO_sowitem)        item.ConnTO_sowitem          = cr.ConnTO_sowitem;
+    if (cr.current)               item.current                = cr.current;
+    if (cr.requested)             item.requested              = cr.requested;
+    if (rev.changeHtml) item.html = rev.changeHtml;
+    if (rev.changes && rev.changes.length && !item.fields) {
+      item.fields = rev.changes.map(function (c) {
+        return { label: c.label, to: c.value };
+      });
+    }
+
+    return item;
+  }
+
+  function fireRevisionAction(action, revs, btn) {
+    btn.disabled = true;
+    btn.textContent = action === 'accept' ? 'Accepting\u2026' : 'Rejecting\u2026';
+
+    // Group items by parent revision request
+    var byParent = {};
+    for (var i = 0; i < revs.length; i++) {
+      var parentId = revs[i].parentRequestId || '_unknown';
+      if (!byParent[parentId]) {
+        byParent[parentId] = {
+          revisionRequestId: revs[i].parentRequestId || '',
+          revisionRequestLabel: revs[i].parentRequestLabel || '',
+          items: [],
+        };
+      }
+      byParent[parentId].items.push(buildRevisionItem(revs[i]));
+    }
+
+    var revisionRequests = [];
+    var keys = Object.keys(byParent);
+    for (var k = 0; k < keys.length; k++) revisionRequests.push(byParent[keys[k]]);
+
+    var payload = {
+      actionType: 'revision_response',
+      action: action,
+      timestamp: new Date().toISOString(),
+      totalItems: revs.length,
+      revisionRequests: revisionRequests,
+    };
+
+    // Add user info
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
+
+    // 1. Update field_2645 on each revision line item directly
+    var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
+    var statusDone = 0;
+    var statusTotal = revs.length;
+
+    function onAllStatusUpdated() {
+      // 2. Fire webhook (fire-and-forget)
+      SCW.knackAjax({
+        url: REV_ACTION_WEBHOOK,
+        type: 'POST',
+        data: JSON.stringify(payload),
+      });
+
+      btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
+
+      // 3. Refresh view_3823 → triggers re-inject
+      setTimeout(function () {
+        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+          Knack.views[CFG.revisionView].model.fetch();
+        }
+        // Also directly re-inject after a delay to catch cases where
+        // model.fetch doesn't trigger knack-view-render
+        setTimeout(function () {
+          for (var t = 0; t < CFG.targetViews.length; t++) {
+            inject(CFG.targetViews[t]);
+          }
+        }, 1500);
+      }, 1000);
+    }
+
+    var statusData = {};
+    statusData['field_2645'] = statusVal;
+    for (var si = 0; si < revs.length; si++) {
+      (function (revId) {
+        SCW.knackAjax({
+          url: SCW.knackRecordUrl(CFG.revisionView, revId),
+          type: 'PUT',
+          data: JSON.stringify(statusData),
+          success: function () { statusDone++; if (statusDone >= statusTotal) onAllStatusUpdated(); },
+          error: function () { statusDone++; if (statusDone >= statusTotal) onAllStatusUpdated(); },
+        });
+      })(revs[si].id);
+    }
+
+    if (!statusTotal) onAllStatusUpdated();
   }
 
   /**
@@ -38067,6 +41290,162 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     scrapePage1Cover: scrapePage1Cover
   };
 })();
+/*** FEATURE: Connected Device Bid Validation ************************************
+ *
+ * On view_3505 (subcontractor bid worksheet), checks if each camera/reader's
+ * "Connected To" device (field_2381) is also on the same bid. If not, shows
+ * a warning icon in the card header and a message on the Connected Device field.
+ *
+ *******************************************************************************/
+(function () {
+  'use strict';
+
+  var VIEW_ID = 'view_3505';
+  var CONN_TO_FIELD = 'field_2381';
+  var WARN_CLS = 'scw-conn-bid-warn';
+  var STYLE_ID = 'scw-conn-bid-check-css';
+  var NS = '.scwConnBidCheck';
+
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = [
+      '.' + WARN_CLS + ' {',
+      '  display: flex; align-items: center; gap: 5px;',
+      '  margin-top: 0; margin-bottom: 8px; padding: 4px 8px;',
+      '  font-size: 11px; font-weight: 500; color: #b45309;',
+      '}',
+      '.' + WARN_CLS + ' svg {',
+      '  flex-shrink: 0; width: 14px; height: 14px;',
+      '  stroke: #b45309; fill: none;',
+      '}',
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function validate() {
+    var viewEl = document.getElementById(VIEW_ID);
+    if (!viewEl) return;
+
+    var BID_FIELD = 'field_2415';
+    var model = Knack.views[VIEW_ID] && Knack.views[VIEW_ID].model;
+    if (!model || !model.data) return;
+    var records = model.data.models || [];
+    if (!records.length) return;
+
+    // Build map: record ID → bid package ID(s)
+    var bidByRecord = {};
+    for (var i = 0; i < records.length; i++) {
+      var a = records[i].attributes || records[i];
+      var id = records[i].id || a.id;
+      if (!id) continue;
+      var bidRaw = a[BID_FIELD + '_raw'];
+      var bidIds = [];
+      if (Array.isArray(bidRaw)) {
+        for (var bi = 0; bi < bidRaw.length; bi++) {
+          if (bidRaw[bi].id) bidIds.push(bidRaw[bi].id);
+        }
+      }
+      bidByRecord[id] = bidIds;
+    }
+
+    injectStyles();
+
+    // Remove previous warnings
+    var old = viewEl.querySelectorAll('.' + WARN_CLS);
+    for (var oi = 0; oi < old.length; oi++) old[oi].remove();
+    var oldIcons = viewEl.querySelectorAll('.scw-conn-bid-warn-icon');
+    for (var oii = 0; oii < oldIcons.length; oii++) oldIcons[oii].remove();
+    var oldBadge = document.querySelector('.scw-conn-bid-warn-badge');
+    if (oldBadge) oldBadge.remove();
+
+    var warnCount = 0;
+
+    for (var ri = 0; ri < records.length; ri++) {
+      var rec = records[ri];
+      var attrs = rec.attributes || rec;
+      var recId = rec.id || attrs.id;
+      var raw = attrs[CONN_TO_FIELD + '_raw'];
+      if (!raw || !Array.isArray(raw) || !raw.length) continue;
+
+      var myBids = bidByRecord[recId] || [];
+      if (!myBids.length) continue; // this record isn't on a bid itself
+
+      for (var ci = 0; ci < raw.length; ci++) {
+        var connId = raw[ci].id;
+        if (!connId) continue;
+
+        var connBids = bidByRecord[connId] || [];
+        // Check if connected device shares at least one bid with this record
+        var sameBid = false;
+        for (var mb = 0; mb < myBids.length && !sameBid; mb++) {
+          for (var cb = 0; cb < connBids.length; cb++) {
+            if (myBids[mb] === connBids[cb]) { sameBid = true; break; }
+          }
+        }
+        if (sameBid) continue;
+
+        // Connected device is not on the same bid (or has no bid)
+        warnCount++;
+        var connLabel = raw[ci].identifier || connId;
+        var reason = connBids.length ? 'on a different bid' : 'not assigned to any bid';
+
+        var wsRow = viewEl.querySelector('tr.scw-ws-row[id="' + recId + '"]');
+        if (!wsRow) continue;
+
+        var connFieldWrap = wsRow.querySelector('[data-scw-field="field_2381"]');
+        if (!connFieldWrap) {
+          var connTd = wsRow.querySelector('td.' + CONN_TO_FIELD);
+          if (connTd) connFieldWrap = connTd.closest('.scw-ws-field') || connTd;
+        }
+        if (connFieldWrap) {
+          var warnMsg = document.createElement('div');
+          warnMsg.className = WARN_CLS;
+          warnMsg.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+            + '<span>\u201c' + connLabel + '\u201d is ' + reason + '</span>';
+          connFieldWrap.after(warnMsg);
+        }
+
+        var warnSlot = wsRow.querySelector('.scw-ws-warn-slot');
+        if (warnSlot && !warnSlot.querySelector('.scw-conn-bid-warn-icon')) {
+          var icon = document.createElement('span');
+          icon.className = 'scw-cr-hdr-warning scw-conn-bid-warn-icon';
+          icon.style.cssText = 'color:#b45309;display:inline-flex;align-items:center;';
+          icon.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          icon.title = 'Connected device ' + reason;
+          warnSlot.appendChild(icon);
+        }
+
+        break;
+      }
+    }
+
+    // Badge on accordion header if any warnings
+    if (warnCount > 0) {
+      var accHeader = viewEl.closest('.scw-ktl-accordion__body');
+      if (accHeader) accHeader = accHeader.previousElementSibling;
+      if (accHeader && accHeader.classList.contains('scw-ktl-accordion__header')) {
+        var existingBadge = accHeader.querySelector('.scw-conn-bid-warn-badge');
+        if (existingBadge) existingBadge.remove();
+        var badge = document.createElement('span');
+        badge.className = 'scw-conn-bid-warn-badge';
+        badge.style.cssText = 'background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:8px;';
+        badge.textContent = warnCount + ' connection warning' + (warnCount > 1 ? 's' : '');
+        badge.title = warnCount + ' camera(s) connected to devices not on this bid';
+        var titleEl = accHeader.querySelector('.scw-acc-title');
+        if (titleEl) titleEl.after(badge);
+      }
+    }
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender(VIEW_ID, function () {
+      setTimeout(validate, 1000);
+    }, NS);
+  }
+})();
+/*** END FEATURE: Connected Device Bid Validation ******************************/
 /*** FEATURE: Default Sort Override ********************************************
  *
  * Sets a default sort on specified Knack views the first time they render in
@@ -38144,7 +41523,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     modelView.sort = sortArr;
 
     if (typeof view.model.fetch === 'function') {
-      view.model.fetch();
+      try { view.model.fetch(); } catch (e) { /* model may lack a URL */ }
     }
   }
 

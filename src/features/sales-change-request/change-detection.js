@@ -90,6 +90,7 @@
       var id = attrs.id;
       if (!id) continue;
       if (pending[id]) continue;
+      if (baseline[id]) continue;
 
       var snap = {};
       for (var f = 0; f < TF.length; f++) {
@@ -169,6 +170,16 @@
       var fk  = def.key;
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
+      if (CFG.debug && fk === 'field_1953') {
+        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+          raw_exists: record[fk + '_raw'] != null,
+          raw_val: record[fk + '_raw'],
+          plain_val: record[fk],
+          newVal: newVal,
+          baseVal: base[fk],
+          match: String(newVal) === String(base[fk])
+        }));
+      }
       if (String(newVal) !== String(base[fk])) {
         changes[fk] = newVal;
         if (def.type === 'connection') {
@@ -265,15 +276,27 @@
       var count = parseFloat(base._addCount);
       if (count === 0 || isNaN(count)) continue;
 
+      // Snapshot all tracked field values into requested — the whole record is new
+      var req = {};
+      var reqIds = {};
+      for (var tf = 0; tf < TF.length; tf++) {
+        var fk = TF[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) reqIds[fk] = base[fk + '_ids'];
+      }
       pending[id] = {
         rowId:        id,
         displayLabel: base._label || '',
         productName:  base._product || '',
+        bucketId:     base._bucketId || '',
+        bucketName:   base._bucketName || '',
+        laborHours:   base._laborHours || 0,
         action:       'add',
         current:      {},
-        requested:    {},
+        requested:    req,
         changeNotes:  '',
       };
+      for (var ik in reqIds) pending[id].requested[ik + '_ids'] = reqIds[ik];
       added++;
     }
 

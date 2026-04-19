@@ -23,8 +23,8 @@
     if (!window.confirm('Submit ' + count + ' change(s)?\n\nThis will send the change request for review.')) return;
 
     var payload = ns.buildPayload(false);
-    var html    = ns.buildHtml();
-    payload.html = html;
+    payload.html      = ns.buildHtml();
+    payload.plainText = ns.buildPlainText();
 
     if (CFG.debug) {
       console.log('[SalesCR] Submit:', payload);

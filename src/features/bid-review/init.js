@@ -30,6 +30,7 @@
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
@@ -61,6 +62,7 @@
 
     ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
+      ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
@@ -580,12 +582,9 @@
         }
         var nbIsCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
         // Connected Devices: camera/reader noBid items — skip if claimed elsewhere
-        if (nbIsCamReader) {
-          console.log('[ClaimedDevices] noBid cam/reader:', cr.id, nbLbl, 'claimed?', !!claimed[cr.id]);
-        }
-        if (nbIsCamReader && !seenDev[cr.id] && !claimed[cr.id]) {
+        if (nbIsCamReader && !seenDev[cr.id]) {
           seenDev[cr.id] = true;
-          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id });
+          connDevOpts.push({ id: cr.id, identifier: nbLbl, noBid: true, rowId: cr.id, currentConnTo: null });
         }
         // Connected To: noBid items with mapConnections flag (field_2231)
         var nbMapConn = /^yes$/i.test(String(cr.sowMapConn || '').trim());
@@ -607,13 +606,16 @@
         }
 
         var isCamReader = cr.proposalBucketId === CAM_READER_BUCKET_ID;
-        var connToBlank = !cc.bidConnTo || String(cc.bidConnTo).trim() === '';
 
-        // Connected Devices: Camera/Reader with no existing "Connected To",
-        // not claimed by another record, or currently selected on this record
-        if (!seenDev[cc.id] && ((isCamReader && connToBlank && !claimed[cc.id]) || curDevSet[cc.id])) {
+        // Connected Devices: show ALL Camera/Reader items with current connection info
+        if (isCamReader && !seenDev[cc.id]) {
           seenDev[cc.id] = true;
-          connDevOpts.push({ id: cc.id, identifier: lbl });
+          var connTo = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+          connDevOpts.push({
+            id: cc.id,
+            identifier: lbl,
+            currentConnTo: connTo || null,
+          });
         }
 
         // Connected To: items where field_2374 (mapConnections) is Yes, or currently selected
@@ -811,6 +813,435 @@
       ns.changeRequests.rehydrate(_state.sowGrids);
     }
   };
+
+  ns.lookupCell = function (rowId, pkgId) {
+    if (!_state) return null;
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var rows = _state.sowGrids[g].rows;
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].id === rowId) return rows[r].cellsByPackage[pkgId] || null;
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Create a bid CR from a sales revision record.
+   * Called by the sales-revision-column when user clicks "Create Bid CR".
+   *
+   * @param {Object} opts
+   * @param {string} opts.sowItemId  — SOW line item record ID (field_2708)
+   * @param {string} opts.action     — 'remove' | 'revise' | 'add'
+   * @param {string} opts.changeNotes — pre-filled notes from the revision
+   * @param {Object} opts.revJson    — full revision JSON data
+   */
+  ns.createBidCRFromRevision = function (opts) {
+    if (!_state || !ns.changeRequests) return;
+
+    var sowItemId  = opts.sowItemId || '';
+
+    // Find the grid row that matches this SOW item
+    var grid = null, row = null;
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var sg = _state.sowGrids[g];
+      for (var r = 0; r < sg.rows.length; r++) {
+        if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+          grid = sg;
+          row = sg.rows[r];
+          break;
+        }
+      }
+      if (row) break;
+    }
+
+    if (!grid || !row) {
+      if (ns.renderToast) ns.renderToast('Could not find matching grid row', 'error');
+      return;
+    }
+
+    var pkgIds = Object.keys(row.cellsByPackage);
+    if (!pkgIds.length && grid.packages) {
+      for (var pi = 0; pi < grid.packages.length; pi++) {
+        pkgIds.push(grid.packages[pi].id);
+      }
+    }
+    if (!pkgIds.length) {
+      if (ns.renderToast) ns.renderToast('No bid packages available', 'error');
+      return;
+    }
+
+    // Read values from the revision line item record in view_3842 DOM
+    var REV_FIELD_MAP = {
+      rate:            'field_2648',
+      laborDesc:       'field_2649',
+      bidExistCabling: 'field_2650',
+      bidExterior:     'field_2651',
+      bidPlenum:       'field_2652',
+      bidConduit:      'field_2718',
+      bidDropLength:   'field_2719',
+    };
+
+    function readRevisionRecord(revRecordId) {
+      var requested = {};
+      if (!revRecordId) return requested;
+      var tr = document.getElementById(revRecordId);
+      if (!tr) {
+        var viewEl = document.getElementById('view_3842');
+        if (viewEl) tr = viewEl.querySelector('tr[id="' + revRecordId + '"]');
+      }
+      if (!tr) return requested;
+
+      for (var logicalKey in REV_FIELD_MAP) {
+        var fk = REV_FIELD_MAP[logicalKey];
+        var td = tr.querySelector('td.' + fk);
+        if (!td) continue;
+        var val = (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
+        if (val && val !== '&nbsp;') requested[logicalKey] = val;
+      }
+
+      // Connection fields: bidConnDevice (field_2646), bidConnTo (field_2647), bidMdfIdf (field_2720)
+      var connFields = [
+        { key: 'bidConnDevice', field: 'field_2646', idsKey: 'bidConnDeviceIds' },
+        { key: 'bidConnTo',     field: 'field_2647', idsKey: 'bidConnToIds' },
+        { key: 'bidMdfIdf',     field: 'field_2720', idsKey: 'bidMdfIdfIds' },
+      ];
+      for (var ci = 0; ci < connFields.length; ci++) {
+        var cf = connFields[ci];
+        var ctd = tr.querySelector('td.' + cf.field);
+        if (!ctd) continue;
+        var spans = ctd.querySelectorAll('span[data-kn="connection-value"]');
+        if (!spans.length) continue;
+        var labels = [], ids = [];
+        for (var si = 0; si < spans.length; si++) {
+          var cid = (spans[si].className || '').trim();
+          var lbl = (spans[si].textContent || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(cid)) { ids.push(cid); labels.push(lbl); }
+        }
+        if (labels.length) requested[cf.key] = labels.join(', ');
+        if (ids.length) requested[cf.idsKey] = ids;
+      }
+
+      return requested;
+    }
+
+    function doOpen(pkgId) {
+      var action = opts.action || 'revise';
+      var revJson = opts.revJson || {};
+      var notes = revJson.changeNotes || opts.changeNotes || '';
+
+      // Map JSON requested fields (sales CR field keys → bid modal keys)
+      var jr = revJson.requested || {};
+      var SALES_MAP = {
+        field_1949: 'sowProduct',      field_1964: 'sowQty',
+        field_2150: 'sowFee',          field_2020: 'sowLaborDesc',
+        field_2461: 'sowExistCabling', field_1984: 'sowExterior',
+        field_1983: 'sowPlenum',       field_1965: 'sowDropLength',
+        field_2035: 'sowConduit',      field_1946: 'sowMdfIdf',
+        field_1957: 'sowConnDevice',   field_2197: 'sowConnTo',
+      };
+      var mapped = {};
+      for (var sk in SALES_MAP) {
+        if (jr[sk] != null && jr[sk] !== '') mapped[SALES_MAP[sk]] = jr[sk];
+        if (jr[sk + '_ids']) mapped[SALES_MAP[sk] + 'Ids'] = jr[sk + '_ids'];
+      }
+      // Top-level JSON fields as fallback
+      if (!mapped.sowProduct && revJson.productName) mapped.sowProduct = revJson.productName;
+      // Normalize boolean "true"/"false" → "Yes"/"No"
+      var boolKeys = ['sowExistCabling', 'sowExterior', 'sowPlenum'];
+      for (var bi = 0; bi < boolKeys.length; bi++) {
+        var bv = mapped[boolKeys[bi]];
+        if (bv === 'true') mapped[boolKeys[bi]] = 'Yes';
+        else if (bv === 'false') mapped[boolKeys[bi]] = 'No';
+      }
+
+      if (action === 'add') {
+        row._revOverlay = {
+          sowProduct:      mapped.sowProduct || row.sowProduct || '',
+          sowQty:          mapped.sowQty || row.sowQty || '',
+          sowFee:          mapped.sowFee || row.sowFee || '',
+          sowLaborDesc:    mapped.sowLaborDesc || row.sowLaborDesc || '',
+          sowExistCabling: mapped.sowExistCabling || row.sowExistCabling || '',
+          sowPlenum:       mapped.sowPlenum || row.sowPlenum || '',
+          sowExterior:     mapped.sowExterior || row.sowExterior || '',
+          sowDropLength:   mapped.sowDropLength || row.sowDropLength || '',
+          sowConduit:      mapped.sowConduit || row.sowConduit || '',
+          sowMdfIdf:       mapped.sowMdfIdf || row.sowMdfIdf || '',
+          sowMdfIdfIds:    mapped.sowMdfIdfIds || row.sowMdfIdfIds || [],
+          sowConnDevice:   mapped.sowConnDevice || '',
+          sowConnDeviceIds: mapped.sowConnDeviceIds || [],
+          sowConnTo:       mapped.sowConnTo || '',
+          sowConnToIds:    mapped.sowConnToIds || [],
+        };
+      } else if (action !== 'remove') {
+        // For REVISE: merge JSON values into the cell using bid logical keys
+        var BID_MAP = {
+          field_1949: 'productName', field_1964: 'qty', field_2150: 'rate',
+          field_2020: 'laborDesc', field_2461: 'bidExistCabling',
+          field_1984: 'bidExterior', field_1983: 'bidPlenum',
+          field_1965: 'bidDropLength', field_2035: 'bidConduit',
+          field_1946: 'bidMdfIdf',
+        };
+        var cell = row.cellsByPackage[pkgId];
+        if (cell) {
+          for (var bk in BID_MAP) {
+            if (jr[bk] != null && jr[bk] !== '') cell[BID_MAP[bk]] = jr[bk];
+            if (jr[bk + '_ids']) cell[BID_MAP[bk] + 'Ids'] = jr[bk + '_ids'];
+          }
+        }
+      }
+
+      executeBidCR(grid, row, pkgId, action, notes, {
+        salesRevisionId: opts.revisionRecordId || '',
+        salesRevisionRequestId: opts.revisionRequestId || '',
+      });
+      delete row._revOverlay;
+    }
+
+    var choices = [];
+    for (var p = 0; p < pkgIds.length; p++) {
+      choices.push({ id: pkgIds[p], name: findPackageName(grid, pkgIds[p]) });
+    }
+    if (choices.length === 1) {
+      doOpen(choices[0].id);
+    } else {
+      showPackagePicker(choices, doOpen);
+    }
+  };
+
+  function executeBidCR(grid, row, pkgId, action, notes, revMeta) {
+    var cell = row.cellsByPackage[pkgId];
+
+    var params = {
+      rowId:        row.id,
+      pkgId:        pkgId,
+      pkgName:      findPackageName(grid, pkgId),
+      surveyId:     findPackageSurveyId(grid, pkgId),
+      sowId:        grid.sowId,
+      sowName:      grid.sowName,
+      sowItemId:    row.sowItem || '',
+      displayLabel: row.displayLabel,
+      productName:  row.productName,
+      cell:         cell || {},
+      revMeta:      revMeta || null,
+      proposalBucket:   row.proposalBucket || '',
+      proposalBucketId: row.proposalBucketId || '',
+    };
+
+    if (action === 'remove') {
+      if (!cell) return;
+      params.prefillNotes = notes;
+      ns.changeRequests.openRemove(params);
+    } else if (action === 'add') {
+      // Add to bid — use the add-item flow
+      // If _revOverlay exists (from sales revision), use revision data as prefill
+      var ov = row._revOverlay || {};
+      params.sowProduct    = ov.sowProduct || row.sowProduct || row.productName || '';
+      params.sowQty        = ov.sowQty || row.sowQty || '';
+      params.sowLaborDesc  = ov.sowLaborDesc || row.sowLaborDesc || '';
+      params.sowFee        = ov.sowFee || row.sowFee || '';
+      params.sowExistCabling = ov.sowExistCabling || row.sowExistCabling || '';
+      params.sowPlenum     = ov.sowPlenum || row.sowPlenum || '';
+      params.sowExterior   = ov.sowExterior || row.sowExterior || '';
+      params.sowDropLength = ov.sowDropLength || row.sowDropLength || '';
+      params.sowConduit    = ov.sowConduit || row.sowConduit || '';
+      params.sowMdfIdf     = ov.sowMdfIdf || row.sowMdfIdf || '';
+      params.sowMdfIdfIds  = ov.sowMdfIdfIds || row.sowMdfIdfIds || [];
+      params.sowConnDevice    = ov.sowConnDevice || '';
+      params.sowConnDeviceIds = ov.sowConnDeviceIds || [];
+      params.sowConnTo        = ov.sowConnTo || '';
+      params.sowConnToIds     = ov.sowConnToIds || [];
+      params.sowMapConn    = row.sowMapConn || '';
+      // Build connection options from grid rows
+      var addConnDev = [], addConnTo = [];
+      var addSeenDev = {}, addSeenTo = {};
+      var ADD_CAM = '6481e5ba38f283002898113c';
+      for (var aci = 0; aci < grid.rows.length; aci++) {
+        var acr = grid.rows[aci];
+        var acpkgs = Object.keys(acr.cellsByPackage);
+        for (var acpi = 0; acpi < acpkgs.length; acpi++) {
+          var acc = acr.cellsByPackage[acpkgs[acpi]];
+          if (!acc.id) continue;
+          var acLbl = acr.displayLabel || acr.productName || acc.productName || acc.id;
+          if (acr.proposalBucketId === ADD_CAM && !addSeenDev[acc.id]) {
+            addSeenDev[acc.id] = true;
+            var acConnTo = acc.bidConnTo ? String(acc.bidConnTo).trim() : '';
+            addConnDev.push({ id: acc.id, identifier: acLbl, currentConnTo: acConnTo || null });
+          }
+          if (acc.mapConnections && !addSeenTo[acc.id]) {
+            addSeenTo[acc.id] = true;
+            addConnTo.push({ id: acc.id, identifier: acLbl });
+          }
+        }
+      }
+      params.connOptions = { bidConnDevice: addConnDev, bidConnTo: addConnTo, bidMdfIdf: buildMdfIdfOptions() };
+      // Visibility: connDevice only if field_2231=Yes on SOW row;
+      // cabling (includes Connected To) only if bucket is Camera or Reader
+      var showConn = (row.sowMapConn === 'Yes' || row.sowMapConn === 'true');
+      var isCamReader = (row.proposalBucketId === '6481e5ba38f283002898113c');
+      params.visibility    = { qty: true, cabling: isCamReader, connDevice: showConn };
+      params.gridRows      = grid.rows;
+      ns.changeRequests.openAddItem(params);
+    } else {
+      if (!cell) return;
+      // Build connection options from grid rows (same as normal revise flow)
+      var connDevOpts2 = [], connToOpts2 = [];
+      var seenDev2 = {}, seenTo2 = {};
+      var CAM_READER = '6481e5ba38f283002898113c';
+      for (var cri = 0; cri < grid.rows.length; cri++) {
+        var cr = grid.rows[cri];
+        var cpkgs = Object.keys(cr.cellsByPackage);
+        for (var cpi = 0; cpi < cpkgs.length; cpi++) {
+          var cc = cr.cellsByPackage[cpkgs[cpi]];
+          if (!cc.id || cc.id === cell.id) continue;
+          var lbl = cr.displayLabel || cr.productName || cc.productName || cc.id;
+          if (cr.proposalBucketId === CAM_READER && !seenDev2[cc.id]) {
+            seenDev2[cc.id] = true;
+            var connTo2 = cc.bidConnTo ? String(cc.bidConnTo).trim() : '';
+            connDevOpts2.push({ id: cc.id, identifier: lbl, currentConnTo: connTo2 || null });
+          }
+          if (cc.mapConnections && !seenTo2[cc.id]) {
+            seenTo2[cc.id] = true;
+            connToOpts2.push({ id: cc.id, identifier: lbl });
+          }
+        }
+      }
+      var showConn2 = cell.mapConnections || row.sowMapConn === 'Yes' || row.sowMapConn === 'true';
+      var isCamReader2 = (row.proposalBucketId === CAM_READER);
+      params.connOptions = { bidConnDevice: connDevOpts2, bidConnTo: connToOpts2, bidMdfIdf: buildMdfIdfOptions() };
+      params.visibility = { qty: true, cabling: isCamReader2, connDevice: showConn2 };
+      params.gridRows = grid.rows;
+      ns.changeRequests.open(params);
+    }
+  }
+
+  /**
+   * Batch-convert an array of sales revision data into pending bid CRs
+   * for a specific package. No modals — items are created silently.
+   *
+   * @param {Array} revisions — [{sowItemId, action, changeNotes, revJson, revisionRecordId}]
+   * @param {string} pkgId    — target bid package
+   */
+  ns.batchConvertRevisions = function (revisions, pkgId) {
+    if (!_state || !ns.changeRequests) return 0;
+
+    var count = 0;
+    for (var i = 0; i < revisions.length; i++) {
+      var rev = revisions[i];
+      var action = rev.action || 'revise';
+      var sowItemId = rev.sowItemId || '';
+
+      // Find matching grid row
+      var grid = null, row = null;
+      for (var g = 0; g < _state.sowGrids.length; g++) {
+        var sg = _state.sowGrids[g];
+        for (var r = 0; r < sg.rows.length; r++) {
+          if (sg.rows[r].sowItem === sowItemId || sg.rows[r].id === sowItemId) {
+            grid = sg; row = sg.rows[r]; break;
+          }
+        }
+        if (row) break;
+      }
+      if (!grid || !row) continue;
+
+      var cell = row.cellsByPackage[pkgId] || {};
+      var pkgName = findPackageName(grid, pkgId);
+      var surveyId = findPackageSurveyId(grid, pkgId);
+
+      var item;
+      if (action === 'remove') {
+        item = {
+          rowId:         row.id,
+          bidRecordId:   cell.id || null,
+          sowItemId:     row.sowItem || '',
+          displayLabel:  row.displayLabel,
+          productName:   row.productName || cell.productName || '',
+          removeFromBid: true,
+          current:       {},
+          requested:     {},
+          changeNotes:   rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
+        };
+      } else if (action === 'add') {
+        var req = {};
+        if (rev.revJson) {
+          req.productName = rev.revJson.productName || row.sowProduct || '';
+          if (row.sowQty) req.qty = row.sowQty;
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  null,
+          sowItemId:    row.sowItem || row.id,
+          displayLabel: row.displayLabel || row.sowProduct || '',
+          productName:  req.productName || row.sowProduct || row.productName || '',
+          addToBid:     true,
+          current:      {},
+          requested:    req,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
+        };
+      } else {
+        // Revise — snapshot current from cell, apply revision fields
+        var current = {};
+        var requested = {};
+        if (rev.revJson && rev.revJson.fields) {
+          for (var fi = 0; fi < rev.revJson.fields.length; fi++) {
+            var f = rev.revJson.fields[fi];
+            if (f.from != null) current[f.field] = f.from;
+            requested[f.field] = f.to;
+            if (f.fromIds) current[f.field + 'Ids'] = f.fromIds;
+            if (f.toIds) requested[f.field + 'Ids'] = f.toIds;
+          }
+        }
+        item = {
+          rowId:        row.id,
+          bidRecordId:  cell.id || null,
+          sowItemId:    row.sowItem || '',
+          displayLabel: row.displayLabel,
+          productName:  row.productName || cell.productName || '',
+          current:      current,
+          requested:    requested,
+          changeNotes:  rev.changeNotes || '',
+          salesRevisionId: rev.revisionRecordId || '',
+          salesRevisionRequestId: rev.revisionRequestId || '',
+          revisionFields: (rev.revJson && rev.revJson.fields) || [],
+        };
+      }
+
+      ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, item, surveyId);
+      count++;
+    }
+
+    if (ns.rerender) ns.rerender();
+    return count;
+  };
+
+  function showPackagePicker(choices, onSelect) {
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:10px;padding:20px;min-width:240px;font:13px/1.45 system-ui,sans-serif;';
+    modal.innerHTML = '<div style="font-size:16px;font-weight:700;margin-bottom:12px;">Select Bid Package</div>';
+
+    for (var i = 0; i < choices.length; i++) {
+      var btn = document.createElement('button');
+      btn.style.cssText = 'display:block;width:100%;padding:8px 14px;margin-bottom:6px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#1e293b;font:600 13px/1 system-ui,sans-serif;cursor:pointer;text-align:left;';
+      btn.textContent = choices[i].name;
+      btn.setAttribute('data-pkg-id', choices[i].id);
+      btn.addEventListener('click', function () {
+        var pkgId = this.getAttribute('data-pkg-id');
+        overlay.remove();
+        onSelect(pkgId);
+      });
+      modal.appendChild(btn);
+    }
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
 
   // ── force views to load 1000 records per page ───────────────
 

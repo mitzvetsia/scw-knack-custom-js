@@ -309,7 +309,7 @@
     var body = H.el('div', P + '-modal__body');
     body.appendChild(H.el('div', P + '-modal__hint',
       'This item will be submitted as a new addition. Please include a note describing the add request.'));
-    body.appendChild(H.el('label', P + '-modal__label', 'Note (required)'));
+    body.appendChild(H.el('label', P + '-modal__label', 'Note (optional)'));
     var ta = document.createElement('textarea');
     ta.className = P + '-modal__textarea';
     ta.placeholder = 'Describe why this item is being added\u2026';
@@ -327,16 +327,28 @@
       existing ? 'Update' : 'Add');
     saveBtn.addEventListener('click', function () {
       var text = ta.value.trim();
-      if (!text) { ns.showToast('A note is required for add requests', 'error'); return; }
+      // Note is optional
+
+      // Snapshot all tracked field values from baseline into requested
+      var base = S.baseline()[recordId] || {};
+      var req = {};
+      for (var tf = 0; tf < CFG.trackedFields.length; tf++) {
+        var fk = CFG.trackedFields[tf].key;
+        if (base[fk] != null) req[fk] = base[fk];
+        if (base[fk + '_ids']) req[fk + '_ids'] = base[fk + '_ids'];
+      }
 
       var pending = S.pending();
       pending[noteKey] = {
         rowId: recordId,
         displayLabel: label,
         productName: product,
+        bucketId: base._bucketId || '',
+        bucketName: base._bucketName || '',
+        laborHours: base._laborHours || 0,
         action: 'add',
         current: {},
-        requested: {},
+        requested: req,
         changeNotes: text,
       };
       ns.persist();

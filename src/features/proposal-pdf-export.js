@@ -33,7 +33,7 @@
       pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { field: 'field_2638', name: 'bidId' },
+        { name: 'bidId', source: 'url' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
         { field: 'field_2633', name: 'field_2633' },
@@ -1248,6 +1248,11 @@
           var _fNum;
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
+            if (spec.source === 'url') {
+              var urlVal = getPageRecordId();
+              if (urlVal) extra[spec.name] = urlVal;
+              continue;
+            }
             _fNum = spec.field.replace('field_', '');
             // If sourceView is specified, scope the search to that view first
             var el = null;

@@ -210,6 +210,25 @@ $('#view_XXXX-field_YYYY').val(newValue).trigger('change');
 
 The `change` event is the key — without it, Knack reads stale/empty data from its internal model on form submit, even though the UI looks correct.
 
+### Warning Icons in Card Headers
+
+All warnings in device-worksheet card headers use the same pattern:
+- **Class**: `scw-cr-hdr-warning` — placed inside `.scw-ws-warn-slot`
+- **Color**: `#b45309` (amber) — defined in `connected-records.js`
+- **Icon**: Triangle SVG with exclamation mark:
+```html
+<span class="scw-cr-hdr-warning" title="Warning description">
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+</span>
+```
+- Use the same amber color for inline warning messages below fields
+- Never use red/pink for warnings — reserve red for errors and destructive actions
+
 ### MutationObserver Pattern
 
 Many features install MutationObservers to re-apply enhancements after Knack re-renders the DOM. Always:

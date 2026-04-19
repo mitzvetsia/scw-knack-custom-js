@@ -30,11 +30,28 @@
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
+  // Check if the sales CR module should be active (field_2706 = Yes on proposal view)
+  function isModuleActive() {
+    var $pv = $('#' + CFG.proposalView);
+    if (!$pv.length) return false;
+    var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').trim();
+    return /^yes$/i.test(val);
+  }
+
   var _rehydrated = false;
 
   SCW.onViewRender(CFG.worksheetView, function () {
-    S.setOnPage(true);
     _activeScene = Knack.router.current_scene_key || '';
+
+    // Only activate if field_2706 = Yes
+    if (!isModuleActive()) {
+      S.setOnPage(false);
+      return;
+    }
+
+    S.setOnPage(true);
     ns.injectStyles();
     ns.buildBaseline();
 
@@ -72,8 +89,21 @@
       var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
-        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id);
-        ns.onCellUpdate(null, null, resp);
+        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
+        // Delay to let Knack model absorb the response (connection _raw fields)
+        setTimeout(function () {
+          var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
+          var records = model && model.data && model.data.models;
+          var fresh = null;
+          if (records) {
+            for (var ri = 0; ri < records.length; ri++) {
+              if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
+            }
+          }
+          if (CFG.debug) console.log('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
+            'field_1953:', fresh ? fresh.field_1953 : resp.field_1953);
+          ns.onCellUpdate(null, null, fresh || resp);
+        }, 500);
       }
     } catch (e) {}
   });
@@ -82,6 +112,18 @@
 
   SCW.onViewRender(CFG.proposalView, function () {
     setTimeout(function () {
+      // Re-check activation — field_2706 may have rendered after worksheet
+      if (isModuleActive() && !S.onPage()) {
+        S.setOnPage(true);
+        ns.injectStyles();
+        ns.buildBaseline();
+        if (!_rehydrated) {
+          _rehydrated = true;
+          ns.detectSowRecordId();
+          ns.rehydrateFromKnack();
+        }
+        refresh();
+      }
       ns.checkAddMode();
       if (S.isAddMode() && Object.keys(S.baseline()).length) {
         ns.detectAddRecords();

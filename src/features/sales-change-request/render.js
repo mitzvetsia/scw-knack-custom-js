@@ -25,6 +25,19 @@
   var P   = CFG.prefix;
   var TF  = CFG.trackedFields;
 
+  // view_3586 display: the sales-side SOW editing page
+  var DISPLAY_ORDER = [
+    'field_1949', 'field_1964', 'field_1953',
+    'field_2461', 'field_1984',
+    'field_1957', 'field_2197', 'field_1946',
+  ];
+  var DISPLAY_SET = {};
+  for (var ds = 0; ds < DISPLAY_ORDER.length; ds++) DISPLAY_SET[DISPLAY_ORDER[ds]] = true;
+
+  // Build a TF-like def lookup by key for ordered iteration
+  var TF_BY_KEY = {};
+  for (var ti = 0; ti < TF.length; ti++) TF_BY_KEY[TF[ti].key] = TF[ti];
+
   var _openPopover = null;
   var _popoverAnchor = null;
   var _panelOpen = false;
@@ -98,25 +111,34 @@
       if (item.changeNotes) {
         card.appendChild(H.el('div', P + '-card-notes', '\u201c' + item.changeNotes + '\u201d'));
       }
-      // Show field diffs if present (add items from auto-detection)
       var r = item.requested || {};
-      for (var f = 0; f < TF.length; f++) {
-        var def = TF[f];
-        if (r[def.key] == null) continue;
+      for (var f = 0; f < DISPLAY_ORDER.length; f++) {
+        var fk = DISPLAY_ORDER[f];
+        var def = TF_BY_KEY[fk];
+        if (!def) continue;
+        if (r[fk] == null) continue;
+        var val = String(r[fk]);
+        if (!val || val === '\u00a0') continue;
+        if (fk === 'field_1964' && (parseFloat(val) <= 1 || isNaN(parseFloat(val)))) continue;
         var row = H.el('div', P + '-card-field');
         row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
-        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[def.key])));
+        row.appendChild(H.el('span', P + '-card-to', H.formatFieldValue(def, r[fk])));
         card.appendChild(row);
       }
       return card;
     }
 
-    // Revise — field diffs
+    // Revise — field diffs (ordered, filtered)
     var r = item.requested || {};
     var c = item.current || {};
-    for (var f = 0; f < TF.length; f++) {
-      var def = TF[f];
-      if (r[def.key] == null) continue;
+    for (var f = 0; f < DISPLAY_ORDER.length; f++) {
+      var fk = DISPLAY_ORDER[f];
+      var def = TF_BY_KEY[fk];
+      if (!def) continue;
+      if (r[fk] == null) continue;
+      var val = String(r[fk]);
+      if (!val || val === '\u00a0') continue;
+      if (fk === 'field_1964' && (parseFloat(val) <= 1 || isNaN(parseFloat(val)))) continue;
       var row = H.el('div', P + '-card-field');
       row.appendChild(H.el('span', P + '-card-label', def.label + ':'));
       if (c[def.key] != null) {
@@ -272,6 +294,12 @@
         e.stopPropagation();
         e.preventDefault();
         closePopover();
+
+        // If there's already a pending revise CR, go straight to edit note
+        if (state && state.action === 'revise') {
+          ns.openEditReviseNote(recordId);
+          return;
+        }
 
         var pop = buildPopover(recordId, addOnly);
         positionPopover(pop, btn);
@@ -429,6 +457,7 @@
       var editableFields = {};
       editableFields[CFG.productField] = true;  // field_1949
       editableFields['field_2261'] = true;       // Custom Discount %
+      editableFields['field_1953'] = true;       // SCW Notes
       $card.find('input[data-field], textarea[data-field]').each(function () {
         var field = this.getAttribute('data-field') || '';
         if (editableFields[field]) return;
@@ -445,10 +474,10 @@
         this.style.cursor = 'default';
       });
 
-      // Lock nativeEdit tds (except product field) — white bg for connection fields
+      // Lock nativeEdit tds (except whitelisted fields) — white bg for connection fields
       $card.find('td.cell-edit').each(function () {
         var field = this.getAttribute('data-field-key') || '';
-        if (field === CFG.productField) return;
+        if (editableFields[field]) return;
         this.style.pointerEvents = 'none';
         this.style.background = '#fff';
       });

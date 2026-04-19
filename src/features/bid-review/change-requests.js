@@ -286,12 +286,13 @@
       '  background: #f8fafc; max-height: 160px; overflow-y: auto;',
       '}',
       '.scw-bid-cr-modal__checkbox-item {',
-      '  display: flex; align-items: center; gap: 6px;',
+      '  display: flex; align-items: flex-start; gap: 6px;',
       '  font-size: 13px; color: #1e293b; cursor: pointer;',
-      '  padding: 3px 0;',
+      '  padding: 3px 0; flex-wrap: wrap;',
       '}',
-      '.scw-bid-cr-modal__checkbox-item input { margin: 0; cursor: pointer; }',
-      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; flex: 1; }',
+      '.scw-bid-cr-modal__checkbox-item input { margin: 3px 0 0; cursor: pointer; flex-shrink: 0; }',
+      '.scw-bid-cr-modal__checkbox-item label { cursor: pointer; }',
+      '.scw-bid-cr-modal__conn-info { font-size: 11px; color: #94a3b8; font-style: italic; width: 100%; padding-left: 20px; }',
       '.scw-bid-cr-modal__checkbox-empty {',
       '  font-size: 12px; color: #94a3b8; font-style: italic; padding: 4px 0;',
       '}',
@@ -475,6 +476,10 @@
             if (rec.noBid) cbLabel.style.fontStyle = 'italic';
             if (lockedIdSet[rec.id]) cbLabel.style.opacity = '0.6';
             item.appendChild(cbLabel);
+            if (rec.currentConnTo) {
+              var connInfo = el('div', 'scw-bid-cr-modal__conn-info', '\u2192 ' + rec.currentConnTo);
+              item.appendChild(connInfo);
+            }
             inp.appendChild(item);
           }
         }
@@ -645,6 +650,8 @@
         rowId: params.rowId, bidRecordId: cell.id,
         sowItemId: params.sowItemId || '',
         displayLabel: params.displayLabel, productName: cell.productName,
+        proposalBucket: params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
         current: current, requested: requested, changeNotes: cn,
       };
       // Preserve ALL reciprocal metadata so cascade-delete + locking still works
@@ -652,6 +659,7 @@
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
       if (existing && existing.reciprocalSources) newItem.reciprocalSources = existing.reciprocalSources;
       if (existing && existing.reciprocalLockedIds) newItem.reciprocalLockedIds = existing.reciprocalLockedIds;
+      applyRevMeta(newItem, params);
 
       addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, newItem, params.surveyId);
 
@@ -694,7 +702,7 @@
           if (srcMdfIdf)          nbaReq.bidMdfIdf    = srcMdfIdf;
           if (srcMdfIdfIds.length) nbaReq.bidMdfIdfIds = srcMdfIdfIds;
 
-          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          var nbaItem = {
             rowId:        nba.rowId,
             bidRecordId:  null,
             sowItemId:    nba.rowId,
@@ -706,7 +714,9 @@
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid — connected from ' + (params.displayLabel || params.productName),
-          }, params.surveyId);
+          };
+          applyRevMeta(nbaItem, params);
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, nbaItem, params.surveyId);
         }
         if (noBidAdds.length) {
           ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
@@ -731,6 +741,13 @@
   }
 
   // ── Pending management ─────────────────────────────────
+  function applyRevMeta(item, params) {
+    var rm = params && params.revMeta;
+    if (!rm) return;
+    if (rm.salesRevisionId) item.salesRevisionId = rm.salesRevisionId;
+    if (rm.salesRevisionRequestId) item.salesRevisionRequestId = rm.salesRevisionRequestId;
+  }
+
   function addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId) {
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: surveyId || '', items: [] };
     if (surveyId && !_pending[pkgId].surveyId) _pending[pkgId].surveyId = surveyId;
@@ -1042,7 +1059,7 @@
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId, pkgName) {
-    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : '');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.addToBid ? ' scw-bid-cr-card--add' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
 
@@ -1133,6 +1150,28 @@
       row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
       row.appendChild(el('span', 'scw-bid-cr-card__to', to));
       card.appendChild(row);
+    }
+
+    // Fallback: render revisionFields from sales revision data
+    // (when FIELD_DEFS keys don't match the sales CR field keys)
+    if (item.revisionFields && item.revisionFields.length) {
+      var hadFieldDefs = false;
+      for (var rfi = 0; rfi < FIELD_DEFS.length; rfi++) {
+        if (hasValue(r[FIELD_DEFS[rfi].key])) { hadFieldDefs = true; break; }
+      }
+      if (!hadFieldDefs) {
+        for (var rf = 0; rf < item.revisionFields.length; rf++) {
+          var rvf = item.revisionFields[rf];
+          var rvRow = el('div', 'scw-bid-cr-card__row');
+          rvRow.appendChild(el('span', 'scw-bid-cr-card__label', rvf.label + ':'));
+          if (rvf.from != null) {
+            rvRow.appendChild(el('span', 'scw-bid-cr-card__from', String(rvf.from)));
+            rvRow.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
+          }
+          rvRow.appendChild(el('span', 'scw-bid-cr-card__to', String(rvf.to)));
+          card.appendChild(rvRow);
+        }
+      }
     }
 
     if (item.changeNotes) {
@@ -1305,6 +1344,43 @@
     return h.join('');
   }
 
+  /** Build a plain-text version of one item (ClickUp-safe). */
+  function buildItemPlainText(item, fieldList) {
+    var action = itemActionType(item);
+    var label  = (action === 'add' ? 'ADD' : action === 'remove' ? 'REMOVE' : 'REVISE');
+    var displayName = item.displayLabel || item.productName || 'Item';
+
+    var lines = [];
+    var header = label + ' — ' + displayName;
+    if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+      header += ' (' + item.productName + ')';
+    }
+    lines.push(header);
+
+    if (action === 'remove') {
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+      else lines.push('  Requesting removal');
+    } else if (fieldList && fieldList.length) {
+      for (var fi = 0; fi < fieldList.length; fi++) {
+        var f = fieldList[fi];
+        var isCurrency = false;
+        for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
+          if (FIELD_DEFS[fd].key === f.field && FIELD_DEFS[fd].currency) { isCurrency = true; break; }
+        }
+        var fromStr = f.from != null ? (isCurrency ? fmtCurrencyHtml(f.from) : String(f.from)) : '—';
+        var toStr   = isCurrency ? fmtCurrencyHtml(f.to) : String(f.to);
+        if (action === 'revise') {
+          lines.push('  ' + f.label + ': ' + fromStr + ' → ' + toStr);
+        } else {
+          lines.push('  ' + f.label + ': ' + toStr);
+        }
+      }
+      if (item.changeNotes) lines.push('  "' + item.changeNotes + '"');
+    }
+
+    return lines.join('\n');
+  }
+
   function buildSubmitPayload(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg) return null;
@@ -1339,26 +1415,66 @@
         changeNotes:  it.changeNotes || '',
       };
 
-      // Proposal bucket + sort order (for ordering ADD items in revision view)
-      if (it.proposalBucket)   entry.proposalBucket   = it.proposalBucket;
-      if (it.proposalBucketId) entry.proposalBucketId = it.proposalBucketId;
+      if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
+      if (it.salesRevisionRequestId) entry.salesRevisionRequestId = it.salesRevisionRequestId;
+
+      // Proposal bucket + sort order
+      entry.proposalBucket   = it.proposalBucket || '';
+      entry.proposalBucketId = it.proposalBucketId || '';
       entry.sortOrder = it.sortOrder != null ? it.sortOrder : 0;
       if (it.sowMapConn)       entry.sowMapConn        = it.sowMapConn;
 
-      // Snapshot of current item data (before changes)
-      entry.current = it.current || {};
-
-      // Flatten requested values directly onto the item
-      // (field key → "to" value, connection Ids arrays included)
+      // 1. CR requested values (what the change request asks for)
       var r = it.requested || {};
+      entry.requested = {};
       for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
         var d = FIELD_DEFS[fi];
-        if (!hasValue(r[d.key])) continue;
-        entry[d.key] = r[d.key];
+        if (hasValue(r[d.key])) {
+          entry.requested[d.key] = r[d.key];
+          entry[d.key] = r[d.key];
+        }
         if (d.type === 'connection' && d.idsKey) {
-          if (r[d.idsKey])              entry[d.idsKey]              = r[d.idsKey];
-          if (r[d.key + 'AddIds'])      entry[d.key + 'AddIds']     = r[d.key + 'AddIds'];
-          if (r[d.key + 'ChangeIds'])   entry[d.key + 'ChangeIds']  = r[d.key + 'ChangeIds'];
+          if (r[d.idsKey]) {
+            entry.requested[d.idsKey] = r[d.idsKey];
+            entry[d.idsKey] = r[d.idsKey];
+          }
+          if (r[d.key + 'AddIds'])    entry[d.key + 'AddIds']    = r[d.key + 'AddIds'];
+          if (r[d.key + 'ChangeIds']) entry[d.key + 'ChangeIds'] = r[d.key + 'ChangeIds'];
+        }
+      }
+
+      // 2. Current survey/bid record values (from the grid cell)
+      var cell = (ns.lookupCell && ns.lookupCell(it.rowId, pkgId)) || {};
+      entry.surveyRecord = {};
+      for (var si = 0; si < FIELD_DEFS.length; si++) {
+        var sd = FIELD_DEFS[si];
+        if (hasValue(cell[sd.key])) entry.surveyRecord[sd.key] = cell[sd.key];
+        if (sd.type === 'connection' && sd.idsKey && cell[sd.idsKey]) {
+          entry.surveyRecord[sd.idsKey] = cell[sd.idsKey];
+        }
+      }
+
+      // 3. For ADD items: SOW record values (what the SOW line item has)
+      if (itemActionType(it) === 'add') {
+        var c = it.current || {};
+        entry.sowRecord = {};
+        for (var oi = 0; oi < FIELD_DEFS.length; oi++) {
+          var od = FIELD_DEFS[oi];
+          if (hasValue(c[od.key])) entry.sowRecord[od.key] = c[od.key];
+          if (od.type === 'connection' && od.idsKey && c[od.idsKey]) {
+            entry.sowRecord[od.idsKey] = c[od.idsKey];
+          }
+        }
+      }
+
+      // Backwards compat: flatten requested over survey fallback onto entry
+      for (var bfi = 0; bfi < FIELD_DEFS.length; bfi++) {
+        var bd = FIELD_DEFS[bfi];
+        if (!hasValue(entry[bd.key]) && hasValue(cell[bd.key])) {
+          entry[bd.key] = cell[bd.key];
+        }
+        if (bd.type === 'connection' && bd.idsKey && !entry[bd.idsKey] && cell[bd.idsKey]) {
+          entry[bd.idsKey] = cell[bd.idsKey];
         }
       }
 
@@ -1393,25 +1509,119 @@
       // Detailed from→to diffs
       entry.fields = fieldList;
 
-      // Per-item JSON snapshot (stringified before HTML is added)
+      // Per-item JSON snapshot (stringified before HTML/plainText are added)
       entry.json = JSON.stringify(entry);
 
-      // Per-item HTML card for display in view_3505
-      entry.html = buildItemHtml(it, fieldList);
+      // Per-item HTML card for display in view_3505 + plain-text for ClickUp
+      entry.html      = buildItemHtml(it, fieldList);
+      entry.plainText = buildItemPlainText(it, fieldList);
 
       items.push(entry);
     }
 
+    // Group items: by salesRevisionRequestId, or into newItems
+    var revGroups = {};
+    var newItems = [];
+    for (var gi = 0; gi < items.length; gi++) {
+      var gItem = items[gi];
+      var revReqId = gItem.salesRevisionRequestId;
+      if (revReqId) {
+        if (!revGroups[revReqId]) revGroups[revReqId] = [];
+        revGroups[revReqId].push(gItem);
+      } else {
+        newItems.push(gItem);
+      }
+    }
+    var revisionGroups = [];
+    var revReqIds = Object.keys(revGroups);
+    for (var rgi = 0; rgi < revReqIds.length; rgi++) {
+      var grpItems = revGroups[revReqIds[rgi]];
+      revisionGroups.push({
+        revisionRequestId: revReqIds[rgi],
+        items: grpItems,
+        json: JSON.stringify(grpItems),
+        html: buildGroupHtml(grpItems, pkg.pkgName, pkg.sowName),
+      });
+    }
+
     return {
-      actionType:  'change_request',
-      timestamp:   new Date().toISOString(),
-      packageId:   pkgId,
-      packageName: pkg.pkgName,
-      surveyId:    pkg.surveyId || '',
-      sowId:       pkg.sowId,
-      sowName:     pkg.sowName || '',
-      items:       items,
+      actionType:     'change_request',
+      timestamp:      new Date().toISOString(),
+      packageId:      pkgId,
+      packageName:    pkg.pkgName,
+      surveyId:       pkg.surveyId || '',
+      sowId:          pkg.sowId,
+      sowName:        pkg.sowName || '',
+      user:           getUser(),
+      revisionGroups: revisionGroups,
+      newItems:       newItems,
+      newItemsJson:   JSON.stringify(newItems),
+      newItemsHtml:   newItems.length ? buildGroupHtml(newItems, pkg.pkgName, pkg.sowName) : '',
+      items:          items,
     };
+  }
+
+  function buildGroupHtml(groupItems, pkgName, sowName) {
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < groupItems.length; i++) {
+      var act = groupItems[i].action || 'revise';
+      if (groups[act]) groups[act].push(groupItems[i]);
+    }
+
+    var sectionOrder = [
+      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
+      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
+    ];
+
+    var h = [];
+    h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:720px;">');
+
+    for (var si = 0; si < sectionOrder.length; si++) {
+      var sec = sectionOrder[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+
+      h.push('<div style="margin-bottom:12px;">');
+      h.push('<div style="font-size:13px;font-weight:700;color:' + sec.color + ';margin-bottom:6px;">');
+      h.push(sec.icon + ' ' + escHtml(sec.title) + ' (' + arr.length + ')');
+      h.push('</div>');
+
+      for (var j = 0; j < arr.length; j++) {
+        var it = arr[j];
+        // Use the per-item HTML if available
+        if (it.html) {
+          h.push(it.html);
+          h.push('<div style="height:4px;"></div>');
+        } else {
+          var label = it.displayLabel || it.productName || 'Item';
+          h.push('<div style="background:' + sec.bg + ';border:1px solid ' + sec.color + '33;border-radius:6px;padding:8px 12px;margin-bottom:4px;">');
+          h.push('<div style="font-weight:600;font-size:13px;">' + escHtml(label) + '</div>');
+          h.push('</div>');
+        }
+      }
+      h.push('</div>');
+    }
+
+    h.push('</div>');
+    return h.join('');
+  }
+
+  /** Safe read of Knack's logged-in user attributes. */
+  function getUser() {
+    try {
+      var u = typeof Knack !== 'undefined' && Knack.getUserAttributes
+        ? Knack.getUserAttributes()
+        : null;
+      if (!u || typeof u !== 'object') return null;
+      return {
+        id:    u.id || '',
+        name:  u.name || '',
+        email: u.email || '',
+      };
+    } catch (e) {
+      return null;
+    }
   }
 
   /**
@@ -1553,6 +1763,45 @@
     return h.join('');
   }
 
+  /** Build a plain-text ClickUp-safe version of the whole change request. */
+  function buildSubmitPlainText(pkgId) {
+    var pkg = _pending[pkgId];
+    if (!pkg) return '';
+
+    var lines = [];
+    lines.push('CHANGE REQUEST');
+    lines.push(pkg.pkgName + (pkg.sowName ? ' — ' + pkg.sowName : ''));
+    lines.push(pkg.items.length + ' item(s) — ' + new Date().toLocaleString());
+    lines.push('────────────────────');
+    lines.push('');
+
+    var groups = { revise: [], add: [], remove: [] };
+    for (var i = 0; i < pkg.items.length; i++) {
+      var it = pkg.items[i];
+      var at = itemActionType(it);
+      if (groups[at]) groups[at].push(it);
+    }
+
+    var sections = [
+      { key: 'revise', title: 'REVISIONS' },
+      { key: 'add',    title: 'ITEMS TO ADD' },
+      { key: 'remove', title: 'ITEMS TO REMOVE' },
+    ];
+
+    for (var si = 0; si < sections.length; si++) {
+      var sec = sections[si];
+      var arr = groups[sec.key];
+      if (!arr || !arr.length) continue;
+      lines.push(sec.title + ' (' + arr.length + ')');
+      for (var j = 0; j < arr.length; j++) {
+        lines.push(buildItemPlainText(arr[j], buildItemFields(arr[j])));
+        lines.push('');
+      }
+    }
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function submitChangeRequest(pkgId) {
     var pkg = _pending[pkgId];
     if (!pkg || !pkg.items.length) return;
@@ -1560,8 +1809,9 @@
       pkg.items.length + ' item(s) will be sent.')) return;
 
     var payload = buildSubmitPayload(pkgId);
-    var html    = buildSubmitHtml(pkgId);
-    payload.html = html;
+    payload.html      = buildSubmitHtml(pkgId);
+    payload.plainText = buildSubmitPlainText(pkgId);
+    var html = payload.html;
 
     if (CFG.debug) {
       console.log('[BidReview CR] Submitting:', payload);
@@ -1641,6 +1891,7 @@
     ta.className = 'scw-bid-cr-modal__textarea';
     ta.placeholder = 'Why should this item be removed\u2026';
     ta.rows = 3;
+    if (params.prefillNotes) ta.value = params.prefillNotes;
     notesRow.appendChild(ta);
     body.appendChild(notesRow);
     modal.appendChild(body);
@@ -1650,17 +1901,21 @@
     footer.lastChild.addEventListener('click', closeModal);
     var removeBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--remove', 'Remove from Bid');
     removeBtn.addEventListener('click', function () {
-      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+      var rmItem = {
         rowId:         params.rowId,
         bidRecordId:   params.cell.id,
         sowItemId:     params.sowItemId || '',
         displayLabel:  params.displayLabel,
         productName:   params.cell.productName,
+        proposalBucket: params.proposalBucket || '',
+        proposalBucketId: params.proposalBucketId || '',
         removeFromBid: true,
         current:       {},
         requested:     {},
         changeNotes:   ta.value.trim(),
-      }, params.surveyId);
+      };
+      applyRevMeta(rmItem, params);
+      addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, rmItem, params.surveyId);
       closeModal();
       ns.renderToast('Removal added to change request', 'success');
     });
@@ -1716,10 +1971,10 @@
       bidConduit:      req.bidConduit || params.sowConduit || '',
       bidMdfIdf:       req.bidMdfIdf || params.sowMdfIdf || '',
       bidMdfIdfIds:    req.bidMdfIdfIds || params.sowMdfIdfIds || [],
-      bidConnDevice:      req.bidConnDevice || '',
-      bidConnDeviceIds:   req.bidConnDeviceIds || [],
-      bidConnTo:          req.bidConnTo || '',
-      bidConnToIds:       req.bidConnToIds || [],
+      bidConnDevice:      req.bidConnDevice || params.sowConnDevice || '',
+      bidConnDeviceIds:   req.bidConnDeviceIds || params.sowConnDeviceIds || [],
+      bidConnTo:          req.bidConnTo || params.sowConnTo || '',
+      bidConnToIds:       req.bidConnToIds || params.sowConnToIds || [],
     };
 
     // Connection options for addable connection fields (e.g. MDF/IDF)
@@ -1896,6 +2151,7 @@
       // Preserve reciprocal metadata when editing a reciprocal add-to-bid item
       if (existing && existing.reciprocal)       newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;
+      applyRevMeta(newItem, params);
 
       // Clear old reciprocals from this source before saving (handles edits)
       var isRecipItem = existing && existing.reciprocalSource;
@@ -1938,7 +2194,7 @@
             nbaBucket = nbaRow.proposalBucket || '';
             nbaBucketId = nbaRow.proposalBucketId || '';
           }
-          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, {
+          var nbaItem2 = {
             rowId:        nba.rowId,
             bidRecordId:  null,
             sowItemId:    nba.rowId,
@@ -1953,7 +2209,9 @@
             current:      {},
             requested:    nbaReq,
             changeNotes:  'Add to bid \u2014 connected from ' + (displayLabel || product),
-          }, params.surveyId);
+          };
+          applyRevMeta(nbaItem2, params);
+          addPendingItem(params.pkgId, params.pkgName, params.sowId, params.sowName, nbaItem2, params.surveyId);
         }
         ns.renderToast(noBidAdds.length + ' item(s) will be added to bid', 'info');
       }
@@ -1984,6 +2242,10 @@
     buildSummaryCard: buildSummaryCard,
     submitForPackage: submitChangeRequest,
     clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
+    /** Silently add a pending item (no modal). Used by Convert All. */
+    addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
+      addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId);
+    },
   };
 
 })();

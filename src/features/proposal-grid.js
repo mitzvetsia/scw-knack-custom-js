@@ -464,6 +464,7 @@
 /* ============================================================
    SCW Totals helper CSS
    ============================================================ */
+.scw-tbd { color: #94a3b8; font-style: italic; font-weight: 600; }
 tr.scw-level-total-row.scw-subtotal td { vertical-align: middle; }
 tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap; }
 
@@ -2297,6 +2298,82 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
       $tbody[0].appendChild(gtFragment);
     }
+
+    if (isInstallationMasked()) applyTBDLabels(ctx);
+  }
+
+  // ============================================================
+  // FEATURE: Mask installation values with "TBD"
+  // When field_2725 in view_3861 is not "Yes", zero out labor
+  // cells BEFORE the pipeline so all sums exclude installation,
+  // then label the zeroed cells as "TBD" after.
+  // ============================================================
+
+  function isInstallationMasked() {
+    var view = document.getElementById('view_3861');
+    if (view) {
+      var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
+      if (cell) return !/^yes$/i.test((cell.textContent || '').trim());
+    }
+    if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3861) {
+      var model = Knack.views.view_3861.model;
+      var attrs = model && (model.attributes || (model.toJSON && model.toJSON()) || {});
+      if (attrs.field_2725 !== undefined) {
+        return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
+      }
+    }
+    return false;
+  }
+
+  function zeroLaborCells(ctx) {
+    var $view = $(document.getElementById(ctx.viewId));
+    if (!$view.length) return;
+    var laborKey = ctx.keys.labor;
+    $view.find('tr[id] td.' + laborKey).each(function () {
+      var val = parseFloat(this.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+      if (val !== 0) {
+        $(this).closest('tr').attr('data-scw-had-labor', '1');
+      }
+      this.textContent = '$0.00';
+    });
+  }
+
+  function applyTBDLabels(ctx) {
+    var viewRoot = document.getElementById(ctx.viewId);
+    if (!viewRoot) return;
+    var $view = $(viewRoot);
+    var laborKey = ctx.keys.labor;
+    var costKey = ctx.keys.cost;
+    var TBD = '<span class="scw-tbd">TBD</span>';
+
+    // Data-row labor cells → TBD
+    $view.find('tr[id] td.' + laborKey).each(function () {
+      $(this).html(TBD);
+    });
+
+    // L4 group cost cells → TBD only if data rows in that group had non-zero labor
+    $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
+      var $l4 = $(this);
+      var hadLabor = false;
+      var $next = $l4.next();
+      while ($next.length && !$next.hasClass('kn-table-group') && !$next.hasClass('scw-level-total-row')) {
+        if ($next.attr('data-scw-had-labor') === '1') { hadLabor = true; break; }
+        $next = $next.next();
+      }
+      if (hadLabor) {
+        var $costCell = $l4.find('td.' + costKey);
+        if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
+      }
+    });
+
+    // Installation Total → TBD
+    $view.find('tr.scw-project-totals').each(function () {
+      var $tr = $(this);
+      var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
+      if (label.indexOf('installation') !== -1) {
+        $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
+      }
+    });
   }
 
   // ============================================================
@@ -2330,6 +2407,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           injectCssOnce();
           normalizeField2019ForGrouping(ctx);
 
+          // Pre-pipeline: zero out labor cells so sums exclude installation
+          var masked = isInstallationMasked();
+          if (masked) zeroLaborCells(ctx);
+
           pipelineRunning = true;
           try {
             runTotalsPipeline(ctx);
@@ -2339,6 +2420,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           } finally {
             pipelineRunning = false;
           }
+
+          // Post-pipeline: replace zeroed labor with TBD labels
+          if (masked) applyTBDLabels(ctx);
         }
 
         function totalsAreMissing() {
