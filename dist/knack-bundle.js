@@ -1732,10 +1732,10 @@ window.SCW = window.SCW || {};
 
       var wrap = document.createElement('div');
       wrap.className = 'scw-totals-proposal';
-      wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;';
+      wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;text-align:right;padding-right:10px;';
 
       var hdr = document.createElement('div');
-      hdr.style.cssText = 'font-size:11px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
+      hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
       hdr.textContent = 'Published Proposal';
       wrap.appendChild(hdr);
 
