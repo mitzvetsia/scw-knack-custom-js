@@ -4563,6 +4563,13 @@ window.SCW = window.SCW || {};
       viewKey: 'view_3853',
       label: 'Request Site Survey',
       disabled: { field: 'field_2706', notValue: 'Yes', message: 'Not available yet' }
+    },
+    {
+      type: 'accordion',
+      viewKey: 'view_3862',
+      label: 'Site Survey',
+      activeIcon: 'eye',
+      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Not available yet' }
     }
   ];
 
@@ -4576,6 +4583,12 @@ window.SCW = window.SCW || {};
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
     '<polyline points="22 4 12 14.01 9 11.01"/></svg>';
+
+  var EYE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+    '<circle cx="12" cy="12" r="3"/></svg>';
 
   var LOCK_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
@@ -4715,9 +4728,12 @@ window.SCW = window.SCW || {};
   }
 
   // ── Pick the right icon for a state ──────────────────────
-  function getIcon(isCompleted, isDisabled) {
+  var ACTIVE_ICONS = { eye: EYE_SVG };
+
+  function getIcon(isCompleted, isDisabled, step) {
     if (isDisabled) return LOCK_SVG;
     if (isCompleted) return CHECK_CIRCLE_SVG;
+    if (step && step.activeIcon && ACTIVE_ICONS[step.activeIcon]) return ACTIVE_ICONS[step.activeIcon];
     return CIRCLE_SVG;
   }
 
@@ -4732,7 +4748,7 @@ window.SCW = window.SCW || {};
     var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
 
     // Icon
-    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, isDisabled);
+    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, isDisabled, step);
 
     // Completed class
     wrap.classList.toggle('scw-step-completed', isCompleted && !isDisabled);
@@ -4772,7 +4788,7 @@ window.SCW = window.SCW || {};
 
     // Icon
     var icon = el.querySelector('.scw-step-icon');
-    if (icon) icon.innerHTML = getIcon(isCompleted, isDisabled);
+    if (icon) icon.innerHTML = getIcon(isCompleted, isDisabled, step);
 
     // Classes
     el.classList.toggle('is-completed', isCompleted && !isDisabled);
