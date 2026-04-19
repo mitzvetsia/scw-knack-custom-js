@@ -317,3 +317,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Status**: Edit button is disabled. The modal opens and prefills revised values correctly (from `data.fields`), but it doesn't apply the right field visibility and choice rules based on the product/bucket type. For example, connection options, cabling fields, and chip choices don't match what the worksheet shows for that product.
 - **What's needed**: The edit modal should mirror the same field visibility, connection option filtering, and chip/select choices that the device worksheet (view_3505/view_3313) uses for the same record's bucket type. This likely means reading the proposal bucket from the revision data and applying the same `bucketOverride` / `bucketRules` logic that `device-worksheet.js` uses.
 - **What works**: Prefill from `data.fields` is correct. Save writes to field_2687/2688/2695/2696 correctly. The HTML card rebuilds on save.
+
+### 4. Unlocatable fields: `field_1968` (MCB) and `field_2462` (Cat / "FLAG_use existing cabling")
+- **Status**: All references **commented out** pending verification. Circle back after a few days of usage — if nothing breaks, delete the commented code entirely.
+- **Symptom**: These field IDs were referenced in the codebase but could not be located on any of: Site Survey, Survey Line Item, SOW, or SOW Line Item objects in the Knack builder (checked 2026-04-19).
+- **Locations commented out**:
+  - `src/features/device-worksheet.js` — view_3313 cam/reader config: `mountCableBoth` (field_1968, label "MCB") and `laborCategory` (field_2462, label "Cat"). Both removed from `fields` and `summaryLayout`.
+  - `src/features/bucket-field-visibility_add-survey-bid-item.js` — field_2462 entry in cam/reader bucket rules + entry in `ALL_FIELD_KEYS`.
+  - `src/features/SOW-line-item-DTO-bucket-field-visibility.js` — same.
+  - `src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js` — same.
+- **Inconsistency to resolve**: `device-worksheet.js` treats `field_2462` as "Labor Category" (readOnly summary cell). The three bucket-visibility modules label the same field `FLAG_use existing cabling`. Two different meanings for one field ID suggests either the field was repurposed and comments rotted, or one of the usages was wrong from the start. Separately, `field_2461` is independently used as the `existingCabling` toggleChit on view_3313 — so if field_2462 really is "use existing cabling", there's a duplicate.
+- **Follow-up**: (a) watch for user-reported breakage in form-field visibility on survey-bid-item add forms and SOW-line-item DTO forms for cam/reader bucket rows; (b) watch for missing MCB / Cat columns on view_3313 summary rows; (c) if no breakage in ~1 week of live usage, delete the commented lines outright in a cleanup commit.

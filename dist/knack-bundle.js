@@ -20426,7 +20426,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ['field_2206', 'REL_product accessories'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
-      ['field_2462', 'FLAG_use existing cabling'],
+      // TODO(field_2462): commented out — field not locatable on SOW/Survey objects. See CLAUDE.md Known Issues.
+      // ['field_2462', 'FLAG_use existing cabling'],
       ['field_2246', 'REL_unified product field'],
       ['field_2187', 'INPUT_DROP: variables'],
       ['field_2466', 'field_2466'],
@@ -20470,8 +20471,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ],
   };
 
+  // TODO(field_2462): removed from ALL_FIELD_KEYS — see CLAUDE.md Known Issues.
   const ALL_FIELD_KEYS = [
-    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
+    'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
     'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
   ];
 
@@ -20702,7 +20704,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ['field_2206', 'REL_product accessories'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
-      ['field_2462', 'FLAG_use existing cabling'],
+      // TODO(field_2462): commented out — field not locatable on SOW/Survey objects. See CLAUDE.md Known Issues.
+      // ['field_2462', 'FLAG_use existing cabling'],
       ['field_2246', 'REL_unified product field'],
       ['field_2187', 'INPUT_DROP: variables'],
       ['field_2466', 'field_2466'],
@@ -20746,8 +20749,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     ],
   };
 
+  // TODO(field_2462): removed from ALL_FIELD_KEYS — see CLAUDE.md Known Issues.
   const ALL_FIELD_KEYS = [
-    'field_2180','field_2182','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
+    'field_2180','field_2182','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250',
     'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
   ];
 
@@ -24227,7 +24231,8 @@ $(".kn-navigation-bar").hide();
       ['field_2183', 'INPUT_product quantity'],
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
-      ['field_2462', 'FLAG_use existing cabling'],
+      // TODO(field_2462): commented out — field not locatable on SOW/Survey objects. See CLAUDE.md Known Issues.
+      // ['field_2462', 'FLAG_use existing cabling'],
       ['field_2187', 'INPUT_DROP: variables'],
       ['field_2432', 'INPUT_survey notes'],
       ['field_2233', 'INPUT_expected sub bid #'],
@@ -24280,8 +24285,9 @@ $(".kn-navigation-bar").hide();
     ],
   };
 
+  // TODO(field_2462): removed from ALL_FIELD_KEYS — see CLAUDE.md Known Issues.
   const ALL_FIELD_KEYS = [
-    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181','field_2462',
+    'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181',
     'field_2206','field_2195','field_2241','field_2184','field_2187','field_2211','field_2233','field_2246',
   ];
 
@@ -27716,9 +27722,11 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
+          // TODO(field_1968/field_2462): commented out — fields not found on Site Survey /
+          // Survey Line Item / SOW / SOW Line Item objects in Knack. See CLAUDE.md Known Issues.
+          // mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
+          // laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
           laborVariables:   { key: 'field_1972', type: 'multiChip',   summary: true, label: 'Vars', group: 'right', groupCls: 'sum-group--vars',
                               options: ['Exterior', 'High Traffic', 'Plenum'], feeTrigger: true },
           existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
@@ -27740,8 +27748,9 @@ $(".kn-navigation-bar").hide();
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
           subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
-        summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
-                         'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+        // TODO(field_1968/field_2462): 'mountCableBoth' and 'laborCategory' removed from layout.
+        summaryLayout: ['laborDescription', 'existingCabling',
+                         'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
