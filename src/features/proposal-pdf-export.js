@@ -33,7 +33,7 @@
       pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { field: 'field_2638', name: 'bidId' },
+        { name: 'bidId', source: 'url' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
         { field: 'field_2633', name: 'field_2633' },
@@ -1248,6 +1248,11 @@
           var _fNum;
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
             var spec = cfg.extraFields[ef];
+            if (spec.source === 'url') {
+              var urlVal = getPageRecordId();
+              if (urlVal) extra[spec.name] = urlVal;
+              continue;
+            }
             _fNum = spec.field.replace('field_', '');
             // If sourceView is specified, scope the search to that view first
             var el = null;
@@ -1264,18 +1269,6 @@
             // Read value only — cascade through Knack detail-view DOM wrappers
             var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
             var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
-            // Knack model fallback — scan all loaded view models for the field
-            if (!val && typeof Knack !== 'undefined' && Knack.views) {
-              var _viewKeys = Object.keys(Knack.views);
-              for (var vk = 0; vk < _viewKeys.length && !val; vk++) {
-                var _vObj = Knack.views[_viewKeys[vk]];
-                if (!_vObj || !_vObj.model) continue;
-                var _rec = _vObj.model.attributes || _vObj.model.toJSON && _vObj.model.toJSON() || {};
-                if (_rec[spec.field] !== undefined && _rec[spec.field] !== '') {
-                  val = String(_rec[spec.field]).replace(/<[^>]*>/g, '').replace(/[\u00a0\s]+/g, ' ').trim();
-                }
-              }
-            }
             if (val) extra[spec.name] = val;
           }
         }
