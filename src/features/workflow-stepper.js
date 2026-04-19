@@ -82,7 +82,7 @@
       '.scw-step-disabled-msg {' +
       '  display: flex; align-items: center; gap: 5px;' +
       '  font-size: 11px; color: #94a3b8; font-weight: 500;' +
-      '  padding: 2px 16px 8px 56px; margin-top: -6px;' +
+      '  margin-left: auto; flex-shrink: 0; white-space: nowrap;' +
       '}' +
 
       /* ── Action step row (matches accordion header) ── */
@@ -216,14 +216,16 @@
     if (step.disabled) {
       var dis = conditionMet(step.disabled);
       wrap.classList.toggle('scw-step-disabled', dis);
-      var msgEl = wrap.parentNode.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
+      var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
       if (dis && !msgEl && step.disabled.message) {
-        var msg = document.createElement('div');
+        var msg = document.createElement('span');
         msg.className = 'scw-step-disabled-msg';
         msg.setAttribute('data-step', step.viewKey);
         msg.innerHTML = LOCK_SVG;
         msg.appendChild(document.createTextNode(step.disabled.message));
-        wrap.after(msg);
+        var chevron = hdr.querySelector('.scw-acc-chevron');
+        if (chevron) hdr.insertBefore(msg, chevron);
+        else hdr.appendChild(msg);
       } else if (!dis && msgEl) {
         msgEl.remove();
       }
@@ -272,21 +274,25 @@
     if (step.disabled) {
       var dis = conditionMet(step.disabled);
       el.classList.toggle('is-disabled', dis);
-      var msgEl = el.parentNode.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
+      var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
       if (dis && !msgEl && step.disabled.message) {
-        var msg = document.createElement('div');
+        var msg = document.createElement('span');
         msg.className = 'scw-step-disabled-msg';
         msg.setAttribute('data-step', step.id);
         msg.innerHTML = LOCK_SVG;
         msg.appendChild(document.createTextNode(step.disabled.message));
-        el.after(msg);
+        var arr = el.querySelector('.scw-step-arrow');
+        if (arr) el.insertBefore(msg, arr);
+        else el.appendChild(msg);
       } else if (!dis && msgEl) {
         msgEl.remove();
       }
     }
 
-    // Hide the injected menu button from the accordion header
+    // Hide the original menu view and any injected button
     if (step.menuView) {
+      var origMenu = document.getElementById(step.menuView);
+      if (origMenu) origMenu.style.display = 'none';
       var injected = document.querySelector('.scw-acc-actions[data-scw-menu-src="' + step.menuView + '"]');
       if (injected) injected.classList.add('scw-step-menu-hidden');
     }
