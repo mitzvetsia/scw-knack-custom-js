@@ -147,7 +147,11 @@ window.SCW = window.SCW || {};
     if (xhr.status === 401 || xhr.status === 403) {
       var url = settings.url || '';
       if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
-        showSessionToast();
+        var body = '';
+        try { body = xhr.responseText || ''; } catch (e) {}
+        if (/invalid token|reauthenticate/i.test(body)) {
+          showSessionToast();
+        }
       }
     }
   });
@@ -160,8 +164,12 @@ window.SCW = window.SCW || {};
         if (response.status === 401 || response.status === 403) {
           var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
           if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
-            console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
-            showSessionToast();
+            response.clone().text().then(function (body) {
+              if (/invalid token|reauthenticate/i.test(body)) {
+                console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
+                showSessionToast();
+              }
+            });
           }
         }
         return response;
