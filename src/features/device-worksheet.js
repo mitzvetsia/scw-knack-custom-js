@@ -364,7 +364,7 @@
             product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
             sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
             laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
+            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Existing' },
             exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
             plenumChit:       { key: 'field_1983', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Plenum' },
             subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
