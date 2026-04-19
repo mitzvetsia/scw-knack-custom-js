@@ -8,12 +8,6 @@
   var SOURCE_VIEW = 'view_3827';
 
   // ── Step definitions ─────────────────────────────────────
-  // type       : 'accordion' (existing accordion) or 'action' (standalone step row)
-  // viewKey    : the accordion's inner view key
-  // menuView   : for action type, the original menu view to extract the link from
-  // insertAfter: for action type, place after this viewKey's accordion
-  // completed  : { field, value?, hasValue? } → green checkmark
-  // disabled   : { field, value?, notValue? , message } → grayed out
   var STEPS = [
     {
       type: 'accordion',
@@ -39,27 +33,27 @@
   ];
 
   // ── Icons ────────────────────────────────────────────────
-  var FOLDER_SVG =
+  var CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+
+  var CHECK_CIRCLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-    'stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 ' +
-    '1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>';
-
-  var CHECK_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
-    'fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
-    'stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+    '<polyline points="22 4 12 14.01 9 11.01"/></svg>';
 
   var LOCK_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
     '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
-  var ARROW_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
-    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
-    'stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+  var LOCK_SM_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
   // ── CSS ──────────────────────────────────────────────────
   function injectStyles() {
@@ -67,18 +61,22 @@
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent =
-      /* ── Completed accordion ── */
-      '.scw-step-completed .scw-acc-icon { color: #16a34a !important; }' +
-      '.scw-step-check {' +
-      '  display: inline-flex; align-items: center; justify-content: center;' +
-      '  color: #16a34a; margin-left: 6px; flex-shrink: 0;' +
+      /* ── Fix empty Knack column in view-group-4 ── */
+      '#kn-scene_1116 .view-group-4 > .view-column:empty {' +
+      '  display: none !important;' +
       '}' +
+
+      /* ── Completed accordion ── */
+      '.scw-step-completed .scw-acc-icon { color: #16a34a !important; opacity: 1 !important; }' +
 
       /* ── Disabled accordion ── */
       '.scw-step-disabled {' +
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-disabled .scw-ktl-accordion__header { cursor: default; }' +
+      '.scw-step-disabled .scw-acc-icon { color: #94a3b8 !important; }' +
+
+      /* ── Disabled message (inline in header/step) ── */
       '.scw-step-disabled-msg {' +
       '  display: flex; align-items: center; gap: 5px;' +
       '  font-size: 11px; color: #94a3b8; font-weight: 500;' +
@@ -111,10 +109,6 @@
       '  color: #1e293b; white-space: nowrap; overflow: hidden;' +
       '  text-overflow: ellipsis;' +
       '}' +
-      '.scw-step-action .scw-step-arrow {' +
-      '  flex: 0 0 auto; display: inline-flex; align-items: center;' +
-      '  color: #94a3b8; margin-left: 8px;' +
-      '}' +
 
       /* ── Action step states ── */
       '.scw-step-action.is-completed {' +
@@ -124,8 +118,9 @@
       '.scw-step-action.is-disabled {' +
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
+      '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
 
-      /* ── Hide injected menu button that stepper replaces ── */
+      /* ── Hide original menu view ── */
       '.scw-step-menu-hidden { display: none !important; }';
 
     document.head.appendChild(style);
@@ -174,7 +169,7 @@
 
     var icon = document.createElement('span');
     icon.className = 'scw-step-icon';
-    icon.innerHTML = FOLDER_SVG;
+    icon.innerHTML = CIRCLE_SVG;
     el.appendChild(icon);
 
     var title = document.createElement('span');
@@ -182,12 +177,14 @@
     title.textContent = step.label;
     el.appendChild(title);
 
-    var arrow = document.createElement('span');
-    arrow.className = 'scw-step-arrow';
-    arrow.innerHTML = ARROW_SVG;
-    el.appendChild(arrow);
-
     return el;
+  }
+
+  // ── Pick the right icon for a state ──────────────────────
+  function getIcon(isCompleted, isDisabled) {
+    if (isDisabled) return LOCK_SVG;
+    if (isCompleted) return CHECK_CIRCLE_SVG;
+    return CIRCLE_SVG;
   }
 
   // ── Apply states to an accordion step ────────────────────
@@ -195,40 +192,31 @@
     var wrap = findAccordion(step.viewKey);
     if (!wrap) return;
     var hdr = wrap.querySelector('.scw-ktl-accordion__header');
+    var iconEl = hdr.querySelector('.scw-acc-icon');
 
-    // Completed
-    if (step.completed) {
-      var done = conditionMet(step.completed);
-      wrap.classList.toggle('scw-step-completed', done);
-      var chk = hdr.querySelector('.scw-step-check');
-      if (done && !chk) {
-        var c = document.createElement('span');
-        c.className = 'scw-step-check';
-        c.innerHTML = CHECK_SVG;
-        var ttl = hdr.querySelector('.scw-acc-title');
-        if (ttl) ttl.after(c);
-      } else if (!done && chk) {
-        chk.remove();
-      }
-    }
+    var isCompleted = step.completed ? conditionMet(step.completed) : false;
+    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
 
-    // Disabled
-    if (step.disabled) {
-      var dis = conditionMet(step.disabled);
-      wrap.classList.toggle('scw-step-disabled', dis);
-      var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
-      if (dis && !msgEl && step.disabled.message) {
-        var msg = document.createElement('span');
-        msg.className = 'scw-step-disabled-msg';
-        msg.setAttribute('data-step', step.viewKey);
-        msg.innerHTML = LOCK_SVG;
-        msg.appendChild(document.createTextNode(step.disabled.message));
-        var chevron = hdr.querySelector('.scw-acc-chevron');
-        if (chevron) hdr.insertBefore(msg, chevron);
-        else hdr.appendChild(msg);
-      } else if (!dis && msgEl) {
-        msgEl.remove();
-      }
+    // Icon
+    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, isDisabled);
+
+    // Completed class
+    wrap.classList.toggle('scw-step-completed', isCompleted && !isDisabled);
+
+    // Disabled class + message
+    wrap.classList.toggle('scw-step-disabled', isDisabled);
+    var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
+    if (isDisabled && !msgEl && step.disabled.message) {
+      var msg = document.createElement('span');
+      msg.className = 'scw-step-disabled-msg';
+      msg.setAttribute('data-step', step.viewKey);
+      msg.innerHTML = LOCK_SM_SVG;
+      msg.appendChild(document.createTextNode(step.disabled.message));
+      var chevron = hdr.querySelector('.scw-acc-chevron');
+      if (chevron) hdr.insertBefore(msg, chevron);
+      else hdr.appendChild(msg);
+    } else if (!isDisabled && msgEl) {
+      msgEl.remove();
     }
   }
 
@@ -236,60 +224,40 @@
   function applyActionState(step) {
     var el = document.getElementById('scw-step-' + step.id);
     if (!el) {
-      // Build and insert
       el = buildActionStep(step);
       var afterAcc = findAccordion(step.insertAfter);
-      if (afterAcc) {
-        afterAcc.after(el);
-      }
+      if (afterAcc) afterAcc.after(el);
     }
 
-    // Update href in case menu re-rendered
+    // Update href
     var href = getMenuHref(step.menuView);
     if (href) el.href = href;
 
-    // Completed
-    if (step.completed) {
-      var done = conditionMet(step.completed);
-      el.classList.toggle('is-completed', done);
-      var icon = el.querySelector('.scw-step-icon');
-      if (done) {
-        icon.innerHTML = CHECK_SVG;
-      } else {
-        icon.innerHTML = FOLDER_SVG;
-      }
-      var chk = el.querySelector('.scw-step-check');
-      if (done && !chk) {
-        var c = document.createElement('span');
-        c.className = 'scw-step-check';
-        c.innerHTML = CHECK_SVG;
-        var ttl = el.querySelector('.scw-step-title');
-        if (ttl) ttl.after(c);
-      } else if (!done && chk) {
-        chk.remove();
-      }
+    var isCompleted = step.completed ? conditionMet(step.completed) : false;
+    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+
+    // Icon
+    var icon = el.querySelector('.scw-step-icon');
+    if (icon) icon.innerHTML = getIcon(isCompleted, isDisabled);
+
+    // Classes
+    el.classList.toggle('is-completed', isCompleted && !isDisabled);
+    el.classList.toggle('is-disabled', isDisabled);
+
+    // Disabled message
+    var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
+    if (isDisabled && !msgEl && step.disabled.message) {
+      var msg = document.createElement('span');
+      msg.className = 'scw-step-disabled-msg';
+      msg.setAttribute('data-step', step.id);
+      msg.innerHTML = LOCK_SM_SVG;
+      msg.appendChild(document.createTextNode(step.disabled.message));
+      el.appendChild(msg);
+    } else if (!isDisabled && msgEl) {
+      msgEl.remove();
     }
 
-    // Disabled (takes precedence over completed visually)
-    if (step.disabled) {
-      var dis = conditionMet(step.disabled);
-      el.classList.toggle('is-disabled', dis);
-      var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
-      if (dis && !msgEl && step.disabled.message) {
-        var msg = document.createElement('span');
-        msg.className = 'scw-step-disabled-msg';
-        msg.setAttribute('data-step', step.id);
-        msg.innerHTML = LOCK_SVG;
-        msg.appendChild(document.createTextNode(step.disabled.message));
-        var arr = el.querySelector('.scw-step-arrow');
-        if (arr) el.insertBefore(msg, arr);
-        else el.appendChild(msg);
-      } else if (!dis && msgEl) {
-        msgEl.remove();
-      }
-    }
-
-    // Hide the original menu view and any injected button
+    // Hide original menu view
     if (step.menuView) {
       var origMenu = document.getElementById(step.menuView);
       if (origMenu) origMenu.style.display = 'none';
@@ -302,11 +270,8 @@
   function applySteps() {
     for (var i = 0; i < STEPS.length; i++) {
       var step = STEPS[i];
-      if (step.type === 'accordion') {
-        applyAccordionState(step);
-      } else if (step.type === 'action') {
-        applyActionState(step);
-      }
+      if (step.type === 'accordion') applyAccordionState(step);
+      else if (step.type === 'action') applyActionState(step);
     }
   }
 
