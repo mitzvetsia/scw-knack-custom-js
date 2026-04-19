@@ -270,51 +270,114 @@
     injectProposalInfo(layout);
   }
 
+  function getProposalFromModel() {
+    var view = Knack.views.view_3814;
+    if (!view || !view.model) return null;
+    var data = view.model.data;
+    if (!data) return null;
+
+    // Backbone Collection → .models array
+    var records = data.models || data;
+    // model.toJSON() fallback
+    if (typeof data.toJSON === 'function' && (!records || !records.length)) {
+      records = data.toJSON();
+    }
+    if (!records || !records.length) return null;
+
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i].attributes || records[i];
+      var status = (attrs.field_2658 || '').replace(/<[^>]*>/g, '').trim();
+      if (/published/i.test(status)) return attrs;
+    }
+    return null;
+  }
+
+  function getProposalFromDOM() {
+    var viewEl = document.getElementById('view_3814');
+    if (!viewEl) return null;
+    var rows = viewEl.querySelectorAll('tbody tr');
+    if (!rows.length) return null;
+
+    for (var i = 0; i < rows.length; i++) {
+      var statusCell = rows[i].querySelector('td.field_2658');
+      if (!statusCell) continue;
+      var statusText = (statusCell.textContent || '').trim();
+      if (!/published/i.test(statusText)) continue;
+
+      var nameCell = rows[i].querySelector('td.field_2665');
+      var expCell = rows[i].querySelector('td.field_2659');
+      var pdfCell = rows[i].querySelector('td.field_2681');
+      var linkEl = rows[i].querySelector('a.kn-link-page');
+
+      var pdfUrl = '';
+      var pdfName = '';
+      if (pdfCell) {
+        var pdfLink = pdfCell.querySelector('a');
+        if (pdfLink) {
+          pdfUrl = pdfLink.getAttribute('href') || '';
+          pdfName = (pdfLink.textContent || '').trim();
+        }
+      }
+
+      return {
+        proposalName: nameCell ? (nameCell.textContent || '').trim() : '',
+        expDate: expCell ? (expCell.textContent || '').trim() : '',
+        pdfUrl: pdfUrl,
+        pdfName: pdfName,
+        viewLink: linkEl ? (linkEl.getAttribute('href') || '') : '',
+        id: rows[i].id || ''
+      };
+    }
+    return null;
+  }
+
   function injectProposalInfo(container) {
     var old = container.querySelector('.scw-totals-proposal');
     if (old) old.remove();
 
     try {
-      var model = Knack.views.view_3814 && Knack.views.view_3814.model;
-      var records = model && model.data && model.data.models;
-      if (!records || !records.length) return;
+      // Try Knack model first, fall back to DOM scraping
+      var pub = getProposalFromModel();
+      var proposalName, expDate, pdfUrl, pdfName, viewLink;
 
-      var pub = null;
-      for (var i = 0; i < records.length; i++) {
-        var attrs = records[i].attributes || records[i];
-        var status = (attrs.field_2658 || '').replace(/<[^>]*>/g, '').trim();
-        if (/published/i.test(status)) { pub = attrs; break; }
-      }
-      if (!pub) return;
+      if (pub) {
+        proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
+        expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
 
-      var proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
-      var expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
-
-      // Extract PDF link
-      var pdfUrl = '';
-      var pdfName = '';
-      var pdfRaw = pub.field_2681 || '';
-      if (typeof pdfRaw === 'string') {
-        var m = pdfRaw.match(/href="([^"]+)"/);
-        if (m) pdfUrl = m[1];
-        var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
-        if (m2) pdfName = m2[1];
-      }
-      if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
-        pdfUrl = pub.field_2681_raw.url;
-        pdfName = pub.field_2681_raw.filename || 'Download PDF';
-      }
-
-      // Extract proposal view link from the first link column
-      var viewLink = '';
-      var viewEl = document.getElementById('view_3814');
-      if (viewEl && pub.id) {
-        var row = viewEl.querySelector('tr#' + pub.id);
-        if (row) {
-          var link = row.querySelector('a.kn-link-page');
-          if (link) viewLink = link.getAttribute('href') || '';
+        pdfUrl = '';
+        pdfName = '';
+        var pdfRaw = pub.field_2681 || '';
+        if (typeof pdfRaw === 'string') {
+          var m = pdfRaw.match(/href="([^"]+)"/);
+          if (m) pdfUrl = m[1];
+          var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
+          if (m2) pdfName = m2[1];
         }
+        if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
+          pdfUrl = pub.field_2681_raw.url;
+          pdfName = pub.field_2681_raw.filename || 'Download PDF';
+        }
+
+        viewLink = '';
+        var viewEl = document.getElementById('view_3814');
+        if (viewEl && pub.id) {
+          var row = viewEl.querySelector('tr#' + pub.id);
+          if (row) {
+            var link = row.querySelector('a.kn-link-page');
+            if (link) viewLink = link.getAttribute('href') || '';
+          }
+        }
+      } else {
+        var domData = getProposalFromDOM();
+        if (!domData) return;
+        proposalName = domData.proposalName;
+        expDate = domData.expDate;
+        pdfUrl = domData.pdfUrl;
+        pdfName = domData.pdfName;
+        viewLink = domData.viewLink;
       }
+
+      if (!proposalName && !pdfUrl) return;
 
       var wrap = document.createElement('div');
       wrap.className = 'scw-totals-proposal';
@@ -358,7 +421,9 @@
       }
 
       container.appendChild(wrap);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[scw-totals] injectProposalInfo error:', e);
+    }
   }
 
   // Expose for external callers (e.g. refresh-view-on-form-submit.js)
