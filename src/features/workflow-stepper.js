@@ -281,11 +281,35 @@
     setTimeout(applySteps, 500);
   }
 
+  // Collapse accordion and refresh steps after form submit
+  function onFormSubmit(viewKey) {
+    var wrap = findAccordion(viewKey);
+    if (wrap && wrap.classList.contains('is-expanded')) {
+      var hdr = wrap.querySelector('.scw-ktl-accordion__header');
+      if (hdr) hdr.click();
+    }
+    // Refresh source view to get updated field values, then re-apply steps
+    if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
+      Knack.views[SOURCE_VIEW].model.fetch({
+        success: function () { setTimeout(applySteps, 300); }
+      });
+    }
+    setTimeout(applySteps, 1500);
+  }
+
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender(SOURCE_VIEW, init, NS);
   }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
     setTimeout(init, 800);
+  });
+
+  // Listen for form submissions on step accordion views
+  $(document).on('knack-form-submit.view_2924' + NS, function () {
+    onFormSubmit('view_2924');
+  });
+  $(document).on('knack-form-submit.view_3853' + NS, function () {
+    onFormSubmit('view_3853');
   });
 })();
