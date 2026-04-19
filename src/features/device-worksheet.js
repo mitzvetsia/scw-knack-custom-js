@@ -349,16 +349,20 @@
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ],
         // ── Override: cameras/readers rows mirror view_3313's config.
-        //    Only includes fields that exist on view_3610's raw table
-        //    (MCB/Cat/Vars/Existing Cabling are view_3313-only). ──
+        //    Only includes fields that exist on view_3610's raw table.
+        //    stackedSummary: false matches view_3586's cam/reader layout
+        //    so the summary doesn't stretch vertically. ──
         bucketOverride: {
           overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          stackedSummary: false,
           fields: {
             // ── Summary row ──
             label:            { key: 'field_1950', type: 'readOnly',    summary: true },
             product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
             sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
             laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+            plenumChit:       { key: 'field_1983', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Plenum' },
             subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
             plusHrs:          { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
             plusMat:          { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
@@ -377,7 +381,7 @@
                                 linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
             subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
           },
-          summaryLayout: ['laborDescription', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+          summaryLayout: ['laborDescription', 'exteriorChit', 'plenumChit', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
           detailLayout: {
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
             right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
@@ -5581,6 +5585,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.fields = viewCfg.bucketOverride.fields;
           effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+          // Allow per-bucket override of stackedSummary so cam/reader rows
+          // on a view whose main config is stacked can opt out (and vice versa).
+          if (Object.prototype.hasOwnProperty.call(viewCfg.bucketOverride, 'stackedSummary')) {
+            effectiveCfg.stackedSummary = viewCfg.bucketOverride.stackedSummary;
+          }
           // If the main config has a label but the override doesn't,
           // flag the effective config so a spacer is inserted to keep alignment.
           if (viewCfg.fields.label && !effectiveCfg.fields.label) {
