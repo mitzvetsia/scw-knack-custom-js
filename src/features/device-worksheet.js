@@ -385,7 +385,11 @@
                                 linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
             subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
           },
-          summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+          summaryLayout: [
+            'laborDescription',
+            { stack: ['existingCabling', 'exteriorChit', 'plenumChit'] },
+            'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'
+          ],
           detailLayout: {
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
             right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
@@ -1349,6 +1353,31 @@ td.${P}-sum-move {
 .${P}-cabling-chit.is-readonly {
   cursor: default;
   pointer-events: none;
+}
+
+/* ── Stacked toggle-chit column (used for cam/reader flags) ── */
+.${P}-sum-group--chit-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling {
+  width: 100%;
+}
+.${P}-sum-group--chit-stack .${P}-cabling-chit {
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  width: 100%;
+  min-width: 44px;
+  letter-spacing: 0;
+}
+/* Hide the empty label placeholders inside stacked chit groups so the
+   three chits sit flush without label-height gaps between them. */
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling > .${P}-sum-label {
+  display: none;
 }
 
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
@@ -4458,6 +4487,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     for (var i = 0; i < layout.length; i++) {
       var name = layout[i];
+
+      // Stack layout item: { stack: [fieldNames...] } renders the listed
+      // fields into a column-flex wrapper so they stack vertically.
+      // Used for things like multiple toggleChits on cam/reader rows.
+      if (name && typeof name === 'object' && Array.isArray(name.stack)) {
+        var stackWrap = document.createElement('span');
+        stackWrap.className = P + '-sum-group ' + P + '-sum-group--chit-stack';
+        for (var si = 0; si < name.stack.length; si++) {
+          var sName = name.stack[si];
+          var sDesc = fieldDesc(viewCfg, sName);
+          if (!sDesc || !sDesc.summary) continue;
+          renderSummaryField(stackWrap, tr, sName, sDesc, viewCfg);
+        }
+        rightGroup.appendChild(stackWrap);
+        continue;
+      }
+
       var desc = fieldDesc(viewCfg, name);
       if (!desc || !desc.summary) continue;
 
