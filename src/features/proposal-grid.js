@@ -2275,9 +2275,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     refreshProjectTotals(ctx, caches, $tbody);
 
     log(ctx, 'runTotalsPipeline complete', { runId });
-
-    // Post-pipeline: mask installation values if field_2725 != Yes
-    maskInstallationIfNeeded(ctx);
   }
 
   // Standalone refresh so view_3342 render can re-trigger it
@@ -2302,86 +2299,57 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $tbody[0].appendChild(gtFragment);
     }
 
-    maskInstallationIfNeeded(ctx);
+    if (isInstallationMasked()) applyTBDLabels(ctx);
   }
 
   // ============================================================
   // FEATURE: Mask installation values with "TBD"
-  // When field_2725 in view_3861 is not "Yes", replace all
-  // field_2028 cell values and derived totals with "TBD".
+  // When field_2725 in view_3861 is not "Yes", zero out labor
+  // cells BEFORE the pipeline so all sums exclude installation,
+  // then label the zeroed cells as "TBD" after.
   // ============================================================
 
   function isInstallationMasked() {
-    // Check DOM detail view first
     var view = document.getElementById('view_3861');
     if (view) {
       var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
-      if (cell) {
-        var val = (cell.textContent || '').trim();
-        return !/^yes$/i.test(val);
-      }
+      if (cell) return !/^yes$/i.test((cell.textContent || '').trim());
     }
-    // Knack model fallback
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views.view_3861) {
       var model = Knack.views.view_3861.model;
       var attrs = model && (model.attributes || (model.toJSON && model.toJSON()) || {});
       if (attrs.field_2725 !== undefined) {
-        var raw = String(attrs.field_2725).replace(/<[^>]*>/g, '').trim();
-        return !/^yes$/i.test(raw);
+        return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
       }
     }
     return false;
   }
 
-  function maskInstallationIfNeeded(ctx) {
-    if (!isInstallationMasked()) return;
+  function zeroLaborCells(ctx) {
+    var $view = $(document.getElementById(ctx.viewId));
+    if (!$view.length) return;
+    $view.find('tr[id] td.' + ctx.keys.labor).each(function () {
+      this.textContent = '$0.00';
+    });
+  }
 
+  function applyTBDLabels(ctx) {
     var viewRoot = document.getElementById(ctx.viewId);
     if (!viewRoot) return;
     var $view = $(viewRoot);
     var laborKey = ctx.keys.labor;
     var TBD = '<span class="scw-tbd">TBD</span>';
 
-    // 1. All data-row labor cells (field_2028)
-    $view.find('td.' + laborKey).each(function () {
+    // Data-row labor cells → TBD
+    $view.find('tr[id] td.' + laborKey).each(function () {
       $(this).html(TBD);
     });
 
-    // 2. Subtotal rows — the cost cell includes labor; rewrite to TBD
-    //    L4 cost cells (which show labor value)
-    $view.find('tr.scw-subtotal--level-4 td:last-child').each(function () {
-      var $td = $(this);
-      if ($td.find('strong').length) {
-        $td.html('<strong>' + TBD + '</strong>');
-      } else {
-        $td.html(TBD);
-      }
-    });
-
-    // 3. Project total rows — Installation Total and Grand Total → TBD
+    // Installation Total → TBD (it's now $0.00 from the pipeline)
     $view.find('tr.scw-project-totals').each(function () {
       var $tr = $(this);
       var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
-      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1) {
-        $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
-      }
-    });
-
-    // 4. L2 footer cost cells (which sum hardware + labor)
-    $view.find('tr.scw-subtotal--level-2 td:last-child').each(function () {
-      var $td = $(this);
-      if ($td.find('strong').length) {
-        $td.html('<strong>' + TBD + '</strong>');
-      } else {
-        $td.html(TBD);
-      }
-    });
-
-    // 5. L1 footer rows — any total/subtotal that includes labor
-    $view.find('tr.scw-subtotal--level-1:not(.scw-project-totals)').each(function () {
-      var $tr = $(this);
-      var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
-      if (label.indexOf('total') !== -1) {
+      if (label.indexOf('installation') !== -1) {
         $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
       }
     });
@@ -2418,6 +2386,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           injectCssOnce();
           normalizeField2019ForGrouping(ctx);
 
+          // Pre-pipeline: zero out labor cells so sums exclude installation
+          var masked = isInstallationMasked();
+          if (masked) zeroLaborCells(ctx);
+
           pipelineRunning = true;
           try {
             runTotalsPipeline(ctx);
@@ -2427,6 +2399,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           } finally {
             pipelineRunning = false;
           }
+
+          // Post-pipeline: replace zeroed labor with TBD labels
+          if (masked) applyTBDLabels(ctx);
         }
 
         function totalsAreMissing() {
