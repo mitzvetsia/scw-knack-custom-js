@@ -2328,7 +2328,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function zeroLaborCells(ctx) {
     var $view = $(document.getElementById(ctx.viewId));
     if (!$view.length) return;
-    $view.find('tr[id] td.' + ctx.keys.labor).each(function () {
+    var laborKey = ctx.keys.labor;
+    $view.find('tr[id] td.' + laborKey).each(function () {
+      var val = parseFloat(this.textContent.replace(/[^0-9.\-]/g, '')) || 0;
+      if (val !== 0) {
+        $(this).closest('tr').attr('data-scw-had-labor', '1');
+      }
       this.textContent = '$0.00';
     });
   }
@@ -2338,6 +2343,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     if (!viewRoot) return;
     var $view = $(viewRoot);
     var laborKey = ctx.keys.labor;
+    var costKey = ctx.keys.cost;
     var TBD = '<span class="scw-tbd">TBD</span>';
 
     // Data-row labor cells → TBD
@@ -2345,7 +2351,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $(this).html(TBD);
     });
 
-    // Installation Total → TBD (it's now $0.00 from the pipeline)
+    // L4 group cost cells → TBD only if data rows in that group had non-zero labor
+    $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
+      var $l4 = $(this);
+      var hadLabor = false;
+      var $next = $l4.next();
+      while ($next.length && !$next.hasClass('kn-table-group') && !$next.hasClass('scw-level-total-row')) {
+        if ($next.attr('data-scw-had-labor') === '1') { hadLabor = true; break; }
+        $next = $next.next();
+      }
+      if (hadLabor) {
+        var $costCell = $l4.find('td.' + costKey);
+        if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
+      }
+    });
+
+    // Installation Total → TBD
     $view.find('tr.scw-project-totals').each(function () {
       var $tr = $(this);
       var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
