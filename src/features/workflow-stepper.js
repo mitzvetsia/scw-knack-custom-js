@@ -13,7 +13,7 @@
       type: 'accordion',
       viewKey: 'view_2924',
       label: 'Project Playbook',
-      completed: { field: 'field_1747', value: 'Complete' }
+      completed: { field: 'field_2724', value: 'Yes' }
     },
     {
       type: 'action',
@@ -22,7 +22,7 @@
       menuView: 'view_3828',
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
-      disabled: { field: 'field_1747', notValue: 'Complete', message: 'Complete the Project Playbook first' }
+      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
     },
     {
       type: 'accordion',
@@ -281,13 +281,15 @@
   var CAMERAS_ID = '6977d25a3a701a1a3e4c9d70';
 
   function getConnectionVal(fieldKey) {
+    // Read from the <select> first — Chosen.js keeps this in sync
+    var select = document.getElementById(PLAYBOOK_VIEW + '-' + fieldKey);
+    if (select && select.value) return select.value.trim();
+    // Fallback to hidden input
     var hidden = document.querySelector('#' + PLAYBOOK_VIEW + ' input.connection[name="' + fieldKey + '"]');
     if (hidden) {
-      var v = decodeURIComponent(hidden.value || '').replace(/"/g, '').trim();
+      var v = decodeURIComponent(hidden.value || '').replace(/[\[\]"]/g, '').trim();
       if (v) return v;
     }
-    var select = document.getElementById(PLAYBOOK_VIEW + '-' + fieldKey);
-    if (select) return (select.value || '').trim();
     return '';
   }
 
@@ -320,8 +322,8 @@
     if (!form || form.getAttribute('data-scw-playbook-rules') === '1') return;
     form.setAttribute('data-scw-playbook-rules', '1');
 
-    // Connection field change (Chosen.js)
-    $(form).on('change' + NS, 'select[name="field_2228"], input[name="field_2228"]', applyPlaybookRules);
+    // Connection field change (Chosen.js fires change on the original select)
+    $('#' + PLAYBOOK_VIEW + '-field_2228').on('change' + NS, applyPlaybookRules);
     // Radio change for field_1752
     $(form).on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
 
