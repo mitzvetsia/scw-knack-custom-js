@@ -336,45 +336,47 @@
     if (old) old.remove();
 
     try {
-      // Try Knack model first, fall back to DOM scraping
-      var pub = getProposalFromModel();
       var proposalName, expDate, pdfUrl, pdfName, viewLink;
 
-      if (pub) {
-        proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
-        expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
-
-        pdfUrl = '';
-        pdfName = '';
-        var pdfRaw = pub.field_2681 || '';
-        if (typeof pdfRaw === 'string') {
-          var m = pdfRaw.match(/href="([^"]+)"/);
-          if (m) pdfUrl = m[1];
-          var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
-          if (m2) pdfName = m2[1];
-        }
-        if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
-          pdfUrl = pub.field_2681_raw.url;
-          pdfName = pub.field_2681_raw.filename || 'Download PDF';
-        }
-
-        viewLink = '';
-        var viewEl = document.getElementById('view_3814');
-        if (viewEl && pub.id) {
-          var row = viewEl.querySelector('tr#' + pub.id);
-          if (row) {
-            var link = row.querySelector('a.kn-link-page');
-            if (link) viewLink = link.getAttribute('href') || '';
-          }
-        }
-      } else {
-        var domData = getProposalFromDOM();
-        if (!domData) return;
+      // DOM scrape first — most reliable since we can see the rendered table
+      var domData = getProposalFromDOM();
+      if (domData) {
         proposalName = domData.proposalName;
         expDate = domData.expDate;
         pdfUrl = domData.pdfUrl;
         pdfName = domData.pdfName;
         viewLink = domData.viewLink;
+      }
+
+      // Fall back to Knack model if DOM didn't yield results
+      if (!proposalName && !pdfUrl) {
+        var pub = getProposalFromModel();
+        if (pub) {
+          proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
+          expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
+          pdfUrl = '';
+          pdfName = '';
+          var pdfRaw = pub.field_2681 || '';
+          if (typeof pdfRaw === 'string') {
+            var m = pdfRaw.match(/href="([^"]+)"/);
+            if (m) pdfUrl = m[1];
+            var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
+            if (m2) pdfName = m2[1];
+          }
+          if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
+            pdfUrl = pub.field_2681_raw.url;
+            pdfName = pub.field_2681_raw.filename || 'Download PDF';
+          }
+          viewLink = '';
+          var viewEl = document.getElementById('view_3814');
+          if (viewEl && pub.id) {
+            var row = viewEl.querySelector('tr#' + pub.id);
+            if (row) {
+              var link = row.querySelector('a.kn-link-page');
+              if (link) viewLink = link.getAttribute('href') || '';
+            }
+          }
+        }
       }
 
       if (!proposalName && !pdfUrl) return;
