@@ -22,6 +22,7 @@
       menuView: 'view_3828',
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
+      lockWhenCompleted: true,
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
     },
     {
@@ -252,26 +253,32 @@
     if (href) el.href = href;
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
+    var isDisabled = baseDisabled || lockedByCompletion;
 
-    // Icon
+    // Icon — keep the completed check when locked-by-completion so the
+    // user still sees the "done" state rather than a lock.
     var icon = el.querySelector('.scw-step-icon');
-    if (icon) icon.innerHTML = getIcon(isCompleted, isDisabled, step);
+    if (icon) icon.innerHTML = getIcon(isCompleted, baseDisabled, step);
 
-    // Classes
-    el.classList.toggle('is-completed', isCompleted && !isDisabled);
+    // Classes: prefer is-completed styling when locked by completion so
+    // the step reads as "done" while still being non-clickable.
+    el.classList.toggle('is-completed', isCompleted);
     el.classList.toggle('is-disabled', isDisabled);
 
-    // Disabled message
+    // Disabled message — only show the baseDisabled message (e.g.
+    // "Complete the Project Playbook first"); completion-lock shows no
+    // extra text since the completed icon already communicates state.
     var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
-    if (isDisabled && !msgEl && step.disabled.message) {
+    if (baseDisabled && !msgEl && step.disabled && step.disabled.message) {
       var msg = document.createElement('span');
       msg.className = 'scw-step-disabled-msg';
       msg.setAttribute('data-step', step.id);
       msg.innerHTML = LOCK_SM_SVG;
       msg.appendChild(document.createTextNode(step.disabled.message));
       el.appendChild(msg);
-    } else if (!isDisabled && msgEl) {
+    } else if (!baseDisabled && msgEl) {
       msgEl.remove();
     }
 
