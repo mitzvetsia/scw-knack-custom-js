@@ -1361,6 +1361,15 @@ window.SCW = window.SCW || {};
    SCENE 1116 — Sales Edit Proposal
    ══════════════════════════════════════════════════════════════ */
 
+/* ── Hide scene until transforms settle, then fade in ── */
+#kn-scene_1116 {
+  opacity: 0;
+  transition: opacity 350ms ease;
+}
+#kn-scene_1116.scw-scene-ready {
+  opacity: 1;
+}
+
 /* ── Totals details view (view_3418) — card ── */
 #view_3418 {
   background: #fff;
@@ -1795,12 +1804,26 @@ window.SCW = window.SCW || {};
   window.SCW = window.SCW || {};
   SCW.restructureTotals = restructureTotals;
 
+  // ── Scene reveal ──
+  var _revealTimer = null;
+  function revealScene() {
+    var scene = document.getElementById('kn-scene_1116');
+    if (scene) scene.classList.add('scw-scene-ready');
+  }
+  function scheduleReveal() {
+    clearTimeout(_revealTimer);
+    _revealTimer = setTimeout(revealScene, 600);
+  }
+
   // ── Bind ──
   // Debounced wrapper so we only run once after all views finish rendering
   var _totalsTimer = null;
   function debouncedTotals() {
     clearTimeout(_totalsTimer);
-    _totalsTimer = setTimeout(restructureTotals, 300);
+    _totalsTimer = setTimeout(function () {
+      restructureTotals();
+      scheduleReveal();
+    }, 300);
   }
 
   if (window.SCW && SCW.onViewRender) {
@@ -1813,9 +1836,14 @@ window.SCW = window.SCW || {};
     }
   } else {
     $(document).ready(function () {
-      setTimeout(restructureTotals, 1000);
+      setTimeout(function () { restructureTotals(); revealScene(); }, 1000);
     });
   }
+
+  // Safety fallback — always reveal after 3s even if views haven't rendered
+  $(document).on('knack-scene-render.scene_1116' + NS, function () {
+    setTimeout(revealScene, 3000);
+  });
 })();
 /*** Percent Field Format — global % field handling ***/
 /*** TEMPORARILY DISABLED — revisit later ***/
