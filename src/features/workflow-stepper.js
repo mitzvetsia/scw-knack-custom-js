@@ -593,6 +593,17 @@
     // innerHTML so token-expanded <a> tags render. All user text
     // passes through escapeHtml in expandMessage before reaching here.
     msgEl.innerHTML = msg.icon + '<span>' + msg.html + '</span>';
+
+    // Prevent clicks on inline links from bubbling up to the
+    // accordion / action-step click handler (which would toggle the
+    // accordion instead of navigating). Re-attach on every render
+    // since innerHTML wipes previous listeners.
+    var links = msgEl.querySelectorAll('.scw-step-msg-link');
+    for (var li = 0; li < links.length; li++) {
+      links[li].addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+    }
   }
 
   function applyAccordionState(step) {
