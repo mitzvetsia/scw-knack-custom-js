@@ -188,8 +188,15 @@
       /* Token-expanded anchor inside the header message. */
       '.scw-step-msg-link {' +
       '  color: #2563eb; text-decoration: underline;' +
+      '  pointer-events: auto; cursor: pointer;' +
       '}' +
       '.scw-step-msg-link:hover { color: #1d4ed8; }' +
+      /* Even when the host step has pointer-events:none (locked-by-
+         completion), the inline link stays clickable. */
+      '.scw-step-completed.scw-step-disabled .scw-step-msg-link,' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-msg-link {' +
+      '  pointer-events: auto; cursor: pointer;' +
+      '}' +
 
       /* ── Action step row (matches accordion header) ── */
       '.scw-step-action {' +
