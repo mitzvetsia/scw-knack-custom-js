@@ -281,8 +281,13 @@
       if (!base) continue;
       if (pending[id]) continue;
 
+      // addCountField (field_2586) = "associated survey line items" count.
+      // A row is an "add" change request ONLY when it has NO associated
+      // survey items (count === 0) — i.e., it was created during the
+      // revision phase. Rows with count > 0 came in from the site survey
+      // and must not be auto-flagged as adds.
       var count = parseFloat(base._addCount);
-      if (count === 0 || isNaN(count)) continue;
+      if (isNaN(count) || count > 0) continue;
 
       // Snapshot all tracked field values into requested — the whole record is new
       var req = {};
