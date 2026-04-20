@@ -3,7 +3,12 @@ window.SCW = window.SCW || {};
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
   MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
-  MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7"
+  MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
+  // Fires on "Create Alternate SOW" step click. Expects:
+  //   Request body:  { sourceRecordId: <SOW record id>, triggeredBy: { id, name, email } }
+  //   Response body: { success: true,  newSowId: "<hex>", newSowUrl: "<full URL>" }
+  //             or:  { success: false, error: "<message>" }
+  MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_DUPLICATE_SOW"
 };
 window.SCW = window.SCW || {};
 
@@ -4560,6 +4565,18 @@ window.SCW = window.SCW || {};
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
     },
     {
+      // Appears only once the Initiate Install step has fired
+      // (field_1199 populated). Fires the duplicate-SOW webhook and
+      // redirects the browser to the URL returned by Make.
+      type: 'action',
+      id: 'create-sow-option',
+      label: 'Create Alternate SOW',
+      insertAfterStepId: 'initiate-install',
+      showWhen: { field: 'field_1199', hasValue: true },
+      webhookAction: 'duplicateSow',
+      activeIcon: 'copy'
+    },
+    {
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
@@ -4604,6 +4621,17 @@ window.SCW = window.SCW || {};
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
     '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+  var COPY_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+  var SPINNER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 
   // ── CSS ──────────────────────────────────────────────────
   function injectStyles() {
@@ -4677,6 +4705,14 @@ window.SCW = window.SCW || {};
       '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
       '  color: #16a34a; opacity: 1;' +
       '}' +
+      /* Webhook in-flight spinner */
+      '.scw-step-action.is-loading {' +
+      '  pointer-events: none; opacity: 0.75; cursor: wait;' +
+      '}' +
+      '.scw-step-action.is-loading .scw-step-icon svg {' +
+      '  animation: scw-step-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
 
       /* ── Hide original menu view ── */
       '.scw-step-menu-hidden { display: none !important; }';
@@ -4719,11 +4755,23 @@ window.SCW = window.SCW || {};
 
   // ── Build a standalone action step element ───────────────
   function buildActionStep(step) {
-    var href = getMenuHref(step.menuView);
     var el = document.createElement('a');
     el.id = 'scw-step-' + step.id;
     el.className = 'scw-step-action';
-    if (href) el.href = href;
+
+    if (step.webhookAction) {
+      el.href = 'javascript:void(0)';
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (el.classList.contains('is-loading') ||
+            el.classList.contains('is-disabled')) return;
+        var handler = WEBHOOK_ACTIONS[step.webhookAction];
+        if (handler) handler(step, el);
+      });
+    } else {
+      var href = getMenuHref(step.menuView);
+      if (href) el.href = href;
+    }
 
     var icon = document.createElement('span');
     icon.className = 'scw-step-icon';
@@ -4738,8 +4786,95 @@ window.SCW = window.SCW || {};
     return el;
   }
 
+  // ── Resolve the insertion anchor for an action step ──────
+  // `insertAfter` points to an accordion by inner viewKey;
+  // `insertAfterStepId` points to another action step by id.
+  function findInsertAnchor(step) {
+    if (step.insertAfterStepId) {
+      return document.getElementById('scw-step-' + step.insertAfterStepId);
+    }
+    return findAccordion(step.insertAfter);
+  }
+
+  // ── Webhook-driven step actions ──────────────────────────
+  // Used by action steps with `webhookAction: 'key'`. Each handler
+  // receives the step config and the step's DOM element so it can
+  // toggle the in-flight spinner and re-enable on error.
+  function setStepLoading(el, loading) {
+    if (!el) return;
+    if (loading) {
+      el.classList.add('is-loading');
+      var icon = el.querySelector('.scw-step-icon');
+      if (icon) icon.innerHTML = SPINNER_SVG;
+    } else {
+      el.classList.remove('is-loading');
+      // Icon will be re-applied on next applySteps() cycle.
+    }
+  }
+
+  function getSourceSowId() {
+    try {
+      var v = Knack.views && Knack.views[SOURCE_VIEW];
+      if (v && v.model && v.model.attributes && v.model.attributes.id) {
+        return v.model.attributes.id;
+      }
+    } catch (e) { /* fall through */ }
+    return '';
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  var WEBHOOK_ACTIONS = {
+    duplicateSow: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('Duplicate-SOW webhook URL is not configured.');
+        return;
+      }
+      var sourceRecordId = getSourceSowId();
+      if (!sourceRecordId) {
+        alert('Could not determine current SOW record ID.');
+        return;
+      }
+
+      var payload = {
+        sourceRecordId: sourceRecordId,
+        triggeredBy: getTriggeredBy()
+      };
+
+      setStepLoading(el, true);
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (resp) {
+        return resp.json().catch(function () { return null; });
+      }).then(function (data) {
+        if (data && data.success && data.newSowUrl) {
+          window.location.href = data.newSowUrl;
+          return;
+        }
+        setStepLoading(el, false);
+        var errMsg = (data && (data.error || data.message)) || 'Failed to create SOW option.';
+        alert(errMsg);
+      }).catch(function (err) {
+        setStepLoading(el, false);
+        alert('Webhook error: ' + (err && err.message ? err.message : err));
+      });
+    }
+  };
+
   // ── Pick the right icon for a state ──────────────────────
-  var ACTIVE_ICONS = { eye: EYE_SVG };
+  var ACTIVE_ICONS = { eye: EYE_SVG, copy: COPY_SVG };
 
   function getIcon(isCompleted, isDisabled, step) {
     if (isDisabled) return LOCK_SVG;
@@ -4784,15 +4919,26 @@ window.SCW = window.SCW || {};
   // ── Apply states to an action step ───────────────────────
   function applyActionState(step) {
     var el = document.getElementById('scw-step-' + step.id);
+
+    // Render gate: skip (and remove if present) when the showWhen
+    // condition isn't met. Distinct from `disabled` which dims a
+    // visible step — `showWhen` controls whether it exists at all.
+    if (step.showWhen && !conditionMet(step.showWhen)) {
+      if (el) el.remove();
+      return;
+    }
+
     if (!el) {
       el = buildActionStep(step);
-      var afterAcc = findAccordion(step.insertAfter);
+      var afterAcc = findInsertAnchor(step);
       if (afterAcc) afterAcc.after(el);
     }
 
-    // Update href
-    var href = getMenuHref(step.menuView);
-    if (href) el.href = href;
+    // Update href (only for navigation-type steps, not webhook steps)
+    if (!step.webhookAction) {
+      var href = getMenuHref(step.menuView);
+      if (href) el.href = href;
+    }
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
     var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
