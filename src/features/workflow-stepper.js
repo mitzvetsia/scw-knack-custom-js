@@ -537,7 +537,7 @@
       }
       openNotesPromptModal({
         title:         'Request Alternative Proposal',
-        intro:         'Give our bid team some context — what should be different about this alternative?',
+        intro:         'Give our bid team some context — what should they know about this alternative bid?',
         placeholder:   'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
         submitLabel:   'Submit Request',
         onSubmit: function (notes, setSubmitting, onError) {
