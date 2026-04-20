@@ -85,6 +85,7 @@ cat \
   src/features/preview-proposal-btn.js \
   src/features/create-sow-option-btn.js \
   src/features/hide-self-row.js \
+  src/features/hide-view-conditional.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/connected-device-bid-check.js \
   src/features/default-sort.js \
