@@ -8,5 +8,5 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId: <SOW record id>, triggeredBy: { id, name, email } }
   //   Response body: { success: true,  newSowId: "<hex>", newSowUrl: "<full URL>" }
   //             or:  { success: false, error: "<message>" }
-  MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_DUPLICATE_SOW"
+  MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/ysbsl1qw19vdhc6f3hpk8barcfk79puu"
 };
