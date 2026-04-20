@@ -4652,7 +4652,7 @@ window.SCW = window.SCW || {};
       // row link — same source the totals panel's proposal block uses.
       type: 'action',
       id: 'review-final-proposal',
-      label: 'Review Final Proposal',
+      label: 'Review Completed Proposal',
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
