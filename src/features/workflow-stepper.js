@@ -26,18 +26,6 @@
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
     },
     {
-      // Appears only once the Initiate Install step has fired
-      // (field_1199 populated). Fires the duplicate-SOW webhook and
-      // redirects the browser to the URL returned by Make.
-      type: 'action',
-      id: 'create-sow-option',
-      label: 'Create Alternate SOW',
-      insertAfterStepId: 'initiate-install',
-      showWhen: { field: 'field_1199', hasValue: true },
-      webhookAction: 'duplicateSow',
-      activeIcon: 'copy'
-    },
-    {
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
