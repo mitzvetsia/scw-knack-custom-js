@@ -4667,6 +4667,9 @@ window.SCW = window.SCW || {};
       '.scw-step-completed.scw-step-disabled .scw-ktl-accordion__header {' +
       '  cursor: default;' +
       '}' +
+      '.scw-step-completed.scw-step-disabled .scw-acc-chevron {' +
+      '  display: none !important;' +
+      '}' +
 
       /* ── Disabled message (inline in header/step) ── */
       '.scw-step-disabled-msg {' +
