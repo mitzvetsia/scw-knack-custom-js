@@ -75,6 +75,26 @@
     return null;
   }
 
+  // ── Collect line-item record IDs from a Knack table view's model ──
+  // Used so Make doesn't need a round-trip to query existing items;
+  // the client already has them loaded in memory.
+  function collectRecordIdsFromView(viewId) {
+    var out = [];
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var data = v && v.model && v.model.data;
+      var models = data && data.models;
+      if (!models || !models.length) return out;
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i].attributes;
+        if (attrs && typeof attrs.id === 'string' && /^[a-f0-9]{24}$/.test(attrs.id)) {
+          out.push(attrs.id);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
   // ── Fire the duplicate-SOW webhook ───────────────────────
   function fireWebhook(btn) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
@@ -88,14 +108,22 @@
       return;
     }
 
+    // Line-item record IDs currently on the page. view_3586 is the
+    // SOW line-item worksheet; view_3471 is Licenses & Recurring
+    // Services (same object, different proposal bucket).
+    var sowLineItemIds        = collectRecordIdsFromView('view_3586');
+    var licenseRecurringIds   = collectRecordIdsFromView('view_3471');
+
     setBtnLoading(btn, true);
 
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sourceRecordId: sourceRecordId,
-        triggeredBy: getTriggeredBy()
+        sourceRecordId:      sourceRecordId,
+        sowLineItemIds:      sowLineItemIds,
+        licenseRecurringIds: licenseRecurringIds,
+        triggeredBy:         getTriggeredBy()
       })
     }).then(function (resp) {
       return resp.json().catch(function () { return null; });
