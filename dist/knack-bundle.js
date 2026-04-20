@@ -39936,7 +39936,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var GATE_VIEW      = 'view_3827';   // SOW detail view supplying field_1199 + record id
   var GATE_FIELD     = 'field_1199';  // Install Project populated -> show button
   var BTN_MARKER     = 'scw-create-sow-option-btn';
-  var BTN_LABEL      = 'Create Alternate SOW';
+  var BTN_LABEL      = 'Clone SOW / Create Alternative SOW';
   var EVENT_NS       = '.scwCreateSowOption';
 
   var COPY_SVG =
