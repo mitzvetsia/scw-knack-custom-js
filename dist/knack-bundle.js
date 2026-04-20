@@ -4593,6 +4593,18 @@ window.SCW = window.SCW || {};
       insertAfter: 'view_3853',
       activeIcon: 'eye',
       disabled: { field: 'field_2706', notValue: 'Yes', message: 'Site survey not yet requested' }
+    },
+    {
+      // Navigates to the currently-published-proposal details page.
+      // Scrapes the href from view_3814's first "View Published Proposal"
+      // row link — same source the totals panel's proposal block uses.
+      type: 'action',
+      id: 'review-final-proposal',
+      label: 'Review Final Proposal',
+      insertAfterStepId: 'review-site-survey',
+      hrefSelector: '#view_3814 tbody tr a.kn-link-page',
+      activeIcon: 'eye',
+      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
     }
   ];
 
@@ -4770,6 +4782,20 @@ window.SCW = window.SCW || {};
     return link ? (link.getAttribute('href') || '') : '';
   }
 
+  // ── Resolve the click href for a step ────────────────────
+  // Priority: step.hrefSelector (arbitrary CSS selector, scrapes the
+  // first match's href) > step.menuView (hidden Knack menu view).
+  // Used so a step can point at, e.g., a row inside a table view
+  // rather than a single-link menu view.
+  function resolveHref(step) {
+    if (step.hrefSelector) {
+      var el = document.querySelector(step.hrefSelector);
+      if (el) return el.getAttribute('href') || '';
+    }
+    if (step.menuView) return getMenuHref(step.menuView);
+    return '';
+  }
+
   // ── Build a standalone action step element ───────────────
   function buildActionStep(step) {
     var el = document.createElement('a');
@@ -4786,7 +4812,7 @@ window.SCW = window.SCW || {};
         if (handler) handler(step, el);
       });
     } else {
-      var href = getMenuHref(step.menuView);
+      var href = resolveHref(step);
       if (href) el.href = href;
     }
 
@@ -4960,7 +4986,7 @@ window.SCW = window.SCW || {};
 
     // Update href (only for navigation-type steps, not webhook steps)
     if (!step.webhookAction) {
-      var href = getMenuHref(step.menuView);
+      var href = resolveHref(step);
       if (href) el.href = href;
     }
 
@@ -5090,11 +5116,34 @@ window.SCW = window.SCW || {};
     setTimeout(applySteps, 1500);
   }
 
+  // Any view referenced by a step's menuView / hrefSelector is a source
+  // of the step's navigation href. Re-run applySteps when that view
+  // renders so the step's href stays current (e.g. published proposal
+  // link appearing after view_3814 loads).
+  function collectDependencyViews() {
+    var ids = {};
+    STEPS.forEach(function (s) {
+      if (s.menuView) ids[s.menuView] = true;
+      if (s.hrefSelector) {
+        var m = String(s.hrefSelector).match(/#(view_\d+)/);
+        if (m) ids[m[1]] = true;
+      }
+    });
+    return Object.keys(ids);
+  }
+
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender(SOURCE_VIEW, init, NS);
     SCW.onViewRender(PLAYBOOK_VIEW, function () {
       setTimeout(bindPlaybookRules, 200);
     }, NS);
+
+    collectDependencyViews().forEach(function (vid) {
+      if (vid === SOURCE_VIEW || vid === PLAYBOOK_VIEW) return;
+      SCW.onViewRender(vid, function () {
+        setTimeout(applySteps, 200);
+      }, NS);
+    });
   }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
