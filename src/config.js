@@ -23,5 +23,5 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_REQUEST_ALT_PROPOSAL"
+  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2"
 };
