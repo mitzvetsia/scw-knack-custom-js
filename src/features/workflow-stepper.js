@@ -40,17 +40,15 @@
       },
       lockWhenCompleted: true,
       // When the step is completed via the change-request path (i.e.
-      // the survey was actually requested on a sibling SOW), surface a
-      // short info note explaining the state instead of the default
-      // "SOW not yet validated" lock message.
-      //
-      // TODO: once the Knack schema exposes the originating SOW's
-      // identifier on the current record, swap the text for
-      // "Survey Requested on {field_XXXX}" — the renderer expands
-      // {field_XXXX} tokens from view_3827 automatically.
+      // the survey was actually requested on a sibling SOW), surface
+      // an info note linking back to that SOW. The {link} token pulls
+      // the connection's identifier + record-id from field_2329 on
+      // view_3876, then builds an href by swapping the second record-id
+      // in the current URL hash (the SOW slot) for the linked record id.
       completedMessage: {
         when: { field: 'field_2728', gt: 0 },
-        text: 'Survey Requested on other SOW'
+        text: 'Survey Requested on {link}',
+        link: { view: 'view_3876', field: 'field_2329' }
       },
       disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
     },
@@ -187,6 +185,11 @@
       '  font-size: 11px; color: #94a3b8; font-weight: 500;' +
       '  margin-left: auto; flex-shrink: 0; white-space: nowrap;' +
       '}' +
+      /* Token-expanded anchor inside the header message. */
+      '.scw-step-msg-link {' +
+      '  color: #2563eb; text-decoration: underline;' +
+      '}' +
+      '.scw-step-msg-link:hover { color: #1d4ed8; }' +
 
       /* ── Action step row (matches accordion header) ── */
       '.scw-step-action {' +
@@ -471,14 +474,74 @@
   }
 
   // ── Apply states to an accordion step ────────────────────
-  // Substitute {field_XXXX} tokens in a message string with live values
-  // from the source detail view. Empty / missing values collapse the
-  // token to the empty string.
-  function expandMessage(text) {
+  // HTML-escape for safely injecting user-provided text into innerHTML.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Read a connection field's { recordId, identifier } from a given
+  // view (details or table). Returns null if the field isn't visible
+  // or has no connection value.
+  function readConnectionFromView(viewId, fieldKey) {
+    var view = document.getElementById(viewId);
+    if (!view) return null;
+    var scope = view.querySelector(
+      '.kn-detail.' + fieldKey +
+      ', td.' + fieldKey +
+      ', [data-field-key="' + fieldKey + '"]'
+    );
+    if (!scope) return null;
+    var spans = scope.querySelectorAll('span[data-kn="connection-value"]');
+    for (var i = 0; i < spans.length; i++) {
+      var el = spans[i];
+      var cls = (el.className || '').trim();
+      var id  = el.id || '';
+      var rec = /^[a-f0-9]{24}$/.test(cls) ? cls
+             : (/^[a-f0-9]{24}$/.test(id)  ? id  : '');
+      if (rec) {
+        return {
+          id: rec,
+          identifier: (el.textContent || '').replace(/\u00a0/g, ' ').trim()
+        };
+      }
+    }
+    return null;
+  }
+
+  // Build an href by swapping the SECOND 24-char hex record-id in the
+  // current URL hash with the supplied one. Used to construct a link
+  // to a sibling SOW on the same company (the second record-id slot).
+  function hrefWithSwappedSowId(newSowId) {
+    var hash = window.location.hash || '';
+    if (!/^#/.test(hash)) hash = '#' + hash;
+    var count = 0;
+    return hash.replace(/[a-f0-9]{24}/g, function (m) {
+      count++;
+      return count === 2 ? newSowId : m;
+    });
+  }
+
+  // Substitute tokens in a message template:
+  //   {field_XXXX}  — plain text value from the SOURCE_VIEW (view_3827)
+  //   {link}        — anchor tag to a sibling SOW, when cfg.link is set
+  function expandMessage(text, cfg) {
     if (typeof text !== 'string') return '';
-    return text.replace(/\{(field_\d+)\}/g, function (_, key) {
-      return readField(key) || '';
-    }).trim();
+    // {field_XXXX} → escaped plain text
+    var out = text.replace(/\{(field_\d+)\}/g, function (_, key) {
+      return escapeHtml(readField(key) || '');
+    });
+    // {link} → <a href="<swapped-url>">identifier</a>
+    out = out.replace(/\{link\}/g, function () {
+      if (!cfg || !cfg.link || !cfg.link.view || !cfg.link.field) return '';
+      var conn = readConnectionFromView(cfg.link.view, cfg.link.field);
+      if (!conn || !conn.id) return escapeHtml(conn && conn.identifier || '');
+      var href = hrefWithSwappedSowId(conn.id);
+      var label = escapeHtml(conn.identifier || conn.id);
+      return '<a href="' + escapeHtml(href) + '" class="scw-step-msg-link">' + label + '</a>';
+    });
+    return out.trim();
   }
 
   // Compute which header message (if any) to show for a step.
@@ -494,12 +557,13 @@
       var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
       var cmWhen = typeof cm === 'object' ? cm.when : null;
       if (cmText && (!cmWhen || conditionMet(cmWhen))) {
-        var finalText = expandMessage(cmText);
-        if (finalText) return { text: finalText, icon: INFO_SM_SVG };
+        var finalHtml = expandMessage(cmText, typeof cm === 'object' ? cm : null);
+        if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
       }
     }
     if (baseDisabled && !isCompleted && step.disabled && step.disabled.message) {
-      return { text: step.disabled.message, icon: LOCK_SM_SVG };
+      // Lock messages don't accept tokens — plain text.
+      return { html: escapeHtml(step.disabled.message), icon: LOCK_SM_SVG };
     }
     return null;
   }
@@ -519,10 +583,9 @@
       if (chevron) hdr.insertBefore(msgEl, chevron);
       else hdr.appendChild(msgEl);
     }
-    // Rewrite both parts in case the condition/text flipped while the
-    // page was open.
-    msgEl.innerHTML = msg.icon;
-    msgEl.appendChild(document.createTextNode(msg.text));
+    // innerHTML so token-expanded <a> tags render. All user text
+    // passes through escapeHtml in expandMessage before reaching here.
+    msgEl.innerHTML = msg.icon + '<span>' + msg.html + '</span>';
   }
 
   function applyAccordionState(step) {
@@ -698,6 +761,12 @@
       if (s.hrefSelector) {
         var m = String(s.hrefSelector).match(/#(view_\d+)/);
         if (m) ids[m[1]] = true;
+      }
+      // completedMessage.link pulls a record from a specific view —
+      // re-run applySteps on that view's render so the token refreshes.
+      var cm = s.completedMessage;
+      if (cm && typeof cm === 'object' && cm.link && cm.link.view) {
+        ids[cm.link.view] = true;
       }
     });
     return Object.keys(ids);
