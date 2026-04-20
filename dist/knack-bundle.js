@@ -33926,9 +33926,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     revisionView:     'view_3837',   // Submitted revision line items (data source, hidden)
 
     // ── Add-mode detection ─────────────────────────────────
-    // When field_2706 = "Yes" on the proposal view, records in the
-    // worksheet where field_2586 != 0 are treated as "add" change requests.
-    addModeField:     'field_2706',  // on proposalView — "Yes" = revisions active
+    // When field_2706 = "Yes" on any of the addModeViews below, records in
+    // the worksheet where field_2586 != 0 are treated as "add" change requests.
+    addModeViews:     ['view_3491', 'view_3827'],   // any one = Yes activates the module
+    addModeField:     'field_2706',  // on addModeViews — "Yes" = revisions active
     addCountField:    'field_2586',  // on worksheetView — != 0 → treat as "add" CR
 
     // ── Display / identity fields (worksheetView) ──────────
@@ -34779,18 +34780,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   //  ADD-MODE DETECTION
   // ═══════════════════════════════════════════════════════════
 
-  function checkAddMode() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) { S.setAddMode(false); return; }
-
+  function readAddModeFlagFrom(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
-    if (!$cell.length) $cell = $pv.find('.field_' + CFG.addModeField.replace('field_', ''));
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    return H.stripHtml($cell.text()).replace(/\u00a0/g, ' ').trim();
+  }
 
-    var val = H.stripHtml($cell.text());
-    S.setAddMode(/^yes$/i.test(val));
-
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + val + ')');
+  function checkAddMode() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    var active = false;
+    var observed = '';
+    for (var i = 0; i < views.length; i++) {
+      var val = readAddModeFlagFrom(views[i]);
+      if (val) observed = val;
+      if (/^yes$/i.test(val)) { active = true; break; }
+    }
+    S.setAddMode(active);
+    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
@@ -36510,18 +36519,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
-  // Check if the sales CR module should be active (field_2706 = Yes on proposal view)
-  function isModuleActive() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) return false;
+  // Check if the sales CR module should be active. Returns true if
+  // field_2706 = "Yes" on ANY of the configured addModeViews.
+  function readAddModeFlag(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
     // Grid cell shape (data-field-key on td)
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
     // Details-view shape: wrapper div has the field class, value lives in .kn-detail-body
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
     // Last-resort fallback: wrapper itself (may include the label text)
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
-    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
-    return /^yes$/i.test(val);
+    return ($cell.text() || '').replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
+  }
+
+  function isModuleActive() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    for (var i = 0; i < views.length; i++) {
+      if (/^yes$/i.test(readAddModeFlag(views[i]))) return true;
+    }
+    return false;
   }
 
   var _rehydrated = false;
@@ -36592,9 +36609,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     } catch (e) {}
   });
 
-  // ── Proposal view render → check add mode ─────────────
+  // ── Add-mode view render(s) → check add mode ─────────────
+  // Binds to every view listed in CFG.addModeViews so that whichever
+  // view carries field_2706 triggers the re-check when it re-renders.
 
-  SCW.onViewRender(CFG.proposalView, function () {
+  function onAddModeViewRender() {
     setTimeout(function () {
       // Re-check activation — field_2706 may have rendered after worksheet
       if (isModuleActive() && !S.onPage()) {
@@ -36614,7 +36633,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         refresh();
       }
     }, 300);
-  }, CFG.eventNs);
+  }
+
+  (CFG.addModeViews || [CFG.proposalView]).forEach(function (vid) {
+    SCW.onViewRender(vid, onAddModeViewRender, CFG.eventNs);
+  });
 
   // ── Revision view render → load + inject ──────────────
 

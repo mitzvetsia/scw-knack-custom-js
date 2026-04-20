@@ -17,9 +17,10 @@
     revisionView:     'view_3837',   // Submitted revision line items (data source, hidden)
 
     // ── Add-mode detection ─────────────────────────────────
-    // When field_2706 = "Yes" on the proposal view, records in the
-    // worksheet where field_2586 != 0 are treated as "add" change requests.
-    addModeField:     'field_2706',  // on proposalView — "Yes" = revisions active
+    // When field_2706 = "Yes" on any of the addModeViews below, records in
+    // the worksheet where field_2586 != 0 are treated as "add" change requests.
+    addModeViews:     ['view_3491', 'view_3827'],   // any one = Yes activates the module
+    addModeField:     'field_2706',  // on addModeViews — "Yes" = revisions active
     addCountField:    'field_2586',  // on worksheetView — != 0 → treat as "add" CR
 
     // ── Display / identity fields (worksheetView) ──────────

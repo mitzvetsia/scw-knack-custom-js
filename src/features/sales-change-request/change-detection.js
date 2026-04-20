@@ -245,18 +245,26 @@
   //  ADD-MODE DETECTION
   // ═══════════════════════════════════════════════════════════
 
-  function checkAddMode() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) { S.setAddMode(false); return; }
-
+  function readAddModeFlagFrom(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
-    if (!$cell.length) $cell = $pv.find('.field_' + CFG.addModeField.replace('field_', ''));
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    return H.stripHtml($cell.text()).replace(/\u00a0/g, ' ').trim();
+  }
 
-    var val = H.stripHtml($cell.text());
-    S.setAddMode(/^yes$/i.test(val));
-
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + val + ')');
+  function checkAddMode() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    var active = false;
+    var observed = '';
+    for (var i = 0; i < views.length; i++) {
+      var val = readAddModeFlagFrom(views[i]);
+      if (val) observed = val;
+      if (/^yes$/i.test(val)) { active = true; break; }
+    }
+    S.setAddMode(active);
+    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
