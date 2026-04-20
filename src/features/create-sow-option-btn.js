@@ -95,6 +95,26 @@
     return out;
   }
 
+  // ── Safety net: force a fresh fetch on a view's model ────
+  // Guards against the click firing before a view (esp. one inside a
+  // collapsed accordion or briefly re-fetched) has populated its
+  // model.data.models. Resolves on success OR failure so a single
+  // slow/broken view can't block the webhook entirely.
+  function refreshView(viewId) {
+    return new Promise(function (resolve) {
+      try {
+        var v = Knack && Knack.views && Knack.views[viewId];
+        if (!v || !v.model || typeof v.model.fetch !== 'function') {
+          resolve(); return;
+        }
+        v.model.fetch({
+          success: function () { resolve(); },
+          error:   function () { resolve(); }   // fall through with whatever's cached
+        });
+      } catch (e) { resolve(); }
+    });
+  }
+
   // ── Fire the duplicate-SOW webhook ───────────────────────
   function fireWebhook(btn) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
@@ -108,23 +128,31 @@
       return;
     }
 
-    // Line-item record IDs currently on the page. view_3586 is the
-    // SOW line-item worksheet; view_3471 is Licenses & Recurring
-    // Services (same object, different proposal bucket).
-    var sowLineItemIds        = collectRecordIdsFromView('view_3586');
-    var licenseRecurringIds   = collectRecordIdsFromView('view_3471');
-
     setBtnLoading(btn, true);
 
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sourceRecordId:      sourceRecordId,
-        sowLineItemIds:      sowLineItemIds,
-        licenseRecurringIds: licenseRecurringIds,
-        triggeredBy:         getTriggeredBy()
-      })
+    // Re-fetch both line-item grids before reading IDs. view_3471
+    // (Licenses / Recurring Services) sits in a collapsed accordion by
+    // default — on some page loads its data may be stale or not yet
+    // populated when the user clicks. view_3586 is usually loaded
+    // already, but a fresh fetch also catches the rare case where an
+    // item was added elsewhere (e.g. another tab) since last render.
+    Promise.all([
+      refreshView('view_3586'),
+      refreshView('view_3471')
+    ]).then(function () {
+      var sowLineItemIds      = collectRecordIdsFromView('view_3586');
+      var licenseRecurringIds = collectRecordIdsFromView('view_3471');
+
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceRecordId:      sourceRecordId,
+          sowLineItemIds:      sowLineItemIds,
+          licenseRecurringIds: licenseRecurringIds,
+          triggeredBy:         getTriggeredBy()
+        })
+      });
     }).then(function (resp) {
       return resp.json().catch(function () { return null; });
     }).then(function (data) {
