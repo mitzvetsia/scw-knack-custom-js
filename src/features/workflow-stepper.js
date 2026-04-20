@@ -480,6 +480,34 @@
     return null;
   }
 
+  // Reads a connection field's first {id, identifier} from a view's model.
+  // Returns null when the field is empty or the view isn't available.
+  function readConnectionFromView(viewId, fieldKey) {
+    try {
+      var v = Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (!attrs) return null;
+      var raw = attrs[fieldKey + '_raw'];
+      if (Array.isArray(raw) && raw.length) {
+        return { id: raw[0].id || '', identifier: raw[0].identifier || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // Reads a plain field value from a view's model (falls back to non-raw attr).
+  function readFieldFromView(viewId, fieldKey) {
+    try {
+      var v = Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (!attrs) return '';
+      var raw = attrs[fieldKey + '_raw'];
+      if (raw != null && typeof raw !== 'object') return raw;
+      if (attrs[fieldKey] != null) return attrs[fieldKey];
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
   var WEBHOOK_ACTIONS = {
     duplicateSow: function (step, el) {
       var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
@@ -543,12 +571,21 @@
         onSubmit: function (notes, setSubmitting, onError) {
           setSubmitting(true);
           setStepLoading(el, true);
+          // Extra context pulled from the SOW Account / Project details
+          // view (view_3491) so Make doesn't need to round-trip Knack for
+          // the account + project linked records or the project name.
+          var account = readConnectionFromView('view_3491', 'field_2119');
+          var project = readConnectionFromView('view_3491', 'field_6');
+          var projectName = readFieldFromView('view_3491', 'field_1456');
           fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sourceRecordId: sourceRecordId,
               notes:          notes,
+              account:        account,
+              project:        project,
+              projectName:    projectName,
               triggeredBy:    getTriggeredBy()
             })
           }).then(function (resp) {
