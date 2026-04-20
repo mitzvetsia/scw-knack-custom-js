@@ -40018,12 +40018,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   'use strict';
 
   var EVENT_NS = '.scwHideSelfRow';
+  var STYLE_ID = 'scw-hide-self-row-css';
 
   var CONFIG = [
     // Hide the current SOW's own row from view_3869 when it appears
-    // there alongside its sibling SOW options.
-    { targetView: 'view_3869', sourceView: 'view_3827' }
+    // there alongside its sibling SOW options. Also hides the Knack
+    // "Showing X of Y" entries summary since the count is misleading
+    // once the self-row is excluded.
+    { targetView: 'view_3869', sourceView: 'view_3827', hideEntriesSummary: true }
   ];
+
+  // Inject scoped CSS for views that opt into hideEntriesSummary.
+  (function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var selectors = CONFIG
+      .filter(function (r) { return r.hideEntriesSummary; })
+      .map(function (r) { return '#' + r.targetView + ' .kn-entries-summary'; });
+    if (!selectors.length) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = selectors.join(',\n') + ' { display: none !important; }';
+    document.head.appendChild(s);
+  })();
 
   function getSourceRecordId(sourceViewId) {
     try {
