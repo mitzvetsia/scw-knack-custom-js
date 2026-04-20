@@ -29,6 +29,8 @@
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
+      completed: { field: 'field_2706', value: 'Yes' },
+      lockWhenCompleted: true,
       disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
     },
     {
@@ -102,6 +104,17 @@
       '}' +
       '.scw-step-disabled .scw-ktl-accordion__header { cursor: default; }' +
       '.scw-step-disabled .scw-acc-icon { color: #94a3b8 !important; }' +
+      /* Completed + locked accordion: keep full opacity + green icon,
+         still block clicks. Same spirit as action-step variant. */
+      '.scw-step-completed.scw-step-disabled {' +
+      '  opacity: 1; pointer-events: none; cursor: default;' +
+      '}' +
+      '.scw-step-completed.scw-step-disabled .scw-acc-icon {' +
+      '  color: #16a34a !important; opacity: 1 !important;' +
+      '}' +
+      '.scw-step-completed.scw-step-disabled .scw-ktl-accordion__header {' +
+      '  cursor: default;' +
+      '}' +
 
       /* ── Disabled message (inline in header/step) ── */
       '.scw-step-disabled-msg {' +
@@ -340,18 +353,25 @@
     var iconEl = hdr.querySelector('.scw-acc-icon');
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
+    var isDisabled = baseDisabled || lockedByCompletion;
 
-    // Icon
-    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, isDisabled, step);
+    // Icon — show the completed checkmark even when locked-by-completion,
+    // so the header reads as "done" rather than showing the lock.
+    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, baseDisabled, step);
 
-    // Completed class
-    wrap.classList.toggle('scw-step-completed', isCompleted && !isDisabled);
-
-    // Disabled class + message
+    // Both completed AND disabled can apply simultaneously when the step
+    // is locked by completion; CSS (scw-step-completed.scw-step-disabled)
+    // styles that combined state (full opacity, green icon, no clicks).
+    wrap.classList.toggle('scw-step-completed', isCompleted);
     wrap.classList.toggle('scw-step-disabled', isDisabled);
+
+    // Disabled message — only show it for the baseDisabled case
+    // (prerequisite not met). Locked-by-completion shows no text since
+    // the completed icon already communicates state.
     var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
-    if (isDisabled && !msgEl && step.disabled.message) {
+    if (baseDisabled && !msgEl && step.disabled && step.disabled.message) {
       var msg = document.createElement('span');
       msg.className = 'scw-step-disabled-msg';
       msg.setAttribute('data-step', step.viewKey);
@@ -360,7 +380,7 @@
       var chevron = hdr.querySelector('.scw-acc-chevron');
       if (chevron) hdr.insertBefore(msg, chevron);
       else hdr.appendChild(msg);
-    } else if (!isDisabled && msgEl) {
+    } else if (!baseDisabled && msgEl) {
       msgEl.remove();
     }
   }
