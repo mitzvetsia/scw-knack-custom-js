@@ -43,13 +43,28 @@
       disabled: { field: 'field_2706', notValue: 'Yes', message: 'Site survey not yet requested' }
     },
     {
+      // Shows only when the SOW has pending change requests (field_2728 > 0)
+      // AND a survey has not yet been requested (field_2706 = No).
+      // TODO: wire the click behaviour once Make scenario is in place.
+      type: 'action',
+      id: 'request-alternative-proposal',
+      label: 'Request Alternative Proposal',
+      insertAfterStepId: 'review-site-survey',
+      showWhen: {
+        all: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2706', value: 'No' }
+        ]
+      }
+    },
+    {
       // Navigates to the currently-published-proposal details page.
       // Scrapes the href from view_3814's first "View Published Proposal"
       // row link — same source the totals panel's proposal block uses.
       type: 'action',
       id: 'review-final-proposal',
       label: 'Review Final Proposal',
-      insertAfterStepId: 'review-site-survey',
+      insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
       disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
@@ -209,10 +224,24 @@
   // ── Check a condition ────────────────────────────────────
   function conditionMet(cond) {
     if (!cond) return false;
+
+    // Compound: all of the child conditions must match (AND)
+    if (Array.isArray(cond.all)) return cond.all.every(conditionMet);
+    // Compound: any of the child conditions must match (OR)
+    if (Array.isArray(cond.any)) return cond.any.some(conditionMet);
+
     var val = readField(cond.field);
-    if (cond.hasValue) return val.length > 0;
-    if (cond.value !== undefined) return val.toLowerCase() === cond.value.toLowerCase();
-    if (cond.notValue !== undefined) return val.toLowerCase() !== cond.notValue.toLowerCase();
+    if (cond.hasValue)  return val.length > 0;
+    if (cond.value    !== undefined) return val.toLowerCase() === String(cond.value).toLowerCase();
+    if (cond.notValue !== undefined) return val.toLowerCase() !== String(cond.notValue).toLowerCase();
+
+    // Numeric comparisons — parse the field value as a float. Returns
+    // false on non-numeric values so a missing/blank field never passes.
+    if (cond.gt  !== undefined) { var n1 = parseFloat(val); return !isNaN(n1) && n1 >  cond.gt;  }
+    if (cond.gte !== undefined) { var n2 = parseFloat(val); return !isNaN(n2) && n2 >= cond.gte; }
+    if (cond.lt  !== undefined) { var n3 = parseFloat(val); return !isNaN(n3) && n3 <  cond.lt;  }
+    if (cond.lte !== undefined) { var n4 = parseFloat(val); return !isNaN(n4) && n4 <= cond.lte; }
+
     return false;
   }
 
@@ -280,9 +309,36 @@
   // ── Resolve the insertion anchor for an action step ──────
   // `insertAfter` points to an accordion by inner viewKey;
   // `insertAfterStepId` points to another action step by id.
+  // Walk backwards through STEPS from the given step, returning the
+  // first rendered DOM element (action-step or accordion wrapper).
+  // Used as a fallback when insertAfterStepId points at a step that
+  // isn't currently in the DOM (showWhen gated it out).
+  function nearestRenderedPredecessor(step) {
+    var idx = -1;
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i] === step) { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    for (var j = idx - 1; j >= 0; j--) {
+      var prev = STEPS[j];
+      if (prev.type === 'action') {
+        var prevEl = document.getElementById('scw-step-' + prev.id);
+        if (prevEl) return prevEl;
+      } else if (prev.type === 'accordion') {
+        var acc = findAccordion(prev.viewKey);
+        if (acc) return acc;
+      }
+    }
+    return null;
+  }
+
   function findInsertAnchor(step) {
     if (step.insertAfterStepId) {
-      return document.getElementById('scw-step-' + step.insertAfterStepId);
+      var el = document.getElementById('scw-step-' + step.insertAfterStepId);
+      if (el) return el;
+      // Anchor step isn't in the DOM — gated out by showWhen. Fall back
+      // to the nearest rendered predecessor in STEPS order.
+      return nearestRenderedPredecessor(step);
     }
     return findAccordion(step.insertAfter);
   }
