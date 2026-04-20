@@ -154,14 +154,38 @@
         })
       });
     }).then(function (resp) {
-      return resp.json().catch(function () { return null; });
-    }).then(function (data) {
-      if (data && data.success && data.newSowUrl) {
-        window.location.href = data.newSowUrl;
+      // Read as text first so we can log whatever came back even if
+      // the scenario hasn't been configured to return JSON yet.
+      return resp.text().then(function (body) {
+        var data = null;
+        try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
+        console.log('[SCW clone-sow] status=' + resp.status + ' body=' + body);
+        return { status: resp.status, body: body, data: data, ok: resp.ok };
+      });
+    }).then(function (resp) {
+      if (resp.data && resp.data.success && resp.data.newSowUrl) {
+        window.location.href = resp.data.newSowUrl;
         return;
       }
       setBtnLoading(btn, false);
-      alert((data && (data.error || data.message)) || 'Failed to create SOW option.');
+
+      // Surface the real reason so it's easier to fix the Make scenario.
+      var msg;
+      if (!resp.ok) {
+        msg = 'Webhook returned HTTP ' + resp.status + '. Response:\n\n' + (resp.body || '(empty)');
+      } else if (!resp.data) {
+        msg = 'Webhook returned non-JSON response. Add a "Webhook Response" module in Make ' +
+              'that returns JSON like {"success": true, "newSowUrl": "..."}.\n\n' +
+              'Actual body:\n' + (resp.body || '(empty)');
+      } else if (resp.data.error || resp.data.message) {
+        msg = resp.data.error || resp.data.message;
+      } else if (resp.data.success && !resp.data.newSowUrl) {
+        msg = 'Webhook returned success but no newSowUrl. Add newSowUrl to the ' +
+              'Webhook Response body so the client knows where to redirect.';
+      } else {
+        msg = 'Failed to create SOW option. Body:\n\n' + (resp.body || '(empty)');
+      }
+      alert(msg);
     }).catch(function (err) {
       setBtnLoading(btn, false);
       alert('Webhook error: ' + (err && err.message ? err.message : err));
