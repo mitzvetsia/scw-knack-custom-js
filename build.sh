@@ -84,6 +84,7 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/preview-proposal-btn.js \
   src/features/create-sow-option-btn.js \
+  src/features/import-unique-items-btn.js \
   src/features/hide-self-row.js \
   src/features/hide-view-conditional.js \
   src/features/survey-worksheet-pdf-export.js \
