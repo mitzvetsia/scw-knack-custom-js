@@ -72,11 +72,12 @@
     {
       // Shows only when the SOW has pending change requests (field_2728 > 0)
       // AND a survey has not yet been requested (field_2706 = No).
-      // TODO: wire the click behaviour once Make scenario is in place.
+      // Click opens a notes-prompt modal → MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK.
       type: 'action',
       id: 'request-alternative-proposal',
       label: 'Request Alternative Proposal',
       insertAfterStepId: 'review-site-survey',
+      webhookAction: 'requestAlternativeProposal',
       showWhen: {
         all: [
           { field: 'field_2728', gt: 0 },
@@ -250,6 +251,59 @@
       '  animation: scw-step-spin 0.8s linear infinite;' +
       '}' +
       '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
+
+      /* ── Notes-prompt modal ───────────────────────────── */
+      '.scw-step-modal-overlay {' +
+      '  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);' +
+      '  z-index: 10000; display: flex; align-items: center; justify-content: center;' +
+      '  padding: 20px;' +
+      '}' +
+      '.scw-step-modal {' +
+      '  background: #fff; border-radius: 10px; box-shadow: 0 20px 40px rgba(0,0,0,0.25);' +
+      '  width: 100%; max-width: 520px; padding: 22px;' +
+      '  display: flex; flex-direction: column; gap: 12px;' +
+      '  font-family: inherit;' +
+      '}' +
+      '.scw-step-modal-hdr {' +
+      '  font-size: 17px; font-weight: 700; color: #0f172a;' +
+      '}' +
+      '.scw-step-modal-intro {' +
+      '  margin: 0; font-size: 13px; color: #475569; line-height: 1.4;' +
+      '}' +
+      '.scw-step-modal-textarea {' +
+      '  width: 100%; box-sizing: border-box; font-family: inherit;' +
+      '  font-size: 13px; line-height: 1.4; padding: 8px 10px;' +
+      '  border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical;' +
+      '  min-height: 100px;' +
+      '}' +
+      '.scw-step-modal-textarea:focus {' +
+      '  outline: none; border-color: #2563eb;' +
+      '  box-shadow: 0 0 0 2px rgba(37,99,235,0.2);' +
+      '}' +
+      '.scw-step-modal-error {' +
+      '  font-size: 12px; color: #b91c1c; background: #fee2e2;' +
+      '  border: 1px solid #fecaca; border-radius: 6px; padding: 8px 10px;' +
+      '  white-space: pre-wrap; word-break: break-word;' +
+      '}' +
+      '.scw-step-modal-actions {' +
+      '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;' +
+      '}' +
+      '.scw-step-modal-cancel, .scw-step-modal-submit {' +
+      '  font-family: inherit; font-size: 13px; font-weight: 600;' +
+      '  padding: 8px 14px; border-radius: 6px; cursor: pointer;' +
+      '  border: 1px solid transparent; transition: all 0.15s ease;' +
+      '}' +
+      '.scw-step-modal-cancel {' +
+      '  background: #fff; color: #475569; border-color: #cbd5e1;' +
+      '}' +
+      '.scw-step-modal-cancel:hover:not(:disabled) { background: #f1f5f9; }' +
+      '.scw-step-modal-submit {' +
+      '  background: #2563eb; color: #fff;' +
+      '}' +
+      '.scw-step-modal-submit:hover:not(:disabled) { background: #1d4ed8; }' +
+      '.scw-step-modal-cancel:disabled, .scw-step-modal-submit:disabled {' +
+      '  opacity: 0.6; cursor: wait;' +
+      '}' +
 
       /* ── Hide original menu view ── */
       '.scw-step-menu-hidden { display: none !important; }';
@@ -464,8 +518,155 @@
         setStepLoading(el, false);
         alert('Webhook error: ' + (err && err.message ? err.message : err));
       });
+    },
+
+    // Opens a modal prompt for notes, then POSTs notes + SOW id to
+    // the MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK. On success, reloads so
+    // the stepper can re-evaluate the step states against new server
+    // data (e.g. the alternative-proposal record that Make creates).
+    requestAlternativeProposal: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('Request-alternative-proposal webhook URL is not configured.');
+        return;
+      }
+      var sourceRecordId = getSourceSowId();
+      if (!sourceRecordId) {
+        alert('Could not determine current SOW record ID.');
+        return;
+      }
+      openNotesPromptModal({
+        title:         'Request Alternative Proposal',
+        intro:         'Give our bid team some context — what should be different about this alternative?',
+        placeholder:   'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
+        submitLabel:   'Submit Request',
+        onSubmit: function (notes, setSubmitting, onError) {
+          setSubmitting(true);
+          setStepLoading(el, true);
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceRecordId: sourceRecordId,
+              notes:          notes,
+              triggeredBy:    getTriggeredBy()
+            })
+          }).then(function (resp) {
+            return resp.text().then(function (body) {
+              var data = null;
+              try { data = body ? JSON.parse(body) : null; } catch (e) {}
+              return { ok: resp.ok, status: resp.status, body: body, data: data };
+            });
+          }).then(function (resp) {
+            if (resp.data && resp.data.success) {
+              // Make did its thing — reload so the stepper re-evaluates
+              // against the latest field values (e.g. an alt-proposal
+              // record may now be present / flags may have flipped).
+              window.location.reload();
+              return;
+            }
+            setSubmitting(false);
+            setStepLoading(el, false);
+            onError(
+              (resp.data && (resp.data.error || resp.data.message)) ||
+              (resp.ok
+                ? 'Webhook returned a non-JSON or unexpected response.'
+                : 'Webhook returned HTTP ' + resp.status + '.')
+            );
+          }).catch(function (err) {
+            setSubmitting(false);
+            setStepLoading(el, false);
+            onError('Network error: ' + (err && err.message ? err.message : err));
+          });
+        }
+      });
     }
   };
+
+  // ── Notes-prompt modal ───────────────────────────────────
+  // Minimal modal reused by any webhook action that wants to collect
+  // a short note before firing. Builds its own DOM each call and
+  // tears itself down on close. Keeps primary action on the right
+  // per the UI convention in CLAUDE.md.
+  function openNotesPromptModal(opts) {
+    opts = opts || {};
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-step-modal-overlay';
+
+    var card = document.createElement('div');
+    card.className = 'scw-step-modal';
+    overlay.appendChild(card);
+
+    var hdr = document.createElement('div');
+    hdr.className = 'scw-step-modal-hdr';
+    hdr.textContent = opts.title || 'Notes';
+    card.appendChild(hdr);
+
+    if (opts.intro) {
+      var intro = document.createElement('p');
+      intro.className = 'scw-step-modal-intro';
+      intro.textContent = opts.intro;
+      card.appendChild(intro);
+    }
+
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-step-modal-textarea';
+    ta.rows = 6;
+    if (opts.placeholder) ta.placeholder = opts.placeholder;
+    card.appendChild(ta);
+
+    var errEl = document.createElement('div');
+    errEl.className = 'scw-step-modal-error';
+    errEl.style.display = 'none';
+    card.appendChild(errEl);
+
+    var actions = document.createElement('div');
+    actions.className = 'scw-step-modal-actions';
+    card.appendChild(actions);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'scw-step-modal-cancel';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(cancelBtn);
+
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'scw-step-modal-submit';
+    submitBtn.textContent = opts.submitLabel || 'Submit';
+    actions.appendChild(submitBtn);
+
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape' && !submitBtn.disabled) close();
+    }
+    function setSubmitting(isSubmitting) {
+      submitBtn.disabled = isSubmitting;
+      cancelBtn.disabled = isSubmitting;
+      ta.disabled       = isSubmitting;
+      submitBtn.textContent = isSubmitting ? 'Submitting…' : (opts.submitLabel || 'Submit');
+    }
+    function onError(msg) {
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+
+    cancelBtn.addEventListener('click', close);
+    submitBtn.addEventListener('click', function () {
+      errEl.style.display = 'none';
+      var notes = (ta.value || '').trim();
+      if (typeof opts.onSubmit === 'function') {
+        opts.onSubmit(notes, setSubmitting, onError);
+      }
+    });
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 30);
+  }
 
   // ── Pick the right icon for a state ──────────────────────
   var ACTIVE_ICONS = { eye: EYE_SVG, copy: COPY_SVG };

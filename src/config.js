@@ -18,5 +18,10 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { receivingRecordId: <current SOW id>, sourceRecordId: <row SOW id>, triggeredBy: {...} }
   //   Response body: { success: true,  imported: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_IMPORT_UNIQUE_ITEMS"
+  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_IMPORT_UNIQUE_ITEMS",
+  // Fires on the "Request Alternative Proposal" stepper action. Expects:
+  //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
+  //   Response body: { success: true, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_REQUEST_ALT_PROPOSAL"
 };
