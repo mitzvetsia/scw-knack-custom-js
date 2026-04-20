@@ -29,7 +29,15 @@
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
-      completed: { field: 'field_2706', value: 'Yes' },
+      // Complete if the survey has been requested (field_2706 = Yes)
+      // OR if there are any change requests queued (field_2728 > 0),
+      // since the workflow has advanced past the initial survey step.
+      completed: {
+        any: [
+          { field: 'field_2706', value: 'Yes' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
       lockWhenCompleted: true,
       disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
     },
