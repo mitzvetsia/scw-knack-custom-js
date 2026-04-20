@@ -4610,7 +4610,15 @@ window.SCW = window.SCW || {};
       menuView: 'view_3862',
       insertAfter: 'view_3853',
       activeIcon: 'eye',
-      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Site survey not yet requested' }
+      // Locked only when the survey hasn't been requested AND the
+      // workflow hasn't advanced via the change-request path (field_2728 > 0).
+      disabled: {
+        all: [
+          { field: 'field_2706', notValue: 'Yes' },
+          { not: { field: 'field_2728', gt: 0 } }
+        ],
+        message: 'Site survey not yet requested'
+      }
     },
     {
       // Shows only when the SOW has pending change requests (field_2728 > 0)
@@ -4799,6 +4807,8 @@ window.SCW = window.SCW || {};
     if (Array.isArray(cond.all)) return cond.all.every(conditionMet);
     // Compound: any of the child conditions must match (OR)
     if (Array.isArray(cond.any)) return cond.any.some(conditionMet);
+    // Negation: passes when the wrapped condition does NOT match
+    if (cond.not) return !conditionMet(cond.not);
 
     var val = readField(cond.field);
     if (cond.hasValue)  return val.length > 0;
@@ -4994,8 +5004,11 @@ window.SCW = window.SCW || {};
   var ACTIVE_ICONS = { eye: EYE_SVG, copy: COPY_SVG };
 
   function getIcon(isCompleted, isDisabled, step) {
-    if (isDisabled) return LOCK_SVG;
+    // Completed wins over disabled so a step whose prerequisite is
+    // technically unmet but which is factually done (e.g. workflow
+    // advanced past it via an alternate path) still reads as done.
     if (isCompleted) return CHECK_CIRCLE_SVG;
+    if (isDisabled) return LOCK_SVG;
     if (step && step.activeIcon && ACTIVE_ICONS[step.activeIcon]) return ACTIVE_ICONS[step.activeIcon];
     return CIRCLE_SVG;
   }
