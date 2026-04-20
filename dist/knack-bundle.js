@@ -36514,9 +36514,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function isModuleActive() {
     var $pv = $('#' + CFG.proposalView);
     if (!$pv.length) return false;
+    // Grid cell shape (data-field-key on td)
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    // Details-view shape: wrapper div has the field class, value lives in .kn-detail-body
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
+    // Last-resort fallback: wrapper itself (may include the label text)
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
-    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').trim();
+    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
     return /^yes$/i.test(val);
   }
 
