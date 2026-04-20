@@ -4601,6 +4601,19 @@ window.SCW = window.SCW || {};
         ]
       },
       lockWhenCompleted: true,
+      // When the step is completed via the change-request path (i.e.
+      // the survey was actually requested on a sibling SOW), surface a
+      // short info note explaining the state instead of the default
+      // "SOW not yet validated" lock message.
+      //
+      // TODO: once the Knack schema exposes the originating SOW's
+      // identifier on the current record, swap the text for
+      // "Survey Requested on {field_XXXX}" — the renderer expands
+      // {field_XXXX} tokens from view_3827 automatically.
+      completedMessage: {
+        when: { field: 'field_2728', gt: 0 },
+        text: 'Survey Requested on other SOW'
+      },
       disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
     },
     {
@@ -4677,6 +4690,12 @@ window.SCW = window.SCW || {};
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
     '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+  var INFO_SM_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><circle cx="12" cy="12" r="10"/>' +
+    '<line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 
   var COPY_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
@@ -5014,6 +5033,60 @@ window.SCW = window.SCW || {};
   }
 
   // ── Apply states to an accordion step ────────────────────
+  // Substitute {field_XXXX} tokens in a message string with live values
+  // from the source detail view. Empty / missing values collapse the
+  // token to the empty string.
+  function expandMessage(text) {
+    if (typeof text !== 'string') return '';
+    return text.replace(/\{(field_\d+)\}/g, function (_, key) {
+      return readField(key) || '';
+    }).trim();
+  }
+
+  // Compute which header message (if any) to show for a step.
+  // Priority:
+  //   1. step.completedMessage when step is completed (optionally gated
+  //      by .when) — uses info icon.
+  //   2. step.disabled.message when baseDisabled AND step is NOT
+  //      completed — uses lock icon.
+  //   3. none otherwise.
+  function resolveHeaderMessage(step, isCompleted, baseDisabled) {
+    if (isCompleted && step.completedMessage) {
+      var cm = step.completedMessage;
+      var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
+      var cmWhen = typeof cm === 'object' ? cm.when : null;
+      if (cmText && (!cmWhen || conditionMet(cmWhen))) {
+        var finalText = expandMessage(cmText);
+        if (finalText) return { text: finalText, icon: INFO_SM_SVG };
+      }
+    }
+    if (baseDisabled && !isCompleted && step.disabled && step.disabled.message) {
+      return { text: step.disabled.message, icon: LOCK_SM_SVG };
+    }
+    return null;
+  }
+
+  function renderHeaderMessage(hdr, step, stepKey, isCompleted, baseDisabled) {
+    var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + stepKey + '"]');
+    var msg = resolveHeaderMessage(step, isCompleted, baseDisabled);
+    if (!msg) {
+      if (msgEl) msgEl.remove();
+      return;
+    }
+    if (!msgEl) {
+      msgEl = document.createElement('span');
+      msgEl.className = 'scw-step-disabled-msg';
+      msgEl.setAttribute('data-step', stepKey);
+      var chevron = hdr.querySelector('.scw-acc-chevron');
+      if (chevron) hdr.insertBefore(msgEl, chevron);
+      else hdr.appendChild(msgEl);
+    }
+    // Rewrite both parts in case the condition/text flipped while the
+    // page was open.
+    msgEl.innerHTML = msg.icon;
+    msgEl.appendChild(document.createTextNode(msg.text));
+  }
+
   function applyAccordionState(step) {
     var wrap = findAccordion(step.viewKey);
     if (!wrap) return;
@@ -5035,22 +5108,7 @@ window.SCW = window.SCW || {};
     wrap.classList.toggle('scw-step-completed', isCompleted);
     wrap.classList.toggle('scw-step-disabled', isDisabled);
 
-    // Disabled message — only show it for the baseDisabled case
-    // (prerequisite not met). Locked-by-completion shows no text since
-    // the completed icon already communicates state.
-    var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
-    if (baseDisabled && !msgEl && step.disabled && step.disabled.message) {
-      var msg = document.createElement('span');
-      msg.className = 'scw-step-disabled-msg';
-      msg.setAttribute('data-step', step.viewKey);
-      msg.innerHTML = LOCK_SM_SVG;
-      msg.appendChild(document.createTextNode(step.disabled.message));
-      var chevron = hdr.querySelector('.scw-acc-chevron');
-      if (chevron) hdr.insertBefore(msg, chevron);
-      else hdr.appendChild(msg);
-    } else if (!baseDisabled && msgEl) {
-      msgEl.remove();
-    }
+    renderHeaderMessage(hdr, step, step.viewKey, isCompleted, baseDisabled);
   }
 
   // ── Apply states to an action step ───────────────────────
@@ -5092,20 +5150,8 @@ window.SCW = window.SCW || {};
     el.classList.toggle('is-completed', isCompleted);
     el.classList.toggle('is-disabled', isDisabled);
 
-    // Disabled message — only show the baseDisabled message (e.g.
-    // "Complete the Project Playbook first"); completion-lock shows no
-    // extra text since the completed icon already communicates state.
-    var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
-    if (baseDisabled && !msgEl && step.disabled && step.disabled.message) {
-      var msg = document.createElement('span');
-      msg.className = 'scw-step-disabled-msg';
-      msg.setAttribute('data-step', step.id);
-      msg.innerHTML = LOCK_SM_SVG;
-      msg.appendChild(document.createTextNode(step.disabled.message));
-      el.appendChild(msg);
-    } else if (!baseDisabled && msgEl) {
-      msgEl.remove();
-    }
+    // Disabled / informational message — shared helper with accordions.
+    renderHeaderMessage(el, step, step.id, isCompleted, baseDisabled);
 
     // Hide original menu view
     if (step.menuView) {
