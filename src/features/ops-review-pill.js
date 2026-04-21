@@ -26,6 +26,8 @@
   var VIEW_ID      = 'view_3325';
   var READY_FIELD  = 'field_2723';
   var VALID_FIELD  = 'field_2725';
+  var NOTE_FIELD   = 'field_2736';   // paragraph-ish field holding the auto-revert note
+  var WRITE_VIEW   = 'view_3841';    // form on the sales-build / proposal scene that edits 2725 + 2735
   var STYLE_ID     = 'scw-ops-review-css';
   var EVENT_NS     = '.scwOpsReview';
   var CELL_CLASS   = 'scw-ops-review-cell';
@@ -35,9 +37,11 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
-      /* Hide the original field_2725 column (we host in field_2723 cell). */
+      /* Hide the original field_2725 + note columns (we host in field_2723 cell). */
       '#' + VIEW_ID + ' th.' + VALID_FIELD + ',' +
-      '#' + VIEW_ID + ' td.' + VALID_FIELD + ' {' +
+      '#' + VIEW_ID + ' td.' + VALID_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + NOTE_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + NOTE_FIELD + ' {' +
       '  display: none !important;' +
       '}' +
 
@@ -115,6 +119,15 @@
       /* Saving flash */
       '.scw-ops-review.is-saving {' +
       '  opacity: 0.55; pointer-events: none; cursor: wait;' +
+      '}' +
+
+      /* Note indicator dot — visible whenever field_2736 has a value. */
+      '.scw-ops-note-dot {' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  width: 14px; height: 14px; border-radius: 50%;' +
+      '  font-size: 10px; font-weight: 700; cursor: help;' +
+      '  background: #fde68a; color: #92400e;' +
+      '  border: 1px solid #f59e0b;' +
       '}';
 
     var s = document.createElement('style');
@@ -149,6 +162,15 @@
     var span = td.querySelector('[class^="col-"]');
     if (span) span.textContent = '\n' + (value === 'yes' ? 'Yes' : 'No') + '\n  ';
     else td.textContent = value === 'yes' ? 'Yes' : 'No';
+  }
+
+  // Read the auto-revert note (field_2735) out of the row, if the column is
+  // present. Empty string when the field isn't on view_3325 or is blank.
+  function readNote(tr) {
+    var td = tr.querySelector('td.' + NOTE_FIELD +
+                              ', td[data-field-key="' + NOTE_FIELD + '"]');
+    if (!td) return '';
+    return (td.textContent || '').replace(/[ \s]+/g, ' ').trim();
   }
 
   // ── Save one or both fields, then refresh the cell UI ────
@@ -244,6 +266,18 @@
     }
     wrap.appendChild(pill);
 
+    // If a note exists (auto-revert trail), surface it as a tooltip on the
+    // pill and add a small ⓘ dot next to it so the trail is discoverable.
+    var note = readNote(tr);
+    if (note) {
+      pill.setAttribute('title', note);
+      var dot = document.createElement('span');
+      dot.className = 'scw-ops-note-dot';
+      dot.setAttribute('title', note);
+      dot.textContent = 'i';
+      wrap.appendChild(dot);
+    }
+
     // Action button — only on non-terminal states
     if (state === 'unreviewed') {
       var btn = document.createElement('button');
@@ -334,4 +368,54 @@
   injectStyles();
   bind();
   if (document.getElementById(VIEW_ID)) transform();
+
+  // ── Public API ──────────────────────────────────────────
+  // Called from sales-change-request/submit.js after a successful submit.
+  // Flips field_2725 → No on the SOW (so the "Bid Validated" pill drops back
+  // to "Ready for Survey") and drops a timestamped note into field_2736 so
+  // the UI can surface the "why" as a tooltip.
+  //
+  // Must run on a scene where WRITE_VIEW is rendered — which is the Sales
+  // Build / proposal page (same place the Sales CR feature lives). If the
+  // view isn't on the current scene the PUT will 404; we log and move on
+  // rather than blocking the CR submit success toast.
+  function autoRevertValidation(sowRecordId, opts) {
+    if (!sowRecordId || !/^[a-f0-9]{24}$/i.test(sowRecordId)) return;
+    opts = opts || {};
+    var count = opts.itemCount || 0;
+    var noteText = 'Auto-reverted ' + formatDate(new Date()) +
+                   ' — change request submitted' +
+                   (count ? ' (' + count + ' item' + (count === 1 ? '' : 's') + ')' : '');
+
+    var body = {};
+    body[VALID_FIELD] = 'No';
+    body[NOTE_FIELD]  = noteText;
+
+    var writeView = opts.viewId || WRITE_VIEW;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowRecordId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      success: function (resp) {
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowRecordId, resp, VALID_FIELD, 'No');
+          SCW.syncKnackModel(writeView, sowRecordId, resp, NOTE_FIELD,  noteText);
+        }
+      },
+      error: function (xhr) {
+        console.warn('[scw-ops-review] autoRevertValidation failed for ' +
+                     sowRecordId, xhr && xhr.responseText);
+      }
+    });
+  }
+
+  function formatDate(d) {
+    // M/D/YY — short and matches the UX copy.
+    return (d.getMonth() + 1) + '/' + d.getDate() + '/' +
+           String(d.getFullYear()).slice(-2);
+  }
+
+  window.SCW = window.SCW || {};
+  SCW.opsReview = SCW.opsReview || {};
+  SCW.opsReview.autoRevertValidation = autoRevertValidation;
 })();

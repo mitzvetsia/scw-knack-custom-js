@@ -37,10 +37,12 @@
       success: function (resp) {
         if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
         clearPending();
+        autoRevertValidation(count);
         ns.showToast('Change request submitted', 'success');
       },
       error: function (xhr) {
         if (xhr && xhr.status === 0) {
+          autoRevertValidation(count);
           if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
           clearPending();
           ns.showToast('Change request submitted', 'success');
@@ -67,6 +69,18 @@
     for (var i = 0; i < keys.length; i++) delete pending[keys[i]];
     ns.persist();  // clears sessionStorage + writes empty to field_2707
     if (ns.refresh) ns.refresh();
+  }
+
+  // Flip field_2725 (FLAG_validated bid) back to No and drop a note into
+  // field_2736 so the Ops Review pill on view_3325 surfaces why the
+  // validation was revoked. No-op if the ops-review feature hasn't loaded
+  // or the SOW id can't be resolved.
+  function autoRevertValidation(count) {
+    if (!window.SCW || !SCW.opsReview ||
+        typeof SCW.opsReview.autoRevertValidation !== 'function') return;
+    var sowId = S.sowRecordId && S.sowRecordId();
+    if (!sowId) return;
+    SCW.opsReview.autoRevertValidation(sowId, { itemCount: count });
   }
 
   // ── Public API ──
