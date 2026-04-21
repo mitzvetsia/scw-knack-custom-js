@@ -40787,11 +40787,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
-      /* Container — sits flush inside the rich-text host (view_3345) so
-         the buttons stretch full width to match the accordion headers
-         on the sales build page. No background or border on the wrapper;
-         the .scw-step-action class (defined by workflow-stepper.js) does
-         all the visual heavy lifting. */
+      /* Container — sits flush inside the rich-text host (view_3345). */
       '.' + BLOCK_CLS + ' {' +
       '  display: flex; flex-direction: column; gap: 0;' +
       '  margin: 8px 0;' +
@@ -40801,9 +40797,48 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  text-transform: uppercase; color: #6b7280;' +
       '  margin-bottom: 6px;' +
       '}' +
-      /* Stretch the shared .scw-step-action element — already styled like
-         the accordion header by workflow-stepper.js — to fill the host. */
-      '#' + HOST_VIEW + ' .scw-step-action { width: 100%; box-sizing: border-box; }' +
+
+      /* ── Action step row (mirrors workflow-stepper.js) ──
+         These rules also live in workflow-stepper.js, but that file only
+         injects them on the sales build page (view_3827 scope). The Ops
+         proposal page doesn't have view_3827, so we re-declare the same
+         rules here so the buttons render identically. */
+      '.scw-step-action {' +
+      '  position: relative; display: flex; align-items: center;' +
+      '  width: 100%; min-height: 44px;' +
+      '  padding: 14px 16px 14px 22px;' +
+      '  background: #fff; cursor: pointer; user-select: none;' +
+      '  box-sizing: border-box; transition: background 180ms ease;' +
+      '  border: 1px solid #e5e7eb; border-radius: 14px;' +
+      '  margin-bottom: 8px; text-decoration: none !important; color: inherit;' +
+      '}' +
+      '.scw-step-action::before {' +
+      '  content: ""; position: absolute; left: 0; top: 0; bottom: 0;' +
+      '  width: 6px; background: var(--scw-step-accent, #295f91);' +
+      '  border-radius: 14px 0 0 14px;' +
+      '}' +
+      '.scw-step-action:hover { background: rgba(41,95,145,0.06); }' +
+      '.scw-step-action .scw-step-icon {' +
+      '  flex: 0 0 auto; display: inline-flex; align-items: center;' +
+      '  justify-content: center; width: 28px; margin-right: 6px;' +
+      '  color: var(--scw-step-accent, #295f91); opacity: .75;' +
+      '}' +
+      '.scw-step-action .scw-step-title {' +
+      '  flex: 1 1 auto; font-size: 14px; font-weight: 600;' +
+      '  color: #1e293b; white-space: nowrap; overflow: hidden;' +
+      '  text-overflow: ellipsis; text-decoration: none !important;' +
+      '}' +
+      '.scw-step-action.is-disabled {' +
+      '  opacity: 0.45; pointer-events: none; cursor: default;' +
+      '}' +
+      '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      '.scw-step-action.is-loading {' +
+      '  pointer-events: none; opacity: 0.75; cursor: wait;' +
+      '}' +
+      '.scw-step-action.is-loading .scw-step-icon svg {' +
+      '  animation: scw-step-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
 
       /* Modal — mirrors workflow-stepper's notes-prompt modal. */
       '.scw-ops-modal-overlay {' +
