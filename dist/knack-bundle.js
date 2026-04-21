@@ -40484,31 +40484,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '}' +
       '.scw-ops-pill.is-terminal .scw-ops-info { background: rgba(0,0,0,0.12); }' +
 
-      /* CSS tooltip — replaces the unreliable native `title` attribute.
-         Scoped to ops-review-pill classes only so we never collide with
-         anything else on the page. */
-      '.scw-ops-pill[data-scw-tip],' +
-      '.scw-ops-info[data-scw-tip] { position: relative; }' +
-      '.scw-ops-pill[data-scw-tip]:hover::after,' +
-      '.scw-ops-info[data-scw-tip]:hover::after {' +
-      '  content: attr(data-scw-tip);' +
-      '  position: absolute; bottom: calc(100% + 8px); left: 50%;' +
-      '  transform: translateX(-50%);' +
+      /* Floating tooltip — JS appends a single .scw-ops-floating-tip div
+         to <body> and positions it via fixed coords on hover. CSS pseudo
+         tooltips were getting clipped by Knack's .kn-table-wrapper /
+         accordion overflow chain; living on body bypasses all of that. */
+      '.scw-ops-floating-tip {' +
+      '  position: fixed; display: none;' +
       '  background: #1f2937; color: #fff;' +
       '  padding: 6px 10px; border-radius: 5px;' +
       '  font: 500 11.5px/1.35 system-ui, sans-serif;' +
-      '  letter-spacing: 0;' +
       '  max-width: 280px; white-space: normal; text-align: left;' +
-      '  box-shadow: 0 6px 16px rgba(0,0,0,0.25);' +
-      '  z-index: 10000; pointer-events: none;' +
-      '}' +
-      '.scw-ops-pill[data-scw-tip]:hover::before,' +
-      '.scw-ops-info[data-scw-tip]:hover::before {' +
-      '  content: ""; position: absolute;' +
-      '  bottom: calc(100% + 3px); left: 50%;' +
-      '  transform: translateX(-50%);' +
-      '  border: 5px solid transparent; border-top-color: #1f2937;' +
-      '  z-index: 10000; pointer-events: none;' +
+      '  box-shadow: 0 6px 16px rgba(0,0,0,0.3);' +
+      '  z-index: 100000; pointer-events: none;' +
       '}';
 
     var s = document.createElement('style');
@@ -40664,6 +40651,53 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       e.stopPropagation();
     }
   }, true);
+
+  // ── Floating tooltip ────────────────────────────────────
+  // Single tooltip element on <body>, positioned with fixed coords on
+  // hover. Living on body avoids clipping by Knack's table wrappers /
+  // accordion overflow.
+  var _tipEl = null;
+  function ensureTip() {
+    if (_tipEl) return _tipEl;
+    _tipEl = document.createElement('div');
+    _tipEl.className = 'scw-ops-floating-tip';
+    document.body.appendChild(_tipEl);
+    return _tipEl;
+  }
+  function showTip(target) {
+    var text = target.getAttribute('data-scw-tip');
+    if (!text) return;
+    var tip = ensureTip();
+    tip.textContent = text;
+    tip.style.display = 'block';
+    // Measure after content is set
+    var rect = target.getBoundingClientRect();
+    var tw = tip.offsetWidth;
+    var th = tip.offsetHeight;
+    var top  = rect.top - th - 8;
+    var left = rect.left + (rect.width / 2) - (tw / 2);
+    // Clamp horizontally
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    // Flip below if no room above
+    if (top < 8) top = rect.bottom + 8;
+    tip.style.top  = top  + 'px';
+    tip.style.left = left + 'px';
+  }
+  function hideTip() {
+    if (_tipEl) _tipEl.style.display = 'none';
+  }
+  // Use mouseover/mouseout (which bubble) with .closest() for delegation.
+  document.addEventListener('mouseover', function (e) {
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    if (t) showTip(t);
+  });
+  document.addEventListener('mouseout', function (e) {
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    if (t) hideTip();
+  });
+  // Hide on scroll so the tooltip doesn't drift away from its anchor.
+  window.addEventListener('scroll', hideTip, true);
 
   // ── Bindings ────────────────────────────────────────────
   function bind() {
