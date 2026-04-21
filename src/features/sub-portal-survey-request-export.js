@@ -1,6 +1,6 @@
 /*** SUBCONTRACTOR PORTAL — SURVEY REQUEST EXPORT (view_3825) ***/
 /*
- * Adds a "Send Survey PDF to Make" button below the field_2356 detail row
+ * Adds a "Regenerate Survey Field PDF" button below the field_2356 detail row
  * on the subcontractor-portal survey request details page (scene_1140).
  *
  * Reuses SCW.surveyWorksheetPdf.scrape / buildHtml to produce the same
@@ -174,7 +174,7 @@
     if (iconSpan)  iconSpan.innerHTML = '<span class="scw-sp-sx-spin"></span>';
 
     function resetBtn(finalLabel) {
-      if (labelSpan) labelSpan.textContent = finalLabel || 'Send Survey PDF to Make';
+      if (labelSpan) labelSpan.textContent = finalLabel || 'Regenerate Survey Field PDF';
       if (iconSpan)  iconSpan.textContent = '↪';
       btn.disabled = false;
     }
@@ -234,7 +234,7 @@
 
     var label = document.createElement('span');
     label.className = 'scw-sp-sx-label';
-    label.textContent = 'Send Survey PDF to Make';
+    label.textContent = 'Regenerate Survey Field PDF';
 
     btn.appendChild(icon);
     btn.appendChild(label);
