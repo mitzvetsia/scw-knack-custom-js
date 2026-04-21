@@ -101,54 +101,66 @@
       '  display: none !important;' +
       '}' +
 
-      /* Pill (link or span) */
+      /* Pill — matches the bid-comparison "Convert All →" button styling
+         (.scw-bid-review__btn / --adopt) so all action affordances on
+         the page share one visual language. */
       '.scw-ops-pill {' +
-      '  display: inline-flex; align-items: center; gap: 6px;' +
-      '  padding: 4px 11px; border-radius: 12px;' +
-      '  font-weight: 600; font-size: 11.5px; letter-spacing: 0.01em;' +
-      '  border: 1px solid transparent; white-space: nowrap;' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  gap: 6px;' +
+      '  padding: 4px 8px; border-radius: 4px;' +
+      '  font: 600 11px/1.2 system-ui, sans-serif;' +
+      '  border: none; white-space: nowrap;' +
+      '  background: #0891b2; color: #fff;' +
       '  text-decoration: none !important;' +
-      '  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;' +
+      '  cursor: pointer;' +
+      '  transition: opacity .15s, filter .15s;' +
       '}' +
-      'a.scw-ops-pill { cursor: pointer; }' +
-      'a.scw-ops-pill:hover { box-shadow: 0 1px 4px rgba(0,0,0,0.15); }' +
+      'a.scw-ops-pill:hover { filter: brightness(0.92); }' +
       '.scw-ops-pill .scw-ops-arrow {' +
-      '  font-size: 12px; line-height: 1;' +
-      '  opacity: 0.85; margin-left: 2px;' +
+      '  font-size: 12px; line-height: 1; opacity: 0.9;' +
       '}' +
 
-      /* Primary (blue) — Mark Ready */
-      '.scw-ops-pill.is-primary {' +
-      '  background: #dbeafe; color: #1d4ed8; border-color: #93c5fd;' +
-      '}' +
-      'a.scw-ops-pill.is-primary:hover { background: #bfdbfe; }' +
-
-      /* Amber — Request Alt Bid */
-      '.scw-ops-pill.is-amber {' +
-      '  background: #fef3c7; color: #92400e; border-color: #fde68a;' +
-      '}' +
-      'a.scw-ops-pill.is-amber:hover { background: #fde68a; }' +
-
-      /* Success (green outline) — Publish */
-      '.scw-ops-pill.is-success {' +
-      '  background: #d1fae5; color: #065f46; border-color: #6ee7b7;' +
-      '}' +
-      'a.scw-ops-pill.is-success:hover { background: #a7f3d0; }' +
-
-      /* Terminal (green filled) — Bid Published */
+      /* Terminal (already published) — neutral grey, non-interactive. */
       '.scw-ops-pill.is-terminal {' +
-      '  background: #065f46; color: #ffffff; border-color: #064e3b;' +
-      '  cursor: default;' +
+      '  background: #e2e8f0; color: #475569; cursor: default;' +
       '}' +
+      '.scw-ops-pill.is-terminal:hover { filter: none; }' +
 
       /* Inline info glyph for the auto-revert note trail. */
       '.scw-ops-info {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
       '  width: 13px; height: 13px; border-radius: 50%;' +
-      '  background: rgba(0,0,0,0.1); color: inherit;' +
+      '  background: rgba(255,255,255,0.25); color: inherit;' +
       '  font-style: italic; font-weight: 700;' +
       '  font-size: 9px; line-height: 1; cursor: help;' +
       '  font-family: Georgia, "Times New Roman", serif;' +
+      '}' +
+      '.scw-ops-pill.is-terminal .scw-ops-info { background: rgba(0,0,0,0.12); }' +
+
+      /* CSS tooltip — replaces the unreliable native `title` attribute.
+         Uses [data-scw-tip] on any element to pop a small tooltip on
+         hover. Works on hrefless anchors, buttons, spans alike. */
+      '[data-scw-tip] { position: relative; }' +
+      '[data-scw-tip]:hover::after,' +
+      '[data-scw-tip]:focus::after {' +
+      '  content: attr(data-scw-tip);' +
+      '  position: absolute; bottom: calc(100% + 8px); left: 50%;' +
+      '  transform: translateX(-50%);' +
+      '  background: #1f2937; color: #fff;' +
+      '  padding: 6px 10px; border-radius: 5px;' +
+      '  font: 500 11.5px/1.35 system-ui, sans-serif;' +
+      '  letter-spacing: 0;' +
+      '  max-width: 280px; white-space: normal; text-align: left;' +
+      '  box-shadow: 0 6px 16px rgba(0,0,0,0.25);' +
+      '  z-index: 10000; pointer-events: none;' +
+      '}' +
+      '[data-scw-tip]:hover::before,' +
+      '[data-scw-tip]:focus::before {' +
+      '  content: ""; position: absolute;' +
+      '  bottom: calc(100% + 3px); left: 50%;' +
+      '  transform: translateX(-50%);' +
+      '  border: 5px solid transparent; border-top-color: #1f2937;' +
+      '  z-index: 10000; pointer-events: none;' +
       '}';
 
     var s = document.createElement('style');
@@ -187,13 +199,24 @@
     return null; // terminal
   }
 
-  // Pull the per-row proposal/detail URL — the first kn-link-page anchor
-  // in the row (the existing "Proposal" column). This is where the real
-  // Ops stepper lives (view_3345) so the pill becomes a deep-link to
-  // the exact SOW's proposal page.
+  // Pull the per-row proposal/detail URL. Prefers an existing kn-link-page
+  // anchor in the row (the "Proposal" column when it exists). When the
+  // view doesn't include that column, fall back to constructing the URL
+  // from the current page's hash plus the row's record id —
+  //   <current-hash>/proposal/<sowRecordId>
+  // matches the route pattern Knack uses for the proposal page.
   function getRowLink(tr) {
     var a = tr.querySelector('a.kn-link-page[href]');
-    return (a && a.getAttribute('href')) || '';
+    if (a && a.getAttribute('href')) return a.getAttribute('href');
+    var m = (tr.id || '').match(/[a-f0-9]{24}/i);
+    if (!m) return '';
+
+    var hash  = window.location.hash || '';
+    var qIdx  = hash.indexOf('?');
+    var path  = qIdx >= 0 ? hash.substring(0, qIdx) : hash;
+    var query = qIdx >= 0 ? hash.substring(qIdx)    : '';
+    if (path.charAt(path.length - 1) === '/') path = path.slice(0, -1);
+    return path + '/proposal/' + m[0] + query;
   }
 
   // ── Render one cell ─────────────────────────────────────
@@ -220,10 +243,10 @@
       pill.appendChild(labelSpan);
 
       if (note) {
-        pill.setAttribute('title', note);
+        pill.setAttribute('data-scw-tip', note);
         var info = document.createElement('span');
         info.className = 'scw-ops-info';
-        info.setAttribute('title', note);
+        info.setAttribute('data-scw-tip', note);
         info.textContent = 'i';
         pill.appendChild(info);
       }
@@ -247,7 +270,7 @@
       pill.appendChild(t);
 
       if (note) {
-        pill.setAttribute('title', note);
+        pill.setAttribute('data-scw-tip', note);
       }
     }
 
