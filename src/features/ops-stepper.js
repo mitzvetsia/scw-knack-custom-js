@@ -78,7 +78,7 @@
       webhookKey: 'MAKE_OPS_REQUEST_ALT_BID_WEBHOOK',
       modal: {
         title:       'Request Alternative Bid',
-        intro:       'Note to the subcontractor — what should they know about this alternative bid?',
+        intro:       'Note for the subcontractor (and a heads-up will also post back to Sales that an alternative bid was requested).',
         placeholder: 'e.g. Budget-friendly alternative — fewer cameras in the lot, cheaper NVR',
         submitLabel: 'Send Request'
       },
@@ -99,9 +99,14 @@
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       modal: {
         title:       'Publish & Submit Completed Proposal',
-        intro:       'Note to the sales team — any context to include with the finalized proposal?',
-        placeholder: 'e.g. Bid validated, ready for client review',
-        submitLabel: 'Publish & Submit'
+        intro:       'Anything to include in the update to Sales? You can either just publish the quote quietly, or publish AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
+        placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
+        submitLabel: 'Publish & Notify Sales',
+        // Secondary action — fires the same webhook with mode=publish-only
+        // so Make can skip the Sales notification / CU task / Slack steps.
+        secondaryLabel: 'Just Publish (no notification)',
+        secondaryMode:  'publish-only',
+        primaryMode:    'publish-and-notify'
       },
       includeFullPayload: true
     }
@@ -210,7 +215,7 @@
       '.scw-ops-modal-actions {' +
       '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;' +
       '}' +
-      '.scw-ops-modal-cancel, .scw-ops-modal-submit {' +
+      '.scw-ops-modal-cancel, .scw-ops-modal-secondary, .scw-ops-modal-submit {' +
       '  padding: 7px 14px; border-radius: 5px; font-size: 13px;' +
       '  font-weight: 600; cursor: pointer; border: 1px solid transparent;' +
       '}' +
@@ -218,6 +223,11 @@
       '  background: #fff; color: #374151; border-color: #d1d5db;' +
       '}' +
       '.scw-ops-modal-cancel:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-secondary {' +
+      '  background: #fff; color: #1f2937; border-color: #cbd5e1;' +
+      '}' +
+      '.scw-ops-modal-secondary:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-secondary[disabled] { opacity: 0.6; cursor: wait; }' +
       '.scw-ops-modal-submit {' +
       '  background: #2563eb; color: #fff; border-color: #1d4ed8;' +
       '}' +
@@ -327,11 +337,12 @@
   }
 
   // ── Payload ──────────────────────────────────────────────
-  function buildPayload(step, notes) {
+  function buildPayload(step, notes, mode) {
     var payload = {
       sourceRecordId: getSourceRecordId(),
       stepId:         step.id,
       notes:          notes || '',
+      mode:           mode || null,
       triggeredBy:    getTriggeredBy()
     };
     if (step.includeFullPayload) {
@@ -385,12 +396,23 @@
     cancelBtn.className = 'scw-ops-modal-cancel';
     cancelBtn.textContent = 'Cancel';
 
+    // Optional secondary action (used by the Publish step to offer
+    // "Just Publish" alongside "Publish & Notify Sales").
+    var secondaryBtn = null;
+    if (opts.secondaryLabel) {
+      secondaryBtn = document.createElement('button');
+      secondaryBtn.type = 'button';
+      secondaryBtn.className = 'scw-ops-modal-secondary';
+      secondaryBtn.textContent = opts.secondaryLabel;
+    }
+
     var submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.className = 'scw-ops-modal-submit';
     submitBtn.textContent = opts.submitLabel || 'Submit';
 
     actions.appendChild(cancelBtn);
+    if (secondaryBtn) actions.appendChild(secondaryBtn);
     actions.appendChild(submitBtn);
     card.appendChild(actions);
 
@@ -403,6 +425,7 @@
       submitBtn.disabled = !!on;
       submitBtn.textContent = on ? 'Submitting…' : (opts.submitLabel || 'Submit');
       cancelBtn.disabled = !!on;
+      if (secondaryBtn) secondaryBtn.disabled = !!on;
     }
     function showError(msg) {
       err.textContent = msg || 'Something went wrong.';
@@ -417,8 +440,21 @@
     submitBtn.addEventListener('click', function () {
       err.style.display = 'none';
       var notes = (ta.value || '').trim();
-      onSubmit(notes, { setSubmitting: setSubmitting, showError: showError, close: close });
+      onSubmit(notes, {
+        setSubmitting: setSubmitting, showError: showError, close: close,
+        mode: opts.primaryMode || null
+      });
     });
+    if (secondaryBtn) {
+      secondaryBtn.addEventListener('click', function () {
+        err.style.display = 'none';
+        var notes = (ta.value || '').trim();
+        onSubmit(notes, {
+          setSubmitting: setSubmitting, showError: showError, close: close,
+          mode: opts.secondaryMode || null
+        });
+      });
+    }
   }
 
   // ── Webhook ──────────────────────────────────────────────
@@ -436,7 +472,7 @@
     openNotesPromptModal(step.modal, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
-      var payload = buildPayload(step, notes);
+      var payload = buildPayload(step, notes, ctx.mode);
 
       fetch(url, {
         method: 'POST',
