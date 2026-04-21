@@ -17,6 +17,9 @@
   var DETAIL_VIEW     = 'view_3825';
   var TARGET_FIELD    = 'field_2356';
   var WORKSHEET_VIEW  = 'view_3505';
+  var TITLE_VIEW      = 'view_3504';
+  var TITLE_FIELD     = 'field_666';
+  var SURVEY_ID_FIELD = 'field_2345';
   var WEBHOOK_URL     = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
   var FORM_VIEW_ID    = 'view_3809';
 
@@ -96,25 +99,33 @@
     return m ? m[1] : '';
   }
 
-  function getTitleFromDetail() {
-    var viewEl = document.getElementById(DETAIL_VIEW);
+  function readDetailField(viewId, fieldKey) {
+    var viewEl = document.getElementById(viewId);
     if (!viewEl) return '';
-    var header = viewEl.querySelector('.view-header h1, .view-header h2, .view-header h3');
-    if (header) {
-      var txt = (header.textContent || '').replace(/\s+/g, ' ').trim();
-      if (txt) return txt;
-    }
-    // Fallback: use the document title
+    var detail = viewEl.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+    if (!detail) return '';
+    return (detail.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function getTitle() {
+    var val = readDetailField(TITLE_VIEW, TITLE_FIELD);
+    if (val) return val;
+    // Fallback: document title
     return (document.title || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getSurveyRequestId() {
+    return readDetailField(TITLE_VIEW, SURVEY_ID_FIELD);
   }
 
   // ── Payload build ──
 
   function buildPayload() {
-    var recordId = getRecordIdFromDetail();
-    var title    = getTitleFromDetail();
-    var html     = '';
-    var rowCount = 0;
+    var recordId      = getRecordIdFromDetail();
+    var title         = getTitle();
+    var surveyRequest = getSurveyRequestId();
+    var html          = '';
+    var rowCount      = 0;
 
     var api = window.SCW && window.SCW.surveyWorksheetPdf;
     if (api && typeof api.scrape === 'function' && typeof api.buildHtml === 'function') {
@@ -122,8 +133,12 @@
         var scraped = api.scrape(WORKSHEET_VIEW);
         if (scraped) {
           rowCount = (scraped.rows && scraped.rows.length) || 0;
-          if (scraped.title) title = scraped.title;
+          // Keep title from view_3504/field_666 — do not override.
           if (rowCount > 0) {
+            // Inject our title + survey-request ID so the generated
+            // HTML header reflects the subcontractor-portal context.
+            scraped.title = title;
+            if (surveyRequest) scraped.surveyId = surveyRequest;
             html = api.buildHtml(scraped);
           }
         }
@@ -133,12 +148,13 @@
     }
 
     return {
-      viewId:     WORKSHEET_VIEW,
-      formViewId: FORM_VIEW_ID,
-      recordId:   recordId,
-      title:      title,
-      rowCount:   rowCount,
-      html:       html
+      viewId:        WORKSHEET_VIEW,
+      formViewId:    FORM_VIEW_ID,
+      recordId:      recordId,
+      title:         title,
+      surveyRequest: surveyRequest,
+      rowCount:      rowCount,
+      html:          html
     };
   }
 
