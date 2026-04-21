@@ -40644,7 +40644,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // Suppress Knack's inline-edit popup on the managed cell — the pill
   // is the only interactive surface, and it's a link, not an edit control.
+  // Stop mousedown AND click from bubbling to the td.cell-edit handler,
+  // but do NOT preventDefault on click so the anchor's native navigation
+  // still fires.
   document.addEventListener('mousedown', function (e) {
+    var td = e.target.closest('td[' + PROCESSED + ']');
+    if (!td) return;
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+      e.stopPropagation();
+    }
+  }, true);
+  document.addEventListener('click', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
     if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
