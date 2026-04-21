@@ -93,8 +93,19 @@
   ];
 
   // ── Icons ────────────────────────────────────────────────
+  // Same shapes as workflow-stepper.js so the Ops actions render visually
+  // identical to the sales build stepper rows (CIRCLE for available, LOCK
+  // for disabled, SPINNER while a webhook is in flight).
+  var CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+  var LOCK_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
   var SPINNER_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
     'stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 
@@ -102,50 +113,23 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
+      /* Container — sits flush inside the rich-text host (view_3345) so
+         the buttons stretch full width to match the accordion headers
+         on the sales build page. No background or border on the wrapper;
+         the .scw-step-action class (defined by workflow-stepper.js) does
+         all the visual heavy lifting. */
       '.' + BLOCK_CLS + ' {' +
-      '  display: flex; flex-direction: column; gap: 8px;' +
-      '  padding: 14px 16px; border-radius: 8px;' +
-      '  background: #f9fafb; border: 1px solid #e5e7eb;' +
+      '  display: flex; flex-direction: column; gap: 0;' +
       '  margin: 8px 0;' +
       '}' +
       '.' + BLOCK_CLS + '__title {' +
       '  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;' +
       '  text-transform: uppercase; color: #6b7280;' +
-      '  margin-bottom: 2px;' +
+      '  margin-bottom: 6px;' +
       '}' +
-      '.' + BLOCK_CLS + '__row {' +
-      '  display: flex; flex-direction: column; gap: 6px;' +
-      '}' +
-      '.' + BLOCK_CLS + '__empty {' +
-      '  font-size: 13px; color: #6b7280; font-style: italic;' +
-      '}' +
-      /* All steps share one color + a fixed width so the row reads as a
-         menu of options. Unavailable steps render in a disabled grey. */
-      '.scw-ops-step-btn {' +
-      '  display: inline-flex; align-items: center; justify-content: center;' +
-      '  gap: 8px; box-sizing: border-box;' +
-      '  width: 320px;' +
-      '  padding: 10px 14px; border-radius: 6px; cursor: pointer;' +
-      '  font-size: 13px; font-weight: 600; line-height: 1.25;' +
-      '  border: 1px solid #1d4ed8; background: #2563eb; color: #fff;' +
-      '  text-align: center;' +
-      '  transition: background 0.15s, border-color 0.15s, opacity 0.15s;' +
-      '}' +
-      '.scw-ops-step-btn:hover { background: #1d4ed8; }' +
-      '.scw-ops-step-btn.is-disabled,' +
-      '.scw-ops-step-btn:disabled {' +
-      '  background: #f3f4f6; color: #9ca3af;' +
-      '  border-color: #e5e7eb; cursor: not-allowed;' +
-      '}' +
-      '.scw-ops-step-btn.is-disabled:hover,' +
-      '.scw-ops-step-btn:disabled:hover {' +
-      '  background: #f3f4f6;' +
-      '}' +
-      '.scw-ops-step-btn.is-loading {' +
-      '  pointer-events: none; opacity: 0.75; cursor: wait;' +
-      '}' +
-      '.scw-ops-step-btn.is-loading svg { animation: scw-ops-spin 0.8s linear infinite; }' +
-      '@keyframes scw-ops-spin { to { transform: rotate(360deg); } }' +
+      /* Stretch the shared .scw-step-action element — already styled like
+         the accordion header by workflow-stepper.js — to fill the host. */
+      '#' + HOST_VIEW + ' .scw-step-action { width: 100%; box-sizing: border-box; }' +
 
       /* Modal — mirrors workflow-stepper's notes-prompt modal. */
       '.scw-ops-modal-overlay {' +
@@ -439,13 +423,13 @@
 
   function setBtnLoading(btn, on) {
     if (!btn) return;
+    var icon = btn.querySelector('.scw-step-icon');
     if (on) {
       btn.classList.add('is-loading');
-      btn.dataset.origHtml = btn.dataset.origHtml || btn.innerHTML;
-      btn.innerHTML = SPINNER_SVG + '<span>Working…</span>';
+      if (icon) icon.innerHTML = SPINNER_SVG;
     } else {
       btn.classList.remove('is-loading');
-      if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
+      if (icon) icon.innerHTML = CIRCLE_SVG;
     }
   }
 
@@ -463,32 +447,36 @@
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
-    var row = document.createElement('div');
-    row.className = BLOCK_CLS + '__row';
-
     // Render every step in fixed order; gray out (disable) the ones whose
-    // showWhen evaluates false. Keeps the row visually stable so Ops always
-    // sees the full menu of actions and which ones are currently available.
+    // showWhen evaluates false. Same DOM shape as workflow-stepper.js's
+    // action steps so we get the accordion-header look for free.
     STEPS.forEach(function (step) {
       var available = conditionMet(step.showWhen);
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'scw-ops-step-btn' + (available ? '' : ' is-disabled');
-      btn.textContent = step.label;
-      if (!available) {
-        btn.disabled = true;
-        btn.setAttribute('title', 'Not available for this SOW right now.');
-      } else {
-        btn.addEventListener('click', function (e) {
+      var el = document.createElement('a');
+      el.href = 'javascript:void(0)';
+      el.className = 'scw-step-action' + (available ? '' : ' is-disabled');
+      if (!available) el.setAttribute('title', 'Not available for this SOW right now.');
+
+      var icon = document.createElement('span');
+      icon.className = 'scw-step-icon';
+      icon.innerHTML = available ? CIRCLE_SVG : LOCK_SVG;
+      el.appendChild(icon);
+
+      var titleEl = document.createElement('span');
+      titleEl.className = 'scw-step-title';
+      titleEl.textContent = step.label;
+      el.appendChild(titleEl);
+
+      if (available) {
+        el.addEventListener('click', function (e) {
           e.preventDefault();
-          if (btn.classList.contains('is-loading')) return;
-          fireStep(step, btn);
+          if (el.classList.contains('is-loading')) return;
+          fireStep(step, el);
         });
       }
-      row.appendChild(btn);
+      block.appendChild(el);
     });
 
-    block.appendChild(row);
     host.appendChild(block);
   }
 
