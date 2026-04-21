@@ -90,6 +90,7 @@ cat \
   src/features/hide-self-row.js \
   src/features/hide-view-conditional.js \
   src/features/survey-worksheet-pdf-export.js \
+  src/features/sub-portal-survey-request-export.js \
   src/features/connected-device-bid-check.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
