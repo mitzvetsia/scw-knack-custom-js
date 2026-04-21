@@ -138,11 +138,12 @@
       '.scw-ops-pill.is-terminal .scw-ops-info { background: rgba(0,0,0,0.12); }' +
 
       /* CSS tooltip — replaces the unreliable native `title` attribute.
-         Uses [data-scw-tip] on any element to pop a small tooltip on
-         hover. Works on hrefless anchors, buttons, spans alike. */
-      '[data-scw-tip] { position: relative; }' +
-      '[data-scw-tip]:hover::after,' +
-      '[data-scw-tip]:focus::after {' +
+         Scoped to ops-review-pill classes only so we never collide with
+         anything else on the page. */
+      '.scw-ops-pill[data-scw-tip],' +
+      '.scw-ops-info[data-scw-tip] { position: relative; }' +
+      '.scw-ops-pill[data-scw-tip]:hover::after,' +
+      '.scw-ops-info[data-scw-tip]:hover::after {' +
       '  content: attr(data-scw-tip);' +
       '  position: absolute; bottom: calc(100% + 8px); left: 50%;' +
       '  transform: translateX(-50%);' +
@@ -154,8 +155,8 @@
       '  box-shadow: 0 6px 16px rgba(0,0,0,0.25);' +
       '  z-index: 10000; pointer-events: none;' +
       '}' +
-      '[data-scw-tip]:hover::before,' +
-      '[data-scw-tip]:focus::before {' +
+      '.scw-ops-pill[data-scw-tip]:hover::before,' +
+      '.scw-ops-info[data-scw-tip]:hover::before {' +
       '  content: ""; position: absolute;' +
       '  bottom: calc(100% + 3px); left: 50%;' +
       '  transform: translateX(-50%);' +
