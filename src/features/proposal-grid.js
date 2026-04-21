@@ -2311,10 +2311,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   function isInstallationMasked() {
     // Ops bypass — view_3345 (the Ops stepper host) is role-gated by Knack
-    // to Ops users, so its presence in the DOM is the cleanest signal that
-    // the current viewer should always see real labor numbers regardless of
-    // whether the bid has been validated yet.
-    if (document.getElementById('view_3345')) return false;
+    // to Ops users. When Knack's display rule excludes a viewer from a
+    // view, depending on the rule configuration the view either renders
+    // hidden (display:none) or is removed from the DOM entirely. Treat
+    // both as "not Ops" by checking presence AND visibility.
+    var ops = document.getElementById('view_3345');
+    if (ops && ops.offsetParent !== null) return false;
 
     var view = document.getElementById('view_3861');
     if (view) {
@@ -2328,7 +2330,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
       }
     }
-    return false;
+    // Default to MASKED when we can't read the validation state.
+    // Knack's role rules can omit view_3861 from the DOM entirely for
+    // Sales viewers, in which case we have no signal to read field_2725
+    // from. The safe behavior is to mask labor (treat as not-yet-
+    // validated) rather than leak numbers. The Ops bypass above ensures
+    // Ops still sees real numbers.
+    return true;
   }
 
   function zeroLaborCells(ctx) {
