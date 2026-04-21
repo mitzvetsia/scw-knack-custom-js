@@ -23,7 +23,15 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2"
+  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
+  // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
+  // button click with a notes modal. Payload shape:
+  //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
+  //                    licenseIds, triggeredBy }
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/PLACEHOLDER_OPS_MARK_READY",
+  MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_OPS_PUBLISH_PROPOSAL"
 };
 window.SCW = window.SCW || {};
 
@@ -40294,108 +40302,148 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 })();
 /*** FEATURE: Ops Review pill on view_3325 (SOW list) ***/
 /**
- * Replaces the two inline-edit Yes/No columns on view_3325 —
- *   field_2723 (FLAG_ready for survey)
- *   field_2725 (FLAG_validated bid)
- * — with a single "Ops Review" column containing a status pill
- * plus a next-step action button. This makes the 2-step review
- * flow (Mark Ready → Validate Bid) explicit and gives the Ops
- * team one obvious click per SOW instead of two Yes/No toggles.
+ * Replaces the raw flag columns on view_3325 with a single
+ * "Ops Review" column containing a status pill that surfaces the
+ * NEXT Ops action for this SOW (matching the Ops stepper on the
+ * proposal page).
  *
- * States
- *   unreviewed: both fields = No
- *     → grey "Not reviewed" pill, primary btn "Mark Ready for Survey"
- *   ready:      field_2723 = Yes, field_2725 = No
- *     → amber "Ready for Survey" pill (+ revoke X), primary btn "Validate Bid"
- *   validated:  field_2725 = Yes
- *     → green "Bid Validated" pill (+ revoke X)
+ * Pill is status + navigation only — clicking takes the reviewer
+ * to the proposal page (scene that hosts view_3345 / the real
+ * Ops stepper). The actual writes happen there, not in the grid.
  *
- * Writes go via SCW.knackAjax PUT (same pattern as boolean-chips.js)
- * and SCW.syncKnackModel keeps Knack's Backbone model in sync so
- * re-renders don't revert the value.
+ * Priority (first match wins)
+ *   1. field_2728 > 0 AND field_2706 = No → "Request Alternative Bid
+ *      from Subcontractor" (amber) — there are pending CRs to address.
+ *   2. field_2706 = No                    → "Mark Ready for Survey"
+ *      (blue) — SOW needs Ops sign-off before sales can request survey.
+ *   3. field_2725 = No                    → "Publish & Submit Completed
+ *      Proposal" (green) — survey + bids are back, proposal ready to go.
+ *   4. field_2725 = Yes (terminal)        → "Bid Published" (green check,
+ *      no link).
+ *
+ * Reads these fields from the row DOM, so they must be added as
+ * columns on view_3325 (hidden by this feature's CSS):
+ *   field_2706  FLAG_survey requested
+ *   field_2728  count of pending change requests
+ *   field_2725  FLAG_validated bid
+ *   field_2736  auto-revert note (surfaced as pill tooltip)
+ *
+ * Also exposes SCW.opsReview.autoRevertValidation(sowId, opts) —
+ * called from sales-change-request/submit.js to flip field_2725=No
+ * and drop a timestamped note into field_2736 when a CR is submitted.
  */
 (function () {
   'use strict';
 
-  var VIEW_ID      = 'view_3325';
-  var READY_FIELD  = 'field_2723';
-  var VALID_FIELD  = 'field_2725';
-  var NOTE_FIELD   = 'field_2736';   // paragraph-ish field holding the auto-revert note
-  var WRITE_VIEW   = 'view_3841';    // form on the sales-build / proposal scene that edits 2725 + 2735
+  // ── Config ──────────────────────────────────────────────
+  var VIEW_ID        = 'view_3325';
+  var HOST_FIELD     = 'field_2723';   // existing column used as the Ops Review host cell
+  var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested
+  var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
+  var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
+  var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
+
+  var WRITE_VIEW   = 'view_3841';      // form that edits 2725 + 2736 (for auto-revert)
   var STYLE_ID     = 'scw-ops-review-css';
   var EVENT_NS     = '.scwOpsReview';
   var CELL_CLASS   = 'scw-ops-review-cell';
   var PROCESSED    = 'data-scw-ops-review';
 
+  // ── Step definitions (priority order) ───────────────────
+  // First matching step wins. Mirror these with the Ops stepper
+  // (ops-stepper.js) so grid and page agree on "next action".
+  var STEPS = [
+    {
+      id:       'request-alt-bid',
+      label:    'Request Alternative Bid',
+      tone:     'amber',
+      showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
+    },
+    {
+      id:       'mark-ready',
+      label:    'Mark Ready for Survey',
+      tone:     'primary',
+      showWhen: function (f) { return f.survey !== 'yes'; }
+    },
+    {
+      id:       'publish-proposal',
+      label:    'Publish & Submit Proposal',
+      tone:     'success',
+      showWhen: function (f) { return f.validated !== 'yes'; }
+    }
+  ];
+
   // ── CSS ─────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
-      /* Hide the original field_2725 + note columns (we host in field_2723 cell). */
+      /* Hide source columns this feature consumes. */
       '#' + VIEW_ID + ' th.' + VALID_FIELD + ',' +
       '#' + VIEW_ID + ' td.' + VALID_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + NOTE_FIELD + ',' +
-      '#' + VIEW_ID + ' td.' + NOTE_FIELD + ' {' +
+      '#' + VIEW_ID + ' td.' + NOTE_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + SURVEY_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + SURVEY_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + CR_COUNT_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + CR_COUNT_FIELD + ' {' +
       '  display: none !important;' +
       '}' +
 
-      /* Host cell — narrow-ish because content stacks vertically. */
+      /* Host cell */
       '#' + VIEW_ID + ' td.' + CELL_CLASS + ',' +
       '#' + VIEW_ID + ' th.' + CELL_CLASS + ' {' +
       '  white-space: nowrap;' +
-      '  min-width: 175px;' +
+      '  min-width: 190px;' +
       '  vertical-align: middle;' +
       '}' +
 
-      /* Suppress Knack inline-edit on this cell. */
+      /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
       'td[' + PROCESSED + '] .kn-td-edit {' +
       '  display: none !important;' +
       '}' +
 
-      /* Layout wrapper: pill on top, action underneath. */
-      '.scw-ops-review {' +
-      '  display: inline-flex; flex-direction: column; align-items: flex-start;' +
-      '  gap: 4px; font-size: 12px; line-height: 1.3;' +
-      '}' +
-
-      /* Pill base */
+      /* Pill (link or span) */
       '.scw-ops-pill {' +
       '  display: inline-flex; align-items: center; gap: 6px;' +
-      '  padding: 2px 9px; border-radius: 11px;' +
-      '  font-weight: 600; font-size: 11px; letter-spacing: 0.01em;' +
+      '  padding: 4px 11px; border-radius: 12px;' +
+      '  font-weight: 600; font-size: 11.5px; letter-spacing: 0.01em;' +
       '  border: 1px solid transparent; white-space: nowrap;' +
+      '  text-decoration: none !important;' +
+      '  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;' +
+      '}' +
+      'a.scw-ops-pill { cursor: pointer; }' +
+      'a.scw-ops-pill:hover { box-shadow: 0 1px 4px rgba(0,0,0,0.15); }' +
+      '.scw-ops-pill .scw-ops-arrow {' +
+      '  font-size: 12px; line-height: 1;' +
+      '  opacity: 0.85; margin-left: 2px;' +
       '}' +
 
-      /* Pill: unreviewed — grey */
-      '.scw-ops-pill.is-unreviewed {' +
-      '  background: #f3f4f6; color: #6b7280;' +
-      '  border-color: #d1d5db;' +
+      /* Primary (blue) — Mark Ready */
+      '.scw-ops-pill.is-primary {' +
+      '  background: #dbeafe; color: #1d4ed8; border-color: #93c5fd;' +
       '}' +
-      /* Pill: ready — amber */
-      '.scw-ops-pill.is-ready {' +
-      '  background: #fef3c7; color: #92400e;' +
-      '  border-color: #fde68a;' +
+      'a.scw-ops-pill.is-primary:hover { background: #bfdbfe; }' +
+
+      /* Amber — Request Alt Bid */
+      '.scw-ops-pill.is-amber {' +
+      '  background: #fef3c7; color: #92400e; border-color: #fde68a;' +
       '}' +
-      /* Pill: validated — green */
-      '.scw-ops-pill.is-validated {' +
-      '  background: #d1fae5; color: #065f46;' +
-      '  border-color: #6ee7b7;' +
+      'a.scw-ops-pill.is-amber:hover { background: #fde68a; }' +
+
+      /* Success (green outline) — Publish */
+      '.scw-ops-pill.is-success {' +
+      '  background: #d1fae5; color: #065f46; border-color: #6ee7b7;' +
+      '}' +
+      'a.scw-ops-pill.is-success:hover { background: #a7f3d0; }' +
+
+      /* Terminal (green filled) — Bid Published */
+      '.scw-ops-pill.is-terminal {' +
+      '  background: #065f46; color: #ffffff; border-color: #064e3b;' +
+      '  cursor: default;' +
       '}' +
 
-      /* Revoke ✕ inside the pill */
-      '.scw-ops-revoke {' +
-      '  display: inline-flex; align-items: center; justify-content: center;' +
-      '  width: 13px; height: 13px; border-radius: 50%;' +
-      '  margin-left: 1px; cursor: pointer;' +
-      '  background: rgba(0,0,0,0.1); color: inherit;' +
-      '  font-size: 9px; font-weight: 700; line-height: 1;' +
-      '  transition: background 0.15s;' +
-      '}' +
-      '.scw-ops-revoke:hover { background: rgba(0,0,0,0.22); }' +
-
-      /* Inline info glyph (replaces the separate amber dot). Appears inside
-         the pill after the label whenever field_2736 has a value. */
+      /* Inline info glyph for the auto-revert note trail. */
       '.scw-ops-info {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
       '  width: 13px; height: 13px; border-radius: 50%;' +
@@ -40403,27 +40451,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  font-style: italic; font-weight: 700;' +
       '  font-size: 9px; line-height: 1; cursor: help;' +
       '  font-family: Georgia, "Times New Roman", serif;' +
-      '}' +
-
-      /* Primary action button */
-      '.scw-ops-action {' +
-      '  display: inline-flex; align-items: center; gap: 4px;' +
-      '  padding: 2px 10px; border-radius: 4px;' +
-      '  font-size: 11px; font-weight: 600;' +
-      '  background: #2563eb; color: #fff !important;' +
-      '  border: 1px solid #1d4ed8; cursor: pointer;' +
-      '  line-height: 1.5; white-space: nowrap;' +
-      '  transition: background 0.15s;' +
-      '}' +
-      '.scw-ops-action:hover { background: #1d4ed8; }' +
-      '.scw-ops-action.is-validate {' +
-      '  background: #059669; border-color: #047857;' +
-      '}' +
-      '.scw-ops-action.is-validate:hover { background: #047857; }' +
-
-      /* Saving flash */
-      '.scw-ops-review.is-saving {' +
-      '  opacity: 0.55; pointer-events: none; cursor: wait;' +
       '}';
 
     var s = document.createElement('style');
@@ -40436,170 +40463,98 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function readBool(tr, fieldKey) {
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
     if (!td) return 'no';
-    var txt = (td.textContent || '').replace(/[ ​]/g, ' ').trim().toLowerCase();
-    return (txt === 'yes' || txt === 'true') ? 'yes' : 'no';
+    var t = (td.textContent || '').replace(/[ \s]/g, ' ').trim().toLowerCase();
+    return (t === 'yes' || t === 'true') ? 'yes' : 'no';
   }
-
-  function getRecordId(tr) {
-    var m = (tr.id || '').match(/[0-9a-f]{24}/i);
-    return m ? m[0] : null;
-  }
-
-  function stateFor(ready, validated) {
-    if (validated === 'yes') return 'validated';
-    if (ready === 'yes')     return 'ready';
-    return 'unreviewed';
-  }
-
-  function updateSourceCell(tr, fieldKey, value) {
+  function readText(tr, fieldKey) {
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
-    if (!td) return;
-    // Replace visible text but preserve the .col-N wrapper Knack uses.
-    var span = td.querySelector('[class^="col-"]');
-    if (span) span.textContent = '\n' + (value === 'yes' ? 'Yes' : 'No') + '\n  ';
-    else td.textContent = value === 'yes' ? 'Yes' : 'No';
+    return td ? (td.textContent || '').replace(/[ \s]+/g, ' ').trim() : '';
+  }
+  function toNum(v) {
+    if (v == null) return 0;
+    var n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function readNote(tr) { return readText(tr, NOTE_FIELD); }
+
+  function resolveStep(tr) {
+    var fields = {
+      survey:    readBool(tr, SURVEY_FIELD),
+      crCount:   readText(tr, CR_COUNT_FIELD),
+      validated: readBool(tr, VALID_FIELD)
+    };
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i].showWhen(fields)) return STEPS[i];
+    }
+    return null; // terminal
   }
 
-  // Read the auto-revert note (field_2735) out of the row, if the column is
-  // present. Empty string when the field isn't on view_3325 or is blank.
-  function readNote(tr) {
-    var td = tr.querySelector('td.' + NOTE_FIELD +
-                              ', td[data-field-key="' + NOTE_FIELD + '"]');
-    if (!td) return '';
-    return (td.textContent || '').replace(/[ \s]+/g, ' ').trim();
+  // Pull the per-row proposal/detail URL — the first kn-link-page anchor
+  // in the row (the existing "Proposal" column). This is where the real
+  // Ops stepper lives (view_3345) so the pill becomes a deep-link to
+  // the exact SOW's proposal page.
+  function getRowLink(tr) {
+    var a = tr.querySelector('a.kn-link-page[href]');
+    return (a && a.getAttribute('href')) || '';
   }
 
-  // ── Save one or both fields, then refresh the cell UI ────
-  // Accepts an updates object like { field_2723: 'yes', field_2725: 'no' }.
-  // Issues one PUT per field (Knack's record endpoint accepts multiple keys
-  // in one body, but keeping this linear makes sync + error handling simpler).
-  function saveUpdates(tr, hostTd, updates, onDone) {
-    var keys = Object.keys(updates);
-    if (!keys.length) { if (onDone) onDone(); return; }
-    var recordId = getRecordId(tr);
-    if (!recordId) { if (onDone) onDone(); return; }
-
-    var pending = keys.length;
-    keys.forEach(function (fk) {
-      var val = updates[fk];
-      var body = {};
-      body[fk] = val === 'yes' ? 'Yes' : 'No';
-
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(VIEW_ID, recordId),
-        type: 'PUT',
-        data: JSON.stringify(body),
-        success: function (resp) {
-          if (typeof SCW.syncKnackModel === 'function') {
-            SCW.syncKnackModel(VIEW_ID, recordId, resp, fk, body[fk]);
-          }
-          updateSourceCell(tr, fk, val);
-          if (--pending === 0 && onDone) onDone();
-        },
-        error: function (xhr) {
-          console.warn('[scw-ops-review] Save failed for ' + recordId + ' / ' + fk,
-                       xhr && xhr.responseText);
-          if (--pending === 0 && onDone) onDone();
-        }
-      });
-    });
-  }
-
-  // ── Render one cell based on current state ───────────────
+  // ── Render one cell ─────────────────────────────────────
   function renderCell(hostTd, tr) {
-    var ready     = readBool(tr, READY_FIELD);
-    var validated = readBool(tr, VALID_FIELD);
-    var state     = stateFor(ready, validated);
-
-    // Clear and build
     hostTd.innerHTML = '';
     hostTd.classList.add(CELL_CLASS);
     hostTd.setAttribute(PROCESSED, '1');
 
-    var wrap = document.createElement('span');
-    wrap.className = 'scw-ops-review is-' + state;
-
-    var pill = document.createElement('span');
-    pill.className = 'scw-ops-pill is-' + state;
-
-    var label = state === 'unreviewed' ? 'Not reviewed' :
-                state === 'ready'      ? 'Ready for Survey' :
-                                         'Bid Validated';
-    var labelSpan = document.createElement('span');
-    labelSpan.textContent = label;
-    pill.appendChild(labelSpan);
-
-    // If a note exists (auto-revert trail), surface it as a tooltip on the
-    // pill and add a small inline italic i glyph inside the pill so the
-    // trail is discoverable without crowding the cell horizontally.
+    var step = resolveStep(tr);
     var note = readNote(tr);
-    if (note) {
-      pill.setAttribute('title', note);
-      var info = document.createElement('span');
-      info.className = 'scw-ops-info';
-      info.setAttribute('title', note);
-      info.textContent = 'i';
-      pill.appendChild(info);
+
+    var pill;
+    if (step) {
+      // Active next-step → link to the proposal page.
+      pill = document.createElement('a');
+      pill.className = 'scw-ops-pill is-' + step.tone;
+      var href = getRowLink(tr);
+      if (href) pill.setAttribute('href', href);
+
+      var labelSpan = document.createElement('span');
+      labelSpan.textContent = step.label;
+      pill.appendChild(labelSpan);
+
+      if (note) {
+        pill.setAttribute('title', note);
+        var info = document.createElement('span');
+        info.className = 'scw-ops-info';
+        info.setAttribute('title', note);
+        info.textContent = 'i';
+        pill.appendChild(info);
+      }
+
+      var arrow = document.createElement('span');
+      arrow.className = 'scw-ops-arrow';
+      arrow.textContent = '›';
+      pill.appendChild(arrow);
+    } else {
+      // Terminal state — no link, non-interactive.
+      pill = document.createElement('span');
+      pill.className = 'scw-ops-pill is-terminal';
+
+      var check = document.createElement('span');
+      check.textContent = '✓';
+      check.style.cssText = 'font-size:11px; line-height:1;';
+      pill.appendChild(check);
+
+      var t = document.createElement('span');
+      t.textContent = 'Bid Published';
+      pill.appendChild(t);
+
+      if (note) {
+        pill.setAttribute('title', note);
+      }
     }
 
-    // Revoke ✕ on non-unreviewed pills
-    if (state !== 'unreviewed') {
-      var x = document.createElement('span');
-      x.className = 'scw-ops-revoke';
-      x.setAttribute('title',
-        state === 'validated' ? 'Revoke validation' : 'Revoke ready-for-survey');
-      x.textContent = '✕';
-      x.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        wrap.classList.add('is-saving');
-        var updates;
-        if (state === 'validated') {
-          // Drop back to Ready.
-          updates = {}; updates[VALID_FIELD] = 'no';
-        } else {
-          // Drop back to Unreviewed (also clears validated, which shouldn't be Yes
-          // here but clears defensively).
-          updates = {}; updates[READY_FIELD] = 'no'; updates[VALID_FIELD] = 'no';
-        }
-        saveUpdates(tr, hostTd, updates, function () { renderCell(hostTd, tr); });
-      });
-      pill.appendChild(x);
-    }
-
-    wrap.appendChild(pill);
-
-    // Action button — only on non-terminal states
-    if (state === 'unreviewed') {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'scw-ops-action';
-      btn.textContent = 'Mark Ready for Survey';
-      btn.addEventListener('click', function (e) {
-        e.preventDefault(); e.stopPropagation();
-        wrap.classList.add('is-saving');
-        var u = {}; u[READY_FIELD] = 'yes';
-        saveUpdates(tr, hostTd, u, function () { renderCell(hostTd, tr); });
-      });
-      wrap.appendChild(btn);
-    } else if (state === 'ready') {
-      var vbtn = document.createElement('button');
-      vbtn.type = 'button';
-      vbtn.className = 'scw-ops-action is-validate';
-      vbtn.textContent = 'Validate Bid';
-      vbtn.addEventListener('click', function (e) {
-        e.preventDefault(); e.stopPropagation();
-        wrap.classList.add('is-saving');
-        var u = {}; u[VALID_FIELD] = 'yes';
-        saveUpdates(tr, hostTd, u, function () { renderCell(hostTd, tr); });
-      });
-      wrap.appendChild(vbtn);
-    }
-
-    hostTd.appendChild(wrap);
+    hostTd.appendChild(pill);
   }
 
-  // ── Scan view, transform each data row ───────────────────
+  // ── Scan view, transform each data row ──────────────────
   function transform() {
     var view = document.getElementById(VIEW_ID);
     if (!view) return;
@@ -40607,36 +40562,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!table) return;
 
     // Relabel the host column header once.
-    var hostTh = table.querySelector('thead th.' + READY_FIELD);
+    var hostTh = table.querySelector('thead th.' + HOST_FIELD);
     if (hostTh && !hostTh.getAttribute('data-scw-ops-review-th')) {
       hostTh.classList.add(CELL_CLASS);
       hostTh.setAttribute('data-scw-ops-review-th', '1');
       var lbl = hostTh.querySelector('.table-fixed-label span');
       if (lbl) lbl.textContent = 'Ops Review';
       var link = hostTh.querySelector('a.kn-sort');
-      if (link) link.removeAttribute('href');      // disable sort on this col
+      if (link) link.removeAttribute('href');
     }
 
     var rows = table.querySelectorAll('tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
       if (tr.classList.contains('kn-tr-nodata')) continue;
-      var recordId = getRecordId(tr);
-      if (!recordId) continue;
-      var hostTd = tr.querySelector('td.' + READY_FIELD +
-                                   ', td[data-field-key="' + READY_FIELD + '"]');
+      if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+      var hostTd = tr.querySelector('td.' + HOST_FIELD +
+                                   ', td[data-field-key="' + HOST_FIELD + '"]');
       if (!hostTd) continue;
       renderCell(hostTd, tr);
     }
   }
 
-  // Block Knack's inline-edit popup on the managed cell (pill/button clicks
-  // already stopPropagation, but suppress mousedown too so the cell
-  // doesn't flash into edit mode on the first click).
+  // Suppress Knack's inline-edit popup on the managed cell — the pill
+  // is the only interactive surface, and it's a link, not an edit control.
   document.addEventListener('mousedown', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-action, .scw-ops-revoke, .scw-ops-pill')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
       e.stopPropagation();
     }
   }, true);
@@ -40662,14 +40615,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── Public API ──────────────────────────────────────────
   // Called from sales-change-request/submit.js after a successful submit.
-  // Flips field_2725 → No on the SOW (so the "Bid Validated" pill drops back
-  // to "Ready for Survey") and drops a timestamped note into field_2736 so
-  // the UI can surface the "why" as a tooltip.
-  //
-  // Must run on a scene where WRITE_VIEW is rendered — which is the Sales
-  // Build / proposal page (same place the Sales CR feature lives). If the
-  // view isn't on the current scene the PUT will 404; we log and move on
-  // rather than blocking the CR submit success toast.
+  // Flips field_2725 → No on the SOW (so the "Bid Published" pill drops
+  // back to "Publish & Submit Proposal") and drops a timestamped note
+  // into field_2736 so the UI can surface the "why" as a tooltip.
   function autoRevertValidation(sowRecordId, opts) {
     if (!sowRecordId || !/^[a-f0-9]{24}$/i.test(sowRecordId)) return;
     opts = opts || {};
@@ -40701,7 +40649,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   function formatDate(d) {
-    // M/D/YY — short and matches the UX copy.
     return (d.getMonth() + 1) + '/' + d.getDate() + '/' +
            String(d.getFullYear()).slice(-2);
   }
@@ -40709,6 +40656,522 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   window.SCW = window.SCW || {};
   SCW.opsReview = SCW.opsReview || {};
   SCW.opsReview.autoRevertValidation = autoRevertValidation;
+})();
+/*** FEATURE: Ops-side stepper (view_3345 rich-text host) ***/
+/**
+ * Three button-actions rendered into the role-gated rich-text host
+ * view_3345 on the Ops proposal page. Each button opens a notes-prompt
+ * modal and fires a Make webhook with the SOW context + payload fields
+ * so Make can update the CU project task, post to Slack, and (for
+ * step 2 / 3) create the supporting records.
+ *
+ * Steps
+ *   1. Mark Ready for Survey
+ *        showWhen: field_2706 = No
+ *        webhook : MAKE_OPS_MARK_READY_WEBHOOK
+ *        server  : flips field_2723 = Yes, updates CU task, Slack
+ *
+ *   2. Request Alternative Bid from Subcontractor
+ *        showWhen: field_2706 = No AND field_2728 > 0
+ *        webhook : MAKE_OPS_REQUEST_ALT_BID_WEBHOOK
+ *        server  : creates missing Survey Item records + alt-bid package,
+ *                  updates CU task, posts to Slack
+ *
+ *   3. Publish and Submit Completed Proposal to Sales
+ *        showWhen: field_2725 = No
+ *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
+ *        server  : flips field_2725 = Yes, updates CU task, Slack
+ *
+ * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
+ * (view_3346) plus field_2126, line-item record ids from view_3341,
+ * and license record ids from LICENSE_VIEW (empty placeholder until
+ * the view is supplied).
+ */
+(function () {
+  'use strict';
+
+  // ── Config ───────────────────────────────────────────────
+  var HOST_VIEW      = 'view_3345';   // role-gated rich-text host in Knack
+  var SOURCE_VIEW    = 'view_3346';   // SOW details view on the proposal page
+  var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
+  var LICENSE_VIEW   = '';            // TODO: user will supply the license-table view id
+  var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
+
+  var NS         = '.scwOpsStepper';
+  var BLOCK_CLS  = 'scw-ops-stepper';
+  var STYLE_ID   = 'scw-ops-stepper-css';
+
+  var STEPS = [
+    {
+      id: 'mark-ready',
+      label: 'Mark Ready for Survey',
+      tone: 'primary',
+      showWhen: { field: 'field_2706', value: 'No' },
+      webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
+      modal: {
+        title:       'Mark Ready for Survey',
+        intro:       'Note to the sales team — what should they know?',
+        placeholder: 'e.g. Proposal is internally consistent, ready to hand off',
+        submitLabel: 'Mark Ready'
+      },
+      includeFullPayload: false   // this step just needs sourceRecordId + notes
+    },
+    {
+      id: 'request-alt-bid',
+      label: 'Request Alternative Bid from Subcontractor',
+      tone: 'amber',
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'No' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
+      webhookKey: 'MAKE_OPS_REQUEST_ALT_BID_WEBHOOK',
+      modal: {
+        title:       'Request Alternative Bid',
+        intro:       'Note to the subcontractor — what should they know about this alternative bid?',
+        placeholder: 'e.g. Budget-friendly alternative — fewer cameras in the lot, cheaper NVR',
+        submitLabel: 'Send Request'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-proposal',
+      label: 'Publish and Submit Completed Proposal to Sales',
+      tone: 'success',
+      showWhen: { field: 'field_2725', value: 'No' },
+      webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
+      modal: {
+        title:       'Publish & Submit Completed Proposal',
+        intro:       'Note to the sales team — any context to include with the finalized proposal?',
+        placeholder: 'e.g. Bid validated, ready for client review',
+        submitLabel: 'Publish & Submit'
+      },
+      includeFullPayload: true
+    }
+  ];
+
+  // ── Icons ────────────────────────────────────────────────
+  var SPINNER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+  // ── Styles (injected once) ───────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css =
+      '.' + BLOCK_CLS + ' {' +
+      '  display: flex; flex-direction: column; gap: 8px;' +
+      '  padding: 14px 16px; border-radius: 8px;' +
+      '  background: #f9fafb; border: 1px solid #e5e7eb;' +
+      '  margin: 8px 0;' +
+      '}' +
+      '.' + BLOCK_CLS + '__title {' +
+      '  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;' +
+      '  text-transform: uppercase; color: #6b7280;' +
+      '  margin-bottom: 2px;' +
+      '}' +
+      '.' + BLOCK_CLS + '__row {' +
+      '  display: flex; flex-direction: column; gap: 6px;' +
+      '}' +
+      '.' + BLOCK_CLS + '__empty {' +
+      '  font-size: 13px; color: #6b7280; font-style: italic;' +
+      '}' +
+      '.scw-ops-step-btn {' +
+      '  display: inline-flex; align-items: center; gap: 8px;' +
+      '  padding: 9px 14px; border-radius: 6px; cursor: pointer;' +
+      '  font-size: 13px; font-weight: 600; line-height: 1.25;' +
+      '  border: 1px solid transparent; text-align: left;' +
+      '  transition: background 0.15s, border-color 0.15s;' +
+      '  align-self: flex-start;' +
+      '}' +
+      '.scw-ops-step-btn.is-primary {' +
+      '  background: #2563eb; color: #fff; border-color: #1d4ed8;' +
+      '}' +
+      '.scw-ops-step-btn.is-primary:hover { background: #1d4ed8; }' +
+      '.scw-ops-step-btn.is-amber {' +
+      '  background: #f59e0b; color: #fff; border-color: #d97706;' +
+      '}' +
+      '.scw-ops-step-btn.is-amber:hover { background: #d97706; }' +
+      '.scw-ops-step-btn.is-success {' +
+      '  background: #059669; color: #fff; border-color: #047857;' +
+      '}' +
+      '.scw-ops-step-btn.is-success:hover { background: #047857; }' +
+      '.scw-ops-step-btn.is-loading {' +
+      '  pointer-events: none; opacity: 0.75; cursor: wait;' +
+      '}' +
+      '.scw-ops-step-btn.is-loading svg { animation: scw-ops-spin 0.8s linear infinite; }' +
+      '@keyframes scw-ops-spin { to { transform: rotate(360deg); } }' +
+
+      /* Modal — mirrors workflow-stepper's notes-prompt modal. */
+      '.scw-ops-modal-overlay {' +
+      '  position: fixed; inset: 0; z-index: 10000;' +
+      '  display: flex; align-items: center; justify-content: center;' +
+      '  background: rgba(15,23,42,0.55);' +
+      '}' +
+      '.scw-ops-modal {' +
+      '  width: 480px; max-width: 92vw; background: #fff;' +
+      '  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);' +
+      '  padding: 20px 22px 16px;' +
+      '  font-family: inherit; color: #111827;' +
+      '}' +
+      '.scw-ops-modal-hdr {' +
+      '  font-size: 16px; font-weight: 700; margin-bottom: 4px;' +
+      '}' +
+      '.scw-ops-modal-intro {' +
+      '  font-size: 13px; color: #4b5563; margin-bottom: 12px;' +
+      '}' +
+      '.scw-ops-modal-textarea {' +
+      '  width: 100%; box-sizing: border-box; min-height: 110px;' +
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; resize: vertical;' +
+      '}' +
+      '.scw-ops-modal-error {' +
+      '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
+      '}' +
+      '.scw-ops-modal-actions {' +
+      '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;' +
+      '}' +
+      '.scw-ops-modal-cancel, .scw-ops-modal-submit {' +
+      '  padding: 7px 14px; border-radius: 5px; font-size: 13px;' +
+      '  font-weight: 600; cursor: pointer; border: 1px solid transparent;' +
+      '}' +
+      '.scw-ops-modal-cancel {' +
+      '  background: #fff; color: #374151; border-color: #d1d5db;' +
+      '}' +
+      '.scw-ops-modal-cancel:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-submit {' +
+      '  background: #2563eb; color: #fff; border-color: #1d4ed8;' +
+      '}' +
+      '.scw-ops-modal-submit:hover { background: #1d4ed8; }' +
+      '.scw-ops-modal-submit[disabled] {' +
+      '  opacity: 0.6; cursor: wait;' +
+      '}';
+
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────
+  function getSourceModel() {
+    try {
+      var v = Knack.views && Knack.views[SOURCE_VIEW];
+      return (v && v.model && v.model.attributes) || null;
+    } catch (e) { return null; }
+  }
+
+  function getSourceRecordId() {
+    var attrs = getSourceModel();
+    return (attrs && attrs.id) || '';
+  }
+
+  function readField(fieldKey) {
+    var attrs = getSourceModel();
+    if (!attrs) return '';
+    var raw = attrs[fieldKey + '_raw'];
+    if (raw != null && typeof raw !== 'object') return raw;
+    if (attrs[fieldKey] != null) return attrs[fieldKey];
+    return '';
+  }
+
+  // Numeric comparison for `gt` / `gte` etc.
+  function toNum(v) {
+    if (v == null) return NaN;
+    var n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? NaN : n;
+  }
+
+  function conditionMet(cond) {
+    if (!cond) return true;
+    if (cond.all) return cond.all.every(conditionMet);
+    if (cond.any) return cond.any.some(conditionMet);
+    if (cond.not) return !conditionMet(cond.not);
+    if (cond.field) {
+      var v = String(readField(cond.field) || '').trim();
+      if (cond.value    != null) return v.toLowerCase() === String(cond.value).toLowerCase();
+      if (cond.notValue != null) return v.toLowerCase() !== String(cond.notValue).toLowerCase();
+      if (cond.hasValue === true)  return v !== '';
+      if (cond.hasValue === false) return v === '';
+      if (cond.gt  != null) return toNum(v) >  Number(cond.gt);
+      if (cond.gte != null) return toNum(v) >= Number(cond.gte);
+      if (cond.lt  != null) return toNum(v) <  Number(cond.lt);
+      if (cond.lte != null) return toNum(v) <= Number(cond.lte);
+    }
+    return true;
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // Pull every attribute off the source view's model. Skips internal Knack
+  // keys (id, account_id, object, etc) and keeps both raw and display values
+  // — Make can pick whichever it needs per field.
+  function readAllFields() {
+    var attrs = getSourceModel();
+    if (!attrs) return {};
+    var out = {};
+    var keys = Object.keys(attrs);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (/^field_\d+(_raw)?$/.test(k)) out[k] = attrs[k];
+    }
+    return out;
+  }
+
+  function collectRecordIdsFromView(viewId) {
+    var out = [];
+    if (!viewId) return out;
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var data = v && v.model && v.model.data;
+      var models = data && data.models;
+      if (!models || !models.length) return out;
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes;
+        if (a && typeof a.id === 'string' && /^[a-f0-9]{24}$/.test(a.id)) {
+          out.push(a.id);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
+  // ── Payload ──────────────────────────────────────────────
+  function buildPayload(step, notes) {
+    var payload = {
+      sourceRecordId: getSourceRecordId(),
+      stepId:         step.id,
+      notes:          notes || '',
+      triggeredBy:    getTriggeredBy()
+    };
+    if (step.includeFullPayload) {
+      payload.sowFields = readAllFields();
+      // EXTRA_FIELD (field_2126 — SOW Name) is usually in sowFields already,
+      // but surface it at the top level so Make can reference it without
+      // digging through the map.
+      payload.sowName        = readField(EXTRA_FIELD);
+      payload.sowLineItemIds = collectRecordIdsFromView(LINE_ITEM_VIEW);
+      payload.licenseIds     = collectRecordIdsFromView(LICENSE_VIEW);
+    }
+    return payload;
+  }
+
+  // ── Notes prompt modal ───────────────────────────────────
+  function openNotesPromptModal(opts, onSubmit) {
+    opts = opts || {};
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ops-modal-overlay';
+
+    var card = document.createElement('div');
+    card.className = 'scw-ops-modal';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'scw-ops-modal-hdr';
+    hdr.textContent = opts.title || 'Add a note';
+    card.appendChild(hdr);
+
+    if (opts.intro) {
+      var intro = document.createElement('div');
+      intro.className = 'scw-ops-modal-intro';
+      intro.textContent = opts.intro;
+      card.appendChild(intro);
+    }
+
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-ops-modal-textarea';
+    ta.placeholder = opts.placeholder || '';
+    card.appendChild(ta);
+
+    var err = document.createElement('div');
+    err.className = 'scw-ops-modal-error';
+    err.style.display = 'none';
+    card.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'scw-ops-modal-actions';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'scw-ops-modal-cancel';
+    cancelBtn.textContent = 'Cancel';
+
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'scw-ops-modal-submit';
+    submitBtn.textContent = opts.submitLabel || 'Submit';
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+    card.appendChild(actions);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 30);
+
+    function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+    function setSubmitting(on) {
+      submitBtn.disabled = !!on;
+      submitBtn.textContent = on ? 'Submitting…' : (opts.submitLabel || 'Submit');
+      cancelBtn.disabled = !!on;
+    }
+    function showError(msg) {
+      err.textContent = msg || 'Something went wrong.';
+      err.style.display = 'block';
+    }
+
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+    submitBtn.addEventListener('click', function () {
+      err.style.display = 'none';
+      var notes = (ta.value || '').trim();
+      onSubmit(notes, { setSubmitting: setSubmitting, showError: showError, close: close });
+    });
+  }
+
+  // ── Webhook ──────────────────────────────────────────────
+  function fireStep(step, btn) {
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.webhookKey]) || '';
+    if (!url || /PLACEHOLDER/.test(url)) {
+      alert(step.label + ' webhook URL is not configured (' + step.webhookKey + ').');
+      return;
+    }
+    if (!getSourceRecordId()) {
+      alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
+      return;
+    }
+
+    openNotesPromptModal(step.modal, function (notes, ctx) {
+      ctx.setSubmitting(true);
+      setBtnLoading(btn, true);
+      var payload = buildPayload(step, notes);
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (resp) {
+        return resp.text().then(function (body) {
+          var data = null;
+          try { data = body ? JSON.parse(body) : null; } catch (e) {}
+          return { ok: resp.ok, status: resp.status, body: body, data: data };
+        });
+      }).then(function (resp) {
+        if (resp.data && resp.data.success) {
+          // Reload so the stepper re-evaluates against the flipped flags
+          // that Make wrote server-side (field_2723 / field_2725 / etc).
+          window.location.reload();
+          return;
+        }
+        setBtnLoading(btn, false);
+        ctx.setSubmitting(false);
+        ctx.showError(
+          (resp.data && (resp.data.error || resp.data.message)) ||
+          (resp.ok
+            ? 'Webhook returned a non-JSON or unexpected response.'
+            : 'Webhook returned HTTP ' + resp.status + '.')
+        );
+      }).catch(function (e) {
+        setBtnLoading(btn, false);
+        ctx.setSubmitting(false);
+        ctx.showError('Network error: ' + (e && e.message ? e.message : e));
+      });
+    });
+  }
+
+  function setBtnLoading(btn, on) {
+    if (!btn) return;
+    if (on) {
+      btn.classList.add('is-loading');
+      btn.dataset.origHtml = btn.dataset.origHtml || btn.innerHTML;
+      btn.innerHTML = SPINNER_SVG + '<span>Working…</span>';
+    } else {
+      btn.classList.remove('is-loading');
+      if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────
+  function renderInto(host) {
+    // Clear any previous render — the source view may re-render many times.
+    var prev = host.querySelector('.' + BLOCK_CLS);
+    if (prev) prev.remove();
+
+    var block = document.createElement('div');
+    block.className = BLOCK_CLS;
+
+    var title = document.createElement('div');
+    title.className = BLOCK_CLS + '__title';
+    title.textContent = 'Ops Actions';
+    block.appendChild(title);
+
+    var row = document.createElement('div');
+    row.className = BLOCK_CLS + '__row';
+
+    var visible = 0;
+    STEPS.forEach(function (step) {
+      if (!conditionMet(step.showWhen)) return;
+      visible += 1;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'scw-ops-step-btn is-' + (step.tone || 'primary');
+      btn.textContent = step.label;
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (btn.classList.contains('is-loading')) return;
+        fireStep(step, btn);
+      });
+      row.appendChild(btn);
+    });
+
+    if (!visible) {
+      var empty = document.createElement('div');
+      empty.className = BLOCK_CLS + '__empty';
+      empty.textContent = 'No Ops actions are available for this SOW right now.';
+      row.appendChild(empty);
+    }
+
+    block.appendChild(row);
+    host.appendChild(block);
+  }
+
+  function render() {
+    var host = document.getElementById(HOST_VIEW);
+    if (!host) return;           // view is hidden by role rule — nothing to do
+    if (!getSourceModel()) return;   // source not populated yet; wait for next render
+    renderInto(host);
+  }
+
+  // ── Bindings ─────────────────────────────────────────────
+  function bind() {
+    $(document)
+      .off('knack-view-render.' + HOST_VIEW + NS)
+      .on('knack-view-render.' + HOST_VIEW + NS, function () { setTimeout(render, 200); });
+
+    $(document)
+      .off('knack-view-render.' + SOURCE_VIEW + NS)
+      .on('knack-view-render.' + SOURCE_VIEW + NS, function () { setTimeout(render, 200); });
+
+    $(document)
+      .off('knack-scene-render.any' + NS)
+      .on('knack-scene-render.any' + NS, function () { setTimeout(render, 600); });
+  }
+
+  injectStyles();
+  bind();
+  if (document.getElementById(HOST_VIEW)) setTimeout(render, 200);
 })();
 /*** FEATURE: Preview Proposal Button → view_3814 header ***/
 (function () {

@@ -23,5 +23,13 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2"
+  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
+  // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
+  // button click with a notes modal. Payload shape:
+  //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
+  //                    licenseIds, triggeredBy }
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/PLACEHOLDER_OPS_MARK_READY",
+  MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_OPS_PUBLISH_PROPOSAL"
 };
