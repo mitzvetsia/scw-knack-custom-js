@@ -119,26 +119,28 @@
       '.' + BLOCK_CLS + '__empty {' +
       '  font-size: 13px; color: #6b7280; font-style: italic;' +
       '}' +
+      /* All steps share one color + a fixed width so the row reads as a
+         menu of options. Unavailable steps render in a disabled grey. */
       '.scw-ops-step-btn {' +
-      '  display: inline-flex; align-items: center; gap: 8px;' +
-      '  padding: 9px 14px; border-radius: 6px; cursor: pointer;' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  gap: 8px; box-sizing: border-box;' +
+      '  width: 320px;' +
+      '  padding: 10px 14px; border-radius: 6px; cursor: pointer;' +
       '  font-size: 13px; font-weight: 600; line-height: 1.25;' +
-      '  border: 1px solid transparent; text-align: left;' +
-      '  transition: background 0.15s, border-color 0.15s;' +
-      '  align-self: flex-start;' +
+      '  border: 1px solid #1d4ed8; background: #2563eb; color: #fff;' +
+      '  text-align: center;' +
+      '  transition: background 0.15s, border-color 0.15s, opacity 0.15s;' +
       '}' +
-      '.scw-ops-step-btn.is-primary {' +
-      '  background: #2563eb; color: #fff; border-color: #1d4ed8;' +
+      '.scw-ops-step-btn:hover { background: #1d4ed8; }' +
+      '.scw-ops-step-btn.is-disabled,' +
+      '.scw-ops-step-btn:disabled {' +
+      '  background: #f3f4f6; color: #9ca3af;' +
+      '  border-color: #e5e7eb; cursor: not-allowed;' +
       '}' +
-      '.scw-ops-step-btn.is-primary:hover { background: #1d4ed8; }' +
-      '.scw-ops-step-btn.is-amber {' +
-      '  background: #f59e0b; color: #fff; border-color: #d97706;' +
+      '.scw-ops-step-btn.is-disabled:hover,' +
+      '.scw-ops-step-btn:disabled:hover {' +
+      '  background: #f3f4f6;' +
       '}' +
-      '.scw-ops-step-btn.is-amber:hover { background: #d97706; }' +
-      '.scw-ops-step-btn.is-success {' +
-      '  background: #059669; color: #fff; border-color: #047857;' +
-      '}' +
-      '.scw-ops-step-btn.is-success:hover { background: #047857; }' +
       '.scw-ops-step-btn.is-loading {' +
       '  pointer-events: none; opacity: 0.75; cursor: wait;' +
       '}' +
@@ -464,28 +466,27 @@
     var row = document.createElement('div');
     row.className = BLOCK_CLS + '__row';
 
-    var visible = 0;
+    // Render every step in fixed order; gray out (disable) the ones whose
+    // showWhen evaluates false. Keeps the row visually stable so Ops always
+    // sees the full menu of actions and which ones are currently available.
     STEPS.forEach(function (step) {
-      if (!conditionMet(step.showWhen)) return;
-      visible += 1;
+      var available = conditionMet(step.showWhen);
       var btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'scw-ops-step-btn is-' + (step.tone || 'primary');
+      btn.className = 'scw-ops-step-btn' + (available ? '' : ' is-disabled');
       btn.textContent = step.label;
-      btn.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (btn.classList.contains('is-loading')) return;
-        fireStep(step, btn);
-      });
+      if (!available) {
+        btn.disabled = true;
+        btn.setAttribute('title', 'Not available for this SOW right now.');
+      } else {
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (btn.classList.contains('is-loading')) return;
+          fireStep(step, btn);
+        });
+      }
       row.appendChild(btn);
     });
-
-    if (!visible) {
-      var empty = document.createElement('div');
-      empty.className = BLOCK_CLS + '__empty';
-      empty.textContent = 'No Ops actions are available for this SOW right now.';
-      row.appendChild(empty);
-    }
 
     block.appendChild(row);
     host.appendChild(block);
