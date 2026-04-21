@@ -6548,6 +6548,11 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 .scw-l3-connected-devices { display: block; margin-top: 5px; padding-left: 40px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
+
+/* SOW header details — kept rendered so isInstallationMasked() can read
+   field_2725, but hidden from users so it doesn't take up space on the
+   proposal page. */
+#view_3861 { display: none !important; }
 `;
 
     document.head.appendChild(style);
