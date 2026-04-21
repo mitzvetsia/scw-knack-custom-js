@@ -40514,6 +40514,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       pill.className = 'scw-ops-pill is-' + step.tone;
       var href = getRowLink(tr);
       if (href) pill.setAttribute('href', href);
+      pill.setAttribute('target', '_blank');
+      pill.setAttribute('rel', 'noopener');
 
       var labelSpan = document.createElement('span');
       labelSpan.textContent = step.label;
