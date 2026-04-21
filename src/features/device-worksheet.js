@@ -248,9 +248,11 @@
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
+          // TODO(field_1968/field_2462): commented out — fields not found on Site Survey /
+          // Survey Line Item / SOW / SOW Line Item objects in Knack. See CLAUDE.md Known Issues.
+          // mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
+          // laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
           laborVariables:   { key: 'field_1972', type: 'multiChip',   summary: true, label: 'Vars', group: 'right', groupCls: 'sum-group--vars',
                               options: ['Exterior', 'High Traffic', 'Plenum'], feeTrigger: true },
           existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
@@ -272,8 +274,9 @@
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
           subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
-        summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
-                         'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+        // TODO(field_1968/field_2462): 'mountCableBoth' and 'laborCategory' removed from layout.
+        summaryLayout: ['laborDescription', 'existingCabling',
+                         'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
@@ -347,7 +350,51 @@
         syntheticBucketGroups: [
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
+        ],
+        // ── Override: cameras/readers rows mirror view_3313's config.
+        //    Only includes fields that exist on view_3610's raw table.
+        //    stackedSummary: false matches view_3586's cam/reader layout
+        //    so the summary doesn't stretch vertically. ──
+        bucketOverride: {
+          overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          stackedSummary: false,
+          fields: {
+            // ── Summary row ──
+            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
+            laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Existing' },
+            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+            plenumChit:       { key: 'field_1983', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Plenum' },
+            subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
+            plusHrs:          { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
+            plusMat:          { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
+            installFee:       { key: 'field_2028', type: 'readOnly',    summary: true, label: 'Fee',  group: 'right', groupCls: 'sum-group--fee', readOnlySummary: true },
+            move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+            // ── Detail panel ──
+            dropPrefix:       { key: 'field_2240', type: 'readOnly' },
+            dropNumber:       { key: 'field_1951', type: 'directEdit' },
+            dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
+            mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+            scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+            selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
+                                linkField: 'field_2360',
+                                linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+            subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
+          },
+          summaryLayout: [
+            'laborDescription',
+            { stack: ['existingCabling', 'exteriorChit', 'plenumChit'] },
+            'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'
+          ],
+          detailLayout: {
+            left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
+            right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+          }
+        }
       },
       {
         viewId: 'view_3586',
@@ -530,7 +577,7 @@
         syntheticGroupsPosition: 'bottom',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1957'],
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
@@ -538,7 +585,7 @@
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1957'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
@@ -1306,6 +1353,32 @@ td.${P}-sum-move {
 .${P}-cabling-chit.is-readonly {
   cursor: default;
   pointer-events: none;
+}
+
+/* ── Stacked toggle-chit column (used for cam/reader flags) ── */
+.${P}-sum-group--chit-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling {
+  width: 100%;
+}
+.${P}-sum-group--chit-stack .${P}-cabling-chit {
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  width: 100%;
+  min-width: 44px;
+  letter-spacing: 0;
+}
+/* Keep the first chit's empty label spacer so the top of the stack
+   aligns with the top of other labeled summary inputs (Sub Bid, +Hrs,
+   etc.); hide the rest so the chits below stack flush. */
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling:not(:first-child) > .${P}-sum-label {
+  display: none;
 }
 
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
@@ -4415,6 +4488,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     for (var i = 0; i < layout.length; i++) {
       var name = layout[i];
+
+      // Stack layout item: { stack: [fieldNames...] } renders the listed
+      // fields into a column-flex wrapper so they stack vertically.
+      // Used for things like multiple toggleChits on cam/reader rows.
+      if (name && typeof name === 'object' && Array.isArray(name.stack)) {
+        var stackWrap = document.createElement('span');
+        stackWrap.className = P + '-sum-group ' + P + '-sum-group--chit-stack';
+        for (var si = 0; si < name.stack.length; si++) {
+          var sName = name.stack[si];
+          var sDesc = fieldDesc(viewCfg, sName);
+          if (!sDesc || !sDesc.summary) continue;
+          renderSummaryField(stackWrap, tr, sName, sDesc, viewCfg);
+        }
+        rightGroup.appendChild(stackWrap);
+        continue;
+      }
+
       var desc = fieldDesc(viewCfg, name);
       if (!desc || !desc.summary) continue;
 
@@ -4437,22 +4527,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (moveDesc && moveDesc.type === 'moveIcon') {
       var moveTd = findCell(tr, moveDesc.key);
       if (moveTd) {
-        if (!moveTd.querySelector('.fa-server')) {
+        if (!moveTd.querySelector('.fa-exchange')) {
           moveTd.innerHTML =
-            '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
-              '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
-              '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
-                '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-                '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-              '</span>' +
-            '</span>';
+            '<i class="fa fa-exchange" aria-hidden="true" title="Change MDF/IDF" ' +
+              'style="font-size:18px; line-height:1; color:rgba(237,131,38,1); cursor:pointer;"></i>';
         }
         moveTd.classList.add(P + '-sum-move');
         var moveWrap = document.createElement('span');
         moveWrap.className = P + '-sum-group ' + P + '-sum-group--move';
         var moveLabel = document.createElement('span');
         moveLabel.className = P + '-sum-label';
-        moveLabel.innerHTML = '&nbsp;';
+        moveLabel.textContent = 'IDF';
         moveWrap.appendChild(moveLabel);
         moveWrap.appendChild(moveTd);
         rightGroup.appendChild(moveWrap);
@@ -5546,6 +5631,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.fields = viewCfg.bucketOverride.fields;
           effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+          // Allow per-bucket override of stackedSummary so cam/reader rows
+          // on a view whose main config is stacked can opt out (and vice versa).
+          if (Object.prototype.hasOwnProperty.call(viewCfg.bucketOverride, 'stackedSummary')) {
+            effectiveCfg.stackedSummary = viewCfg.bucketOverride.stackedSummary;
+          }
           // If the main config has a label but the override doesn't,
           // flag the effective config so a spacer is inserted to keep alignment.
           if (viewCfg.fields.label && !effectiveCfg.fields.label) {
@@ -6052,6 +6142,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var del = card.querySelector('.' + P + '-sum-delete');
         if (del) {
           del.style.visibility = shouldHide ? 'hidden' : '';
+        }
+        // Also disable the KTL bulk-edit row checkbox so this row can't
+        // be picked up by "Delete Selected: N". Uncheck it first in case
+        // it was already selected before the protection kicked in.
+        var cbCell = card.querySelector('.' + P + '-sum-check');
+        var cb = cbCell ? cbCell.querySelector('input[type="checkbox"]') : null;
+        if (cb) {
+          if (shouldHide) {
+            cb.checked = false;
+            cb.disabled = true;
+            cb.setAttribute('data-scw-bulk-blocked', '1');
+            cbCell.style.visibility = 'hidden';
+            cbCell.title = 'Cannot delete — line item is on a survey';
+          } else if (cb.getAttribute('data-scw-bulk-blocked') === '1') {
+            cb.disabled = false;
+            cb.removeAttribute('data-scw-bulk-blocked');
+            cbCell.style.visibility = '';
+            cbCell.removeAttribute('title');
+          }
         }
       }
     });

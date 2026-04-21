@@ -317,3 +317,15 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Status**: Edit button is disabled. The modal opens and prefills revised values correctly (from `data.fields`), but it doesn't apply the right field visibility and choice rules based on the product/bucket type. For example, connection options, cabling fields, and chip choices don't match what the worksheet shows for that product.
 - **What's needed**: The edit modal should mirror the same field visibility, connection option filtering, and chip/select choices that the device worksheet (view_3505/view_3313) uses for the same record's bucket type. This likely means reading the proposal bucket from the revision data and applying the same `bucketOverride` / `bucketRules` logic that `device-worksheet.js` uses.
 - **What works**: Prefill from `data.fields` is correct. Save writes to field_2687/2688/2695/2696 correctly. The HTML card rebuilds on save.
+
+### 4. Stale field references: `field_1968` (MCB) and `field_2462` (Cat) on view_3313
+- **Status**: Both references **commented out** in `device-worksheet.js` view_3313 cam/reader config. Confirmed 2026-04-19: these fields do not exist on Site Survey / Survey Line Item objects (the object view_3313 renders).
+- **`field_2462`** actually lives on the **DTO_create scope line items** object and is used legitimately by the three DTO-form visibility modules below. It was a stale reference on view_3313 only (the cell never rendered because `findCell` returned null for a field key not in the view's columns).
+- **`field_1968`** (MCB) could not be located on any object; only referenced on view_3313. Likely entirely stale.
+- **Locations left commented out** (safe to delete outright in a future cleanup):
+  - `src/features/device-worksheet.js` — view_3313 cam/reader `fields.mountCableBoth` (field_1968) and `fields.laborCategory` (field_2462), plus both names removed from `summaryLayout`.
+- **Locations with field_2462 restored** (confirmed real on DTO_create scope line items):
+  - `src/features/bucket-field-visibility_add-survey-bid-item.js`
+  - `src/features/SOW-line-item-DTO-bucket-field-visibility.js`
+  - `src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js`
+- **Follow-up**: (a) watch view_3313 for missing MCB / Cat columns — no breakage expected since the fields weren't resolving anyway; (b) after a few days of clean usage, delete the two commented `// mountCableBoth:` and `// laborCategory:` lines in `device-worksheet.js` and the stale `TODO(field_1968/field_2462)` comments above them.

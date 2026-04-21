@@ -381,15 +381,23 @@
       // If device-worksheet has transformed this view, count only the
       // worksheet rows (scw-ws-row) — otherwise we'd double-count
       // because the original Knack <tr> rows are hidden but still present.
+      // Skip rows hidden via inline display:none (e.g. hide-self-row).
       var wsRows = tbody.querySelectorAll('tr.scw-ws-row');
-      if (wsRows.length) return wsRows.length;
+      if (wsRows.length) {
+        var wsReal = 0;
+        for (var w = 0; w < wsRows.length; w++) {
+          if (wsRows[w].style.display !== 'none') wsReal++;
+        }
+        return wsReal;
+      }
 
       var rows = tbody.querySelectorAll('tr');
       var real = 0;
       for (var i = 0; i < rows.length; i++) {
         if (!rows[i].classList.contains('kn-tr-nodata') &&
             !rows[i].classList.contains('kn-table-group') &&
-            !rows[i].classList.contains('kn-table-totals')) {
+            !rows[i].classList.contains('kn-table-totals') &&
+            rows[i].style.display !== 'none') {
           real++;
         }
       }
@@ -842,7 +850,12 @@
             syncState(wrap, hdr, vKey);
           });
         });
-        contentObs.observe(viewEl, { childList: true, subtree: true });
+        contentObs.observe(viewEl, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style']   // catch row display:none toggles (e.g. hide-self-row)
+        });
       })(wrapper, header, viewKey);
     }
   }

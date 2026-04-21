@@ -245,18 +245,26 @@
   //  ADD-MODE DETECTION
   // ═══════════════════════════════════════════════════════════
 
-  function checkAddMode() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) { S.setAddMode(false); return; }
-
+  function readAddModeFlagFrom(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
-    if (!$cell.length) $cell = $pv.find('.field_' + CFG.addModeField.replace('field_', ''));
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    return H.stripHtml($cell.text()).replace(/\u00a0/g, ' ').trim();
+  }
 
-    var val = H.stripHtml($cell.text());
-    S.setAddMode(/^yes$/i.test(val));
-
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + val + ')');
+  function checkAddMode() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    var active = false;
+    var observed = '';
+    for (var i = 0; i < views.length; i++) {
+      var val = readAddModeFlagFrom(views[i]);
+      if (val) observed = val;
+      if (/^yes$/i.test(val)) { active = true; break; }
+    }
+    S.setAddMode(active);
+    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
@@ -273,8 +281,13 @@
       if (!base) continue;
       if (pending[id]) continue;
 
+      // addCountField (field_2586) = "associated survey line items" count.
+      // A row is an "add" change request ONLY when it has NO associated
+      // survey items (count === 0) — i.e., it was created during the
+      // revision phase. Rows with count > 0 came in from the site survey
+      // and must not be auto-flagged as adds.
       var count = parseFloat(base._addCount);
-      if (count === 0 || isNaN(count)) continue;
+      if (isNaN(count) || count > 0) continue;
 
       // Snapshot all tracked field values into requested — the whole record is new
       var req = {};

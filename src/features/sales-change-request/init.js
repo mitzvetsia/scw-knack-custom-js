@@ -30,14 +30,26 @@
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
-  // Check if the sales CR module should be active (field_2706 = Yes on proposal view)
-  function isModuleActive() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) return false;
+  // Check if the sales CR module should be active. Returns true if
+  // field_2706 = "Yes" on ANY of the configured addModeViews.
+  function readAddModeFlag(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
+    // Grid cell shape (data-field-key on td)
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    // Details-view shape: wrapper div has the field class, value lives in .kn-detail-body
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
+    // Last-resort fallback: wrapper itself (may include the label text)
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
-    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').trim();
-    return /^yes$/i.test(val);
+    return ($cell.text() || '').replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
+  }
+
+  function isModuleActive() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    for (var i = 0; i < views.length; i++) {
+      if (/^yes$/i.test(readAddModeFlag(views[i]))) return true;
+    }
+    return false;
   }
 
   var _rehydrated = false;
@@ -108,9 +120,11 @@
     } catch (e) {}
   });
 
-  // ── Proposal view render → check add mode ─────────────
+  // ── Add-mode view render(s) → check add mode ─────────────
+  // Binds to every view listed in CFG.addModeViews so that whichever
+  // view carries field_2706 triggers the re-check when it re-renders.
 
-  SCW.onViewRender(CFG.proposalView, function () {
+  function onAddModeViewRender() {
     setTimeout(function () {
       // Re-check activation — field_2706 may have rendered after worksheet
       if (isModuleActive() && !S.onPage()) {
@@ -130,7 +144,11 @@
         refresh();
       }
     }, 300);
-  }, CFG.eventNs);
+  }
+
+  (CFG.addModeViews || [CFG.proposalView]).forEach(function (vid) {
+    SCW.onViewRender(vid, onAddModeViewRender, CFG.eventNs);
+  });
 
   // ── Revision view render → load + inject ──────────────
 

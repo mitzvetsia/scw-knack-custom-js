@@ -725,6 +725,19 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 .scw-l3-connected-devices { display: block; margin-top: 5px; padding-left: 40px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
+
+/* SOW header details — kept rendered so isInstallationMasked() can read
+   field_2725, but hidden from users so it doesn't take up space on the
+   proposal page. */
+#view_3861 { display: none !important; }
+
+/* Knack writes style="flex-basis: undefined%" on Details views whose
+   column width wasn't set in the page builder. Browsers treat that as
+   invalid → fall back to auto → columns collapse to content width.
+   Force them back to full-width so the labels/values render at a
+   readable size. */
+#view_3883 .kn-details-column,
+#view_3883 .kn-details-group { flex-basis: 100% !important; }
 `;
 
     document.head.appendChild(style);
@@ -2310,6 +2323,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ============================================================
 
   function isInstallationMasked() {
+    // Ops bypass — view_3345 (the Ops stepper host) is role-gated by Knack
+    // to Ops users. When Knack's display rule excludes a viewer from a
+    // view, depending on the rule configuration the view either renders
+    // hidden (display:none) or is removed from the DOM entirely. Treat
+    // both as "not Ops" by checking presence AND visibility.
+    var ops = document.getElementById('view_3345');
+    if (ops && ops.offsetParent !== null) return false;
+
     var view = document.getElementById('view_3861');
     if (view) {
       var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
@@ -2322,7 +2343,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
       }
     }
-    return false;
+    // Default to MASKED when we can't read the validation state.
+    // Knack's role rules can omit view_3861 from the DOM entirely for
+    // Sales viewers, in which case we have no signal to read field_2725
+    // from. The safe behavior is to mask labor (treat as not-yet-
+    // validated) rather than leak numbers. The Ops bypass above ensures
+    // Ops still sees real numbers.
+    return true;
   }
 
   function zeroLaborCells(ctx) {

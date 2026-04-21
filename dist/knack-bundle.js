@@ -3,7 +3,35 @@ window.SCW = window.SCW || {};
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
   MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
-  MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7"
+  MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
+  // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
+  //   Request body:  {
+  //     sourceRecordId:      <current SOW id from view_3827>,
+  //     sowLineItemIds:      [ <record ids from view_3586> ],
+  //     licenseRecurringIds: [ <record ids from view_3471> ],
+  //     triggeredBy:         { id, name, email }
+  //   }
+  //   Response body: { success: true,  newSowId: "<hex>", newSowUrl: "<full URL>" }
+  //             or:  { success: false, error: "<message>" }
+  MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/ysbsl1qw19vdhc6f3hpk8barcfk79puu",
+  // Fires on per-row "Import Unique Items" click in view_3869. Expects:
+  //   Request body:  { receivingRecordId: <current SOW id>, sourceRecordId: <row SOW id>, triggeredBy: {...} }
+  //   Response body: { success: true,  imported: <count>, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_IMPORT_UNIQUE_ITEMS",
+  // Fires on the "Request Alternative Proposal" stepper action. Expects:
+  //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
+  //   Response body: { success: true, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
+  // Ops-side stepper actions (view_3345 on the proposal page). Each fires on
+  // button click with a notes modal. Payload shape:
+  //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
+  //                    licenseIds, triggeredBy }
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/PLACEHOLDER_OPS_MARK_READY",
+  MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_OPS_PUBLISH_PROPOSAL"
 };
 window.SCW = window.SCW || {};
 
@@ -3391,15 +3419,23 @@ window.SCW = window.SCW || {};
       // If device-worksheet has transformed this view, count only the
       // worksheet rows (scw-ws-row) — otherwise we'd double-count
       // because the original Knack <tr> rows are hidden but still present.
+      // Skip rows hidden via inline display:none (e.g. hide-self-row).
       var wsRows = tbody.querySelectorAll('tr.scw-ws-row');
-      if (wsRows.length) return wsRows.length;
+      if (wsRows.length) {
+        var wsReal = 0;
+        for (var w = 0; w < wsRows.length; w++) {
+          if (wsRows[w].style.display !== 'none') wsReal++;
+        }
+        return wsReal;
+      }
 
       var rows = tbody.querySelectorAll('tr');
       var real = 0;
       for (var i = 0; i < rows.length; i++) {
         if (!rows[i].classList.contains('kn-tr-nodata') &&
             !rows[i].classList.contains('kn-table-group') &&
-            !rows[i].classList.contains('kn-table-totals')) {
+            !rows[i].classList.contains('kn-table-totals') &&
+            rows[i].style.display !== 'none') {
           real++;
         }
       }
@@ -3852,7 +3888,12 @@ window.SCW = window.SCW || {};
             syncState(wrap, hdr, vKey);
           });
         });
-        contentObs.observe(viewEl, { childList: true, subtree: true });
+        contentObs.observe(viewEl, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style']   // catch row display:none toggles (e.g. hide-self-row)
+        });
       })(wrapper, header, viewKey);
     }
   }
@@ -4556,12 +4597,34 @@ window.SCW = window.SCW || {};
       menuView: 'view_3828',
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
+      lockWhenCompleted: true,
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
     },
     {
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
+      // Complete if the survey has been requested (field_2706 = Yes)
+      // OR if there are any change requests queued (field_2728 > 0),
+      // since the workflow has advanced past the initial survey step.
+      completed: {
+        any: [
+          { field: 'field_2706', value: 'Yes' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
+      lockWhenCompleted: true,
+      // When the step is completed via the change-request path (i.e.
+      // the survey was actually requested on a sibling SOW), surface
+      // an info note linking back to that SOW. The {link} token pulls
+      // the connection's identifier + record-id from field_2329 on
+      // view_3876, then builds an href by swapping the second record-id
+      // in the current URL hash (the SOW slot) for the linked record id.
+      completedMessage: {
+        when: { field: 'field_2728', gt: 0 },
+        text: 'Survey Requested on {link}',
+        link: { view: 'view_3876', field: 'field_2329' }
+      },
       disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
     },
     {
@@ -4571,7 +4634,43 @@ window.SCW = window.SCW || {};
       menuView: 'view_3862',
       insertAfter: 'view_3853',
       activeIcon: 'eye',
-      disabled: { field: 'field_2706', notValue: 'Yes', message: 'Site survey not yet requested' }
+      // Locked only when the survey hasn't been requested AND the
+      // workflow hasn't advanced via the change-request path (field_2728 > 0).
+      disabled: {
+        all: [
+          { field: 'field_2706', notValue: 'Yes' },
+          { not: { field: 'field_2728', gt: 0 } }
+        ],
+        message: 'Site survey not yet requested'
+      }
+    },
+    {
+      // Shows only when the SOW has pending change requests (field_2728 > 0)
+      // AND a survey has not yet been requested (field_2706 = No).
+      // Click opens a notes-prompt modal → MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK.
+      type: 'action',
+      id: 'request-alternative-proposal',
+      label: 'Request Alternative Proposal',
+      insertAfterStepId: 'review-site-survey',
+      webhookAction: 'requestAlternativeProposal',
+      showWhen: {
+        all: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2706', value: 'No' }
+        ]
+      }
+    },
+    {
+      // Navigates to the currently-published-proposal details page.
+      // Scrapes the href from view_3814's first "View Published Proposal"
+      // row link — same source the totals panel's proposal block uses.
+      type: 'action',
+      id: 'review-final-proposal',
+      label: 'Review Completed Proposal',
+      insertAfterStepId: 'request-alternative-proposal',
+      hrefSelector: '#view_3814 tbody tr a.kn-link-page',
+      activeIcon: 'eye',
+      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
     }
   ];
 
@@ -4604,6 +4703,23 @@ window.SCW = window.SCW || {};
     'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
     '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 
+  var INFO_SM_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><circle cx="12" cy="12" r="10"/>' +
+    '<line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+
+  var COPY_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+  var SPINNER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
   // ── CSS ──────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -4624,12 +4740,38 @@ window.SCW = window.SCW || {};
       '}' +
       '.scw-step-disabled .scw-ktl-accordion__header { cursor: default; }' +
       '.scw-step-disabled .scw-acc-icon { color: #94a3b8 !important; }' +
+      /* Completed + locked accordion: keep full opacity + green icon,
+         still block clicks. Same spirit as action-step variant. */
+      '.scw-step-completed.scw-step-disabled {' +
+      '  opacity: 1; pointer-events: none; cursor: default;' +
+      '}' +
+      '.scw-step-completed.scw-step-disabled .scw-acc-icon {' +
+      '  color: #16a34a !important; opacity: 1 !important;' +
+      '}' +
+      '.scw-step-completed.scw-step-disabled .scw-ktl-accordion__header {' +
+      '  cursor: default;' +
+      '}' +
+      '.scw-step-completed.scw-step-disabled .scw-acc-chevron {' +
+      '  display: none !important;' +
+      '}' +
 
       /* ── Disabled message (inline in header/step) ── */
       '.scw-step-disabled-msg {' +
       '  display: flex; align-items: center; gap: 5px;' +
       '  font-size: 11px; color: #94a3b8; font-weight: 500;' +
       '  margin-left: auto; flex-shrink: 0; white-space: nowrap;' +
+      '}' +
+      /* Token-expanded anchor inside the header message. */
+      '.scw-step-msg-link {' +
+      '  color: #2563eb; text-decoration: underline;' +
+      '  pointer-events: auto; cursor: pointer;' +
+      '}' +
+      '.scw-step-msg-link:hover { color: #1d4ed8; }' +
+      /* Even when the host step has pointer-events:none (locked-by-
+         completion), the inline link stays clickable. */
+      '.scw-step-completed.scw-step-disabled .scw-step-msg-link,' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-msg-link {' +
+      '  pointer-events: auto; cursor: pointer;' +
       '}' +
 
       /* ── Action step row (matches accordion header) ── */
@@ -4668,6 +4810,75 @@ window.SCW = window.SCW || {};
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      /* Completed + locked (no re-trigger): keep normal appearance,
+         only block clicks. No opacity fade, no gray icon. */
+      '.scw-step-action.is-completed.is-disabled {' +
+      '  opacity: 1; cursor: default; pointer-events: none;' +
+      '}' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
+      '  color: #16a34a; opacity: 1;' +
+      '}' +
+      /* Webhook in-flight spinner */
+      '.scw-step-action.is-loading {' +
+      '  pointer-events: none; opacity: 0.75; cursor: wait;' +
+      '}' +
+      '.scw-step-action.is-loading .scw-step-icon svg {' +
+      '  animation: scw-step-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
+
+      /* ── Notes-prompt modal ───────────────────────────── */
+      '.scw-step-modal-overlay {' +
+      '  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);' +
+      '  z-index: 10000; display: flex; align-items: center; justify-content: center;' +
+      '  padding: 20px;' +
+      '}' +
+      '.scw-step-modal {' +
+      '  background: #fff; border-radius: 10px; box-shadow: 0 20px 40px rgba(0,0,0,0.25);' +
+      '  width: 100%; max-width: 520px; padding: 22px;' +
+      '  display: flex; flex-direction: column; gap: 12px;' +
+      '  font-family: inherit;' +
+      '}' +
+      '.scw-step-modal-hdr {' +
+      '  font-size: 17px; font-weight: 700; color: #0f172a;' +
+      '}' +
+      '.scw-step-modal-intro {' +
+      '  margin: 0; font-size: 13px; color: #475569; line-height: 1.4;' +
+      '}' +
+      '.scw-step-modal-textarea {' +
+      '  width: 100%; box-sizing: border-box; font-family: inherit;' +
+      '  font-size: 13px; line-height: 1.4; padding: 8px 10px;' +
+      '  border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical;' +
+      '  min-height: 100px;' +
+      '}' +
+      '.scw-step-modal-textarea:focus {' +
+      '  outline: none; border-color: #2563eb;' +
+      '  box-shadow: 0 0 0 2px rgba(37,99,235,0.2);' +
+      '}' +
+      '.scw-step-modal-error {' +
+      '  font-size: 12px; color: #b91c1c; background: #fee2e2;' +
+      '  border: 1px solid #fecaca; border-radius: 6px; padding: 8px 10px;' +
+      '  white-space: pre-wrap; word-break: break-word;' +
+      '}' +
+      '.scw-step-modal-actions {' +
+      '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;' +
+      '}' +
+      '.scw-step-modal-cancel, .scw-step-modal-submit {' +
+      '  font-family: inherit; font-size: 13px; font-weight: 600;' +
+      '  padding: 8px 14px; border-radius: 6px; cursor: pointer;' +
+      '  border: 1px solid transparent; transition: all 0.15s ease;' +
+      '}' +
+      '.scw-step-modal-cancel {' +
+      '  background: #fff; color: #475569; border-color: #cbd5e1;' +
+      '}' +
+      '.scw-step-modal-cancel:hover:not(:disabled) { background: #f1f5f9; }' +
+      '.scw-step-modal-submit {' +
+      '  background: #2563eb; color: #fff;' +
+      '}' +
+      '.scw-step-modal-submit:hover:not(:disabled) { background: #1d4ed8; }' +
+      '.scw-step-modal-cancel:disabled, .scw-step-modal-submit:disabled {' +
+      '  opacity: 0.6; cursor: wait;' +
+      '}' +
 
       /* ── Hide original menu view ── */
       '.scw-step-menu-hidden { display: none !important; }';
@@ -4687,10 +4898,26 @@ window.SCW = window.SCW || {};
   // ── Check a condition ────────────────────────────────────
   function conditionMet(cond) {
     if (!cond) return false;
+
+    // Compound: all of the child conditions must match (AND)
+    if (Array.isArray(cond.all)) return cond.all.every(conditionMet);
+    // Compound: any of the child conditions must match (OR)
+    if (Array.isArray(cond.any)) return cond.any.some(conditionMet);
+    // Negation: passes when the wrapped condition does NOT match
+    if (cond.not) return !conditionMet(cond.not);
+
     var val = readField(cond.field);
-    if (cond.hasValue) return val.length > 0;
-    if (cond.value !== undefined) return val.toLowerCase() === cond.value.toLowerCase();
-    if (cond.notValue !== undefined) return val.toLowerCase() !== cond.notValue.toLowerCase();
+    if (cond.hasValue)  return val.length > 0;
+    if (cond.value    !== undefined) return val.toLowerCase() === String(cond.value).toLowerCase();
+    if (cond.notValue !== undefined) return val.toLowerCase() !== String(cond.notValue).toLowerCase();
+
+    // Numeric comparisons — parse the field value as a float. Returns
+    // false on non-numeric values so a missing/blank field never passes.
+    if (cond.gt  !== undefined) { var n1 = parseFloat(val); return !isNaN(n1) && n1 >  cond.gt;  }
+    if (cond.gte !== undefined) { var n2 = parseFloat(val); return !isNaN(n2) && n2 >= cond.gte; }
+    if (cond.lt  !== undefined) { var n3 = parseFloat(val); return !isNaN(n3) && n3 <  cond.lt;  }
+    if (cond.lte !== undefined) { var n4 = parseFloat(val); return !isNaN(n4) && n4 <= cond.lte; }
+
     return false;
   }
 
@@ -4708,13 +4935,39 @@ window.SCW = window.SCW || {};
     return link ? (link.getAttribute('href') || '') : '';
   }
 
+  // ── Resolve the click href for a step ────────────────────
+  // Priority: step.hrefSelector (arbitrary CSS selector, scrapes the
+  // first match's href) > step.menuView (hidden Knack menu view).
+  // Used so a step can point at, e.g., a row inside a table view
+  // rather than a single-link menu view.
+  function resolveHref(step) {
+    if (step.hrefSelector) {
+      var el = document.querySelector(step.hrefSelector);
+      if (el) return el.getAttribute('href') || '';
+    }
+    if (step.menuView) return getMenuHref(step.menuView);
+    return '';
+  }
+
   // ── Build a standalone action step element ───────────────
   function buildActionStep(step) {
-    var href = getMenuHref(step.menuView);
     var el = document.createElement('a');
     el.id = 'scw-step-' + step.id;
     el.className = 'scw-step-action';
-    if (href) el.href = href;
+
+    if (step.webhookAction) {
+      el.href = 'javascript:void(0)';
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (el.classList.contains('is-loading') ||
+            el.classList.contains('is-disabled')) return;
+        var handler = WEBHOOK_ACTIONS[step.webhookAction];
+        if (handler) handler(step, el);
+      });
+    } else {
+      var href = resolveHref(step);
+      if (href) el.href = href;
+    }
 
     var icon = document.createElement('span');
     icon.className = 'scw-step-icon';
@@ -4729,17 +4982,443 @@ window.SCW = window.SCW || {};
     return el;
   }
 
+  // ── Resolve the insertion anchor for an action step ──────
+  // `insertAfter` points to an accordion by inner viewKey;
+  // `insertAfterStepId` points to another action step by id.
+  // Walk backwards through STEPS from the given step, returning the
+  // first rendered DOM element (action-step or accordion wrapper).
+  // Used as a fallback when insertAfterStepId points at a step that
+  // isn't currently in the DOM (showWhen gated it out).
+  function nearestRenderedPredecessor(step) {
+    var idx = -1;
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i] === step) { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    for (var j = idx - 1; j >= 0; j--) {
+      var prev = STEPS[j];
+      if (prev.type === 'action') {
+        var prevEl = document.getElementById('scw-step-' + prev.id);
+        if (prevEl) return prevEl;
+      } else if (prev.type === 'accordion') {
+        var acc = findAccordion(prev.viewKey);
+        if (acc) return acc;
+      }
+    }
+    return null;
+  }
+
+  function findInsertAnchor(step) {
+    if (step.insertAfterStepId) {
+      var el = document.getElementById('scw-step-' + step.insertAfterStepId);
+      if (el) return el;
+      // Anchor step isn't in the DOM — gated out by showWhen. Fall back
+      // to the nearest rendered predecessor in STEPS order.
+      return nearestRenderedPredecessor(step);
+    }
+    return findAccordion(step.insertAfter);
+  }
+
+  // ── Webhook-driven step actions ──────────────────────────
+  // Used by action steps with `webhookAction: 'key'`. Each handler
+  // receives the step config and the step's DOM element so it can
+  // toggle the in-flight spinner and re-enable on error.
+  function setStepLoading(el, loading) {
+    if (!el) return;
+    if (loading) {
+      el.classList.add('is-loading');
+      var icon = el.querySelector('.scw-step-icon');
+      if (icon) icon.innerHTML = SPINNER_SVG;
+    } else {
+      el.classList.remove('is-loading');
+      // Icon will be re-applied on next applySteps() cycle.
+    }
+  }
+
+  function getSourceSowId() {
+    try {
+      var v = Knack.views && Knack.views[SOURCE_VIEW];
+      if (v && v.model && v.model.attributes && v.model.attributes.id) {
+        return v.model.attributes.id;
+      }
+    } catch (e) { /* fall through */ }
+    return '';
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // Reads a connection field's first {id, identifier} from a view's model.
+  // Returns null when the field is empty or the view isn't available.
+  function readConnectionFromView(viewId, fieldKey) {
+    try {
+      var v = Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (!attrs) return null;
+      var raw = attrs[fieldKey + '_raw'];
+      if (Array.isArray(raw) && raw.length) {
+        return { id: raw[0].id || '', identifier: raw[0].identifier || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // Reads a plain field value from a view's model (falls back to non-raw attr).
+  function readFieldFromView(viewId, fieldKey) {
+    try {
+      var v = Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (!attrs) return '';
+      var raw = attrs[fieldKey + '_raw'];
+      if (raw != null && typeof raw !== 'object') return raw;
+      if (attrs[fieldKey] != null) return attrs[fieldKey];
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  var WEBHOOK_ACTIONS = {
+    duplicateSow: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('Duplicate-SOW webhook URL is not configured.');
+        return;
+      }
+      var sourceRecordId = getSourceSowId();
+      if (!sourceRecordId) {
+        alert('Could not determine current SOW record ID.');
+        return;
+      }
+
+      var payload = {
+        sourceRecordId: sourceRecordId,
+        triggeredBy: getTriggeredBy()
+      };
+
+      setStepLoading(el, true);
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (resp) {
+        return resp.json().catch(function () { return null; });
+      }).then(function (data) {
+        if (data && data.success && data.newSowUrl) {
+          window.location.href = data.newSowUrl;
+          return;
+        }
+        setStepLoading(el, false);
+        var errMsg = (data && (data.error || data.message)) || 'Failed to create SOW option.';
+        alert(errMsg);
+      }).catch(function (err) {
+        setStepLoading(el, false);
+        alert('Webhook error: ' + (err && err.message ? err.message : err));
+      });
+    },
+
+    // Opens a modal prompt for notes, then POSTs notes + SOW id to
+    // the MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK. On success, reloads so
+    // the stepper can re-evaluate the step states against new server
+    // data (e.g. the alternative-proposal record that Make creates).
+    requestAlternativeProposal: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('Request-alternative-proposal webhook URL is not configured.');
+        return;
+      }
+      var sourceRecordId = getSourceSowId();
+      if (!sourceRecordId) {
+        alert('Could not determine current SOW record ID.');
+        return;
+      }
+      openNotesPromptModal({
+        title:         'Request Alternative Proposal',
+        intro:         'Give our bid team some context — what should they know about this alternative bid?',
+        placeholder:   'e.g. Budget option — fewer cameras in the parking lot, cheaper NVR',
+        submitLabel:   'Submit Request',
+        onSubmit: function (notes, setSubmitting, onError) {
+          setSubmitting(true);
+          setStepLoading(el, true);
+          // Extra context pulled from the SOW Account / Project details
+          // view (view_3491) so Make doesn't need to round-trip Knack for
+          // the account + project linked records or the project name.
+          var account = readConnectionFromView('view_3491', 'field_2119');
+          var project = readConnectionFromView('view_3491', 'field_6');
+          var projectName = readFieldFromView('view_3491', 'field_1456');
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceRecordId: sourceRecordId,
+              notes:          notes,
+              account:        account,
+              project:        project,
+              projectName:    projectName,
+              triggeredBy:    getTriggeredBy()
+            })
+          }).then(function (resp) {
+            return resp.text().then(function (body) {
+              var data = null;
+              try { data = body ? JSON.parse(body) : null; } catch (e) {}
+              return { ok: resp.ok, status: resp.status, body: body, data: data };
+            });
+          }).then(function (resp) {
+            if (resp.data && resp.data.success) {
+              // Make did its thing — reload so the stepper re-evaluates
+              // against the latest field values (e.g. an alt-proposal
+              // record may now be present / flags may have flipped).
+              window.location.reload();
+              return;
+            }
+            setSubmitting(false);
+            setStepLoading(el, false);
+            onError(
+              (resp.data && (resp.data.error || resp.data.message)) ||
+              (resp.ok
+                ? 'Webhook returned a non-JSON or unexpected response.'
+                : 'Webhook returned HTTP ' + resp.status + '.')
+            );
+          }).catch(function (err) {
+            setSubmitting(false);
+            setStepLoading(el, false);
+            onError('Network error: ' + (err && err.message ? err.message : err));
+          });
+        }
+      });
+    }
+  };
+
+  // ── Notes-prompt modal ───────────────────────────────────
+  // Minimal modal reused by any webhook action that wants to collect
+  // a short note before firing. Builds its own DOM each call and
+  // tears itself down on close. Keeps primary action on the right
+  // per the UI convention in CLAUDE.md.
+  function openNotesPromptModal(opts) {
+    opts = opts || {};
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-step-modal-overlay';
+
+    var card = document.createElement('div');
+    card.className = 'scw-step-modal';
+    overlay.appendChild(card);
+
+    var hdr = document.createElement('div');
+    hdr.className = 'scw-step-modal-hdr';
+    hdr.textContent = opts.title || 'Notes';
+    card.appendChild(hdr);
+
+    if (opts.intro) {
+      var intro = document.createElement('p');
+      intro.className = 'scw-step-modal-intro';
+      intro.textContent = opts.intro;
+      card.appendChild(intro);
+    }
+
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-step-modal-textarea';
+    ta.rows = 6;
+    if (opts.placeholder) ta.placeholder = opts.placeholder;
+    card.appendChild(ta);
+
+    var errEl = document.createElement('div');
+    errEl.className = 'scw-step-modal-error';
+    errEl.style.display = 'none';
+    card.appendChild(errEl);
+
+    var actions = document.createElement('div');
+    actions.className = 'scw-step-modal-actions';
+    card.appendChild(actions);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'scw-step-modal-cancel';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(cancelBtn);
+
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'scw-step-modal-submit';
+    submitBtn.textContent = opts.submitLabel || 'Submit';
+    actions.appendChild(submitBtn);
+
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape' && !submitBtn.disabled) close();
+    }
+    function setSubmitting(isSubmitting) {
+      submitBtn.disabled = isSubmitting;
+      cancelBtn.disabled = isSubmitting;
+      ta.disabled       = isSubmitting;
+      submitBtn.textContent = isSubmitting ? 'Submitting…' : (opts.submitLabel || 'Submit');
+    }
+    function onError(msg) {
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+
+    cancelBtn.addEventListener('click', close);
+    submitBtn.addEventListener('click', function () {
+      errEl.style.display = 'none';
+      var notes = (ta.value || '').trim();
+      if (typeof opts.onSubmit === 'function') {
+        opts.onSubmit(notes, setSubmitting, onError);
+      }
+    });
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 30);
+  }
+
   // ── Pick the right icon for a state ──────────────────────
-  var ACTIVE_ICONS = { eye: EYE_SVG };
+  var ACTIVE_ICONS = { eye: EYE_SVG, copy: COPY_SVG };
 
   function getIcon(isCompleted, isDisabled, step) {
-    if (isDisabled) return LOCK_SVG;
+    // Completed wins over disabled so a step whose prerequisite is
+    // technically unmet but which is factually done (e.g. workflow
+    // advanced past it via an alternate path) still reads as done.
     if (isCompleted) return CHECK_CIRCLE_SVG;
+    if (isDisabled) return LOCK_SVG;
     if (step && step.activeIcon && ACTIVE_ICONS[step.activeIcon]) return ACTIVE_ICONS[step.activeIcon];
     return CIRCLE_SVG;
   }
 
   // ── Apply states to an accordion step ────────────────────
+  // HTML-escape for safely injecting user-provided text into innerHTML.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Read a connection field's { recordId, identifier } from a given
+  // view (details or table). Returns null if the field isn't visible
+  // or has no connection value.
+  function readConnectionFromView(viewId, fieldKey) {
+    var view = document.getElementById(viewId);
+    if (!view) return null;
+    var scope = view.querySelector(
+      '.kn-detail.' + fieldKey +
+      ', td.' + fieldKey +
+      ', [data-field-key="' + fieldKey + '"]'
+    );
+    if (!scope) return null;
+    var spans = scope.querySelectorAll('span[data-kn="connection-value"]');
+    for (var i = 0; i < spans.length; i++) {
+      var el = spans[i];
+      var cls = (el.className || '').trim();
+      var id  = el.id || '';
+      var rec = /^[a-f0-9]{24}$/.test(cls) ? cls
+             : (/^[a-f0-9]{24}$/.test(id)  ? id  : '');
+      if (rec) {
+        return {
+          id: rec,
+          identifier: (el.textContent || '').replace(/\u00a0/g, ' ').trim()
+        };
+      }
+    }
+    return null;
+  }
+
+  // Build an href by swapping the SECOND 24-char hex record-id in the
+  // current URL hash with the supplied one. Used to construct a link
+  // to a sibling SOW on the same company (the second record-id slot).
+  function hrefWithSwappedSowId(newSowId) {
+    var hash = window.location.hash || '';
+    if (!/^#/.test(hash)) hash = '#' + hash;
+    var count = 0;
+    return hash.replace(/[a-f0-9]{24}/g, function (m) {
+      count++;
+      return count === 2 ? newSowId : m;
+    });
+  }
+
+  // Substitute tokens in a message template:
+  //   {field_XXXX}  — plain text value from the SOURCE_VIEW (view_3827)
+  //   {link}        — anchor tag to a sibling SOW, when cfg.link is set
+  function expandMessage(text, cfg) {
+    if (typeof text !== 'string') return '';
+    // {field_XXXX} → escaped plain text
+    var out = text.replace(/\{(field_\d+)\}/g, function (_, key) {
+      return escapeHtml(readField(key) || '');
+    });
+    // {link} → <a href="<swapped-url>">identifier</a>
+    out = out.replace(/\{link\}/g, function () {
+      if (!cfg || !cfg.link || !cfg.link.view || !cfg.link.field) return '';
+      var conn = readConnectionFromView(cfg.link.view, cfg.link.field);
+      if (!conn || !conn.id) return escapeHtml(conn && conn.identifier || '');
+      var href = hrefWithSwappedSowId(conn.id);
+      var label = escapeHtml(conn.identifier || conn.id);
+      return '<a href="' + escapeHtml(href) + '" class="scw-step-msg-link">' + label + '</a>';
+    });
+    return out.trim();
+  }
+
+  // Compute which header message (if any) to show for a step.
+  // Priority:
+  //   1. step.completedMessage when step is completed (optionally gated
+  //      by .when) — uses info icon.
+  //   2. step.disabled.message when baseDisabled AND step is NOT
+  //      completed — uses lock icon.
+  //   3. none otherwise.
+  function resolveHeaderMessage(step, isCompleted, baseDisabled) {
+    if (isCompleted && step.completedMessage) {
+      var cm = step.completedMessage;
+      var cmText = typeof cm === 'string' ? cm : (cm && cm.text) || '';
+      var cmWhen = typeof cm === 'object' ? cm.when : null;
+      if (cmText && (!cmWhen || conditionMet(cmWhen))) {
+        var finalHtml = expandMessage(cmText, typeof cm === 'object' ? cm : null);
+        if (finalHtml) return { html: finalHtml, icon: INFO_SM_SVG };
+      }
+    }
+    if (baseDisabled && !isCompleted && step.disabled && step.disabled.message) {
+      // Lock messages don't accept tokens — plain text.
+      return { html: escapeHtml(step.disabled.message), icon: LOCK_SM_SVG };
+    }
+    return null;
+  }
+
+  function renderHeaderMessage(hdr, step, stepKey, isCompleted, baseDisabled) {
+    var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + stepKey + '"]');
+    var msg = resolveHeaderMessage(step, isCompleted, baseDisabled);
+    if (!msg) {
+      if (msgEl) msgEl.remove();
+      return;
+    }
+    if (!msgEl) {
+      msgEl = document.createElement('span');
+      msgEl.className = 'scw-step-disabled-msg';
+      msgEl.setAttribute('data-step', stepKey);
+      var chevron = hdr.querySelector('.scw-acc-chevron');
+      if (chevron) hdr.insertBefore(msgEl, chevron);
+      else hdr.appendChild(msgEl);
+    }
+    // innerHTML so token-expanded <a> tags render. All user text
+    // passes through escapeHtml in expandMessage before reaching here.
+    msgEl.innerHTML = msg.icon + '<span>' + msg.html + '</span>';
+
+    // Prevent clicks on inline links from bubbling up to the
+    // accordion / action-step click handler (which would toggle the
+    // accordion instead of navigating). Re-attach on every render
+    // since innerHTML wipes previous listeners.
+    var links = msgEl.querySelectorAll('.scw-step-msg-link');
+    for (var li = 0; li < links.length; li++) {
+      links[li].addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+    }
+  }
+
   function applyAccordionState(step) {
     var wrap = findAccordion(step.viewKey);
     if (!wrap) return;
@@ -4747,67 +5426,64 @@ window.SCW = window.SCW || {};
     var iconEl = hdr.querySelector('.scw-acc-icon');
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
+    var isDisabled = baseDisabled || lockedByCompletion;
 
-    // Icon
-    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, isDisabled, step);
+    // Icon — show the completed checkmark even when locked-by-completion,
+    // so the header reads as "done" rather than showing the lock.
+    if (iconEl) iconEl.innerHTML = getIcon(isCompleted, baseDisabled, step);
 
-    // Completed class
-    wrap.classList.toggle('scw-step-completed', isCompleted && !isDisabled);
-
-    // Disabled class + message
+    // Both completed AND disabled can apply simultaneously when the step
+    // is locked by completion; CSS (scw-step-completed.scw-step-disabled)
+    // styles that combined state (full opacity, green icon, no clicks).
+    wrap.classList.toggle('scw-step-completed', isCompleted);
     wrap.classList.toggle('scw-step-disabled', isDisabled);
-    var msgEl = hdr.querySelector('.scw-step-disabled-msg[data-step="' + step.viewKey + '"]');
-    if (isDisabled && !msgEl && step.disabled.message) {
-      var msg = document.createElement('span');
-      msg.className = 'scw-step-disabled-msg';
-      msg.setAttribute('data-step', step.viewKey);
-      msg.innerHTML = LOCK_SM_SVG;
-      msg.appendChild(document.createTextNode(step.disabled.message));
-      var chevron = hdr.querySelector('.scw-acc-chevron');
-      if (chevron) hdr.insertBefore(msg, chevron);
-      else hdr.appendChild(msg);
-    } else if (!isDisabled && msgEl) {
-      msgEl.remove();
-    }
+
+    renderHeaderMessage(hdr, step, step.viewKey, isCompleted, baseDisabled);
   }
 
   // ── Apply states to an action step ───────────────────────
   function applyActionState(step) {
     var el = document.getElementById('scw-step-' + step.id);
+
+    // Render gate: skip (and remove if present) when the showWhen
+    // condition isn't met. Distinct from `disabled` which dims a
+    // visible step — `showWhen` controls whether it exists at all.
+    if (step.showWhen && !conditionMet(step.showWhen)) {
+      if (el) el.remove();
+      return;
+    }
+
     if (!el) {
       el = buildActionStep(step);
-      var afterAcc = findAccordion(step.insertAfter);
+      var afterAcc = findInsertAnchor(step);
       if (afterAcc) afterAcc.after(el);
     }
 
-    // Update href
-    var href = getMenuHref(step.menuView);
-    if (href) el.href = href;
+    // Update href (only for navigation-type steps, not webhook steps)
+    if (!step.webhookAction) {
+      var href = resolveHref(step);
+      if (href) el.href = href;
+    }
 
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
-    var isDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
+    var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
+    var isDisabled = baseDisabled || lockedByCompletion;
 
-    // Icon
+    // Icon — keep the completed check when locked-by-completion so the
+    // user still sees the "done" state rather than a lock.
     var icon = el.querySelector('.scw-step-icon');
-    if (icon) icon.innerHTML = getIcon(isCompleted, isDisabled, step);
+    if (icon) icon.innerHTML = getIcon(isCompleted, baseDisabled, step);
 
-    // Classes
-    el.classList.toggle('is-completed', isCompleted && !isDisabled);
+    // Classes: prefer is-completed styling when locked by completion so
+    // the step reads as "done" while still being non-clickable.
+    el.classList.toggle('is-completed', isCompleted);
     el.classList.toggle('is-disabled', isDisabled);
 
-    // Disabled message
-    var msgEl = el.querySelector('.scw-step-disabled-msg[data-step="' + step.id + '"]');
-    if (isDisabled && !msgEl && step.disabled.message) {
-      var msg = document.createElement('span');
-      msg.className = 'scw-step-disabled-msg';
-      msg.setAttribute('data-step', step.id);
-      msg.innerHTML = LOCK_SM_SVG;
-      msg.appendChild(document.createTextNode(step.disabled.message));
-      el.appendChild(msg);
-    } else if (!isDisabled && msgEl) {
-      msgEl.remove();
-    }
+    // Disabled / informational message — shared helper with accordions.
+    renderHeaderMessage(el, step, step.id, isCompleted, baseDisabled);
 
     // Hide original menu view
     if (step.menuView) {
@@ -4905,11 +5581,40 @@ window.SCW = window.SCW || {};
     setTimeout(applySteps, 1500);
   }
 
+  // Any view referenced by a step's menuView / hrefSelector is a source
+  // of the step's navigation href. Re-run applySteps when that view
+  // renders so the step's href stays current (e.g. published proposal
+  // link appearing after view_3814 loads).
+  function collectDependencyViews() {
+    var ids = {};
+    STEPS.forEach(function (s) {
+      if (s.menuView) ids[s.menuView] = true;
+      if (s.hrefSelector) {
+        var m = String(s.hrefSelector).match(/#(view_\d+)/);
+        if (m) ids[m[1]] = true;
+      }
+      // completedMessage.link pulls a record from a specific view —
+      // re-run applySteps on that view's render so the token refreshes.
+      var cm = s.completedMessage;
+      if (cm && typeof cm === 'object' && cm.link && cm.link.view) {
+        ids[cm.link.view] = true;
+      }
+    });
+    return Object.keys(ids);
+  }
+
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender(SOURCE_VIEW, init, NS);
     SCW.onViewRender(PLAYBOOK_VIEW, function () {
       setTimeout(bindPlaybookRules, 200);
     }, NS);
+
+    collectDependencyViews().forEach(function (vid) {
+      if (vid === SOURCE_VIEW || vid === PLAYBOOK_VIEW) return;
+      SCW.onViewRender(vid, function () {
+        setTimeout(applySteps, 200);
+      }, NS);
+    });
   }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
@@ -5843,6 +6548,19 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 .scw-l3-connected-devices { display: block; margin-top: 5px; padding-left: 40px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
+
+/* SOW header details — kept rendered so isInstallationMasked() can read
+   field_2725, but hidden from users so it doesn't take up space on the
+   proposal page. */
+#view_3861 { display: none !important; }
+
+/* Knack writes style="flex-basis: undefined%" on Details views whose
+   column width wasn't set in the page builder. Browsers treat that as
+   invalid → fall back to auto → columns collapse to content width.
+   Force them back to full-width so the labels/values render at a
+   readable size. */
+#view_3883 .kn-details-column,
+#view_3883 .kn-details-group { flex-basis: 100% !important; }
 `;
 
     document.head.appendChild(style);
@@ -7428,6 +8146,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ============================================================
 
   function isInstallationMasked() {
+    // Ops bypass — view_3345 (the Ops stepper host) is role-gated by Knack
+    // to Ops users. When Knack's display rule excludes a viewer from a
+    // view, depending on the rule configuration the view either renders
+    // hidden (display:none) or is removed from the DOM entirely. Treat
+    // both as "not Ops" by checking presence AND visibility.
+    var ops = document.getElementById('view_3345');
+    if (ops && ops.offsetParent !== null) return false;
+
     var view = document.getElementById('view_3861');
     if (view) {
       var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
@@ -7440,7 +8166,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
       }
     }
-    return false;
+    // Default to MASKED when we can't read the validation state.
+    // Knack's role rules can omit view_3861 from the DOM entirely for
+    // Sales viewers, in which case we have no signal to read field_2725
+    // from. The safe behavior is to mask labor (treat as not-yet-
+    // validated) rather than leak numbers. The Ops bypass above ensures
+    // Ops still sees real numbers.
+    return true;
   }
 
   function zeroLaborCells(ctx) {
@@ -27716,9 +28448,11 @@ $(".kn-navigation-bar").hide();
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
           sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
-          mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
+          // TODO(field_1968/field_2462): commented out — fields not found on Site Survey /
+          // Survey Line Item / SOW / SOW Line Item objects in Knack. See CLAUDE.md Known Issues.
+          // mountCableBoth:   { key: 'field_1968', type: 'readOnly',    summary: true, label: 'MCB',  group: 'pre',   groupCls: 'sum-group--mcb' },
           laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
+          // laborCategory:    { key: 'field_2462', type: 'readOnly',    summary: true, label: 'Cat',  group: 'right', groupCls: 'sum-group--cat' },
           laborVariables:   { key: 'field_1972', type: 'multiChip',   summary: true, label: 'Vars', group: 'right', groupCls: 'sum-group--vars',
                               options: ['Exterior', 'High Traffic', 'Plenum'], feeTrigger: true },
           existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
@@ -27740,8 +28474,9 @@ $(".kn-navigation-bar").hide();
                               linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
           subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
-        summaryLayout: ['mountCableBoth', 'laborDescription', 'existingCabling',
-                         'laborCategory', 'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+        // TODO(field_1968/field_2462): 'mountCableBoth' and 'laborCategory' removed from layout.
+        summaryLayout: ['laborDescription', 'existingCabling',
+                         'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
           right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
@@ -27815,7 +28550,51 @@ $(".kn-navigation-bar").hide();
         syntheticBucketGroups: [
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
+        ],
+        // ── Override: cameras/readers rows mirror view_3313's config.
+        //    Only includes fields that exist on view_3610's raw table.
+        //    stackedSummary: false matches view_3586's cam/reader layout
+        //    so the summary doesn't stretch vertically. ──
+        bucketOverride: {
+          overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
+          stackedSummary: false,
+          fields: {
+            // ── Summary row ──
+            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            sow:              { key: 'field_2154', type: 'readOnly',    summary: true, label: 'SOW',  group: 'right', groupCls: 'sum-group--sow' },
+            laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
+            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Existing' },
+            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+            plenumChit:       { key: 'field_1983', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Plenum' },
+            subBid:           { key: 'field_2150', type: 'directEdit',  summary: true, label: 'Sub Bid', group: 'right', groupCls: 'sum-group--sub-bid', feeTrigger: true },
+            plusHrs:          { key: 'field_1973', type: 'directEdit',  summary: true, label: '+Hrs', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
+            plusMat:          { key: 'field_1974', type: 'directEdit',  summary: true, label: '+Mat', group: 'right', groupCls: 'sum-group--narrow', feeTrigger: true },
+            installFee:       { key: 'field_2028', type: 'readOnly',    summary: true, label: 'Fee',  group: 'right', groupCls: 'sum-group--fee', readOnlySummary: true },
+            move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
+
+            // ── Detail panel ──
+            dropPrefix:       { key: 'field_2240', type: 'readOnly' },
+            dropNumber:       { key: 'field_1951', type: 'directEdit' },
+            dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
+            mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
+            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
+            scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
+            selectedSubBid:   { key: 'field_2630', type: 'link', label: 'Selected Sub Bid',
+                                linkField: 'field_2360',
+                                linkPattern: 'https://scwinstallation.knack.com/installationservices#subcontractor-portal/site-survey-request-details/{linkField}/view-site-survey-line-item-details/{recordId}' },
+            subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
+          },
+          summaryLayout: [
+            'laborDescription',
+            { stack: ['existingCabling', 'exteriorChit', 'plenumChit'] },
+            'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'
+          ],
+          detailLayout: {
+            left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
+            right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+          }
+        }
       },
       {
         viewId: 'view_3586',
@@ -27998,7 +28777,7 @@ $(".kn-navigation-bar").hide();
         syntheticGroupsPosition: 'bottom',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1957'],
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
@@ -28006,7 +28785,7 @@ $(".kn-navigation-bar").hide();
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1957'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
@@ -28774,6 +29553,32 @@ td.${P}-sum-move {
 .${P}-cabling-chit.is-readonly {
   cursor: default;
   pointer-events: none;
+}
+
+/* ── Stacked toggle-chit column (used for cam/reader flags) ── */
+.${P}-sum-group--chit-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling {
+  width: 100%;
+}
+.${P}-sum-group--chit-stack .${P}-cabling-chit {
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  width: 100%;
+  min-width: 44px;
+  letter-spacing: 0;
+}
+/* Keep the first chit's empty label spacer so the top of the stack
+   aligns with the top of other labeled summary inputs (Sub Bid, +Hrs,
+   etc.); hide the rest so the chits below stack flush. */
+.${P}-sum-group--chit-stack .${P}-sum-group--cabling:not(:first-child) > .${P}-sum-label {
+  display: none;
 }
 
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
@@ -31883,6 +32688,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     for (var i = 0; i < layout.length; i++) {
       var name = layout[i];
+
+      // Stack layout item: { stack: [fieldNames...] } renders the listed
+      // fields into a column-flex wrapper so they stack vertically.
+      // Used for things like multiple toggleChits on cam/reader rows.
+      if (name && typeof name === 'object' && Array.isArray(name.stack)) {
+        var stackWrap = document.createElement('span');
+        stackWrap.className = P + '-sum-group ' + P + '-sum-group--chit-stack';
+        for (var si = 0; si < name.stack.length; si++) {
+          var sName = name.stack[si];
+          var sDesc = fieldDesc(viewCfg, sName);
+          if (!sDesc || !sDesc.summary) continue;
+          renderSummaryField(stackWrap, tr, sName, sDesc, viewCfg);
+        }
+        rightGroup.appendChild(stackWrap);
+        continue;
+      }
+
       var desc = fieldDesc(viewCfg, name);
       if (!desc || !desc.summary) continue;
 
@@ -31905,22 +32727,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (moveDesc && moveDesc.type === 'moveIcon') {
       var moveTd = findCell(tr, moveDesc.key);
       if (moveTd) {
-        if (!moveTd.querySelector('.fa-server')) {
+        if (!moveTd.querySelector('.fa-exchange')) {
           moveTd.innerHTML =
-            '<span style="display:inline-flex; align-items:center; justify-content:center; gap:4px; vertical-align:middle;">' +
-              '<i class="fa fa-server" aria-hidden="true" title="Changing Location" style="font-size:22px; line-height:1;"></i>' +
-              '<span style="display:inline-flex; flex-direction:column; align-items:center; justify-content:center; gap:0; line-height:1;">' +
-                '<i class="fa fa-level-up" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-                '<i class="fa fa-level-down" aria-hidden="true" style="font-size:14px; line-height:1; display:block; color:rgba(237,131,38,1);"></i>' +
-              '</span>' +
-            '</span>';
+            '<i class="fa fa-exchange" aria-hidden="true" title="Change MDF/IDF" ' +
+              'style="font-size:18px; line-height:1; color:rgba(237,131,38,1); cursor:pointer;"></i>';
         }
         moveTd.classList.add(P + '-sum-move');
         var moveWrap = document.createElement('span');
         moveWrap.className = P + '-sum-group ' + P + '-sum-group--move';
         var moveLabel = document.createElement('span');
         moveLabel.className = P + '-sum-label';
-        moveLabel.innerHTML = '&nbsp;';
+        moveLabel.textContent = 'IDF';
         moveWrap.appendChild(moveLabel);
         moveWrap.appendChild(moveTd);
         rightGroup.appendChild(moveWrap);
@@ -33014,6 +33831,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           effectiveCfg.fields = viewCfg.bucketOverride.fields;
           effectiveCfg.summaryLayout = viewCfg.bucketOverride.summaryLayout;
           effectiveCfg.detailLayout = viewCfg.bucketOverride.detailLayout;
+          // Allow per-bucket override of stackedSummary so cam/reader rows
+          // on a view whose main config is stacked can opt out (and vice versa).
+          if (Object.prototype.hasOwnProperty.call(viewCfg.bucketOverride, 'stackedSummary')) {
+            effectiveCfg.stackedSummary = viewCfg.bucketOverride.stackedSummary;
+          }
           // If the main config has a label but the override doesn't,
           // flag the effective config so a spacer is inserted to keep alignment.
           if (viewCfg.fields.label && !effectiveCfg.fields.label) {
@@ -33521,6 +34343,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (del) {
           del.style.visibility = shouldHide ? 'hidden' : '';
         }
+        // Also disable the KTL bulk-edit row checkbox so this row can't
+        // be picked up by "Delete Selected: N". Uncheck it first in case
+        // it was already selected before the protection kicked in.
+        var cbCell = card.querySelector('.' + P + '-sum-check');
+        var cb = cbCell ? cbCell.querySelector('input[type="checkbox"]') : null;
+        if (cb) {
+          if (shouldHide) {
+            cb.checked = false;
+            cb.disabled = true;
+            cb.setAttribute('data-scw-bulk-blocked', '1');
+            cbCell.style.visibility = 'hidden';
+            cbCell.title = 'Cannot delete — line item is on a survey';
+          } else if (cb.getAttribute('data-scw-bulk-blocked') === '1') {
+            cb.disabled = false;
+            cb.removeAttribute('data-scw-bulk-blocked');
+            cbCell.style.visibility = '';
+            cbCell.removeAttribute('title');
+          }
+        }
       }
     });
   }
@@ -33632,10 +34473,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     revisionView:     'view_3837',   // Submitted revision line items (data source, hidden)
 
     // ── Add-mode detection ─────────────────────────────────
-    // When field_2706 = "Yes" on the proposal view, records in the
-    // worksheet where field_2586 != 0 are treated as "add" change requests.
-    addModeField:     'field_2706',  // on proposalView — "Yes" = revisions active
-    addCountField:    'field_2586',  // on worksheetView — != 0 → treat as "add" CR
+    // When field_2706 = "Yes" on any of the addModeViews below, records in
+    // the worksheet where field_2586 === 0 (no associated survey items) are
+    // treated as "add" change requests — they were created during the
+    // revision phase. Rows where field_2586 > 0 came in from the site
+    // survey and are left alone by the auto-detector.
+    addModeViews:     ['view_3491', 'view_3827'],   // any one = Yes activates the module
+    addModeField:     'field_2706',  // on addModeViews — "Yes" = revisions active
+    addCountField:    'field_2586',  // on worksheetView — 0 → treat as "add" CR
 
     // ── Display / identity fields (worksheetView) ──────────
     labelField:       'field_1950',  // display label (e.g. "E-003")
@@ -34485,18 +35330,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   //  ADD-MODE DETECTION
   // ═══════════════════════════════════════════════════════════
 
-  function checkAddMode() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) { S.setAddMode(false); return; }
-
+  function readAddModeFlagFrom(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
-    if (!$cell.length) $cell = $pv.find('.field_' + CFG.addModeField.replace('field_', ''));
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
+    return H.stripHtml($cell.text()).replace(/\u00a0/g, ' ').trim();
+  }
 
-    var val = H.stripHtml($cell.text());
-    S.setAddMode(/^yes$/i.test(val));
-
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + val + ')');
+  function checkAddMode() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    var active = false;
+    var observed = '';
+    for (var i = 0; i < views.length; i++) {
+      var val = readAddModeFlagFrom(views[i]);
+      if (val) observed = val;
+      if (/^yes$/i.test(val)) { active = true; break; }
+    }
+    S.setAddMode(active);
+    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
@@ -34513,8 +35366,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!base) continue;
       if (pending[id]) continue;
 
+      // addCountField (field_2586) = "associated survey line items" count.
+      // A row is an "add" change request ONLY when it has NO associated
+      // survey items (count === 0) — i.e., it was created during the
+      // revision phase. Rows with count > 0 came in from the site survey
+      // and must not be auto-flagged as adds.
       var count = parseFloat(base._addCount);
-      if (count === 0 || isNaN(count)) continue;
+      if (isNaN(count) || count > 0) continue;
 
       // Snapshot all tracked field values into requested — the whole record is new
       var req = {};
@@ -35983,10 +36841,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
         clearPending();
+        autoRevertValidation(count);
         ns.showToast('Change request submitted', 'success');
       },
       error: function (xhr) {
         if (xhr && xhr.status === 0) {
+          autoRevertValidation(count);
           if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
           clearPending();
           ns.showToast('Change request submitted', 'success');
@@ -36013,6 +36873,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var i = 0; i < keys.length; i++) delete pending[keys[i]];
     ns.persist();  // clears sessionStorage + writes empty to field_2707
     if (ns.refresh) ns.refresh();
+  }
+
+  // Flip field_2725 (FLAG_validated bid) back to No and drop a note into
+  // field_2736 so the Ops Review pill on view_3325 surfaces why the
+  // validation was revoked. No-op if the ops-review feature hasn't loaded
+  // or the SOW id can't be resolved.
+  function autoRevertValidation(count) {
+    if (!window.SCW || !SCW.opsReview ||
+        typeof SCW.opsReview.autoRevertValidation !== 'function') return;
+    var sowId = S.sowRecordId && S.sowRecordId();
+    if (!sowId) return;
+    SCW.opsReview.autoRevertValidation(sowId, { itemCount: count });
   }
 
   // ── Public API ──
@@ -36216,14 +37088,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // refresh-on-inline-edit.js (model.fetch after cell updates).
   // We re-inject UI every time since re-render wipes the DOM.
 
-  // Check if the sales CR module should be active (field_2706 = Yes on proposal view)
-  function isModuleActive() {
-    var $pv = $('#' + CFG.proposalView);
-    if (!$pv.length) return false;
+  // Check if the sales CR module should be active. Returns true if
+  // field_2706 = "Yes" on ANY of the configured addModeViews.
+  function readAddModeFlag(viewId) {
+    var $pv = $('#' + viewId);
+    if (!$pv.length) return '';
+    // Grid cell shape (data-field-key on td)
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
+    // Details-view shape: wrapper div has the field class, value lives in .kn-detail-body
+    if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField + ' .kn-detail-body');
+    // Last-resort fallback: wrapper itself (may include the label text)
     if (!$cell.length) $cell = $pv.find('.' + CFG.addModeField);
-    var val = ($cell.text() || '').replace(/<[^>]*>/g, '').trim();
-    return /^yes$/i.test(val);
+    return ($cell.text() || '').replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
+  }
+
+  function isModuleActive() {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    for (var i = 0; i < views.length; i++) {
+      if (/^yes$/i.test(readAddModeFlag(views[i]))) return true;
+    }
+    return false;
   }
 
   var _rehydrated = false;
@@ -36294,9 +37178,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     } catch (e) {}
   });
 
-  // ── Proposal view render → check add mode ─────────────
+  // ── Add-mode view render(s) → check add mode ─────────────
+  // Binds to every view listed in CFG.addModeViews so that whichever
+  // view carries field_2706 triggers the re-check when it re-renders.
 
-  SCW.onViewRender(CFG.proposalView, function () {
+  function onAddModeViewRender() {
     setTimeout(function () {
       // Re-check activation — field_2706 may have rendered after worksheet
       if (isModuleActive() && !S.onPage()) {
@@ -36316,7 +37202,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         refresh();
       }
     }, 300);
-  }, CFG.eventNs);
+  }
+
+  (CFG.addModeViews || [CFG.proposalView]).forEach(function (vid) {
+    SCW.onViewRender(vid, onAddModeViewRender, CFG.eventNs);
+  });
 
   // ── Revision view render → load + inject ──────────────
 
@@ -39437,6 +40327,1046 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       setTimeout(enhance, 100);
     });
 })();
+/*** FEATURE: Ops Review pill on view_3325 (SOW list) ***/
+/**
+ * Replaces the raw flag columns on view_3325 with a single
+ * "Ops Review" column containing a status pill that surfaces the
+ * NEXT Ops action for this SOW (matching the Ops stepper on the
+ * proposal page).
+ *
+ * Pill is status + navigation only — clicking takes the reviewer
+ * to the proposal page (scene that hosts view_3345 / the real
+ * Ops stepper). The actual writes happen there, not in the grid.
+ *
+ * Priority (first match wins)
+ *   1. field_2728 > 0 AND field_2706 = No → "Request Alternative Bid
+ *      from Subcontractor" (amber) — there are pending CRs to address.
+ *   2. field_2706 = No                    → "Mark Ready for Survey"
+ *      (blue) — SOW needs Ops sign-off before sales can request survey.
+ *   3. field_2725 = No                    → "Publish & Submit Completed
+ *      Proposal" (green) — survey + bids are back, proposal ready to go.
+ *   4. field_2725 = Yes (terminal)        → "Bid Published" (green check,
+ *      no link).
+ *
+ * Reads these fields from the row DOM, so they must be added as
+ * columns on view_3325 (hidden by this feature's CSS):
+ *   field_2706  FLAG_survey requested
+ *   field_2728  count of pending change requests
+ *   field_2725  FLAG_validated bid
+ *   field_2736  auto-revert note (surfaced as pill tooltip)
+ *
+ * Also exposes SCW.opsReview.autoRevertValidation(sowId, opts) —
+ * called from sales-change-request/submit.js to flip field_2725=No
+ * and drop a timestamped note into field_2736 when a CR is submitted.
+ */
+(function () {
+  'use strict';
+
+  // ── Config ──────────────────────────────────────────────
+  var VIEW_ID        = 'view_3325';
+  var HOST_FIELD     = 'field_2723';   // existing column used as the Ops Review host cell
+  var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested
+  var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
+  var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
+  var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
+
+  var WRITE_VIEW   = 'view_3841';      // form that edits 2725 + 2736 (for auto-revert)
+  var STYLE_ID     = 'scw-ops-review-css';
+  var EVENT_NS     = '.scwOpsReview';
+  var CELL_CLASS   = 'scw-ops-review-cell';
+  var PROCESSED    = 'data-scw-ops-review';
+
+  // ── Step definitions (priority order) ───────────────────
+  // First matching step wins. Mirror these with the Ops stepper
+  // (ops-stepper.js) so grid and page agree on "next action".
+  var STEPS = [
+    {
+      id:       'request-alt-bid',
+      label:    'Request Alternative Bid',
+      tone:     'amber',
+      showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
+    },
+    {
+      id:       'mark-ready',
+      label:    'Mark Ready for Survey',
+      tone:     'primary',
+      showWhen: function (f) { return f.survey !== 'yes'; }
+    },
+    {
+      id:       'publish-proposal',
+      label:    'Publish & Submit Proposal',
+      tone:     'success',
+      showWhen: function (f) { return f.validated !== 'yes'; }
+    }
+  ];
+
+  // ── CSS ─────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css =
+      /* Hide source columns this feature consumes. */
+      '#' + VIEW_ID + ' th.' + VALID_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + VALID_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + NOTE_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + NOTE_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + SURVEY_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + SURVEY_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + CR_COUNT_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + CR_COUNT_FIELD + ' {' +
+      '  display: none !important;' +
+      '}' +
+
+      /* Host cell */
+      '#' + VIEW_ID + ' td.' + CELL_CLASS + ',' +
+      '#' + VIEW_ID + ' th.' + CELL_CLASS + ' {' +
+      '  white-space: nowrap;' +
+      '  min-width: 250px;' +
+      '  vertical-align: middle;' +
+      '  text-align: center;' +
+      '}' +
+
+      /* Suppress Knack inline-edit popup on this cell. */
+      'td[' + PROCESSED + '] .kn-edit-col,' +
+      'td[' + PROCESSED + '] .kn-td-edit {' +
+      '  display: none !important;' +
+      '}' +
+
+      /* Let the tooltip pseudo-element escape Knack's table wrapper,
+         which has overflow set on .kn-table-wrapper / its parents. */
+      '#' + VIEW_ID + ' .kn-table-wrapper,' +
+      '#' + VIEW_ID + ' table.kn-table-table,' +
+      '#' + VIEW_ID + ' tbody,' +
+      '#' + VIEW_ID + ' tbody tr,' +
+      '#' + VIEW_ID + ' tbody td.' + CELL_CLASS + ' {' +
+      '  overflow: visible !important;' +
+      '}' +
+
+      /* Pill — matches the bid-comparison "Convert All →" button styling
+         (.scw-bid-review__btn / --adopt) so all action affordances on
+         the page share one visual language. */
+      '.scw-ops-pill {' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  gap: 6px;' +
+      '  min-width: 230px; box-sizing: border-box;' +
+      '  padding: 6px 12px; border-radius: 4px;' +
+      '  font: 600 12px/1.2 system-ui, sans-serif;' +
+      '  border: none; white-space: nowrap;' +
+      '  background: #0891b2;' +
+      '  color: #ffffff !important;' +
+      '  text-decoration: none !important;' +
+      '  cursor: pointer;' +
+      '  transition: opacity .15s, filter .15s;' +
+      '}' +
+      'a.scw-ops-pill,' +
+      'a.scw-ops-pill:visited,' +
+      'a.scw-ops-pill:hover,' +
+      'a.scw-ops-pill:focus { color: #ffffff !important; }' +
+      'a.scw-ops-pill:hover { filter: brightness(0.92); }' +
+      '.scw-ops-pill > span { color: inherit; }' +
+      '.scw-ops-pill .scw-ops-arrow {' +
+      '  font-size: 13px; line-height: 1; opacity: 0.9;' +
+      '}' +
+
+      /* Terminal (already published) — neutral grey, non-interactive. */
+      '.scw-ops-pill.is-terminal {' +
+      '  background: #e2e8f0; color: #475569 !important; cursor: default;' +
+      '}' +
+      '.scw-ops-pill.is-terminal:hover { filter: none; }' +
+
+      /* Inline info glyph for the auto-revert note trail. */
+      '.scw-ops-info {' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  width: 13px; height: 13px; border-radius: 50%;' +
+      '  background: rgba(255,255,255,0.25); color: inherit;' +
+      '  font-style: italic; font-weight: 700;' +
+      '  font-size: 9px; line-height: 1; cursor: help;' +
+      '  font-family: Georgia, "Times New Roman", serif;' +
+      '}' +
+      '.scw-ops-pill.is-terminal .scw-ops-info { background: rgba(0,0,0,0.12); }' +
+
+      /* Floating tooltip — JS appends a single .scw-ops-floating-tip div
+         to <body> and positions it via fixed coords on hover. CSS pseudo
+         tooltips were getting clipped by Knack's .kn-table-wrapper /
+         accordion overflow chain; living on body bypasses all of that. */
+      '.scw-ops-floating-tip {' +
+      '  position: fixed; display: none;' +
+      '  background: #1f2937; color: #fff;' +
+      '  padding: 6px 10px; border-radius: 5px;' +
+      '  font: 500 11.5px/1.35 system-ui, sans-serif;' +
+      '  max-width: 280px; white-space: normal; text-align: left;' +
+      '  box-shadow: 0 6px 16px rgba(0,0,0,0.3);' +
+      '  z-index: 100000; pointer-events: none;' +
+      '}';
+
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ── Helpers ─────────────────────────────────────────────
+  function readBool(tr, fieldKey) {
+    var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+    if (!td) return 'no';
+    var t = (td.textContent || '').replace(/[ \s]/g, ' ').trim().toLowerCase();
+    return (t === 'yes' || t === 'true') ? 'yes' : 'no';
+  }
+  function readText(tr, fieldKey) {
+    var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+    return td ? (td.textContent || '').replace(/[ \s]+/g, ' ').trim() : '';
+  }
+  function toNum(v) {
+    if (v == null) return 0;
+    var n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+  function readNote(tr) { return readText(tr, NOTE_FIELD); }
+
+  function resolveStep(tr) {
+    var fields = {
+      survey:    readBool(tr, SURVEY_FIELD),
+      crCount:   readText(tr, CR_COUNT_FIELD),
+      validated: readBool(tr, VALID_FIELD)
+    };
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i].showWhen(fields)) return STEPS[i];
+    }
+    return null; // terminal
+  }
+
+  // Pull the per-row proposal/detail URL. Prefers an existing kn-link-page
+  // anchor in the row (the "Proposal" column when it exists). When the
+  // view doesn't include that column, fall back to constructing the URL
+  // from the current page's hash plus the row's record id —
+  //   <current-hash>/proposal/<sowRecordId>
+  // matches the route pattern Knack uses for the proposal page.
+  function getRowLink(tr) {
+    var a = tr.querySelector('a.kn-link-page[href]');
+    if (a && a.getAttribute('href')) return a.getAttribute('href');
+    var m = (tr.id || '').match(/[a-f0-9]{24}/i);
+    if (!m) return '';
+
+    var hash  = window.location.hash || '';
+    var qIdx  = hash.indexOf('?');
+    var path  = qIdx >= 0 ? hash.substring(0, qIdx) : hash;
+    var query = qIdx >= 0 ? hash.substring(qIdx)    : '';
+    if (path.charAt(path.length - 1) === '/') path = path.slice(0, -1);
+    return path + '/proposal/' + m[0] + query;
+  }
+
+  // ── Render one cell ─────────────────────────────────────
+  function renderCell(hostTd, tr) {
+    hostTd.innerHTML = '';
+    hostTd.classList.add(CELL_CLASS);
+    hostTd.setAttribute(PROCESSED, '1');
+
+    var step = resolveStep(tr);
+    var note = readNote(tr);
+
+    var pill;
+    if (step) {
+      // Active next-step → link to the proposal page.
+      pill = document.createElement('a');
+      pill.className = 'scw-ops-pill is-' + step.tone;
+      var href = getRowLink(tr);
+      if (href) pill.setAttribute('href', href);
+      pill.setAttribute('target', '_blank');
+      pill.setAttribute('rel', 'noopener');
+
+      var labelSpan = document.createElement('span');
+      labelSpan.textContent = step.label;
+      pill.appendChild(labelSpan);
+
+      if (note) {
+        pill.setAttribute('data-scw-tip', note);
+        var info = document.createElement('span');
+        info.className = 'scw-ops-info';
+        info.setAttribute('data-scw-tip', note);
+        info.textContent = 'i';
+        pill.appendChild(info);
+      }
+
+      var arrow = document.createElement('span');
+      arrow.className = 'scw-ops-arrow';
+      arrow.textContent = '›';
+      pill.appendChild(arrow);
+    } else {
+      // Terminal state — no link, non-interactive.
+      pill = document.createElement('span');
+      pill.className = 'scw-ops-pill is-terminal';
+
+      var check = document.createElement('span');
+      check.textContent = '✓';
+      check.style.cssText = 'font-size:11px; line-height:1;';
+      pill.appendChild(check);
+
+      var t = document.createElement('span');
+      t.textContent = 'Bid Published';
+      pill.appendChild(t);
+
+      if (note) {
+        pill.setAttribute('data-scw-tip', note);
+      }
+    }
+
+    hostTd.appendChild(pill);
+  }
+
+  // ── Scan view, transform each data row ──────────────────
+  function transform() {
+    var view = document.getElementById(VIEW_ID);
+    if (!view) return;
+    var table = view.querySelector('table.kn-table-table');
+    if (!table) return;
+
+    // Relabel the host column header once.
+    var hostTh = table.querySelector('thead th.' + HOST_FIELD);
+    if (hostTh && !hostTh.getAttribute('data-scw-ops-review-th')) {
+      hostTh.classList.add(CELL_CLASS);
+      hostTh.setAttribute('data-scw-ops-review-th', '1');
+      var lbl = hostTh.querySelector('.table-fixed-label span');
+      if (lbl) lbl.textContent = 'Ops Review';
+      var link = hostTh.querySelector('a.kn-sort');
+      if (link) link.removeAttribute('href');
+    }
+
+    var rows = table.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      if (tr.classList.contains('kn-tr-nodata')) continue;
+      if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+      var hostTd = tr.querySelector('td.' + HOST_FIELD +
+                                   ', td[data-field-key="' + HOST_FIELD + '"]');
+      if (!hostTd) continue;
+      renderCell(hostTd, tr);
+    }
+  }
+
+  // Suppress Knack's inline-edit popup on the managed cell — the pill
+  // is the only interactive surface, and it's a link, not an edit control.
+  // Stop mousedown AND click from bubbling to the td.cell-edit handler,
+  // but do NOT preventDefault on click so the anchor's native navigation
+  // still fires.
+  document.addEventListener('mousedown', function (e) {
+    var td = e.target.closest('td[' + PROCESSED + ']');
+    if (!td) return;
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+      e.stopPropagation();
+    }
+  }, true);
+  document.addEventListener('click', function (e) {
+    var td = e.target.closest('td[' + PROCESSED + ']');
+    if (!td) return;
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+      e.stopPropagation();
+    }
+  }, true);
+
+  // ── Floating tooltip ────────────────────────────────────
+  // Single tooltip element on <body>, positioned with fixed coords on
+  // hover. Living on body avoids clipping by Knack's table wrappers /
+  // accordion overflow.
+  var _tipEl = null;
+  function ensureTip() {
+    if (_tipEl) return _tipEl;
+    _tipEl = document.createElement('div');
+    _tipEl.className = 'scw-ops-floating-tip';
+    document.body.appendChild(_tipEl);
+    return _tipEl;
+  }
+  function showTip(target) {
+    var text = target.getAttribute('data-scw-tip');
+    if (!text) return;
+    var tip = ensureTip();
+    tip.textContent = text;
+    tip.style.display = 'block';
+    // Measure after content is set
+    var rect = target.getBoundingClientRect();
+    var tw = tip.offsetWidth;
+    var th = tip.offsetHeight;
+    var top  = rect.top - th - 8;
+    var left = rect.left + (rect.width / 2) - (tw / 2);
+    // Clamp horizontally
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    // Flip below if no room above
+    if (top < 8) top = rect.bottom + 8;
+    tip.style.top  = top  + 'px';
+    tip.style.left = left + 'px';
+  }
+  function hideTip() {
+    if (_tipEl) _tipEl.style.display = 'none';
+  }
+  // Use mouseover/mouseout (which bubble) with .closest() for delegation.
+  document.addEventListener('mouseover', function (e) {
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    if (t) showTip(t);
+  });
+  document.addEventListener('mouseout', function (e) {
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    if (t) hideTip();
+  });
+  // Hide on scroll so the tooltip doesn't drift away from its anchor.
+  window.addEventListener('scroll', hideTip, true);
+
+  // ── Bindings ────────────────────────────────────────────
+  function bind() {
+    $(document)
+      .off('knack-view-render.' + VIEW_ID + EVENT_NS)
+      .on('knack-view-render.' + VIEW_ID + EVENT_NS, function () {
+        setTimeout(transform, 150);
+      });
+
+    $(document)
+      .off('knack-cell-update.' + VIEW_ID + EVENT_NS)
+      .on('knack-cell-update.' + VIEW_ID + EVENT_NS, function () {
+        setTimeout(transform, 150);
+      });
+  }
+
+  injectStyles();
+  bind();
+  if (document.getElementById(VIEW_ID)) transform();
+
+  // ── Public API ──────────────────────────────────────────
+  // Called from sales-change-request/submit.js after a successful submit.
+  // Flips field_2725 → No on the SOW (so the "Bid Published" pill drops
+  // back to "Publish & Submit Proposal") and drops a timestamped note
+  // into field_2736 so the UI can surface the "why" as a tooltip.
+  function autoRevertValidation(sowRecordId, opts) {
+    if (!sowRecordId || !/^[a-f0-9]{24}$/i.test(sowRecordId)) return;
+    opts = opts || {};
+    var count = opts.itemCount || 0;
+    var noteText = 'Auto-reverted ' + formatDate(new Date()) +
+                   ' — change request submitted' +
+                   (count ? ' (' + count + ' item' + (count === 1 ? '' : 's') + ')' : '');
+
+    var body = {};
+    body[VALID_FIELD] = 'No';
+    body[NOTE_FIELD]  = noteText;
+
+    var writeView = opts.viewId || WRITE_VIEW;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowRecordId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      success: function (resp) {
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowRecordId, resp, VALID_FIELD, 'No');
+          SCW.syncKnackModel(writeView, sowRecordId, resp, NOTE_FIELD,  noteText);
+        }
+      },
+      error: function (xhr) {
+        console.warn('[scw-ops-review] autoRevertValidation failed for ' +
+                     sowRecordId, xhr && xhr.responseText);
+      }
+    });
+  }
+
+  function formatDate(d) {
+    return (d.getMonth() + 1) + '/' + d.getDate() + '/' +
+           String(d.getFullYear()).slice(-2);
+  }
+
+  window.SCW = window.SCW || {};
+  SCW.opsReview = SCW.opsReview || {};
+  SCW.opsReview.autoRevertValidation = autoRevertValidation;
+})();
+/*** FEATURE: Ops-side stepper (view_3345 rich-text host) ***/
+/**
+ * Three button-actions rendered into the role-gated rich-text host
+ * view_3345 on the Ops proposal page. Each button opens a notes-prompt
+ * modal and fires a Make webhook with the SOW context + payload fields
+ * so Make can update the CU project task, post to Slack, and (for
+ * step 2 / 3) create the supporting records.
+ *
+ * Steps
+ *   1. Mark Ready for Survey
+ *        showWhen: field_2706 = No
+ *        webhook : MAKE_OPS_MARK_READY_WEBHOOK
+ *        server  : flips field_2723 = Yes, updates CU task, Slack
+ *
+ *   2. Request Alternative Bid from Subcontractor
+ *        showWhen: field_2706 = No AND field_2728 > 0
+ *        webhook : MAKE_OPS_REQUEST_ALT_BID_WEBHOOK
+ *        server  : creates missing Survey Item records + alt-bid package,
+ *                  updates CU task, posts to Slack
+ *
+ *   3. Publish and Submit Completed Proposal to Sales
+ *        showWhen: field_2725 = No
+ *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
+ *        server  : flips field_2725 = Yes, updates CU task, Slack
+ *
+ * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
+ * (view_3861) plus field_2126, line-item record ids from view_3341,
+ * and license record ids from LICENSE_VIEW (empty placeholder until
+ * the view is supplied).
+ */
+(function () {
+  'use strict';
+
+  // ── Config ───────────────────────────────────────────────
+  var HOST_VIEW      = 'view_3345';   // role-gated rich-text host in Knack
+  var SOURCE_VIEW    = 'view_3861';   // SOW details view on the proposal page
+  var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
+  var LICENSE_VIEW   = '';            // TODO: user will supply the license-table view id
+  var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
+
+  var NS         = '.scwOpsStepper';
+  var BLOCK_CLS  = 'scw-ops-stepper';
+  var STYLE_ID   = 'scw-ops-stepper-css';
+
+  var STEPS = [
+    {
+      id: 'mark-ready',
+      label: 'Mark Ready for Survey',
+      tone: 'primary',
+      // Available when the survey hasn't been requested AND there are no
+      // pending change requests yet. As soon as CRs exist (field_2728 > 0)
+      // the Request Alternative Bid step takes over.
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'No' },
+          { not: { field: 'field_2728', gt: 0 } }
+        ]
+      },
+      webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
+      modal: {
+        title:       'Mark Ready for Survey',
+        intro:       'Note to the sales team — what should they know?',
+        placeholder: 'e.g. Proposal is internally consistent, ready to hand off',
+        submitLabel: 'Mark Ready'
+      },
+      includeFullPayload: false   // this step just needs sourceRecordId + notes
+    },
+    {
+      id: 'request-alt-bid',
+      label: 'Request Alternative Bid from Subcontractor',
+      tone: 'amber',
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'No' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
+      webhookKey: 'MAKE_OPS_REQUEST_ALT_BID_WEBHOOK',
+      modal: {
+        title:       'Request Alternative Bid',
+        intro:       'Note for the subcontractor (and a heads-up will also post back to Sales that an alternative bid was requested).',
+        placeholder: 'e.g. Budget-friendly alternative — fewer cameras in the lot, cheaper NVR',
+        submitLabel: 'Send Request'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-proposal',
+      label: 'Publish and Submit Completed Proposal to Sales',
+      tone: 'success',
+      // Available only once the SOW has both at least one change request
+      // (field_2728 > 0) and at least one associated bid (field_2737 > 0).
+      showWhen: {
+        all: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2737', gt: 0 }
+        ]
+      },
+      webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
+      modal: {
+        title:       'Publish & Submit Completed Proposal',
+        intro:       'Anything to include in the update to Sales? You can either just publish the quote quietly, or publish AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
+        placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
+        submitLabel: 'Publish & Notify Sales',
+        // Secondary action — fires the same webhook with mode=publish-only
+        // so Make can skip the Sales notification / CU task / Slack steps.
+        secondaryLabel: 'Just Publish (no notification)',
+        secondaryMode:  'publish-only',
+        primaryMode:    'publish-and-notify'
+      },
+      includeFullPayload: true
+    }
+  ];
+
+  // ── Icons ────────────────────────────────────────────────
+  // Same shapes as workflow-stepper.js so the Ops actions render visually
+  // identical to the sales build stepper rows (CIRCLE for available, LOCK
+  // for disabled, SPINNER while a webhook is in flight).
+  var CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+  var LOCK_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  var SPINNER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+  // ── Styles (injected once) ───────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css =
+      /* Container — sits flush inside the rich-text host (view_3345). */
+      '.' + BLOCK_CLS + ' {' +
+      '  display: flex; flex-direction: column; gap: 0;' +
+      '  margin: 8px 0;' +
+      '}' +
+      '.' + BLOCK_CLS + '__title {' +
+      '  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;' +
+      '  text-transform: uppercase; color: #6b7280;' +
+      '  margin-bottom: 6px;' +
+      '}' +
+
+      /* ── Action step row (mirrors workflow-stepper.js) ──
+         These rules also live in workflow-stepper.js, but that file only
+         injects them on the sales build page (view_3827 scope). The Ops
+         proposal page doesn't have view_3827, so we re-declare the same
+         rules here so the buttons render identically. */
+      '.scw-step-action {' +
+      '  position: relative; display: flex; align-items: center;' +
+      '  width: 100%; min-height: 44px;' +
+      '  padding: 14px 16px 14px 22px;' +
+      '  background: #fff; cursor: pointer; user-select: none;' +
+      '  box-sizing: border-box; transition: background 180ms ease;' +
+      '  border: 1px solid #e5e7eb; border-radius: 14px;' +
+      '  margin-bottom: 8px; text-decoration: none !important; color: inherit;' +
+      '}' +
+      '.scw-step-action::before {' +
+      '  content: ""; position: absolute; left: 0; top: 0; bottom: 0;' +
+      '  width: 6px; background: var(--scw-step-accent, #295f91);' +
+      '  border-radius: 14px 0 0 14px;' +
+      '}' +
+      '.scw-step-action:hover { background: rgba(41,95,145,0.06); }' +
+      '.scw-step-action .scw-step-icon {' +
+      '  flex: 0 0 auto; display: inline-flex; align-items: center;' +
+      '  justify-content: center; width: 28px; margin-right: 6px;' +
+      '  color: var(--scw-step-accent, #295f91); opacity: .75;' +
+      '}' +
+      '.scw-step-action .scw-step-title {' +
+      '  flex: 1 1 auto; font-size: 14px; font-weight: 600;' +
+      '  color: #1e293b; white-space: nowrap; overflow: hidden;' +
+      '  text-overflow: ellipsis; text-decoration: none !important;' +
+      '}' +
+      '.scw-step-action.is-disabled {' +
+      '  opacity: 0.45; pointer-events: none; cursor: default;' +
+      '}' +
+      '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      '.scw-step-action.is-loading {' +
+      '  pointer-events: none; opacity: 0.75; cursor: wait;' +
+      '}' +
+      '.scw-step-action.is-loading .scw-step-icon svg {' +
+      '  animation: scw-step-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
+
+      /* Modal — mirrors workflow-stepper's notes-prompt modal. */
+      '.scw-ops-modal-overlay {' +
+      '  position: fixed; inset: 0; z-index: 10000;' +
+      '  display: flex; align-items: center; justify-content: center;' +
+      '  background: rgba(15,23,42,0.55);' +
+      '}' +
+      '.scw-ops-modal {' +
+      '  width: 480px; max-width: 92vw; background: #fff;' +
+      '  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);' +
+      '  padding: 20px 22px 16px;' +
+      '  font-family: inherit; color: #111827;' +
+      '}' +
+      '.scw-ops-modal-hdr {' +
+      '  font-size: 16px; font-weight: 700; margin-bottom: 4px;' +
+      '}' +
+      '.scw-ops-modal-intro {' +
+      '  font-size: 13px; color: #4b5563; margin-bottom: 12px;' +
+      '}' +
+      '.scw-ops-modal-textarea {' +
+      '  width: 100%; box-sizing: border-box; min-height: 110px;' +
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; resize: vertical;' +
+      '}' +
+      '.scw-ops-modal-error {' +
+      '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
+      '}' +
+      '.scw-ops-modal-actions {' +
+      '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;' +
+      '}' +
+      '.scw-ops-modal-cancel, .scw-ops-modal-secondary, .scw-ops-modal-submit {' +
+      '  padding: 7px 14px; border-radius: 5px; font-size: 13px;' +
+      '  font-weight: 600; cursor: pointer; border: 1px solid transparent;' +
+      '}' +
+      '.scw-ops-modal-cancel {' +
+      '  background: #fff; color: #374151; border-color: #d1d5db;' +
+      '}' +
+      '.scw-ops-modal-cancel:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-secondary {' +
+      '  background: #fff; color: #1f2937; border-color: #cbd5e1;' +
+      '}' +
+      '.scw-ops-modal-secondary:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-secondary[disabled] { opacity: 0.6; cursor: wait; }' +
+      '.scw-ops-modal-submit {' +
+      '  background: #2563eb; color: #fff; border-color: #1d4ed8;' +
+      '}' +
+      '.scw-ops-modal-submit:hover { background: #1d4ed8; }' +
+      '.scw-ops-modal-submit[disabled] {' +
+      '  opacity: 0.6; cursor: wait;' +
+      '}';
+
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────
+  function getSourceModel() {
+    try {
+      var v = Knack.views && Knack.views[SOURCE_VIEW];
+      return (v && v.model && v.model.attributes) || null;
+    } catch (e) { return null; }
+  }
+
+  function getSourceRecordId() {
+    var attrs = getSourceModel();
+    return (attrs && attrs.id) || '';
+  }
+
+  // Read from the source-view DOM (matches workflow-stepper.js's pattern).
+  // The Details view renders each field as `.kn-detail.field_XXXX` with
+  // the value inside `.kn-detail-body`. The Knack model isn't always
+  // populated when the view first renders, but the DOM always is.
+  function readField(fieldKey) {
+    var view = document.getElementById(SOURCE_VIEW);
+    if (!view) return '';
+    var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+    if (cell) return (cell.textContent || '').replace(/ /g, ' ').trim();
+    return '';
+  }
+
+  // Numeric comparison for `gt` / `gte` etc.
+  function toNum(v) {
+    if (v == null) return NaN;
+    var n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? NaN : n;
+  }
+
+  function conditionMet(cond) {
+    if (!cond) return true;
+    if (cond.all) return cond.all.every(conditionMet);
+    if (cond.any) return cond.any.some(conditionMet);
+    if (cond.not) return !conditionMet(cond.not);
+    if (cond.field) {
+      var v = String(readField(cond.field) || '').trim();
+      if (cond.value    != null) return v.toLowerCase() === String(cond.value).toLowerCase();
+      if (cond.notValue != null) return v.toLowerCase() !== String(cond.notValue).toLowerCase();
+      if (cond.hasValue === true)  return v !== '';
+      if (cond.hasValue === false) return v === '';
+      if (cond.gt  != null) return toNum(v) >  Number(cond.gt);
+      if (cond.gte != null) return toNum(v) >= Number(cond.gte);
+      if (cond.lt  != null) return toNum(v) <  Number(cond.lt);
+      if (cond.lte != null) return toNum(v) <= Number(cond.lte);
+    }
+    return true;
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // Pull every attribute off the source view's model. Skips internal Knack
+  // keys (id, account_id, object, etc) and keeps both raw and display values
+  // — Make can pick whichever it needs per field.
+  function readAllFields() {
+    var attrs = getSourceModel();
+    if (!attrs) return {};
+    var out = {};
+    var keys = Object.keys(attrs);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (/^field_\d+(_raw)?$/.test(k)) out[k] = attrs[k];
+    }
+    return out;
+  }
+
+  function collectRecordIdsFromView(viewId) {
+    var out = [];
+    if (!viewId) return out;
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var data = v && v.model && v.model.data;
+      var models = data && data.models;
+      if (!models || !models.length) return out;
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes;
+        if (a && typeof a.id === 'string' && /^[a-f0-9]{24}$/.test(a.id)) {
+          out.push(a.id);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
+  // ── Payload ──────────────────────────────────────────────
+  function buildPayload(step, notes, mode) {
+    var payload = {
+      sourceRecordId: getSourceRecordId(),
+      stepId:         step.id,
+      notes:          notes || '',
+      mode:           mode || null,
+      triggeredBy:    getTriggeredBy()
+    };
+    if (step.includeFullPayload) {
+      payload.sowFields = readAllFields();
+      // EXTRA_FIELD (field_2126 — SOW Name) is usually in sowFields already,
+      // but surface it at the top level so Make can reference it without
+      // digging through the map.
+      payload.sowName        = readField(EXTRA_FIELD);
+      payload.sowLineItemIds = collectRecordIdsFromView(LINE_ITEM_VIEW);
+      payload.licenseIds     = collectRecordIdsFromView(LICENSE_VIEW);
+    }
+    return payload;
+  }
+
+  // ── Notes prompt modal ───────────────────────────────────
+  function openNotesPromptModal(opts, onSubmit) {
+    opts = opts || {};
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ops-modal-overlay';
+
+    var card = document.createElement('div');
+    card.className = 'scw-ops-modal';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'scw-ops-modal-hdr';
+    hdr.textContent = opts.title || 'Add a note';
+    card.appendChild(hdr);
+
+    if (opts.intro) {
+      var intro = document.createElement('div');
+      intro.className = 'scw-ops-modal-intro';
+      intro.textContent = opts.intro;
+      card.appendChild(intro);
+    }
+
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-ops-modal-textarea';
+    ta.placeholder = opts.placeholder || '';
+    card.appendChild(ta);
+
+    var err = document.createElement('div');
+    err.className = 'scw-ops-modal-error';
+    err.style.display = 'none';
+    card.appendChild(err);
+
+    var actions = document.createElement('div');
+    actions.className = 'scw-ops-modal-actions';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'scw-ops-modal-cancel';
+    cancelBtn.textContent = 'Cancel';
+
+    // Optional secondary action (used by the Publish step to offer
+    // "Just Publish" alongside "Publish & Notify Sales").
+    var secondaryBtn = null;
+    if (opts.secondaryLabel) {
+      secondaryBtn = document.createElement('button');
+      secondaryBtn.type = 'button';
+      secondaryBtn.className = 'scw-ops-modal-secondary';
+      secondaryBtn.textContent = opts.secondaryLabel;
+    }
+
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'scw-ops-modal-submit';
+    submitBtn.textContent = opts.submitLabel || 'Submit';
+
+    actions.appendChild(cancelBtn);
+    if (secondaryBtn) actions.appendChild(secondaryBtn);
+    actions.appendChild(submitBtn);
+    card.appendChild(actions);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 30);
+
+    function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+    function setSubmitting(on) {
+      submitBtn.disabled = !!on;
+      submitBtn.textContent = on ? 'Submitting…' : (opts.submitLabel || 'Submit');
+      cancelBtn.disabled = !!on;
+      if (secondaryBtn) secondaryBtn.disabled = !!on;
+    }
+    function showError(msg) {
+      err.textContent = msg || 'Something went wrong.';
+      err.style.display = 'block';
+    }
+
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+    submitBtn.addEventListener('click', function () {
+      err.style.display = 'none';
+      var notes = (ta.value || '').trim();
+      onSubmit(notes, {
+        setSubmitting: setSubmitting, showError: showError, close: close,
+        mode: opts.primaryMode || null
+      });
+    });
+    if (secondaryBtn) {
+      secondaryBtn.addEventListener('click', function () {
+        err.style.display = 'none';
+        var notes = (ta.value || '').trim();
+        onSubmit(notes, {
+          setSubmitting: setSubmitting, showError: showError, close: close,
+          mode: opts.secondaryMode || null
+        });
+      });
+    }
+  }
+
+  // ── Webhook ──────────────────────────────────────────────
+  function fireStep(step, btn) {
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.webhookKey]) || '';
+    if (!url || /PLACEHOLDER/.test(url)) {
+      alert(step.label + ' webhook URL is not configured (' + step.webhookKey + ').');
+      return;
+    }
+    if (!getSourceRecordId()) {
+      alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
+      return;
+    }
+
+    openNotesPromptModal(step.modal, function (notes, ctx) {
+      ctx.setSubmitting(true);
+      setBtnLoading(btn, true);
+      var payload = buildPayload(step, notes, ctx.mode);
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (resp) {
+        return resp.text().then(function (body) {
+          var data = null;
+          try { data = body ? JSON.parse(body) : null; } catch (e) {}
+          return { ok: resp.ok, status: resp.status, body: body, data: data };
+        });
+      }).then(function (resp) {
+        if (resp.data && resp.data.success) {
+          // Reload so the stepper re-evaluates against the flipped flags
+          // that Make wrote server-side (field_2723 / field_2725 / etc).
+          window.location.reload();
+          return;
+        }
+        setBtnLoading(btn, false);
+        ctx.setSubmitting(false);
+        ctx.showError(
+          (resp.data && (resp.data.error || resp.data.message)) ||
+          (resp.ok
+            ? 'Webhook returned a non-JSON or unexpected response.'
+            : 'Webhook returned HTTP ' + resp.status + '.')
+        );
+      }).catch(function (e) {
+        setBtnLoading(btn, false);
+        ctx.setSubmitting(false);
+        ctx.showError('Network error: ' + (e && e.message ? e.message : e));
+      });
+    });
+  }
+
+  function setBtnLoading(btn, on) {
+    if (!btn) return;
+    var icon = btn.querySelector('.scw-step-icon');
+    if (on) {
+      btn.classList.add('is-loading');
+      if (icon) icon.innerHTML = SPINNER_SVG;
+    } else {
+      btn.classList.remove('is-loading');
+      if (icon) icon.innerHTML = CIRCLE_SVG;
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────
+  function renderInto(host) {
+    // Clear any previous render — the source view may re-render many times.
+    var prev = host.querySelector('.' + BLOCK_CLS);
+    if (prev) prev.remove();
+
+    var block = document.createElement('div');
+    block.className = BLOCK_CLS;
+
+    var title = document.createElement('div');
+    title.className = BLOCK_CLS + '__title';
+    title.textContent = 'Ops Actions';
+    block.appendChild(title);
+
+    // Render every step in fixed order; gray out (disable) the ones whose
+    // showWhen evaluates false. Same DOM shape as workflow-stepper.js's
+    // action steps so we get the accordion-header look for free.
+    STEPS.forEach(function (step) {
+      var available = conditionMet(step.showWhen);
+      var el = document.createElement('a');
+      el.href = 'javascript:void(0)';
+      el.className = 'scw-step-action' + (available ? '' : ' is-disabled');
+      if (!available) el.setAttribute('title', 'Not available for this SOW right now.');
+
+      var icon = document.createElement('span');
+      icon.className = 'scw-step-icon';
+      icon.innerHTML = available ? CIRCLE_SVG : LOCK_SVG;
+      el.appendChild(icon);
+
+      var titleEl = document.createElement('span');
+      titleEl.className = 'scw-step-title';
+      titleEl.textContent = step.label;
+      el.appendChild(titleEl);
+
+      if (available) {
+        el.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (el.classList.contains('is-loading')) return;
+          fireStep(step, el);
+        });
+      }
+      block.appendChild(el);
+    });
+
+    host.appendChild(block);
+  }
+
+  function render() {
+    var host = document.getElementById(HOST_VIEW);
+    if (!host) return;           // view is hidden by role rule — nothing to do
+    var sourceEl = document.getElementById(SOURCE_VIEW);
+    if (!sourceEl) return;       // source not in DOM yet — wait for its render event
+    renderInto(host);
+  }
+
+  // ── Bindings ─────────────────────────────────────────────
+  function bind() {
+    $(document)
+      .off('knack-view-render.' + HOST_VIEW + NS)
+      .on('knack-view-render.' + HOST_VIEW + NS, function () { setTimeout(render, 200); });
+
+    $(document)
+      .off('knack-view-render.' + SOURCE_VIEW + NS)
+      .on('knack-view-render.' + SOURCE_VIEW + NS, function () { setTimeout(render, 200); });
+
+    $(document)
+      .off('knack-scene-render.any' + NS)
+      .on('knack-scene-render.any' + NS, function () { setTimeout(render, 600); });
+  }
+
+  injectStyles();
+  bind();
+  if (document.getElementById(HOST_VIEW)) setTimeout(render, 200);
+})();
 /*** FEATURE: Preview Proposal Button → view_3814 header ***/
 (function () {
   'use strict';
@@ -39535,6 +41465,687 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     .on('knack-scene-render.any' + EVENT_NS, function () {
       _href = '';
       setTimeout(tryInject, 2000);
+    });
+})();
+/*** FEATURE: Create Alternate SOW button → view_3869 accordion header ***/
+/**
+ * Injects a "Create Alternate SOW" button into the accordion header for
+ * view_3869. Visible only after the Initiate Install step has fired
+ * (field_1199 populated on the SOW detail view_3827).
+ *
+ * Click fires SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK with:
+ *   { sourceRecordId: <SOW record id>, triggeredBy: { id, name, email } }
+ *
+ * Make creates a new SOW + appends its ID to field_2154 on each line
+ * item / license / recurring service (many-to-many SOW connection),
+ * then returns { success, newSowId, newSowUrl }. Client redirects to
+ * newSowUrl on success.
+ */
+(function () {
+  'use strict';
+
+  var TARGET_VIEW    = 'view_3869';
+  var GATE_VIEW      = 'view_3827';   // SOW detail view supplying field_1199 + record id
+  var GATE_FIELD     = 'field_1199';  // Install Project populated -> show button
+  var BTN_MARKER     = 'scw-create-sow-option-btn';
+  var BTN_LABEL      = 'Create Alternate SOW';
+  var EVENT_NS       = '.scwCreateSowOption';
+
+  var COPY_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+  var SPINNER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round" class="scw-create-sow-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+  // Inject the spinner keyframes once.
+  (function injectStyles() {
+    if (document.getElementById('scw-create-sow-option-css')) return;
+    var s = document.createElement('style');
+    s.id = 'scw-create-sow-option-css';
+    s.textContent =
+      '.' + BTN_MARKER + '.is-loading { pointer-events: none; opacity: 0.75; cursor: wait; }' +
+      '.' + BTN_MARKER + '.is-loading svg { animation: scw-create-sow-spin 0.8s linear infinite; }' +
+      '@keyframes scw-create-sow-spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(s);
+  })();
+
+  // ── Read field_1199 from the SOW detail view DOM ─────────
+  function getGateFieldValue() {
+    var view = document.getElementById(GATE_VIEW);
+    if (!view) return '';
+    var cell = view.querySelector('.kn-detail.' + GATE_FIELD + ' .kn-detail-body');
+    if (!cell) return '';
+    return (cell.textContent || '').replace(/\u00a0/g, ' ').trim();
+  }
+
+  // ── Current SOW record id (pulled from view_3827's model) ─
+  function getSourceSowId() {
+    try {
+      var v = Knack.views && Knack.views[GATE_VIEW];
+      if (v && v.model && v.model.attributes && v.model.attributes.id) {
+        return v.model.attributes.id;
+      }
+    } catch (e) { /* fall through */ }
+    return '';
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // ── Collect line-item record IDs from a Knack table view's model ──
+  // Used so Make doesn't need a round-trip to query existing items;
+  // the client already has them loaded in memory.
+  function collectRecordIdsFromView(viewId) {
+    var out = [];
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var data = v && v.model && v.model.data;
+      var models = data && data.models;
+      if (!models || !models.length) return out;
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i].attributes;
+        if (attrs && typeof attrs.id === 'string' && /^[a-f0-9]{24}$/.test(attrs.id)) {
+          out.push(attrs.id);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
+  // ── Safety net: force a fresh fetch on a view's model ────
+  // Guards against the click firing before a view (esp. one inside a
+  // collapsed accordion or briefly re-fetched) has populated its
+  // model.data.models. Resolves on success OR failure so a single
+  // slow/broken view can't block the webhook entirely.
+  function refreshView(viewId) {
+    return new Promise(function (resolve) {
+      try {
+        var v = Knack && Knack.views && Knack.views[viewId];
+        if (!v || !v.model || typeof v.model.fetch !== 'function') {
+          resolve(); return;
+        }
+        v.model.fetch({
+          success: function () { resolve(); },
+          error:   function () { resolve(); }   // fall through with whatever's cached
+        });
+      } catch (e) { resolve(); }
+    });
+  }
+
+  // ── Fire the duplicate-SOW webhook ───────────────────────
+  function fireWebhook(btn) {
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DUPLICATE_SOW_WEBHOOK) || '';
+    if (!url || /PLACEHOLDER/.test(url)) {
+      alert('Duplicate-SOW webhook URL is not configured.');
+      return;
+    }
+    var sourceRecordId = getSourceSowId();
+    if (!sourceRecordId) {
+      alert('Could not determine current SOW record ID.');
+      return;
+    }
+
+    setBtnLoading(btn, true);
+
+    // Re-fetch both line-item grids before reading IDs. view_3471
+    // (Licenses / Recurring Services) sits in a collapsed accordion by
+    // default — on some page loads its data may be stale or not yet
+    // populated when the user clicks. view_3586 is usually loaded
+    // already, but a fresh fetch also catches the rare case where an
+    // item was added elsewhere (e.g. another tab) since last render.
+    Promise.all([
+      refreshView('view_3586'),
+      refreshView('view_3471')
+    ]).then(function () {
+      var sowLineItemIds      = collectRecordIdsFromView('view_3586');
+      var licenseRecurringIds = collectRecordIdsFromView('view_3471');
+
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceRecordId:      sourceRecordId,
+          sowLineItemIds:      sowLineItemIds,
+          licenseRecurringIds: licenseRecurringIds,
+          triggeredBy:         getTriggeredBy()
+        })
+      });
+    }).then(function (resp) {
+      // Read as text first so we can log whatever came back even if
+      // the scenario hasn't been configured to return JSON yet.
+      return resp.text().then(function (body) {
+        var data = null;
+        try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
+        console.log('[SCW clone-sow] status=' + resp.status + ' body=' + body);
+        return { status: resp.status, body: body, data: data, ok: resp.ok };
+      });
+    }).then(function (resp) {
+      if (resp.data && resp.data.success && resp.data.newSowUrl) {
+        window.location.href = resp.data.newSowUrl;
+        return;
+      }
+      setBtnLoading(btn, false);
+
+      // Surface the real reason so it's easier to fix the Make scenario.
+      var msg;
+      if (!resp.ok) {
+        msg = 'Webhook returned HTTP ' + resp.status + '. Response:\n\n' + (resp.body || '(empty)');
+      } else if (!resp.data) {
+        msg = 'Webhook returned non-JSON response. Add a "Webhook Response" module in Make ' +
+              'that returns JSON like {"success": true, "newSowUrl": "..."}.\n\n' +
+              'Actual body:\n' + (resp.body || '(empty)');
+      } else if (resp.data.error || resp.data.message) {
+        msg = resp.data.error || resp.data.message;
+      } else if (resp.data.success && !resp.data.newSowUrl) {
+        msg = 'Webhook returned success but no newSowUrl. Add newSowUrl to the ' +
+              'Webhook Response body so the client knows where to redirect.';
+      } else {
+        msg = 'Failed to create SOW option. Body:\n\n' + (resp.body || '(empty)');
+      }
+      alert(msg);
+    }).catch(function (err) {
+      setBtnLoading(btn, false);
+      alert('Webhook error: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  function setBtnLoading(btn, loading) {
+    if (!btn) return;
+    var iconSpan = btn.querySelector('.scw-create-sow-icon');
+    if (loading) {
+      btn.classList.add('is-loading');
+      if (iconSpan) iconSpan.innerHTML = SPINNER_SVG;
+    } else {
+      btn.classList.remove('is-loading');
+      if (iconSpan) iconSpan.innerHTML = COPY_SVG;
+    }
+  }
+
+  // ── Inject / remove the button based on gate + presence ──
+  function syncButton() {
+    var targetEl = document.getElementById(TARGET_VIEW);
+    if (!targetEl) return;
+    var accordion = targetEl.closest('.scw-ktl-accordion');
+    if (!accordion) return;
+    var header = accordion.querySelector('.scw-ktl-accordion__header');
+    if (!header) return;
+
+    var existing = header.querySelector('.' + BTN_MARKER);
+    var shouldShow = !!getGateFieldValue();
+
+    if (!shouldShow) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;   // already injected, nothing to do
+
+    var actions = header.querySelector('.scw-acc-actions');
+    if (!actions) {
+      actions = document.createElement('div');
+      actions.className = 'scw-acc-actions';
+      var chevron = header.querySelector('.scw-acc-chevron');
+      if (chevron) header.insertBefore(actions, chevron);
+      else header.appendChild(actions);
+    }
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'scw-acc-action-btn ' + BTN_MARKER;
+    btn.title = 'Create a second SOW option on this project';
+
+    var iconSpan = document.createElement('span');
+    iconSpan.className = 'scw-create-sow-icon';
+    iconSpan.innerHTML = COPY_SVG;
+    btn.appendChild(iconSpan);
+
+    btn.appendChild(document.createTextNode(BTN_LABEL));
+
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (btn.classList.contains('is-loading')) return;
+      fireWebhook(btn);
+    });
+
+    actions.appendChild(btn);
+  }
+
+  // ── Bindings ─────────────────────────────────────────────
+  function bind() {
+    $(document)
+      .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
+      .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
+        setTimeout(syncButton, 500);
+      });
+
+    $(document)
+      .off('knack-view-render.' + GATE_VIEW + EVENT_NS)
+      .on('knack-view-render.' + GATE_VIEW + EVENT_NS, function () {
+        setTimeout(syncButton, 500);
+      });
+
+    $(document)
+      .off('knack-scene-render.any' + EVENT_NS)
+      .on('knack-scene-render.any' + EVENT_NS, function () {
+        setTimeout(syncButton, 1500);
+      });
+  }
+
+  bind();
+})();
+/*** FEATURE: "Import Unique Items" button on each row of view_3869 ***/
+/**
+ * For each row in view_3869 (alternative SOWs on the same project),
+ * injects an "Import Unique Items" button. Click fires the Make
+ * webhook at SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK with:
+ *   {
+ *     receivingRecordId: <current SOW id from view_3827>,
+ *     sourceRecordId:    <tr.id of the row where the button lives>,
+ *     triggeredBy:       { id, name, email }
+ *   }
+ *
+ * Make is expected to look up all line items on the source SOW, filter
+ * to those NOT already on the receiving SOW, and append the receiving
+ * SOW's id to each such item's field_2154 connection. The button is
+ * never rendered on the self-row (hidden by hide-self-row).
+ */
+(function () {
+  'use strict';
+
+  var TARGET_VIEW  = 'view_3869';
+  var GATE_VIEW    = 'view_3827';          // SOW detail view on the same scene
+  var BTN_MARKER   = 'scw-import-unique-items-btn';
+  var BTN_LABEL    = 'Import Unique Items';
+  var EVENT_NS     = '.scwImportUniqueItems';
+  var COL_CLASS    = 'scw-import-unique-items-col';
+
+  var DOWNLOAD_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+    '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
+  var SPINNER_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+  // Inject styles once.
+  (function injectStyles() {
+    if (document.getElementById('scw-import-unique-items-css')) return;
+    var s = document.createElement('style');
+    s.id = 'scw-import-unique-items-css';
+    s.textContent =
+      '#' + TARGET_VIEW + ' th.' + COL_CLASS + ',' +
+      '#' + TARGET_VIEW + ' td.' + COL_CLASS + ' {' +
+      '  text-align: right; white-space: nowrap; padding: 4px 8px;' +
+      '}' +
+      '.' + BTN_MARKER + ' {' +
+      '  display: inline-flex; align-items: center; gap: 6px;' +
+      '  font-size: 12px; font-weight: 600;' +
+      '  padding: 5px 10px; border-radius: 5px;' +
+      '  background: #2563eb; color: #fff !important;' +
+      '  border: 1px solid #1d4ed8; cursor: pointer;' +
+      '  line-height: 1.2; white-space: nowrap;' +
+      '  transition: background 0.15s;' +
+      '}' +
+      '.' + BTN_MARKER + ':hover { background: #1d4ed8; }' +
+      '.' + BTN_MARKER + '.is-loading {' +
+      '  pointer-events: none; opacity: 0.7; cursor: wait;' +
+      '}' +
+      '.' + BTN_MARKER + '.is-loading svg {' +
+      '  animation: scw-import-unique-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-import-unique-spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(s);
+  })();
+
+  function getReceivingSowId() {
+    try {
+      var v = Knack.views && Knack.views[GATE_VIEW];
+      if (v && v.model && v.model.attributes && v.model.attributes.id) {
+        return v.model.attributes.id;
+      }
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  function setBtnLoading(btn, loading) {
+    if (!btn) return;
+    var iconSpan = btn.querySelector('.scw-import-unique-items-icon');
+    if (loading) {
+      btn.classList.add('is-loading');
+      if (iconSpan) iconSpan.innerHTML = SPINNER_SVG;
+    } else {
+      btn.classList.remove('is-loading');
+      if (iconSpan) iconSpan.innerHTML = DOWNLOAD_SVG;
+    }
+  }
+
+  function fireWebhook(btn, sourceRecordId) {
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
+    if (!url || /PLACEHOLDER/.test(url)) {
+      alert('Import-unique-items webhook URL is not configured.');
+      return;
+    }
+    var receivingRecordId = getReceivingSowId();
+    if (!receivingRecordId) {
+      alert('Could not determine current SOW record ID.');
+      return;
+    }
+    if (!sourceRecordId) {
+      alert('Could not determine source SOW record ID.');
+      return;
+    }
+    if (receivingRecordId === sourceRecordId) {
+      alert('Source and receiving SOW are the same — nothing to import.');
+      return;
+    }
+
+    setBtnLoading(btn, true);
+
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        receivingRecordId: receivingRecordId,
+        sourceRecordId:    sourceRecordId,
+        triggeredBy:       getTriggeredBy()
+      })
+    }).then(function (resp) {
+      return resp.json().catch(function () { return null; });
+    }).then(function (data) {
+      if (data && data.success) {
+        // Reload so the newly-imported items appear in the worksheet.
+        window.location.reload();
+        return;
+      }
+      setBtnLoading(btn, false);
+      alert((data && (data.error || data.message)) || 'Failed to import items.');
+    }).catch(function (err) {
+      setBtnLoading(btn, false);
+      alert('Webhook error: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  // ── Inject a button-cell into each data row ──────────────
+  function buildButton(sourceRecordId) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = BTN_MARKER;
+    btn.title = 'Copy items from this SOW that are not already on the current SOW';
+
+    var iconSpan = document.createElement('span');
+    iconSpan.className = 'scw-import-unique-items-icon';
+    iconSpan.style.cssText = 'display:inline-flex; align-items:center;';
+    iconSpan.innerHTML = DOWNLOAD_SVG;
+    btn.appendChild(iconSpan);
+
+    btn.appendChild(document.createTextNode(BTN_LABEL));
+
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (btn.classList.contains('is-loading')) return;
+      fireWebhook(btn, sourceRecordId);
+    });
+    return btn;
+  }
+
+  function syncRows() {
+    var viewEl = document.getElementById(TARGET_VIEW);
+    if (!viewEl) return;
+    var table  = viewEl.querySelector('table.kn-table-table');
+    if (!table) return;
+    var thead  = table.querySelector('thead tr');
+    var tbody  = table.querySelector('tbody');
+
+    // Append a dedicated header cell once (empty label; buttons are self-describing).
+    if (thead && !thead.querySelector('th.' + COL_CLASS)) {
+      var th = document.createElement('th');
+      th.className = COL_CLASS;
+      th.innerHTML = '<span class="table-fixed-label"></span>';
+      thead.appendChild(th);
+    }
+
+    if (!tbody) return;
+    var rows = tbody.querySelectorAll('tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      // Skip no-data rows and any row hidden by hide-self-row etc.
+      if (tr.classList.contains('kn-tr-nodata')) continue;
+      var recordId = tr.id;
+      if (!/^[a-f0-9]{24}$/.test(recordId)) continue;
+      // Don't inject into the current SOW's own row (safety even though
+      // hide-self-row hides it already).
+      if (recordId === getReceivingSowId()) continue;
+      if (tr.querySelector('.' + BTN_MARKER)) continue;
+
+      var td = document.createElement('td');
+      td.className = COL_CLASS;
+      td.appendChild(buildButton(recordId));
+      tr.appendChild(td);
+    }
+  }
+
+  // ── Bindings ─────────────────────────────────────────────
+  $(document)
+    .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
+    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
+      setTimeout(syncRows, 400);
+    });
+
+  $(document)
+    .off('knack-view-render.' + GATE_VIEW + EVENT_NS)
+    .on('knack-view-render.' + GATE_VIEW + EVENT_NS, function () {
+      setTimeout(syncRows, 400);
+    });
+
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      setTimeout(syncRows, 1200);
+    });
+})();
+/*** FEATURE: Hide self-row ***/
+/**
+ * For the target view(s) listed below, hides any row whose record ID
+ * matches the record ID currently shown by the companion source view
+ * (a Knack details view). Prevents a SOW from listing itself in a
+ * "related SOWs" grid, etc.
+ */
+(function () {
+  'use strict';
+
+  var EVENT_NS = '.scwHideSelfRow';
+  var STYLE_ID = 'scw-hide-self-row-css';
+
+  var CONFIG = [
+    // Hide the current SOW's own row from view_3869 when it appears
+    // there alongside its sibling SOW options. Also hides the Knack
+    // "Showing X of Y" entries summary since the count is misleading
+    // once the self-row is excluded.
+    { targetView: 'view_3869', sourceView: 'view_3827', hideEntriesSummary: true }
+  ];
+
+  // Inject scoped CSS for views that opt into hideEntriesSummary.
+  (function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var selectors = CONFIG
+      .filter(function (r) { return r.hideEntriesSummary; })
+      .map(function (r) { return '#' + r.targetView + ' .kn-entries-summary'; });
+    if (!selectors.length) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = selectors.join(',\n') + ' { display: none !important; }';
+    document.head.appendChild(s);
+  })();
+
+  function getSourceRecordId(sourceViewId) {
+    try {
+      var v = Knack.views && Knack.views[sourceViewId];
+      if (v && v.model && v.model.attributes && v.model.attributes.id) {
+        return v.model.attributes.id;
+      }
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function applyRule(rule) {
+    var targetEl = document.getElementById(rule.targetView);
+    if (!targetEl) return;
+    var recordId = getSourceRecordId(rule.sourceView);
+    if (!recordId) return;
+    var selfRow = targetEl.querySelector('tr[id="' + recordId + '"]');
+    if (selfRow) selfRow.style.display = 'none';
+  }
+
+  function applyAll() {
+    for (var i = 0; i < CONFIG.length; i++) applyRule(CONFIG[i]);
+  }
+
+  CONFIG.forEach(function (rule) {
+    $(document)
+      .off('knack-view-render.' + rule.targetView + EVENT_NS)
+      .on('knack-view-render.' + rule.targetView + EVENT_NS, function () {
+        setTimeout(function () { applyRule(rule); }, 200);
+      });
+
+    $(document)
+      .off('knack-view-render.' + rule.sourceView + EVENT_NS)
+      .on('knack-view-render.' + rule.sourceView + EVENT_NS, function () {
+        setTimeout(function () { applyRule(rule); }, 200);
+      });
+  });
+
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      setTimeout(applyAll, 800);
+    });
+})();
+/*** FEATURE: Hide view conditionally on field values ***/
+/**
+ * Generic utility. Given a list of rules, hides the target view when
+ * the specified field-value conditions are met. Each rule's fields are
+ * read from any Knack view model on the currently rendered scene, so
+ * the source field can live in a details view, table view, or the
+ * target view itself — no explicit source binding required.
+ *
+ * Config shape:
+ *   {
+ *     viewId: 'view_XXXX',
+ *     hideWhen: { all: [ { field, value|notValue }, ... ] }
+ *     // or     { any: [ ... ] }
+ *   }
+ */
+(function () {
+  'use strict';
+
+  var EVENT_NS = '.scwHideViewCond';
+
+  var CONFIG = [
+    // Published-proposal details page: hide view_3858 when the SOW is
+    // neither ready for survey (field_2723 != Yes) AND the survey has
+    // already been requested (field_2706 != No). Equivalently, show
+    // it when either field_2723 = Yes OR field_2706 = No.
+    {
+      viewId: 'view_3858',
+      hideWhen: {
+        all: [
+          { field: 'field_2723', notValue: 'Yes' },
+          { field: 'field_2706', notValue: 'No' }
+        ]
+      }
+    }
+  ];
+
+  // ── Read a field's text value from any Knack view model on the page ──
+  function readFieldFromAnyView(fieldKey) {
+    try {
+      var views = Knack && Knack.views || {};
+      for (var vid in views) {
+        var v = views[vid];
+        if (!v || !v.model) continue;
+        // Details view: single record attributes
+        var attrs = v.model.attributes;
+        if (attrs && attrs[fieldKey] !== undefined && attrs[fieldKey] !== '') {
+          return stripHtml(attrs[fieldKey]);
+        }
+        // Table view: scan first record
+        var data = v.model.data;
+        var models = data && data.models;
+        if (models && models.length && models[0].attributes) {
+          var a0 = models[0].attributes;
+          if (a0[fieldKey] !== undefined && a0[fieldKey] !== '') {
+            return stripHtml(a0[fieldKey]);
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function stripHtml(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
+  }
+
+  function conditionMet(cond) {
+    var val = readFieldFromAnyView(cond.field);
+    if (cond.value    !== undefined) return val === cond.value;
+    if (cond.notValue !== undefined) return val !== cond.notValue;
+    return false;
+  }
+
+  function shouldHide(rule) {
+    var h = rule.hideWhen || {};
+    if (Array.isArray(h.all)) return h.all.every(conditionMet);
+    if (Array.isArray(h.any)) return h.any.some(conditionMet);
+    return false;
+  }
+
+  function applyRule(rule) {
+    var el = document.getElementById(rule.viewId);
+    if (!el) return;
+    el.style.display = shouldHide(rule) ? 'none' : '';
+  }
+
+  // Bind to each target view's render + scene render as a safety net.
+  CONFIG.forEach(function (rule) {
+    $(document)
+      .off('knack-view-render.' + rule.viewId + EVENT_NS)
+      .on('knack-view-render.' + rule.viewId + EVENT_NS, function () {
+        setTimeout(function () { applyRule(rule); }, 200);
+      });
+  });
+
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () {
+      setTimeout(function () { CONFIG.forEach(applyRule); }, 800);
     });
 })();
 /*** SCW SURVEY WORKSHEET — PDF EXPORT (view_3800) ***/
@@ -41289,6 +43900,413 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     getImagesForView: getImagesForView,
     scrapePage1Cover: scrapePage1Cover
   };
+})();
+/*** SUBCONTRACTOR PORTAL — SURVEY REQUEST EXPORT (view_3825) ***/
+/*
+ * Adds a "Regenerate Survey Field PDF" button below the field_2356 detail row
+ * on the subcontractor-portal survey request details page (scene_1140).
+ *
+ * Reuses SCW.surveyWorksheetPdf.scrape / buildHtml to produce the same
+ * payload shape as the tech-side survey-worksheet-pdf-export:
+ *   { viewId, formViewId, recordId, title, surveyRequest, rowCount, html }
+ *
+ * The subcontractor portal renders the survey worksheet in view_3505, so
+ * we scrape that view. If no rows are found, we still POST a minimal
+ * payload (recordId + title) so Make has a trigger record.
+ *
+ * After POSTing, the field_2356 detail row is grayed out with a
+ * "Generating…" overlay. We poll view_3825 every few seconds until
+ * field_2356's content changes (indicating Make has written the new
+ * PDF reference back) or a timeout elapses.
+ */
+(function () {
+  'use strict';
+
+  var DETAIL_VIEW     = 'view_3825';
+  var TARGET_FIELD    = 'field_2356';
+  var WORKSHEET_VIEW  = 'view_3505';
+  var TITLE_VIEW      = 'view_3504';
+  var TITLE_FIELD     = 'field_666';
+  var SURVEY_ID_FIELD = 'field_2345';
+  var WEBHOOK_URL     = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
+  var FORM_VIEW_ID    = 'view_3809';
+
+  var POLL_INTERVAL_MS = 4000;
+  var POLL_TIMEOUT_MS  = 180000; // 3 minutes — PDF generation can take a while
+
+  var BTN_ID       = 'scw-sub-portal-survey-export-btn';
+  var WRAP_ID      = 'scw-sub-portal-survey-export-wrap';
+  var CSS_ID       = 'scw-sub-portal-survey-export-css';
+  var TOAST_ID     = 'scw-sub-portal-survey-export-toast';
+  var OVERLAY_CLS  = 'scw-sp-sx-generating';
+  var EVENT_NS     = '.scwSubPortalSurveyExport';
+
+  // Poll state
+  var _pollTimer     = null;
+  var _pollActive    = false;
+  var _pollInitial   = '';
+  var _pollStartedAt = 0;
+
+  function injectStyles() {
+    if (document.getElementById(CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = CSS_ID;
+    s.textContent = [
+      '#' + WRAP_ID + ' {',
+      '  display: flex; justify-content: flex-start; margin: 10px 0 16px;',
+      '}',
+      '#' + BTN_ID + ' {',
+      '  display: inline-flex; align-items: center; gap: 8px;',
+      '  padding: 9px 18px; border: none; border-radius: 6px;',
+      '  background: #0891b2; color: #fff !important;',
+      '  font: 600 13px/1 system-ui, -apple-system, sans-serif;',
+      '  cursor: pointer; text-decoration: none;',
+      '  transition: filter .15s, opacity .15s;',
+      '  box-shadow: 0 1px 2px rgba(0,0,0,.1);',
+      '}',
+      '#' + BTN_ID + ':hover { filter: brightness(.92); }',
+      '#' + BTN_ID + ':disabled { opacity: .55; cursor: not-allowed; }',
+      '#' + BTN_ID + ' .scw-sp-sx-spin {',
+      '  width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.35);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwSpSxSpin .8s linear infinite;',
+      '}',
+      '@keyframes scwSpSxSpin { to { transform: rotate(360deg); } }',
+      '#' + TOAST_ID + ' {',
+      '  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);',
+      '  background: #1e3a5f; color: #fff; padding: 12px 20px;',
+      '  border-radius: 8px; font: 500 13px/1.3 system-ui, sans-serif;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.18); z-index: 10000;',
+      '  max-width: 420px; text-align: center;',
+      '  display: flex; align-items: center; gap: 10px;',
+      '}',
+      '#' + TOAST_ID + '.is-success { background: #059669; }',
+      '#' + TOAST_ID + '.is-error   { background: #b91c1c; }',
+      '#' + TOAST_ID + ' .scw-sp-sx-toast-spin {',
+      '  width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.35);',
+      '  border-top-color: #fff; border-radius: 50%;',
+      '  animation: scwSpSxSpin .8s linear infinite; flex-shrink: 0;',
+      '}',
+      // Field overlay — grays out the existing content and pins a
+      // centered "Generating…" message on top.
+      '.kn-detail.' + TARGET_FIELD + '.' + OVERLAY_CLS + ' {',
+      '  position: relative !important;',
+      '}',
+      '.kn-detail.' + TARGET_FIELD + '.' + OVERLAY_CLS + ' > * {',
+      '  opacity: .35; pointer-events: none; filter: grayscale(1);',
+      '}',
+      '.kn-detail.' + TARGET_FIELD + '.' + OVERLAY_CLS + '::after {',
+      '  content: attr(data-scw-overlay-msg);',
+      '  position: absolute; top: 0; left: 0; right: 0; bottom: 0;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  background: rgba(255,255,255,.82); border-radius: 6px; z-index: 5;',
+      '  color: #1e3a5f; font: 600 13px/1.3 system-ui, sans-serif;',
+      '  padding: 10px 14px; text-align: center;',
+      '}'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  // ── Toast helpers ──
+
+  function showToast(msg, variant, autoHideMs, withSpinner) {
+    var existing = document.getElementById(TOAST_ID);
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.id = TOAST_ID;
+    if (variant) toast.classList.add('is-' + variant);
+    if (withSpinner) {
+      var sp = document.createElement('span');
+      sp.className = 'scw-sp-sx-toast-spin';
+      toast.appendChild(sp);
+    }
+    toast.appendChild(document.createTextNode(msg));
+    document.body.appendChild(toast);
+    if (autoHideMs) {
+      setTimeout(function () {
+        if (toast.parentNode) toast.remove();
+      }, autoHideMs);
+    }
+    return toast;
+  }
+
+  function hideToast() {
+    var t = document.getElementById(TOAST_ID);
+    if (t) t.remove();
+  }
+
+  // ── Field overlay ──
+
+  function applyOverlay(msg) {
+    var viewEl = document.getElementById(DETAIL_VIEW);
+    if (!viewEl) return;
+    var detail = viewEl.querySelector('.kn-detail.' + TARGET_FIELD);
+    if (!detail) return;
+    detail.classList.add(OVERLAY_CLS);
+    detail.setAttribute('data-scw-overlay-msg', msg || 'Generating Survey Field PDF…');
+  }
+
+  function clearOverlay() {
+    var nodes = document.querySelectorAll('.kn-detail.' + TARGET_FIELD + '.' + OVERLAY_CLS);
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].classList.remove(OVERLAY_CLS);
+      nodes[i].removeAttribute('data-scw-overlay-msg');
+    }
+  }
+
+  // ── Record ID & title discovery ──
+
+  function getRecordIdFromDetail() {
+    var view = Knack && Knack.views && Knack.views[DETAIL_VIEW];
+    if (view && view.model && view.model.id) return view.model.id;
+    if (view && view.model && view.model.attributes && view.model.attributes.id) {
+      return view.model.attributes.id;
+    }
+    var hash = window.location.hash || '';
+    var m = hash.match(/\/([0-9a-f]{24})(?:\?|$)/i);
+    return m ? m[1] : '';
+  }
+
+  function readDetailField(viewId, fieldKey) {
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return '';
+    var detail = viewEl.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+    if (!detail) return '';
+    return (detail.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function readTargetFieldSignature() {
+    // Prefer the href of any link in the field cell — that changes when
+    // Make uploads a new PDF version, even if the visible filename is
+    // the same. Fall back to trimmed textContent.
+    var viewEl = document.getElementById(DETAIL_VIEW);
+    if (!viewEl) return '';
+    var body = viewEl.querySelector('.kn-detail.' + TARGET_FIELD + ' .kn-detail-body');
+    if (!body) return '';
+    var link = body.querySelector('a[href]');
+    if (link) return (link.getAttribute('href') || '').trim();
+    return (body.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function getTitle() {
+    var val = readDetailField(TITLE_VIEW, TITLE_FIELD);
+    if (val) return val;
+    return (document.title || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getSurveyRequestId() {
+    return readDetailField(TITLE_VIEW, SURVEY_ID_FIELD);
+  }
+
+  // ── Payload build ──
+
+  function buildPayload() {
+    var recordId      = getRecordIdFromDetail();
+    var title         = getTitle();
+    var surveyRequest = getSurveyRequestId();
+    var html          = '';
+    var rowCount      = 0;
+
+    var api = window.SCW && window.SCW.surveyWorksheetPdf;
+    if (api && typeof api.scrape === 'function' && typeof api.buildHtml === 'function') {
+      try {
+        var scraped = api.scrape(WORKSHEET_VIEW);
+        if (scraped) {
+          rowCount = (scraped.rows && scraped.rows.length) || 0;
+          if (rowCount > 0) {
+            scraped.title = title;
+            if (surveyRequest) scraped.surveyId = surveyRequest;
+            html = api.buildHtml(scraped);
+          }
+        }
+      } catch (err) {
+        console.warn('[SCW sub-portal survey export] scrape failed', err);
+      }
+    }
+
+    return {
+      viewId:        WORKSHEET_VIEW,
+      formViewId:    FORM_VIEW_ID,
+      recordId:      recordId,
+      title:         title,
+      surveyRequest: surveyRequest,
+      rowCount:      rowCount,
+      html:          html
+    };
+  }
+
+  // ── Polling ──
+
+  function stopPolling(finalToast) {
+    _pollActive = false;
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    clearOverlay();
+    if (finalToast) {
+      showToast(finalToast.msg, finalToast.variant, 4000);
+    } else {
+      hideToast();
+    }
+    var btn = document.getElementById(BTN_ID);
+    if (btn) resetButton(btn);
+  }
+
+  function startPolling() {
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollActive    = true;
+    _pollInitial   = readTargetFieldSignature();
+    _pollStartedAt = Date.now();
+
+    applyOverlay('Generating Survey Field PDF…');
+    showToast('Generating Survey Field PDF…', null, 0, true);
+
+    // Re-apply overlay whenever view_3825 re-renders (model.fetch triggers
+    // a re-render that blows away our class). If the field has changed,
+    // that render will bring the new value and we can stop polling.
+    $(document).off('knack-view-render.' + DETAIL_VIEW + EVENT_NS + '.poll');
+    $(document).on('knack-view-render.' + DETAIL_VIEW + EVENT_NS + '.poll', function () {
+      if (!_pollActive) return;
+      var current = readTargetFieldSignature();
+      if (current && current !== _pollInitial) {
+        stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+        return;
+      }
+      // Re-apply overlay onto the freshly rendered detail row
+      applyOverlay('Generating Survey Field PDF…');
+    });
+
+    _pollTimer = setInterval(function () {
+      if (!_pollActive) return;
+
+      // Direct field check — catches cases where model.fetch doesn't
+      // trigger a re-render.
+      var current = readTargetFieldSignature();
+      if (current && current !== _pollInitial) {
+        stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+        return;
+      }
+
+      if (Date.now() - _pollStartedAt >= POLL_TIMEOUT_MS) {
+        stopPolling({
+          msg: 'Still generating — refresh the page in a minute to see the new PDF.',
+          variant: 'error'
+        });
+        return;
+      }
+
+      // Fetch fresh data for view_3825 (drives field_2356 refresh)
+      if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
+        var model = Knack.views[DETAIL_VIEW].model;
+        if (model && typeof model.fetch === 'function') model.fetch();
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  // ── Button state ──
+
+  function setButtonBusy(btn, labelText) {
+    btn.disabled = true;
+    var labelSpan = btn.querySelector('.scw-sp-sx-label');
+    var iconSpan  = btn.querySelector('.scw-sp-sx-icon');
+    if (labelSpan) labelSpan.textContent = labelText || 'Working…';
+    if (iconSpan)  iconSpan.innerHTML = '<span class="scw-sp-sx-spin"></span>';
+  }
+
+  function resetButton(btn) {
+    var labelSpan = btn.querySelector('.scw-sp-sx-label');
+    var iconSpan  = btn.querySelector('.scw-sp-sx-icon');
+    if (labelSpan) labelSpan.textContent = 'Regenerate Survey Field PDF';
+    if (iconSpan)  iconSpan.textContent = '↪';
+    btn.disabled = false;
+  }
+
+  // ── Send ──
+
+  function sendPayload(btn) {
+    var payload = buildPayload();
+    if (!payload.recordId) {
+      showToast('Could not determine survey request record ID.', 'error', 5000);
+      return;
+    }
+
+    setButtonBusy(btn, 'Sending…');
+
+    $.ajax({
+      url: WEBHOOK_URL,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      crossDomain: true,
+      timeout: 60000,
+      success: function () {
+        setButtonBusy(btn, 'Generating…');
+        startPolling();
+      },
+      error: function (xhr) {
+        // Make webhooks often return opaque CORS responses — status 0
+        // with a successful delivery. Treat that as success and still
+        // start polling the field.
+        if (xhr && xhr.status === 0) {
+          setButtonBusy(btn, 'Generating…');
+          startPolling();
+          return;
+        }
+        showToast('Webhook failed (HTTP ' + (xhr ? xhr.status : '?') + '). See console.', 'error', 6000);
+        console.warn('[SCW sub-portal survey export] webhook error', xhr);
+        resetButton(btn);
+      }
+    });
+  }
+
+  // ── Button injection ──
+
+  function injectButton() {
+    var viewEl = document.getElementById(DETAIL_VIEW);
+    if (!viewEl) return;
+
+    var detail = viewEl.querySelector('.kn-detail.' + TARGET_FIELD);
+    if (!detail) return;
+
+    if (document.getElementById(BTN_ID)) return;
+
+    injectStyles();
+
+    var wrap = document.createElement('div');
+    wrap.id = WRAP_ID;
+
+    var btn = document.createElement('button');
+    btn.id = BTN_ID;
+    btn.type = 'button';
+
+    var icon = document.createElement('span');
+    icon.className = 'scw-sp-sx-icon';
+    icon.textContent = '↪';
+
+    var label = document.createElement('span');
+    label.className = 'scw-sp-sx-label';
+    label.textContent = 'Regenerate Survey Field PDF';
+
+    btn.appendChild(icon);
+    btn.appendChild(label);
+    wrap.appendChild(btn);
+
+    btn.addEventListener('click', function () { sendPayload(btn); });
+
+    if (detail.parentNode) {
+      detail.parentNode.insertBefore(wrap, detail.nextSibling);
+    }
+
+    // If a poll is already running when the view re-renders, keep the
+    // button in its busy state.
+    if (_pollActive) setButtonBusy(btn, 'Generating…');
+  }
+
+  // ── Bindings ──
+
+  $(document)
+    .off('knack-view-render.' + DETAIL_VIEW + EVENT_NS)
+    .on('knack-view-render.' + DETAIL_VIEW + EVENT_NS, function () {
+      setTimeout(injectButton, 80);
+    });
 })();
 /*** FEATURE: Connected Device Bid Validation ************************************
  *
