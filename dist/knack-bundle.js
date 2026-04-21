@@ -8133,6 +8133,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ============================================================
 
   function isInstallationMasked() {
+    // Ops bypass — view_3345 (the Ops stepper host) is role-gated by Knack
+    // to Ops users, so its presence in the DOM is the cleanest signal that
+    // the current viewer should always see real labor numbers regardless of
+    // whether the bid has been validated yet.
+    if (document.getElementById('view_3345')) return false;
+
     var view = document.getElementById('view_3861');
     if (view) {
       var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
