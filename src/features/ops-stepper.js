@@ -24,7 +24,7 @@
  *        server  : flips field_2725 = Yes, updates CU task, Slack
  *
  * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
- * (view_3346) plus field_2126, line-item record ids from view_3341,
+ * (view_3861) plus field_2126, line-item record ids from view_3341,
  * and license record ids from LICENSE_VIEW (empty placeholder until
  * the view is supplied).
  */
@@ -33,7 +33,7 @@
 
   // ── Config ───────────────────────────────────────────────
   var HOST_VIEW      = 'view_3345';   // role-gated rich-text host in Knack
-  var SOURCE_VIEW    = 'view_3346';   // SOW details view on the proposal page
+  var SOURCE_VIEW    = 'view_3861';   // SOW details view on the proposal page
   var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
   var LICENSE_VIEW   = '';            // TODO: user will supply the license-table view id
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
