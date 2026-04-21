@@ -91,8 +91,9 @@
       '#' + VIEW_ID + ' td.' + CELL_CLASS + ',' +
       '#' + VIEW_ID + ' th.' + CELL_CLASS + ' {' +
       '  white-space: nowrap;' +
-      '  min-width: 190px;' +
+      '  min-width: 250px;' +
       '  vertical-align: middle;' +
+      '  text-align: center;' +
       '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
@@ -101,28 +102,45 @@
       '  display: none !important;' +
       '}' +
 
+      /* Let the tooltip pseudo-element escape Knack's table wrapper,
+         which has overflow set on .kn-table-wrapper / its parents. */
+      '#' + VIEW_ID + ' .kn-table-wrapper,' +
+      '#' + VIEW_ID + ' table.kn-table-table,' +
+      '#' + VIEW_ID + ' tbody,' +
+      '#' + VIEW_ID + ' tbody tr,' +
+      '#' + VIEW_ID + ' tbody td.' + CELL_CLASS + ' {' +
+      '  overflow: visible !important;' +
+      '}' +
+
       /* Pill — matches the bid-comparison "Convert All →" button styling
          (.scw-bid-review__btn / --adopt) so all action affordances on
          the page share one visual language. */
       '.scw-ops-pill {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
       '  gap: 6px;' +
-      '  padding: 4px 8px; border-radius: 4px;' +
-      '  font: 600 11px/1.2 system-ui, sans-serif;' +
+      '  min-width: 230px; box-sizing: border-box;' +
+      '  padding: 6px 12px; border-radius: 4px;' +
+      '  font: 600 12px/1.2 system-ui, sans-serif;' +
       '  border: none; white-space: nowrap;' +
-      '  background: #0891b2; color: #fff;' +
+      '  background: #0891b2;' +
+      '  color: #ffffff !important;' +
       '  text-decoration: none !important;' +
       '  cursor: pointer;' +
       '  transition: opacity .15s, filter .15s;' +
       '}' +
+      'a.scw-ops-pill,' +
+      'a.scw-ops-pill:visited,' +
+      'a.scw-ops-pill:hover,' +
+      'a.scw-ops-pill:focus { color: #ffffff !important; }' +
       'a.scw-ops-pill:hover { filter: brightness(0.92); }' +
+      '.scw-ops-pill > span { color: inherit; }' +
       '.scw-ops-pill .scw-ops-arrow {' +
-      '  font-size: 12px; line-height: 1; opacity: 0.9;' +
+      '  font-size: 13px; line-height: 1; opacity: 0.9;' +
       '}' +
 
       /* Terminal (already published) — neutral grey, non-interactive. */
       '.scw-ops-pill.is-terminal {' +
-      '  background: #e2e8f0; color: #475569; cursor: default;' +
+      '  background: #e2e8f0; color: #475569 !important; cursor: default;' +
       '}' +
       '.scw-ops-pill.is-terminal:hover { filter: none; }' +
 
