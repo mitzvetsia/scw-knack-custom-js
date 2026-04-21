@@ -40868,12 +40868,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return (attrs && attrs.id) || '';
   }
 
+  // Read from the source-view DOM (matches workflow-stepper.js's pattern).
+  // The Details view renders each field as `.kn-detail.field_XXXX` with
+  // the value inside `.kn-detail-body`. The Knack model isn't always
+  // populated when the view first renders, but the DOM always is.
   function readField(fieldKey) {
-    var attrs = getSourceModel();
-    if (!attrs) return '';
-    var raw = attrs[fieldKey + '_raw'];
-    if (raw != null && typeof raw !== 'object') return raw;
-    if (attrs[fieldKey] != null) return attrs[fieldKey];
+    var view = document.getElementById(SOURCE_VIEW);
+    if (!view) return '';
+    var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+    if (cell) return (cell.textContent || '').replace(/ /g, ' ').trim();
     return '';
   }
 
@@ -41150,7 +41153,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function render() {
     var host = document.getElementById(HOST_VIEW);
     if (!host) return;           // view is hidden by role rule — nothing to do
-    if (!getSourceModel()) return;   // source not populated yet; wait for next render
+    var sourceEl = document.getElementById(SOURCE_VIEW);
+    if (!sourceEl) return;       // source not in DOM yet — wait for its render event
     renderInto(host);
   }
 
