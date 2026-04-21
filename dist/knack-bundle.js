@@ -40714,7 +40714,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
-      showWhen: { field: 'field_2706', value: 'No' },
+      // Available when the survey hasn't been requested AND there are no
+      // pending change requests yet. As soon as CRs exist (field_2728 > 0)
+      // the Request Alternative Bid step takes over.
+      showWhen: {
+        all: [
+          { field: 'field_2706', value: 'No' },
+          { not: { field: 'field_2728', gt: 0 } }
+        ]
+      },
       webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
       modal: {
         title:       'Mark Ready for Survey',
