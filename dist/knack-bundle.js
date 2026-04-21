@@ -6553,6 +6553,14 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
    field_2725, but hidden from users so it doesn't take up space on the
    proposal page. */
 #view_3861 { display: none !important; }
+
+/* Knack writes style="flex-basis: undefined%" on Details views whose
+   column width wasn't set in the page builder. Browsers treat that as
+   invalid → fall back to auto → columns collapse to content width.
+   Force them back to full-width so the labels/values render at a
+   readable size. */
+#view_3883 .kn-details-column,
+#view_3883 .kn-details-group { flex-basis: 100% !important; }
 `;
 
     document.head.appendChild(style);
