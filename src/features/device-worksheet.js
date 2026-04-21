@@ -577,7 +577,7 @@
         syntheticGroupsPosition: 'bottom',
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1957'],
             label: 'SERVICE',
             descLabel: 'Service',
             hideProduct: true,
@@ -585,7 +585,7 @@
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1949'],
+            hideFields: ['field_1949', 'field_1957'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
