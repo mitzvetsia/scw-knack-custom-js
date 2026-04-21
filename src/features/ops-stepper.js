@@ -80,7 +80,14 @@
       id: 'publish-proposal',
       label: 'Publish and Submit Completed Proposal to Sales',
       tone: 'success',
-      showWhen: { field: 'field_2725', value: 'No' },
+      // Available only once the SOW has both at least one change request
+      // (field_2728 > 0) and at least one associated bid (field_2737 > 0).
+      showWhen: {
+        all: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2737', gt: 0 }
+        ]
+      },
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       modal: {
         title:       'Publish & Submit Completed Proposal',
