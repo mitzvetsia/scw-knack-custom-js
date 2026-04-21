@@ -40339,11 +40339,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  display: none !important;' +
       '}' +
 
-      /* Host cell — widen a bit so pill + btn fit on one line. */
+      /* Host cell — narrow-ish because content stacks vertically. */
       '#' + VIEW_ID + ' td.' + CELL_CLASS + ',' +
       '#' + VIEW_ID + ' th.' + CELL_CLASS + ' {' +
       '  white-space: nowrap;' +
-      '  min-width: 250px;' +
+      '  min-width: 175px;' +
+      '  vertical-align: middle;' +
       '}' +
 
       /* Suppress Knack inline-edit on this cell. */
@@ -40352,20 +40353,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  display: none !important;' +
       '}' +
 
-      /* Layout wrapper: pill on the left, action on the right. */
+      /* Layout wrapper: pill on top, action underneath. */
       '.scw-ops-review {' +
-      '  display: inline-flex; align-items: center; gap: 8px;' +
-      '  font-size: 12px; line-height: 1.3;' +
+      '  display: inline-flex; flex-direction: column; align-items: flex-start;' +
+      '  gap: 4px; font-size: 12px; line-height: 1.3;' +
       '}' +
 
       /* Pill base */
       '.scw-ops-pill {' +
-      '  display: inline-flex; align-items: center; gap: 5px;' +
-      '  padding: 3px 9px; border-radius: 12px;' +
-      '  font-weight: 600; font-size: 11px;' +
+      '  display: inline-flex; align-items: center; gap: 6px;' +
+      '  padding: 2px 9px; border-radius: 11px;' +
+      '  font-weight: 600; font-size: 11px; letter-spacing: 0.01em;' +
       '  border: 1px solid transparent; white-space: nowrap;' +
       '}' +
-      '.scw-ops-pill svg { flex: 0 0 auto; }' +
 
       /* Pill: unreviewed — grey */
       '.scw-ops-pill.is-unreviewed {' +
@@ -40386,22 +40386,33 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       /* Revoke ✕ inside the pill */
       '.scw-ops-revoke {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
-      '  width: 14px; height: 14px; border-radius: 50%;' +
-      '  margin-left: 2px; cursor: pointer;' +
-      '  background: rgba(0,0,0,0.08); color: inherit;' +
-      '  font-size: 10px; font-weight: 700;' +
+      '  width: 13px; height: 13px; border-radius: 50%;' +
+      '  margin-left: 1px; cursor: pointer;' +
+      '  background: rgba(0,0,0,0.1); color: inherit;' +
+      '  font-size: 9px; font-weight: 700; line-height: 1;' +
       '  transition: background 0.15s;' +
       '}' +
-      '.scw-ops-revoke:hover { background: rgba(0,0,0,0.18); }' +
+      '.scw-ops-revoke:hover { background: rgba(0,0,0,0.22); }' +
+
+      /* Inline info glyph (replaces the separate amber dot). Appears inside
+         the pill after the label whenever field_2736 has a value. */
+      '.scw-ops-info {' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  width: 13px; height: 13px; border-radius: 50%;' +
+      '  background: rgba(0,0,0,0.1); color: inherit;' +
+      '  font-style: italic; font-weight: 700;' +
+      '  font-size: 9px; line-height: 1; cursor: help;' +
+      '  font-family: Georgia, "Times New Roman", serif;' +
+      '}' +
 
       /* Primary action button */
       '.scw-ops-action {' +
       '  display: inline-flex; align-items: center; gap: 4px;' +
-      '  padding: 3px 10px; border-radius: 5px;' +
+      '  padding: 2px 10px; border-radius: 4px;' +
       '  font-size: 11px; font-weight: 600;' +
       '  background: #2563eb; color: #fff !important;' +
       '  border: 1px solid #1d4ed8; cursor: pointer;' +
-      '  line-height: 1.3; white-space: nowrap;' +
+      '  line-height: 1.5; white-space: nowrap;' +
       '  transition: background 0.15s;' +
       '}' +
       '.scw-ops-action:hover { background: #1d4ed8; }' +
@@ -40413,15 +40424,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       /* Saving flash */
       '.scw-ops-review.is-saving {' +
       '  opacity: 0.55; pointer-events: none; cursor: wait;' +
-      '}' +
-
-      /* Note indicator dot — visible whenever field_2736 has a value. */
-      '.scw-ops-note-dot {' +
-      '  display: inline-flex; align-items: center; justify-content: center;' +
-      '  width: 14px; height: 14px; border-radius: 50%;' +
-      '  font-size: 10px; font-weight: 700; cursor: help;' +
-      '  background: #fde68a; color: #92400e;' +
-      '  border: 1px solid #f59e0b;' +
       '}';
 
     var s = document.createElement('style');
@@ -40520,19 +40522,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var pill = document.createElement('span');
     pill.className = 'scw-ops-pill is-' + state;
 
-    var icon = '';
-    var label = '';
-    if (state === 'unreviewed') {
-      icon = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>';
-      label = 'Not reviewed';
-    } else if (state === 'ready') {
-      icon = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-      label = 'Ready for Survey';
-    } else {
-      icon = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/><polyline points="14 14 9 19 4 14" transform="translate(6 -2)"/></svg>';
-      label = 'Bid Validated';
+    var label = state === 'unreviewed' ? 'Not reviewed' :
+                state === 'ready'      ? 'Ready for Survey' :
+                                         'Bid Validated';
+    var labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    pill.appendChild(labelSpan);
+
+    // If a note exists (auto-revert trail), surface it as a tooltip on the
+    // pill and add a small inline italic i glyph inside the pill so the
+    // trail is discoverable without crowding the cell horizontally.
+    var note = readNote(tr);
+    if (note) {
+      pill.setAttribute('title', note);
+      var info = document.createElement('span');
+      info.className = 'scw-ops-info';
+      info.setAttribute('title', note);
+      info.textContent = 'i';
+      pill.appendChild(info);
     }
-    pill.innerHTML = icon + '<span>' + label + '</span>';
 
     // Revoke ✕ on non-unreviewed pills
     if (state !== 'unreviewed') {
@@ -40558,19 +40566,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       });
       pill.appendChild(x);
     }
-    wrap.appendChild(pill);
 
-    // If a note exists (auto-revert trail), surface it as a tooltip on the
-    // pill and add a small ⓘ dot next to it so the trail is discoverable.
-    var note = readNote(tr);
-    if (note) {
-      pill.setAttribute('title', note);
-      var dot = document.createElement('span');
-      dot.className = 'scw-ops-note-dot';
-      dot.setAttribute('title', note);
-      dot.textContent = 'i';
-      wrap.appendChild(dot);
-    }
+    wrap.appendChild(pill);
 
     // Action button — only on non-terminal states
     if (state === 'unreviewed') {
