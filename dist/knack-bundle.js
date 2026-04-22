@@ -40486,13 +40486,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '}' +
       '.scw-ops-pill.is-terminal:hover { filter: none; }' +
 
-      /* Info (waiting-on-external-step, e.g. "Ready for Survey") —
-         pale teal so it visually relates to the clickable pills without
-         reading as a call-to-action. No hover, no pointer. */
-      '.scw-ops-pill.is-info {' +
-      '  background: #e0f2fe; color: #075985 !important; cursor: default;' +
+      /* Info status message (e.g. "Ready for Survey") — plain muted
+         italic text, no background, no border. Reads as status, not
+         as a button. */
+      '.scw-ops-status-msg {' +
+      '  display: inline-block; font: italic 500 12px/1.2 system-ui, sans-serif;' +
+      '  color: #64748b; cursor: default;' +
       '}' +
-      '.scw-ops-pill.is-info:hover { filter: none; }' +
 
       /* Inline info glyph for the auto-revert note trail. */
       '.scw-ops-info {' +
@@ -40526,13 +40526,56 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Helpers ─────────────────────────────────────────────
+  // Look up the Knack record attrs for a table row by its 24-hex id.
+  // Preferred over DOM scraping — the model carries the raw field
+  // value regardless of column display format (text vs. checkbox icon
+  // vs. hidden column). Returns null if the model isn't ready.
+  function getRowAttrs(tr) {
+    try {
+      var id = tr && tr.id;
+      if (!id || !/^[a-f0-9]{24}$/i.test(id)) return null;
+      var v = Knack && Knack.views && Knack.views[VIEW_ID];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return null;
+      for (var i = 0; i < models.length; i++) {
+        if (models[i].id === id) return models[i].attributes;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function readBoolFromModel(a, fieldKey) {
+    if (!a) return null;
+    var raw = a[fieldKey + '_raw'];
+    if (typeof raw === 'boolean') return raw ? 'yes' : 'no';
+    if (typeof raw === 'string') {
+      var rs = raw.trim().toLowerCase();
+      if (rs === 'yes' || rs === 'true')  return 'yes';
+      if (rs === 'no'  || rs === 'false') return 'no';
+    }
+    var dv = a[fieldKey];
+    if (typeof dv === 'string') {
+      var ds = dv.replace(/<[^>]*>/g, '').trim().toLowerCase();
+      if (ds === 'yes' || ds === 'true')  return 'yes';
+      if (ds === 'no'  || ds === 'false') return 'no';
+    }
+    return null;
+  }
   function readBool(tr, fieldKey) {
+    var fromModel = readBoolFromModel(getRowAttrs(tr), fieldKey);
+    if (fromModel) return fromModel;
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
     if (!td) return 'no';
     var t = (td.textContent || '').replace(/[ \s]/g, ' ').trim().toLowerCase();
     return (t === 'yes' || t === 'true') ? 'yes' : 'no';
   }
   function readText(tr, fieldKey) {
+    var a = getRowAttrs(tr);
+    if (a) {
+      var raw = a[fieldKey + '_raw'];
+      if (raw != null && typeof raw !== 'object') return String(raw);
+      var v = a[fieldKey];
+      if (v != null) return String(v).replace(/<[^>]*>/g, '').trim();
+    }
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
     return td ? (td.textContent || '').replace(/[ \s]+/g, ' ').trim() : '';
   }
@@ -40586,15 +40629,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var pill;
     if (step && step.info) {
-      // Informational status (no action). Non-clickable span, muted
-      // palette, no arrow — visually distinct from actionable pills.
+      // Informational status only — no button, no background, no arrow.
+      // Plain muted italic text so it reads as "here's where things
+      // stand", not "click here".
       pill = document.createElement('span');
-      pill.className = 'scw-ops-pill is-info';
-
-      var infoLabel = document.createElement('span');
-      infoLabel.textContent = step.label;
-      pill.appendChild(infoLabel);
-
+      pill.className = 'scw-ops-status-msg';
+      pill.textContent = step.label;
       if (note) pill.setAttribute('data-scw-tip', note);
     } else if (step) {
       // Active next-step → link to the proposal page.
@@ -40731,11 +40771,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
   // Use mouseover/mouseout (which bubble) with .closest() for delegation.
   document.addEventListener('mouseover', function (e) {
-    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip], .scw-ops-status-msg[data-scw-tip]');
     if (t) showTip(t);
   });
   document.addEventListener('mouseout', function (e) {
-    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip], .scw-ops-status-msg[data-scw-tip]');
     if (t) hideTip();
   });
   // Hide on scroll so the tooltip doesn't drift away from its anchor.
