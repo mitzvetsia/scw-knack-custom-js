@@ -40341,11 +40341,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  * Priority (first match wins)
  *   1. field_2728 > 0 AND field_2706 = No → "Request Alternative Bid
  *      from Subcontractor" — there are pending CRs to address.
- *   2. field_2706 = No                    → "Mark Ready for Survey"
- *      — SOW needs Ops sign-off before sales can request survey.
- *   3. field_2706 = Yes AND field_2728 = 0 → "Ready for Survey" (info,
- *      non-clickable) — survey has been requested, waiting for it to
- *      complete before the bid-validation step becomes relevant.
+ *   2. field_2723 = No AND field_2728 = 0 → "Mark Ready for Survey"
+ *      — Ops hasn't marked the SOW ready yet.
+ *   3. field_2723 = Yes AND field_2706 = No AND field_2728 = 0 →
+ *      "Ready for Survey" (info, non-clickable) — Ops has marked ready,
+ *      Sales hasn't requested the survey yet.
  *   4. field_2725 = No                    → "Publish & Submit Completed
  *      Proposal" — survey + bids are back, proposal ready to go.
  *   5. field_2725 = Yes (terminal)        → "Bid Published" (grey check,
@@ -40353,7 +40353,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *
  * All active (clickable) pills share one teal background — the pill is
  * a status-and-navigation affordance, not a meaningful colour-coded
- * action. Non-clickable states (info, terminal) use muted backgrounds.
+ * action. Non-clickable states (info, terminal) use muted text/greys.
  *
  * Reads these fields from the row DOM, so they must be added as
  * columns on view_3325 (hidden by this feature's CSS):
@@ -40372,7 +40372,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ── Config ──────────────────────────────────────────────
   var VIEW_ID        = 'view_3325';
   var HOST_FIELD     = 'field_2723';   // existing column used as the Ops Review host cell
-  var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested
+  var READY_FIELD    = 'field_2723';   // FLAG_ready for survey (flipped by Ops Mark Ready)
+  var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested (flipped by Sales)
   var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
   var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
   var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
@@ -40393,18 +40394,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
     },
     {
+      // Ops still needs to mark the SOW ready. Keyed on field_2723
+      // (the flag the Mark Ready webhook actually flips), not the
+      // downstream field_2706 which only flips when Sales requests
+      // the survey.
       id:       'mark-ready',
       label:    'Mark Ready for Survey',
-      showWhen: function (f) { return f.survey !== 'yes'; }
+      showWhen: function (f) {
+        return f.ready !== 'yes' && !(toNum(f.crCount) > 0);
+      }
     },
     {
-      // Status message while the SOW is out for survey and no change
-      // requests have come back yet. Renders as a non-clickable pill —
-      // there's no action for Ops to take during this window.
+      // Ops has marked ready but Sales hasn't requested the survey
+      // yet — waiting state. Non-clickable status message.
       id:       'ready-for-survey',
       label:    'Ready for Survey',
       info:     true,
-      showWhen: function (f) { return f.survey === 'yes' && !(toNum(f.crCount) > 0); }
+      showWhen: function (f) {
+        return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
+      }
     },
     {
       id:       'publish-proposal',
@@ -40588,6 +40596,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function resolveStep(tr) {
     var fields = {
+      ready:     readBool(tr, READY_FIELD),
       survey:    readBool(tr, SURVEY_FIELD),
       crCount:   readText(tr, CR_COUNT_FIELD),
       validated: readBool(tr, VALID_FIELD)
@@ -40893,25 +40902,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
+      // Keyed on field_2723 — the flag this step's webhook actually
+      // flips server-side. field_2706 ("survey requested") only flips
+      // downstream when Sales requests the survey, so keying the step
+      // state on it made it effectively un-completable from Ops' side.
+      //
       // Hide the step entirely once the flow has advanced to the change-
-      // request stage. If the survey still hasn't been requested AND there
+      // request stage. If the SOW hasn't been marked ready AND there
       // are already CRs queued, the Request Alternative Bid step takes
       // over — surfacing a grayed-out Mark Ready here would just be noise.
       hideWhen: {
         all: [
-          { field: 'field_2706', value: 'No' },
+          { field: 'field_2723', value: 'No' },
           { field: 'field_2728', gt: 0 }
         ]
       },
-      // Once the survey has actually been requested, render the step as
-      // completed (green check, non-clickable) to mirror the completed-
-      // step treatment on the sales build stepper.
-      completed: { field: 'field_2706', value: 'Yes' },
-      // Active (clickable) when the survey hasn't been requested and
-      // there are no CRs yet.
+      // Once Ops has marked the SOW ready, render as completed (green
+      // check, non-clickable) to mirror the sales build stepper.
+      completed: { field: 'field_2723', value: 'Yes' },
+      // Active (clickable) when Ops hasn't marked it ready and there
+      // are no CRs yet.
       showWhen: {
         all: [
-          { field: 'field_2706', value: 'No' },
+          { field: 'field_2723', value: 'No' },
           { not: { field: 'field_2728', gt: 0 } }
         ]
       },

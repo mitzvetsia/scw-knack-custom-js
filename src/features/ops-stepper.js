@@ -47,25 +47,29 @@
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
+      // Keyed on field_2723 — the flag this step's webhook actually
+      // flips server-side. field_2706 ("survey requested") only flips
+      // downstream when Sales requests the survey, so keying the step
+      // state on it made it effectively un-completable from Ops' side.
+      //
       // Hide the step entirely once the flow has advanced to the change-
-      // request stage. If the survey still hasn't been requested AND there
+      // request stage. If the SOW hasn't been marked ready AND there
       // are already CRs queued, the Request Alternative Bid step takes
       // over — surfacing a grayed-out Mark Ready here would just be noise.
       hideWhen: {
         all: [
-          { field: 'field_2706', value: 'No' },
+          { field: 'field_2723', value: 'No' },
           { field: 'field_2728', gt: 0 }
         ]
       },
-      // Once the survey has actually been requested, render the step as
-      // completed (green check, non-clickable) to mirror the completed-
-      // step treatment on the sales build stepper.
-      completed: { field: 'field_2706', value: 'Yes' },
-      // Active (clickable) when the survey hasn't been requested and
-      // there are no CRs yet.
+      // Once Ops has marked the SOW ready, render as completed (green
+      // check, non-clickable) to mirror the sales build stepper.
+      completed: { field: 'field_2723', value: 'Yes' },
+      // Active (clickable) when Ops hasn't marked it ready and there
+      // are no CRs yet.
       showWhen: {
         all: [
-          { field: 'field_2706', value: 'No' },
+          { field: 'field_2723', value: 'No' },
           { not: { field: 'field_2728', gt: 0 } }
         ]
       },
