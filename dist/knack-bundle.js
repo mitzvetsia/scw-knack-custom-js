@@ -9848,18 +9848,47 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // Build the exact "save payload" shape the Publish Quote button sends
   // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
   // call this so Make receives identical inputs regardless of origin.
+  //
+  // sceneId is optional — when omitted we auto-detect by:
+  //   1. Knack.scene.attributes.key (Knack's JS model)
+  //   2. DOM presence of `#kn-<cfg.sceneId>` for any configured scene
+  // The DOM check is the more reliable fallback since Knack's JS model
+  // can briefly lag DOM state during transitions.
+  function resolveConfiguredScene(sceneId) {
+    // Explicit pass-through wins.
+    if (sceneId) {
+      for (var i = 0; i < SCENES.length; i++) {
+        if (SCENES[i].sceneId === sceneId) return SCENES[i];
+      }
+      return null;
+    }
+    // Try Knack's model.
+    try {
+      var key = (Knack && Knack.scene && Knack.scene.attributes && Knack.scene.attributes.key) || '';
+      if (key) {
+        for (var j = 0; j < SCENES.length; j++) {
+          if (SCENES[j].sceneId === key) return SCENES[j];
+        }
+      }
+    } catch (e) { /* fall through */ }
+    // Fallback: whichever configured scene is actually rendered in the DOM.
+    for (var k = 0; k < SCENES.length; k++) {
+      if (document.getElementById('kn-' + SCENES[k].sceneId)) return SCENES[k];
+    }
+    return null;
+  }
+
   function buildPublishPayload(sceneId) {
-    if (!sceneId) {
-      try { sceneId = (Knack && Knack.scene && Knack.scene.attributes && Knack.scene.attributes.key) || ''; }
-      catch (e) { sceneId = ''; }
+    var cfg = resolveConfiguredScene(sceneId);
+    if (!cfg) {
+      console.warn('[SCW pdfExport] buildPublishPayload: no matching SCENES entry for sceneId=' + sceneId + ' (auto-detect also failed).');
+      return null;
     }
-    var cfg = null;
-    for (var si = 0; si < SCENES.length; si++) {
-      if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
-    }
-    if (!cfg) return null;
     var payload = scrapeAllViews(cfg);
-    if (!payload.views.length) return null;
+    if (!payload.views.length) {
+      console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
+      return null;
+    }
     var htmlStr      = buildPdfHtml(payload);
     var summary      = extractSummaryFields(payload);
     var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
@@ -41307,8 +41336,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
       payload.publishAsTbd = shouldPublishAsTbd();
       try {
+        // Pass the proposal scene explicitly — more reliable than
+        // auto-detect, and the Ops stepper is only active on scene_1096.
         var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
-          ? SCW.pdfExport.buildPublishPayload()
+          ? SCW.pdfExport.buildPublishPayload('scene_1096')
           : null;
         if (pub) {
           // Flatten publish fields onto the top-level payload. Don't

@@ -418,8 +418,10 @@
     if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
       payload.publishAsTbd = shouldPublishAsTbd();
       try {
+        // Pass the proposal scene explicitly — more reliable than
+        // auto-detect, and the Ops stepper is only active on scene_1096.
         var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
-          ? SCW.pdfExport.buildPublishPayload()
+          ? SCW.pdfExport.buildPublishPayload('scene_1096')
           : null;
         if (pub) {
           // Flatten publish fields onto the top-level payload. Don't
