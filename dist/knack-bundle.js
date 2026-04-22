@@ -41538,6 +41538,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!accepted) {
           throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
         }
+        // Close the notes modal before navigating — the redirect is
+        // just a hash change, it doesn't tear down body-level overlays.
+        ctx.close();
         // Navigate to the parent page so the user lands on the SOW
         // list / build-sow level — the flipped flags (field_2723 /
         // field_2725 / etc.) show up there via the Next-Step pill.
