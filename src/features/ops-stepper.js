@@ -576,6 +576,7 @@
       // Value is just the timestamp — every write triggers a storage
       // event in other tabs even if the key already existed.
       localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
+      console.log('[scw-ops-stepper] completion signal written:', sowId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 
@@ -583,12 +584,18 @@
   // page in a new tab (target="_blank"), so window.close() should work;
   // if the browser blocks it, fall back to redirectToParent after a
   // short delay so the user still ends up somewhere sensible.
+  //
+  // The setTimeout before window.close() is intentional: some browsers
+  // miss the cross-tab storage-event IPC if the origin tab closes too
+  // quickly after setItem. 150ms is plenty for the event to propagate.
   function dismissAfterSuccess() {
-    window.close();
     setTimeout(function () {
-      // Still here? window.close() was blocked. Navigate up instead.
-      redirectToParent();
-    }, 300);
+      window.close();
+      setTimeout(function () {
+        // Still here? window.close() was blocked. Navigate up instead.
+        redirectToParent();
+      }, 300);
+    }, 150);
   }
 
   // ── Webhook ──────────────────────────────────────────────

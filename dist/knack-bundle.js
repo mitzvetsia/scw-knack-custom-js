@@ -5670,12 +5670,18 @@ window.SCW = window.SCW || {};
     window.addEventListener('storage', function (e) {
       var prefix = 'scw-ops-stepper-completed:';
       if (!e.key || e.key.indexOf(prefix) !== 0) return;
-      var sowId = e.key.slice(prefix.length);
-      var mine = getSourceSowId();
-      if (!mine || mine !== sowId) return;
+      // Reload on any ops-stepper completion signal, regardless of
+      // which SOW was affected. The previous SOW-id match bailed in
+      // two common cases: (a) the user was looking at the SOW list
+      // (view_3325) on a parent page that doesn't render view_3827,
+      // so getSourceSowId() returned empty; (b) the build page
+      // happened to have a sibling SOW loaded rather than the one
+      // just mark-readied. A blanket reload keeps view_3325's pills
+      // and view_3885's published-proposal rows fresh.
+      console.log('[scw-workflow-stepper] storage signal received:', e.key);
       showStaleDataBanner();
-      // Give Knack/Make's backend a beat to commit writes, and also
-      // give the user ~1s to register the banner before the reload.
+      // ~1.2s gives Knack/Make a beat to commit and the user time
+      // to register the banner before the reload.
       setTimeout(function () { window.location.reload(); }, 1200);
     });
   } catch (e) { /* ignore — non-fatal */ }
@@ -41855,6 +41861,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Value is just the timestamp — every write triggers a storage
       // event in other tabs even if the key already existed.
       localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
+      console.log('[scw-ops-stepper] completion signal written:', sowId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 
@@ -41862,12 +41869,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // page in a new tab (target="_blank"), so window.close() should work;
   // if the browser blocks it, fall back to redirectToParent after a
   // short delay so the user still ends up somewhere sensible.
+  //
+  // The setTimeout before window.close() is intentional: some browsers
+  // miss the cross-tab storage-event IPC if the origin tab closes too
+  // quickly after setItem. 150ms is plenty for the event to propagate.
   function dismissAfterSuccess() {
-    window.close();
     setTimeout(function () {
-      // Still here? window.close() was blocked. Navigate up instead.
-      redirectToParent();
-    }, 300);
+      window.close();
+      setTimeout(function () {
+        // Still here? window.close() was blocked. Navigate up instead.
+        redirectToParent();
+      }, 300);
+    }, 150);
   }
 
   // ── Webhook ──────────────────────────────────────────────
