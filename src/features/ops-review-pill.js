@@ -343,37 +343,78 @@
   }
 
   // ── Published-proposal index ────────────────────────────
-  // Walks view_3885's Knack model, filters to status=Published, and
-  // keys by the SOW connection (field_2666) so renderCell can do an
-  // O(1) lookup per row. Returns an empty object if the view isn't
-  // on the page or the model isn't ready yet.
+  // Keyed by the SOW id each proposal connects to (field_2666). Tries
+  // the Knack model first; falls back to DOM scraping of view_3885's
+  // table rows when the model isn't populated yet.
+  // No status filter — we assume view_3885 is already scoped to
+  // published proposals (its Knack title on ops is "SOW_published
+  // proposals"). If a mixed view is ever needed, add a Knack-level
+  // filter on the view rather than client-side gating.
   function buildProposalIndex() {
     var idx = {};
+    var hits = 0;
+
+    // 1. Knack model (preferred — has _raw values for every field).
     try {
       var v = Knack && Knack.views && Knack.views[PROPOSAL_VIEW];
       var models = v && v.model && v.model.data && v.model.data.models;
-      if (!models || !models.length) return idx;
-      for (var i = 0; i < models.length; i++) {
-        var a = models[i].attributes;
-        if (!a) continue;
-        // Only surface published proposals — drafts/earlier revisions
-        // stay out of sight for the SOW list pill area.
-        var status = String(a[PROPOSAL_STATUS] || '').replace(/<[^>]*>/g, '').trim();
-        if (!/published/i.test(status)) continue;
-        var sowRaw = a[PROPOSAL_SOW + '_raw'];
-        if (!Array.isArray(sowRaw) || !sowRaw.length) continue;
-        var sowId = sowRaw[0] && sowRaw[0].id;
-        if (!sowId) continue;
-        // If multiple published proposals exist for a single SOW, keep
-        // the first — proposal list is typically ordered by recency.
-        if (idx[sowId]) continue;
-        idx[sowId] = extractProposalInfo(a);
+      if (models && models.length) {
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i].attributes;
+          if (!a) continue;
+          var sowId = readSowIdFromAttrs(a);
+          if (!sowId || idx[sowId]) continue;
+          idx[sowId] = extractProposalInfoFromAttrs(a);
+          hits++;
+        }
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) { /* fall through to DOM */ }
+
+    // 2. DOM fallback — when the model is unavailable, scrape directly
+    // from the rendered table. Works as long as field_2666 is one of
+    // the columns on view_3885 (connection cells carry the record id
+    // as the inner span's class attribute).
+    if (!hits) {
+      try {
+        var viewEl = document.getElementById(PROPOSAL_VIEW);
+        if (viewEl) {
+          var rows = viewEl.querySelectorAll('tbody tr[id]');
+          for (var r = 0; r < rows.length; r++) {
+            var tr = rows[r];
+            if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+            var sowIdDom = readSowIdFromDom(tr);
+            if (!sowIdDom || idx[sowIdDom]) continue;
+            idx[sowIdDom] = extractProposalInfoFromDom(tr);
+            hits++;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     return idx;
   }
 
-  function extractProposalInfo(attrs) {
+  function readSowIdFromAttrs(attrs) {
+    var raw = attrs[PROPOSAL_SOW + '_raw'];
+    if (Array.isArray(raw) && raw.length) {
+      var id = raw[0] && raw[0].id;
+      return (id && /^[a-f0-9]{24}$/i.test(id)) ? id : '';
+    }
+    if (typeof raw === 'string' && /^[a-f0-9]{24}$/i.test(raw)) return raw;
+    return '';
+  }
+
+  function readSowIdFromDom(tr) {
+    var cell = tr.querySelector('td.' + PROPOSAL_SOW +
+                                ', td[data-field-key="' + PROPOSAL_SOW + '"]');
+    if (!cell) return '';
+    var span = cell.querySelector('span[data-kn="connection-value"]');
+    if (!span) return '';
+    var cls = (span.className || '').trim();
+    return /^[a-f0-9]{24}$/i.test(cls) ? cls : '';
+  }
+
+  function extractProposalInfoFromAttrs(attrs) {
     var id = attrs.id || '';
     var name    = String(attrs[PROPOSAL_NAME] || '').replace(/<[^>]*>/g, '').trim();
     var expDate = String(attrs[PROPOSAL_EXP]  || '').replace(/<[^>]*>/g, '').trim();
@@ -416,6 +457,34 @@
       pdfUrl:   pdfUrl,
       pdfName:  pdfName || 'Download PDF',
       viewLink: viewLink
+    };
+  }
+
+  function extractProposalInfoFromDom(tr) {
+    function cellText(fieldKey) {
+      var td = tr.querySelector('td.' + fieldKey +
+                                ', td[data-field-key="' + fieldKey + '"]');
+      if (!td) return '';
+      // Strip the outer col-N wrapper and return clean text.
+      return (td.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    function cellAnchor(fieldKey) {
+      var td = tr.querySelector('td.' + fieldKey +
+                                ', td[data-field-key="' + fieldKey + '"]');
+      if (!td) return null;
+      return td.querySelector('a');
+    }
+
+    var pdfA = cellAnchor(PROPOSAL_PDF);
+    var pageA = tr.querySelector('a.kn-link-page');
+
+    return {
+      recordId: tr.id || '',
+      name:     cellText(PROPOSAL_NAME),
+      expDate:  cellText(PROPOSAL_EXP),
+      pdfUrl:   pdfA ? (pdfA.getAttribute('href') || '') : '',
+      pdfName:  pdfA ? ((pdfA.textContent || '').trim() || 'Download PDF') : 'Download PDF',
+      viewLink: pageA ? (pageA.getAttribute('href') || '') : ''
     };
   }
 
