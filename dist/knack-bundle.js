@@ -40928,25 +40928,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           { not: { field: 'field_2728', gt: 0 } }
         ]
       },
+      // Single webhook handles both "mark ready" and the draft publish
+      // server-side. Payload includes full SOW context + publishAsTbd
+      // (see buildPayload) so Make has everything it needs to also
+      // produce the TBD-numbered draft published quote.
       webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
-      // After the Mark Ready webhook succeeds, also fire the Publish
-      // webhook so Make can produce a draft published quote at the same
-      // moment we hand off to Sales. `publish-only` mode so the Publish
-      // scenario skips the "proposal completed" Sales notification —
-      // the Mark Ready webhook handles notifying Sales itself. The
-      // cascade payload gets `publishAsTbd` auto-stamped below based on
-      // field_2725 (validated-bid flag), same as a standalone Publish.
-      cascadeWebhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
-      cascadeMode:       'publish-only',
       modal: {
         title:       'Mark Ready for Survey',
         intro:       'Note to the sales team — what should they know?',
         placeholder: 'e.g. Proposal is internally consistent, ready to hand off',
         submitLabel: 'Mark Ready'
       },
-      // Cascade payload needs sowFields / line-item ids / license ids
-      // so the Publish scenario has the same data the standalone Publish
-      // step would receive.
       includeFullPayload: true
     },
     {
@@ -41269,9 +41261,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       payload.sowLineItemIds = collectRecordIdsFromView(LINE_ITEM_VIEW);
       payload.licenseIds     = collectRecordIdsFromView(LICENSE_VIEW);
     }
-    // Any payload headed to the Publish webhook carries the TBD flag
-    // so Make knows whether to stamp real numbers or placeholders.
-    if (step.id === 'publish-proposal') {
+    // Any payload that will trigger publishing server-side carries the
+    // TBD flag so Make knows whether to stamp real numbers or
+    // placeholders. Both Mark Ready (which also publishes a draft) and
+    // the standalone Publish step qualify.
+    if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
       payload.publishAsTbd = shouldPublishAsTbd();
     }
     return payload;
@@ -41411,16 +41405,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       alert(step.label + ' webhook URL is not configured (' + step.webhookKey + ').');
       return;
     }
-    // Optional cascade webhook — fired only after the primary succeeds.
-    // Used by Mark Ready to also run the Publish scenario at hand-off time.
-    var cascadeUrl = '';
-    if (step.cascadeWebhookKey) {
-      cascadeUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.cascadeWebhookKey]) || '';
-      if (!cascadeUrl || /PLACEHOLDER/.test(cascadeUrl)) {
-        alert(step.label + ' cascade webhook URL is not configured (' + step.cascadeWebhookKey + ').');
-        return;
-      }
-    }
     if (!getSourceRecordId()) {
       alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
       return;
@@ -41434,27 +41418,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       postWebhook(url, payload).then(function (resp) {
         if (!(resp.data && resp.data.success)) {
           throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
-        }
-        if (!cascadeUrl) return null;
-        // Fire the cascade webhook with the same payload, only
-        // overriding `stepId` and `mode` so the Publish scenario can
-        // branch on them server-side.
-        var cascadePayload = {};
-        for (var k in payload) {
-          if (Object.prototype.hasOwnProperty.call(payload, k)) {
-            cascadePayload[k] = payload[k];
-          }
-        }
-        cascadePayload.stepId       = 'publish-proposal';
-        cascadePayload.mode         = step.cascadeMode || null;
-        cascadePayload.cascadedFrom = step.id;
-        // Cascade target is the Publish webhook — same TBD rule as a
-        // standalone Publish click.
-        cascadePayload.publishAsTbd = shouldPublishAsTbd();
-        return postWebhook(cascadeUrl, cascadePayload);
-      }).then(function (cascadeResp) {
-        if (cascadeResp && !(cascadeResp.data && cascadeResp.data.success)) {
-          throw new Error(webhookErrorMsg(cascadeResp, 'Publish cascade'));
         }
         // Reload so the stepper re-evaluates against the flipped flags
         // that Make wrote server-side (field_2723 / field_2725 / etc).
