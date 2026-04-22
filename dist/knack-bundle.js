@@ -40447,6 +40447,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var CELL_CLASS   = 'scw-ops-review-cell';
   var PROCESSED    = 'data-scw-ops-review';
 
+  // ── Published-proposal lookup (view_3885) ───────────────
+  // Each published proposal record connects back to its SOW via
+  // field_2666. Reading view_3885's Knack model + indexing by the
+  // connection field lets us show the proposal name / exp date / PDF
+  // link per SOW row (mirroring the sales build totals panel, which
+  // reads the same structure from view_3814).
+  var PROPOSAL_VIEW   = 'view_3885';
+  var PROPOSAL_NAME   = 'field_2665';  // proposal display name
+  var PROPOSAL_SOW    = 'field_2666';  // connection → SOW
+  var PROPOSAL_EXP    = 'field_2659';  // expiration date
+  var PROPOSAL_PDF    = 'field_2681';  // PDF file
+  var PROPOSAL_STATUS = 'field_2658';  // "Published" / "Draft" / etc.
+
   // ── Step definitions (priority order) ───────────────────
   // First matching step wins. Mirror these with the Ops stepper
   // (ops-stepper.js) so grid and page agree on "next action".
@@ -40503,11 +40516,42 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       /* Host cell */
       '#' + VIEW_ID + ' td.' + CELL_CLASS + ',' +
       '#' + VIEW_ID + ' th.' + CELL_CLASS + ' {' +
-      '  white-space: nowrap;' +
-      '  min-width: 250px;' +
+      '  white-space: normal;' +
+      '  min-width: 260px;' +
       '  vertical-align: middle;' +
       '  text-align: center;' +
       '}' +
+
+      /* Per-row published-proposal info block — sits below the pill.
+         Styled compact + muted so the pill stays the primary element. */
+      '.scw-ops-proposal-info {' +
+      '  margin-top: 8px;' +
+      '  padding-top: 6px;' +
+      '  border-top: 1px solid #e5e7eb;' +
+      '  font: 400 11px/1.4 system-ui, sans-serif;' +
+      '  color: #64748b;' +
+      '  text-align: center;' +
+      '}' +
+      '.scw-ops-proposal-name {' +
+      '  font-weight: 500;' +
+      '  margin-bottom: 2px;' +
+      '}' +
+      '.scw-ops-proposal-name a,' +
+      '.scw-ops-proposal-name a:visited {' +
+      '  color: #2563eb; text-decoration: none;' +
+      '}' +
+      '.scw-ops-proposal-name a:hover { text-decoration: underline; }' +
+      '.scw-ops-proposal-exp {' +
+      '  font-size: 10.5px;' +
+      '  color: #64748b;' +
+      '}' +
+      '.scw-ops-proposal-pdf,' +
+      '.scw-ops-proposal-pdf:visited {' +
+      '  display: inline-flex; align-items: center;' +
+      '  margin-top: 3px; color: #2563eb;' +
+      '  text-decoration: none; font-size: 10.5px;' +
+      '}' +
+      '.scw-ops-proposal-pdf:hover { text-decoration: underline; }' +
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -40690,8 +40734,132 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return path + '/proposal/' + m[0] + query;
   }
 
+  // ── Published-proposal index ────────────────────────────
+  // Walks view_3885's Knack model, filters to status=Published, and
+  // keys by the SOW connection (field_2666) so renderCell can do an
+  // O(1) lookup per row. Returns an empty object if the view isn't
+  // on the page or the model isn't ready yet.
+  function buildProposalIndex() {
+    var idx = {};
+    try {
+      var v = Knack && Knack.views && Knack.views[PROPOSAL_VIEW];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models || !models.length) return idx;
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i].attributes;
+        if (!a) continue;
+        // Only surface published proposals — drafts/earlier revisions
+        // stay out of sight for the SOW list pill area.
+        var status = String(a[PROPOSAL_STATUS] || '').replace(/<[^>]*>/g, '').trim();
+        if (!/published/i.test(status)) continue;
+        var sowRaw = a[PROPOSAL_SOW + '_raw'];
+        if (!Array.isArray(sowRaw) || !sowRaw.length) continue;
+        var sowId = sowRaw[0] && sowRaw[0].id;
+        if (!sowId) continue;
+        // If multiple published proposals exist for a single SOW, keep
+        // the first — proposal list is typically ordered by recency.
+        if (idx[sowId]) continue;
+        idx[sowId] = extractProposalInfo(a);
+      }
+    } catch (e) { /* ignore */ }
+    return idx;
+  }
+
+  function extractProposalInfo(attrs) {
+    var id = attrs.id || '';
+    var name    = String(attrs[PROPOSAL_NAME] || '').replace(/<[^>]*>/g, '').trim();
+    var expDate = String(attrs[PROPOSAL_EXP]  || '').replace(/<[^>]*>/g, '').trim();
+
+    // File fields have two raw forms depending on Knack's version —
+    // try both, plus an HTML-anchor regex fallback.
+    var pdfUrl = '', pdfName = '';
+    var pdfRaw = attrs[PROPOSAL_PDF + '_raw'];
+    if (pdfRaw && typeof pdfRaw === 'object') {
+      pdfUrl  = pdfRaw.url || '';
+      pdfName = pdfRaw.filename || '';
+    }
+    if (!pdfUrl) {
+      var pdfHtml = String(attrs[PROPOSAL_PDF] || '');
+      var mHref = pdfHtml.match(/href="([^"]+)"/i);
+      if (mHref) pdfUrl = mHref[1];
+      var mName = pdfHtml.match(/>([^<]+\.pdf)</i);
+      if (mName) pdfName = mName[1];
+    }
+
+    // "View Published Proposal" link — the kn-link-page anchor Knack
+    // renders in the row. Scrape from the DOM since the href isn't
+    // in the model.
+    var viewLink = '';
+    if (id) {
+      var viewEl = document.getElementById(PROPOSAL_VIEW);
+      if (viewEl) {
+        var row = viewEl.querySelector('tr#' + id);
+        if (row) {
+          var a = row.querySelector('a.kn-link-page');
+          if (a) viewLink = a.getAttribute('href') || '';
+        }
+      }
+    }
+
+    return {
+      recordId: id,
+      name:     name,
+      expDate:  expDate,
+      pdfUrl:   pdfUrl,
+      pdfName:  pdfName || 'Download PDF',
+      viewLink: viewLink
+    };
+  }
+
+  function renderProposalBlock(hostTd, proposal) {
+    if (!proposal) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ops-proposal-info';
+
+    if (proposal.name) {
+      var nameRow = document.createElement('div');
+      nameRow.className = 'scw-ops-proposal-name';
+      if (proposal.viewLink) {
+        var a = document.createElement('a');
+        a.setAttribute('href', proposal.viewLink);
+        a.textContent = proposal.name;
+        nameRow.appendChild(a);
+      } else {
+        nameRow.textContent = proposal.name;
+      }
+      wrap.appendChild(nameRow);
+    }
+
+    if (proposal.expDate) {
+      var expRow = document.createElement('div');
+      expRow.className = 'scw-ops-proposal-exp';
+      expRow.textContent = 'Expires: ' + proposal.expDate;
+      wrap.appendChild(expRow);
+    }
+
+    if (proposal.pdfUrl) {
+      var pdfLink = document.createElement('a');
+      pdfLink.className = 'scw-ops-proposal-pdf';
+      pdfLink.setAttribute('href', proposal.pdfUrl);
+      pdfLink.setAttribute('target', '_blank');
+      pdfLink.setAttribute('rel', 'noopener');
+      // Small paperclip glyph + filename — same vocabulary the sales
+      // totals panel uses so both pages read the same.
+      pdfLink.innerHTML =
+        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+        'stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">' +
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+        '<polyline points="14 2 14 8 20 8"/></svg>';
+      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
+      wrap.appendChild(pdfLink);
+    }
+
+    hostTd.appendChild(wrap);
+  }
+
   // ── Render one cell ─────────────────────────────────────
-  function renderCell(hostTd, tr) {
+  function renderCell(hostTd, tr, proposalIndex) {
     hostTd.innerHTML = '';
     hostTd.classList.add(CELL_CLASS);
     hostTd.setAttribute(PROCESSED, '1');
@@ -40754,6 +40922,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     hostTd.appendChild(pill);
+
+    // Per-row published-proposal info (view_3885 → matched via field_2666).
+    // Rendered regardless of step state so a published proposal shows
+    // up even when the SOW is in "Bid Published" terminal state.
+    if (proposalIndex && tr.id) {
+      renderProposalBlock(hostTd, proposalIndex[tr.id]);
+    }
   }
 
   // ── Scan view, transform each data row ──────────────────
@@ -40774,6 +40949,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (link) link.removeAttribute('href');
     }
 
+    // Build the published-proposal index once per transform — each
+    // row's renderCell looks up its match by SOW id.
+    var proposalIndex = buildProposalIndex();
+
     var rows = table.querySelectorAll('tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
@@ -40782,7 +40961,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var hostTd = tr.querySelector('td.' + HOST_FIELD +
                                    ', td[data-field-key="' + HOST_FIELD + '"]');
       if (!hostTd) continue;
-      renderCell(hostTd, tr);
+      renderCell(hostTd, tr, proposalIndex);
     }
   }
 
@@ -40794,14 +40973,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   document.addEventListener('mousedown', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
       e.stopPropagation();
     }
   }, true);
   document.addEventListener('click', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
       e.stopPropagation();
     }
   }, true);
@@ -40858,6 +41037,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     $(document)
       .off('knack-view-render.' + VIEW_ID + EVENT_NS)
       .on('knack-view-render.' + VIEW_ID + EVENT_NS, function () {
+        setTimeout(transform, 150);
+      });
+
+    // view_3885 (published proposals) may render after view_3325.
+    // Re-run transform when it arrives so per-row proposal info
+    // populates as soon as the data is available.
+    $(document)
+      .off('knack-view-render.' + PROPOSAL_VIEW + EVENT_NS)
+      .on('knack-view-render.' + PROPOSAL_VIEW + EVENT_NS, function () {
         setTimeout(transform, 150);
       });
 
