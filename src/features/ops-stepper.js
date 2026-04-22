@@ -47,9 +47,22 @@
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
-      // Available when the survey hasn't been requested AND there are no
-      // pending change requests yet. As soon as CRs exist (field_2728 > 0)
-      // the Request Alternative Bid step takes over.
+      // Hide the step entirely once the flow has advanced to the change-
+      // request stage. If the survey still hasn't been requested AND there
+      // are already CRs queued, the Request Alternative Bid step takes
+      // over — surfacing a grayed-out Mark Ready here would just be noise.
+      hideWhen: {
+        all: [
+          { field: 'field_2706', value: 'No' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
+      // Once the survey has actually been requested, render the step as
+      // completed (green check, non-clickable) to mirror the completed-
+      // step treatment on the sales build stepper.
+      completed: { field: 'field_2706', value: 'Yes' },
+      // Active (clickable) when the survey hasn't been requested and
+      // there are no CRs yet.
       showWhen: {
         all: [
           { field: 'field_2706', value: 'No' },
@@ -119,6 +132,11 @@
   var CIRCLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+  var CHECK_CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+    '<polyline points="22 4 12 14.01 9 11.01"/></svg>';
   var LOCK_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -178,6 +196,19 @@
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      /* Completed: green accent + check icon. When locked-by-completion
+         (is-completed + is-disabled) keep full opacity — the step should
+         read as "done", not as faded-out. */
+      '.scw-step-action.is-completed {' +
+      '  --scw-step-accent: #16a34a;' +
+      '}' +
+      '.scw-step-action.is-completed .scw-step-icon { color: #16a34a; opacity: 1; }' +
+      '.scw-step-action.is-completed.is-disabled {' +
+      '  opacity: 1; cursor: default; pointer-events: none;' +
+      '}' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
+      '  color: #16a34a; opacity: 1;' +
+      '}' +
       '.scw-step-action.is-loading {' +
       '  pointer-events: none; opacity: 0.75; cursor: wait;' +
       '}' +
@@ -533,19 +564,33 @@
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
-    // Render every step in fixed order; gray out (disable) the ones whose
-    // showWhen evaluates false. Same DOM shape as workflow-stepper.js's
-    // action steps so we get the accordion-header look for free.
+    // Render every step in fixed order. Three possible states per step:
+    //   hideWhen  matches → skip rendering entirely (step is inapplicable)
+    //   completed matches → render with green-check + is-completed (done, not clickable)
+    //   showWhen  matches → render clickable with circle icon
+    //   otherwise         → render disabled with gray lock icon
+    // Completed takes priority over showWhen so a finished step always
+    // reads as "done" rather than as locked.
     STEPS.forEach(function (step) {
-      var available = conditionMet(step.showWhen);
+      if (step.hideWhen && conditionMet(step.hideWhen)) return;
+
+      var completed = step.completed ? conditionMet(step.completed) : false;
+      var available = step.showWhen ? conditionMet(step.showWhen) : true;
+      var locked    = !completed && !available;
+
       var el = document.createElement('a');
       el.href = 'javascript:void(0)';
-      el.className = 'scw-step-action' + (available ? '' : ' is-disabled');
-      if (!available) el.setAttribute('title', 'Not available for this SOW right now.');
+      var cls = 'scw-step-action';
+      if (completed) cls += ' is-completed is-disabled';
+      else if (locked) cls += ' is-disabled';
+      el.className = cls;
+      if (locked) el.setAttribute('title', 'Not available for this SOW right now.');
 
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';
-      icon.innerHTML = available ? CIRCLE_SVG : LOCK_SVG;
+      icon.innerHTML = completed ? CHECK_CIRCLE_SVG
+                     : available ? CIRCLE_SVG
+                                 : LOCK_SVG;
       el.appendChild(icon);
 
       var titleEl = document.createElement('span');
@@ -553,7 +598,7 @@
       titleEl.textContent = step.label;
       el.appendChild(titleEl);
 
-      if (available) {
+      if (available && !completed) {
         el.addEventListener('click', function (e) {
           e.preventDefault();
           if (el.classList.contains('is-loading')) return;
