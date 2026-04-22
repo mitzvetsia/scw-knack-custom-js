@@ -564,6 +564,33 @@
     }
   }
 
+  // localStorage key name used to signal same-origin tabs that an Ops
+  // stepper action finished. workflow-stepper.js listens on the build
+  // page and reloads when its own SOW id matches, so the user never
+  // lingers on stale data after clicking Mark Ready from a new tab.
+  var COMPLETION_SIGNAL_KEY_PREFIX = 'scw-ops-stepper-completed:';
+
+  function signalOpsStepperCompletion(sowId) {
+    if (!sowId) return;
+    try {
+      // Value is just the timestamp — every write triggers a storage
+      // event in other tabs even if the key already existed.
+      localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
+    } catch (e) { /* localStorage might be disabled; non-fatal */ }
+  }
+
+  // Close the current tab on success. The Ops list opens the proposal
+  // page in a new tab (target="_blank"), so window.close() should work;
+  // if the browser blocks it, fall back to redirectToParent after a
+  // short delay so the user still ends up somewhere sensible.
+  function dismissAfterSuccess() {
+    window.close();
+    setTimeout(function () {
+      // Still here? window.close() was blocked. Navigate up instead.
+      redirectToParent();
+    }, 300);
+  }
+
   // ── Webhook ──────────────────────────────────────────────
   // POST the payload as JSON. Resolves with {ok, status, data} where
   // `data` is the parsed JSON body (or null if the body isn't JSON).
@@ -623,10 +650,14 @@
         // Close the notes modal before navigating — the redirect is
         // just a hash change, it doesn't tear down body-level overlays.
         ctx.close();
-        // Navigate to the parent page so the user lands on the SOW
-        // list / build-sow level — the flipped flags (field_2723 /
-        // field_2725 / etc.) show up there via the Next-Step pill.
-        redirectToParent();
+        // Fire a cross-tab signal so the build page (if open in
+        // another tab) reloads and doesn't show stale data.
+        signalOpsStepperCompletion(getSourceRecordId());
+        // Close this tab — the Ops list opened us in a new window,
+        // so there's no reason to keep it around once the action
+        // is done. Falls back to a parent-page redirect if the
+        // browser blocks window.close().
+        dismissAfterSuccess();
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);

@@ -1053,4 +1053,24 @@
   $(document).on('knack-form-submit.view_3853' + NS, function () {
     onFormSubmit('view_3853');
   });
+
+  // ── Cross-tab refresh after Ops stepper completion ───────
+  // ops-stepper.js (on the Ops tab) writes
+  //   scw-ops-stepper-completed:<sowId> = <timestamp>
+  // to localStorage when its webhook returns success. Same-origin
+  // tabs receive a 'storage' event. If the signal is for the SOW
+  // currently loaded on this build page, reload so the user doesn't
+  // keep looking at pre-action field values.
+  try {
+    window.addEventListener('storage', function (e) {
+      var prefix = 'scw-ops-stepper-completed:';
+      if (!e.key || e.key.indexOf(prefix) !== 0) return;
+      var sowId = e.key.slice(prefix.length);
+      var mine = getSourceSowId();
+      if (!mine || mine !== sowId) return;
+      // Small delay so any Knack/Make backend writes have a chance
+      // to land before we refetch.
+      setTimeout(function () { window.location.reload(); }, 500);
+    });
+  } catch (e) { /* ignore — non-fatal */ }
 })();
