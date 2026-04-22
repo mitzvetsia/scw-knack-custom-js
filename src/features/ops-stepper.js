@@ -547,6 +547,23 @@
     }
   }
 
+  // Navigate up one level in Knack's hash-based route — strips the
+  // last two hash segments (child-slug + child-id) so e.g.
+  //   #…/build-sow/<sowId>/proposal/<sowId>
+  // becomes
+  //   #…/build-sow/<sowId>
+  // Mirrors proposal-pdf-export.js's own redirectToParent.
+  function redirectToParent() {
+    var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
+    var parts = hash.replace(/^#\/?/, '').split('/');
+    if (parts.length >= 2) {
+      parts.splice(-2, 2);
+      window.location.hash = '#' + parts.join('/');
+    } else {
+      window.location.hash = '#';
+    }
+  }
+
   // ── Webhook ──────────────────────────────────────────────
   // POST the payload as JSON. Resolves with {ok, status, data} where
   // `data` is the parsed JSON body (or null if the body isn't JSON).
@@ -592,12 +609,21 @@
       var payload = buildPayload(step, notes, ctx.mode);
 
       postWebhook(url, payload).then(function (resp) {
-        if (!(resp.data && resp.data.success)) {
+        // Accept either `success: true` or `status: 'accepted'` —
+        // Make scenarios respond with one or the other depending on
+        // how the acknowledgement was configured.
+        var accepted = resp.data && (
+          resp.data.success === true ||
+          (typeof resp.data.status === 'string' &&
+           resp.data.status.toLowerCase() === 'accepted')
+        );
+        if (!accepted) {
           throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
         }
-        // Reload so the stepper re-evaluates against the flipped flags
-        // that Make wrote server-side (field_2723 / field_2725 / etc).
-        window.location.reload();
+        // Navigate to the parent page so the user lands on the SOW
+        // list / build-sow level — the flipped flags (field_2723 /
+        // field_2725 / etc.) show up there via the Next-Step pill.
+        redirectToParent();
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);
