@@ -1513,6 +1513,39 @@
   // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
   // before calling.
 
+  // Build the exact "save payload" shape the Publish Quote button sends
+  // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
+  // call this so Make receives identical inputs regardless of origin.
+  function buildPublishPayload(sceneId) {
+    if (!sceneId) {
+      try { sceneId = (Knack && Knack.scene && Knack.scene.attributes && Knack.scene.attributes.key) || ''; }
+      catch (e) { sceneId = ''; }
+    }
+    var cfg = null;
+    for (var si = 0; si < SCENES.length; si++) {
+      if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
+    }
+    if (!cfg) return null;
+    var payload = scrapeAllViews(cfg);
+    if (!payload.views.length) return null;
+    var htmlStr      = buildPdfHtml(payload);
+    var summary      = extractSummaryFields(payload);
+    var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+    return {
+      recordId:          getPageRecordId() || '',
+      hash:              window.location.hash || '',
+      sceneId:           cfg.sceneId,
+      type:              cfg.payloadType,
+      sowId:             summary.sowId,
+      equipmentTotal:    summary.equipmentTotal,
+      installationTotal: summary.installationTotal,
+      grandTotal:        summary.grandTotal,
+      expirationDate:    summary.expirationDate,
+      html:              htmlStr,
+      json:              jsonSnapshot
+    };
+  }
+
   window.SCW = window.SCW || {};
   window.SCW.pdfExport = {
     run: function (sceneId) {
@@ -1526,7 +1559,8 @@
       payload.html = buildPdfHtml(payload);
       return payload;
     },
-    getCss: getPdfCss
+    getCss: getPdfCss,
+    buildPublishPayload: buildPublishPayload
   };
 
   // ══════════════════════════════════════════════════════════════

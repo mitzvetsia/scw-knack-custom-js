@@ -410,8 +410,37 @@
     // TBD flag so Make knows whether to stamp real numbers or
     // placeholders. Both Mark Ready (which also publishes a draft) and
     // the standalone Publish step qualify.
+    //
+    // Also merges in the exact shape the standalone "Publish Quote"
+    // button (proposal-pdf-export.js) sends to its save webhook —
+    // html / json / sowId / totals / expirationDate / etc. — so every
+    // code path that publishes a quote looks identical on Make's side.
     if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
       payload.publishAsTbd = shouldPublishAsTbd();
+      try {
+        var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
+          ? SCW.pdfExport.buildPublishPayload()
+          : null;
+        if (pub) {
+          // Flatten publish fields onto the top-level payload. Don't
+          // clobber the ops-stepper-native keys (sourceRecordId, etc.).
+          var PUBLISH_KEYS = [
+            'recordId', 'hash', 'sceneId', 'type',
+            'sowId', 'equipmentTotal', 'installationTotal',
+            'grandTotal', 'expirationDate', 'html', 'json'
+          ];
+          for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
+            var pk = PUBLISH_KEYS[pi];
+            if (pub[pk] !== undefined) payload[pk] = pub[pk];
+          }
+        } else {
+          console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
+            'SCW.pdfExport not ready or scene not configured. html/json ' +
+            'fields will be missing from this webhook call.');
+        }
+      } catch (e) {
+        console.warn('[scw-ops-stepper] buildPublishPayload threw:', e);
+      }
     }
     return payload;
   }

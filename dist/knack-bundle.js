@@ -9845,6 +9845,39 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
   // before calling.
 
+  // Build the exact "save payload" shape the Publish Quote button sends
+  // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
+  // call this so Make receives identical inputs regardless of origin.
+  function buildPublishPayload(sceneId) {
+    if (!sceneId) {
+      try { sceneId = (Knack && Knack.scene && Knack.scene.attributes && Knack.scene.attributes.key) || ''; }
+      catch (e) { sceneId = ''; }
+    }
+    var cfg = null;
+    for (var si = 0; si < SCENES.length; si++) {
+      if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
+    }
+    if (!cfg) return null;
+    var payload = scrapeAllViews(cfg);
+    if (!payload.views.length) return null;
+    var htmlStr      = buildPdfHtml(payload);
+    var summary      = extractSummaryFields(payload);
+    var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+    return {
+      recordId:          getPageRecordId() || '',
+      hash:              window.location.hash || '',
+      sceneId:           cfg.sceneId,
+      type:              cfg.payloadType,
+      sowId:             summary.sowId,
+      equipmentTotal:    summary.equipmentTotal,
+      installationTotal: summary.installationTotal,
+      grandTotal:        summary.grandTotal,
+      expirationDate:    summary.expirationDate,
+      html:              htmlStr,
+      json:              jsonSnapshot
+    };
+  }
+
   window.SCW = window.SCW || {};
   window.SCW.pdfExport = {
     run: function (sceneId) {
@@ -9858,7 +9891,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       payload.html = buildPdfHtml(payload);
       return payload;
     },
-    getCss: getPdfCss
+    getCss: getPdfCss,
+    buildPublishPayload: buildPublishPayload
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -41265,8 +41299,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // TBD flag so Make knows whether to stamp real numbers or
     // placeholders. Both Mark Ready (which also publishes a draft) and
     // the standalone Publish step qualify.
+    //
+    // Also merges in the exact shape the standalone "Publish Quote"
+    // button (proposal-pdf-export.js) sends to its save webhook —
+    // html / json / sowId / totals / expirationDate / etc. — so every
+    // code path that publishes a quote looks identical on Make's side.
     if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
       payload.publishAsTbd = shouldPublishAsTbd();
+      try {
+        var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
+          ? SCW.pdfExport.buildPublishPayload()
+          : null;
+        if (pub) {
+          // Flatten publish fields onto the top-level payload. Don't
+          // clobber the ops-stepper-native keys (sourceRecordId, etc.).
+          var PUBLISH_KEYS = [
+            'recordId', 'hash', 'sceneId', 'type',
+            'sowId', 'equipmentTotal', 'installationTotal',
+            'grandTotal', 'expirationDate', 'html', 'json'
+          ];
+          for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
+            var pk = PUBLISH_KEYS[pi];
+            if (pub[pk] !== undefined) payload[pk] = pub[pk];
+          }
+        } else {
+          console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
+            'SCW.pdfExport not ready or scene not configured. html/json ' +
+            'fields will be missing from this webhook call.');
+        }
+      } catch (e) {
+        console.warn('[scw-ops-stepper] buildPublishPayload threw:', e);
+      }
     }
     return payload;
   }
