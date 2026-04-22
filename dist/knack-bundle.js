@@ -40856,6 +40856,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       id: 'request-alt-bid',
       label: 'Request Alternative Bid from Subcontractor',
       tone: 'amber',
+      // Hide entirely when there are no change requests — the whole
+      // premise of an alt bid is to respond to CRs, so without any
+      // there's nothing to show.
+      hideWhen: { not: { field: 'field_2728', gt: 0 } },
       showWhen: {
         all: [
           { field: 'field_2706', value: 'No' },
