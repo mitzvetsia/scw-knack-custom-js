@@ -11,13 +11,20 @@
  *
  * Priority (first match wins)
  *   1. field_2728 > 0 AND field_2706 = No → "Request Alternative Bid
- *      from Subcontractor" (amber) — there are pending CRs to address.
+ *      from Subcontractor" — there are pending CRs to address.
  *   2. field_2706 = No                    → "Mark Ready for Survey"
- *      (blue) — SOW needs Ops sign-off before sales can request survey.
- *   3. field_2725 = No                    → "Publish & Submit Completed
- *      Proposal" (green) — survey + bids are back, proposal ready to go.
- *   4. field_2725 = Yes (terminal)        → "Bid Published" (green check,
- *      no link).
+ *      — SOW needs Ops sign-off before sales can request survey.
+ *   3. field_2706 = Yes AND field_2728 = 0 → "Ready for Survey" (info,
+ *      non-clickable) — survey has been requested, waiting for it to
+ *      complete before the bid-validation step becomes relevant.
+ *   4. field_2725 = No                    → "Publish & Submit Completed
+ *      Proposal" — survey + bids are back, proposal ready to go.
+ *   5. field_2725 = Yes (terminal)        → "Bid Published" (grey check,
+ *      non-clickable).
+ *
+ * All active (clickable) pills share one teal background — the pill is
+ * a status-and-navigation affordance, not a meaningful colour-coded
+ * action. Non-clickable states (info, terminal) use muted backgrounds.
  *
  * Reads these fields from the row DOM, so they must be added as
  * columns on view_3325 (hidden by this feature's CSS):
@@ -54,19 +61,25 @@
     {
       id:       'request-alt-bid',
       label:    'Request Alternative Bid',
-      tone:     'amber',
       showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
     },
     {
       id:       'mark-ready',
       label:    'Mark Ready for Survey',
-      tone:     'primary',
       showWhen: function (f) { return f.survey !== 'yes'; }
+    },
+    {
+      // Status message while the SOW is out for survey and no change
+      // requests have come back yet. Renders as a non-clickable pill —
+      // there's no action for Ops to take during this window.
+      id:       'ready-for-survey',
+      label:    'Ready for Survey',
+      info:     true,
+      showWhen: function (f) { return f.survey === 'yes' && !(toNum(f.crCount) > 0); }
     },
     {
       id:       'publish-proposal',
       label:    'Publish & Submit Proposal',
-      tone:     'success',
       showWhen: function (f) { return f.validated !== 'yes'; }
     }
   ];
@@ -143,6 +156,14 @@
       '  background: #e2e8f0; color: #475569 !important; cursor: default;' +
       '}' +
       '.scw-ops-pill.is-terminal:hover { filter: none; }' +
+
+      /* Info (waiting-on-external-step, e.g. "Ready for Survey") —
+         pale teal so it visually relates to the clickable pills without
+         reading as a call-to-action. No hover, no pointer. */
+      '.scw-ops-pill.is-info {' +
+      '  background: #e0f2fe; color: #075985 !important; cursor: default;' +
+      '}' +
+      '.scw-ops-pill.is-info:hover { filter: none; }' +
 
       /* Inline info glyph for the auto-revert note trail. */
       '.scw-ops-info {' +
@@ -235,10 +256,21 @@
     var note = readNote(tr);
 
     var pill;
-    if (step) {
+    if (step && step.info) {
+      // Informational status (no action). Non-clickable span, muted
+      // palette, no arrow — visually distinct from actionable pills.
+      pill = document.createElement('span');
+      pill.className = 'scw-ops-pill is-info';
+
+      var infoLabel = document.createElement('span');
+      infoLabel.textContent = step.label;
+      pill.appendChild(infoLabel);
+
+      if (note) pill.setAttribute('data-scw-tip', note);
+    } else if (step) {
       // Active next-step → link to the proposal page.
       pill = document.createElement('a');
-      pill.className = 'scw-ops-pill is-' + step.tone;
+      pill.className = 'scw-ops-pill';
       var href = getRowLink(tr);
       if (href) pill.setAttribute('href', href);
       pill.setAttribute('target', '_blank');
