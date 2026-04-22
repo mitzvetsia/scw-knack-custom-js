@@ -40809,7 +40809,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var HOST_VIEW      = 'view_3345';   // role-gated rich-text host in Knack
   var SOURCE_VIEW    = 'view_3861';   // SOW details view on the proposal page
   var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
-  var LICENSE_VIEW   = '';            // TODO: user will supply the license-table view id
+  var LICENSE_VIEW   = 'view_3371';   // License records table on the proposal page
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
 
   var NS         = '.scwOpsStepper';
