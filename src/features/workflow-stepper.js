@@ -1059,8 +1059,38 @@
   //   scw-ops-stepper-completed:<sowId> = <timestamp>
   // to localStorage when its webhook returns success. Same-origin
   // tabs receive a 'storage' event. If the signal is for the SOW
-  // currently loaded on this build page, reload so the user doesn't
-  // keep looking at pre-action field values.
+  // currently loaded on this build page, show a "refreshing" banner
+  // then reload so the user doesn't stare at pre-action field values.
+  function showStaleDataBanner() {
+    if (document.getElementById('scw-stale-refresh-banner')) return;
+    // Inline styles so we don't need a separate stylesheet injection —
+    // the banner is short-lived and only appears on this one event.
+    var banner = document.createElement('div');
+    banner.id = 'scw-stale-refresh-banner';
+    banner.setAttribute('role', 'status');
+    banner.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:100000;' +
+      'background:#1e40af;color:#fff;' +
+      'font:600 13px/1.4 system-ui, sans-serif;' +
+      'padding:10px 16px;text-align:center;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);' +
+      'display:flex;align-items:center;justify-content:center;gap:10px;';
+    banner.innerHTML =
+      '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;' +
+      'border-radius:50%;animation:scw-stale-spin 0.8s linear infinite;"></span>' +
+      '<span>Data just changed on the Ops page — refreshing…</span>';
+
+    // Inject the keyframes once.
+    if (!document.getElementById('scw-stale-spin-css')) {
+      var s = document.createElement('style');
+      s.id = 'scw-stale-spin-css';
+      s.textContent = '@keyframes scw-stale-spin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(banner);
+  }
+
   try {
     window.addEventListener('storage', function (e) {
       var prefix = 'scw-ops-stepper-completed:';
@@ -1068,9 +1098,10 @@
       var sowId = e.key.slice(prefix.length);
       var mine = getSourceSowId();
       if (!mine || mine !== sowId) return;
-      // Small delay so any Knack/Make backend writes have a chance
-      // to land before we refetch.
-      setTimeout(function () { window.location.reload(); }, 500);
+      showStaleDataBanner();
+      // Give Knack/Make's backend a beat to commit writes, and also
+      // give the user ~1s to register the banner before the reload.
+      setTimeout(function () { window.location.reload(); }, 1200);
     });
   } catch (e) { /* ignore — non-fatal */ }
 })();

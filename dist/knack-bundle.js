@@ -5634,8 +5634,38 @@ window.SCW = window.SCW || {};
   //   scw-ops-stepper-completed:<sowId> = <timestamp>
   // to localStorage when its webhook returns success. Same-origin
   // tabs receive a 'storage' event. If the signal is for the SOW
-  // currently loaded on this build page, reload so the user doesn't
-  // keep looking at pre-action field values.
+  // currently loaded on this build page, show a "refreshing" banner
+  // then reload so the user doesn't stare at pre-action field values.
+  function showStaleDataBanner() {
+    if (document.getElementById('scw-stale-refresh-banner')) return;
+    // Inline styles so we don't need a separate stylesheet injection —
+    // the banner is short-lived and only appears on this one event.
+    var banner = document.createElement('div');
+    banner.id = 'scw-stale-refresh-banner';
+    banner.setAttribute('role', 'status');
+    banner.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:100000;' +
+      'background:#1e40af;color:#fff;' +
+      'font:600 13px/1.4 system-ui, sans-serif;' +
+      'padding:10px 16px;text-align:center;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);' +
+      'display:flex;align-items:center;justify-content:center;gap:10px;';
+    banner.innerHTML =
+      '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;' +
+      'border-radius:50%;animation:scw-stale-spin 0.8s linear infinite;"></span>' +
+      '<span>Data just changed on the Ops page — refreshing…</span>';
+
+    // Inject the keyframes once.
+    if (!document.getElementById('scw-stale-spin-css')) {
+      var s = document.createElement('style');
+      s.id = 'scw-stale-spin-css';
+      s.textContent = '@keyframes scw-stale-spin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(banner);
+  }
+
   try {
     window.addEventListener('storage', function (e) {
       var prefix = 'scw-ops-stepper-completed:';
@@ -5643,9 +5673,10 @@ window.SCW = window.SCW || {};
       var sowId = e.key.slice(prefix.length);
       var mine = getSourceSowId();
       if (!mine || mine !== sowId) return;
-      // Small delay so any Knack/Make backend writes have a chance
-      // to land before we refetch.
-      setTimeout(function () { window.location.reload(); }, 500);
+      showStaleDataBanner();
+      // Give Knack/Make's backend a beat to commit writes, and also
+      // give the user ~1s to register the banner before the reload.
+      setTimeout(function () { window.location.reload(); }, 1200);
     });
   } catch (e) { /* ignore — non-fatal */ }
 })();
@@ -40576,6 +40607,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  text-decoration: none; font-size: 10.5px;' +
       '}' +
       '.scw-ops-proposal-pdf:hover { text-decoration: underline; }' +
+      /* Empty-state message when no matching published proposal
+         exists for a SOW. Same layout as the info block, but muted
+         and italicised so it reads as an absence rather than data. */
+      '.scw-ops-proposal-empty {' +
+      '  font-style: italic; color: #94a3b8;' +
+      '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -40762,10 +40799,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // Keyed by the SOW id each proposal connects to (field_2666). Tries
   // the Knack model first; falls back to DOM scraping of view_3885's
   // table rows when the model isn't populated yet.
-  // No status filter — we assume view_3885 is already scoped to
-  // published proposals (its Knack title on ops is "SOW_published
-  // proposals"). If a mixed view is ever needed, add a Knack-level
-  // filter on the view rather than client-side gating.
+  //
+  // Filters to status=Published (field_2658). view_3885 includes drafts
+  // and earlier revisions as well — without the filter we'd pick up
+  // whatever row happened to render first for a given SOW, not the
+  // currently-published one.
   function buildProposalIndex() {
     var idx = {};
     var hits = 0;
@@ -40778,6 +40816,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var i = 0; i < models.length; i++) {
           var a = models[i].attributes;
           if (!a) continue;
+          if (!isPublishedFromAttrs(a)) continue;
           var sowId = readSowIdFromAttrs(a);
           if (!sowId || idx[sowId]) continue;
           idx[sowId] = extractProposalInfoFromAttrs(a);
@@ -40789,7 +40828,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // 2. DOM fallback — when the model is unavailable, scrape directly
     // from the rendered table. Works as long as field_2666 is one of
     // the columns on view_3885 (connection cells carry the record id
-    // as the inner span's class attribute).
+    // as the inner span's class attribute) and field_2658 (status) is
+    // either in the view or absent entirely. If the status column is
+    // absent from the DOM AND the model isn't ready, every row is
+    // kept — but that's a degenerate case you'd only hit during a
+    // race with initial render.
     if (!hits) {
       try {
         var viewEl = document.getElementById(PROPOSAL_VIEW);
@@ -40798,6 +40841,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           for (var r = 0; r < rows.length; r++) {
             var tr = rows[r];
             if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+            if (!isPublishedFromDom(tr)) continue;
             var sowIdDom = readSowIdFromDom(tr);
             if (!sowIdDom || idx[sowIdDom]) continue;
             idx[sowIdDom] = extractProposalInfoFromDom(tr);
@@ -40808,6 +40852,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     return idx;
+  }
+
+  function isPublishedFromAttrs(attrs) {
+    var raw = attrs[PROPOSAL_STATUS + '_raw'];
+    if (typeof raw === 'string' && raw.trim()) {
+      return /published/i.test(raw);
+    }
+    var v = attrs[PROPOSAL_STATUS];
+    if (typeof v === 'string' && v.trim()) {
+      return /published/i.test(v.replace(/<[^>]*>/g, ''));
+    }
+    return false;
+  }
+
+  function isPublishedFromDom(tr) {
+    var cell = tr.querySelector('td.' + PROPOSAL_STATUS +
+                                ', td[data-field-key="' + PROPOSAL_STATUS + '"]');
+    if (!cell) {
+      // Status column isn't on the view — accept all rows rather than
+      // silently filtering everything out.
+      return true;
+    }
+    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    return /published/i.test(text);
   }
 
   function readSowIdFromAttrs(attrs) {
@@ -41020,8 +41088,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Rendered regardless of step state so a published proposal shows
     // up even when the SOW is in "Bid Published" terminal state.
     if (proposalIndex && tr.id) {
-      renderProposalBlock(hostTd, proposalIndex[tr.id]);
+      var proposal = proposalIndex[tr.id];
+      if (proposal) {
+        renderProposalBlock(hostTd, proposal);
+      } else {
+        renderNoProposalMessage(hostTd);
+      }
     }
+  }
+
+  function renderNoProposalMessage(hostTd) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ops-proposal-info scw-ops-proposal-empty';
+    wrap.textContent = 'No published quotes';
+    hostTd.appendChild(wrap);
   }
 
   // ── Scan view, transform each data row ──────────────────

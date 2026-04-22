@@ -160,6 +160,12 @@
       '  text-decoration: none; font-size: 10.5px;' +
       '}' +
       '.scw-ops-proposal-pdf:hover { text-decoration: underline; }' +
+      /* Empty-state message when no matching published proposal
+         exists for a SOW. Same layout as the info block, but muted
+         and italicised so it reads as an absence rather than data. */
+      '.scw-ops-proposal-empty {' +
+      '  font-style: italic; color: #94a3b8;' +
+      '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -346,10 +352,11 @@
   // Keyed by the SOW id each proposal connects to (field_2666). Tries
   // the Knack model first; falls back to DOM scraping of view_3885's
   // table rows when the model isn't populated yet.
-  // No status filter — we assume view_3885 is already scoped to
-  // published proposals (its Knack title on ops is "SOW_published
-  // proposals"). If a mixed view is ever needed, add a Knack-level
-  // filter on the view rather than client-side gating.
+  //
+  // Filters to status=Published (field_2658). view_3885 includes drafts
+  // and earlier revisions as well — without the filter we'd pick up
+  // whatever row happened to render first for a given SOW, not the
+  // currently-published one.
   function buildProposalIndex() {
     var idx = {};
     var hits = 0;
@@ -362,6 +369,7 @@
         for (var i = 0; i < models.length; i++) {
           var a = models[i].attributes;
           if (!a) continue;
+          if (!isPublishedFromAttrs(a)) continue;
           var sowId = readSowIdFromAttrs(a);
           if (!sowId || idx[sowId]) continue;
           idx[sowId] = extractProposalInfoFromAttrs(a);
@@ -373,7 +381,11 @@
     // 2. DOM fallback — when the model is unavailable, scrape directly
     // from the rendered table. Works as long as field_2666 is one of
     // the columns on view_3885 (connection cells carry the record id
-    // as the inner span's class attribute).
+    // as the inner span's class attribute) and field_2658 (status) is
+    // either in the view or absent entirely. If the status column is
+    // absent from the DOM AND the model isn't ready, every row is
+    // kept — but that's a degenerate case you'd only hit during a
+    // race with initial render.
     if (!hits) {
       try {
         var viewEl = document.getElementById(PROPOSAL_VIEW);
@@ -382,6 +394,7 @@
           for (var r = 0; r < rows.length; r++) {
             var tr = rows[r];
             if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+            if (!isPublishedFromDom(tr)) continue;
             var sowIdDom = readSowIdFromDom(tr);
             if (!sowIdDom || idx[sowIdDom]) continue;
             idx[sowIdDom] = extractProposalInfoFromDom(tr);
@@ -392,6 +405,30 @@
     }
 
     return idx;
+  }
+
+  function isPublishedFromAttrs(attrs) {
+    var raw = attrs[PROPOSAL_STATUS + '_raw'];
+    if (typeof raw === 'string' && raw.trim()) {
+      return /published/i.test(raw);
+    }
+    var v = attrs[PROPOSAL_STATUS];
+    if (typeof v === 'string' && v.trim()) {
+      return /published/i.test(v.replace(/<[^>]*>/g, ''));
+    }
+    return false;
+  }
+
+  function isPublishedFromDom(tr) {
+    var cell = tr.querySelector('td.' + PROPOSAL_STATUS +
+                                ', td[data-field-key="' + PROPOSAL_STATUS + '"]');
+    if (!cell) {
+      // Status column isn't on the view — accept all rows rather than
+      // silently filtering everything out.
+      return true;
+    }
+    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    return /published/i.test(text);
   }
 
   function readSowIdFromAttrs(attrs) {
@@ -604,8 +641,20 @@
     // Rendered regardless of step state so a published proposal shows
     // up even when the SOW is in "Bid Published" terminal state.
     if (proposalIndex && tr.id) {
-      renderProposalBlock(hostTd, proposalIndex[tr.id]);
+      var proposal = proposalIndex[tr.id];
+      if (proposal) {
+        renderProposalBlock(hostTd, proposal);
+      } else {
+        renderNoProposalMessage(hostTd);
+      }
     }
+  }
+
+  function renderNoProposalMessage(hostTd) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ops-proposal-info scw-ops-proposal-empty';
+    wrap.textContent = 'No published quotes';
+    hostTd.appendChild(wrap);
   }
 
   // ── Scan view, transform each data row ──────────────────
