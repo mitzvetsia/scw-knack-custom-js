@@ -40933,7 +40933,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // webhook so Make can produce a draft published quote at the same
       // moment we hand off to Sales. `publish-only` mode so the Publish
       // scenario skips the "proposal completed" Sales notification —
-      // the Mark Ready webhook handles notifying Sales itself.
+      // the Mark Ready webhook handles notifying Sales itself. The
+      // cascade payload gets `publishAsTbd` auto-stamped below based on
+      // field_2725 (validated-bid flag), same as a standalone Publish.
       cascadeWebhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       cascadeMode:       'publish-only',
       modal: {
@@ -41241,6 +41243,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Payload ──────────────────────────────────────────────
+  // True when the SOW's bid isn't validated yet — Make's Publish
+  // scenario publishes with TBD placeholder numbers rather than
+  // finalized figures. Ops can SEE the real numbers on the proposal
+  // page, but until field_2725 is flipped to Yes, the published quote
+  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  function shouldPublishAsTbd() {
+    return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
+  }
+
   function buildPayload(step, notes, mode) {
     var payload = {
       sourceRecordId: getSourceRecordId(),
@@ -41257,6 +41268,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       payload.sowName        = readField(EXTRA_FIELD);
       payload.sowLineItemIds = collectRecordIdsFromView(LINE_ITEM_VIEW);
       payload.licenseIds     = collectRecordIdsFromView(LICENSE_VIEW);
+    }
+    // Any payload headed to the Publish webhook carries the TBD flag
+    // so Make knows whether to stamp real numbers or placeholders.
+    if (step.id === 'publish-proposal') {
+      payload.publishAsTbd = shouldPublishAsTbd();
     }
     return payload;
   }
@@ -41432,6 +41448,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         cascadePayload.stepId       = 'publish-proposal';
         cascadePayload.mode         = step.cascadeMode || null;
         cascadePayload.cascadedFrom = step.id;
+        // Cascade target is the Publish webhook — same TBD rule as a
+        // standalone Publish click.
+        cascadePayload.publishAsTbd = shouldPublishAsTbd();
         return postWebhook(cascadeUrl, cascadePayload);
       }).then(function (cascadeResp) {
         if (cascadeResp && !(cascadeResp.data && cascadeResp.data.success)) {
