@@ -13,7 +13,11 @@
     {
       sceneId: 'scene_1096',
       trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
-      skipViews: { view_3342: true },
+      // view_3861 is the Ops-side SOW details host (hidden via CSS)
+      // — its presence in the DOM is a signal for TBD-masking and the
+      // Ops stepper, not part of the published proposal. Keep it out
+      // of the PDF scrape.
+      skipViews: { view_3342: true, view_3861: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
