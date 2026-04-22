@@ -40408,7 +40408,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Ops has marked ready but Sales hasn't requested the survey
       // yet — waiting state. Non-clickable status message.
       id:       'ready-for-survey',
-      label:    'Ready for Survey',
+      label:    'Ready for Survey!',
       info:     true,
       showWhen: function (f) {
         return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
@@ -40706,7 +40706,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       hostTh.classList.add(CELL_CLASS);
       hostTh.setAttribute('data-scw-ops-review-th', '1');
       var lbl = hostTh.querySelector('.table-fixed-label span');
-      if (lbl) lbl.textContent = 'Ops Review';
+      if (lbl) lbl.textContent = 'Next Step:';
       var link = hostTh.querySelector('a.kn-sort');
       if (link) link.removeAttribute('href');
     }
@@ -40929,13 +40929,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         ]
       },
       webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
+      // After the Mark Ready webhook succeeds, also fire the Publish
+      // webhook so Make can produce a draft published quote at the same
+      // moment we hand off to Sales. `publish-only` mode so the Publish
+      // scenario skips the "proposal completed" Sales notification —
+      // the Mark Ready webhook handles notifying Sales itself.
+      cascadeWebhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
+      cascadeMode:       'publish-only',
       modal: {
         title:       'Mark Ready for Survey',
         intro:       'Note to the sales team — what should they know?',
         placeholder: 'e.g. Proposal is internally consistent, ready to hand off',
         submitLabel: 'Mark Ready'
       },
-      includeFullPayload: false   // this step just needs sourceRecordId + notes
+      // Cascade payload needs sowFields / line-item ids / license ids
+      // so the Publish scenario has the same data the standalone Publish
+      // step would receive.
+      includeFullPayload: true
     },
     {
       id: 'request-alt-bid',
@@ -41352,11 +41362,48 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Webhook ──────────────────────────────────────────────
+  // POST the payload as JSON. Resolves with {ok, status, data} where
+  // `data` is the parsed JSON body (or null if the body isn't JSON).
+  function postWebhook(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (resp) {
+      return resp.text().then(function (body) {
+        var data = null;
+        try { data = body ? JSON.parse(body) : null; } catch (e) {}
+        return { ok: resp.ok, status: resp.status, body: body, data: data };
+      });
+    });
+  }
+
+  // Extract a user-facing error message from a webhook response. Used
+  // when resp.data.success isn't truthy — prefers the server's error
+  // string, falls back to a generic HTTP-status message.
+  function webhookErrorMsg(resp, genericLabel) {
+    if (resp.data && (resp.data.error || resp.data.message)) {
+      return resp.data.error || resp.data.message;
+    }
+    if (resp.ok) return (genericLabel || 'Webhook') + ' returned a non-JSON or unexpected response.';
+    return (genericLabel || 'Webhook') + ' returned HTTP ' + resp.status + '.';
+  }
+
   function fireStep(step, btn) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.webhookKey]) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert(step.label + ' webhook URL is not configured (' + step.webhookKey + ').');
       return;
+    }
+    // Optional cascade webhook — fired only after the primary succeeds.
+    // Used by Mark Ready to also run the Publish scenario at hand-off time.
+    var cascadeUrl = '';
+    if (step.cascadeWebhookKey) {
+      cascadeUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.cascadeWebhookKey]) || '';
+      if (!cascadeUrl || /PLACEHOLDER/.test(cascadeUrl)) {
+        alert(step.label + ' cascade webhook URL is not configured (' + step.cascadeWebhookKey + ').');
+        return;
+      }
     }
     if (!getSourceRecordId()) {
       alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
@@ -41368,35 +41415,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       setBtnLoading(btn, true);
       var payload = buildPayload(step, notes, ctx.mode);
 
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(function (resp) {
-        return resp.text().then(function (body) {
-          var data = null;
-          try { data = body ? JSON.parse(body) : null; } catch (e) {}
-          return { ok: resp.ok, status: resp.status, body: body, data: data };
-        });
-      }).then(function (resp) {
-        if (resp.data && resp.data.success) {
-          // Reload so the stepper re-evaluates against the flipped flags
-          // that Make wrote server-side (field_2723 / field_2725 / etc).
-          window.location.reload();
-          return;
+      postWebhook(url, payload).then(function (resp) {
+        if (!(resp.data && resp.data.success)) {
+          throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
         }
-        setBtnLoading(btn, false);
-        ctx.setSubmitting(false);
-        ctx.showError(
-          (resp.data && (resp.data.error || resp.data.message)) ||
-          (resp.ok
-            ? 'Webhook returned a non-JSON or unexpected response.'
-            : 'Webhook returned HTTP ' + resp.status + '.')
-        );
+        if (!cascadeUrl) return null;
+        // Fire the cascade webhook with the same payload, only
+        // overriding `stepId` and `mode` so the Publish scenario can
+        // branch on them server-side.
+        var cascadePayload = {};
+        for (var k in payload) {
+          if (Object.prototype.hasOwnProperty.call(payload, k)) {
+            cascadePayload[k] = payload[k];
+          }
+        }
+        cascadePayload.stepId       = 'publish-proposal';
+        cascadePayload.mode         = step.cascadeMode || null;
+        cascadePayload.cascadedFrom = step.id;
+        return postWebhook(cascadeUrl, cascadePayload);
+      }).then(function (cascadeResp) {
+        if (cascadeResp && !(cascadeResp.data && cascadeResp.data.success)) {
+          throw new Error(webhookErrorMsg(cascadeResp, 'Publish cascade'));
+        }
+        // Reload so the stepper re-evaluates against the flipped flags
+        // that Make wrote server-side (field_2723 / field_2725 / etc).
+        window.location.reload();
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);
-        ctx.showError('Network error: ' + (e && e.message ? e.message : e));
+        ctx.showError(
+          (e && e.message) ? e.message : ('Network error: ' + e)
+        );
       });
     });
   }

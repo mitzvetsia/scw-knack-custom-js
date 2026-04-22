@@ -79,7 +79,7 @@
       // Ops has marked ready but Sales hasn't requested the survey
       // yet — waiting state. Non-clickable status message.
       id:       'ready-for-survey',
-      label:    'Ready for Survey',
+      label:    'Ready for Survey!',
       info:     true,
       showWhen: function (f) {
         return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
@@ -377,7 +377,7 @@
       hostTh.classList.add(CELL_CLASS);
       hostTh.setAttribute('data-scw-ops-review-th', '1');
       var lbl = hostTh.querySelector('.table-fixed-label span');
-      if (lbl) lbl.textContent = 'Ops Review';
+      if (lbl) lbl.textContent = 'Next Step:';
       var link = hostTh.querySelector('a.kn-sort');
       if (link) link.removeAttribute('href');
     }
