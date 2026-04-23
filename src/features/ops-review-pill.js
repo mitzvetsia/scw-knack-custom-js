@@ -552,7 +552,7 @@
     };
   }
 
-  function renderProposalBlock(hostTd, proposal) {
+  function renderProposalBlock(hostTd, proposal, tr) {
     if (!proposal) return;
     var wrap = document.createElement('div');
     wrap.className = 'scw-ops-proposal-info';
@@ -560,9 +560,16 @@
     if (proposal.name) {
       var nameRow = document.createElement('div');
       nameRow.className = 'scw-ops-proposal-name';
-      if (proposal.viewLink) {
+      // Proposal name links to the same proposal page the Mark Ready
+      // pill navigates to (hash-route for this SOW), not the raw
+      // Knack detail page for the published-proposal record. Matching
+      // the pill's target="_blank" keeps behavior consistent.
+      var nameHref = tr ? getRowLink(tr) : '';
+      if (nameHref) {
         var a = document.createElement('a');
-        a.setAttribute('href', proposal.viewLink);
+        a.setAttribute('href', nameHref);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener');
         a.textContent = proposal.name;
         nameRow.appendChild(a);
       } else {
@@ -582,8 +589,9 @@
       var pdfLink = document.createElement('a');
       pdfLink.className = 'scw-ops-proposal-pdf';
       pdfLink.setAttribute('href', proposal.pdfUrl);
-      pdfLink.setAttribute('target', '_blank');
-      pdfLink.setAttribute('rel', 'noopener');
+      // No target="_blank" here — PDFs should use the browser's
+      // native handling (in-page viewer / download) rather than
+      // opening in a new tab.
       // Small paperclip glyph + filename — same vocabulary the sales
       // totals panel uses so both pages read the same.
       pdfLink.innerHTML =
@@ -771,7 +779,7 @@
     if (proposalIndex && tr.id) {
       var proposal = proposalIndex[tr.id];
       if (proposal) {
-        renderProposalBlock(hostTd, proposal);
+        renderProposalBlock(hostTd, proposal, tr);
       } else {
         renderNoProposalMessage(hostTd);
       }
