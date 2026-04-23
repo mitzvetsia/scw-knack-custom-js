@@ -84,6 +84,7 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/ops-review-pill.js \
   src/features/ops-stepper.js \
+  src/features/published-quote-on-proposal-page.js \
   src/features/preview-proposal-btn.js \
   src/features/create-sow-option-btn.js \
   src/features/import-unique-items-btn.js \
