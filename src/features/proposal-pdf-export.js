@@ -17,7 +17,10 @@
       // — its presence in the DOM is a signal for TBD-masking and the
       // Ops stepper, not part of the published proposal. Keep it out
       // of the PDF scrape.
-      skipViews: { view_3342: true, view_3861: true },
+      // view_3345 is the Ops stepper host (rich-text role-gated).
+      // view_3883 is the published-quote info host we inject into.
+      // Neither belongs in the published proposal content.
+      skipViews: { view_3342: true, view_3861: true, view_3345: true, view_3883: true },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
