@@ -41106,24 +41106,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }, POLL_INTERVAL_MS);
   }
   function pollOnce() {
+    // Fetch both the SOW grid AND the published-proposal grid so
+    // (a) the pending flag clears as soon as the row's field flags
+    // flip, and (b) any new published-proposal record Make created
+    // shows up in the per-row info block under the pill. Both fetches
+    // trigger knack-view-render → transform, which is idempotent.
     try {
-      var v = Knack && Knack.views && Knack.views[VIEW_ID];
-      if (v && v.model && typeof v.model.fetch === 'function') {
-        v.model.fetch({
-          success: function () {
-            // knack-view-render event after fetch will trigger a
-            // transform → re-check pending → clear if step advanced.
-            // Schedule the next poll in case the field hasn't flipped
-            // yet; transform will also call schedulePoll, but calling
-            // it here keeps the cadence even if transform is delayed.
-            setTimeout(schedulePoll, 200);
-          },
-          error: function () { schedulePoll(); }
-        });
-      } else {
-        schedulePoll();
+      var views = [VIEW_ID, PROPOSAL_VIEW];
+      for (var i = 0; i < views.length; i++) {
+        var v = Knack && Knack.views && Knack.views[views[i]];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch();
+        }
       }
-    } catch (e) { schedulePoll(); }
+    } catch (e) { /* ignore */ }
+    // Schedule the next poll unconditionally — schedulePoll bails on
+    // its own when no pending flags remain.
+    setTimeout(schedulePoll, 200);
   }
 
   function renderPendingCell(hostTd, pendingStep) {
@@ -41971,14 +41970,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   //   #…/build-sow/<sowId>/proposal/<sowId>
   // becomes
   //   #…/build-sow/<sowId>
-  // Mirrors proposal-pdf-export.js's own redirectToParent.
   //
-  // Also forces a full page reload after the hash change. A bare hash
-  // change is a client-side route transition in Knack — the scene
-  // switches but cached models stay, so the user lands on the parent
-  // page with pre-webhook field values. Reloading fetches fresh data.
+  // No reload and no banner: the pending flag we just wrote causes
+  // ops-review-pill on the parent scene to render a grey "Processing…"
+  // pill for this SOW. That's the visual cue. Polling over there
+  // refreshes the underlying data (view_3325 + view_3885) as soon as
+  // Make commits its writes, without ever replacing the whole page.
   function redirectToParent() {
-    showStaleRefreshBanner();
     var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
     var parts = hash.replace(/^#\/?/, '').split('/');
     if (parts.length >= 2) {
@@ -41987,38 +41985,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     } else {
       window.location.hash = '#';
     }
-    // Reload after the banner has a moment to register.
-    setTimeout(function () { window.location.reload(); }, 1200);
-  }
-
-  // Fixed top banner with spinner + "refreshing" label. Duplicated
-  // from workflow-stepper.js on purpose — keeps ops-stepper's tab
-  // UX self-contained so it doesn't depend on another module having
-  // loaded or run on this particular scene.
-  function showStaleRefreshBanner() {
-    if (document.getElementById('scw-stale-refresh-banner')) return;
-    if (!document.getElementById('scw-stale-spin-css')) {
-      var s = document.createElement('style');
-      s.id = 'scw-stale-spin-css';
-      s.textContent = '@keyframes scw-stale-spin { to { transform: rotate(360deg); } }';
-      document.head.appendChild(s);
-    }
-    var banner = document.createElement('div');
-    banner.id = 'scw-stale-refresh-banner';
-    banner.setAttribute('role', 'status');
-    banner.style.cssText =
-      'position:fixed;top:0;left:0;right:0;z-index:100000;' +
-      'background:#1e40af;color:#fff;' +
-      'font:600 13px/1.4 system-ui, sans-serif;' +
-      'padding:10px 16px;text-align:center;' +
-      'box-shadow:0 2px 8px rgba(0,0,0,0.2);' +
-      'display:flex;align-items:center;justify-content:center;gap:10px;';
-    banner.innerHTML =
-      '<span style="display:inline-block;width:14px;height:14px;' +
-      'border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;' +
-      'border-radius:50%;animation:scw-stale-spin 0.8s linear infinite;"></span>' +
-      '<span>Refreshing with latest data…</span>';
-    document.body.appendChild(banner);
   }
 
   // localStorage key name used to signal same-origin tabs that an Ops

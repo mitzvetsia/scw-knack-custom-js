@@ -648,24 +648,23 @@
     }, POLL_INTERVAL_MS);
   }
   function pollOnce() {
+    // Fetch both the SOW grid AND the published-proposal grid so
+    // (a) the pending flag clears as soon as the row's field flags
+    // flip, and (b) any new published-proposal record Make created
+    // shows up in the per-row info block under the pill. Both fetches
+    // trigger knack-view-render → transform, which is idempotent.
     try {
-      var v = Knack && Knack.views && Knack.views[VIEW_ID];
-      if (v && v.model && typeof v.model.fetch === 'function') {
-        v.model.fetch({
-          success: function () {
-            // knack-view-render event after fetch will trigger a
-            // transform → re-check pending → clear if step advanced.
-            // Schedule the next poll in case the field hasn't flipped
-            // yet; transform will also call schedulePoll, but calling
-            // it here keeps the cadence even if transform is delayed.
-            setTimeout(schedulePoll, 200);
-          },
-          error: function () { schedulePoll(); }
-        });
-      } else {
-        schedulePoll();
+      var views = [VIEW_ID, PROPOSAL_VIEW];
+      for (var i = 0; i < views.length; i++) {
+        var v = Knack && Knack.views && Knack.views[views[i]];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch();
+        }
       }
-    } catch (e) { schedulePoll(); }
+    } catch (e) { /* ignore */ }
+    // Schedule the next poll unconditionally — schedulePoll bails on
+    // its own when no pending flags remain.
+    setTimeout(schedulePoll, 200);
   }
 
   function renderPendingCell(hostTd, pendingStep) {
