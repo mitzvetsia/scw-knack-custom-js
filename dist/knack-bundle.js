@@ -41531,12 +41531,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       id: 'publish-proposal',
       label: 'Publish and Submit Completed Proposal to Sales',
       tone: 'success',
-      // Available only once the SOW has both at least one change request
-      // (field_2728 > 0) and at least one associated bid (field_2737 > 0).
+      // Unlocked once EITHER:
+      //   - the SOW has at least one change request (field_2728 > 0), OR
+      //   - Ops has marked the SOW ready for survey (field_2723 = Yes).
+      // Either signal means there's something worth publishing — a CR
+      // queue to surface, or an Ops-validated SOW headed to survey.
       showWhen: {
-        all: [
+        any: [
           { field: 'field_2728', gt: 0 },
-          { field: 'field_2737', gt: 0 }
+          { field: 'field_2723', value: 'Yes' }
         ]
       },
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
