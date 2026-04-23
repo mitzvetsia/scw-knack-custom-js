@@ -553,7 +553,13 @@
   // becomes
   //   #…/build-sow/<sowId>
   // Mirrors proposal-pdf-export.js's own redirectToParent.
+  //
+  // Also forces a full page reload after the hash change. A bare hash
+  // change is a client-side route transition in Knack — the scene
+  // switches but cached models stay, so the user lands on the parent
+  // page with pre-webhook field values. Reloading fetches fresh data.
   function redirectToParent() {
+    showStaleRefreshBanner();
     var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
     var parts = hash.replace(/^#\/?/, '').split('/');
     if (parts.length >= 2) {
@@ -562,6 +568,38 @@
     } else {
       window.location.hash = '#';
     }
+    // Reload after the banner has a moment to register.
+    setTimeout(function () { window.location.reload(); }, 1200);
+  }
+
+  // Fixed top banner with spinner + "refreshing" label. Duplicated
+  // from workflow-stepper.js on purpose — keeps ops-stepper's tab
+  // UX self-contained so it doesn't depend on another module having
+  // loaded or run on this particular scene.
+  function showStaleRefreshBanner() {
+    if (document.getElementById('scw-stale-refresh-banner')) return;
+    if (!document.getElementById('scw-stale-spin-css')) {
+      var s = document.createElement('style');
+      s.id = 'scw-stale-spin-css';
+      s.textContent = '@keyframes scw-stale-spin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(s);
+    }
+    var banner = document.createElement('div');
+    banner.id = 'scw-stale-refresh-banner';
+    banner.setAttribute('role', 'status');
+    banner.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:100000;' +
+      'background:#1e40af;color:#fff;' +
+      'font:600 13px/1.4 system-ui, sans-serif;' +
+      'padding:10px 16px;text-align:center;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);' +
+      'display:flex;align-items:center;justify-content:center;gap:10px;';
+    banner.innerHTML =
+      '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;' +
+      'border-radius:50%;animation:scw-stale-spin 0.8s linear infinite;"></span>' +
+      '<span>Refreshing with latest data…</span>';
+    document.body.appendChild(banner);
   }
 
   // localStorage key name used to signal same-origin tabs that an Ops
