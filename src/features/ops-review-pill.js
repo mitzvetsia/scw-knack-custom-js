@@ -55,6 +55,18 @@
   var CELL_CLASS   = 'scw-ops-review-cell';
   var PROCESSED    = 'data-scw-ops-review';
 
+  // ── Pending-step flags ──────────────────────────────────
+  // ops-stepper.js (on the Ops proposal tab) writes
+  //   scw-ops-stepper-pending:<sowId> = {"stepId":"...","timestamp":...}
+  // to localStorage when Make responds with {status:"accepted"}. The
+  // pill for that SOW renders as grayed "Processing …" until the
+  // underlying fields flip (checked by polling view_3325.model.fetch)
+  // — at which point the resolved step will differ from pending.stepId
+  // and we clear the flag.
+  var PENDING_KEY_PREFIX = 'scw-ops-stepper-pending:';
+  var PENDING_TIMEOUT_MS = 90 * 1000;   // safety net — clear stuck flags
+  var POLL_INTERVAL_MS   = 5 * 1000;    // cadence for model.fetch while pending
+
   // ── Published-proposal lookup (view_3885) ───────────────
   // Each published proposal record connects back to its SOW via
   // field_2666. Reading view_3885's Knack model + indexing by the
@@ -214,6 +226,21 @@
       '  background: #e2e8f0; color: #475569 !important; cursor: default;' +
       '}' +
       '.scw-ops-pill.is-terminal:hover { filter: none; }' +
+
+      /* Pending — Make accepted the webhook but hasn't finished.
+         Grey pill with an inline spinner, non-interactive. Polling
+         clears this state once the SOW's field values catch up. */
+      '.scw-ops-pill.is-pending {' +
+      '  background: #e2e8f0; color: #475569 !important; cursor: wait;' +
+      '}' +
+      '.scw-ops-pill.is-pending:hover { filter: none; }' +
+      '.scw-ops-pending-spinner {' +
+      '  display: inline-block; width: 12px; height: 12px;' +
+      '  border: 2px solid rgba(71,85,105,0.25);' +
+      '  border-top-color: #475569; border-radius: 50%;' +
+      '  animation: scw-ops-pending-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-ops-pending-spin { to { transform: rotate(360deg); } }' +
 
       /* Info status message (e.g. "Ready for Survey") — plain muted
          italic text, no background, no border. Reads as status, not
@@ -572,6 +599,90 @@
     hostTd.appendChild(wrap);
   }
 
+  function findStepById(stepId) {
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i].id === stepId) return STEPS[i];
+    }
+    return null;
+  }
+
+  // ── Pending helpers ─────────────────────────────────────
+  function readPending(sowId) {
+    if (!sowId) return null;
+    try {
+      var raw = localStorage.getItem(PENDING_KEY_PREFIX + sowId);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || !data.stepId || !data.timestamp) return null;
+      if (Date.now() - data.timestamp > PENDING_TIMEOUT_MS) {
+        clearPending(sowId);
+        return null;
+      }
+      return data;
+    } catch (e) { return null; }
+  }
+  function clearPending(sowId) {
+    try { localStorage.removeItem(PENDING_KEY_PREFIX + sowId); } catch (e) {}
+  }
+  function hasAnyPending() {
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(PENDING_KEY_PREFIX) === 0) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // ── Polling while pending flags are set ─────────────────
+  // Single timer at module scope — schedulePoll is idempotent, so
+  // multiple renderCell invocations during one transform don't stack
+  // up competing pollers.
+  var _pollTimer = null;
+  function schedulePoll() {
+    if (_pollTimer) return;
+    if (!hasAnyPending()) return;
+    _pollTimer = setTimeout(function () {
+      _pollTimer = null;
+      pollOnce();
+    }, POLL_INTERVAL_MS);
+  }
+  function pollOnce() {
+    try {
+      var v = Knack && Knack.views && Knack.views[VIEW_ID];
+      if (v && v.model && typeof v.model.fetch === 'function') {
+        v.model.fetch({
+          success: function () {
+            // knack-view-render event after fetch will trigger a
+            // transform → re-check pending → clear if step advanced.
+            // Schedule the next poll in case the field hasn't flipped
+            // yet; transform will also call schedulePoll, but calling
+            // it here keeps the cadence even if transform is delayed.
+            setTimeout(schedulePoll, 200);
+          },
+          error: function () { schedulePoll(); }
+        });
+      } else {
+        schedulePoll();
+      }
+    } catch (e) { schedulePoll(); }
+  }
+
+  function renderPendingCell(hostTd, pendingStep) {
+    var pill = document.createElement('span');
+    pill.className = 'scw-ops-pill is-pending';
+
+    var spinner = document.createElement('span');
+    spinner.className = 'scw-ops-pending-spinner';
+    pill.appendChild(spinner);
+
+    var label = document.createElement('span');
+    label.textContent = 'Processing ' + (pendingStep ? pendingStep.label : 'action') + '…';
+    pill.appendChild(label);
+
+    hostTd.appendChild(pill);
+  }
+
   // ── Render one cell ─────────────────────────────────────
   function renderCell(hostTd, tr, proposalIndex) {
     hostTd.innerHTML = '';
@@ -580,6 +691,24 @@
 
     var step = resolveStep(tr);
     var note = readNote(tr);
+
+    // Pending-step short-circuit. If Make is still working on this
+    // SOW AND the currently-resolved step matches what ops-stepper
+    // just kicked off, show a grayed-out "Processing…" pill and
+    // leave the proposal block off for now. If the resolved step
+    // differs from what's pending, Make finished — clear the flag.
+    var pending = readPending(tr.id);
+    if (pending) {
+      var pendingStep = findStepById(pending.stepId);
+      if (step && step.id === pending.stepId) {
+        renderPendingCell(hostTd, pendingStep || step);
+        schedulePoll();
+        return;
+      }
+      // Step advanced past what was pending → Make committed its
+      // writes. Clear and fall through to normal rendering.
+      clearPending(tr.id);
+    }
 
     var pill;
     if (step && step.info) {

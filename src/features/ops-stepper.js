@@ -607,6 +607,7 @@
   // page and reloads when its own SOW id matches, so the user never
   // lingers on stale data after clicking Mark Ready from a new tab.
   var COMPLETION_SIGNAL_KEY_PREFIX = 'scw-ops-stepper-completed:';
+  var PENDING_KEY_PREFIX           = 'scw-ops-stepper-pending:';
 
   function signalOpsStepperCompletion(sowId) {
     if (!sowId) return;
@@ -615,6 +616,22 @@
       // event in other tabs even if the key already existed.
       localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
       console.log('[scw-ops-stepper] completion signal written:', sowId);
+    } catch (e) { /* localStorage might be disabled; non-fatal */ }
+  }
+
+  // Mark the SOW's current step as "in flight" — Make has accepted the
+  // webhook but hasn't finished yet. ops-review-pill reads this flag
+  // and renders the pill in a grayed "Processing" state until field
+  // values on the record catch up (polled via Knack.views.model.fetch)
+  // or the 90s timeout lapses.
+  function markStepPending(sowId, stepId) {
+    if (!sowId || !stepId) return;
+    try {
+      localStorage.setItem(
+        PENDING_KEY_PREFIX + sowId,
+        JSON.stringify({ stepId: stepId, timestamp: Date.now() })
+      );
+      console.log('[scw-ops-stepper] pending flag written:', sowId, stepId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 
@@ -698,6 +715,10 @@
         // Fire a cross-tab signal so the build page (if open in
         // another tab) reloads and doesn't show stale data.
         signalOpsStepperCompletion(getSourceRecordId());
+        // Mark the step as pending so the parent page's next-step
+        // pill renders grayed out until Make finishes flipping the
+        // underlying field values.
+        markStepPending(getSourceRecordId(), step.id);
         // Close this tab — the Ops list opened us in a new window,
         // so there's no reason to keep it around once the action
         // is done. Falls back to a parent-page redirect if the
