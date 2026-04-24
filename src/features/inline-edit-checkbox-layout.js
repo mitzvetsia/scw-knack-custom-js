@@ -117,6 +117,52 @@
   // of item paints coalesces into a single scan per frame.
   var seen = new WeakSet();
 
+  // Per-list anchor for shift-click range selection. WeakMap auto-GCs
+  // when the list element is removed from the DOM.
+  var lastCheckbox = new WeakMap();
+
+  // Shift-click range selection. Click delegation on the popover — one
+  // listener per popover. Pattern: click A, then shift-click B, and
+  // every checkbox between A and B (DOM order) takes B's new checked
+  // state. change events are dispatched on the in-between inputs so
+  // Knack's internal model syncs before the user hits save.
+  function onPopoverClick(e) {
+    var cb = e.target;
+    if (!cb || cb.tagName !== 'INPUT' || cb.type !== 'checkbox') return;
+    var list = cb.closest('.conn_inputs');
+    if (!list) return;
+
+    var anchor = lastCheckbox.get(list);
+
+    if (e.shiftKey && anchor && anchor !== cb && list.contains(anchor)) {
+      var all = Array.prototype.slice.call(
+        list.querySelectorAll('input[type="checkbox"]')
+      );
+      var ai = all.indexOf(anchor);
+      var bi = all.indexOf(cb);
+      if (ai >= 0 && bi >= 0) {
+        var lo = Math.min(ai, bi);
+        var hi = Math.max(ai, bi);
+        // Target state = what the user's click just produced on cb.
+        // (The click event fires after the native toggle, so cb.checked
+        // already reflects the new value.)
+        var target = cb.checked;
+        for (var i = lo; i <= hi; i++) {
+          var node = all[i];
+          if (node !== cb && node.checked !== target) {
+            node.checked = target;
+            node.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+        // Shift-clicking labels typically selects text between the two
+        // clicks — clear it so the user doesn't see a weird highlight.
+        try { window.getSelection().removeAllRanges(); } catch (_) {}
+      }
+    }
+
+    lastCheckbox.set(list, cb);
+  }
+
   function trackPopover(popover) {
     if (seen.has(popover)) return;
     seen.add(popover);
@@ -149,6 +195,8 @@
       else stopOpenObs();
     });
     classObs.observe(popover, { attributes: true, attributeFilter: ['class'] });
+
+    popover.addEventListener('click', onPopoverClick);
   }
 
   // ── Top-level: catch popovers appended to <body> ───────────
