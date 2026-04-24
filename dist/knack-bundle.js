@@ -20134,7 +20134,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3450'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -20152,6 +20152,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3586: { defaultOpen: true },
     view_3608: { defaultOpen: true },
     view_3800: { defaultOpen: true },
+    // Exclusive accordion: only one L1 (MDF/IDF) group open at a time.
+    // Prevents a single large group from pushing every other group off
+    // the viewport. Starts all-collapsed so the user picks where to work.
+    view_3450: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -20769,6 +20773,42 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       setCollapsed($tr, shouldCollapse);
     });
+
+    // Exclusive-accordion enforcement: for views flagged exclusive,
+    // guarantee no more than one L1 group is open after enhance runs.
+    // Handles stale localStorage from before the flag was introduced
+    // (or from any code path that left multiple open).
+    Object.keys(viewRecordCounts).forEach(function (vid) {
+      var vo = VIEW_OVERRIDES[vid];
+      if (!vo || !vo.exclusive) return;
+      var $view = $('#' + vid);
+      if (!$view.length) return;
+      var $openL1 = $view.find(
+        'tr.kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)'
+      );
+      if ($openL1.length <= 1) return;
+      var state = loadState(sceneId, vid);
+      $openL1.slice(1).each(function () {
+        var $other = $(this);
+        setCollapsed($other, true);
+        state[buildKey($other, 1)] = 1;
+      });
+      saveState(sceneId, vid, state);
+    });
+  }
+
+  // Exclusive-accordion: close every other L1 header in the same view
+  // when one opens. Called from the click handler.
+  function closeOtherL1sInView($openedHeader, $view, sceneId, viewId, state) {
+    var $others = $view.find(
+      'tr.kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)'
+    );
+    $others.each(function () {
+      if (this === $openedHeader[0]) return;
+      var $o = $(this);
+      setCollapsed($o, true);
+      state[buildKey($o, 1)] = 1;
+    });
   }
 
   // ======================
@@ -20812,6 +20852,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
 
         state[key] = collapseNow ? 1 : 0;
+
+        // Exclusive accordion: opening an L1 group closes every other
+        // L1 in the view. Only runs on expand (collapseNow === false).
+        var viewOverrides = VIEW_OVERRIDES[viewId];
+        if (!collapseNow && level === 1 && viewOverrides && viewOverrides.exclusive) {
+          closeOtherL1sInView($tr, $view, sceneId, viewId, state);
+        }
+
         saveState(sceneId, viewId, state);
       });
   }
@@ -22115,7 +22163,7 @@ $(document).on('knack-view-render.view_3313', function () {
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341','view_3550'];
+  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3450'];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';
