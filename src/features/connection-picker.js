@@ -503,15 +503,23 @@
   function buildConnectionsUrl(sowId) {
     var sceneKey = (typeof Knack !== 'undefined' && Knack.router && Knack.router.current_scene_key)
       ? Knack.router.current_scene_key : 'scene_1116';
-    var filters = [
-      { field: BUCKET_FIELD,         value: [CAMERAS_BUCKET_ID], operator: 'is' },
-      { field: RECIPROCAL_FIELD,     value: '',                  operator: 'is blank' },
-      { field: SOW_CONNECTION_FIELD, value: sowId,               operator: 'is' }
-    ];
+    // Knack expects the filter payload in {match, rules} shape; the raw
+    // array form is accepted by /records but 400s on /connections. Values
+    // for `is` on a connection/bucket field are a bare string ID, not an
+    // array. `limit_return=true` is not a documented Knack query param —
+    // dropping it removes a second source of 400s.
+    var filterObj = {
+      match: 'and',
+      rules: [
+        { field: BUCKET_FIELD,         operator: 'is',       value: CAMERAS_BUCKET_ID },
+        { field: RECIPROCAL_FIELD,     operator: 'is blank', value: '' },
+        { field: SOW_CONNECTION_FIELD, operator: 'is',       value: sowId }
+      ]
+    };
     return Knack.api_url + '/v1/pages/' + sceneKey +
            '/views/' + TARGET_VIEW + '/connections/' + TARGET_FIELD +
-           '?rows_per_page=2000&limit_return=true' +
-           '&filters=' + encodeURIComponent(JSON.stringify(filters));
+           '?rows_per_page=2000' +
+           '&filters=' + encodeURIComponent(JSON.stringify(filterObj));
   }
 
   /** Fire the connections request. onDone(err, records). */
@@ -539,6 +547,9 @@
         onDone(null, records);
       },
       error: function (xhr) {
+        console.error('[scw-cp] candidate fetch failed',
+          'status=' + (xhr && xhr.status),
+          'body=' + (xhr && xhr.responseText));
         onDone(xhr || new Error('fetch failed'));
       }
     });
