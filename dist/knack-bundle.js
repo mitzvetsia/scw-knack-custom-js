@@ -20134,7 +20134,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3450'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -20149,13 +20149,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3313: { defaultOpen: true },
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
-    view_3586: { defaultOpen: true },
     view_3608: { defaultOpen: true },
     view_3800: { defaultOpen: true },
     // Exclusive accordion: only one L1 (MDF/IDF) group open at a time.
     // Prevents a single large group from pushing every other group off
     // the viewport. Starts all-collapsed so the user picks where to work.
-    view_3450: { exclusive: true },
+    view_3586: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -22163,7 +22162,7 @@ $(document).on('knack-view-render.view_3313', function () {
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3450'];
+  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586'];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';

@@ -28,7 +28,7 @@
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3450'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -43,13 +43,12 @@
     view_3313: { defaultOpen: true },
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
-    view_3586: { defaultOpen: true },
     view_3608: { defaultOpen: true },
     view_3800: { defaultOpen: true },
     // Exclusive accordion: only one L1 (MDF/IDF) group open at a time.
     // Prevents a single large group from pushing every other group off
     // the viewport. Starts all-collapsed so the user picks where to work.
-    view_3450: { exclusive: true },
+    view_3586: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
