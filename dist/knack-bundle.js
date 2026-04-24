@@ -47356,6 +47356,145 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return { close: close };
   }
 
+  // ── Candidate fetching (chunk 3) ──────────────────────────────────
+  // We hit Knack's own /connections endpoint, which is the same URL the
+  // native popover uses — so the Builder filter and auth wiring Just
+  // Works. Our filter is hardcoded to match what the Builder applies:
+  //   field_2219 = camera/reader bucket
+  //   field_2197 = blank (candidate not already connected to something)
+  //   field_2154 = current SOW (pulled off the clicked row's model)
+  // A per-SOW in-memory cache avoids re-fetching on rapid reopens.
+
+  var CAMERAS_BUCKET_ID       = '6481e5ba38f283002898113c';
+  var BUCKET_FIELD            = 'field_2219';
+  var RECIPROCAL_FIELD        = 'field_2197';
+  var SOW_CONNECTION_FIELD    = 'field_2154';
+  var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
+  var CANDIDATES_CACHE        = {};             // { sowId: { records: [...], fetchedAt: ms } }
+  var CACHE_TTL_MS            = 60 * 1000;
+
+  function readRecordAttrs(recordId) {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return null;
+    var model = Knack.views[TARGET_VIEW].model;
+    if (!model) return null;
+    var records = (model.data && model.data.models) || model.models || [];
+    for (var i = 0; i < records.length; i++) {
+      var entry = records[i];
+      if (!entry) continue;
+      var attrs = entry.attributes || entry;
+      if (attrs && attrs.id === recordId) return attrs;
+    }
+    return null;
+  }
+
+  function getSowIdForRecord(recordId) {
+    var attrs = readRecordAttrs(recordId);
+    if (!attrs) return null;
+    var raw = attrs[SOW_CONNECTION_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    return null;
+  }
+
+  function getCurrentlySelectedIds(recordId) {
+    var attrs = readRecordAttrs(recordId);
+    if (!attrs) return [];
+    var raw = attrs[TARGET_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+
+  function buildConnectionsUrl(sowId) {
+    var sceneKey = (typeof Knack !== 'undefined' && Knack.router && Knack.router.current_scene_key)
+      ? Knack.router.current_scene_key : 'scene_1116';
+    var filters = [
+      { field: BUCKET_FIELD,         value: [CAMERAS_BUCKET_ID], operator: 'is' },
+      { field: RECIPROCAL_FIELD,     value: '',                  operator: 'is blank' },
+      { field: SOW_CONNECTION_FIELD, value: sowId,               operator: 'is' }
+    ];
+    return Knack.api_url + '/v1/pages/' + sceneKey +
+           '/views/' + TARGET_VIEW + '/connections/' + TARGET_FIELD +
+           '?rows_per_page=2000&limit_return=true' +
+           '&filters=' + encodeURIComponent(JSON.stringify(filters));
+  }
+
+  /** Fire the connections request. onDone(err, records). */
+  function fetchCandidates(sowId, onDone) {
+    var cached = CANDIDATES_CACHE[sowId];
+    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
+      onDone(null, cached.records);
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function') {
+      onDone(new Error('SCW.knackAjax unavailable'));
+      return;
+    }
+    window.SCW.knackAjax({
+      type: 'GET',
+      url: buildConnectionsUrl(sowId),
+      dataType: 'json',
+      success: function (resp) {
+        var records = (resp && (resp.records || resp)) || [];
+        // Some Knack endpoints wrap in { records: [...] }, others return
+        // the array directly; tolerate both.
+        if (!Array.isArray(records) && records.records) records = records.records;
+        if (!Array.isArray(records)) records = [];
+        CANDIDATES_CACHE[sowId] = { records: records, fetchedAt: Date.now() };
+        onDone(null, records);
+      },
+      error: function (xhr) {
+        onDone(xhr || new Error('fetch failed'));
+      }
+    });
+  }
+
+  /** Group candidate records by their MDF/IDF identifier, preserving
+   *  the server-provided order within each group. Records with a blank
+   *  MDF/IDF land in a trailing "Unassigned" group. */
+  function groupByMdfIdf(records, selectedIdSet) {
+    var orderedLabels = [];
+    var groupMap = {};  // label → { label, items }
+    var UNASSIGNED_LABEL = 'Unassigned';
+
+    function bucketFor(label) {
+      if (!groupMap[label]) {
+        groupMap[label] = { label: label, items: [] };
+        orderedLabels.push(label);
+      }
+      return groupMap[label];
+    }
+
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i] || {};
+      var id = rec.id;
+      if (!id) continue;
+      var label = UNASSIGNED_LABEL;
+      var raw = rec[GROUPING_FIELD + '_raw'];
+      if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
+        label = String(raw[0].identifier).trim() || UNASSIGNED_LABEL;
+      } else if (rec[GROUPING_FIELD]) {
+        var stripped = String(rec[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
+        if (stripped) label = stripped;
+      }
+      bucketFor(label).items.push({
+        id: id,
+        identifier: rec.identifier || rec.field_1950 || rec[TARGET_FIELD + '_display'] || id,
+        checked: !!(selectedIdSet && selectedIdSet[id])
+      });
+    }
+
+    // Pull Unassigned to the end if present
+    var unassignedIdx = orderedLabels.indexOf(UNASSIGNED_LABEL);
+    if (unassignedIdx !== -1 && unassignedIdx !== orderedLabels.length - 1) {
+      orderedLabels.splice(unassignedIdx, 1);
+      orderedLabels.push(UNASSIGNED_LABEL);
+    }
+    return orderedLabels.map(function (l) { return groupMap[l]; });
+  }
+
   // ── Click interceptor (chunk 2) ───────────────────────────────────
   // Capture-phase listener on document. Knack's inline-edit wiring is
   // bubble-phase jQuery delegation on document, so our capture-phase
@@ -47411,17 +47550,72 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     openPickerForRecord(recordId, td);
   }
 
-  // Stub until chunk 3 wires the candidates fetch.
   function openPickerForRecord(recordId, td) {
-    openModal({
+    var sowId = getSowIdForRecord(recordId);
+    if (!sowId) {
+      console.warn('[scw-cp] cannot resolve SOW id for record', recordId,
+                   '— leaving Knack native picker disabled; no fallback.');
+      return;
+    }
+    var selectedIds = getCurrentlySelectedIds(recordId);
+    var selectedSet = {};
+    for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
+
+    // Open with a placeholder group so the modal shell paints
+    // immediately; swap in real data when the fetch lands.
+    var handle = openModal({
       title: 'Connected Devices',
-      groups: [],
+      groups: [{ label: 'Loading…', items: [] }],
       onSave: function (ids) {
         console.log('[scw-cp] save (stub)', { recordId: recordId, selectedIds: ids });
       },
-      onCancel: function () {
-        console.log('[scw-cp] cancel (stub)', { recordId: recordId });
+      onCancel: function () { /* no-op */ }
+    });
+
+    fetchCandidates(sowId, function (err, records) {
+      if (err) {
+        console.error('[scw-cp] fetch failed', err);
+        handle.close();
+        return;
       }
+      // Ensure any currently-selected records that aren't in the
+      // candidate set (e.g. filter would have excluded them because
+      // they're now connected to something else) still appear in the
+      // modal as checked — otherwise a user who just wants to UNCHECK
+      // one couldn't see it. Fold them in under an "Already selected"
+      // section at the top.
+      var byId = {};
+      for (var r = 0; r < records.length; r++) {
+        if (records[r] && records[r].id) byId[records[r].id] = records[r];
+      }
+      var grouped = groupByMdfIdf(records, selectedSet);
+      var orphans = [];
+      for (var s = 0; s < selectedIds.length; s++) {
+        var sid = selectedIds[s];
+        if (!byId[sid]) {
+          var attrs = readRecordAttrs(sid) || {};
+          orphans.push({
+            id: sid,
+            identifier: attrs.identifier || attrs.field_1950 || sid,
+            checked: true
+          });
+        }
+      }
+      if (orphans.length) {
+        grouped.unshift({ label: 'Already selected', items: orphans });
+      }
+
+      // Rebuild the modal body with real groups. Simpler than mutating
+      // the existing DOM: close + reopen with the same handle pattern.
+      handle.close();
+      openModal({
+        title: 'Connected Devices',
+        groups: grouped,
+        onSave: function (ids) {
+          console.log('[scw-cp] save (stub)', { recordId: recordId, selectedIds: ids });
+        },
+        onCancel: function () { /* no-op */ }
+      });
     });
   }
 
