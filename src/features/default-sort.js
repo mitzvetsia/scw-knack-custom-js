@@ -74,9 +74,23 @@
     if (modelView.source) modelView.source.sort = sortArr;
     modelView.sort = sortArr;
 
-    if (typeof view.model.fetch === 'function') {
-      try { view.model.fetch(); } catch (e) { /* model may lack a URL */ }
-    }
+    // NOTE: intentionally NOT calling view.model.fetch() here. Refetching
+    // to change the server-side sort doubles the initial load cost: a
+    // second HTTP round-trip for every view_3586 record plus a full
+    // knack-view-render cycle, which re-runs every feature bound to this
+    // view (device-worksheet card rebuild for ~180 rows, group-collapse,
+    // etc.). It's the primary contributor to the ~3.6s INP on scene_1116.
+    //
+    // Safe to skip because:
+    //  - device-worksheet.js applies its own client-side rowSort on every
+    //    render, so the visible order is correct regardless of the order
+    //    the server sent.
+    //  - rows_per_page on these views is 1000 and the underlying record
+    //    set is <200, so pagination isn't happening — server-side sort
+    //    order has no user-visible effect.
+    //  - Setting modelView.sort above still persists the preference, so
+    //    any native fetch Knack triggers later (filter change, column
+    //    header click being overridden, etc.) uses the right sort.
   }
 
   DEFAULT_SORTS.forEach(function (cfg) {
