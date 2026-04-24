@@ -687,6 +687,19 @@
           } catch (e) { /* best-effort */ }
         }
 
+        // Patch the clicked row's worksheet card from the PUT response so
+        // the field_1957 cell repaints with the new camera labels. The
+        // mirror (triggered below) handles the reciprocal children via
+        // the same patchCard helper, but not the parent — we have to.
+        try {
+          if (window.SCW && window.SCW.deviceWorksheet &&
+              typeof window.SCW.deviceWorksheet.patchCard === 'function') {
+            window.SCW.deviceWorksheet.patchCard(TARGET_VIEW, recordId, resp);
+          }
+        } catch (e) {
+          console.warn('[scw-cp] patchCard threw for parent', e);
+        }
+
         // Fire a synthetic cell-update event so the silent-regroup
         // mirror picks it up and handles the reciprocal children.
         try {
