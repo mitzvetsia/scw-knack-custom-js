@@ -668,25 +668,39 @@
     });
 
     // Exclusive-accordion enforcement: for views flagged exclusive,
-    // guarantee no more than one L1 group is open after enhance runs.
-    // Handles stale localStorage from before the flag was introduced
-    // (or from any code path that left multiple open).
+    // guarantee exactly one L1 group is open after enhance runs.
+    //  - >1 open: collapse the extras (handles stale localStorage from
+    //    before the flag was introduced, or multi-open left by other
+    //    code paths).
+    //  - 0 open: open the first L1. Since the main loop above already
+    //    honours persisted state per-key, a returning user's last-opened
+    //    L1 is already open here; this branch only fires on a fresh
+    //    visit (no saved state) or after a user explicitly collapsed
+    //    everything.
     Object.keys(viewRecordCounts).forEach(function (vid) {
       var vo = VIEW_OVERRIDES[vid];
       if (!vo || !vo.exclusive) return;
       var $view = $('#' + vid);
       if (!$view.length) return;
-      var $openL1 = $view.find(
-        'tr.kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)'
+      var $allL1 = $view.find(
+        'tr.kn-table-group.kn-group-level-1.scw-group-header'
       );
-      if ($openL1.length <= 1) return;
+      if (!$allL1.length) return;
+      var $openL1 = $allL1.not('.scw-collapsed');
       var state = loadState(sceneId, vid);
-      $openL1.slice(1).each(function () {
-        var $other = $(this);
-        setCollapsed($other, true);
-        state[buildKey($other, 1)] = 1;
-      });
-      saveState(sceneId, vid, state);
+      if ($openL1.length === 0) {
+        var $first = $allL1.first();
+        setCollapsed($first, false);
+        state[buildKey($first, 1)] = 0;
+        saveState(sceneId, vid, state);
+      } else if ($openL1.length > 1) {
+        $openL1.slice(1).each(function () {
+          var $other = $(this);
+          setCollapsed($other, true);
+          state[buildKey($other, 1)] = 1;
+        });
+        saveState(sceneId, vid, state);
+      }
     });
   }
 
