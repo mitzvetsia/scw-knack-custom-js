@@ -2806,7 +2806,15 @@ window.SCW = window.SCW || {};
       //
       // `column-count` itself is set inline by apply() so it can scale
       // with the number of items (~30 rows per column, up to MAX_COLUMNS).
+      //
+      // `contain: layout style` isolates layout + style recalc to this
+      // container. Without it, every :checked state flip on a 180-item
+      // list forces the browser to re-evaluate column break points
+      // across the entire list (with break-inside: avoid below making
+      // this worse), which was the main contributor to the ~1.5s INP
+      // on checkbox clicks inside the field_1957 picker.
       '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' {',
+      '  contain: layout style;',
       '  column-gap: 20px;',
       '  max-height: 70vh;',
       '  overflow-y: auto;',
@@ -2816,6 +2824,7 @@ window.SCW = window.SCW || {};
       '  break-inside: avoid;',
       '  -webkit-column-break-inside: avoid;',
       '  page-break-inside: avoid;',
+      '  contain: layout style;',
       '}',
 
       // Wider popover when multi-column — class set by JS on the
@@ -3008,23 +3017,24 @@ window.SCW = window.SCW || {};
     if (seen.has(popover)) return;
     seen.add(popover);
 
-    var openObs = null;
+    var shellObs = null;  // brief subtree watch for .conn_inputs to appear
+    var listObs = null;   // narrow watch on .conn_inputs once it's found
     // Once-per-open flag set of lists whose checked items have been
     // reordered to the front for the current open cycle. Cleared on
     // close so the next open re-runs the reorder.
     var reorderedThisOpen = new WeakSet();
 
     function stopOpenObs() {
-      if (openObs) { openObs.disconnect(); openObs = null; }
-      reorderedThisOpen = new WeakSet();  // reset for the next open
+      if (shellObs) { shellObs.disconnect(); shellObs = null; }
+      if (listObs)  { listObs.disconnect();  listObs  = null; }
+      reorderedThisOpen = new WeakSet();
     }
 
-    function startOpenObs() {
-      stopOpenObs();
-      scanPopover(popover);  // immediate pass (catches cached/preloaded content)
-      maybeReorder();
+    // Observer factory with rAF debouncing so a burst of mutations
+    // coalesces into a single scan per frame.
+    function makeDebouncedScan() {
       var pending = false;
-      openObs = new MutationObserver(function () {
+      return function () {
         if (pending) return;
         pending = true;
         requestAnimationFrame(function () {
@@ -3032,8 +3042,39 @@ window.SCW = window.SCW || {};
           scanPopover(popover);
           maybeReorder();
         });
-      });
-      openObs.observe(popover, { childList: true, subtree: true });
+      };
+    }
+
+    // Once the .conn_inputs list exists, stop watching the popover
+    // subtree (which fires on every Knack DOM tweak during clicks) and
+    // watch the list itself for direct childList changes only. That's
+    // the only thing we actually need to react to — Knack appending
+    // option rows as the candidates fetch resolves.
+    function promoteToListObserver() {
+      var list = popover.querySelector('.conn_inputs');
+      if (!list) return false;
+      if (shellObs) { shellObs.disconnect(); shellObs = null; }
+      if (listObs)  { listObs.disconnect();  listObs  = null; }
+      listObs = new MutationObserver(makeDebouncedScan());
+      listObs.observe(list, { childList: true });
+      return true;
+    }
+
+    function startOpenObs() {
+      stopOpenObs();
+      scanPopover(popover);  // immediate pass (catches cached/preloaded content)
+      maybeReorder();
+      // If the list is already in the DOM, go straight to the narrow
+      // per-list observer. Otherwise watch the popover subtree briefly
+      // until it appears, then promote.
+      if (!promoteToListObserver()) {
+        shellObs = new MutationObserver(function () {
+          // Keep scanning for layout updates until the list is there.
+          scanPopover(popover);
+          if (promoteToListObserver()) maybeReorder();
+        });
+        shellObs.observe(popover, { childList: true, subtree: true });
+      }
     }
 
     // Reorder each list to selected-first — but only the first time we
