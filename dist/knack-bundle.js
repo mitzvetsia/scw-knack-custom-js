@@ -2791,13 +2791,22 @@ window.SCW = window.SCW || {};
       '  flex: 1; min-width: 0;',
       '}',
 
-      // Multi-column grid (applied by JS when item count > threshold).
+      // Multi-column layout (applied by JS when item count > threshold).
+      // CSS columns flow top-to-bottom within each column, then into the
+      // next column — so a sorted list reads 1, 2, 3 down the left column
+      // and 4, 5, 6 down the right. Grid would instead read 1, 2 across
+      // the top row, which breaks scanning a sorted list.
       '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' {',
-      '  display: grid;',
-      '  grid-template-columns: 1fr 1fr;',
-      '  gap: 2px 20px;',
+      '  column-count: 2;',
+      '  column-gap: 20px;',
       '  max-height: 70vh;',
       '  overflow-y: auto;',
+      '}',
+      // Keep each checkbox row intact — no splitting across columns.
+      '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' > .control {',
+      '  break-inside: avoid;',
+      '  -webkit-column-break-inside: avoid;',
+      '  page-break-inside: avoid;',
       '}',
 
       // Wider popover when multi-column — class set by JS on the
