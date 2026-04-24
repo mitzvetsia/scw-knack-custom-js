@@ -31,7 +31,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
-  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_OPS_PUBLISH_PROPOSAL"
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b"
 };
 window.SCW = window.SCW || {};
 
@@ -41540,7 +41540,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     },
     {
       id: 'publish-proposal',
-      label: 'Publish and Submit Completed Proposal to Sales',
+      label: 'Submit Final Proposal to Sales',
       tone: 'success',
       // Unlocked once EITHER:
       //   - the SOW has at least one change request (field_2728 > 0), OR
@@ -41555,13 +41555,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       },
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       modal: {
-        title:       'Publish & Submit Completed Proposal',
-        intro:       'Anything to include in the update to Sales? You can either just publish the quote quietly, or publish AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
+        title:       'Submit Final Proposal to Sales',
+        intro:       'Anything to include in the update to Sales? You can either submit the proposal quietly, or submit AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
-        submitLabel: 'Publish & Notify Sales',
+        submitLabel: 'Submit & Notify Sales',
         // Secondary action — fires the same webhook with mode=publish-only
         // so Make can skip the Sales notification / CU task / Slack steps.
-        secondaryLabel: 'Just Publish (no notification)',
+        secondaryLabel: 'Submit (no notification)',
         secondaryMode:  'publish-only',
         primaryMode:    'publish-and-notify'
       },
