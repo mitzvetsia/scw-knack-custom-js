@@ -162,7 +162,16 @@
       P + '-empty {',
       '  padding: 24px 18px; text-align: center; color: #6b7280;',
       '  font-size: 13px;',
-      '}'
+      '}',
+
+      // Inline error banner
+      P + '-error {',
+      '  background: #fef2f2; color: #991b1b; border-bottom: 1px solid #fecaca;',
+      '  padding: 10px 18px; font-size: 13px; font-weight: 500;',
+      '}',
+
+      // Disabled state on footer buttons (Save mid-PUT)
+      P + '-btn[disabled] { pointer-events: none; }'
     ].join('\n');
 
     var style = document.createElement('style');
@@ -285,18 +294,27 @@
     header.appendChild(titleEl);
     header.appendChild(closeBtn);
 
-    // Body — one list per group
+    // Inline error banner — hidden by default, shown via showError().
+    var errorBar = document.createElement('div');
+    errorBar.className = CLASS_PREFIX + '-error';
+    errorBar.style.display = 'none';
+
+    // Body — one list per group. Rendered by renderGroups() so setGroups
+    // can swap contents in place (no close+reopen flicker).
     var body = document.createElement('div');
     body.className = CLASS_PREFIX + '-body';
 
-    if (!options.groups || !options.groups.length) {
-      var empty = document.createElement('div');
-      empty.className = CLASS_PREFIX + '-empty';
-      empty.textContent = 'No candidates available.';
-      body.appendChild(empty);
-    } else {
-      for (var g = 0; g < options.groups.length; g++) {
-        var group = options.groups[g];
+    function renderGroups(groups) {
+      body.innerHTML = '';
+      if (!groups || !groups.length) {
+        var empty = document.createElement('div');
+        empty.className = CLASS_PREFIX + '-empty';
+        empty.textContent = 'No candidates available.';
+        body.appendChild(empty);
+        return;
+      }
+      for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
         var groupEl = document.createElement('div');
         groupEl.className = CLASS_PREFIX + '-group';
 
@@ -330,6 +348,7 @@
         applyMultiColLayout(listEl);
       }
     }
+    renderGroups(options.groups);
 
     // Footer
     var footer = document.createElement('div');
@@ -346,15 +365,21 @@
     footer.appendChild(saveBtn);
 
     modal.appendChild(header);
+    modal.appendChild(errorBar);
     modal.appendChild(body);
     modal.appendChild(footer);
     backdrop.appendChild(modal);
 
     installShiftClickInRoot(backdrop);
 
-    // Close flow
+    var closed = false;
+    var saving = false;
+
     function close() {
+      if (closed) return;
+      closed = true;
       if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+      document.removeEventListener('keydown', onKey, true);
     }
 
     function readSelectedIds() {
@@ -364,39 +389,64 @@
       return ids;
     }
 
-    closeBtn.addEventListener('click', function () {
+    /** Replace the modal body with a new set of groups, in place. */
+    function setGroups(groups) {
+      renderGroups(groups);
+    }
+
+    /** Toggle the modal's saving state — disables Save, swaps its label,
+     *  and blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
+    function setSaving(isSaving) {
+      saving = !!isSaving;
+      saveBtn.disabled = saving;
+      cancelBtn.disabled = saving;
+      closeBtn.disabled = saving;
+      saveBtn.textContent = saving ? 'Saving…' : 'Save';
+    }
+
+    /** Show or clear an inline error banner inside the modal. */
+    function showError(msg) {
+      if (!msg) {
+        errorBar.style.display = 'none';
+        errorBar.textContent = '';
+        return;
+      }
+      errorBar.textContent = msg;
+      errorBar.style.display = 'block';
+    }
+
+    function tryCancel() {
+      if (saving) return;
       close();
       if (typeof options.onCancel === 'function') options.onCancel();
-    });
-    cancelBtn.addEventListener('click', function () {
-      close();
-      if (typeof options.onCancel === 'function') options.onCancel();
-    });
+    }
+
+    closeBtn.addEventListener('click', tryCancel);
+    cancelBtn.addEventListener('click', tryCancel);
     saveBtn.addEventListener('click', function () {
+      if (saving) return;
       var ids = readSelectedIds();
-      close();
+      showError('');
       if (typeof options.onSave === 'function') options.onSave(ids);
     });
-    // Click outside modal → cancel
+    // Click outside modal → cancel (but not mid-save)
     backdrop.addEventListener('click', function (e) {
-      if (e.target === backdrop) {
-        close();
-        if (typeof options.onCancel === 'function') options.onCancel();
-      }
+      if (e.target === backdrop) tryCancel();
     });
-    // Esc → cancel
+    // Esc → cancel (but not mid-save)
     function onKey(e) {
-      if (e.key === 'Escape') {
-        document.removeEventListener('keydown', onKey, true);
-        close();
-        if (typeof options.onCancel === 'function') options.onCancel();
-      }
+      if (e.key === 'Escape') tryCancel();
     }
     document.addEventListener('keydown', onKey, true);
 
     document.body.appendChild(backdrop);
 
-    return { close: close };
+    return {
+      close: close,
+      setGroups: setGroups,
+      setSaving: setSaving,
+      showError: showError
+    };
   }
 
   // ── Candidate fetching (chunk 3) ──────────────────────────────────
@@ -674,16 +724,21 @@
     for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
 
     // Open with a placeholder group so the modal shell paints
-    // immediately; swap in real data when the fetch lands.
+    // immediately; swap in real data when the fetch lands via
+    // handle.setGroups() (in place, no close+reopen flicker).
     var handle = openModal({
       title: 'Connected Devices',
       groups: [{ label: 'Loading…', items: [] }],
       onSave: function (ids) {
+        handle.setSaving(true);
+        handle.showError('');
         saveSelection(recordId, ids, function (err) {
           if (err) {
-            try { alert('Failed to save connected devices. Please try again.'); }
-            catch (e) { /* ignore */ }
+            handle.setSaving(false);
+            handle.showError('Failed to save. Please try again.');
+            return;
           }
+          handle.close();
         });
       },
       onCancel: function () { /* no-op */ }
@@ -692,11 +747,11 @@
     fetchCandidates(sowId, function (err, records) {
       if (err) {
         console.error('[scw-cp] fetch failed', err);
-        handle.close();
+        handle.showError('Failed to load candidates. Close and try again.');
         return;
       }
       // Ensure any currently-selected records that aren't in the
-      // candidate set (e.g. filter would have excluded them because
+      // candidate set (e.g. the filter would have excluded them because
       // they're now connected to something else) still appear in the
       // modal as checked — otherwise a user who just wants to UNCHECK
       // one couldn't see it. Fold them in under an "Already selected"
@@ -722,17 +777,7 @@
         grouped.unshift({ label: 'Already selected', items: orphans });
       }
 
-      // Rebuild the modal body with real groups. Simpler than mutating
-      // the existing DOM: close + reopen with the same handle pattern.
-      handle.close();
-      openModal({
-        title: 'Connected Devices',
-        groups: grouped,
-        onSave: function (ids) {
-          console.log('[scw-cp] save (stub)', { recordId: recordId, selectedIds: ids });
-        },
-        onCancel: function () { /* no-op */ }
-      });
+      handle.setGroups(grouped);
     });
   }
 
