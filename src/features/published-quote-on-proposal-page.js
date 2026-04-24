@@ -25,6 +25,28 @@
 
   var BLOCK_CLASS = 'scw-published-quote-block';
   var NS          = '.scwPublishedQuote';
+  var STYLE_ID    = 'scw-published-quote-css';
+
+  // ── Styles ──────────────────────────────────────────────
+  // Bumps the shared ops-review-pill proposal-info sizes ~30% for this
+  // proposal-page block. The SOW-grid version (view_3325) stays at its
+  // compact table-cell sizing; these scoped overrides only apply when
+  // the block is inside a .scw-published-quote-block wrapper.
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css =
+      '.' + BLOCK_CLASS + '.scw-ops-proposal-info {' +
+      '  font-size: 14px;' +             /* 11 × 1.3 ≈ 14 */
+      '}' +
+      '.' + BLOCK_CLASS + ' .scw-ops-proposal-exp,' +
+      '.' + BLOCK_CLASS + ' .scw-ops-proposal-pdf {' +
+      '  font-size: 13.5px;' +           /* 10.5 × 1.3 ≈ 13.5 */
+      '}';
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
 
   // ── Status filter ───────────────────────────────────────
   function isPublishedFromAttrs(attrs) {
@@ -202,6 +224,8 @@
   }
 
   // ── Bind ────────────────────────────────────────────────
+  injectStyles();
+
   function transform() {
     var host = document.getElementById(TARGET_VIEW);
     if (!host) return;
