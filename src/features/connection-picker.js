@@ -593,6 +593,75 @@
     openPickerForRecord(recordId, td);
   }
 
+  // ── Save (chunk 4) ────────────────────────────────────────────────
+  // Direct AJAX PUT against the parent record with the new field_1957
+  // id array. On success:
+  //   1. Patch Knack's Backbone model attrs (field_1957 + _raw) so
+  //      subsequent reads don't revert to stale connection state.
+  //   2. Fire a synthetic knack-cell-update.view_3586 carrying the
+  //      updated record. SCW.silentRegroupView3586 (mirror-connection-
+  //      sync.js) listens on that event and deterministically reparents
+  //      the child rows, patches their field_2197 + field_1946, and
+  //      fires per-child PUTs with a final model.fetch() to resync.
+  //
+  // We don't use Knack.views[...].model.updateRecord() because — per the
+  // boolean-chips.js comment — that path silently fails in the worksheet
+  // context where device-worksheet has restructured the rows. Direct PUT
+  // is the pattern every other SCW device-worksheet writer uses today.
+  function saveSelection(recordId, selectedIds, onDone) {
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      console.error('[scw-cp] SCW.knackAjax/knackRecordUrl unavailable — cannot save');
+      if (typeof onDone === 'function') onDone(new Error('ajax helpers unavailable'));
+      return;
+    }
+    var body = {};
+    body[TARGET_FIELD] = selectedIds;
+
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: window.SCW.knackRecordUrl(TARGET_VIEW, recordId),
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        // Invalidate the candidate cache for this SOW so the NEXT open
+        // sees fresh field_2197 values (the just-saved children now
+        // point at this parent; the filter would have excluded them on
+        // a fresh fetch).
+        var sowId = getSowIdForRecord(recordId);
+        if (sowId) delete CANDIDATES_CACHE[sowId];
+
+        // Patch Knack's model so the parent row reflects the new
+        // selection immediately (no visible "flash then populate").
+        if (typeof window.SCW.syncKnackModel === 'function') {
+          try {
+            window.SCW.syncKnackModel(TARGET_VIEW, recordId, resp, TARGET_FIELD, selectedIds);
+          } catch (e) { /* best-effort */ }
+        }
+
+        // Fire a synthetic cell-update event so the silent-regroup
+        // mirror picks it up and handles the reciprocal children.
+        try {
+          var viewObj = (typeof Knack !== 'undefined' && Knack.views)
+            ? Knack.views[TARGET_VIEW] : null;
+          // The mirror reads record[TARGET_FIELD + '_raw'] on the
+          // event payload; make sure it's populated from resp (Knack
+          // returns the raw shape for connection fields).
+          $(document).trigger('knack-cell-update.' + TARGET_VIEW, [viewObj, resp]);
+        } catch (e) {
+          console.warn('[scw-cp] cell-update trigger threw', e);
+        }
+
+        if (typeof onDone === 'function') onDone(null, resp);
+      },
+      error: function (xhr) {
+        console.error('[scw-cp] save failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+        if (typeof onDone === 'function') onDone(xhr || new Error('save failed'));
+      }
+    });
+  }
+
   function openPickerForRecord(recordId, td) {
     var sowId = getSowIdForRecord(recordId);
     if (!sowId) {
@@ -610,7 +679,12 @@
       title: 'Connected Devices',
       groups: [{ label: 'Loading…', items: [] }],
       onSave: function (ids) {
-        console.log('[scw-cp] save (stub)', { recordId: recordId, selectedIds: ids });
+        saveSelection(recordId, ids, function (err) {
+          if (err) {
+            try { alert('Failed to save connected devices. Please try again.'); }
+            catch (e) { /* ignore */ }
+          }
+        });
       },
       onCancel: function () { /* no-op */ }
     });
