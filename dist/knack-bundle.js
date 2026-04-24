@@ -2832,9 +2832,18 @@ window.SCW = window.SCW || {};
   // ── Apply / remove multi-column based on current item count ──
   // Columns scale with item count: ceil(count / ROWS_PER_COLUMN),
   // clamped to [2, MAX_COLUMNS]. Below ITEM_THRESHOLD the popover
-  // stays single-column and narrow.
+  // stays single-column and narrow. The subtree observer may fire
+  // several times per user action (e.g. Knack adds a "X selected"
+  // counter node to the popover on check), so memoize the last
+  // applied count per list and bail early when nothing changed —
+  // that way the observer's callback stays near-zero cost on clicks.
+  var lastAppliedCount = new WeakMap();
+
   function apply(popover, list) {
     var count = list.querySelectorAll(':scope > .control').length;
+    if (lastAppliedCount.get(list) === count) return;
+    lastAppliedCount.set(list, count);
+
     var multi = count > ITEM_THRESHOLD;
     list.classList.toggle(MULTI_COL_CLASS, multi);
     popover.classList.toggle(WIDE_POPOVER_CLASS, multi);
