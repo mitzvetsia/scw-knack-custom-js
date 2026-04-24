@@ -450,41 +450,42 @@
   }
 
   // ── Candidate fetching (chunk 3) ──────────────────────────────────
-  // We hit Knack's own /connections endpoint, which is the same URL the
-  // native popover uses — so the Builder filter and auth wiring Just
-  // Works. Our filter is hardcoded to match what the Builder applies:
-  //   field_2219 = camera/reader bucket
-  //   field_2197 = blank (candidate not already connected to something)
-  //   field_2154 = current SOW (pulled off the clicked row's model)
-  // A per-SOW in-memory cache avoids re-fetching on rapid reopens.
+  // All candidate camera/reader line items are already rendered on
+  // view_3586 — the SOW line-items view we're editing. Every row is the
+  // same SOW (that's the view's scope), bucket classification lives in
+  // field_2219, and the reciprocal on each camera row is field_2197.
+  // So we read from Knack.views[view_3586].model directly and filter
+  // client-side; no HTTP round-trip required.
+  //
+  // The earlier REST-based approach (GET /v1/pages/.../connections/
+  // field_1957) 400s live on this scene — the endpoint isn't the one
+  // the native popover uses, and even after matching the documented
+  // filter shape the response never comes back. Reading the already-
+  // loaded model is strictly simpler and faster.
 
   var CAMERAS_BUCKET_ID       = '6481e5ba38f283002898113c';
   var BUCKET_FIELD            = 'field_2219';
   var RECIPROCAL_FIELD        = 'field_2197';
   var SOW_CONNECTION_FIELD    = 'field_2154';
   var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
-  var CANDIDATES_CACHE        = {};             // { sowId: { records: [...], fetchedAt: ms } }
-  var CACHE_TTL_MS            = 60 * 1000;
+  var IDENTIFIER_FIELD        = 'field_1950';   // Human label (E-001, RA-I-020, ...)
+
+  function getViewModels() {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return [];
+    var view = Knack.views[TARGET_VIEW];
+    var model = view && view.model;
+    if (!model) return [];
+    return (model.data && model.data.models) || model.models || [];
+  }
 
   function readRecordAttrs(recordId) {
-    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return null;
-    var model = Knack.views[TARGET_VIEW].model;
-    if (!model) return null;
-    var records = (model.data && model.data.models) || model.models || [];
+    var records = getViewModels();
     for (var i = 0; i < records.length; i++) {
       var entry = records[i];
       if (!entry) continue;
       var attrs = entry.attributes || entry;
       if (attrs && attrs.id === recordId) return attrs;
     }
-    return null;
-  }
-
-  function getSowIdForRecord(recordId) {
-    var attrs = readRecordAttrs(recordId);
-    if (!attrs) return null;
-    var raw = attrs[SOW_CONNECTION_FIELD + '_raw'];
-    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
     return null;
   }
 
@@ -500,63 +501,48 @@
     return out;
   }
 
-  function buildConnectionsUrl(sowId) {
-    var sceneKey = (typeof Knack !== 'undefined' && Knack.router && Knack.router.current_scene_key)
-      ? Knack.router.current_scene_key : 'scene_1116';
-    // Knack expects the filter payload in {match, rules} shape; the raw
-    // array form is accepted by /records but 400s on /connections. Values
-    // for `is` on a connection/bucket field are a bare string ID, not an
-    // array. `limit_return=true` is not a documented Knack query param —
-    // dropping it removes a second source of 400s.
-    var filterObj = {
-      match: 'and',
-      rules: [
-        { field: BUCKET_FIELD,         operator: 'is',       value: CAMERAS_BUCKET_ID },
-        { field: RECIPROCAL_FIELD,     operator: 'is blank', value: '' },
-        { field: SOW_CONNECTION_FIELD, operator: 'is',       value: sowId }
-      ]
-    };
-    return Knack.api_url + '/v1/pages/' + sceneKey +
-           '/views/' + TARGET_VIEW + '/connections/' + TARGET_FIELD +
-           '?rows_per_page=2000' +
-           '&filters=' + encodeURIComponent(JSON.stringify(filterObj));
+  function attrsHaveBucket(attrs, bucketId) {
+    var raw = attrs[BUCKET_FIELD + '_raw'];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id === bucketId) return true;
+      }
+      return false;
+    }
+    if (raw && typeof raw === 'object' && raw.id === bucketId) return true;
+    return false;
   }
 
-  /** Fire the connections request. onDone(err, records). */
-  function fetchCandidates(sowId, onDone) {
-    var cached = CANDIDATES_CACHE[sowId];
-    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
-      onDone(null, cached.records);
-      return;
+  function attrsReciprocalIsBlank(attrs) {
+    var raw = attrs[RECIPROCAL_FIELD + '_raw'];
+    if (Array.isArray(raw)) return raw.length === 0;
+    if (!raw) return true;
+    if (typeof raw === 'object' && !raw.id) return true;
+    return false;
+  }
+
+  /** Enumerate camera/reader candidates from the view model.
+   *  selectedIdSet: { id -> true } for items already picked by the clicked
+   *  record — those always stay visible so the user can uncheck them,
+   *  even if their reciprocal is no longer blank. */
+  function collectCandidates(selectedIdSet) {
+    var records = getViewModels();
+    var out = [];
+    for (var i = 0; i < records.length; i++) {
+      var entry = records[i];
+      if (!entry) continue;
+      var attrs = entry.attributes || entry;
+      if (!attrs || !attrs.id) continue;
+      if (!attrsHaveBucket(attrs, CAMERAS_BUCKET_ID)) continue;
+      var alreadySelected = !!(selectedIdSet && selectedIdSet[attrs.id]);
+      if (!alreadySelected && !attrsReciprocalIsBlank(attrs)) continue;
+      out.push(attrs);
     }
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function') {
-      onDone(new Error('SCW.knackAjax unavailable'));
-      return;
-    }
-    window.SCW.knackAjax({
-      type: 'GET',
-      url: buildConnectionsUrl(sowId),
-      dataType: 'json',
-      success: function (resp) {
-        var records = (resp && (resp.records || resp)) || [];
-        // Some Knack endpoints wrap in { records: [...] }, others return
-        // the array directly; tolerate both.
-        if (!Array.isArray(records) && records.records) records = records.records;
-        if (!Array.isArray(records)) records = [];
-        CANDIDATES_CACHE[sowId] = { records: records, fetchedAt: Date.now() };
-        onDone(null, records);
-      },
-      error: function (xhr) {
-        console.error('[scw-cp] candidate fetch failed',
-          'status=' + (xhr && xhr.status),
-          'body=' + (xhr && xhr.responseText));
-        onDone(xhr || new Error('fetch failed'));
-      }
-    });
+    return out;
   }
 
   /** Group candidate records by their MDF/IDF identifier, preserving
-   *  the server-provided order within each group. Records with a blank
+   *  the model-provided order within each group. Records with a blank
    *  MDF/IDF land in a trailing "Unassigned" group. */
   function groupByMdfIdf(records, selectedIdSet) {
     var orderedLabels = [];
@@ -571,22 +557,30 @@
       return groupMap[label];
     }
 
+    function identifierFor(attrs) {
+      var raw = attrs[IDENTIFIER_FIELD];
+      if (typeof raw === 'string' && raw.trim()) {
+        return raw.replace(/<[^>]*>/g, '').trim();
+      }
+      if (attrs.identifier) return String(attrs.identifier).trim();
+      return attrs.id;
+    }
+
     for (var i = 0; i < records.length; i++) {
-      var rec = records[i] || {};
-      var id = rec.id;
-      if (!id) continue;
+      var attrs = records[i];
+      if (!attrs || !attrs.id) continue;
       var label = UNASSIGNED_LABEL;
-      var raw = rec[GROUPING_FIELD + '_raw'];
+      var raw = attrs[GROUPING_FIELD + '_raw'];
       if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
         label = String(raw[0].identifier).trim() || UNASSIGNED_LABEL;
-      } else if (rec[GROUPING_FIELD]) {
-        var stripped = String(rec[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
+      } else if (attrs[GROUPING_FIELD]) {
+        var stripped = String(attrs[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
         if (stripped) label = stripped;
       }
       bucketFor(label).items.push({
-        id: id,
-        identifier: rec.identifier || rec.field_1950 || rec[TARGET_FIELD + '_display'] || id,
-        checked: !!(selectedIdSet && selectedIdSet[id])
+        id: attrs.id,
+        identifier: identifierFor(attrs),
+        checked: !!(selectedIdSet && selectedIdSet[attrs.id])
       });
     }
 
@@ -685,13 +679,6 @@
       data: JSON.stringify(body),
       dataType: 'json',
       success: function (resp) {
-        // Invalidate the candidate cache for this SOW so the NEXT open
-        // sees fresh field_2197 values (the just-saved children now
-        // point at this parent; the filter would have excluded them on
-        // a fresh fetch).
-        var sowId = getSowIdForRecord(recordId);
-        if (sowId) delete CANDIDATES_CACHE[sowId];
-
         // Patch Knack's model so the parent row reflects the new
         // selection immediately (no visible "flash then populate").
         if (typeof window.SCW.syncKnackModel === 'function') {
@@ -724,22 +711,43 @@
   }
 
   function openPickerForRecord(recordId, td) {
-    var sowId = getSowIdForRecord(recordId);
-    if (!sowId) {
-      console.warn('[scw-cp] cannot resolve SOW id for record', recordId,
-                   '— leaving Knack native picker disabled; no fallback.');
-      return;
-    }
     var selectedIds = getCurrentlySelectedIds(recordId);
     var selectedSet = {};
     for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
 
-    // Open with a placeholder group so the modal shell paints
-    // immediately; swap in real data when the fetch lands via
-    // handle.setGroups() (in place, no close+reopen flicker).
+    // Candidates come straight from the view model — synchronous, no
+    // network call — so we can build the grouped list before opening
+    // the modal and skip the Loading… placeholder entirely.
+    var candidates = collectCandidates(selectedSet);
+    var grouped = groupByMdfIdf(candidates, selectedSet);
+
+    // Orphans: currently-selected items whose reciprocal is no longer
+    // blank AND whose row is not on this view page. Preserve them so
+    // the user can still uncheck.
+    var candidateById = {};
+    for (var c = 0; c < candidates.length; c++) {
+      candidateById[candidates[c].id] = true;
+    }
+    var orphans = [];
+    for (var s = 0; s < selectedIds.length; s++) {
+      var sid = selectedIds[s];
+      if (!candidateById[sid]) {
+        var attrs = readRecordAttrs(sid) || {};
+        orphans.push({
+          id: sid,
+          identifier: (attrs[IDENTIFIER_FIELD] && String(attrs[IDENTIFIER_FIELD]).replace(/<[^>]*>/g, '').trim()) ||
+                      attrs.identifier || sid,
+          checked: true
+        });
+      }
+    }
+    if (orphans.length) {
+      grouped.unshift({ label: 'Already selected', items: orphans });
+    }
+
     var handle = openModal({
       title: 'Connected Devices',
-      groups: [{ label: 'Loading…', items: [] }],
+      groups: grouped.length ? grouped : [{ label: 'No candidates', items: [] }],
       onSave: function (ids) {
         handle.setSaving(true);
         handle.showError('');
@@ -753,42 +761,6 @@
         });
       },
       onCancel: function () { /* no-op */ }
-    });
-
-    fetchCandidates(sowId, function (err, records) {
-      if (err) {
-        console.error('[scw-cp] fetch failed', err);
-        handle.showError('Failed to load candidates. Close and try again.');
-        return;
-      }
-      // Ensure any currently-selected records that aren't in the
-      // candidate set (e.g. the filter would have excluded them because
-      // they're now connected to something else) still appear in the
-      // modal as checked — otherwise a user who just wants to UNCHECK
-      // one couldn't see it. Fold them in under an "Already selected"
-      // section at the top.
-      var byId = {};
-      for (var r = 0; r < records.length; r++) {
-        if (records[r] && records[r].id) byId[records[r].id] = records[r];
-      }
-      var grouped = groupByMdfIdf(records, selectedSet);
-      var orphans = [];
-      for (var s = 0; s < selectedIds.length; s++) {
-        var sid = selectedIds[s];
-        if (!byId[sid]) {
-          var attrs = readRecordAttrs(sid) || {};
-          orphans.push({
-            id: sid,
-            identifier: attrs.identifier || attrs.field_1950 || sid,
-            checked: true
-          });
-        }
-      }
-      if (orphans.length) {
-        grouped.unshift({ label: 'Already selected', items: orphans });
-      }
-
-      handle.setGroups(grouped);
     });
   }
 
