@@ -2774,7 +2774,6 @@ window.SCW = window.SCW || {};
   var MULTI_COL_CLASS    = 'scw-checkbox-multi-col';
   var WIDE_POPOVER_CLASS = 'scw-popover-wide';
   var ITEM_THRESHOLD     = 20;
-  var LIST_WATCH_MS      = 800;  // how long to watch a list for async item paints
 
   // ── CSS (injected once) ─────────────────────────────────────
   if (!document.getElementById(STYLE_ID)) {
@@ -2834,45 +2833,56 @@ window.SCW = window.SCW || {};
     popover.classList.toggle(WIDE_POPOVER_CLASS, multi);
   }
 
-  function processPopover(popover) {
+  // Re-scan the popover for .conn_inputs lists and apply the multi-col
+  // class. Cheap: two querySelectorAlls + a class toggle.
+  function scanPopover(popover) {
     var lists = popover.querySelectorAll('.conn_inputs');
-    if (!lists.length) return;
-
-    // Immediate pass: catches content that's already painted (the usual
-    // case when Knack is fast) and applies the multi-column grid before
-    // the browser's first paint of the popover — no 1-col → 2-col reflow.
-    for (var i = 0; i < lists.length; i++) {
-      apply(popover, lists[i]);
-    }
-
-    // Short-lived per-list observer in case Knack paints items async.
-    // Scoped to the list only, childList only, auto-disconnects.
-    for (var j = 0; j < lists.length; j++) {
-      (function (list) {
-        var obs = new MutationObserver(function () { apply(popover, list); });
-        obs.observe(list, { childList: true });
-        setTimeout(function () { obs.disconnect(); }, LIST_WATCH_MS);
-      })(lists[j]);
-    }
+    for (var i = 0; i < lists.length; i++) apply(popover, lists[i]);
   }
 
   // ── Per-popover tracking ────────────────────────────────────
-  // Knack's drop library typically creates one popover per connection
-  // cell and toggles `drop-open` on open/close. We track each popover
-  // once, process it on the current open state, and re-process on
-  // each subsequent open.
+  // Knack's drop library creates one popover per connection cell and
+  // toggles `drop-open` on open/close. On first open Knack fetches
+  // candidate records from the server — that can take several seconds
+  // — before painting the checkbox list, so a time-boxed observer can
+  // disconnect too early and miss the paint. Instead, keep a subtree
+  // childList observer live for as long as the popover is open, then
+  // disconnect when `drop-open` is removed. rAF-debounced so a burst
+  // of item paints coalesces into a single scan per frame.
   var seen = new WeakSet();
 
   function trackPopover(popover) {
     if (seen.has(popover)) return;
     seen.add(popover);
 
-    if (popover.classList.contains('drop-open')) processPopover(popover);
+    var openObs = null;
 
-    var obs = new MutationObserver(function () {
-      if (popover.classList.contains('drop-open')) processPopover(popover);
+    function stopOpenObs() {
+      if (openObs) { openObs.disconnect(); openObs = null; }
+    }
+
+    function startOpenObs() {
+      stopOpenObs();
+      scanPopover(popover);  // immediate pass (catches cached/preloaded content)
+      var pending = false;
+      openObs = new MutationObserver(function () {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(function () {
+          pending = false;
+          scanPopover(popover);
+        });
+      });
+      openObs.observe(popover, { childList: true, subtree: true });
+    }
+
+    if (popover.classList.contains('drop-open')) startOpenObs();
+
+    var classObs = new MutationObserver(function () {
+      if (popover.classList.contains('drop-open')) startOpenObs();
+      else stopOpenObs();
     });
-    obs.observe(popover, { attributes: true, attributeFilter: ['class'] });
+    classObs.observe(popover, { attributes: true, attributeFilter: ['class'] });
   }
 
   // ── Top-level: catch popovers appended to <body> ───────────
