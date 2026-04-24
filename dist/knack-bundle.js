@@ -29,11 +29,33 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
   //                    licenseIds, triggeredBy }
   //   Response body: { success: true } or { success: false, error: "..." }
-  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/PLACEHOLDER_OPS_MARK_READY",
+  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
-  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_OPS_PUBLISH_PROPOSAL"
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b"
 };
 window.SCW = window.SCW || {};
+
+// ── Gated debug logging ──────────────────────────────────────
+// All per-feature diagnostic logs go through SCW.debug / SCW.log
+// instead of console.log. They no-op unless SCW.DEBUG is truthy,
+// which keeps production quiet (and fast — DevTools retains object
+// references from every console.log, which adds up on grids with
+// hundreds of rows). Flip on in the browser console when
+// troubleshooting: SCW.DEBUG = true.
+//
+// console.error and console.warn are intentionally NOT gated —
+// real errors and auth failures should always surface.
+(function (namespace) {
+  function noop() {}
+  function realLog()   { if (namespace.DEBUG) console.log.apply(console, arguments); }
+  function realDebug() { if (namespace.DEBUG) (console.debug || console.log).apply(console, arguments); }
+  namespace.DEBUG = namespace.DEBUG || false;
+  namespace.log   = realLog;
+  namespace.debug = realDebug;
+  // Explicit no-op alias for call sites that want to fully strip
+  // a log without removing the line. Useful during triage.
+  namespace.nolog = noop;
+})(window.SCW);
 
 (function initBindingsHelpers(namespace) {
   function normalizeNamespace(ns) {
@@ -293,9 +315,9 @@ window.SCW = window.SCW || {};
     if (!_debug) return;
     var elapsed = _debugT0 ? '+' + (Date.now() - _debugT0) + 'ms' : 't0';
     if (data !== undefined) {
-      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
+      SCW.debug('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
     } else {
-      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
+      SCW.debug('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
     }
   }
 
@@ -775,7 +797,7 @@ window.SCW = window.SCW || {};
     set: function (val) {
       _debug = !!val;
       if (_debug) {
-        console.log(
+        SCW.debug(
           '%c[scroll] Debug ON — edit any cell to see the full restore timeline.',
           'color:#1a73e8; font-weight:bold'
         );
@@ -1390,7 +1412,11 @@ window.SCW = window.SCW || {};
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Hide scene until transforms settle, then fade in ── */
+/* Reserve viewport height up-front so progressive view renders don't */
+/* push surrounding chrome (nav, menu, sibling sections) around as    */
+/* each view populates. Main contributor to CLS 0.60 on scene_1116.   */
 #kn-scene_1116 {
+  min-height: 100vh;
   opacity: 0;
   transition: opacity 350ms ease;
 }
@@ -1579,16 +1605,16 @@ window.SCW = window.SCW || {};
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
       var container = document.getElementById(viewIds[v]);
-      if (!container) { console.log('[scw-totals] container not found:', viewIds[v]); continue; }
+      if (!container) { SCW.debug('[scw-totals] container not found:', viewIds[v]); continue; }
       var cells = container.querySelectorAll('td[data-field-key="' + fieldKey + '"]');
-      console.log('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
+      SCW.debug('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
       for (var i = 0; i < cells.length; i++) {
         var val = parseNum(cells[i].textContent);
-        console.log('  [' + i + ']', cells[i].textContent.trim(), '→', val);
+        SCW.debug('  [' + i + ']', cells[i].textContent.trim(), '→', val);
         total += val;
       }
     }
-    console.log('[scw-totals] SUM', fieldKey, '=', total);
+    SCW.debug('[scw-totals] SUM', fieldKey, '=', total);
     return total;
   }
 
@@ -2714,59 +2740,101 @@ window.SCW = window.SCW || {};
 // Inline-edit checkbox layout improvements
 // ============================================================
 //
-// 1. Fix text indentation: when a checkbox label wraps to multiple
-//    lines, subsequent lines align with the start of the text
-//    (not under the checkbox itself).
+// For Knack connection fields whose inline-edit input type is
+// "Checkbox" (e.g. field_1957 Connected Devices), Knack opens a
+// popover with one checkbox per candidate. When the candidate
+// list is long (view_3586 can have 180+) three things go wrong:
 //
-// 2. Multi-column: when a checkbox list has more than 20 items
-//    the list switches to a two-column grid so it fits on screen.
-//    A scrollable max-height is also applied for very long lists.
+//   1. Label text wraps underneath the checkbox instead of
+//      continuing under the first text line.
+//   2. The list renders single-column, which pushes the popover
+//      off-screen.
+//   3. An earlier implementation of this module fixed (2) with a
+//      document-wide MutationObserver that watched childList +
+//      attribute changes across the full body subtree. On pages
+//      with many cards (view_3586) that observer fired on every
+//      re-render, and the late application of the multi-column
+//      class produced a visible 1-col → 2-col reflow.
+//
+// This revision:
+//   - Watches only `document.body`'s direct childList for popover
+//     additions (Knack's drop library appends popovers to body),
+//     so the 180-row worksheet's DOM churn no longer runs this
+//     observer's callback.
+//   - Applies the multi-column grid class immediately when the
+//     popover opens, before Knack finishes painting the options,
+//     so there is no 1-col → 2-col reflow.
+//   - Drops the `:has(...)` popover-width CSS in favour of a
+//     class added directly to `.kn-popover` by JS — cheaper for
+//     the style engine.
+//   - Per-popover observers are attribute-scoped to the popover
+//     element only (catch re-opens) and per-list observers are
+//     short-lived (disconnect after Knack finishes rendering).
 //
 (function () {
   'use strict';
 
-  var STYLE_ID = 'scw-inline-checkbox-layout-css';
-  var MULTI_COL_CLASS = 'scw-checkbox-multi-col';
-  var ITEM_THRESHOLD = 20;
+  var STYLE_ID           = 'scw-inline-checkbox-layout-css';
+  var MULTI_COL_CLASS    = 'scw-checkbox-multi-col';
+  var WIDE_POPOVER_CLASS = 'scw-popover-wide';
+  var ITEM_THRESHOLD     = 20;   // below this → single column, no multi-col class
+  var ROWS_PER_COLUMN    = 20;   // target density: ~20 rows per column
+  var MAX_COLUMNS        = 6;    // hard cap; above this, each column gets more rows
+  var COLUMN_WIDTH_PX    = 220;  // target visual width per column (drives list min-width)
+  var COLUMN_GAP_PX      = 20;   // keeps in sync with CSS column-gap below
 
-  // ---- inject CSS (once) ----
+  // ── CSS (injected once) ─────────────────────────────────────
   if (!document.getElementById(STYLE_ID)) {
     var css = [
-      // --- Fix label indentation ---
-      // Make the label a flex row so checkbox stays left and text wraps within its own lane.
+      // Fix checkbox label indentation: wrapped lines align with the
+      // text, not under the checkbox.
       '.kn-popover .conn_inputs label.option.checkbox {',
-      '  display: flex;',
-      '  align-items: flex-start;',
-      '  gap: 4px;',
-      '  line-height: 1.4;',
+      '  display: flex; align-items: flex-start; gap: 4px; line-height: 1.4;',
       '}',
       '.kn-popover .conn_inputs label.option.checkbox input[type="checkbox"] {',
-      '  flex-shrink: 0;',
-      '  margin-top: 3px;',
+      '  flex-shrink: 0; margin-top: 3px;',
       '}',
       '.kn-popover .conn_inputs label.option.checkbox span {',
-      '  flex: 1;',
-      '  min-width: 0;',
+      '  flex: 1; min-width: 0;',
       '}',
 
-      // --- Multi-column grid (applied via JS class) ---
+      // Multi-column layout (applied by JS when item count > threshold).
+      // CSS columns flow top-to-bottom within each column, then into the
+      // next column — so a sorted list reads 1, 2, 3 down the left column
+      // and 4, 5, 6 down the right. Grid would instead read 1, 2 across
+      // the top row, which breaks scanning a sorted list.
+      //
+      // `column-count` itself is set inline by apply() so it can scale
+      // with the number of items (~30 rows per column, up to MAX_COLUMNS).
+      //
+      // `contain: layout style` isolates layout + style recalc to this
+      // container. Without it, every :checked state flip on a 180-item
+      // list forces the browser to re-evaluate column break points
+      // across the entire list (with break-inside: avoid below making
+      // this worse), which was the main contributor to the ~1.5s INP
+      // on checkbox clicks inside the field_1957 picker.
       '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' {',
-      '  display: grid;',
-      '  grid-template-columns: 1fr 1fr;',
-      '  gap: 2px 20px;',
+      '  contain: layout style;',
+      '  column-gap: 20px;',
+      '  max-height: 70vh;',
+      '  overflow-y: auto;',
       '}',
-      // Widen the popover so two columns have room
-      '.drop.kn-popover:has(.' + MULTI_COL_CLASS + ') {',
+      // Keep each checkbox row intact — no splitting across columns.
+      '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' > .control {',
+      '  break-inside: avoid;',
+      '  -webkit-column-break-inside: avoid;',
+      '  page-break-inside: avoid;',
+      '  contain: layout style;',
+      '}',
+
+      // Wider popover when multi-column — class set by JS on the
+      // popover element itself (avoids costly :has()).
+      '.kn-popover.' + WIDE_POPOVER_CLASS + ' {',
       '  max-width: 90vw;',
       '  width: max-content;',
       '}',
-      '.drop.kn-popover:has(.' + MULTI_COL_CLASS + ') .drop-content {',
+      '.kn-popover.' + WIDE_POPOVER_CLASS + ' .drop-content {',
       '  max-width: 90vw;',
-      '}',
-      // Scrollable container for very long lists
-      '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' {',
-      '  max-height: 70vh;',
-      '  overflow-y: auto;',
       '}',
     ].join('\n');
 
@@ -2776,58 +2844,281 @@ window.SCW = window.SCW || {};
     document.head.appendChild(style);
   }
 
-  // ---- observe popover checkbox lists and apply multi-column class ----
-  function processPopover(popover) {
-    var lists = popover.querySelectorAll('.conn_inputs');
-    for (var i = 0; i < lists.length; i++) {
-      var items = lists[i].querySelectorAll(':scope > .control');
-      if (items.length > ITEM_THRESHOLD) {
-        lists[i].classList.add(MULTI_COL_CLASS);
-      } else {
-        lists[i].classList.remove(MULTI_COL_CLASS);
-      }
+  // ── Apply / remove multi-column based on current item count ──
+  // Columns scale with item count: ceil(count / ROWS_PER_COLUMN),
+  // clamped to [2, MAX_COLUMNS]. Below ITEM_THRESHOLD the popover
+  // stays single-column and narrow. The subtree observer may fire
+  // several times per user action (e.g. Knack adds a "X selected"
+  // counter node to the popover on check), so memoize the last
+  // applied count per list and bail early when nothing changed —
+  // that way the observer's callback stays near-zero cost on clicks.
+  var lastAppliedCount = new WeakMap();
+
+  function apply(popover, list) {
+    var count = list.querySelectorAll(':scope > .control').length;
+    if (lastAppliedCount.get(list) === count) return;
+    lastAppliedCount.set(list, count);
+
+    var multi = count > ITEM_THRESHOLD;
+    list.classList.toggle(MULTI_COL_CLASS, multi);
+    popover.classList.toggle(WIDE_POPOVER_CLASS, multi);
+    if (multi) {
+      var cols = Math.max(
+        2,
+        Math.min(MAX_COLUMNS, Math.ceil(count / ROWS_PER_COLUMN))
+      );
+      list.style.columnCount = String(cols);
+      // Force the list wide enough for the columns to breathe. The
+      // popover itself is `width: max-content`, so it grows to match.
+      list.style.minWidth =
+        (cols * COLUMN_WIDTH_PX + (cols - 1) * COLUMN_GAP_PX) + 'px';
+    } else {
+      list.style.columnCount = '';
+      list.style.minWidth = '';
     }
   }
 
-  // Use MutationObserver to catch popovers as they open
-  var observer = new MutationObserver(function (mutations) {
-    for (var m = 0; m < mutations.length; m++) {
-      var mutation = mutations[m];
+  // Re-scan the popover for .conn_inputs lists and apply the multi-col
+  // class. Cheap: two querySelectorAlls + a class toggle.
+  function scanPopover(popover) {
+    var lists = popover.querySelectorAll('.conn_inputs');
+    for (var i = 0; i < lists.length; i++) apply(popover, lists[i]);
+  }
 
-      // Check for class changes (drop-open being added)
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        var el = mutation.target;
-        if (el.classList.contains('kn-popover') && el.classList.contains('drop-open')) {
-          processPopover(el);
-        }
-      }
+  // Reorder .control children so already-checked items come first —
+  // because CSS columns flow in DOM order, this puts selected items at
+  // the top of the leftmost column. Runs once per popover open (not per
+  // mutation), so new selections the user makes don't shuffle while
+  // they're clicking; the reorder applies on the NEXT open.
+  //
+  // Returns true if the list had items and was reordered.
+  function reorderSelectedFirst(list) {
+    var controls = list.querySelectorAll(':scope > .control');
+    if (!controls.length) return false;
 
-      // Check for newly added popover nodes
-      if (mutation.type === 'childList') {
-        for (var n = 0; n < mutation.addedNodes.length; n++) {
-          var node = mutation.addedNodes[n];
-          if (node.nodeType === 1) {
-            if (node.classList.contains('kn-popover')) {
-              processPopover(node);
-            }
-            var nested = node.querySelectorAll
-              ? node.querySelectorAll('.kn-popover')
-              : [];
-            for (var k = 0; k < nested.length; k++) {
-              processPopover(nested[k]);
+    var checkedFrag = document.createDocumentFragment();
+    var otherFrag = document.createDocumentFragment();
+    for (var i = 0; i < controls.length; i++) {
+      var cb = controls[i].querySelector('input[type="checkbox"]');
+      if (cb && cb.checked) checkedFrag.appendChild(controls[i]);
+      else otherFrag.appendChild(controls[i]);
+    }
+    list.appendChild(checkedFrag);
+    list.appendChild(otherFrag);
+    return true;
+  }
+
+  // ── Per-popover tracking ────────────────────────────────────
+  // Knack's drop library creates one popover per connection cell and
+  // toggles `drop-open` on open/close. On first open Knack fetches
+  // candidate records from the server — that can take several seconds
+  // — before painting the checkbox list, so a time-boxed observer can
+  // disconnect too early and miss the paint. Instead, keep a subtree
+  // childList observer live for as long as the popover is open, then
+  // disconnect when `drop-open` is removed. rAF-debounced so a burst
+  // of item paints coalesces into a single scan per frame.
+  var seen = new WeakSet();
+
+  // Per-list anchor for shift-click range selection. WeakMap auto-GCs
+  // when the list element is removed from the DOM.
+  var lastCheckbox = new WeakMap();
+
+  // Shift-click range selection, hooked at the document level in CAPTURE
+  // phase on `mousedown`. Two reasons for this choice:
+  //   1. Capture phase runs before any bubble-phase handler can call
+  //      stopPropagation — so a popover-scoped listener that the drop
+  //      library or KTL might block is avoided.
+  //   2. Hooking mousedown (not click) fires before the native checkbox
+  //      toggle. We preventDefault on shift+mousedown, then flip the
+  //      range manually with the correct target state. This also
+  //      sidesteps the label→input click-synthesis quirk where the
+  //      synthesized click on the input may lose the shiftKey flag.
+  function resolveCheckbox(target) {
+    if (!target || !target.closest) return null;
+    if (target.tagName === 'INPUT' && target.type === 'checkbox') return target;
+    // Click on label text / span: find the input inside the label.
+    var label = target.closest('label');
+    if (!label) return null;
+    var input = label.querySelector('input[type="checkbox"]');
+    return (input && input.type === 'checkbox') ? input : null;
+  }
+
+  // Window during which the click events immediately following a shift-
+  // range mousedown should be suppressed. We preventDefault on mousedown,
+  // but that only stops the native toggle when the user clicked the
+  // checkbox INPUT directly — if they clicked the label's text, the
+  // browser synthesizes a click on the input AFTER our mousedown, which
+  // toggles the last box back to its original state. Suppressing the
+  // click event that follows fixes the off-by-one on the shift-clicked
+  // box.
+  var _shiftHandledUntil = 0;
+  var SHIFT_CLICK_SUPPRESS_MS = 300;
+
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;                     // left-click only
+    var cb = resolveCheckbox(e.target);
+    if (!cb) return;
+    var list = cb.closest('.conn_inputs');
+    if (!list) return;
+
+    if (e.shiftKey) {
+      var anchor = lastCheckbox.get(list);
+      if (anchor && anchor !== cb && list.contains(anchor)) {
+        // Cancel the native toggle so we can apply the range state
+        // ourselves (including the clicked box, with no double-toggle).
+        e.preventDefault();
+        _shiftHandledUntil = (performance.now ? performance.now() : Date.now())
+                             + SHIFT_CLICK_SUPPRESS_MS;
+
+        var all = Array.prototype.slice.call(
+          list.querySelectorAll('input[type="checkbox"]')
+        );
+        var ai = all.indexOf(anchor);
+        var bi = all.indexOf(cb);
+        if (ai >= 0 && bi >= 0) {
+          var lo = Math.min(ai, bi);
+          var hi = Math.max(ai, bi);
+          // Target state = what a plain click on cb would have produced.
+          // mousedown fires before the toggle, so cb.checked is the OLD
+          // state; invert it.
+          var target = !cb.checked;
+          for (var i = lo; i <= hi; i++) {
+            var node = all[i];
+            if (node.checked !== target) {
+              node.checked = target;
+              node.dispatchEvent(new Event('change', { bubbles: true }));
             }
           }
+          try { window.getSelection().removeAllRanges(); } catch (_) {}
+        }
+        lastCheckbox.set(list, cb);
+        return;
+      }
+      // Shift held but no usable anchor — fall through and treat as a
+      // plain click (sets anchor, native toggle runs normally).
+    }
+
+    lastCheckbox.set(list, cb);
+  }, true);
+
+  // Click suppressor — kills the label→input synthesized click (and the
+  // raw click on the label itself) that would otherwise re-toggle the
+  // shift-clicked box after our mousedown handler set it manually.
+  document.addEventListener('click', function (e) {
+    var now = performance.now ? performance.now() : Date.now();
+    if (now > _shiftHandledUntil) return;
+    var cb = resolveCheckbox(e.target);
+    if (!cb || !cb.closest('.conn_inputs')) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  function trackPopover(popover) {
+    if (seen.has(popover)) return;
+    seen.add(popover);
+
+    var shellObs = null;  // brief subtree watch for .conn_inputs to appear
+    var listObs = null;   // narrow watch on .conn_inputs once it's found
+    // Once-per-open flag set of lists whose checked items have been
+    // reordered to the front for the current open cycle. Cleared on
+    // close so the next open re-runs the reorder.
+    var reorderedThisOpen = new WeakSet();
+
+    function stopOpenObs() {
+      if (shellObs) { shellObs.disconnect(); shellObs = null; }
+      if (listObs)  { listObs.disconnect();  listObs  = null; }
+      reorderedThisOpen = new WeakSet();
+    }
+
+    // Observer factory with rAF debouncing so a burst of mutations
+    // coalesces into a single scan per frame.
+    function makeDebouncedScan() {
+      var pending = false;
+      return function () {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(function () {
+          pending = false;
+          scanPopover(popover);
+          maybeReorder();
+        });
+      };
+    }
+
+    // Once the .conn_inputs list exists, stop watching the popover
+    // subtree (which fires on every Knack DOM tweak during clicks) and
+    // watch the list itself for direct childList changes only. That's
+    // the only thing we actually need to react to — Knack appending
+    // option rows as the candidates fetch resolves.
+    function promoteToListObserver() {
+      var list = popover.querySelector('.conn_inputs');
+      if (!list) return false;
+      if (shellObs) { shellObs.disconnect(); shellObs = null; }
+      if (listObs)  { listObs.disconnect();  listObs  = null; }
+      listObs = new MutationObserver(makeDebouncedScan());
+      listObs.observe(list, { childList: true });
+      return true;
+    }
+
+    function startOpenObs() {
+      stopOpenObs();
+      scanPopover(popover);  // immediate pass (catches cached/preloaded content)
+      maybeReorder();
+      // If the list is already in the DOM, go straight to the narrow
+      // per-list observer. Otherwise watch the popover subtree briefly
+      // until it appears, then promote.
+      if (!promoteToListObserver()) {
+        shellObs = new MutationObserver(function () {
+          // Keep scanning for layout updates until the list is there.
+          scanPopover(popover);
+          if (promoteToListObserver()) maybeReorder();
+        });
+        shellObs.observe(popover, { childList: true, subtree: true });
+      }
+    }
+
+    // Reorder each list to selected-first — but only the first time we
+    // see items for a given list in this open cycle, so the user's
+    // in-progress selections don't shuffle under their cursor.
+    function maybeReorder() {
+      var lists = popover.querySelectorAll('.conn_inputs');
+      for (var i = 0; i < lists.length; i++) {
+        var list = lists[i];
+        if (reorderedThisOpen.has(list)) continue;
+        if (reorderSelectedFirst(list)) reorderedThisOpen.add(list);
+      }
+    }
+
+    if (popover.classList.contains('drop-open')) startOpenObs();
+
+    var classObs = new MutationObserver(function () {
+      if (popover.classList.contains('drop-open')) startOpenObs();
+      else stopOpenObs();
+    });
+    classObs.observe(popover, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  // ── Top-level: catch popovers appended to <body> ───────────
+  // childList only (no subtree, no attribute observation). view_3586's
+  // per-card DOM churn happens deep inside the view, not at body level,
+  // so this observer stays cold.
+  var bodyObs = new MutationObserver(function (mutations) {
+    for (var m = 0; m < mutations.length; m++) {
+      var added = mutations[m].addedNodes;
+      for (var n = 0; n < added.length; n++) {
+        var node = added[n];
+        if (node.nodeType !== 1) continue;
+        if (node.classList && node.classList.contains('kn-popover')) {
+          trackPopover(node);
         }
       }
     }
   });
+  bodyObs.observe(document.body, { childList: true });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class'],
-  });
+  // Pick up any popovers that already exist when this script loads.
+  var existing = document.body.querySelectorAll(':scope > .kn-popover');
+  for (var e = 0; e < existing.length; e++) trackPopover(existing[e]);
 })();
 /*****************  Extract _hsvcolor keyword from view descriptions  *************/
 (function () {
@@ -4110,7 +4401,7 @@ window.SCW = window.SCW || {};
       var ids0 = MENU_MAP[viewKey].split(',').map(function (s) { return s.trim(); })
                     .filter(function (s) { return /^view_\d+$/.test(s); });
       if (ids0.length) {
-        console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
+        SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
         return ids0;
       }
     }
@@ -4143,7 +4434,7 @@ window.SCW = window.SCW || {};
             var ids = val.split(',').map(function (s) { return s.trim(); })
                         .filter(function (s) { return /^view_\d+$/.test(s); });
             if (ids.length) {
-              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
+              SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
               return ids;
             }
           }
@@ -4155,10 +4446,10 @@ window.SCW = window.SCW || {};
     try {
       var kwDbg = window.ktlKeywords;
       if (kwDbg && kwDbg[viewKey]) {
-        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
+        SCW.debug(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
           Object.keys(kwDbg[viewKey]).join(', '));
       } else {
-        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
+        SCW.debug(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
       }
     } catch (e) { /* ignore */ }
 
@@ -4175,7 +4466,7 @@ window.SCW = window.SCW || {};
             var ids2 = match[1].split(',').map(function (v) { return v.trim(); })
                           .filter(function (v) { return /^view_\d+$/.test(v); });
             if (ids2.length) {
-              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
+              SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
               return ids2;
             }
           }
@@ -4217,10 +4508,10 @@ window.SCW = window.SCW || {};
     if (!modelInspected[menuViewId]) {
       modelInspected[menuViewId] = true;
       try {
-        console.log(LOG, '  [model-inspect] Knack.views[' + menuViewId + '] keys:',
+        SCW.debug(LOG, '  [model-inspect] Knack.views[' + menuViewId + '] keys:',
           Object.keys(kv).join(', '));
         if (kv.model && kv.model.view) {
-          console.log(LOG, '  [model-inspect] .model.view:',
+          SCW.debug(LOG, '  [model-inspect] .model.view:',
             JSON.stringify(kv.model.view).substring(0, 1000));
         }
       } catch (e) { /* ignore */ }
@@ -4329,7 +4620,7 @@ window.SCW = window.SCW || {};
 
   function enhance() {
     var accordions = document.querySelectorAll('.scw-ktl-accordion');
-    console.log(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
+    SCW.debug(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
 
     var injected = 0;
     var skipped = { noHeader: 0, alreadyInjected: 0, noKeyword: 0, noMenuEl: 0,
@@ -4383,11 +4674,11 @@ window.SCW = window.SCW || {};
                   index: ml, menuViewId: menuViewId
                 });
               }
-              console.log(LOG, '  accordion', innerViewId,
+              SCW.debug(LOG, '  accordion', innerViewId,
                 '← menu', menuViewId, '— using', modelLinks.length, 'link(s) from model');
             }
           } else {
-            console.log(LOG, '  accordion', innerViewId,
+            SCW.debug(LOG, '  accordion', innerViewId,
               '← menu', menuViewId, '— injecting', domLinks.length, 'button(s) from DOM');
           }
 
@@ -4505,7 +4796,7 @@ window.SCW = window.SCW || {};
       }
     }
 
-    console.log(LOG, 'enhance() done — injected:', injected,
+    SCW.debug(LOG, 'enhance() done — injected:', injected,
       '| skipped:', JSON.stringify(skipped));
 
     requestAnimationFrame(equalizeWidths);
@@ -4546,7 +4837,7 @@ window.SCW = window.SCW || {};
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function (event, scene) {
       var sceneId = scene && scene.key ? scene.key : '(unknown)';
-      console.log(LOG, 'scene-render', sceneId);
+      SCW.debug(LOG, 'scene-render', sceneId);
       modelInspected = {};
 
       // Watch for .scw-ktl-accordion elements being created
@@ -4565,7 +4856,7 @@ window.SCW = window.SCW || {};
     });
 
   $(document).ready(function () {
-    console.log(LOG, 'document.ready — initial enhance');
+    SCW.debug(LOG, 'document.ready — initial enhance');
     startAccordionObserver(document.body);
     scheduleEnhance(500);
     setTimeout(enhance, 3000);
@@ -5628,6 +5919,68 @@ window.SCW = window.SCW || {};
   $(document).on('knack-form-submit.view_3853' + NS, function () {
     onFormSubmit('view_3853');
   });
+
+  // ── Cross-tab refresh after Ops stepper completion ───────
+  // ops-stepper.js (on the Ops tab) writes
+  //   scw-ops-stepper-completed:<sowId> = <timestamp>
+  // to localStorage when its webhook returns success. Same-origin
+  // tabs receive a 'storage' event. If the signal is for the SOW
+  // currently loaded on this build page, show a "refreshing" banner
+  // then reload so the user doesn't stare at pre-action field values.
+  function showStaleDataBanner() {
+    if (document.getElementById('scw-stale-refresh-banner')) return;
+    // Inline styles so we don't need a separate stylesheet injection —
+    // the banner is short-lived and only appears on this one event.
+    var banner = document.createElement('div');
+    banner.id = 'scw-stale-refresh-banner';
+    banner.setAttribute('role', 'status');
+    banner.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:100000;' +
+      'background:#1e40af;color:#fff;' +
+      'font:600 13px/1.4 system-ui, sans-serif;' +
+      'padding:10px 16px;text-align:center;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);' +
+      'display:flex;align-items:center;justify-content:center;gap:10px;';
+    banner.innerHTML =
+      '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;' +
+      'border-radius:50%;animation:scw-stale-spin 0.8s linear infinite;"></span>' +
+      '<span>Data just changed on the Ops page — refreshing…</span>';
+
+    // Inject the keyframes once.
+    if (!document.getElementById('scw-stale-spin-css')) {
+      var s = document.createElement('style');
+      s.id = 'scw-stale-spin-css';
+      s.textContent = '@keyframes scw-stale-spin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(banner);
+  }
+
+  try {
+    SCW.debug('[scw-workflow-stepper] storage listener installing');
+    window.addEventListener('storage', function (e) {
+      // Catch-all log first so we can see if storage events are
+      // firing at all during debugging — previously the storage
+      // listener was silently skipping every event.
+      SCW.debug('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
+      var prefix = 'scw-ops-stepper-completed:';
+      if (!e.key || e.key.indexOf(prefix) !== 0) return;
+      // Reload on any ops-stepper completion signal, regardless of
+      // which SOW was affected. The previous SOW-id match bailed in
+      // two common cases: (a) the user was looking at the SOW list
+      // (view_3325) on a parent page that doesn't render view_3827,
+      // so getSourceSowId() returned empty; (b) the build page
+      // happened to have a sibling SOW loaded rather than the one
+      // just mark-readied. A blanket reload keeps view_3325's pills
+      // and view_3885's published-proposal rows fresh.
+      SCW.debug('[scw-workflow-stepper] ops-stepper signal matched — reloading');
+      showStaleDataBanner();
+      // ~1.2s gives Knack/Make a beat to commit and the user time
+      // to register the banner before the reload.
+      setTimeout(function () { window.location.reload(); }, 1200);
+    });
+  } catch (e) { /* ignore — non-fatal */ }
 })();
 /**************************************************************************************************
  * LEGACY / RATKING SEGMENT
@@ -5760,8 +6113,8 @@ window.SCW = window.SCW || {};
   $(document).on('knack-record-update.view_1493', function (event, view, record) {
     alert("Click 'OK' to update equipment total");
     Knack.views["view_1493"].model.fetch();
-    console.log("hello world");
-    console.log(Knack.views);
+    SCW.debug("hello world");
+    SCW.debug(Knack.views);
   });
 })();
 
@@ -6060,7 +6413,7 @@ window.SCW = window.SCW || {};
   function log(ctx, ...args) {
     if (!CONFIG.debug) return;
     // eslint-disable-next-line no-console
-    console.log(`[SCW totals][${ctx.viewId}]`, ...args);
+    SCW.debug(`[SCW totals][${ctx.viewId}]`, ...args);
   }
 
   // ============================================================
@@ -8201,19 +8554,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $(this).html(TBD);
     });
 
-    // L4 group cost cells → TBD only if data rows in that group had non-zero labor
+    // L4 group cost cells → TBD. Mask applies uniformly: once the
+    // bid isn't validated, every install-labor cell reads TBD,
+    // regardless of whether descendant data rows happened to have
+    // non-zero labor originally. Previously we only masked L4s whose
+    // rows had labor, which left mounting-hardware sections showing
+    // "$0.00" alongside masked-TBD siblings.
     $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
-      var $l4 = $(this);
-      var hadLabor = false;
-      var $next = $l4.next();
-      while ($next.length && !$next.hasClass('kn-table-group') && !$next.hasClass('scw-level-total-row')) {
-        if ($next.attr('data-scw-had-labor') === '1') { hadLabor = true; break; }
-        $next = $next.next();
-      }
-      if (hadLabor) {
-        var $costCell = $l4.find('td.' + costKey);
-        if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
-      }
+      var $costCell = $(this).find('td.' + costKey);
+      if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
     });
 
     // Installation Total → TBD
@@ -8345,7 +8694,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     {
       sceneId: 'scene_1096',
       trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
-      skipViews: { view_3342: true },
+      // view_3861 is the Ops-side SOW details host (hidden via CSS)
+      // — its presence in the DOM is a signal for TBD-masking and the
+      // Ops stepper, not part of the published proposal. Keep it out
+      // of the PDF scrape.
+      // view_3345 is the Ops stepper host (rich-text role-gated).
+      // view_3883 is the published-quote info host we inject into.
+      // view_3886 is the published-proposals data source we read to
+      //   populate view_3883 — itself not part of the quote.
+      // Neither belongs in the published proposal content.
+      skipViews: {
+        view_3342: true,
+        view_3861: true,
+        view_3345: true,
+        view_3883: true,
+        view_3886: true
+      },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -8752,6 +9116,87 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ══════════════════════════════════════════════════════════════
+  // TBD MASK for published HTML
+  // ══════════════════════════════════════════════════════════════
+  //
+  // proposal-grid.js applies a visual TBD mask to install-labor cells
+  // when field_2725 is not "Yes" — but bypasses the mask for Ops users
+  // (so they can see real numbers on the proposal page). That bypass
+  // means Ops' DOM shows real figures, and a plain textContent scrape
+  // would leak them into the published HTML. Since Ops is the primary
+  // publisher (Mark Ready / Submit Final Proposal), we re-apply the
+  // TBD treatment to the scraped payload whenever the bid hasn't been
+  // validated, regardless of who's publishing.
+  //
+  // Reads field_2725 straight from view_3861 without the Ops bypass.
+  function shouldPublishAsTbd() {
+    try {
+      var view = document.getElementById('view_3861');
+      if (view) {
+        var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
+        if (cell) return !/^yes$/i.test((cell.textContent || '').trim());
+      }
+      var m = typeof Knack !== 'undefined'
+            && Knack.views && Knack.views.view_3861
+            && Knack.views.view_3861.model;
+      var attrs = m && (m.attributes || (m.toJSON && m.toJSON()) || {});
+      if (attrs && attrs.field_2725 !== undefined) {
+        return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
+      }
+    } catch (e) { /* fall through */ }
+    // Default to TBD when the state can't be read — same defensive
+    // posture as proposal-grid.js's isInstallationMasked().
+    return true;
+  }
+
+  // Mutate a scraped proposal payload so every install-labor surface
+  // renders "TBD". Targets:
+  //   - L4 line item cost (per-product install-labor line)
+  //   - L1 footer "Installation" subtotal
+  //   - Scene-level projectTotals "Installation Total" line
+  function applyTbdToPublishPayload(payload) {
+    var TBD = 'TBD';
+    if (!payload || !Array.isArray(payload.views)) return;
+
+    function tbdifyFooterLines(lines) {
+      if (!Array.isArray(lines)) return;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line && line.label && /installation/i.test(String(line.label))) {
+          line.value = TBD;
+        }
+      }
+    }
+
+    for (var v = 0; v < payload.views.length; v++) {
+      var view = payload.views[v];
+      if (!view) continue;
+      if (Array.isArray(view.sections)) {
+        for (var s = 0; s < view.sections.length; s++) {
+          var section = view.sections[s];
+          if (!section) continue;
+          if (Array.isArray(section.buckets)) {
+            for (var b = 0; b < section.buckets.length; b++) {
+              var bucket = section.buckets[b];
+              if (!bucket || !Array.isArray(bucket.products)) continue;
+              for (var p = 0; p < bucket.products.length; p++) {
+                var prod = bucket.products[p];
+                if (!prod || !Array.isArray(prod.lineItems)) continue;
+                for (var li = 0; li < prod.lineItems.length; li++) {
+                  prod.lineItems[li].cost = TBD;
+                }
+              }
+            }
+          }
+          if (section.footer) tbdifyFooterLines(section.footer.lines);
+        }
+      }
+      if (view.projectTotals) tbdifyFooterLines(view.projectTotals.lines);
+    }
+    if (payload.projectTotals) tbdifyFooterLines(payload.projectTotals.lines);
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
@@ -8768,13 +9213,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (cfg.skipViews[viewId]) continue;
 
       var viewType = detectViewType(viewId);
-      console.log('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
 
       var data = null;
 
       if (viewType === 'grid') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty grid, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
         data = scrapeGridView(viewId, cfg.gridKeys);
@@ -8783,7 +9228,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
       } else if (viewType === 'report') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty report, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty report, skipping');
           continue;
         }
         data = scrapeReportView(viewId);
@@ -8801,6 +9246,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         result.projectTotals = result.views[j].projectTotals;
         break;
       }
+    }
+
+    // Stamp TBD into every install-labor surface if the bid hasn't
+    // been validated (field_2725 != Yes). Only applies to proposal
+    // payloads — subcontractor bids have different semantics.
+    if (cfg.payloadType === 'proposal' && shouldPublishAsTbd()) {
+      applyTbdToPublishPayload(result);
     }
 
     return result;
@@ -9411,7 +9863,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function runExport(cfg, extra) {
     var payload = scrapeAllViews(cfg);
     if (!payload.views.length) {
-      console.log('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
       return;
     }
     if (extra) {
@@ -9510,7 +9962,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               html: htmlStr,
               json: jsonSnapshot
             };
-            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
@@ -9520,7 +9972,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               crossDomain: true,
               timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                SCW.debug('[SCW PDF Export] Webhook accepted, redirecting to parent');
                 if (cfg.pollViewOnReturn) {
                   try {
                     sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
@@ -9605,7 +10057,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           }
         }
 
-        console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
+        SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
 
         // Flag for poll-refresh on the parent page
@@ -9759,9 +10211,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function onPollViewRender() {
     if (!_pollActive) return;
     var newValue = readFieldText(_pollViewId, _pollFieldId);
-    console.log('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
+    SCW.debug('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
     if (_pollFieldId && newValue !== _pollInitial) {
-      console.log('[SCW PDF Export] Field changed — stopping poll');
+      SCW.debug('[SCW PDF Export] Field changed — stopping poll');
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
@@ -9779,7 +10231,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
     _pollMsg = 'Generating ' + label + ' PDF\u2026';
 
-    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    SCW.debug('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
     showPollToast(_pollMsg);
     applyFieldOverlay(viewId, fieldId, _pollMsg);
 
@@ -9798,7 +10250,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (_pollFieldId) {
         var currentVal = readFieldText(_pollViewId, _pollFieldId);
         if (currentVal !== _pollInitial) {
-          console.log('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
+          SCW.debug('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
           stopPolling();
           return;
         }
@@ -9809,7 +10261,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
-        console.log('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
+        SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
         stopPolling();
       }
     }, POLL_INTERVAL_MS);
@@ -9845,6 +10297,68 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
   // before calling.
 
+  // Build the exact "save payload" shape the Publish Quote button sends
+  // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
+  // call this so Make receives identical inputs regardless of origin.
+  //
+  // sceneId is optional — when omitted we auto-detect by:
+  //   1. Knack.scene.attributes.key (Knack's JS model)
+  //   2. DOM presence of `#kn-<cfg.sceneId>` for any configured scene
+  // The DOM check is the more reliable fallback since Knack's JS model
+  // can briefly lag DOM state during transitions.
+  function resolveConfiguredScene(sceneId) {
+    // Explicit pass-through wins.
+    if (sceneId) {
+      for (var i = 0; i < SCENES.length; i++) {
+        if (SCENES[i].sceneId === sceneId) return SCENES[i];
+      }
+      return null;
+    }
+    // Try Knack's model.
+    try {
+      var key = (Knack && Knack.scene && Knack.scene.attributes && Knack.scene.attributes.key) || '';
+      if (key) {
+        for (var j = 0; j < SCENES.length; j++) {
+          if (SCENES[j].sceneId === key) return SCENES[j];
+        }
+      }
+    } catch (e) { /* fall through */ }
+    // Fallback: whichever configured scene is actually rendered in the DOM.
+    for (var k = 0; k < SCENES.length; k++) {
+      if (document.getElementById('kn-' + SCENES[k].sceneId)) return SCENES[k];
+    }
+    return null;
+  }
+
+  function buildPublishPayload(sceneId) {
+    var cfg = resolveConfiguredScene(sceneId);
+    if (!cfg) {
+      console.warn('[SCW pdfExport] buildPublishPayload: no matching SCENES entry for sceneId=' + sceneId + ' (auto-detect also failed).');
+      return null;
+    }
+    var payload = scrapeAllViews(cfg);
+    if (!payload.views.length) {
+      console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
+      return null;
+    }
+    var htmlStr      = buildPdfHtml(payload);
+    var summary      = extractSummaryFields(payload);
+    var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+    return {
+      recordId:          getPageRecordId() || '',
+      hash:              window.location.hash || '',
+      sceneId:           cfg.sceneId,
+      type:              cfg.payloadType,
+      sowId:             summary.sowId,
+      equipmentTotal:    summary.equipmentTotal,
+      installationTotal: summary.installationTotal,
+      grandTotal:        summary.grandTotal,
+      expirationDate:    summary.expirationDate,
+      html:              htmlStr,
+      json:              jsonSnapshot
+    };
+  }
+
   window.SCW = window.SCW || {};
   window.SCW.pdfExport = {
     run: function (sceneId) {
@@ -9858,7 +10372,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       payload.html = buildPdfHtml(payload);
       return payload;
     },
-    getCss: getPdfCss
+    getCss: getPdfCss,
+    buildPublishPayload: buildPublishPayload
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -10087,12 +10602,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     setTimeout(function () {
       var raw = getStoredHtml();
       if (!raw) {
-        console.log('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
+        SCW.debug('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
         return;
       }
-      console.log('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
+      SCW.debug('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
       var fullHtml = buildFullHtml(raw);
-      console.log('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
+      SCW.debug('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
       renderProposal(fullHtml);
       injectPrintButton(fullHtml);
     }, 500);
@@ -10277,7 +10792,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function log(ctx, ...args) {
     if (!CONFIG.debug) return;
     // eslint-disable-next-line no-console
-    console.log(`[SCW bid-items][${ctx.viewId}]`, ...args);
+    SCW.debug(`[SCW bid-items][${ctx.viewId}]`, ...args);
   }
 
   // ============================================================
@@ -13140,7 +13655,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var records = extractRecords(model);
 
     if (CFG.debug) {
-      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
+      SCW.debug('[BidReview] Model records from ' + viewKey + ':', records.length);
     }
 
     if (records.length > 0) {
@@ -13150,25 +13665,25 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Model empty — try API, then retry model once if API also empty
     return fetchFromApi(viewKey).then(function (recs) {
       if (recs.length > 0) {
-        if (CFG.debug) console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+        if (CFG.debug) SCW.debug('[BidReview] API records from ' + viewKey + ':', recs.length);
         return recs;
       }
 
       // API returned 0 — the view may not be server-ready yet.
       // Wait 1.5 s and re-check the model (Knack may have rendered it by now).
-      if (CFG.debug) console.log('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
+      if (CFG.debug) SCW.debug('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
       var retry = $.Deferred();
       setTimeout(function () {
         var m2 = findModel(viewKey);
         var r2 = extractRecords(m2);
         if (r2.length > 0) {
-          if (CFG.debug) console.log('[BidReview] Retry model from ' + viewKey + ':', r2.length);
+          if (CFG.debug) SCW.debug('[BidReview] Retry model from ' + viewKey + ':', r2.length);
           retry.resolve(r2);
           return;
         }
         // Last resort: one more API attempt
         fetchFromApi(viewKey).then(function (r3) {
-          if (CFG.debug) console.log('[BidReview] Retry API from ' + viewKey + ':', r3.length);
+          if (CFG.debug) SCW.debug('[BidReview] Retry API from ' + viewKey + ':', r3.length);
           retry.resolve(r3);
         });
       }, 1500);
@@ -13193,7 +13708,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     return $.when(bidPromise, sowItemPromise, pkgPromise, mdfIdfPromise).then(function (bidRecs, sowRecs, pkgRecs, mdfRecs) {
       if (CFG.debug) {
-        console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
+        SCW.debug('[BidReview] Loaded', bidRecs.length, 'bid records,',
                     sowRecs.length, 'unbid SOW items,',
                     pkgRecs.length, 'bid packages,',
                     mdfRecs.length, 'MDF/IDF records');
@@ -13352,7 +13867,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Debug: log the SOW field shape from the first record
     if (CFG.debug && records.length) {
       var sample = records[0];
-      console.log('[BidReview] SOW field debug:', {
+      SCW.debug('[BidReview] SOW field debug:', {
         key: FK.sow,
         value: sample[FK.sow],
         raw: sample[FK.sow + '_raw'],
@@ -13439,7 +13954,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var _dbg1946r = meta[FK.sowMdfIdf + '_raw'];
       var _dbg2375 = meta[FK.mdfIdf];
       var _dbg2375r = meta[FK.mdfIdf + '_raw'];
-      console.log('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
+      SCW.debug('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
         '| field_2375:', _dbg2375, '_raw:', _dbg2375r,
         '| label:', stripHtml(meta[FK.displayLabel] || ''));
     }
@@ -13809,7 +14324,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 
     if (CFG.debug) {
-      console.log('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
+      SCW.debug('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
     }
     return map;
   }
@@ -13845,7 +14360,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
       if (bidStatus) info.bidStatus = bidStatus;
       if (CFG.debug) {
-        console.log('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
+        SCW.debug('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
       }
 
       // File fields: try _raw (object with url) then fall back to HTML parsing
@@ -13911,7 +14426,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         };
       }
       if (CFG.debug) {
-        console.log('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
+        SCW.debug('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
       }
     }
 
@@ -13971,7 +14486,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       for (var nk = 0; nk < noBidSowIds.length; nk++) {
         noBidTotal += noBidBySow[noBidSowIds[nk]].length;
       }
-      console.log('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
+      SCW.debug('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
     }
 
     // Ensure SOW list includes any SOWs that only appear in the unbid items
@@ -14019,7 +14534,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       for (var nb = 0; nb < noBidRows.length; nb++) {
         if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) {
           if (CFG.debug) {
-            console.log('[BidReview] Skipping noBid row — already in view_3680:',
+            SCW.debug('[BidReview] Skipping noBid row — already in view_3680:',
                         noBidRows[nb].sowItem, noBidRows[nb].displayLabel);
           }
           continue;
@@ -14737,7 +15252,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     };
 
     if (CFG.debug && (m.mdfIdf || row.sowMdfIdf || cell.bidMdfIdf)) {
-      console.log('[BidReview] MDF/IDF compare:', row.displayLabel,
+      SCW.debug('[BidReview] MDF/IDF compare:', row.displayLabel,
         '| sowMdfIdf:', JSON.stringify(row.sowMdfIdf),
         '| row.mdfIdf:', JSON.stringify(row.mdfIdf),
         '| cell.bidMdfIdf:', JSON.stringify(cell.bidMdfIdf),
@@ -15221,7 +15736,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (payload.items)       body.items       = payload.items;
 
     if (CFG.debug) {
-      console.log('[BidReview] Submitting action:', body);
+      SCW.debug('[BidReview] Submitting action:', body);
     }
 
     SCW.knackAjax({
@@ -15229,7 +15744,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       type: 'POST',
       data: JSON.stringify(body),
       success: function (resp) {
-        if (CFG.debug) console.log('[BidReview] Action success:', resp);
+        if (CFG.debug) SCW.debug('[BidReview] Action success:', resp);
 
         // Skip toast for copy_to_sow — handleCopyToSow manages its own messaging
         if (payload.actionType !== 'package_copy_to_sow') {
@@ -15564,7 +16079,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         _pending = merged;
         ssave();
         triggerRerender();
-        if (CFG.debug) console.log('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
+        if (CFG.debug) SCW.debug('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
       }
     }).fail(function () {
       if (CFG.debug) console.warn('[BidReview CR] Knack rehydration failed — using sessionStorage');
@@ -15713,7 +16228,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (CFG.debug) {
       var keys = Object.keys(connRecords);
       for (var ck = 0; ck < keys.length; ck++) {
-        console.log('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
+        SCW.debug('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
       }
     }
     buildModal(params, cell, vis, existing, connRecords);
@@ -17179,8 +17694,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var html = payload.html;
 
     if (CFG.debug) {
-      console.log('[BidReview CR] Submitting:', payload);
-      console.log('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
+      SCW.debug('[BidReview CR] Submitting:', payload);
+      SCW.debug('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
     }
 
     var deferred = $.Deferred();
@@ -17190,7 +17705,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[BidReview CR] Submit success:', resp);
+        if (CFG.debug) SCW.debug('[BidReview CR] Submit success:', resp);
         delete _pending[pkgId];
         persist();
         triggerRerender();
@@ -17201,7 +17716,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         // CORS may block the response even though Make received and
         // processed the request (status 0). Treat as success if so.
         if (xhr && xhr.status === 0) {
-          if (CFG.debug) console.log('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
+          if (CFG.debug) SCW.debug('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
           delete _pending[pkgId];
           persist();
           triggerRerender();
@@ -17650,7 +18165,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
-        console.log('[BidReview] State built:',
+        SCW.debug('[BidReview] State built:',
           _state.sowGrids.length, 'SOW grids,',
           _state.allPackages.length, 'packages,',
           _mdfIdfRecords.length, 'MDF/IDF records');
@@ -17795,7 +18310,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function buildClaimedDeviceSet(grid, selfId) {
     var TAG = '[ClaimedDevices]';
     var claimed = {};
-    console.log(TAG, 'Building claimed set, selfId:', selfId);
+    SCW.debug(TAG, 'Building claimed set, selfId:', selfId);
     // 1. Existing bid records — scan all cells across all packages
     for (var ri = 0; ri < grid.rows.length; ri++) {
       var row = grid.rows[ri];
@@ -17804,7 +18319,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var c = row.cellsByPackage[pkgs[pi]];
         if (c.id === selfId) continue; // skip self
         var ids = c.bidConnDeviceIds || [];
-        if (ids.length) console.log(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
+        if (ids.length) SCW.debug(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
         for (var di = 0; di < ids.length; di++) claimed[ids[di]] = true;
       }
     }
@@ -17813,18 +18328,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (crApi && typeof crApi.getPending === 'function') {
       var pending = crApi.getPending();
       var pkeys = Object.keys(pending);
-      console.log(TAG, '  pending packages:', pkeys.length);
+      SCW.debug(TAG, '  pending packages:', pkeys.length);
       for (var pk = 0; pk < pkeys.length; pk++) {
         var items = pending[pkeys[pk]].items || [];
         for (var ii = 0; ii < items.length; ii++) {
           var it = items[ii];
-          console.log(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
+          SCW.debug(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
             'displayLabel:', it.displayLabel,
             'req.bidConnDevice:', it.requested && it.requested.bidConnDevice,
             'req.bidConnDeviceIds:', it.requested && it.requested.bidConnDeviceIds);
           // Skip self
           if (it.bidRecordId === selfId || it.rowId === selfId) {
-            console.log(TAG, '    → SKIPPED (self)');
+            SCW.debug(TAG, '    → SKIPPED (self)');
             continue;
           }
           var reqIds = (it.requested && it.requested.bidConnDeviceIds) || [];
@@ -17835,7 +18350,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       console.warn(TAG, '  ns.changeRequests or getPending not available!');
     }
     var claimedKeys = Object.keys(claimed);
-    console.log(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
+    SCW.debug(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
     return claimed;
   }
 
@@ -18078,7 +18593,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .done(function () {
         // Webhook responded 200 — Make scenario is complete.
         // Stop polling, refresh the grid immediately, and show success.
-        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
+        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed');
         stopCopyPoll();
         hideCopyToast();
         refreshSilently();
@@ -18087,7 +18602,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing
         if (CFG.debug) {
-          console.log('[BidReview] Webhook timeout/error (status ' +
+          SCW.debug('[BidReview] Webhook timeout/error (status ' +
             (xhr && xhr.status) + ') — continuing to poll');
         }
       })
@@ -18243,7 +18758,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     if (CFG.debug) {
-      console.log('[BidReview] connDevOpts:', connDevOpts.length,
+      SCW.debug('[BidReview] connDevOpts:', connDevOpts.length,
                   'connToOpts:', connToOpts.length);
     }
 
@@ -18939,7 +19454,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           _fallbackTimer = null;
           if (!allViewsReady()) {
             if (CFG.debug) {
-              console.log('[BidReview] Timeout waiting for:',
+              SCW.debug('[BidReview] Timeout waiting for:',
                 !_viewsReady[CFG.sowItemsViewKey] ? CFG.sowItemsViewKey : '',
                 CFG.bidPackagesViewKey && !_viewsReady[CFG.bidPackagesViewKey] ? CFG.bidPackagesViewKey : '');
             }
@@ -19121,7 +19636,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 
     if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
-      console.log('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
+      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
     }
   }
 
@@ -19621,7 +20136,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       type: 'PUT',
       data: JSON.stringify(knackData),
       success: function () {
-        console.log('[SalesRevCol] Updated record', revId, 'to Rejected');
+        SCW.debug('[SalesRevCol] Updated record', revId, 'to Rejected');
         afterReject(btn);
       },
       error: function () {
@@ -19765,7 +20280,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         url: SCW.knackRecordUrl(SOW_VIEW, sowItemId),
         type: 'PUT',
         data: JSON.stringify(sowData),
-        success: function () { console.log('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] SOW update failed:', sowItemId); errors++; checkDone(); },
       });
     }
@@ -19776,7 +20291,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         url: SCW.knackRecordUrl(SURVEY_VIEW, surveyItemId),
         type: 'PUT',
         data: JSON.stringify(surveyData),
-        success: function () { console.log('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] Survey update failed:', surveyItemId); errors++; checkDone(); },
       });
     }
@@ -19789,7 +20304,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         url: SCW.knackRecordUrl(CFG.revisionView, revLineItemId),
         type: 'PUT',
         data: JSON.stringify(statusData),
-        success: function () { console.log('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] Revision status update failed:', revLineItemId); errors++; checkDone(); },
       });
     }
@@ -19888,7 +20403,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   let _suppressAutoEnhance = false;
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
 
   // Per-view background color overrides (keys = view IDs)
   const VIEW_OVERRIDES = {
@@ -19903,9 +20418,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     view_3313: { defaultOpen: true },
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
-    view_3586: { defaultOpen: true },
     view_3608: { defaultOpen: true },
     view_3800: { defaultOpen: true },
+    // Exclusive accordion: only one L1 (MDF/IDF) group open at a time.
+    // Prevents a single large group from pushing every other group off
+    // the viewport. Starts all-collapsed so the user picks where to work.
+    view_3586: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -20523,6 +21041,56 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       setCollapsed($tr, shouldCollapse);
     });
+
+    // Exclusive-accordion enforcement: for views flagged exclusive,
+    // guarantee exactly one L1 group is open after enhance runs.
+    //  - >1 open: collapse the extras (handles stale localStorage from
+    //    before the flag was introduced, or multi-open left by other
+    //    code paths).
+    //  - 0 open: open the first L1. Since the main loop above already
+    //    honours persisted state per-key, a returning user's last-opened
+    //    L1 is already open here; this branch only fires on a fresh
+    //    visit (no saved state) or after a user explicitly collapsed
+    //    everything.
+    Object.keys(viewRecordCounts).forEach(function (vid) {
+      var vo = VIEW_OVERRIDES[vid];
+      if (!vo || !vo.exclusive) return;
+      var $view = $('#' + vid);
+      if (!$view.length) return;
+      var $allL1 = $view.find(
+        'tr.kn-table-group.kn-group-level-1.scw-group-header'
+      );
+      if (!$allL1.length) return;
+      var $openL1 = $allL1.not('.scw-collapsed');
+      var state = loadState(sceneId, vid);
+      if ($openL1.length === 0) {
+        var $first = $allL1.first();
+        setCollapsed($first, false);
+        state[buildKey($first, 1)] = 0;
+        saveState(sceneId, vid, state);
+      } else if ($openL1.length > 1) {
+        $openL1.slice(1).each(function () {
+          var $other = $(this);
+          setCollapsed($other, true);
+          state[buildKey($other, 1)] = 1;
+        });
+        saveState(sceneId, vid, state);
+      }
+    });
+  }
+
+  // Exclusive-accordion: close every other L1 header in the same view
+  // when one opens. Called from the click handler.
+  function closeOtherL1sInView($openedHeader, $view, sceneId, viewId, state) {
+    var $others = $view.find(
+      'tr.kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)'
+    );
+    $others.each(function () {
+      if (this === $openedHeader[0]) return;
+      var $o = $(this);
+      setCollapsed($o, true);
+      state[buildKey($o, 1)] = 1;
+    });
   }
 
   // ======================
@@ -20566,6 +21134,14 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         }
 
         state[key] = collapseNow ? 1 : 0;
+
+        // Exclusive accordion: opening an L1 group closes every other
+        // L1 in the view. Only runs on expand (collapseNow === false).
+        var viewOverrides = VIEW_OVERRIDES[viewId];
+        if (!collapseNow && level === 1 && viewOverrides && viewOverrides.exclusive) {
+          closeOtherL1sInView($tr, $view, sceneId, viewId, state);
+        }
+
         saveState(sceneId, viewId, state);
       });
   }
@@ -20903,6 +21479,47 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // select-all / group-select to avoid N×handler calls.
   var _bulkOp = false;
 
+  // When a bulk op affects more than this many rows, dispatch the
+  // per-row change events in chunks via requestAnimationFrame so the
+  // page stays responsive. Below this threshold we stay fully
+  // synchronous (cheap + no async flicker).
+  var BULK_SYNC_THRESHOLD = 50;
+  var BULK_CHUNK_SIZE     = 25;
+
+  // Fire 'change' on each target checkbox (so KTL's internal bulk-edit
+  // state updates). `_bulkOp` stays true for the entire run so our own
+  // delegated change handlers skip — otherwise each dispatch re-runs
+  // findCheckboxes() over the whole view, giving O(N²) DOM work that
+  // locks the page on large views (view_3450 with ~180 rows).
+  function dispatchChangeEvents(targets, onDone) {
+    function done() {
+      _bulkOp = false;
+      if (onDone) onDone();
+    }
+    if (targets.length <= BULK_SYNC_THRESHOLD) {
+      for (var i = 0; i < targets.length; i++) {
+        targets[i].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      done();
+      return;
+    }
+    var idx = 0;
+    document.body.style.cursor = 'progress';
+    function pump() {
+      var end = Math.min(idx + BULK_CHUNK_SIZE, targets.length);
+      for (; idx < end; idx++) {
+        targets[idx].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (idx < targets.length) {
+        requestAnimationFrame(pump);
+      } else {
+        document.body.style.cursor = '';
+        done();
+      }
+    }
+    requestAnimationFrame(pump);
+  }
+
   // ───────────────────────────────────────────────
   //  1) Wire native <thead> master selector
   // ───────────────────────────────────────────────
@@ -20942,15 +21559,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           for (var k = 0; k < cbs.length; k++) {
             cbs[k].checked = shouldCheck;
           }
-          _bulkOp = false;
           master.indeterminate = false;
           syncKtlBulkState(el);
 
-          // Notify KTL — same as group handler: fire change on each
-          // row checkbox so KTL's internal bulk-edit state updates.
-          for (var j = 0; j < cbs.length; j++) {
-            cbs[j].dispatchEvent(new Event('change', { bubbles: true }));
-          }
+          // Notify KTL — chunked above the threshold so the page stays
+          // responsive on large views. `_bulkOp` is cleared inside
+          // dispatchChangeEvents when the last chunk finishes.
+          dispatchChangeEvents(cbs);
         });
 
         // Sync master state + header checkbox visibility on any row checkbox change
@@ -21045,7 +21660,6 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           for (var k = 0; k < targets.length; k++) {
             targets[k].checked = shouldCheck;
           }
-          _bulkOp = false;
           checkbox.indeterminate = false;
 
           var vEl = headerRow.closest('[id^="view_"]');
@@ -21055,13 +21669,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
             if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
           }
 
-          // Notify KTL that selection changed — KTL tracks selected rows
-          // internally via change handlers that our stopImmediatePropagation
-          // blocked.  Fire change on each target so KTL's bulk-edit column
-          // targeting works.
-          for (var n = 0; n < targets.length; n++) {
-            targets[n].dispatchEvent(new Event('change', { bubbles: true }));
-          }
+          // Notify KTL — chunked above threshold so large groups don't
+          // lock the page. `_bulkOp` is cleared when the last chunk fires.
+          dispatchChangeEvents(targets);
         });
 
         var parentTable = headerRow.closest('table');
@@ -21835,7 +22445,7 @@ $(document).on('knack-view-render.view_3313', function () {
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341','view_3550'];
+  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586'];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';
@@ -23712,7 +24322,7 @@ $(".kn-navigation-bar").hide();
   // UTILS
   // ======================
   function log(...args) {
-    if (CONFIG.DEBUG && window.console) console.log("[scwUnified2246]", ...args);
+    if (CONFIG.DEBUG && window.console) SCW.debug("[scwUnified2246]", ...args);
   }
 
   function uniq(arr) {
@@ -24345,14 +24955,14 @@ $(".kn-navigation-bar").hide();
           pending--;
           if (pending <= 0) hideRefreshing();
         });
-        console.log('[scw-refresh] Fetching source grid ' + viewId);
+        SCW.debug('[scw-refresh] Fetching source grid ' + viewId);
         view.model.fetch();
       }
     });
 
     if (!fetched) {
       // Fallback: just recalculate from current DOM
-      console.log('[scw-refresh] No source grids available, recalculating from DOM');
+      SCW.debug('[scw-refresh] No source grids available, recalculating from DOM');
       if (window.SCW && typeof SCW.restructureTotals === 'function') {
         SCW.restructureTotals();
       }
@@ -24376,7 +24986,7 @@ $(".kn-navigation-bar").hide();
       if (form.closest('#' + FORM_VIEWS[i])) { isTargetForm = true; break; }
     }
     if (isTargetForm) {
-      console.log('[scw-refresh] Submit button clicked — showing overlay');
+      SCW.debug('[scw-refresh] Submit button clicked — showing overlay');
       showRefreshing();
     }
   }, true); // capture phase — fires before Knack's handler
@@ -24386,7 +24996,7 @@ $(".kn-navigation-bar").hide();
   FORM_VIEWS.forEach(function (formViewId) {
     $(document).off('knack-form-submit.' + formViewId + NS)
                .on('knack-form-submit.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Form submit detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Form submit detected on ' + formViewId);
       refreshSourceGrids();
     });
   });
@@ -24395,12 +25005,12 @@ $(".kn-navigation-bar").hide();
   FORM_VIEWS.forEach(function (formViewId) {
     $(document).off('knack-record-create.' + formViewId + NS)
                .on('knack-record-create.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record create detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Record create detected on ' + formViewId);
       refreshSourceGrids();
     });
     $(document).off('knack-record-update.' + formViewId + NS)
                .on('knack-record-update.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record update detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Record update detected on ' + formViewId);
       refreshSourceGrids();
     });
   });
@@ -24430,7 +25040,7 @@ $(".kn-navigation-bar").hide();
     views.forEach(function (viewId) {
       $(document).off('knack-cell-update.' + viewId + NS)
                  .on('knack-cell-update.' + viewId + NS, function () {
-        console.log('[scw-refresh] Cell update detected on ' + viewId);
+        SCW.debug('[scw-refresh] Cell update detected on ' + viewId);
         recalcDebounced();
       });
     });
@@ -24440,7 +25050,7 @@ $(".kn-navigation-bar").hide();
   $(document).off('scw-record-saved' + NS)
              .on('scw-record-saved' + NS, function () {
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
-      console.log('[scw-refresh] Direct edit save detected');
+      SCW.debug('[scw-refresh] Direct edit save detected');
       setTimeout(recalcTotals, 1000);
       setTimeout(recalcTotals, 3000);
     }
@@ -24534,7 +25144,7 @@ $(".kn-navigation-bar").hide();
 
   $(document).off('knack-form-submit.' + DTO_FORM + DTO_NS)
              .on('knack-form-submit.' + DTO_FORM + DTO_NS, function () {
-    console.log('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
+    SCW.debug('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
     showDtoToast();
 
     // Capture initial record counts so we can detect when new records arrive
@@ -24561,7 +25171,7 @@ $(".kn-navigation-bar").hide();
       });
 
       if (gained) {
-        console.log('[scw-refresh] New records detected \u2014 stopping poll');
+        SCW.debug('[scw-refresh] New records detected \u2014 stopping poll');
         // Keep polling a few more times to catch stragglers
         setTimeout(function () {
           DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
@@ -24576,7 +25186,7 @@ $(".kn-navigation-bar").hide();
       }
 
       if (elapsed >= DTO_TIMEOUT_MS) {
-        console.log('[scw-refresh] DTO poll timeout');
+        SCW.debug('[scw-refresh] DTO poll timeout');
         clearInterval(_dtoPollTimer);
         _dtoPollTimer = null;
         hideDtoToast();
@@ -25571,7 +26181,7 @@ $(".kn-navigation-bar").hide();
 
   function waitForFieldAndSelect(srId, attempts) {
     if (attempts <= 0) {
-      console.log('[SCW] gave up after all attempts. srId=' + srId);
+      SCW.debug('[SCW] gave up after all attempts. srId=' + srId);
       return;
     }
     var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
@@ -25590,7 +26200,7 @@ $(".kn-navigation-bar").hide();
     var $chosenContainer = $('#' + chznId);
 
     if (!$chosenContainer.length) {
-      console.log('[SCW] Chosen container #' + chznId + ' not found');
+      SCW.debug('[SCW] Chosen container #' + chznId + ' not found');
       return;
     }
 
@@ -25601,7 +26211,7 @@ $(".kn-navigation-bar").hide();
     setTimeout(function () {
       var resultId = chznId + '_o_' + optionIndex;
       var $resultItem = $('#' + resultId);
-      console.log('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
+      SCW.debug('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
       if ($resultItem.length) {
         $resultItem.trigger('mouseup');
       }
@@ -25621,7 +26231,7 @@ $(".kn-navigation-bar").hide();
       var currentHash = window.location.hash || '';
       var srMatch = currentHash.match(/site-survey-request-details\/([a-f0-9]{24})/);
       var srId = srMatch ? srMatch[1] : '';
-      console.log('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
+      SCW.debug('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
 
       window.location.hash = href.replace(/^#/, '');
 
@@ -27190,7 +27800,7 @@ $(".kn-navigation-bar").hide();
       }
     }
 
-    console.log('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
+    SCW.debug('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
     return ids;
   }
 
@@ -27209,7 +27819,7 @@ $(".kn-navigation-bar").hide();
       accessoryRecordIds: accessoryIds
     };
 
-    console.log('[SCW][delete-intercept] Sending to webhook:', payload);
+    SCW.debug('[SCW][delete-intercept] Sending to webhook:', payload);
 
     fetch(url, {
       method: 'POST',
@@ -27244,7 +27854,7 @@ $(".kn-navigation-bar").hide();
     var tr = link.closest('tr[id]');
     if (tr && /^[a-f0-9]{24}$/.test(tr.id)) {
       _lastClickedRecordId = tr.id;
-      console.log('[SCW][delete-intercept] Tracked click on record ' + tr.id);
+      SCW.debug('[SCW][delete-intercept] Tracked click on record ' + tr.id);
     }
   }, true); // capture phase
 
@@ -27301,13 +27911,13 @@ $(".kn-navigation-bar").hide();
     if (BULK_DELETE_RE.test(msg)) {
       // KTL bulk delete
       deletedRecordIds = getBulkSelectedRecordIds();
-      console.log('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
+      SCW.debug('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
 
     } else if (SINGLE_DELETE_RE.test(msg)) {
       // Single record delete
       if (_lastClickedRecordId) {
         deletedRecordIds = [_lastClickedRecordId];
-        console.log('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
+        SCW.debug('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
       } else {
         console.warn('[SCW][delete-intercept] Single delete confirmed but no record ID captured');
       }
@@ -27320,7 +27930,7 @@ $(".kn-navigation-bar").hide();
     for (var i = 0; i < deletedRecordIds.length; i++) {
       var accessories = getConnectedIdsFromDOM(deletedRecordIds[i]);
       if (accessories.length) {
-        console.log('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
+        SCW.debug('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
         allAccessoryIds = allAccessoryIds.concat(accessories);
       }
     }
@@ -27328,13 +27938,13 @@ $(".kn-navigation-bar").hide();
     if (allAccessoryIds.length) {
       fireWebhook(deletedRecordIds, allAccessoryIds);
     } else {
-      console.log('[SCW][delete-intercept] No connected accessories found for deleted records');
+      SCW.debug('[SCW][delete-intercept] No connected accessories found for deleted records');
     }
 
     return result;
   };
 
-  console.log('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
+  SCW.debug('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
 })();
 /*** CONNECTED RECORDS EDITOR ***/
 (function () {
@@ -27872,7 +28482,7 @@ $(".kn-navigation-bar").hide();
     var cfg = findCfgForItem(itemEl);
     var parentField = cfg ? cfg.parentConnectionField : null;
 
-    console.log('[SCW][CR-DELETE] deleteRecord called', {
+    SCW.debug('[SCW][CR-DELETE] deleteRecord called', {
       recordId: recordId,
       recordName: recordName,
       parentConnectionField: parentField
@@ -27885,11 +28495,11 @@ $(".kn-navigation-bar").hide();
     var disconnectPromise;
     var viewId = cfg ? cfg.parentViewId : null;
     if (parentField && viewId) {
-      console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
+      SCW.debug('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
                   'on', recordId, 'via', viewId);
       disconnectPromise = clearFieldOnRecord(viewId, recordId, parentField)
         .then(function () {
-          console.log('[SCW][CR-DELETE] Disconnect succeeded');
+          SCW.debug('[SCW][CR-DELETE] Disconnect succeeded');
         })
         .catch(function (err) {
           console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
@@ -27900,7 +28510,7 @@ $(".kn-navigation-bar").hide();
 
     // Step 2: After disconnect, send the delete webhook
     disconnectPromise.then(function () {
-      console.log('[SCW][CR-DELETE] Sending webhook POST…');
+      SCW.debug('[SCW][CR-DELETE] Sending webhook POST…');
       return fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -27908,12 +28518,12 @@ $(".kn-navigation-bar").hide();
       });
     })
     .then(function (resp) {
-      console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
+      SCW.debug('[SCW][CR-DELETE] Webhook response status:', resp.status);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return {}; });
     })
     .then(function (body) {
-      console.log('[SCW][CR-DELETE] Webhook response body:', body);
+      SCW.debug('[SCW][CR-DELETE] Webhook response body:', body);
 
       // Remove the item from the DOM
       itemEl.remove();
@@ -27938,12 +28548,12 @@ $(".kn-navigation-bar").hide();
    * Handle trash icon click: confirm, then delete via webhook.
    */
   function onDeleteClick(recordId, recordName, itemEl) {
-    console.log('[SCW][CR-DELETE] onDeleteClick fired', {
+    SCW.debug('[SCW][CR-DELETE] onDeleteClick fired', {
       recordId: recordId,
       recordName: recordName
     });
     confirmDelete(recordName).then(function (confirmed) {
-      console.log('[SCW][CR-DELETE] Confirmation result:', confirmed);
+      SCW.debug('[SCW][CR-DELETE] Confirmation result:', confirmed);
       if (!confirmed) return;
       deleteRecord(recordId, recordName, itemEl);
     });
@@ -28052,7 +28662,7 @@ $(".kn-navigation-bar").hide();
     var links = readConnectionLinks(tr, fieldKey);
     var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug, recordId);
 
-    console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
+    SCW.debug('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
       return { text: l.text, recordId: l.recordId, href: l.href };
     }));
 
@@ -31413,7 +32023,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
     }
     if (!card) {
-      console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
+      SCW.debug('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
       return;
     }
 
@@ -31429,7 +32039,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         readOnlyKeys.push(fk + (hasDisplay ? '=\u2713' : '=\u2717') + (hasRaw ? '/raw\u2713' : '/raw\u2717'));
       }
     });
-    console.log('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
+    SCW.debug('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
 
     // Helper: extract clean display text from a response value.
     // Prefers the formatted display string (resp[fk]) for readOnly fields
@@ -31530,7 +32140,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     });
 
-    console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
+    SCW.debug('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
 
     // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
     applyHideWhenFieldEquals(card, cfg);
@@ -31721,14 +32331,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!cfg || !fieldKey(cfg, 'label')) return;
     if (typeof Knack === 'undefined') return;
 
-    console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
+    SCW.debug('[scw-ws-header] Fetching label via view API for ' + recordId);
 
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'GET',
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
-        console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
+        SCW.debug('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
         if (txt) {
           _labelCache[recordId] = txt;
           applyLabelText(viewId, recordId, txt);
@@ -31757,7 +32367,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
       if (row && getRecordId(row) === recordId) {
         allLabels[i].textContent = txt;
-        console.log('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
+        SCW.debug('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
         return;
       }
     }
@@ -31787,7 +32397,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var current = (allLabels[i].textContent || '').trim();
         if (!current || current === '\u00a0') {
           allLabels[i].textContent = _labelCache[rid];
-          console.log('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
+          SCW.debug('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
         }
       }
     }
@@ -34597,7 +35207,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
     if (match) {
       _sowRecordId = match[1];
-      if (CFG.debug) console.log('[SalesCR] SOW record ID:', _sowRecordId);
+      if (CFG.debug) SCW.debug('[SalesCR] SOW record ID:', _sowRecordId);
     }
   }
 
@@ -34643,7 +35253,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function forceSaveDraft() {
     if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
     var count = Object.keys(_pending).length;
-    if (CFG.debug) console.log('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
+    if (CFG.debug) SCW.debug('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
     writeDraftField(count ? _pending : null);
   }
 
@@ -34667,7 +35277,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (merged) {
         ssave();
         if (ns.refresh) ns.refresh();
-        if (CFG.debug) console.log('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
+        if (CFG.debug) SCW.debug('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
       }
     }).fail(function () {
       if (CFG.debug) console.warn('[SalesCR] Knack rehydration failed — using sessionStorage');
@@ -35199,7 +35809,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       baseline[id] = snap;
     }
 
-    if (CFG.debug) console.log('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
+    if (CFG.debug) SCW.debug('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -35210,7 +35820,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!record || !record.id) return;
     var id = record.id;
 
-    if (CFG.debug) console.log('[SalesCR] Cell update on', id);
+    if (CFG.debug) SCW.debug('[SalesCR] Cell update on', id);
 
     var baseline = S.baseline();
     var pending  = S.pending();
@@ -35238,7 +35848,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var lhRaw2       = record[CFG.laborHoursField + '_raw'] != null ? record[CFG.laborHoursField + '_raw'] : record[CFG.laborHoursField];
       base._laborHours = typeof lhRaw2 === 'number' ? lhRaw2 : parseFloat(String(lhRaw2 || '0').replace(/[^0-9.\-]/g, '')) || 0;
       baseline[id] = base;
-      if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
+      if (CFG.debug) SCW.debug('[SalesCR] Late baseline for', id, '— first edit not captured');
       return;
     }
 
@@ -35256,7 +35866,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
       if (CFG.debug && fk === 'field_1953') {
-        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+        SCW.debug('[SalesCR] field_1953 diff:', JSON.stringify({
           raw_exists: record[fk + '_raw'] != null,
           raw_val: record[fk + '_raw'],
           plain_val: record[fk],
@@ -35275,7 +35885,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     if (!hasChanges) {
-      if (CFG.debug) console.log('[SalesCR] No tracked-field changes for', id);
+      if (CFG.debug) SCW.debug('[SalesCR] No tracked-field changes for', id);
       return;
     }
 
@@ -35293,7 +35903,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           existing.current[ik + '_ids'] = base[ik + '_ids'];
         }
       }
-      if (CFG.debug) console.log('[SalesCR] Updated existing CR for', id, ':', changes);
+      if (CFG.debug) SCW.debug('[SalesCR] Updated existing CR for', id, ':', changes);
     } else {
       // New CR — copy values AND IDs for connection fields
       var current = {};
@@ -35319,7 +35929,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         requested:    requested,
         changeNotes:  '',
       };
-      if (CFG.debug) console.log('[SalesCR] Created new CR for', id, ':', changes);
+      if (CFG.debug) SCW.debug('[SalesCR] Created new CR for', id, ':', changes);
     }
 
     ns.persist();
@@ -35349,7 +35959,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (/^yes$/i.test(val)) { active = true; break; }
     }
     S.setAddMode(active);
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
+    if (CFG.debug) SCW.debug('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
@@ -35400,7 +36010,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     if (added) {
       ns.persist();
-      if (CFG.debug) console.log('[SalesCR] Auto-detected', added, 'add records');
+      if (CFG.debug) SCW.debug('[SalesCR] Auto-detected', added, 'add records');
     }
   }
 
@@ -36785,7 +37395,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       });
     });
 
-    if (CFG.debug && locked) console.log('[SalesCR] Locked fields on', locked, 'new-item rows');
+    if (CFG.debug && locked) SCW.debug('[SalesCR] Locked fields on', locked, 'new-item rows');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -36831,7 +37441,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     payload.plainText = ns.buildPlainText();
 
     if (CFG.debug) {
-      console.log('[SalesCR] Submit:', payload);
+      SCW.debug('[SalesCR] Submit:', payload);
     }
 
     SCW.knackAjax({
@@ -36839,7 +37449,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
+        if (CFG.debug) SCW.debug('[SalesCR] Submit success:', resp);
         clearPending();
         autoRevertValidation(count);
         ns.showToast('Change request submitted', 'success');
@@ -36847,7 +37457,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       error: function (xhr) {
         if (xhr && xhr.status === 0) {
           autoRevertValidation(count);
-          if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
+          if (CFG.debug) SCW.debug('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
           clearPending();
           ns.showToast('Change request submitted', 'success');
         } else {
@@ -36963,7 +37573,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
 
     S.setRevisionData(data);
-    if (CFG.debug) console.log('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
+    if (CFG.debug) SCW.debug('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -37159,7 +37769,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
-        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
+        if (CFG.debug) SCW.debug('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
         // Delay to let Knack model absorb the response (connection _raw fields)
         setTimeout(function () {
           var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
@@ -37170,7 +37780,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
             }
           }
-          if (CFG.debug) console.log('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
+          if (CFG.debug) SCW.debug('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
             'field_1953:', fresh ? fresh.field_1953 : resp.field_1953);
           ns.onCellUpdate(null, null, fresh || resp);
         }, 500);
@@ -37241,7 +37851,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   ns.getPending   = function () { return S.pending(); };
   ns.getBaseline  = function () { return S.baseline(); };
 
-  if (CFG.debug) console.log('[SalesCR] Module initialized');
+  if (CFG.debug) SCW.debug('[SalesCR] Module initialized');
 
 })();
 /*** BID REVISION INJECTION — view_3823 → view_3505 ***/
@@ -37768,9 +38378,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Build claimed set from pending change requests
     var pendingClaimed = buildPendingClaimedSet(selfId);
     var pClaimedKeys = Object.keys(pendingClaimed);
-    if (pClaimedKeys.length) console.log(TAG, 'pendingClaimed:', pClaimedKeys);
+    if (pClaimedKeys.length) SCW.debug(TAG, 'pendingClaimed:', pClaimedKeys);
 
-    console.log(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
+    SCW.debug(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -37807,11 +38417,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
         }
         if (isAdd && connToPopulated) {
-          console.log(TAG, 'Skipping (field_2381 populated):', label, rec.id);
+          SCW.debug(TAG, 'Skipping (field_2381 populated):', label, rec.id);
         } else if (pendingClaimed[rec.id]) {
-          console.log(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
+          SCW.debug(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
         } else {
-          console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
+          SCW.debug(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
           if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
         }
       }
@@ -37847,7 +38457,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // The worksheet puts field cells on tr[data-scw-worksheet] rows; the record ID is
     // on the next sibling tr.scw-ws-row.
     if (!foundCamReaderFromModel) {
-      console.log(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
+      SCW.debug(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
       var wsView = CFG.targetViews[0];
       var $wsTbl = $('#' + wsView + ' table.kn-table');
       if ($wsTbl.length) {
@@ -37866,17 +38476,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                 if (ctCell) {
                   var ctSpan = ctCell.querySelector('span[data-kn="connection-value"]');
                   if (ctSpan) {
-                    console.log(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
+                    SCW.debug(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
                     return; // jQuery .each() continue
                   }
                 }
               }
               if (pendingClaimed[rowId]) {
-                console.log(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
+                SCW.debug(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
               } else if (!devMap[rowId]) {
                 var nameCell = dataTr.querySelector('td.field_2365') || dataTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
-                console.log(TAG, 'Strategy 3 hit:', rowLabel, rowId);
+                SCW.debug(TAG, 'Strategy 3 hit:', rowLabel, rowId);
                 devMap[rowId] = { id: rowId, identifier: rowLabel };
               }
             }
@@ -37888,7 +38498,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Strategy 4+5: revision records (view_3823) — field_2698 direct, then JSON payload
     var revModel = findModel(CFG.revisionView);
     var revRecords = extractRecords(revModel);
-    console.log(TAG, 'revision records:', revRecords.length);
+    SCW.debug(TAG, 'revision records:', revRecords.length);
     for (var rri = 0; rri < revRecords.length; rri++) {
       var rr = revRecords[rri];
       var revBucketId = '';
@@ -37926,9 +38536,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           } catch (e) { /* skip */ }
         }
         if (pendingClaimed[rr.id]) {
-          console.log(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
+          SCW.debug(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
         } else {
-          console.log(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
+          SCW.debug(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
           if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
         }
       }
@@ -37947,9 +38557,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             var pLabel = pItem.displayLabel || pItem.productName || pItem.rowId;
             var pId = pItem.sowItemId || pItem.rowId;
             if (pId && pendingClaimed[pId]) {
-              console.log(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
+              SCW.debug(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
             } else if (pId && !devMap[pId]) {
-              console.log(TAG, 'Strategy 6 (pending):', pLabel, pId);
+              SCW.debug(TAG, 'Strategy 6 (pending):', pLabel, pId);
               devMap[pId] = { id: pId, identifier: pLabel };
             }
           }
@@ -37978,7 +38588,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var result = { bidMdfIdf: vals(mdfMap), bidConnDevice: vals(devMap), bidConnTo: vals(toMap) };
-    console.log(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
+    SCW.debug(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
       'connTo:', result.bidConnTo.length, 'mdfIdf:', result.bidMdfIdf.length, result);
     return result;
   }
@@ -38161,7 +38771,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function buildRevisionMap() {
     // Always try DOM first — most reliable for rich-text / JSON fields
     var domRecords = scrapeFromDom();
-    console.log('[BidRevInject] DOM-scraped records:', domRecords.length);
+    SCW.debug('[BidRevInject] DOM-scraped records:', domRecords.length);
 
     // Supplement with model data for records not found in the DOM
     var seen = {};
@@ -38171,7 +38781,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var model = findModel(CFG.revisionView);
     var modelRecords = extractRecords(model);
-    console.log('[BidRevInject] Model records:', modelRecords.length);
+    SCW.debug('[BidRevInject] Model records:', modelRecords.length);
 
     var records = domRecords.slice();
     for (var mi = 0; mi < modelRecords.length; mi++) {
@@ -38181,7 +38791,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         seen[mr.id] = true;
       }
     }
-    console.log('[BidRevInject] Total records (merged):', records.length);
+    SCW.debug('[BidRevInject] Total records (merged):', records.length);
 
     var map = {};
     var orphaned = [];
@@ -38190,7 +38800,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var siId = getSurveyItemId(rec);
       var entry = buildRevEntry(rec);
 
-      console.log('[BidRevInject] Record', rec.id,
+      SCW.debug('[BidRevInject] Record', rec.id,
                   '| surveyItemId:', siId,
                   '| hasHtml:', !!entry.changeHtml,
                   '| hasJson:', !!entry.changeJson,
@@ -38207,7 +38817,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!map[siId]) map[siId] = [];
       map[siId].push(entry);
     }
-    console.log('[BidRevInject] Revision map:', Object.keys(map).length,
+    SCW.debug('[BidRevInject] Revision map:', Object.keys(map).length,
                 'matched,', orphaned.length, 'orphaned');
     return { map: map, orphaned: orphaned };
   }
@@ -38218,12 +38828,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    */
   function scrapeFromDom() {
     var viewEl = document.getElementById(CFG.revisionView);
-    if (!viewEl) { console.log('[BidRevInject] View element not found for', CFG.revisionView); return []; }
+    if (!viewEl) { SCW.debug('[BidRevInject] View element not found for', CFG.revisionView); return []; }
     var table = viewEl.querySelector('table.kn-table-table') || viewEl.querySelector('table.kn-table');
-    if (!table) { console.log('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
+    if (!table) { SCW.debug('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
     var rows = table.querySelectorAll('tbody > tr');
     if (!rows.length) rows = table.querySelectorAll('tr');
-    console.log('[BidRevInject] DOM table rows found:', rows.length);
+    SCW.debug('[BidRevInject] DOM table rows found:', rows.length);
     var records = [];
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
@@ -38403,7 +39013,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         fieldsLookup = data.fields;
       }
     }
-    console.log('[BidRevInject] Edit modal data keys:', Object.keys(data),
+    SCW.debug('[BidRevInject] Edit modal data keys:', Object.keys(data),
       '| requested keys:', Object.keys(requested),
       '| current keys:', Object.keys(current),
       '| fields type:', Array.isArray(data.fields) ? 'array(' + data.fields.length + ')' : typeof data.fields,
@@ -38469,7 +39079,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (resolved.length) {
             curIds = resolved;
             prefillIds[fd.key] = resolved;
-            console.log('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
+            SCW.debug('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
           }
         }
         // Ensure already-selected IDs appear in the options (even if buildConnOptions missed them)
@@ -38673,14 +39283,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
 
-      console.log('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
+      SCW.debug('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
 
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(CFG.revisionView, revisionId),
         type: 'PUT',
         data: JSON.stringify(putBody),
         success: function () {
-          console.log('[BidRevInject] Saved JSON + HTML for', revisionId);
+          SCW.debug('[BidRevInject] Saved JSON + HTML for', revisionId);
           // Update the in-memory reference so the next Edit click sees latest data
           if (jsonRef) jsonRef.data = updated;
           // Re-inject the updated HTML card into the DOM
@@ -38866,7 +39476,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
+    SCW.debug('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
                    ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
@@ -38890,7 +39500,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       url: SCW.knackRecordUrl(CFG.revisionView, revisionId),
       type: 'PUT',
       data: JSON.stringify(directStatus),
-      success: function () { console.log('[BidRevInject] Status updated:', revisionId); },
+      success: function () { SCW.debug('[BidRevInject] Status updated:', revisionId); },
       error: function () { console.warn('[BidRevInject] Status update failed:', revisionId); },
     });
 
@@ -38900,7 +39510,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       data: JSON.stringify(payload),
       timeout: 90000,
       success: function (resp) {
-        console.log('[BidRevInject]', action, 'response for', revisionId, resp);
+        SCW.debug('[BidRevInject]', action, 'response for', revisionId, resp);
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
         if (extra.outcome === 'rejected') {
@@ -38954,7 +39564,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (fired) return;
               fired = true;
               $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
-              console.log('[BidRevInject] view_3823 re-rendered, refreshing targets');
+              SCW.debug('[BidRevInject] view_3823 re-rendered, refreshing targets');
               // Small delay to let DOM settle
               setTimeout(refreshTargets, 300);
             });
@@ -38964,7 +39574,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (!fired) {
                 fired = true;
                 $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
-                console.log('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
+                SCW.debug('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
                 refreshTargets();
               }
             }, 5000);
@@ -39418,7 +40028,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    console.log('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
+    SCW.debug('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
                 (orphans.length - ungrouped.length) + ' grouped, ' +
                 ungrouped.length + ' ungrouped)');
   }
@@ -39453,7 +40063,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
-    if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+    if (!viewEl) { SCW.debug('[BidRevInject] View element not found:', viewId); return; }
 
     // Always clean up previous injections before rebuilding
     cleanupInjections(viewEl);
@@ -39463,7 +40073,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var orphaned = result.orphaned;
     var siIds = Object.keys(revMap);
     if (!siIds.length && !orphaned.length) {
-      console.log('[BidRevInject] No revisions to inject');
+      SCW.debug('[BidRevInject] No revisions to inject');
       return;
     }
 
@@ -39472,7 +40082,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!wsRows.length && siIds.length) {
       _injectRetries++;
       if (_injectRetries < 10) {
-        console.log('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
+        SCW.debug('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
         setTimeout(function () { inject(viewId); }, 500);
       } else {
         console.warn('[BidRevInject] Gave up waiting for scw-ws-row after', _injectRetries, 'attempts');
@@ -39545,7 +40155,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       injected++;
     }
-    console.log('[BidRevInject] Injected revisions onto', injected, 'cards,',
+    SCW.debug('[BidRevInject] Injected revisions onto', injected, 'cards,',
                 orphaned.length, 'orphaned adds');
 
     // Render orphaned add requests (includes any unmatched map entries)
@@ -39900,7 +40510,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
+    SCW.debug('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
 
     // 1. Update field_2645 on each revision line item directly
     var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
@@ -40002,7 +40612,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── EVENT BINDING ───────────────────────────────────────
 
-  console.log('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
+  SCW.debug('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
   injectStyles();
 
   // We need both view_3823 and view_3505 to have rendered.
@@ -40016,7 +40626,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function onViewReady(viewId) {
     _ready[viewId] = true;
-    console.log('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
+    SCW.debug('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
     // Only inject once the revision view AND at least one target have rendered
     if (!_ready[CFG.revisionView]) return;
     for (var i = 0; i < CFG.targetViews.length; i++) {
@@ -40077,7 +40687,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var targetView = document.getElementById(tv);
         if (!targetView) continue;
         // Both views exist in the DOM — mark ready and inject
-        console.log('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
+        SCW.debug('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
         _ready[CFG.revisionView] = true;
         _ready[tv] = true;
         clearInterval(pollId);
@@ -40340,13 +40950,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *
  * Priority (first match wins)
  *   1. field_2728 > 0 AND field_2706 = No → "Request Alternative Bid
- *      from Subcontractor" (amber) — there are pending CRs to address.
- *   2. field_2706 = No                    → "Mark Ready for Survey"
- *      (blue) — SOW needs Ops sign-off before sales can request survey.
- *   3. field_2725 = No                    → "Publish & Submit Completed
- *      Proposal" (green) — survey + bids are back, proposal ready to go.
- *   4. field_2725 = Yes (terminal)        → "Bid Published" (green check,
- *      no link).
+ *      from Subcontractor" — there are pending CRs to address.
+ *   2. field_2723 = No AND field_2728 = 0 → "Mark Ready for Survey"
+ *      — Ops hasn't marked the SOW ready yet.
+ *   3. field_2723 = Yes AND field_2706 = No AND field_2728 = 0 →
+ *      "Ready for Survey" (info, non-clickable) — Ops has marked ready,
+ *      Sales hasn't requested the survey yet.
+ *   4. field_2725 = No                    → "Publish & Submit Completed
+ *      Proposal" — survey + bids are back, proposal ready to go.
+ *   5. field_2725 = Yes (terminal)        → "Bid Published" (grey check,
+ *      non-clickable).
+ *
+ * All active (clickable) pills share one teal background — the pill is
+ * a status-and-navigation affordance, not a meaningful colour-coded
+ * action. Non-clickable states (info, terminal) use muted text/greys.
  *
  * Reads these fields from the row DOM, so they must be added as
  * columns on view_3325 (hidden by this feature's CSS):
@@ -40365,7 +40982,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ── Config ──────────────────────────────────────────────
   var VIEW_ID        = 'view_3325';
   var HOST_FIELD     = 'field_2723';   // existing column used as the Ops Review host cell
-  var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested
+  var READY_FIELD    = 'field_2723';   // FLAG_ready for survey (flipped by Ops Mark Ready)
+  var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested (flipped by Sales)
   var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
   var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
   var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
@@ -40376,6 +40994,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var CELL_CLASS   = 'scw-ops-review-cell';
   var PROCESSED    = 'data-scw-ops-review';
 
+  // ── Pending-step flags ──────────────────────────────────
+  // ops-stepper.js (on the Ops proposal tab) writes
+  //   scw-ops-stepper-pending:<sowId> = {"stepId":"...","timestamp":...}
+  // to localStorage when Make responds with {status:"accepted"}. The
+  // pill for that SOW renders as grayed "Processing …" until the
+  // underlying fields flip (checked by polling view_3325.model.fetch)
+  // — at which point the resolved step will differ from pending.stepId
+  // and we clear the flag.
+  var PENDING_KEY_PREFIX = 'scw-ops-stepper-pending:';
+  var PENDING_TIMEOUT_MS = 90 * 1000;   // safety net — clear stuck flags
+  var POLL_INTERVAL_MS   = 5 * 1000;    // cadence for model.fetch while pending
+
+  // ── Published-proposal lookup (view_3885) ───────────────
+  // Each published proposal record connects back to its SOW via
+  // field_2666. Reading view_3885's Knack model + indexing by the
+  // connection field lets us show the proposal name / exp date / PDF
+  // link per SOW row (mirroring the sales build totals panel, which
+  // reads the same structure from view_3814).
+  var PROPOSAL_VIEW   = 'view_3885';
+  var PROPOSAL_NAME   = 'field_2665';  // proposal display name
+  var PROPOSAL_SOW    = 'field_2666';  // connection → SOW
+  var PROPOSAL_EXP    = 'field_2659';  // expiration date
+  var PROPOSAL_PDF    = 'field_2681';  // PDF file
+  var PROPOSAL_STATUS = 'field_2658';  // "Published" / "Draft" / etc.
+
   // ── Step definitions (priority order) ───────────────────
   // First matching step wins. Mirror these with the Ops stepper
   // (ops-stepper.js) so grid and page agree on "next action".
@@ -40383,19 +41026,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     {
       id:       'request-alt-bid',
       label:    'Request Alternative Bid',
-      tone:     'amber',
       showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
     },
     {
+      // Ops still needs to mark the SOW ready. Keyed on field_2723
+      // (the flag the Mark Ready webhook actually flips), not the
+      // downstream field_2706 which only flips when Sales requests
+      // the survey.
       id:       'mark-ready',
       label:    'Mark Ready for Survey',
-      tone:     'primary',
-      showWhen: function (f) { return f.survey !== 'yes'; }
+      showWhen: function (f) {
+        return f.ready !== 'yes' && !(toNum(f.crCount) > 0);
+      }
+    },
+    {
+      // Ops has marked ready but Sales hasn't requested the survey
+      // yet — waiting state. Non-clickable status message.
+      id:       'ready-for-survey',
+      label:    'Ready for Survey!',
+      info:     true,
+      showWhen: function (f) {
+        return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
+      }
     },
     {
       id:       'publish-proposal',
       label:    'Publish & Submit Proposal',
-      tone:     'success',
       showWhen: function (f) { return f.validated !== 'yes'; }
     }
   ];
@@ -40419,10 +41075,47 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       /* Host cell */
       '#' + VIEW_ID + ' td.' + CELL_CLASS + ',' +
       '#' + VIEW_ID + ' th.' + CELL_CLASS + ' {' +
-      '  white-space: nowrap;' +
-      '  min-width: 250px;' +
+      '  white-space: normal;' +
+      '  min-width: 260px;' +
       '  vertical-align: middle;' +
       '  text-align: center;' +
+      '}' +
+
+      /* Per-row published-proposal info block — sits below the pill.
+         Styled compact + muted so the pill stays the primary element. */
+      '.scw-ops-proposal-info {' +
+      '  margin-top: 8px;' +
+      '  padding-top: 6px;' +
+      '  border-top: 1px solid #e5e7eb;' +
+      '  font: 400 11px/1.4 system-ui, sans-serif;' +
+      '  color: #64748b;' +
+      '  text-align: center;' +
+      '}' +
+      '.scw-ops-proposal-name {' +
+      '  font-weight: 500;' +
+      '  margin-bottom: 2px;' +
+      '}' +
+      '.scw-ops-proposal-name a,' +
+      '.scw-ops-proposal-name a:visited {' +
+      '  color: #2563eb; text-decoration: none;' +
+      '}' +
+      '.scw-ops-proposal-name a:hover { text-decoration: underline; }' +
+      '.scw-ops-proposal-exp {' +
+      '  font-size: 10.5px;' +
+      '  color: #64748b;' +
+      '}' +
+      '.scw-ops-proposal-pdf,' +
+      '.scw-ops-proposal-pdf:visited {' +
+      '  display: inline-flex; align-items: center;' +
+      '  margin-top: 3px; color: #2563eb;' +
+      '  text-decoration: none; font-size: 10.5px;' +
+      '}' +
+      '.scw-ops-proposal-pdf:hover { text-decoration: underline; }' +
+      /* Empty-state message when no matching published proposal
+         exists for a SOW. Same layout as the info block, but muted
+         and italicised so it reads as an absence rather than data. */
+      '.scw-ops-proposal-empty {' +
+      '  font-style: italic; color: #94a3b8;' +
       '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
@@ -40473,6 +41166,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '}' +
       '.scw-ops-pill.is-terminal:hover { filter: none; }' +
 
+      /* Pending — Make accepted the webhook but hasn't finished.
+         Grey pill with an inline spinner, non-interactive. Polling
+         clears this state once the SOW's field values catch up. */
+      '.scw-ops-pill.is-pending {' +
+      '  background: #e2e8f0; color: #475569 !important; cursor: wait;' +
+      '}' +
+      '.scw-ops-pill.is-pending:hover { filter: none; }' +
+      '.scw-ops-pending-spinner {' +
+      '  display: inline-block; width: 12px; height: 12px;' +
+      '  border: 2px solid rgba(71,85,105,0.25);' +
+      '  border-top-color: #475569; border-radius: 50%;' +
+      '  animation: scw-ops-pending-spin 0.8s linear infinite;' +
+      '}' +
+      '@keyframes scw-ops-pending-spin { to { transform: rotate(360deg); } }' +
+
+      /* Info status message (e.g. "Ready for Survey") — plain muted
+         italic text, no background, no border. Reads as status, not
+         as a button. */
+      '.scw-ops-status-msg {' +
+      '  display: inline-block; font: italic 500 12px/1.2 system-ui, sans-serif;' +
+      '  color: #64748b; cursor: default;' +
+      '}' +
+
       /* Inline info glyph for the auto-revert note trail. */
       '.scw-ops-info {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
@@ -40505,13 +41221,56 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Helpers ─────────────────────────────────────────────
+  // Look up the Knack record attrs for a table row by its 24-hex id.
+  // Preferred over DOM scraping — the model carries the raw field
+  // value regardless of column display format (text vs. checkbox icon
+  // vs. hidden column). Returns null if the model isn't ready.
+  function getRowAttrs(tr) {
+    try {
+      var id = tr && tr.id;
+      if (!id || !/^[a-f0-9]{24}$/i.test(id)) return null;
+      var v = Knack && Knack.views && Knack.views[VIEW_ID];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return null;
+      for (var i = 0; i < models.length; i++) {
+        if (models[i].id === id) return models[i].attributes;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function readBoolFromModel(a, fieldKey) {
+    if (!a) return null;
+    var raw = a[fieldKey + '_raw'];
+    if (typeof raw === 'boolean') return raw ? 'yes' : 'no';
+    if (typeof raw === 'string') {
+      var rs = raw.trim().toLowerCase();
+      if (rs === 'yes' || rs === 'true')  return 'yes';
+      if (rs === 'no'  || rs === 'false') return 'no';
+    }
+    var dv = a[fieldKey];
+    if (typeof dv === 'string') {
+      var ds = dv.replace(/<[^>]*>/g, '').trim().toLowerCase();
+      if (ds === 'yes' || ds === 'true')  return 'yes';
+      if (ds === 'no'  || ds === 'false') return 'no';
+    }
+    return null;
+  }
   function readBool(tr, fieldKey) {
+    var fromModel = readBoolFromModel(getRowAttrs(tr), fieldKey);
+    if (fromModel) return fromModel;
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
     if (!td) return 'no';
     var t = (td.textContent || '').replace(/[ \s]/g, ' ').trim().toLowerCase();
     return (t === 'yes' || t === 'true') ? 'yes' : 'no';
   }
   function readText(tr, fieldKey) {
+    var a = getRowAttrs(tr);
+    if (a) {
+      var raw = a[fieldKey + '_raw'];
+      if (raw != null && typeof raw !== 'object') return String(raw);
+      var v = a[fieldKey];
+      if (v != null) return String(v).replace(/<[^>]*>/g, '').trim();
+    }
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
     return td ? (td.textContent || '').replace(/[ \s]+/g, ' ').trim() : '';
   }
@@ -40524,6 +41283,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function resolveStep(tr) {
     var fields = {
+      ready:     readBool(tr, READY_FIELD),
       survey:    readBool(tr, SURVEY_FIELD),
       crCount:   readText(tr, CR_COUNT_FIELD),
       validated: readBool(tr, VALID_FIELD)
@@ -40554,8 +41314,323 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return path + '/proposal/' + m[0] + query;
   }
 
+  // ── Published-proposal index ────────────────────────────
+  // Keyed by the SOW id each proposal connects to (field_2666). Tries
+  // the Knack model first; falls back to DOM scraping of view_3885's
+  // table rows when the model isn't populated yet.
+  //
+  // Filters to status=Published (field_2658). view_3885 includes drafts
+  // and earlier revisions as well — without the filter we'd pick up
+  // whatever row happened to render first for a given SOW, not the
+  // currently-published one.
+  function buildProposalIndex() {
+    var idx = {};
+    var hits = 0;
+
+    // 1. Knack model (preferred — has _raw values for every field).
+    try {
+      var v = Knack && Knack.views && Knack.views[PROPOSAL_VIEW];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models && models.length) {
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i].attributes;
+          if (!a) continue;
+          if (!isPublishedFromAttrs(a)) continue;
+          var sowId = readSowIdFromAttrs(a);
+          if (!sowId || idx[sowId]) continue;
+          idx[sowId] = extractProposalInfoFromAttrs(a);
+          hits++;
+        }
+      }
+    } catch (e) { /* fall through to DOM */ }
+
+    // 2. DOM fallback — when the model is unavailable, scrape directly
+    // from the rendered table. Works as long as field_2666 is one of
+    // the columns on view_3885 (connection cells carry the record id
+    // as the inner span's class attribute) and field_2658 (status) is
+    // either in the view or absent entirely. If the status column is
+    // absent from the DOM AND the model isn't ready, every row is
+    // kept — but that's a degenerate case you'd only hit during a
+    // race with initial render.
+    if (!hits) {
+      try {
+        var viewEl = document.getElementById(PROPOSAL_VIEW);
+        if (viewEl) {
+          var rows = viewEl.querySelectorAll('tbody tr[id]');
+          for (var r = 0; r < rows.length; r++) {
+            var tr = rows[r];
+            if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+            if (!isPublishedFromDom(tr)) continue;
+            var sowIdDom = readSowIdFromDom(tr);
+            if (!sowIdDom || idx[sowIdDom]) continue;
+            idx[sowIdDom] = extractProposalInfoFromDom(tr);
+            hits++;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    return idx;
+  }
+
+  function isPublishedFromAttrs(attrs) {
+    var raw = attrs[PROPOSAL_STATUS + '_raw'];
+    if (typeof raw === 'string' && raw.trim()) {
+      return /published/i.test(raw);
+    }
+    var v = attrs[PROPOSAL_STATUS];
+    if (typeof v === 'string' && v.trim()) {
+      return /published/i.test(v.replace(/<[^>]*>/g, ''));
+    }
+    return false;
+  }
+
+  function isPublishedFromDom(tr) {
+    var cell = tr.querySelector('td.' + PROPOSAL_STATUS +
+                                ', td[data-field-key="' + PROPOSAL_STATUS + '"]');
+    if (!cell) {
+      // Status column isn't on the view — accept all rows rather than
+      // silently filtering everything out.
+      return true;
+    }
+    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    return /published/i.test(text);
+  }
+
+  function readSowIdFromAttrs(attrs) {
+    var raw = attrs[PROPOSAL_SOW + '_raw'];
+    if (Array.isArray(raw) && raw.length) {
+      var id = raw[0] && raw[0].id;
+      return (id && /^[a-f0-9]{24}$/i.test(id)) ? id : '';
+    }
+    if (typeof raw === 'string' && /^[a-f0-9]{24}$/i.test(raw)) return raw;
+    return '';
+  }
+
+  function readSowIdFromDom(tr) {
+    var cell = tr.querySelector('td.' + PROPOSAL_SOW +
+                                ', td[data-field-key="' + PROPOSAL_SOW + '"]');
+    if (!cell) return '';
+    var span = cell.querySelector('span[data-kn="connection-value"]');
+    if (!span) return '';
+    var cls = (span.className || '').trim();
+    return /^[a-f0-9]{24}$/i.test(cls) ? cls : '';
+  }
+
+  function extractProposalInfoFromAttrs(attrs) {
+    var id = attrs.id || '';
+    var name    = String(attrs[PROPOSAL_NAME] || '').replace(/<[^>]*>/g, '').trim();
+    var expDate = String(attrs[PROPOSAL_EXP]  || '').replace(/<[^>]*>/g, '').trim();
+
+    // File fields have two raw forms depending on Knack's version —
+    // try both, plus an HTML-anchor regex fallback.
+    var pdfUrl = '', pdfName = '';
+    var pdfRaw = attrs[PROPOSAL_PDF + '_raw'];
+    if (pdfRaw && typeof pdfRaw === 'object') {
+      pdfUrl  = pdfRaw.url || '';
+      pdfName = pdfRaw.filename || '';
+    }
+    if (!pdfUrl) {
+      var pdfHtml = String(attrs[PROPOSAL_PDF] || '');
+      var mHref = pdfHtml.match(/href="([^"]+)"/i);
+      if (mHref) pdfUrl = mHref[1];
+      var mName = pdfHtml.match(/>([^<]+\.pdf)</i);
+      if (mName) pdfName = mName[1];
+    }
+
+    // "View Published Proposal" link — the kn-link-page anchor Knack
+    // renders in the row. Scrape from the DOM since the href isn't
+    // in the model.
+    var viewLink = '';
+    if (id) {
+      var viewEl = document.getElementById(PROPOSAL_VIEW);
+      if (viewEl) {
+        var row = viewEl.querySelector('tr#' + id);
+        if (row) {
+          var a = row.querySelector('a.kn-link-page');
+          if (a) viewLink = a.getAttribute('href') || '';
+        }
+      }
+    }
+
+    return {
+      recordId: id,
+      name:     name,
+      expDate:  expDate,
+      pdfUrl:   pdfUrl,
+      pdfName:  pdfName || 'Download PDF',
+      viewLink: viewLink
+    };
+  }
+
+  function extractProposalInfoFromDom(tr) {
+    function cellText(fieldKey) {
+      var td = tr.querySelector('td.' + fieldKey +
+                                ', td[data-field-key="' + fieldKey + '"]');
+      if (!td) return '';
+      // Strip the outer col-N wrapper and return clean text.
+      return (td.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    function cellAnchor(fieldKey) {
+      var td = tr.querySelector('td.' + fieldKey +
+                                ', td[data-field-key="' + fieldKey + '"]');
+      if (!td) return null;
+      return td.querySelector('a');
+    }
+
+    var pdfA = cellAnchor(PROPOSAL_PDF);
+    var pageA = tr.querySelector('a.kn-link-page');
+
+    return {
+      recordId: tr.id || '',
+      name:     cellText(PROPOSAL_NAME),
+      expDate:  cellText(PROPOSAL_EXP),
+      pdfUrl:   pdfA ? (pdfA.getAttribute('href') || '') : '',
+      pdfName:  pdfA ? ((pdfA.textContent || '').trim() || 'Download PDF') : 'Download PDF',
+      viewLink: pageA ? (pageA.getAttribute('href') || '') : ''
+    };
+  }
+
+  function renderProposalBlock(hostTd, proposal, tr) {
+    if (!proposal) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ops-proposal-info';
+
+    if (proposal.name) {
+      var nameRow = document.createElement('div');
+      nameRow.className = 'scw-ops-proposal-name';
+      // Proposal name links to the same proposal page the Mark Ready
+      // pill navigates to (hash-route for this SOW), not the raw
+      // Knack detail page for the published-proposal record. Matching
+      // the pill's target="_blank" keeps behavior consistent.
+      var nameHref = tr ? getRowLink(tr) : '';
+      if (nameHref) {
+        var a = document.createElement('a');
+        a.setAttribute('href', nameHref);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener');
+        a.textContent = proposal.name;
+        nameRow.appendChild(a);
+      } else {
+        nameRow.textContent = proposal.name;
+      }
+      wrap.appendChild(nameRow);
+    }
+
+    if (proposal.expDate) {
+      var expRow = document.createElement('div');
+      expRow.className = 'scw-ops-proposal-exp';
+      expRow.textContent = 'Expires: ' + proposal.expDate;
+      wrap.appendChild(expRow);
+    }
+
+    if (proposal.pdfUrl) {
+      var pdfLink = document.createElement('a');
+      pdfLink.className = 'scw-ops-proposal-pdf';
+      pdfLink.setAttribute('href', proposal.pdfUrl);
+      // No target="_blank" here — PDFs should use the browser's
+      // native handling (in-page viewer / download) rather than
+      // opening in a new tab.
+      // Small paperclip glyph + filename — same vocabulary the sales
+      // totals panel uses so both pages read the same.
+      pdfLink.innerHTML =
+        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+        'stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">' +
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+        '<polyline points="14 2 14 8 20 8"/></svg>';
+      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
+      wrap.appendChild(pdfLink);
+    }
+
+    hostTd.appendChild(wrap);
+  }
+
+  function findStepById(stepId) {
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i].id === stepId) return STEPS[i];
+    }
+    return null;
+  }
+
+  // ── Pending helpers ─────────────────────────────────────
+  function readPending(sowId) {
+    if (!sowId) return null;
+    try {
+      var raw = localStorage.getItem(PENDING_KEY_PREFIX + sowId);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || !data.stepId || !data.timestamp) return null;
+      if (Date.now() - data.timestamp > PENDING_TIMEOUT_MS) {
+        clearPending(sowId);
+        return null;
+      }
+      return data;
+    } catch (e) { return null; }
+  }
+  function clearPending(sowId) {
+    try { localStorage.removeItem(PENDING_KEY_PREFIX + sowId); } catch (e) {}
+  }
+  function hasAnyPending() {
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(PENDING_KEY_PREFIX) === 0) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // ── Polling while pending flags are set ─────────────────
+  // Single timer at module scope — schedulePoll is idempotent, so
+  // multiple renderCell invocations during one transform don't stack
+  // up competing pollers.
+  var _pollTimer = null;
+  function schedulePoll() {
+    if (_pollTimer) return;
+    if (!hasAnyPending()) return;
+    _pollTimer = setTimeout(function () {
+      _pollTimer = null;
+      pollOnce();
+    }, POLL_INTERVAL_MS);
+  }
+  function pollOnce() {
+    // Fetch both the SOW grid AND the published-proposal grid so
+    // (a) the pending flag clears as soon as the row's field flags
+    // flip, and (b) any new published-proposal record Make created
+    // shows up in the per-row info block under the pill. Both fetches
+    // trigger knack-view-render → transform, which is idempotent.
+    try {
+      var views = [VIEW_ID, PROPOSAL_VIEW];
+      for (var i = 0; i < views.length; i++) {
+        var v = Knack && Knack.views && Knack.views[views[i]];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch();
+        }
+      }
+    } catch (e) { /* ignore */ }
+    // Schedule the next poll unconditionally — schedulePoll bails on
+    // its own when no pending flags remain.
+    setTimeout(schedulePoll, 200);
+  }
+
+  function renderPendingCell(hostTd, pendingStep) {
+    var pill = document.createElement('span');
+    pill.className = 'scw-ops-pill is-pending';
+
+    var spinner = document.createElement('span');
+    spinner.className = 'scw-ops-pending-spinner';
+    pill.appendChild(spinner);
+
+    var label = document.createElement('span');
+    label.textContent = 'Processing ' + (pendingStep ? pendingStep.label : 'action') + '…';
+    pill.appendChild(label);
+
+    hostTd.appendChild(pill);
+  }
+
   // ── Render one cell ─────────────────────────────────────
-  function renderCell(hostTd, tr) {
+  function renderCell(hostTd, tr, proposalIndex) {
     hostTd.innerHTML = '';
     hostTd.classList.add(CELL_CLASS);
     hostTd.setAttribute(PROCESSED, '1');
@@ -40563,11 +41638,37 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var step = resolveStep(tr);
     var note = readNote(tr);
 
+    // Pending-step short-circuit. If Make is still working on this
+    // SOW AND the currently-resolved step matches what ops-stepper
+    // just kicked off, show a grayed-out "Processing…" pill and
+    // leave the proposal block off for now. If the resolved step
+    // differs from what's pending, Make finished — clear the flag.
+    var pending = readPending(tr.id);
+    if (pending) {
+      var pendingStep = findStepById(pending.stepId);
+      if (step && step.id === pending.stepId) {
+        renderPendingCell(hostTd, pendingStep || step);
+        schedulePoll();
+        return;
+      }
+      // Step advanced past what was pending → Make committed its
+      // writes. Clear and fall through to normal rendering.
+      clearPending(tr.id);
+    }
+
     var pill;
-    if (step) {
+    if (step && step.info) {
+      // Informational status only — no button, no background, no arrow.
+      // Plain muted italic text so it reads as "here's where things
+      // stand", not "click here".
+      pill = document.createElement('span');
+      pill.className = 'scw-ops-status-msg';
+      pill.textContent = step.label;
+      if (note) pill.setAttribute('data-scw-tip', note);
+    } else if (step) {
       // Active next-step → link to the proposal page.
       pill = document.createElement('a');
-      pill.className = 'scw-ops-pill is-' + step.tone;
+      pill.className = 'scw-ops-pill';
       var href = getRowLink(tr);
       if (href) pill.setAttribute('href', href);
       pill.setAttribute('target', '_blank');
@@ -40610,6 +41711,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     hostTd.appendChild(pill);
+
+    // Per-row published-proposal info (view_3885 → matched via field_2666).
+    // Rendered regardless of step state so a published proposal shows
+    // up even when the SOW is in "Bid Published" terminal state.
+    if (proposalIndex && tr.id) {
+      var proposal = proposalIndex[tr.id];
+      if (proposal) {
+        renderProposalBlock(hostTd, proposal, tr);
+      } else {
+        renderNoProposalMessage(hostTd);
+      }
+    }
+  }
+
+  function renderNoProposalMessage(hostTd) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ops-proposal-info scw-ops-proposal-empty';
+    wrap.textContent = 'No published quotes';
+    hostTd.appendChild(wrap);
   }
 
   // ── Scan view, transform each data row ──────────────────
@@ -40625,10 +41745,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       hostTh.classList.add(CELL_CLASS);
       hostTh.setAttribute('data-scw-ops-review-th', '1');
       var lbl = hostTh.querySelector('.table-fixed-label span');
-      if (lbl) lbl.textContent = 'Ops Review';
+      if (lbl) lbl.textContent = 'Next Step:';
       var link = hostTh.querySelector('a.kn-sort');
       if (link) link.removeAttribute('href');
     }
+
+    // Build the published-proposal index once per transform — each
+    // row's renderCell looks up its match by SOW id.
+    var proposalIndex = buildProposalIndex();
 
     var rows = table.querySelectorAll('tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
@@ -40638,7 +41762,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var hostTd = tr.querySelector('td.' + HOST_FIELD +
                                    ', td[data-field-key="' + HOST_FIELD + '"]');
       if (!hostTd) continue;
-      renderCell(hostTd, tr);
+      renderCell(hostTd, tr, proposalIndex);
     }
   }
 
@@ -40650,14 +41774,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   document.addEventListener('mousedown', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
       e.stopPropagation();
     }
   }, true);
   document.addEventListener('click', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
       e.stopPropagation();
     }
   }, true);
@@ -40699,11 +41823,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
   // Use mouseover/mouseout (which bubble) with .closest() for delegation.
   document.addEventListener('mouseover', function (e) {
-    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip], .scw-ops-status-msg[data-scw-tip]');
     if (t) showTip(t);
   });
   document.addEventListener('mouseout', function (e) {
-    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip]');
+    var t = e.target.closest('.scw-ops-pill[data-scw-tip], .scw-ops-info[data-scw-tip], .scw-ops-status-msg[data-scw-tip]');
     if (t) hideTip();
   });
   // Hide on scroll so the tooltip doesn't drift away from its anchor.
@@ -40714,6 +41838,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     $(document)
       .off('knack-view-render.' + VIEW_ID + EVENT_NS)
       .on('knack-view-render.' + VIEW_ID + EVENT_NS, function () {
+        setTimeout(transform, 150);
+      });
+
+    // view_3885 (published proposals) may render after view_3325.
+    // Re-run transform when it arrives so per-row proposal info
+    // populates as soon as the data is available.
+    $(document)
+      .off('knack-view-render.' + PROPOSAL_VIEW + EVENT_NS)
+      .on('knack-view-render.' + PROPOSAL_VIEW + EVENT_NS, function () {
         setTimeout(transform, 150);
       });
 
@@ -40809,7 +41942,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var HOST_VIEW      = 'view_3345';   // role-gated rich-text host in Knack
   var SOURCE_VIEW    = 'view_3861';   // SOW details view on the proposal page
   var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
-  var LICENSE_VIEW   = '';            // TODO: user will supply the license-table view id
+  var LICENSE_VIEW   = 'view_3371';   // License records table on the proposal page
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
 
   var NS         = '.scwOpsStepper';
@@ -40821,15 +41954,36 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
-      // Available when the survey hasn't been requested AND there are no
-      // pending change requests yet. As soon as CRs exist (field_2728 > 0)
-      // the Request Alternative Bid step takes over.
+      // Keyed on field_2723 — the flag this step's webhook actually
+      // flips server-side. field_2706 ("survey requested") only flips
+      // downstream when Sales requests the survey, so keying the step
+      // state on it made it effectively un-completable from Ops' side.
+      //
+      // Hide the step entirely once the flow has advanced to the change-
+      // request stage. If the SOW hasn't been marked ready AND there
+      // are already CRs queued, the Request Alternative Bid step takes
+      // over — surfacing a grayed-out Mark Ready here would just be noise.
+      hideWhen: {
+        all: [
+          { field: 'field_2723', value: 'No' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
+      // Once Ops has marked the SOW ready, render as completed (green
+      // check, non-clickable) to mirror the sales build stepper.
+      completed: { field: 'field_2723', value: 'Yes' },
+      // Active (clickable) when Ops hasn't marked it ready and there
+      // are no CRs yet.
       showWhen: {
         all: [
-          { field: 'field_2706', value: 'No' },
+          { field: 'field_2723', value: 'No' },
           { not: { field: 'field_2728', gt: 0 } }
         ]
       },
+      // Single webhook handles both "mark ready" and the draft publish
+      // server-side. Payload includes full SOW context + publishAsTbd
+      // (see buildPayload) so Make has everything it needs to also
+      // produce the TBD-numbered draft published quote.
       webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
       modal: {
         title:       'Mark Ready for Survey',
@@ -40837,12 +41991,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         placeholder: 'e.g. Proposal is internally consistent, ready to hand off',
         submitLabel: 'Mark Ready'
       },
-      includeFullPayload: false   // this step just needs sourceRecordId + notes
+      includeFullPayload: true
     },
     {
       id: 'request-alt-bid',
       label: 'Request Alternative Bid from Subcontractor',
       tone: 'amber',
+      // Hide entirely when there are no change requests — the whole
+      // premise of an alt bid is to respond to CRs, so without any
+      // there's nothing to show.
+      hideWhen: { not: { field: 'field_2728', gt: 0 } },
       showWhen: {
         all: [
           { field: 'field_2706', value: 'No' },
@@ -40860,27 +42018,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     },
     {
       id: 'publish-proposal',
-      label: 'Publish and Submit Completed Proposal to Sales',
+      label: 'Submit Final Proposal to Sales',
       tone: 'success',
-      // Available only once the SOW has both at least one change request
-      // (field_2728 > 0) and at least one associated bid (field_2737 > 0).
+      // Unlocked once EITHER:
+      //   - the SOW has at least one change request (field_2728 > 0), OR
+      //   - Ops has marked the SOW ready for survey (field_2723 = Yes).
+      // Either signal means there's something worth publishing — a CR
+      // queue to surface, or an Ops-validated SOW headed to survey.
       showWhen: {
-        all: [
+        any: [
           { field: 'field_2728', gt: 0 },
-          { field: 'field_2737', gt: 0 }
+          { field: 'field_2723', value: 'Yes' }
         ]
       },
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       modal: {
-        title:       'Publish & Submit Completed Proposal',
-        intro:       'Anything to include in the update to Sales? You can either just publish the quote quietly, or publish AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
+        title:       'Submit Final Proposal to Sales',
+        intro:       'Anything to include in the update to Sales?',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
-        submitLabel: 'Publish & Notify Sales',
-        // Secondary action — fires the same webhook with mode=publish-only
-        // so Make can skip the Sales notification / CU task / Slack steps.
-        secondaryLabel: 'Just Publish (no notification)',
-        secondaryMode:  'publish-only',
-        primaryMode:    'publish-and-notify'
+        submitLabel: 'Submit',
+        primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
     }
@@ -40893,6 +42050,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var CIRCLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+  var CHECK_CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+    '<polyline points="22 4 12 14.01 9 11.01"/></svg>';
   var LOCK_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -40952,6 +42114,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      /* Completed: green accent + check icon. When locked-by-completion
+         (is-completed + is-disabled) keep full opacity — the step should
+         read as "done", not as faded-out. */
+      '.scw-step-action.is-completed {' +
+      '  --scw-step-accent: #16a34a;' +
+      '}' +
+      '.scw-step-action.is-completed .scw-step-icon { color: #16a34a; opacity: 1; }' +
+      '.scw-step-action.is-completed.is-disabled {' +
+      '  opacity: 1; cursor: default; pointer-events: none;' +
+      '}' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
+      '  color: #16a34a; opacity: 1;' +
+      '}' +
       '.scw-step-action.is-loading {' +
       '  pointer-events: none; opacity: 0.75; cursor: wait;' +
       '}' +
@@ -41111,6 +42286,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Payload ──────────────────────────────────────────────
+  // True when the SOW's bid isn't validated yet — Make's Publish
+  // scenario publishes with TBD placeholder numbers rather than
+  // finalized figures. Ops can SEE the real numbers on the proposal
+  // page, but until field_2725 is flipped to Yes, the published quote
+  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  function shouldPublishAsTbd() {
+    return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
+  }
+
   function buildPayload(step, notes, mode) {
     var payload = {
       sourceRecordId: getSourceRecordId(),
@@ -41127,6 +42311,44 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       payload.sowName        = readField(EXTRA_FIELD);
       payload.sowLineItemIds = collectRecordIdsFromView(LINE_ITEM_VIEW);
       payload.licenseIds     = collectRecordIdsFromView(LICENSE_VIEW);
+    }
+    // Any payload that will trigger publishing server-side carries the
+    // TBD flag so Make knows whether to stamp real numbers or
+    // placeholders. Both Mark Ready (which also publishes a draft) and
+    // the standalone Publish step qualify.
+    //
+    // Also merges in the exact shape the standalone "Publish Quote"
+    // button (proposal-pdf-export.js) sends to its save webhook —
+    // html / json / sowId / totals / expirationDate / etc. — so every
+    // code path that publishes a quote looks identical on Make's side.
+    if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
+      payload.publishAsTbd = shouldPublishAsTbd();
+      try {
+        // Pass the proposal scene explicitly — more reliable than
+        // auto-detect, and the Ops stepper is only active on scene_1096.
+        var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
+          ? SCW.pdfExport.buildPublishPayload('scene_1096')
+          : null;
+        if (pub) {
+          // Flatten publish fields onto the top-level payload. Don't
+          // clobber the ops-stepper-native keys (sourceRecordId, etc.).
+          var PUBLISH_KEYS = [
+            'recordId', 'hash', 'sceneId', 'type',
+            'sowId', 'equipmentTotal', 'installationTotal',
+            'grandTotal', 'expirationDate', 'html', 'json'
+          ];
+          for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
+            var pk = PUBLISH_KEYS[pi];
+            if (pub[pk] !== undefined) payload[pk] = pub[pk];
+          }
+        } else {
+          console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
+            'SCW.pdfExport not ready or scene not configured. html/json ' +
+            'fields will be missing from this webhook call.');
+        }
+      } catch (e) {
+        console.warn('[scw-ops-stepper] buildPublishPayload threw:', e);
+      }
     }
     return payload;
   }
@@ -41231,7 +42453,107 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
+  // Navigate up one level in Knack's hash-based route — strips the
+  // last two hash segments (child-slug + child-id) so e.g.
+  //   #…/build-sow/<sowId>/proposal/<sowId>
+  // becomes
+  //   #…/build-sow/<sowId>
+  //
+  // No reload and no banner: the pending flag we just wrote causes
+  // ops-review-pill on the parent scene to render a grey "Processing…"
+  // pill for this SOW. That's the visual cue. Polling over there
+  // refreshes the underlying data (view_3325 + view_3885) as soon as
+  // Make commits its writes, without ever replacing the whole page.
+  function redirectToParent() {
+    var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
+    var parts = hash.replace(/^#\/?/, '').split('/');
+    if (parts.length >= 2) {
+      parts.splice(-2, 2);
+      window.location.hash = '#' + parts.join('/');
+    } else {
+      window.location.hash = '#';
+    }
+  }
+
+  // localStorage key name used to signal same-origin tabs that an Ops
+  // stepper action finished. workflow-stepper.js listens on the build
+  // page and reloads when its own SOW id matches, so the user never
+  // lingers on stale data after clicking Mark Ready from a new tab.
+  var COMPLETION_SIGNAL_KEY_PREFIX = 'scw-ops-stepper-completed:';
+  var PENDING_KEY_PREFIX           = 'scw-ops-stepper-pending:';
+
+  function signalOpsStepperCompletion(sowId) {
+    if (!sowId) return;
+    try {
+      // Value is just the timestamp — every write triggers a storage
+      // event in other tabs even if the key already existed.
+      localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
+      SCW.debug('[scw-ops-stepper] completion signal written:', sowId);
+    } catch (e) { /* localStorage might be disabled; non-fatal */ }
+  }
+
+  // Mark the SOW's current step as "in flight" — Make has accepted the
+  // webhook but hasn't finished yet. ops-review-pill reads this flag
+  // and renders the pill in a grayed "Processing" state until field
+  // values on the record catch up (polled via Knack.views.model.fetch)
+  // or the 90s timeout lapses.
+  function markStepPending(sowId, stepId) {
+    if (!sowId || !stepId) return;
+    try {
+      localStorage.setItem(
+        PENDING_KEY_PREFIX + sowId,
+        JSON.stringify({ stepId: stepId, timestamp: Date.now() })
+      );
+      SCW.debug('[scw-ops-stepper] pending flag written:', sowId, stepId);
+    } catch (e) { /* localStorage might be disabled; non-fatal */ }
+  }
+
+  // Close the current tab on success. The Ops list opens the proposal
+  // page in a new tab (target="_blank"), so window.close() should work;
+  // if the browser blocks it, fall back to redirectToParent after a
+  // short delay so the user still ends up somewhere sensible.
+  //
+  // The setTimeout before window.close() is intentional: some browsers
+  // miss the cross-tab storage-event IPC if the origin tab closes too
+  // quickly after setItem. 150ms is plenty for the event to propagate.
+  function dismissAfterSuccess() {
+    setTimeout(function () {
+      window.close();
+      setTimeout(function () {
+        // Still here? window.close() was blocked. Navigate up instead.
+        redirectToParent();
+      }, 300);
+    }, 150);
+  }
+
   // ── Webhook ──────────────────────────────────────────────
+  // POST the payload as JSON. Resolves with {ok, status, data} where
+  // `data` is the parsed JSON body (or null if the body isn't JSON).
+  function postWebhook(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (resp) {
+      return resp.text().then(function (body) {
+        var data = null;
+        try { data = body ? JSON.parse(body) : null; } catch (e) {}
+        return { ok: resp.ok, status: resp.status, body: body, data: data };
+      });
+    });
+  }
+
+  // Extract a user-facing error message from a webhook response. Used
+  // when resp.data.success isn't truthy — prefers the server's error
+  // string, falls back to a generic HTTP-status message.
+  function webhookErrorMsg(resp, genericLabel) {
+    if (resp.data && (resp.data.error || resp.data.message)) {
+      return resp.data.error || resp.data.message;
+    }
+    if (resp.ok) return (genericLabel || 'Webhook') + ' returned a non-JSON or unexpected response.';
+    return (genericLabel || 'Webhook') + ' returned HTTP ' + resp.status + '.';
+  }
+
   function fireStep(step, btn) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.webhookKey]) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
@@ -41248,35 +42570,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       setBtnLoading(btn, true);
       var payload = buildPayload(step, notes, ctx.mode);
 
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(function (resp) {
-        return resp.text().then(function (body) {
-          var data = null;
-          try { data = body ? JSON.parse(body) : null; } catch (e) {}
-          return { ok: resp.ok, status: resp.status, body: body, data: data };
-        });
-      }).then(function (resp) {
-        if (resp.data && resp.data.success) {
-          // Reload so the stepper re-evaluates against the flipped flags
-          // that Make wrote server-side (field_2723 / field_2725 / etc).
-          window.location.reload();
-          return;
-        }
-        setBtnLoading(btn, false);
-        ctx.setSubmitting(false);
-        ctx.showError(
-          (resp.data && (resp.data.error || resp.data.message)) ||
-          (resp.ok
-            ? 'Webhook returned a non-JSON or unexpected response.'
-            : 'Webhook returned HTTP ' + resp.status + '.')
+      postWebhook(url, payload).then(function (resp) {
+        // Accept either `success: true` or `status: 'accepted'` —
+        // Make scenarios respond with one or the other depending on
+        // how the acknowledgement was configured.
+        var accepted = resp.data && (
+          resp.data.success === true ||
+          (typeof resp.data.status === 'string' &&
+           resp.data.status.toLowerCase() === 'accepted')
         );
+        if (!accepted) {
+          throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
+        }
+        // Close the notes modal before navigating — the redirect is
+        // just a hash change, it doesn't tear down body-level overlays.
+        ctx.close();
+        // Fire a cross-tab signal so the build page (if open in
+        // another tab) reloads and doesn't show stale data.
+        signalOpsStepperCompletion(getSourceRecordId());
+        // Mark the step as pending so the parent page's next-step
+        // pill renders grayed out until Make finishes flipping the
+        // underlying field values.
+        markStepPending(getSourceRecordId(), step.id);
+        // Close this tab — the Ops list opened us in a new window,
+        // so there's no reason to keep it around once the action
+        // is done. Falls back to a parent-page redirect if the
+        // browser blocks window.close().
+        dismissAfterSuccess();
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);
-        ctx.showError('Network error: ' + (e && e.message ? e.message : e));
+        ctx.showError(
+          (e && e.message) ? e.message : ('Network error: ' + e)
+        );
       });
     });
   }
@@ -41307,19 +42633,33 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
-    // Render every step in fixed order; gray out (disable) the ones whose
-    // showWhen evaluates false. Same DOM shape as workflow-stepper.js's
-    // action steps so we get the accordion-header look for free.
+    // Render every step in fixed order. Three possible states per step:
+    //   hideWhen  matches → skip rendering entirely (step is inapplicable)
+    //   completed matches → render with green-check + is-completed (done, not clickable)
+    //   showWhen  matches → render clickable with circle icon
+    //   otherwise         → render disabled with gray lock icon
+    // Completed takes priority over showWhen so a finished step always
+    // reads as "done" rather than as locked.
     STEPS.forEach(function (step) {
-      var available = conditionMet(step.showWhen);
+      if (step.hideWhen && conditionMet(step.hideWhen)) return;
+
+      var completed = step.completed ? conditionMet(step.completed) : false;
+      var available = step.showWhen ? conditionMet(step.showWhen) : true;
+      var locked    = !completed && !available;
+
       var el = document.createElement('a');
       el.href = 'javascript:void(0)';
-      el.className = 'scw-step-action' + (available ? '' : ' is-disabled');
-      if (!available) el.setAttribute('title', 'Not available for this SOW right now.');
+      var cls = 'scw-step-action';
+      if (completed) cls += ' is-completed is-disabled';
+      else if (locked) cls += ' is-disabled';
+      el.className = cls;
+      if (locked) el.setAttribute('title', 'Not available for this SOW right now.');
 
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';
-      icon.innerHTML = available ? CIRCLE_SVG : LOCK_SVG;
+      icon.innerHTML = completed ? CHECK_CIRCLE_SVG
+                     : available ? CIRCLE_SVG
+                                 : LOCK_SVG;
       el.appendChild(icon);
 
       var titleEl = document.createElement('span');
@@ -41327,7 +42667,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       titleEl.textContent = step.label;
       el.appendChild(titleEl);
 
-      if (available) {
+      if (available && !completed) {
         el.addEventListener('click', function (e) {
           e.preventDefault();
           if (el.classList.contains('is-loading')) return;
@@ -41366,6 +42706,257 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   injectStyles();
   bind();
   if (document.getElementById(HOST_VIEW)) setTimeout(render, 200);
+})();
+/*** FEATURE: Published-quote info on the proposal page (view_3883) ***/
+/**
+ * Mirror of the per-row published-proposal block in ops-review-pill.js,
+ * but for the single-SOW proposal page. Reads view_3886 (published
+ * proposals data view), filters to status = Published, and injects a
+ * compact info block into view_3883 styled identically to the SOW-list
+ * version. When no published proposal exists for this SOW, renders the
+ * same "No published quotes" empty state.
+ *
+ * Reuses CSS classes (.scw-ops-proposal-info / -name / -exp / -pdf /
+ * -empty) that ops-review-pill.js already injects globally — so this
+ * module only needs to build the DOM and let the existing styles
+ * carry the look.
+ */
+(function () {
+  'use strict';
+
+  // ── Config ──────────────────────────────────────────────
+  var SOURCE_VIEW   = 'view_3886';   // Published proposals (data source)
+  var TARGET_VIEW   = 'view_3883';   // Where to inject the info block
+  var STATUS_FIELD  = 'field_2658';  // "Published" / "Draft" / etc.
+  var NAME_FIELD    = 'field_2665';  // Display name
+  var EXP_FIELD     = 'field_2659';  // Expiration date
+  var PDF_FIELD     = 'field_2681';  // PDF file
+
+  var BLOCK_CLASS = 'scw-published-quote-block';
+  var NS          = '.scwPublishedQuote';
+  var STYLE_ID    = 'scw-published-quote-css';
+
+  // ── Styles ──────────────────────────────────────────────
+  // Bumps the shared ops-review-pill proposal-info sizes ~30% for this
+  // proposal-page block. The SOW-grid version (view_3325) stays at its
+  // compact table-cell sizing; these scoped overrides only apply when
+  // the block is inside a .scw-published-quote-block wrapper.
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css =
+      '.' + BLOCK_CLASS + '.scw-ops-proposal-info {' +
+      '  font-size: 14px;' +             /* 11 × 1.3 ≈ 14 */
+      '}' +
+      '.' + BLOCK_CLASS + ' .scw-ops-proposal-exp,' +
+      '.' + BLOCK_CLASS + ' .scw-ops-proposal-pdf {' +
+      '  font-size: 13.5px;' +           /* 10.5 × 1.3 ≈ 13.5 */
+      '}';
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ── Status filter ───────────────────────────────────────
+  function isPublishedFromAttrs(attrs) {
+    var raw = attrs[STATUS_FIELD + '_raw'];
+    if (typeof raw === 'string' && raw.trim()) return /published/i.test(raw);
+    var v = attrs[STATUS_FIELD];
+    if (typeof v === 'string' && v.trim()) {
+      return /published/i.test(v.replace(/<[^>]*>/g, ''));
+    }
+    return false;
+  }
+  function isPublishedFromDom(tr) {
+    var cell = tr.querySelector('td.' + STATUS_FIELD +
+                                ', td[data-field-key="' + STATUS_FIELD + '"]');
+    // Status column absent from the view → accept all rows rather
+    // than silently filtering everything out.
+    if (!cell) return true;
+    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    return /published/i.test(text);
+  }
+
+  // ── Field extraction ────────────────────────────────────
+  function extractFromAttrs(attrs) {
+    var id      = attrs.id || '';
+    var name    = String(attrs[NAME_FIELD] || '').replace(/<[^>]*>/g, '').trim();
+    var expDate = String(attrs[EXP_FIELD]  || '').replace(/<[^>]*>/g, '').trim();
+
+    var pdfUrl = '', pdfName = '';
+    var pdfRaw = attrs[PDF_FIELD + '_raw'];
+    if (pdfRaw && typeof pdfRaw === 'object') {
+      pdfUrl  = pdfRaw.url || '';
+      pdfName = pdfRaw.filename || '';
+    }
+    if (!pdfUrl) {
+      var pdfHtml = String(attrs[PDF_FIELD] || '');
+      var mHref = pdfHtml.match(/href="([^"]+)"/i);
+      if (mHref) pdfUrl = mHref[1];
+      var mName = pdfHtml.match(/>([^<]+\.pdf)</i);
+      if (mName) pdfName = mName[1];
+    }
+
+    var viewLink = '';
+    if (id) {
+      var viewEl = document.getElementById(SOURCE_VIEW);
+      if (viewEl) {
+        var row = viewEl.querySelector('tr#' + id);
+        if (row) {
+          var a = row.querySelector('a.kn-link-page');
+          if (a) viewLink = a.getAttribute('href') || '';
+        }
+      }
+    }
+
+    return {
+      recordId: id,
+      name:     name,
+      expDate:  expDate,
+      pdfUrl:   pdfUrl,
+      pdfName:  pdfName || 'Download PDF',
+      viewLink: viewLink
+    };
+  }
+
+  function extractFromDom(tr) {
+    function cellText(fk) {
+      var td = tr.querySelector('td.' + fk +
+                                ', td[data-field-key="' + fk + '"]');
+      return td ? (td.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    }
+    function cellAnchor(fk) {
+      var td = tr.querySelector('td.' + fk +
+                                ', td[data-field-key="' + fk + '"]');
+      return td ? td.querySelector('a') : null;
+    }
+    var pdfA  = cellAnchor(PDF_FIELD);
+    var pageA = tr.querySelector('a.kn-link-page');
+    return {
+      recordId: tr.id || '',
+      name:     cellText(NAME_FIELD),
+      expDate:  cellText(EXP_FIELD),
+      pdfUrl:   pdfA  ? (pdfA.getAttribute('href') || '') : '',
+      pdfName:  pdfA  ? ((pdfA.textContent || '').trim() || 'Download PDF')
+                      : 'Download PDF',
+      viewLink: pageA ? (pageA.getAttribute('href') || '') : ''
+    };
+  }
+
+  // ── First Published proposal (model first, DOM fallback) ─
+  function getPublishedProposal() {
+    try {
+      var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models && models.length) {
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i].attributes;
+          if (!a || !isPublishedFromAttrs(a)) continue;
+          return extractFromAttrs(a);
+        }
+      }
+    } catch (e) { /* fall through */ }
+
+    try {
+      var viewEl = document.getElementById(SOURCE_VIEW);
+      if (viewEl) {
+        var rows = viewEl.querySelectorAll('tbody tr[id]');
+        for (var r = 0; r < rows.length; r++) {
+          var tr = rows[r];
+          if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
+          if (!isPublishedFromDom(tr)) continue;
+          return extractFromDom(tr);
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    return null;
+  }
+
+  // ── Render block (same DOM shape ops-review-pill uses) ──
+  function renderBlock(host, proposal) {
+    // Drop any previous render — view re-renders happen often.
+    var prev = host.querySelector('.' + BLOCK_CLASS);
+    if (prev) prev.remove();
+
+    var block = document.createElement('div');
+    // BLOCK_CLASS lets us find/remove our own injection; the second
+    // class pulls in the shared ops-review-pill styling so the look
+    // matches the SOW grid exactly.
+    block.className = BLOCK_CLASS + ' scw-ops-proposal-info';
+
+    if (!proposal) {
+      block.classList.add('scw-ops-proposal-empty');
+      block.textContent = 'No published quotes';
+      host.appendChild(block);
+      return;
+    }
+
+    if (proposal.name) {
+      var nameRow = document.createElement('div');
+      nameRow.className = 'scw-ops-proposal-name';
+      if (proposal.viewLink) {
+        var a = document.createElement('a');
+        a.setAttribute('href', proposal.viewLink);
+        a.textContent = proposal.name;
+        nameRow.appendChild(a);
+      } else {
+        nameRow.textContent = proposal.name;
+      }
+      block.appendChild(nameRow);
+    }
+
+    if (proposal.expDate) {
+      var expRow = document.createElement('div');
+      expRow.className = 'scw-ops-proposal-exp';
+      expRow.textContent = 'Expires: ' + proposal.expDate;
+      block.appendChild(expRow);
+    }
+
+    if (proposal.pdfUrl) {
+      var pdfLink = document.createElement('a');
+      pdfLink.className = 'scw-ops-proposal-pdf';
+      pdfLink.setAttribute('href', proposal.pdfUrl);
+      pdfLink.setAttribute('target', '_blank');
+      pdfLink.setAttribute('rel', 'noopener');
+      pdfLink.innerHTML =
+        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
+        'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+        'stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">' +
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+        '<polyline points="14 2 14 8 20 8"/></svg>';
+      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
+      block.appendChild(pdfLink);
+    }
+
+    host.appendChild(block);
+  }
+
+  // ── Bind ────────────────────────────────────────────────
+  injectStyles();
+
+  function transform() {
+    var host = document.getElementById(TARGET_VIEW);
+    if (!host) return;
+    renderBlock(host, getPublishedProposal());
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender(SOURCE_VIEW, function () { setTimeout(transform, 150); }, NS);
+    SCW.onViewRender(TARGET_VIEW, function () { setTimeout(transform, 150); }, NS);
+  } else {
+    $(document)
+      .off('knack-view-render.' + SOURCE_VIEW + NS)
+      .on('knack-view-render.' + SOURCE_VIEW + NS, function () { setTimeout(transform, 150); })
+      .off('knack-view-render.' + TARGET_VIEW + NS)
+      .on('knack-view-render.' + TARGET_VIEW + NS, function () { setTimeout(transform, 150); });
+  }
+
+  // First-paint attempt in case both views are already in the DOM by
+  // the time this IIFE runs.
+  if (document.getElementById(TARGET_VIEW) && document.getElementById(SOURCE_VIEW)) {
+    setTimeout(transform, 150);
+  }
 })();
 /*** FEATURE: Preview Proposal Button → view_3814 header ***/
 (function () {
@@ -41628,7 +43219,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return resp.text().then(function (body) {
         var data = null;
         try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
-        console.log('[SCW clone-sow] status=' + resp.status + ' body=' + body);
+        SCW.debug('[SCW clone-sow] status=' + resp.status + ' body=' + body);
         return { status: resp.status, body: body, data: data, ok: resp.ok };
       });
     }).then(function (resp) {
@@ -42649,7 +44240,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
       imageCache[viewId] = nextCache;
-      console.log('[SCW survey-pdf] image cache primed for ' + viewId, {
+      SCW.debug('[SCW survey-pdf] image cache primed for ' + viewId, {
         count: nextCache.length
       });
     } catch (e) {
@@ -43087,7 +44678,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (isCamerasReadersBucket(r)) rows.push(r);
     }
     if (!rows.length) {
-      console.log('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
+      SCW.debug('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
       return '';
     }
 
@@ -43788,7 +45379,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function handleFormSubmit() {
     var payload = scrape(DEFAULT_VIEW_ID);
     if (!payload.rows.length) {
-      console.log('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
+      SCW.debug('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
       return;
     }
     var htmlStr = buildHtml(payload);
@@ -43807,7 +45398,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       html: htmlStr
     };
 
-    console.log('[SCW survey-pdf] posting to webhook', {
+    SCW.debug('[SCW survey-pdf] posting to webhook', {
       recordId: recordId,
       rowCount: wire.rowCount
     });
@@ -44540,9 +46131,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (modelView.source) modelView.source.sort = sortArr;
     modelView.sort = sortArr;
 
-    if (typeof view.model.fetch === 'function') {
-      try { view.model.fetch(); } catch (e) { /* model may lack a URL */ }
-    }
+    // NOTE: intentionally NOT calling view.model.fetch() here. Refetching
+    // to change the server-side sort doubles the initial load cost: a
+    // second HTTP round-trip for every view_3586 record plus a full
+    // knack-view-render cycle, which re-runs every feature bound to this
+    // view (device-worksheet card rebuild for ~180 rows, group-collapse,
+    // etc.). It's the primary contributor to the ~3.6s INP on scene_1116.
+    //
+    // Safe to skip because:
+    //  - device-worksheet.js applies its own client-side rowSort on every
+    //    render, so the visible order is correct regardless of the order
+    //    the server sent.
+    //  - rows_per_page on these views is 1000 and the underlying record
+    //    set is <200, so pagination isn't happening — server-side sort
+    //    order has no user-visible effect.
+    //  - Setting modelView.sort above still persists the preference, so
+    //    any native fetch Knack triggers later (filter change, column
+    //    header click being overridden, etc.) uses the right sort.
   }
 
   DEFAULT_SORTS.forEach(function (cfg) {
@@ -44555,96 +46160,102 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 })();
 /*** END FEATURE: Default Sort Override ****************************************/
 /**************************************************************************************************
- * FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505
+ * FEATURE: Silent deterministic regroup after a parent-multi-connection inline-edit
  *
- * Context:
- *   - Knack's native inline-edit record rule on field_2380 (view_3505)
- *     triggers a Make webhook whose only job is to rewrite field_2375 +
- *     field_2381 on the connected CHILD records:
- *        * added child D    → field_2375 = R.field_2375, field_2381 = [R]
- *        * removed child D  → field_2381 = []  (field_2375 untouched)
- *     where R is the record the user just edited.
- *   - field_2375 (REL_mdf-idf) is view_3505's L1 grouping key
- *     (device-worksheet.js:106 "move: { key: 'field_2375' }"), so the
- *     side-effect is that child rows visually move between MDF/IDF groups.
- *   - field_2381 ("connections") is a readOnly detail-panel field on the
- *     card (device-worksheet.js:117), NOT the grouping key.
+ * Generic pattern: in a Knack table view, the record R holds a multi-connection
+ * TRIGGER_FIELD pointing at children. Each child has:
+ *   - CONNECTIONS_FIELD — back-connection to the parent (inverse of TRIGGER_FIELD)
+ *   - GROUPING_FIELD    — the L1 group key (typically MDF/IDF), which must match
+ *                         the parent's GROUPING_FIELD so the child renders
+ *                         under the parent's group header in the worksheet.
  *
- * Why not wait for the Make webhook and model.fetch()?
- *   - A full re-render wipes all cards, flashes the view, and re-runs every
- *     per-card enhancer. The user explicitly asked for a silent refresh.
+ * When R.TRIGGER_FIELD is edited, a Make webhook rewrites CONNECTIONS_FIELD +
+ * GROUPING_FIELD on the added/removed children:
+ *    - added child D    → D.GROUPING_FIELD    = R.GROUPING_FIELD
+ *                         D.CONNECTIONS_FIELD = [R]
+ *    - removed child D  → D.CONNECTIONS_FIELD = []  (GROUPING_FIELD untouched)
+ * Which has the side-effect that child rows visually move between group headers.
  *
- * Why not poll the API?
- *   - We own the rule deterministically. Given R on knack-cell-update we
- *     already know exactly what the webhook will do, so we can do it
- *     ourselves locally and fire the PUTs from the client. No polling,
- *     no webhook dependency, no guessing at stability.
+ * This module mirrors that rule deterministically FE-side so the UI updates
+ * without waiting for the webhook, without polling, and without a full
+ * model.fetch() re-render (which flashes the view and re-runs every per-card
+ * enhancer). We know the rule exactly, so we compute the add/remove diff from
+ * the cell-update event payload, move the DOM rows, patch the Backbone models,
+ * patch the visible cards, fire background PUTs for each affected child, and
+ * only after ALL PUTs land do we call model.fetch() to resync from the server.
  *
- * Strategy:
- *   1. On knack-cell-update.view_3505 stash the event record R and arm a
+ * Strategy (once per instance):
+ *   1. On knack-cell-update.<VIEW_ID> stash the event record R and arm a
  *      debounced settle timer — Knack's native post-edit re-render fires
  *      within ~50ms and would wipe any DOM changes we made synchronously.
- *   2. Every knack-view-render.view_3505 during the edit cycle resets the
+ *   2. Every knack-view-render.<VIEW_ID> during the edit cycle resets the
  *      settle timer. After SETTLE_MS of render silence, apply the regroup.
  *   3. Deterministic regroup:
- *        newChildren     = R.field_2380_raw (event payload)
- *        currentChildren = DOM-scan every visible card's td.field_2381 for
- *                          a `<span data-kn="connection-value">` whose class
- *                          list contains R.id — device-worksheet.js renders
- *                          field_2381 as a readOnly detail field which MOVES
- *                          the original Knack-rendered td (with its spans
- *                          intact) from sourceTr into the card's detail
- *                          panel, so the DOM is the ground truth here.
+ *        newChildren     = R[TRIGGER_FIELD + '_raw'] (event payload)
+ *        currentChildren = DOM-scan every visible card's td.<CONNECTIONS_FIELD>
+ *                          for a `<span data-kn="connection-value">` whose class
+ *                          list is R.id — device-worksheet.js moves the original
+ *                          Knack-rendered td (with its spans intact) from the
+ *                          hidden sourceTr into the card's detail panel, so the
+ *                          DOM is the ground truth.
  *        added   = newChildren ∖ currentChildren
  *        removed = currentChildren ∖ newChildren
  *      For each added child D:
- *        - move D's row-triple into R.field_2375's L1 group
- *        - patch D's Backbone model attrs (field_2375, field_2381)
+ *        - move D's row-triple into R's L1 group (walk back from R's wsTr to
+ *          the nearest preceding .kn-table-group.kn-group-level-1)
+ *        - patch D's Backbone model (GROUPING_FIELD, CONNECTIONS_FIELD)
  *        - patch D's visible card via SCW.deviceWorksheet.patchCard
- *        - fire background PUT { field_2375: [R.field_2375], field_2381: [R] }
+ *        - fire PUT { GROUPING_FIELD: [R.<GROUPING_FIELD>], CONNECTIONS_FIELD: [R] }
  *      For each removed child D:
- *        - patch D's Backbone model (field_2381 = [])
+ *        - patch D's Backbone model (CONNECTIONS_FIELD = [])
  *        - patch D's visible card
- *        - fire background PUT { field_2381: [] }
- *      When ALL PUTs have landed on the server (success or failure), fire
- *      a real `view.model.fetch()` to resync Knack's model with the true
- *      server state. This replaces the user having to manually reload the
- *      page after the silent regroup — by the time the fetch runs, the
- *      child records have their new field_2375/field_2381 persisted, so
- *      the natural re-render is correct.
- *
- *      NOTE: device-worksheet.js moves both field_2381 (readOnly) and
- *      field_2375 (moveIcon) tds out of the hidden sourceTr into the card,
- *      but the moveIcon td has its innerHTML replaced with an icon (the
- *      original connection-value span is destroyed), whereas readOnly tds
- *      preserve their contents. So field_2381 is DOM-readable, field_2375
- *      is not. For destination group resolution we walk backward from R's
- *      own wsTr to the nearest L1 group header — R is itself a view_3505
- *      record, so its current L1 group IS the destination.
- *   4. Falls back to model.fetch() ONLY when R's wsTr has no L1 header
- *      before it (R was just moved into an empty group, or R is not
- *      visible) — we can't silently synthesize an L1 header row.
+ *        - fire PUT { CONNECTIONS_FIELD: [] }
+ *      When ALL PUTs have landed (success or failure), fire a real
+ *      view.model.fetch() to resync Knack's model with the now-consistent
+ *      server state.
+ *   4. Falls back to model.fetch() ONLY when R's wsTr has no L1 header before
+ *      it (R was just moved into an empty group, or R is not visible) — we
+ *      can't silently synthesize an L1 header row.
  *   5. A re-entrancy guard (ownPuts) ignores any stray knack-cell-update
  *      events that echo our own background PUTs.
+ *   6. A MutationObserver "mut-guard" watches the view's tbody and re-applies
+ *      the cached plan whenever drift is detected (catches Knack re-renders
+ *      that bypass knack-view-render).
+ *
+ * Instances are registered at the bottom via createMirror(config). Each
+ * instance has fully independent state (pendingPlan, settleTimer, ownPuts,
+ * mutObserver, etc.); the event namespaces include VIEW_ID so handlers
+ * don't collide.
+ *
+ * Current instances:
+ *   - view_3505 / field_2380 → field_2381, grouped by field_2375  (survey line items)
+ *   - view_3586 / field_1957 → field_2197, grouped by field_1946  (SOW line items)
  **************************************************************************************************/
-(function silentRegroupView3505() {
+(function () {
   'use strict';
-
-  // ======================
-  // CONFIG
-  // ======================
-  var VIEW_ID           = 'view_3505';
-  var TRIGGER_FIELD     = 'field_2380';  // children-connection on the edited record
-  var GROUPING_FIELD    = 'field_2375';  // REL_mdf-idf (L1 group key)
-  var CONNECTIONS_FIELD = 'field_2381';  // back-connection to parent (detail-panel)
-  var SETTLE_MS         = 400;
-  var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
 
   var HEX24 = /^[0-9a-f]{24}$/i;
 
-  function log() {
-    try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
-  }
+  // ======================================================================
+  // FACTORY — one instance per view that needs the silent-regroup pattern.
+  // All state below (ownPuts, pendingPlan, settleTimer, mutObserver, …)
+  // is closure-scoped per call, so instances never share state.
+  // ======================================================================
+  function createMirror(config) {
+    // ── config ──
+    var VIEW_ID           = config.VIEW_ID;
+    var TRIGGER_FIELD     = config.TRIGGER_FIELD;     // children-connection on the edited record
+    var GROUPING_FIELD    = config.GROUPING_FIELD;    // L1 group key (e.g. REL_mdf-idf)
+    var CONNECTIONS_FIELD = config.CONNECTIONS_FIELD; // back-connection to parent (detail-panel)
+    var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
+    var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
+    var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
+    var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
+
+    function log() {
+      if (!window.SCW || !window.SCW.DEBUG) return;
+      try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
+    }
 
   // ======================================================================
   // DOM helpers — reading field cells out of the triple-row card layout.
@@ -45243,7 +46854,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     catch (e) { console.warn(LOG_PREFIX, 'applyDeterministicRegroup threw', e); }
   }
 
-  $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentRegroup', function (event, view, record) {
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record) {
     try {
       if (!record || !record.id) return;
       // Re-entrancy: ignore echoes from our own background PUTs.
@@ -45268,7 +46879,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // path with a longer defer (the observer fires immediately on childList
   // changes; view-render may fire later after Knack finishes its render
   // cycle — we want to catch both).
-  $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentRegroup', function () {
+  $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS, function () {
     if (pendingRecord || settleTimer) {
       log('view re-rendered during edit cycle — resetting settle timer');
       armSettle();
@@ -45294,31 +46905,891 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   });
 
-  // ======================================================================
-  // Public debug hooks — poke from DevTools.
-  // ======================================================================
+    // ======================================================================
+    // Public debug hook — poke from DevTools under the configured name.
+    // ======================================================================
+    var api = {
+      applyDeterministicRegroup: applyDeterministicRegroup,
+      applyPlanToDom: applyPlanToDom,
+      findRowsPointingTo: findRowsPointingTo,
+      findL1HeaderBefore: findL1HeaderBefore,
+      inspectState: function () {
+        return {
+          hasPendingRecord: pendingRecord != null,
+          hasSettleTimer: settleTimer != null,
+          hasPendingPlan: pendingPlan != null,
+          pendingPlan: pendingPlan,
+          ownPutsInFlight: Object.keys(ownPuts)
+        };
+      }
+    };
+    window.SCW = window.SCW || {};
+    if (PUBLIC_API_NAME) window.SCW[PUBLIC_API_NAME] = api;
+
+    log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
+    return api;
+  }
+
+  // ── Instance registrations ────────────────────────────────────────────
+  createMirror({
+    VIEW_ID:           'view_3505',
+    TRIGGER_FIELD:     'field_2380',
+    CONNECTIONS_FIELD: 'field_2381',
+    GROUPING_FIELD:    'field_2375',
+    PUBLIC_API_NAME:   'silentRegroupView3505'
+  });
+
+  createMirror({
+    VIEW_ID:           'view_3586',
+    TRIGGER_FIELD:     'field_1957',
+    CONNECTIONS_FIELD: 'field_2197',
+    GROUPING_FIELD:    'field_1946',
+    PUBLIC_API_NAME:   'silentRegroupView3586'
+  });
+
+  // Backward-compat alias for any lingering DevTools snippets that
+  // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};
-  window.SCW.silentRegroupView3505 = {
-    applyDeterministicRegroup: applyDeterministicRegroup,
-    applyPlanToDom: applyPlanToDom,
-    findRowsPointingTo: findRowsPointingTo,
-    findL1HeaderBefore: findL1HeaderBefore,
-    inspectState: function () {
-      return {
-        hasPendingRecord: pendingRecord != null,
-        hasSettleTimer: settleTimer != null,
-        hasPendingPlan: pendingPlan != null,
-        pendingPlan: pendingPlan,
-        ownPutsInFlight: Object.keys(ownPuts)
-      };
+  if (window.SCW.silentRegroupView3505) {
+    window.SCW.silentPollView3505 = window.SCW.silentRegroupView3505;
+  }
+})();
+/*** END FEATURE: Silent deterministic regroup after a parent-multi-connection inline-edit *********/
+/*** FEATURE: Custom connection picker — replaces Knack's native popover *********
+ *
+ * Scope:
+ *   - Target: field_1957 (Connected Devices) on view_3586 (SOW line items).
+ *   - Other connection fields and other views keep Knack's native picker.
+ *
+ * Why:
+ *   - Knack's native connection popover is slow on 100+ item lists
+ *     (~400ms INP per checkbox click due to its internal form-state churn)
+ *     and has a label→input click-synthesis quirk that fights shift-range
+ *     selection. Replacing it with our own UI puts every interaction on
+ *     our own fast path.
+ *   - Save uses the existing silent-regroup pipeline
+ *     (SCW.silentRegroupView3586 — see mirror-connection-sync.js), so the
+ *     reciprocal field_2197 and parent-group field_1946 propagate to
+ *     children without a view-wide re-render flash.
+ *
+ * Chunk 1 of 5:
+ *   - Modal shell, CSS, shift-click range, selected-first reorder, grouped
+ *     list rendering. No data fetching, no save, no click interception on
+ *     the cell yet. Verified via SCW.connectionPicker._testOpen() in DevTools.
+ *
+ * Feature flag:
+ *   SCW.CONFIG.customConnectionPicker (default true). Flip to false to
+ *   restore Knack's native picker instantly — no code removal needed.
+ **************************************************************************************/
+(function () {
+  'use strict';
+
+  // ── Feature flag ──────────────────────────────────────────────────
+  window.SCW = window.SCW || {};
+  window.SCW.CONFIG = window.SCW.CONFIG || {};
+  if (typeof window.SCW.CONFIG.customConnectionPicker === 'undefined') {
+    window.SCW.CONFIG.customConnectionPicker = true;
+  }
+
+  // ── Layout constants ──────────────────────────────────────────────
+  var CLASS_PREFIX       = 'scw-cp';
+  var STYLE_ID           = 'scw-connection-picker-css';
+  var ITEM_THRESHOLD     = 20;   // below → single column
+  var ROWS_PER_COLUMN    = 30;
+  var MAX_COLUMNS        = 6;
+
+  // ── CSS ───────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var P = '.' + CLASS_PREFIX;
+    var css = [
+      // Backdrop
+      P + '-backdrop {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(0,0,0,0.45);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  font: 14px/1.4 system-ui, -apple-system, sans-serif;',
+      '}',
+
+      // Modal shell
+      P + '-modal {',
+      '  background: #fff;',
+      '  border-radius: 10px;',
+      '  box-shadow: 0 20px 60px rgba(0,0,0,0.35);',
+      '  max-width: 95vw;',
+      '  max-height: 90vh;',
+      '  width: max-content;',
+      '  min-width: 420px;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  overflow: hidden;',
+      '}',
+
+      // Header
+      P + '-header {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  padding: 14px 18px;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '  background: #f9fafb;',
+      '}',
+      P + '-title {',
+      '  margin: 0; font-size: 15px; font-weight: 700; color: #111827;',
+      '  letter-spacing: 0.01em;',
+      '}',
+      P + '-close {',
+      '  appearance: none; background: none; border: none;',
+      '  color: #6b7280; font-size: 22px; line-height: 1; cursor: pointer;',
+      '  padding: 2px 6px; margin: -4px -4px -4px 8px; border-radius: 4px;',
+      '}',
+      P + '-close:hover { color: #111827; background: #e5e7eb; }',
+
+      // Body
+      P + '-body {',
+      '  padding: 10px 18px;',
+      '  overflow-y: auto;',
+      '  flex: 1 1 auto;',
+      '}',
+
+      // Group section
+      P + '-group {',
+      '  margin: 6px 0 14px;',
+      '  contain: layout style;',
+      '}',
+      P + '-group-label {',
+      '  font-size: 11px; font-weight: 700; color: #163C6E;',
+      '  text-transform: uppercase; letter-spacing: 0.05em;',
+      '  padding: 6px 0 4px;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '  margin-bottom: 4px;',
+      '}',
+
+      // Multi-column list inside each group
+      P + '-list {',
+      '  column-gap: 18px;',
+      '  contain: layout style;',
+      '  margin: 0; padding: 0; list-style: none;',
+      '}',
+      // .control wrapper per item — mirrors Knack's structure so the
+      // shift-click + reorder helpers read the same DOM shape.
+      P + '-list > .control {',
+      '  break-inside: avoid;',
+      '  -webkit-column-break-inside: avoid;',
+      '  page-break-inside: avoid;',
+      '  contain: layout style;',
+      '  display: block;',
+      '  padding: 2px 0;',
+      '}',
+      P + '-list label {',
+      '  display: flex; align-items: flex-start; gap: 6px;',
+      '  line-height: 1.35;',
+      '  cursor: pointer;',
+      '  padding: 2px 4px;',
+      '  border-radius: 3px;',
+      '  user-select: none;',
+      '}',
+      P + '-list label:hover { background: #f3f4f6; }',
+      P + '-list label input[type="checkbox"] {',
+      '  flex-shrink: 0; margin-top: 3px; cursor: pointer;',
+      '}',
+      P + '-list label span {',
+      '  flex: 1; min-width: 0; color: #1f2937;',
+      '}',
+
+      // Footer
+      P + '-footer {',
+      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  padding: 12px 18px;',
+      '  border-top: 1px solid #e5e7eb;',
+      '  background: #f9fafb;',
+      '}',
+      P + '-btn {',
+      '  appearance: none; border: 1px solid #d1d5db;',
+      '  background: #fff; color: #374151;',
+      '  padding: 7px 16px; border-radius: 6px;',
+      '  font-size: 13px; font-weight: 600; cursor: pointer;',
+      '}',
+      P + '-btn:hover { background: #f3f4f6; }',
+      P + '-btn-primary {',
+      '  background: #163C6E; border-color: #163C6E; color: #fff;',
+      '}',
+      P + '-btn-primary:hover { background: #0f2d55; }',
+      P + '-btn[disabled] { opacity: 0.55; cursor: default; }',
+
+      // Empty state
+      P + '-empty {',
+      '  padding: 24px 18px; text-align: center; color: #6b7280;',
+      '  font-size: 13px;',
+      '}',
+
+      // Inline error banner
+      P + '-error {',
+      '  background: #fef2f2; color: #991b1b; border-bottom: 1px solid #fecaca;',
+      '  padding: 10px 18px; font-size: 13px; font-weight: 500;',
+      '}',
+
+      // Disabled state on footer buttons (Save mid-PUT)
+      P + '-btn[disabled] { pointer-events: none; }'
+    ].join('\n');
+
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ── Column-count scaling (same math as inline-edit-checkbox-layout) ──
+  function applyMultiColLayout(listEl) {
+    var controls = listEl.querySelectorAll(':scope > .control');
+    var count = controls.length;
+    if (count <= ITEM_THRESHOLD) {
+      listEl.style.columnCount = '';
+      return;
+    }
+    var cols = Math.max(
+      2,
+      Math.min(MAX_COLUMNS, Math.ceil(count / ROWS_PER_COLUMN))
+    );
+    listEl.style.columnCount = String(cols);
+  }
+
+  // ── Reorder: checked items first within each list ──
+  function reorderSelectedFirst(listEl) {
+    var controls = listEl.querySelectorAll(':scope > .control');
+    if (!controls.length) return;
+    var checkedFrag = document.createDocumentFragment();
+    var otherFrag = document.createDocumentFragment();
+    for (var i = 0; i < controls.length; i++) {
+      var cb = controls[i].querySelector('input[type="checkbox"]');
+      if (cb && cb.checked) checkedFrag.appendChild(controls[i]);
+      else otherFrag.appendChild(controls[i]);
+    }
+    listEl.appendChild(checkedFrag);
+    listEl.appendChild(otherFrag);
+  }
+
+  // ── Shift-click range select, scoped to the modal ──
+  // Attached on the backdrop element so it only sees clicks while the
+  // modal is open. One anchor per list (we have one list per group).
+  function installShiftClickInRoot(rootEl) {
+    var anchors = new WeakMap();
+
+    function resolveCheckbox(target) {
+      if (!target || !target.closest) return null;
+      if (target.tagName === 'INPUT' && target.type === 'checkbox') return target;
+      var label = target.closest('label');
+      if (!label) return null;
+      var input = label.querySelector('input[type="checkbox"]');
+      return (input && input.type === 'checkbox') ? input : null;
+    }
+
+    rootEl.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      var cb = resolveCheckbox(e.target);
+      if (!cb) return;
+      var list = cb.closest('.' + CLASS_PREFIX + '-list');
+      if (!list) return;
+
+      if (e.shiftKey) {
+        var anchor = anchors.get(list);
+        if (anchor && anchor !== cb && list.contains(anchor)) {
+          // Skip cb itself; native click will toggle it to the target
+          // state naturally. We just set the in-between boxes.
+          var all = Array.prototype.slice.call(
+            list.querySelectorAll('input[type="checkbox"]')
+          );
+          var ai = all.indexOf(anchor);
+          var bi = all.indexOf(cb);
+          if (ai >= 0 && bi >= 0) {
+            var lo = Math.min(ai, bi);
+            var hi = Math.max(ai, bi);
+            var target = !cb.checked;  // what cb will become after native toggle
+            for (var i = lo; i <= hi; i++) {
+              if (i === bi) continue;
+              var node = all[i];
+              if (node.checked !== target) {
+                node.checked = target;
+                node.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }
+            try { window.getSelection().removeAllRanges(); } catch (_) {}
+          }
+          anchors.set(list, cb);
+          return;
+        }
+      }
+      anchors.set(list, cb);
+    }, true);
+  }
+
+  // ── Modal construction ────────────────────────────────────────────
+  // options: {
+  //   title:        string,
+  //   groups:       [{ label, items: [{id, identifier, checked}] }],
+  //   onSave(ids):  function,
+  //   onCancel():   function
+  // }
+  function openModal(options) {
+    injectStyles();
+
+    var backdrop = document.createElement('div');
+    backdrop.className = CLASS_PREFIX + '-backdrop';
+
+    var modal = document.createElement('div');
+    modal.className = CLASS_PREFIX + '-modal';
+
+    // Header
+    var header = document.createElement('div');
+    header.className = CLASS_PREFIX + '-header';
+    var titleEl = document.createElement('h2');
+    titleEl.className = CLASS_PREFIX + '-title';
+    titleEl.textContent = options.title || 'Connected Devices';
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = CLASS_PREFIX + '-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.setAttribute('aria-label', 'Close');
+    header.appendChild(titleEl);
+    header.appendChild(closeBtn);
+
+    // Inline error banner — hidden by default, shown via showError().
+    var errorBar = document.createElement('div');
+    errorBar.className = CLASS_PREFIX + '-error';
+    errorBar.style.display = 'none';
+
+    // Body — one list per group. Rendered by renderGroups() so setGroups
+    // can swap contents in place (no close+reopen flicker).
+    var body = document.createElement('div');
+    body.className = CLASS_PREFIX + '-body';
+
+    function renderGroups(groups) {
+      body.innerHTML = '';
+      if (!groups || !groups.length) {
+        var empty = document.createElement('div');
+        empty.className = CLASS_PREFIX + '-empty';
+        empty.textContent = 'No candidates available.';
+        body.appendChild(empty);
+        return;
+      }
+      for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
+        var groupEl = document.createElement('div');
+        groupEl.className = CLASS_PREFIX + '-group';
+
+        var labelEl = document.createElement('div');
+        labelEl.className = CLASS_PREFIX + '-group-label';
+        labelEl.textContent = group.label || '—';
+        groupEl.appendChild(labelEl);
+
+        var listEl = document.createElement('ul');
+        listEl.className = CLASS_PREFIX + '-list';
+        for (var i = 0; i < (group.items || []).length; i++) {
+          var item = group.items[i];
+          var li = document.createElement('li');
+          li.className = 'control';
+          var lbl = document.createElement('label');
+          var input = document.createElement('input');
+          input.type = 'checkbox';
+          input.value = item.id;
+          if (item.checked) input.checked = true;
+          var span = document.createElement('span');
+          span.textContent = item.identifier || item.id;
+          lbl.appendChild(input);
+          lbl.appendChild(span);
+          li.appendChild(lbl);
+          listEl.appendChild(li);
+        }
+        groupEl.appendChild(listEl);
+        body.appendChild(groupEl);
+
+        reorderSelectedFirst(listEl);
+        applyMultiColLayout(listEl);
+      }
+    }
+    renderGroups(options.groups);
+
+    // Footer
+    var footer = document.createElement('div');
+    footer.className = CLASS_PREFIX + '-footer';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = CLASS_PREFIX + '-btn';
+    cancelBtn.textContent = 'Cancel';
+    var saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = CLASS_PREFIX + '-btn ' + CLASS_PREFIX + '-btn-primary';
+    saveBtn.textContent = 'Save';
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+
+    modal.appendChild(header);
+    modal.appendChild(errorBar);
+    modal.appendChild(body);
+    modal.appendChild(footer);
+    backdrop.appendChild(modal);
+
+    installShiftClickInRoot(backdrop);
+
+    var closed = false;
+    var saving = false;
+
+    function close() {
+      if (closed) return;
+      closed = true;
+      if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+      document.removeEventListener('keydown', onKey, true);
+    }
+
+    function readSelectedIds() {
+      var ids = [];
+      var checks = backdrop.querySelectorAll('.' + CLASS_PREFIX + '-list input[type="checkbox"]:checked');
+      for (var i = 0; i < checks.length; i++) ids.push(checks[i].value);
+      return ids;
+    }
+
+    /** Replace the modal body with a new set of groups, in place. */
+    function setGroups(groups) {
+      renderGroups(groups);
+    }
+
+    /** Toggle the modal's saving state — disables Save, swaps its label,
+     *  and blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
+    function setSaving(isSaving) {
+      saving = !!isSaving;
+      saveBtn.disabled = saving;
+      cancelBtn.disabled = saving;
+      closeBtn.disabled = saving;
+      saveBtn.textContent = saving ? 'Saving…' : 'Save';
+    }
+
+    /** Show or clear an inline error banner inside the modal. */
+    function showError(msg) {
+      if (!msg) {
+        errorBar.style.display = 'none';
+        errorBar.textContent = '';
+        return;
+      }
+      errorBar.textContent = msg;
+      errorBar.style.display = 'block';
+    }
+
+    function tryCancel() {
+      if (saving) return;
+      close();
+      if (typeof options.onCancel === 'function') options.onCancel();
+    }
+
+    closeBtn.addEventListener('click', tryCancel);
+    cancelBtn.addEventListener('click', tryCancel);
+    saveBtn.addEventListener('click', function () {
+      if (saving) return;
+      var ids = readSelectedIds();
+      showError('');
+      if (typeof options.onSave === 'function') options.onSave(ids);
+    });
+    // Click outside modal → cancel (but not mid-save)
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) tryCancel();
+    });
+    // Esc → cancel (but not mid-save)
+    function onKey(e) {
+      if (e.key === 'Escape') tryCancel();
+    }
+    document.addEventListener('keydown', onKey, true);
+
+    document.body.appendChild(backdrop);
+
+    return {
+      close: close,
+      setGroups: setGroups,
+      setSaving: setSaving,
+      showError: showError
+    };
+  }
+
+  // ── Candidate fetching (chunk 3) ──────────────────────────────────
+  // We hit Knack's own /connections endpoint, which is the same URL the
+  // native popover uses — so the Builder filter and auth wiring Just
+  // Works. Our filter is hardcoded to match what the Builder applies:
+  //   field_2219 = camera/reader bucket
+  //   field_2197 = blank (candidate not already connected to something)
+  //   field_2154 = current SOW (pulled off the clicked row's model)
+  // A per-SOW in-memory cache avoids re-fetching on rapid reopens.
+
+  var CAMERAS_BUCKET_ID       = '6481e5ba38f283002898113c';
+  var BUCKET_FIELD            = 'field_2219';
+  var RECIPROCAL_FIELD        = 'field_2197';
+  var SOW_CONNECTION_FIELD    = 'field_2154';
+  var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
+  var CANDIDATES_CACHE        = {};             // { sowId: { records: [...], fetchedAt: ms } }
+  var CACHE_TTL_MS            = 60 * 1000;
+
+  function readRecordAttrs(recordId) {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return null;
+    var model = Knack.views[TARGET_VIEW].model;
+    if (!model) return null;
+    var records = (model.data && model.data.models) || model.models || [];
+    for (var i = 0; i < records.length; i++) {
+      var entry = records[i];
+      if (!entry) continue;
+      var attrs = entry.attributes || entry;
+      if (attrs && attrs.id === recordId) return attrs;
+    }
+    return null;
+  }
+
+  function getSowIdForRecord(recordId) {
+    var attrs = readRecordAttrs(recordId);
+    if (!attrs) return null;
+    var raw = attrs[SOW_CONNECTION_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    return null;
+  }
+
+  function getCurrentlySelectedIds(recordId) {
+    var attrs = readRecordAttrs(recordId);
+    if (!attrs) return [];
+    var raw = attrs[TARGET_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+
+  function buildConnectionsUrl(sowId) {
+    var sceneKey = (typeof Knack !== 'undefined' && Knack.router && Knack.router.current_scene_key)
+      ? Knack.router.current_scene_key : 'scene_1116';
+    var filters = [
+      { field: BUCKET_FIELD,         value: [CAMERAS_BUCKET_ID], operator: 'is' },
+      { field: RECIPROCAL_FIELD,     value: '',                  operator: 'is blank' },
+      { field: SOW_CONNECTION_FIELD, value: sowId,               operator: 'is' }
+    ];
+    return Knack.api_url + '/v1/pages/' + sceneKey +
+           '/views/' + TARGET_VIEW + '/connections/' + TARGET_FIELD +
+           '?rows_per_page=2000&limit_return=true' +
+           '&filters=' + encodeURIComponent(JSON.stringify(filters));
+  }
+
+  /** Fire the connections request. onDone(err, records). */
+  function fetchCandidates(sowId, onDone) {
+    var cached = CANDIDATES_CACHE[sowId];
+    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
+      onDone(null, cached.records);
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function') {
+      onDone(new Error('SCW.knackAjax unavailable'));
+      return;
+    }
+    window.SCW.knackAjax({
+      type: 'GET',
+      url: buildConnectionsUrl(sowId),
+      dataType: 'json',
+      success: function (resp) {
+        var records = (resp && (resp.records || resp)) || [];
+        // Some Knack endpoints wrap in { records: [...] }, others return
+        // the array directly; tolerate both.
+        if (!Array.isArray(records) && records.records) records = records.records;
+        if (!Array.isArray(records)) records = [];
+        CANDIDATES_CACHE[sowId] = { records: records, fetchedAt: Date.now() };
+        onDone(null, records);
+      },
+      error: function (xhr) {
+        onDone(xhr || new Error('fetch failed'));
+      }
+    });
+  }
+
+  /** Group candidate records by their MDF/IDF identifier, preserving
+   *  the server-provided order within each group. Records with a blank
+   *  MDF/IDF land in a trailing "Unassigned" group. */
+  function groupByMdfIdf(records, selectedIdSet) {
+    var orderedLabels = [];
+    var groupMap = {};  // label → { label, items }
+    var UNASSIGNED_LABEL = 'Unassigned';
+
+    function bucketFor(label) {
+      if (!groupMap[label]) {
+        groupMap[label] = { label: label, items: [] };
+        orderedLabels.push(label);
+      }
+      return groupMap[label];
+    }
+
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i] || {};
+      var id = rec.id;
+      if (!id) continue;
+      var label = UNASSIGNED_LABEL;
+      var raw = rec[GROUPING_FIELD + '_raw'];
+      if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
+        label = String(raw[0].identifier).trim() || UNASSIGNED_LABEL;
+      } else if (rec[GROUPING_FIELD]) {
+        var stripped = String(rec[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
+        if (stripped) label = stripped;
+      }
+      bucketFor(label).items.push({
+        id: id,
+        identifier: rec.identifier || rec.field_1950 || rec[TARGET_FIELD + '_display'] || id,
+        checked: !!(selectedIdSet && selectedIdSet[id])
+      });
+    }
+
+    // Pull Unassigned to the end if present
+    var unassignedIdx = orderedLabels.indexOf(UNASSIGNED_LABEL);
+    if (unassignedIdx !== -1 && unassignedIdx !== orderedLabels.length - 1) {
+      orderedLabels.splice(unassignedIdx, 1);
+      orderedLabels.push(UNASSIGNED_LABEL);
+    }
+    return orderedLabels.map(function (l) { return groupMap[l]; });
+  }
+
+  // ── Click interceptor (chunk 2) ───────────────────────────────────
+  // Capture-phase listener on document. Knack's inline-edit wiring is
+  // bubble-phase jQuery delegation on document, so our capture-phase
+  // handler runs first. stopImmediatePropagation then prevents Knack
+  // from seeing the click.
+  //
+  // The listener is document-wide but filters strictly: only fires when
+  // the click lands on an editable td.field_1957 inside #view_3586.
+  // Everything else (other fields, other views, locked cells, non-left-
+  // click) falls through untouched to the normal handlers.
+  var TARGET_VIEW  = 'view_3586';
+  var TARGET_FIELD = 'field_1957';
+  var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
+
+  function isCellLocked(td) {
+    if (!td) return true;
+    if (!td.classList.contains('cell-edit')) return true;       // not editable
+    if (td.classList.contains('scw-cell-locked')) return true;  // lock-fields.js
+    if (td.classList.contains('scw-ws-td-locked')) return true; // device-worksheet cell lock
+    // Row-level lock (field_2551 = Yes → card gets scw-ws-locked)
+    var card = td.closest('.scw-ws-card, .scw-ws-row');
+    if (card && card.classList.contains('scw-ws-locked')) return true;
+    return false;
+  }
+
+  function getRecordIdFromCell(td) {
+    // device-worksheet moves the id onto the wsTr wrapper
+    var wsTr = td.closest('tr.scw-ws-row');
+    if (wsTr && wsTr.id && RECORD_ID_RE.test(wsTr.id)) return wsTr.id;
+    // Flat view / pre-transform fallback
+    var tr = td.closest('tr[id]');
+    if (tr && RECORD_ID_RE.test(tr.id)) return tr.id;
+    return null;
+  }
+
+  function handleCellClick(e) {
+    if (!window.SCW.CONFIG.customConnectionPicker) return;
+    if (e.button !== undefined && e.button !== 0) return;      // left-click only
+    if (!e.target || !e.target.closest) return;
+
+    var td = e.target.closest('td.' + TARGET_FIELD);
+    if (!td) return;
+    if (!td.closest('#' + TARGET_VIEW)) return;
+    if (isCellLocked(td)) return;
+
+    var recordId = getRecordIdFromCell(td);
+    if (!recordId) return;
+
+    // Intercept — Knack's native popover must not open.
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    openPickerForRecord(recordId, td);
+  }
+
+  // ── Save (chunk 4) ────────────────────────────────────────────────
+  // Direct AJAX PUT against the parent record with the new field_1957
+  // id array. On success:
+  //   1. Patch Knack's Backbone model attrs (field_1957 + _raw) so
+  //      subsequent reads don't revert to stale connection state.
+  //   2. Fire a synthetic knack-cell-update.view_3586 carrying the
+  //      updated record. SCW.silentRegroupView3586 (mirror-connection-
+  //      sync.js) listens on that event and deterministically reparents
+  //      the child rows, patches their field_2197 + field_1946, and
+  //      fires per-child PUTs with a final model.fetch() to resync.
+  //
+  // We don't use Knack.views[...].model.updateRecord() because — per the
+  // boolean-chips.js comment — that path silently fails in the worksheet
+  // context where device-worksheet has restructured the rows. Direct PUT
+  // is the pattern every other SCW device-worksheet writer uses today.
+  function saveSelection(recordId, selectedIds, onDone) {
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      console.error('[scw-cp] SCW.knackAjax/knackRecordUrl unavailable — cannot save');
+      if (typeof onDone === 'function') onDone(new Error('ajax helpers unavailable'));
+      return;
+    }
+    var body = {};
+    body[TARGET_FIELD] = selectedIds;
+
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: window.SCW.knackRecordUrl(TARGET_VIEW, recordId),
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        // Invalidate the candidate cache for this SOW so the NEXT open
+        // sees fresh field_2197 values (the just-saved children now
+        // point at this parent; the filter would have excluded them on
+        // a fresh fetch).
+        var sowId = getSowIdForRecord(recordId);
+        if (sowId) delete CANDIDATES_CACHE[sowId];
+
+        // Patch Knack's model so the parent row reflects the new
+        // selection immediately (no visible "flash then populate").
+        if (typeof window.SCW.syncKnackModel === 'function') {
+          try {
+            window.SCW.syncKnackModel(TARGET_VIEW, recordId, resp, TARGET_FIELD, selectedIds);
+          } catch (e) { /* best-effort */ }
+        }
+
+        // Fire a synthetic cell-update event so the silent-regroup
+        // mirror picks it up and handles the reciprocal children.
+        try {
+          var viewObj = (typeof Knack !== 'undefined' && Knack.views)
+            ? Knack.views[TARGET_VIEW] : null;
+          // The mirror reads record[TARGET_FIELD + '_raw'] on the
+          // event payload; make sure it's populated from resp (Knack
+          // returns the raw shape for connection fields).
+          $(document).trigger('knack-cell-update.' + TARGET_VIEW, [viewObj, resp]);
+        } catch (e) {
+          console.warn('[scw-cp] cell-update trigger threw', e);
+        }
+
+        if (typeof onDone === 'function') onDone(null, resp);
+      },
+      error: function (xhr) {
+        console.error('[scw-cp] save failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+        if (typeof onDone === 'function') onDone(xhr || new Error('save failed'));
+      }
+    });
+  }
+
+  function openPickerForRecord(recordId, td) {
+    var sowId = getSowIdForRecord(recordId);
+    if (!sowId) {
+      console.warn('[scw-cp] cannot resolve SOW id for record', recordId,
+                   '— leaving Knack native picker disabled; no fallback.');
+      return;
+    }
+    var selectedIds = getCurrentlySelectedIds(recordId);
+    var selectedSet = {};
+    for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
+
+    // Open with a placeholder group so the modal shell paints
+    // immediately; swap in real data when the fetch lands via
+    // handle.setGroups() (in place, no close+reopen flicker).
+    var handle = openModal({
+      title: 'Connected Devices',
+      groups: [{ label: 'Loading…', items: [] }],
+      onSave: function (ids) {
+        handle.setSaving(true);
+        handle.showError('');
+        saveSelection(recordId, ids, function (err) {
+          if (err) {
+            handle.setSaving(false);
+            handle.showError('Failed to save. Please try again.');
+            return;
+          }
+          handle.close();
+        });
+      },
+      onCancel: function () { /* no-op */ }
+    });
+
+    fetchCandidates(sowId, function (err, records) {
+      if (err) {
+        console.error('[scw-cp] fetch failed', err);
+        handle.showError('Failed to load candidates. Close and try again.');
+        return;
+      }
+      // Ensure any currently-selected records that aren't in the
+      // candidate set (e.g. the filter would have excluded them because
+      // they're now connected to something else) still appear in the
+      // modal as checked — otherwise a user who just wants to UNCHECK
+      // one couldn't see it. Fold them in under an "Already selected"
+      // section at the top.
+      var byId = {};
+      for (var r = 0; r < records.length; r++) {
+        if (records[r] && records[r].id) byId[records[r].id] = records[r];
+      }
+      var grouped = groupByMdfIdf(records, selectedSet);
+      var orphans = [];
+      for (var s = 0; s < selectedIds.length; s++) {
+        var sid = selectedIds[s];
+        if (!byId[sid]) {
+          var attrs = readRecordAttrs(sid) || {};
+          orphans.push({
+            id: sid,
+            identifier: attrs.identifier || attrs.field_1950 || sid,
+            checked: true
+          });
+        }
+      }
+      if (orphans.length) {
+        grouped.unshift({ label: 'Already selected', items: orphans });
+      }
+
+      handle.setGroups(grouped);
+    });
+  }
+
+  document.addEventListener('click', handleCellClick, true);
+
+  // ── Public ────────────────────────────────────────────────────────
+  window.SCW.connectionPicker = {
+    open: openModal,
+
+    /** DevTools helper: open the modal with fake data so the shell can
+     *  be verified before click-interception + fetching are wired up. */
+    _testOpen: function () {
+      function mkItem(id, label, checked) {
+        return { id: id, identifier: label, checked: !!checked };
+      }
+      var groups = [
+        {
+          label: 'HEADEND :: Default',
+          items: [
+            mkItem('a1', 'SCW 24 Port PoE Switch — SW24PEXT-V2 #1'),
+            mkItem('a2', 'SCW 24 Port PoE Switch — SW24PEXT-V2 #2'),
+            mkItem('a3', 'SCW 16 Port Gigabit PoE Switch #1', true)
+          ]
+        },
+        {
+          label: 'IDF: 01: Ground Floor Riser Room',
+          items: (function () {
+            var arr = [];
+            for (var i = 1; i <= 48; i++) {
+              arr.push(mkItem('idf01-' + i, 'E-' + (60 + i).toString().padStart(3, '0'), i === 2 || i === 5));
+            }
+            return arr;
+          })()
+        },
+        {
+          label: 'IDF: 02: Second Floor Riser Room',
+          items: (function () {
+            var arr = [];
+            for (var i = 1; i <= 32; i++) {
+              arr.push(mkItem('idf02-' + i, 'E-' + (110 + i).toString().padStart(3, '0')));
+            }
+            return arr;
+          })()
+        }
+      ];
+      openModal({
+        title: 'Connected Devices',
+        groups: groups,
+        onSave: function (ids) { console.log('[scw-cp] save', ids); },
+        onCancel: function () { console.log('[scw-cp] cancel'); }
+      });
     }
   };
-  // Backward-compat alias for any lingering DevTools snippets.
-  window.SCW.silentPollView3505 = window.SCW.silentRegroupView3505;
-
-  log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
 })();
-/*** END FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505 *************/
+/*** END FEATURE: Custom connection picker ********************************************/
 /*** GRID DIRECT-EDIT — type-and-save inputs for standard Knack grids ***/
 (function () {
   'use strict';
@@ -45573,7 +48044,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
     var fields = getFields(viewId);
     if (!fields.length) {
-      console.log('[' + PREFIX + '] No fields configured for ' + viewId);
+      SCW.debug('[' + PREFIX + '] No fields configured for ' + viewId);
       return;
     }
 
@@ -45630,7 +48101,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       });
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
+    SCW.debug('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
   }
 
   // ── MutationObserver for re-render handling ────────────────────
@@ -45734,7 +48205,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     });
   });
 
-  console.log('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
+  SCW.debug('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
 })();
 /*************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
 (function () {

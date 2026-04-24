@@ -55,7 +55,7 @@
       }
     }
 
-    console.log('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
+    SCW.debug('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
     return ids;
   }
 
@@ -74,7 +74,7 @@
       accessoryRecordIds: accessoryIds
     };
 
-    console.log('[SCW][delete-intercept] Sending to webhook:', payload);
+    SCW.debug('[SCW][delete-intercept] Sending to webhook:', payload);
 
     fetch(url, {
       method: 'POST',
@@ -109,7 +109,7 @@
     var tr = link.closest('tr[id]');
     if (tr && /^[a-f0-9]{24}$/.test(tr.id)) {
       _lastClickedRecordId = tr.id;
-      console.log('[SCW][delete-intercept] Tracked click on record ' + tr.id);
+      SCW.debug('[SCW][delete-intercept] Tracked click on record ' + tr.id);
     }
   }, true); // capture phase
 
@@ -166,13 +166,13 @@
     if (BULK_DELETE_RE.test(msg)) {
       // KTL bulk delete
       deletedRecordIds = getBulkSelectedRecordIds();
-      console.log('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
+      SCW.debug('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
 
     } else if (SINGLE_DELETE_RE.test(msg)) {
       // Single record delete
       if (_lastClickedRecordId) {
         deletedRecordIds = [_lastClickedRecordId];
-        console.log('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
+        SCW.debug('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
       } else {
         console.warn('[SCW][delete-intercept] Single delete confirmed but no record ID captured');
       }
@@ -185,7 +185,7 @@
     for (var i = 0; i < deletedRecordIds.length; i++) {
       var accessories = getConnectedIdsFromDOM(deletedRecordIds[i]);
       if (accessories.length) {
-        console.log('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
+        SCW.debug('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
         allAccessoryIds = allAccessoryIds.concat(accessories);
       }
     }
@@ -193,11 +193,11 @@
     if (allAccessoryIds.length) {
       fireWebhook(deletedRecordIds, allAccessoryIds);
     } else {
-      console.log('[SCW][delete-intercept] No connected accessories found for deleted records');
+      SCW.debug('[SCW][delete-intercept] No connected accessories found for deleted records');
     }
 
     return result;
   };
 
-  console.log('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
+  SCW.debug('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
 })();

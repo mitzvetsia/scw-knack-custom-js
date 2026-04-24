@@ -522,9 +522,9 @@
     // Build claimed set from pending change requests
     var pendingClaimed = buildPendingClaimedSet(selfId);
     var pClaimedKeys = Object.keys(pendingClaimed);
-    if (pClaimedKeys.length) console.log(TAG, 'pendingClaimed:', pClaimedKeys);
+    if (pClaimedKeys.length) SCW.debug(TAG, 'pendingClaimed:', pClaimedKeys);
 
-    console.log(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
+    SCW.debug(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -561,11 +561,11 @@
           }
         }
         if (isAdd && connToPopulated) {
-          console.log(TAG, 'Skipping (field_2381 populated):', label, rec.id);
+          SCW.debug(TAG, 'Skipping (field_2381 populated):', label, rec.id);
         } else if (pendingClaimed[rec.id]) {
-          console.log(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
+          SCW.debug(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
         } else {
-          console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
+          SCW.debug(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
           if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
         }
       }
@@ -601,7 +601,7 @@
     // The worksheet puts field cells on tr[data-scw-worksheet] rows; the record ID is
     // on the next sibling tr.scw-ws-row.
     if (!foundCamReaderFromModel) {
-      console.log(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
+      SCW.debug(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
       var wsView = CFG.targetViews[0];
       var $wsTbl = $('#' + wsView + ' table.kn-table');
       if ($wsTbl.length) {
@@ -620,17 +620,17 @@
                 if (ctCell) {
                   var ctSpan = ctCell.querySelector('span[data-kn="connection-value"]');
                   if (ctSpan) {
-                    console.log(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
+                    SCW.debug(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
                     return; // jQuery .each() continue
                   }
                 }
               }
               if (pendingClaimed[rowId]) {
-                console.log(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
+                SCW.debug(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
               } else if (!devMap[rowId]) {
                 var nameCell = dataTr.querySelector('td.field_2365') || dataTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
-                console.log(TAG, 'Strategy 3 hit:', rowLabel, rowId);
+                SCW.debug(TAG, 'Strategy 3 hit:', rowLabel, rowId);
                 devMap[rowId] = { id: rowId, identifier: rowLabel };
               }
             }
@@ -642,7 +642,7 @@
     // Strategy 4+5: revision records (view_3823) — field_2698 direct, then JSON payload
     var revModel = findModel(CFG.revisionView);
     var revRecords = extractRecords(revModel);
-    console.log(TAG, 'revision records:', revRecords.length);
+    SCW.debug(TAG, 'revision records:', revRecords.length);
     for (var rri = 0; rri < revRecords.length; rri++) {
       var rr = revRecords[rri];
       var revBucketId = '';
@@ -680,9 +680,9 @@
           } catch (e) { /* skip */ }
         }
         if (pendingClaimed[rr.id]) {
-          console.log(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
+          SCW.debug(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
         } else {
-          console.log(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
+          SCW.debug(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
           if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
         }
       }
@@ -701,9 +701,9 @@
             var pLabel = pItem.displayLabel || pItem.productName || pItem.rowId;
             var pId = pItem.sowItemId || pItem.rowId;
             if (pId && pendingClaimed[pId]) {
-              console.log(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
+              SCW.debug(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
             } else if (pId && !devMap[pId]) {
-              console.log(TAG, 'Strategy 6 (pending):', pLabel, pId);
+              SCW.debug(TAG, 'Strategy 6 (pending):', pLabel, pId);
               devMap[pId] = { id: pId, identifier: pLabel };
             }
           }
@@ -732,7 +732,7 @@
     }
 
     var result = { bidMdfIdf: vals(mdfMap), bidConnDevice: vals(devMap), bidConnTo: vals(toMap) };
-    console.log(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
+    SCW.debug(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
       'connTo:', result.bidConnTo.length, 'mdfIdf:', result.bidMdfIdf.length, result);
     return result;
   }
@@ -915,7 +915,7 @@
   function buildRevisionMap() {
     // Always try DOM first — most reliable for rich-text / JSON fields
     var domRecords = scrapeFromDom();
-    console.log('[BidRevInject] DOM-scraped records:', domRecords.length);
+    SCW.debug('[BidRevInject] DOM-scraped records:', domRecords.length);
 
     // Supplement with model data for records not found in the DOM
     var seen = {};
@@ -925,7 +925,7 @@
 
     var model = findModel(CFG.revisionView);
     var modelRecords = extractRecords(model);
-    console.log('[BidRevInject] Model records:', modelRecords.length);
+    SCW.debug('[BidRevInject] Model records:', modelRecords.length);
 
     var records = domRecords.slice();
     for (var mi = 0; mi < modelRecords.length; mi++) {
@@ -935,7 +935,7 @@
         seen[mr.id] = true;
       }
     }
-    console.log('[BidRevInject] Total records (merged):', records.length);
+    SCW.debug('[BidRevInject] Total records (merged):', records.length);
 
     var map = {};
     var orphaned = [];
@@ -944,7 +944,7 @@
       var siId = getSurveyItemId(rec);
       var entry = buildRevEntry(rec);
 
-      console.log('[BidRevInject] Record', rec.id,
+      SCW.debug('[BidRevInject] Record', rec.id,
                   '| surveyItemId:', siId,
                   '| hasHtml:', !!entry.changeHtml,
                   '| hasJson:', !!entry.changeJson,
@@ -961,7 +961,7 @@
       if (!map[siId]) map[siId] = [];
       map[siId].push(entry);
     }
-    console.log('[BidRevInject] Revision map:', Object.keys(map).length,
+    SCW.debug('[BidRevInject] Revision map:', Object.keys(map).length,
                 'matched,', orphaned.length, 'orphaned');
     return { map: map, orphaned: orphaned };
   }
@@ -972,12 +972,12 @@
    */
   function scrapeFromDom() {
     var viewEl = document.getElementById(CFG.revisionView);
-    if (!viewEl) { console.log('[BidRevInject] View element not found for', CFG.revisionView); return []; }
+    if (!viewEl) { SCW.debug('[BidRevInject] View element not found for', CFG.revisionView); return []; }
     var table = viewEl.querySelector('table.kn-table-table') || viewEl.querySelector('table.kn-table');
-    if (!table) { console.log('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
+    if (!table) { SCW.debug('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
     var rows = table.querySelectorAll('tbody > tr');
     if (!rows.length) rows = table.querySelectorAll('tr');
-    console.log('[BidRevInject] DOM table rows found:', rows.length);
+    SCW.debug('[BidRevInject] DOM table rows found:', rows.length);
     var records = [];
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
@@ -1157,7 +1157,7 @@
         fieldsLookup = data.fields;
       }
     }
-    console.log('[BidRevInject] Edit modal data keys:', Object.keys(data),
+    SCW.debug('[BidRevInject] Edit modal data keys:', Object.keys(data),
       '| requested keys:', Object.keys(requested),
       '| current keys:', Object.keys(current),
       '| fields type:', Array.isArray(data.fields) ? 'array(' + data.fields.length + ')' : typeof data.fields,
@@ -1223,7 +1223,7 @@
           if (resolved.length) {
             curIds = resolved;
             prefillIds[fd.key] = resolved;
-            console.log('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
+            SCW.debug('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
           }
         }
         // Ensure already-selected IDs appear in the options (even if buildConnOptions missed them)
@@ -1427,14 +1427,14 @@
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
 
-      console.log('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
+      SCW.debug('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
 
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(CFG.revisionView, revisionId),
         type: 'PUT',
         data: JSON.stringify(putBody),
         success: function () {
-          console.log('[BidRevInject] Saved JSON + HTML for', revisionId);
+          SCW.debug('[BidRevInject] Saved JSON + HTML for', revisionId);
           // Update the in-memory reference so the next Edit click sees latest data
           if (jsonRef) jsonRef.data = updated;
           // Re-inject the updated HTML card into the DOM
@@ -1620,7 +1620,7 @@
       if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
+    SCW.debug('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
                    ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
@@ -1644,7 +1644,7 @@
       url: SCW.knackRecordUrl(CFG.revisionView, revisionId),
       type: 'PUT',
       data: JSON.stringify(directStatus),
-      success: function () { console.log('[BidRevInject] Status updated:', revisionId); },
+      success: function () { SCW.debug('[BidRevInject] Status updated:', revisionId); },
       error: function () { console.warn('[BidRevInject] Status update failed:', revisionId); },
     });
 
@@ -1654,7 +1654,7 @@
       data: JSON.stringify(payload),
       timeout: 90000,
       success: function (resp) {
-        console.log('[BidRevInject]', action, 'response for', revisionId, resp);
+        SCW.debug('[BidRevInject]', action, 'response for', revisionId, resp);
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
         if (extra.outcome === 'rejected') {
@@ -1708,7 +1708,7 @@
               if (fired) return;
               fired = true;
               $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
-              console.log('[BidRevInject] view_3823 re-rendered, refreshing targets');
+              SCW.debug('[BidRevInject] view_3823 re-rendered, refreshing targets');
               // Small delay to let DOM settle
               setTimeout(refreshTargets, 300);
             });
@@ -1718,7 +1718,7 @@
               if (!fired) {
                 fired = true;
                 $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
-                console.log('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
+                SCW.debug('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
                 refreshTargets();
               }
             }, 5000);
@@ -2172,7 +2172,7 @@
       }
     }
 
-    console.log('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
+    SCW.debug('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
                 (orphans.length - ungrouped.length) + ' grouped, ' +
                 ungrouped.length + ' ungrouped)');
   }
@@ -2207,7 +2207,7 @@
 
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
-    if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+    if (!viewEl) { SCW.debug('[BidRevInject] View element not found:', viewId); return; }
 
     // Always clean up previous injections before rebuilding
     cleanupInjections(viewEl);
@@ -2217,7 +2217,7 @@
     var orphaned = result.orphaned;
     var siIds = Object.keys(revMap);
     if (!siIds.length && !orphaned.length) {
-      console.log('[BidRevInject] No revisions to inject');
+      SCW.debug('[BidRevInject] No revisions to inject');
       return;
     }
 
@@ -2226,7 +2226,7 @@
     if (!wsRows.length && siIds.length) {
       _injectRetries++;
       if (_injectRetries < 10) {
-        console.log('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
+        SCW.debug('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
         setTimeout(function () { inject(viewId); }, 500);
       } else {
         console.warn('[BidRevInject] Gave up waiting for scw-ws-row after', _injectRetries, 'attempts');
@@ -2299,7 +2299,7 @@
       }
       injected++;
     }
-    console.log('[BidRevInject] Injected revisions onto', injected, 'cards,',
+    SCW.debug('[BidRevInject] Injected revisions onto', injected, 'cards,',
                 orphaned.length, 'orphaned adds');
 
     // Render orphaned add requests (includes any unmatched map entries)
@@ -2654,7 +2654,7 @@
       if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
+    SCW.debug('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
 
     // 1. Update field_2645 on each revision line item directly
     var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
@@ -2756,7 +2756,7 @@
 
   // ── EVENT BINDING ───────────────────────────────────────
 
-  console.log('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
+  SCW.debug('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
   injectStyles();
 
   // We need both view_3823 and view_3505 to have rendered.
@@ -2770,7 +2770,7 @@
 
   function onViewReady(viewId) {
     _ready[viewId] = true;
-    console.log('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
+    SCW.debug('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
     // Only inject once the revision view AND at least one target have rendered
     if (!_ready[CFG.revisionView]) return;
     for (var i = 0; i < CFG.targetViews.length; i++) {
@@ -2831,7 +2831,7 @@
         var targetView = document.getElementById(tv);
         if (!targetView) continue;
         // Both views exist in the DOM — mark ready and inject
-        console.log('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
+        SCW.debug('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
         _ready[CFG.revisionView] = true;
         _ready[tv] = true;
         clearInterval(pollId);

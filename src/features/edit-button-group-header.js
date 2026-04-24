@@ -90,7 +90,7 @@
 
   function waitForFieldAndSelect(srId, attempts) {
     if (attempts <= 0) {
-      console.log('[SCW] gave up after all attempts. srId=' + srId);
+      SCW.debug('[SCW] gave up after all attempts. srId=' + srId);
       return;
     }
     var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
@@ -109,7 +109,7 @@
     var $chosenContainer = $('#' + chznId);
 
     if (!$chosenContainer.length) {
-      console.log('[SCW] Chosen container #' + chznId + ' not found');
+      SCW.debug('[SCW] Chosen container #' + chznId + ' not found');
       return;
     }
 
@@ -120,7 +120,7 @@
     setTimeout(function () {
       var resultId = chznId + '_o_' + optionIndex;
       var $resultItem = $('#' + resultId);
-      console.log('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
+      SCW.debug('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
       if ($resultItem.length) {
         $resultItem.trigger('mouseup');
       }
@@ -140,7 +140,7 @@
       var currentHash = window.location.hash || '';
       var srMatch = currentHash.match(/site-survey-request-details\/([a-f0-9]{24})/);
       var srId = srMatch ? srMatch[1] : '';
-      console.log('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
+      SCW.debug('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
 
       window.location.hash = href.replace(/^#/, '');
 

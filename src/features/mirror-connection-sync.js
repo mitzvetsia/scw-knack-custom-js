@@ -1,94 +1,100 @@
 /**************************************************************************************************
- * FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505
+ * FEATURE: Silent deterministic regroup after a parent-multi-connection inline-edit
  *
- * Context:
- *   - Knack's native inline-edit record rule on field_2380 (view_3505)
- *     triggers a Make webhook whose only job is to rewrite field_2375 +
- *     field_2381 on the connected CHILD records:
- *        * added child D    → field_2375 = R.field_2375, field_2381 = [R]
- *        * removed child D  → field_2381 = []  (field_2375 untouched)
- *     where R is the record the user just edited.
- *   - field_2375 (REL_mdf-idf) is view_3505's L1 grouping key
- *     (device-worksheet.js:106 "move: { key: 'field_2375' }"), so the
- *     side-effect is that child rows visually move between MDF/IDF groups.
- *   - field_2381 ("connections") is a readOnly detail-panel field on the
- *     card (device-worksheet.js:117), NOT the grouping key.
+ * Generic pattern: in a Knack table view, the record R holds a multi-connection
+ * TRIGGER_FIELD pointing at children. Each child has:
+ *   - CONNECTIONS_FIELD — back-connection to the parent (inverse of TRIGGER_FIELD)
+ *   - GROUPING_FIELD    — the L1 group key (typically MDF/IDF), which must match
+ *                         the parent's GROUPING_FIELD so the child renders
+ *                         under the parent's group header in the worksheet.
  *
- * Why not wait for the Make webhook and model.fetch()?
- *   - A full re-render wipes all cards, flashes the view, and re-runs every
- *     per-card enhancer. The user explicitly asked for a silent refresh.
+ * When R.TRIGGER_FIELD is edited, a Make webhook rewrites CONNECTIONS_FIELD +
+ * GROUPING_FIELD on the added/removed children:
+ *    - added child D    → D.GROUPING_FIELD    = R.GROUPING_FIELD
+ *                         D.CONNECTIONS_FIELD = [R]
+ *    - removed child D  → D.CONNECTIONS_FIELD = []  (GROUPING_FIELD untouched)
+ * Which has the side-effect that child rows visually move between group headers.
  *
- * Why not poll the API?
- *   - We own the rule deterministically. Given R on knack-cell-update we
- *     already know exactly what the webhook will do, so we can do it
- *     ourselves locally and fire the PUTs from the client. No polling,
- *     no webhook dependency, no guessing at stability.
+ * This module mirrors that rule deterministically FE-side so the UI updates
+ * without waiting for the webhook, without polling, and without a full
+ * model.fetch() re-render (which flashes the view and re-runs every per-card
+ * enhancer). We know the rule exactly, so we compute the add/remove diff from
+ * the cell-update event payload, move the DOM rows, patch the Backbone models,
+ * patch the visible cards, fire background PUTs for each affected child, and
+ * only after ALL PUTs land do we call model.fetch() to resync from the server.
  *
- * Strategy:
- *   1. On knack-cell-update.view_3505 stash the event record R and arm a
+ * Strategy (once per instance):
+ *   1. On knack-cell-update.<VIEW_ID> stash the event record R and arm a
  *      debounced settle timer — Knack's native post-edit re-render fires
  *      within ~50ms and would wipe any DOM changes we made synchronously.
- *   2. Every knack-view-render.view_3505 during the edit cycle resets the
+ *   2. Every knack-view-render.<VIEW_ID> during the edit cycle resets the
  *      settle timer. After SETTLE_MS of render silence, apply the regroup.
  *   3. Deterministic regroup:
- *        newChildren     = R.field_2380_raw (event payload)
- *        currentChildren = DOM-scan every visible card's td.field_2381 for
- *                          a `<span data-kn="connection-value">` whose class
- *                          list contains R.id — device-worksheet.js renders
- *                          field_2381 as a readOnly detail field which MOVES
- *                          the original Knack-rendered td (with its spans
- *                          intact) from sourceTr into the card's detail
- *                          panel, so the DOM is the ground truth here.
+ *        newChildren     = R[TRIGGER_FIELD + '_raw'] (event payload)
+ *        currentChildren = DOM-scan every visible card's td.<CONNECTIONS_FIELD>
+ *                          for a `<span data-kn="connection-value">` whose class
+ *                          list is R.id — device-worksheet.js moves the original
+ *                          Knack-rendered td (with its spans intact) from the
+ *                          hidden sourceTr into the card's detail panel, so the
+ *                          DOM is the ground truth.
  *        added   = newChildren ∖ currentChildren
  *        removed = currentChildren ∖ newChildren
  *      For each added child D:
- *        - move D's row-triple into R.field_2375's L1 group
- *        - patch D's Backbone model attrs (field_2375, field_2381)
+ *        - move D's row-triple into R's L1 group (walk back from R's wsTr to
+ *          the nearest preceding .kn-table-group.kn-group-level-1)
+ *        - patch D's Backbone model (GROUPING_FIELD, CONNECTIONS_FIELD)
  *        - patch D's visible card via SCW.deviceWorksheet.patchCard
- *        - fire background PUT { field_2375: [R.field_2375], field_2381: [R] }
+ *        - fire PUT { GROUPING_FIELD: [R.<GROUPING_FIELD>], CONNECTIONS_FIELD: [R] }
  *      For each removed child D:
- *        - patch D's Backbone model (field_2381 = [])
+ *        - patch D's Backbone model (CONNECTIONS_FIELD = [])
  *        - patch D's visible card
- *        - fire background PUT { field_2381: [] }
- *      When ALL PUTs have landed on the server (success or failure), fire
- *      a real `view.model.fetch()` to resync Knack's model with the true
- *      server state. This replaces the user having to manually reload the
- *      page after the silent regroup — by the time the fetch runs, the
- *      child records have their new field_2375/field_2381 persisted, so
- *      the natural re-render is correct.
- *
- *      NOTE: device-worksheet.js moves both field_2381 (readOnly) and
- *      field_2375 (moveIcon) tds out of the hidden sourceTr into the card,
- *      but the moveIcon td has its innerHTML replaced with an icon (the
- *      original connection-value span is destroyed), whereas readOnly tds
- *      preserve their contents. So field_2381 is DOM-readable, field_2375
- *      is not. For destination group resolution we walk backward from R's
- *      own wsTr to the nearest L1 group header — R is itself a view_3505
- *      record, so its current L1 group IS the destination.
- *   4. Falls back to model.fetch() ONLY when R's wsTr has no L1 header
- *      before it (R was just moved into an empty group, or R is not
- *      visible) — we can't silently synthesize an L1 header row.
+ *        - fire PUT { CONNECTIONS_FIELD: [] }
+ *      When ALL PUTs have landed (success or failure), fire a real
+ *      view.model.fetch() to resync Knack's model with the now-consistent
+ *      server state.
+ *   4. Falls back to model.fetch() ONLY when R's wsTr has no L1 header before
+ *      it (R was just moved into an empty group, or R is not visible) — we
+ *      can't silently synthesize an L1 header row.
  *   5. A re-entrancy guard (ownPuts) ignores any stray knack-cell-update
  *      events that echo our own background PUTs.
+ *   6. A MutationObserver "mut-guard" watches the view's tbody and re-applies
+ *      the cached plan whenever drift is detected (catches Knack re-renders
+ *      that bypass knack-view-render).
+ *
+ * Instances are registered at the bottom via createMirror(config). Each
+ * instance has fully independent state (pendingPlan, settleTimer, ownPuts,
+ * mutObserver, etc.); the event namespaces include VIEW_ID so handlers
+ * don't collide.
+ *
+ * Current instances:
+ *   - view_3505 / field_2380 → field_2381, grouped by field_2375  (survey line items)
+ *   - view_3586 / field_1957 → field_2197, grouped by field_1946  (SOW line items)
  **************************************************************************************************/
-(function silentRegroupView3505() {
+(function () {
   'use strict';
-
-  // ======================
-  // CONFIG
-  // ======================
-  var VIEW_ID           = 'view_3505';
-  var TRIGGER_FIELD     = 'field_2380';  // children-connection on the edited record
-  var GROUPING_FIELD    = 'field_2375';  // REL_mdf-idf (L1 group key)
-  var CONNECTIONS_FIELD = 'field_2381';  // back-connection to parent (detail-panel)
-  var SETTLE_MS         = 400;
-  var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
 
   var HEX24 = /^[0-9a-f]{24}$/i;
 
-  function log() {
-    try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
-  }
+  // ======================================================================
+  // FACTORY — one instance per view that needs the silent-regroup pattern.
+  // All state below (ownPuts, pendingPlan, settleTimer, mutObserver, …)
+  // is closure-scoped per call, so instances never share state.
+  // ======================================================================
+  function createMirror(config) {
+    // ── config ──
+    var VIEW_ID           = config.VIEW_ID;
+    var TRIGGER_FIELD     = config.TRIGGER_FIELD;     // children-connection on the edited record
+    var GROUPING_FIELD    = config.GROUPING_FIELD;    // L1 group key (e.g. REL_mdf-idf)
+    var CONNECTIONS_FIELD = config.CONNECTIONS_FIELD; // back-connection to parent (detail-panel)
+    var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
+    var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
+    var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
+    var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
+
+    function log() {
+      if (!window.SCW || !window.SCW.DEBUG) return;
+      try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
+    }
 
   // ======================================================================
   // DOM helpers — reading field cells out of the triple-row card layout.
@@ -687,7 +693,7 @@
     catch (e) { console.warn(LOG_PREFIX, 'applyDeterministicRegroup threw', e); }
   }
 
-  $(document).on('knack-cell-update.' + VIEW_ID + '.scwSilentRegroup', function (event, view, record) {
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record) {
     try {
       if (!record || !record.id) return;
       // Re-entrancy: ignore echoes from our own background PUTs.
@@ -712,7 +718,7 @@
   // path with a longer defer (the observer fires immediately on childList
   // changes; view-render may fire later after Knack finishes its render
   // cycle — we want to catch both).
-  $(document).on('knack-view-render.' + VIEW_ID + '.scwSilentRegroup', function () {
+  $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS, function () {
     if (pendingRecord || settleTimer) {
       log('view re-rendered during edit cycle — resetting settle timer');
       armSettle();
@@ -738,28 +744,53 @@
     }
   });
 
-  // ======================================================================
-  // Public debug hooks — poke from DevTools.
-  // ======================================================================
-  window.SCW = window.SCW || {};
-  window.SCW.silentRegroupView3505 = {
-    applyDeterministicRegroup: applyDeterministicRegroup,
-    applyPlanToDom: applyPlanToDom,
-    findRowsPointingTo: findRowsPointingTo,
-    findL1HeaderBefore: findL1HeaderBefore,
-    inspectState: function () {
-      return {
-        hasPendingRecord: pendingRecord != null,
-        hasSettleTimer: settleTimer != null,
-        hasPendingPlan: pendingPlan != null,
-        pendingPlan: pendingPlan,
-        ownPutsInFlight: Object.keys(ownPuts)
-      };
-    }
-  };
-  // Backward-compat alias for any lingering DevTools snippets.
-  window.SCW.silentPollView3505 = window.SCW.silentRegroupView3505;
+    // ======================================================================
+    // Public debug hook — poke from DevTools under the configured name.
+    // ======================================================================
+    var api = {
+      applyDeterministicRegroup: applyDeterministicRegroup,
+      applyPlanToDom: applyPlanToDom,
+      findRowsPointingTo: findRowsPointingTo,
+      findL1HeaderBefore: findL1HeaderBefore,
+      inspectState: function () {
+        return {
+          hasPendingRecord: pendingRecord != null,
+          hasSettleTimer: settleTimer != null,
+          hasPendingPlan: pendingPlan != null,
+          pendingPlan: pendingPlan,
+          ownPutsInFlight: Object.keys(ownPuts)
+        };
+      }
+    };
+    window.SCW = window.SCW || {};
+    if (PUBLIC_API_NAME) window.SCW[PUBLIC_API_NAME] = api;
 
-  log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
+    log('installed — trigger=' + TRIGGER_FIELD + ', view=' + VIEW_ID);
+    return api;
+  }
+
+  // ── Instance registrations ────────────────────────────────────────────
+  createMirror({
+    VIEW_ID:           'view_3505',
+    TRIGGER_FIELD:     'field_2380',
+    CONNECTIONS_FIELD: 'field_2381',
+    GROUPING_FIELD:    'field_2375',
+    PUBLIC_API_NAME:   'silentRegroupView3505'
+  });
+
+  createMirror({
+    VIEW_ID:           'view_3586',
+    TRIGGER_FIELD:     'field_1957',
+    CONNECTIONS_FIELD: 'field_2197',
+    GROUPING_FIELD:    'field_1946',
+    PUBLIC_API_NAME:   'silentRegroupView3586'
+  });
+
+  // Backward-compat alias for any lingering DevTools snippets that
+  // referenced the old "silentPoll" name.
+  window.SCW = window.SCW || {};
+  if (window.SCW.silentRegroupView3505) {
+    window.SCW.silentPollView3505 = window.SCW.silentRegroupView3505;
+  }
 })();
-/*** END FEATURE: Silent deterministic regroup after field_2380 inline-edit on view_3505 *************/
+/*** END FEATURE: Silent deterministic regroup after a parent-multi-connection inline-edit *********/

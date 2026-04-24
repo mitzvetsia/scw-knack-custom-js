@@ -483,7 +483,7 @@
       });
     });
 
-    if (CFG.debug && locked) console.log('[SalesCR] Locked fields on', locked, 'new-item rows');
+    if (CFG.debug && locked) SCW.debug('[SalesCR] Locked fields on', locked, 'new-item rows');
   }
 
   // ═══════════════════════════════════════════════════════════

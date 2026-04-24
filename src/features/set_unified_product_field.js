@@ -32,7 +32,7 @@
   // UTILS
   // ======================
   function log(...args) {
-    if (CONFIG.DEBUG && window.console) console.log("[scwUnified2246]", ...args);
+    if (CONFIG.DEBUG && window.console) SCW.debug("[scwUnified2246]", ...args);
   }
 
   function uniq(arr) {

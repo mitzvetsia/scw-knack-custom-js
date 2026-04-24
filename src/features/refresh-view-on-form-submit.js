@@ -69,14 +69,14 @@
           pending--;
           if (pending <= 0) hideRefreshing();
         });
-        console.log('[scw-refresh] Fetching source grid ' + viewId);
+        SCW.debug('[scw-refresh] Fetching source grid ' + viewId);
         view.model.fetch();
       }
     });
 
     if (!fetched) {
       // Fallback: just recalculate from current DOM
-      console.log('[scw-refresh] No source grids available, recalculating from DOM');
+      SCW.debug('[scw-refresh] No source grids available, recalculating from DOM');
       if (window.SCW && typeof SCW.restructureTotals === 'function') {
         SCW.restructureTotals();
       }
@@ -100,7 +100,7 @@
       if (form.closest('#' + FORM_VIEWS[i])) { isTargetForm = true; break; }
     }
     if (isTargetForm) {
-      console.log('[scw-refresh] Submit button clicked — showing overlay');
+      SCW.debug('[scw-refresh] Submit button clicked — showing overlay');
       showRefreshing();
     }
   }, true); // capture phase — fires before Knack's handler
@@ -110,7 +110,7 @@
   FORM_VIEWS.forEach(function (formViewId) {
     $(document).off('knack-form-submit.' + formViewId + NS)
                .on('knack-form-submit.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Form submit detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Form submit detected on ' + formViewId);
       refreshSourceGrids();
     });
   });
@@ -119,12 +119,12 @@
   FORM_VIEWS.forEach(function (formViewId) {
     $(document).off('knack-record-create.' + formViewId + NS)
                .on('knack-record-create.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record create detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Record create detected on ' + formViewId);
       refreshSourceGrids();
     });
     $(document).off('knack-record-update.' + formViewId + NS)
                .on('knack-record-update.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record update detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Record update detected on ' + formViewId);
       refreshSourceGrids();
     });
   });
@@ -154,7 +154,7 @@
     views.forEach(function (viewId) {
       $(document).off('knack-cell-update.' + viewId + NS)
                  .on('knack-cell-update.' + viewId + NS, function () {
-        console.log('[scw-refresh] Cell update detected on ' + viewId);
+        SCW.debug('[scw-refresh] Cell update detected on ' + viewId);
         recalcDebounced();
       });
     });
@@ -164,7 +164,7 @@
   $(document).off('scw-record-saved' + NS)
              .on('scw-record-saved' + NS, function () {
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
-      console.log('[scw-refresh] Direct edit save detected');
+      SCW.debug('[scw-refresh] Direct edit save detected');
       setTimeout(recalcTotals, 1000);
       setTimeout(recalcTotals, 3000);
     }
@@ -258,7 +258,7 @@
 
   $(document).off('knack-form-submit.' + DTO_FORM + DTO_NS)
              .on('knack-form-submit.' + DTO_FORM + DTO_NS, function () {
-    console.log('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
+    SCW.debug('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
     showDtoToast();
 
     // Capture initial record counts so we can detect when new records arrive
@@ -285,7 +285,7 @@
       });
 
       if (gained) {
-        console.log('[scw-refresh] New records detected \u2014 stopping poll');
+        SCW.debug('[scw-refresh] New records detected \u2014 stopping poll');
         // Keep polling a few more times to catch stragglers
         setTimeout(function () {
           DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
@@ -300,7 +300,7 @@
       }
 
       if (elapsed >= DTO_TIMEOUT_MS) {
-        console.log('[scw-refresh] DTO poll timeout');
+        SCW.debug('[scw-refresh] DTO poll timeout');
         clearInterval(_dtoPollTimer);
         _dtoPollTimer = null;
         hideDtoToast();

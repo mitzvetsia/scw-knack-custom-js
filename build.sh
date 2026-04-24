@@ -84,6 +84,7 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/ops-review-pill.js \
   src/features/ops-stepper.js \
+  src/features/published-quote-on-proposal-page.js \
   src/features/preview-proposal-btn.js \
   src/features/create-sow-option-btn.js \
   src/features/import-unique-items-btn.js \
@@ -94,6 +95,7 @@ cat \
   src/features/connected-device-bid-check.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
+  src/features/connection-picker.js \
   src/features/grid-direct-edit.js \
   src/features/dynamic-cell-colors.js \
   src/features/revenue-tier-progress.js \

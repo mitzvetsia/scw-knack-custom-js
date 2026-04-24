@@ -252,7 +252,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
     var fields = getFields(viewId);
     if (!fields.length) {
-      console.log('[' + PREFIX + '] No fields configured for ' + viewId);
+      SCW.debug('[' + PREFIX + '] No fields configured for ' + viewId);
       return;
     }
 
@@ -309,7 +309,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       });
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
+    SCW.debug('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
   }
 
   // ── MutationObserver for re-render handling ────────────────────
@@ -413,5 +413,5 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     });
   });
 
-  console.log('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
+  SCW.debug('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
 })();

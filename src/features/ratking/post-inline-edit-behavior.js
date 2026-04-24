@@ -15,8 +15,8 @@
   $(document).on('knack-record-update.view_1493', function (event, view, record) {
     alert("Click 'OK' to update equipment total");
     Knack.views["view_1493"].model.fetch();
-    console.log("hello world");
-    console.log(Knack.views);
+    SCW.debug("hello world");
+    SCW.debug(Knack.views);
   });
 })();
 

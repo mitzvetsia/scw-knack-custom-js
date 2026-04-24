@@ -35,7 +35,7 @@
   var HOST_VIEW      = 'view_3345';   // role-gated rich-text host in Knack
   var SOURCE_VIEW    = 'view_3861';   // SOW details view on the proposal page
   var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
-  var LICENSE_VIEW   = '';            // TODO: user will supply the license-table view id
+  var LICENSE_VIEW   = 'view_3371';   // License records table on the proposal page
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
 
   var NS         = '.scwOpsStepper';
@@ -47,15 +47,36 @@
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
-      // Available when the survey hasn't been requested AND there are no
-      // pending change requests yet. As soon as CRs exist (field_2728 > 0)
-      // the Request Alternative Bid step takes over.
+      // Keyed on field_2723 — the flag this step's webhook actually
+      // flips server-side. field_2706 ("survey requested") only flips
+      // downstream when Sales requests the survey, so keying the step
+      // state on it made it effectively un-completable from Ops' side.
+      //
+      // Hide the step entirely once the flow has advanced to the change-
+      // request stage. If the SOW hasn't been marked ready AND there
+      // are already CRs queued, the Request Alternative Bid step takes
+      // over — surfacing a grayed-out Mark Ready here would just be noise.
+      hideWhen: {
+        all: [
+          { field: 'field_2723', value: 'No' },
+          { field: 'field_2728', gt: 0 }
+        ]
+      },
+      // Once Ops has marked the SOW ready, render as completed (green
+      // check, non-clickable) to mirror the sales build stepper.
+      completed: { field: 'field_2723', value: 'Yes' },
+      // Active (clickable) when Ops hasn't marked it ready and there
+      // are no CRs yet.
       showWhen: {
         all: [
-          { field: 'field_2706', value: 'No' },
+          { field: 'field_2723', value: 'No' },
           { not: { field: 'field_2728', gt: 0 } }
         ]
       },
+      // Single webhook handles both "mark ready" and the draft publish
+      // server-side. Payload includes full SOW context + publishAsTbd
+      // (see buildPayload) so Make has everything it needs to also
+      // produce the TBD-numbered draft published quote.
       webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
       modal: {
         title:       'Mark Ready for Survey',
@@ -63,12 +84,16 @@
         placeholder: 'e.g. Proposal is internally consistent, ready to hand off',
         submitLabel: 'Mark Ready'
       },
-      includeFullPayload: false   // this step just needs sourceRecordId + notes
+      includeFullPayload: true
     },
     {
       id: 'request-alt-bid',
       label: 'Request Alternative Bid from Subcontractor',
       tone: 'amber',
+      // Hide entirely when there are no change requests — the whole
+      // premise of an alt bid is to respond to CRs, so without any
+      // there's nothing to show.
+      hideWhen: { not: { field: 'field_2728', gt: 0 } },
       showWhen: {
         all: [
           { field: 'field_2706', value: 'No' },
@@ -86,27 +111,26 @@
     },
     {
       id: 'publish-proposal',
-      label: 'Publish and Submit Completed Proposal to Sales',
+      label: 'Submit Final Proposal to Sales',
       tone: 'success',
-      // Available only once the SOW has both at least one change request
-      // (field_2728 > 0) and at least one associated bid (field_2737 > 0).
+      // Unlocked once EITHER:
+      //   - the SOW has at least one change request (field_2728 > 0), OR
+      //   - Ops has marked the SOW ready for survey (field_2723 = Yes).
+      // Either signal means there's something worth publishing — a CR
+      // queue to surface, or an Ops-validated SOW headed to survey.
       showWhen: {
-        all: [
+        any: [
           { field: 'field_2728', gt: 0 },
-          { field: 'field_2737', gt: 0 }
+          { field: 'field_2723', value: 'Yes' }
         ]
       },
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       modal: {
-        title:       'Publish & Submit Completed Proposal',
-        intro:       'Anything to include in the update to Sales? You can either just publish the quote quietly, or publish AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
+        title:       'Submit Final Proposal to Sales',
+        intro:       'Anything to include in the update to Sales?',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
-        submitLabel: 'Publish & Notify Sales',
-        // Secondary action — fires the same webhook with mode=publish-only
-        // so Make can skip the Sales notification / CU task / Slack steps.
-        secondaryLabel: 'Just Publish (no notification)',
-        secondaryMode:  'publish-only',
-        primaryMode:    'publish-and-notify'
+        submitLabel: 'Submit',
+        primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
     }
@@ -119,6 +143,11 @@
   var CIRCLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+  var CHECK_CIRCLE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>' +
+    '<polyline points="22 4 12 14.01 9 11.01"/></svg>';
   var LOCK_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -178,6 +207,19 @@
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      /* Completed: green accent + check icon. When locked-by-completion
+         (is-completed + is-disabled) keep full opacity — the step should
+         read as "done", not as faded-out. */
+      '.scw-step-action.is-completed {' +
+      '  --scw-step-accent: #16a34a;' +
+      '}' +
+      '.scw-step-action.is-completed .scw-step-icon { color: #16a34a; opacity: 1; }' +
+      '.scw-step-action.is-completed.is-disabled {' +
+      '  opacity: 1; cursor: default; pointer-events: none;' +
+      '}' +
+      '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
+      '  color: #16a34a; opacity: 1;' +
+      '}' +
       '.scw-step-action.is-loading {' +
       '  pointer-events: none; opacity: 0.75; cursor: wait;' +
       '}' +
@@ -337,6 +379,15 @@
   }
 
   // ── Payload ──────────────────────────────────────────────
+  // True when the SOW's bid isn't validated yet — Make's Publish
+  // scenario publishes with TBD placeholder numbers rather than
+  // finalized figures. Ops can SEE the real numbers on the proposal
+  // page, but until field_2725 is flipped to Yes, the published quote
+  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  function shouldPublishAsTbd() {
+    return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
+  }
+
   function buildPayload(step, notes, mode) {
     var payload = {
       sourceRecordId: getSourceRecordId(),
@@ -353,6 +404,44 @@
       payload.sowName        = readField(EXTRA_FIELD);
       payload.sowLineItemIds = collectRecordIdsFromView(LINE_ITEM_VIEW);
       payload.licenseIds     = collectRecordIdsFromView(LICENSE_VIEW);
+    }
+    // Any payload that will trigger publishing server-side carries the
+    // TBD flag so Make knows whether to stamp real numbers or
+    // placeholders. Both Mark Ready (which also publishes a draft) and
+    // the standalone Publish step qualify.
+    //
+    // Also merges in the exact shape the standalone "Publish Quote"
+    // button (proposal-pdf-export.js) sends to its save webhook —
+    // html / json / sowId / totals / expirationDate / etc. — so every
+    // code path that publishes a quote looks identical on Make's side.
+    if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
+      payload.publishAsTbd = shouldPublishAsTbd();
+      try {
+        // Pass the proposal scene explicitly — more reliable than
+        // auto-detect, and the Ops stepper is only active on scene_1096.
+        var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
+          ? SCW.pdfExport.buildPublishPayload('scene_1096')
+          : null;
+        if (pub) {
+          // Flatten publish fields onto the top-level payload. Don't
+          // clobber the ops-stepper-native keys (sourceRecordId, etc.).
+          var PUBLISH_KEYS = [
+            'recordId', 'hash', 'sceneId', 'type',
+            'sowId', 'equipmentTotal', 'installationTotal',
+            'grandTotal', 'expirationDate', 'html', 'json'
+          ];
+          for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
+            var pk = PUBLISH_KEYS[pi];
+            if (pub[pk] !== undefined) payload[pk] = pub[pk];
+          }
+        } else {
+          console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
+            'SCW.pdfExport not ready or scene not configured. html/json ' +
+            'fields will be missing from this webhook call.');
+        }
+      } catch (e) {
+        console.warn('[scw-ops-stepper] buildPublishPayload threw:', e);
+      }
     }
     return payload;
   }
@@ -457,7 +546,107 @@
     }
   }
 
+  // Navigate up one level in Knack's hash-based route — strips the
+  // last two hash segments (child-slug + child-id) so e.g.
+  //   #…/build-sow/<sowId>/proposal/<sowId>
+  // becomes
+  //   #…/build-sow/<sowId>
+  //
+  // No reload and no banner: the pending flag we just wrote causes
+  // ops-review-pill on the parent scene to render a grey "Processing…"
+  // pill for this SOW. That's the visual cue. Polling over there
+  // refreshes the underlying data (view_3325 + view_3885) as soon as
+  // Make commits its writes, without ever replacing the whole page.
+  function redirectToParent() {
+    var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
+    var parts = hash.replace(/^#\/?/, '').split('/');
+    if (parts.length >= 2) {
+      parts.splice(-2, 2);
+      window.location.hash = '#' + parts.join('/');
+    } else {
+      window.location.hash = '#';
+    }
+  }
+
+  // localStorage key name used to signal same-origin tabs that an Ops
+  // stepper action finished. workflow-stepper.js listens on the build
+  // page and reloads when its own SOW id matches, so the user never
+  // lingers on stale data after clicking Mark Ready from a new tab.
+  var COMPLETION_SIGNAL_KEY_PREFIX = 'scw-ops-stepper-completed:';
+  var PENDING_KEY_PREFIX           = 'scw-ops-stepper-pending:';
+
+  function signalOpsStepperCompletion(sowId) {
+    if (!sowId) return;
+    try {
+      // Value is just the timestamp — every write triggers a storage
+      // event in other tabs even if the key already existed.
+      localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
+      SCW.debug('[scw-ops-stepper] completion signal written:', sowId);
+    } catch (e) { /* localStorage might be disabled; non-fatal */ }
+  }
+
+  // Mark the SOW's current step as "in flight" — Make has accepted the
+  // webhook but hasn't finished yet. ops-review-pill reads this flag
+  // and renders the pill in a grayed "Processing" state until field
+  // values on the record catch up (polled via Knack.views.model.fetch)
+  // or the 90s timeout lapses.
+  function markStepPending(sowId, stepId) {
+    if (!sowId || !stepId) return;
+    try {
+      localStorage.setItem(
+        PENDING_KEY_PREFIX + sowId,
+        JSON.stringify({ stepId: stepId, timestamp: Date.now() })
+      );
+      SCW.debug('[scw-ops-stepper] pending flag written:', sowId, stepId);
+    } catch (e) { /* localStorage might be disabled; non-fatal */ }
+  }
+
+  // Close the current tab on success. The Ops list opens the proposal
+  // page in a new tab (target="_blank"), so window.close() should work;
+  // if the browser blocks it, fall back to redirectToParent after a
+  // short delay so the user still ends up somewhere sensible.
+  //
+  // The setTimeout before window.close() is intentional: some browsers
+  // miss the cross-tab storage-event IPC if the origin tab closes too
+  // quickly after setItem. 150ms is plenty for the event to propagate.
+  function dismissAfterSuccess() {
+    setTimeout(function () {
+      window.close();
+      setTimeout(function () {
+        // Still here? window.close() was blocked. Navigate up instead.
+        redirectToParent();
+      }, 300);
+    }, 150);
+  }
+
   // ── Webhook ──────────────────────────────────────────────
+  // POST the payload as JSON. Resolves with {ok, status, data} where
+  // `data` is the parsed JSON body (or null if the body isn't JSON).
+  function postWebhook(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (resp) {
+      return resp.text().then(function (body) {
+        var data = null;
+        try { data = body ? JSON.parse(body) : null; } catch (e) {}
+        return { ok: resp.ok, status: resp.status, body: body, data: data };
+      });
+    });
+  }
+
+  // Extract a user-facing error message from a webhook response. Used
+  // when resp.data.success isn't truthy — prefers the server's error
+  // string, falls back to a generic HTTP-status message.
+  function webhookErrorMsg(resp, genericLabel) {
+    if (resp.data && (resp.data.error || resp.data.message)) {
+      return resp.data.error || resp.data.message;
+    }
+    if (resp.ok) return (genericLabel || 'Webhook') + ' returned a non-JSON or unexpected response.';
+    return (genericLabel || 'Webhook') + ' returned HTTP ' + resp.status + '.';
+  }
+
   function fireStep(step, btn) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG[step.webhookKey]) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
@@ -474,35 +663,39 @@
       setBtnLoading(btn, true);
       var payload = buildPayload(step, notes, ctx.mode);
 
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(function (resp) {
-        return resp.text().then(function (body) {
-          var data = null;
-          try { data = body ? JSON.parse(body) : null; } catch (e) {}
-          return { ok: resp.ok, status: resp.status, body: body, data: data };
-        });
-      }).then(function (resp) {
-        if (resp.data && resp.data.success) {
-          // Reload so the stepper re-evaluates against the flipped flags
-          // that Make wrote server-side (field_2723 / field_2725 / etc).
-          window.location.reload();
-          return;
-        }
-        setBtnLoading(btn, false);
-        ctx.setSubmitting(false);
-        ctx.showError(
-          (resp.data && (resp.data.error || resp.data.message)) ||
-          (resp.ok
-            ? 'Webhook returned a non-JSON or unexpected response.'
-            : 'Webhook returned HTTP ' + resp.status + '.')
+      postWebhook(url, payload).then(function (resp) {
+        // Accept either `success: true` or `status: 'accepted'` —
+        // Make scenarios respond with one or the other depending on
+        // how the acknowledgement was configured.
+        var accepted = resp.data && (
+          resp.data.success === true ||
+          (typeof resp.data.status === 'string' &&
+           resp.data.status.toLowerCase() === 'accepted')
         );
+        if (!accepted) {
+          throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
+        }
+        // Close the notes modal before navigating — the redirect is
+        // just a hash change, it doesn't tear down body-level overlays.
+        ctx.close();
+        // Fire a cross-tab signal so the build page (if open in
+        // another tab) reloads and doesn't show stale data.
+        signalOpsStepperCompletion(getSourceRecordId());
+        // Mark the step as pending so the parent page's next-step
+        // pill renders grayed out until Make finishes flipping the
+        // underlying field values.
+        markStepPending(getSourceRecordId(), step.id);
+        // Close this tab — the Ops list opened us in a new window,
+        // so there's no reason to keep it around once the action
+        // is done. Falls back to a parent-page redirect if the
+        // browser blocks window.close().
+        dismissAfterSuccess();
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);
-        ctx.showError('Network error: ' + (e && e.message ? e.message : e));
+        ctx.showError(
+          (e && e.message) ? e.message : ('Network error: ' + e)
+        );
       });
     });
   }
@@ -533,19 +726,33 @@
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
-    // Render every step in fixed order; gray out (disable) the ones whose
-    // showWhen evaluates false. Same DOM shape as workflow-stepper.js's
-    // action steps so we get the accordion-header look for free.
+    // Render every step in fixed order. Three possible states per step:
+    //   hideWhen  matches → skip rendering entirely (step is inapplicable)
+    //   completed matches → render with green-check + is-completed (done, not clickable)
+    //   showWhen  matches → render clickable with circle icon
+    //   otherwise         → render disabled with gray lock icon
+    // Completed takes priority over showWhen so a finished step always
+    // reads as "done" rather than as locked.
     STEPS.forEach(function (step) {
-      var available = conditionMet(step.showWhen);
+      if (step.hideWhen && conditionMet(step.hideWhen)) return;
+
+      var completed = step.completed ? conditionMet(step.completed) : false;
+      var available = step.showWhen ? conditionMet(step.showWhen) : true;
+      var locked    = !completed && !available;
+
       var el = document.createElement('a');
       el.href = 'javascript:void(0)';
-      el.className = 'scw-step-action' + (available ? '' : ' is-disabled');
-      if (!available) el.setAttribute('title', 'Not available for this SOW right now.');
+      var cls = 'scw-step-action';
+      if (completed) cls += ' is-completed is-disabled';
+      else if (locked) cls += ' is-disabled';
+      el.className = cls;
+      if (locked) el.setAttribute('title', 'Not available for this SOW right now.');
 
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';
-      icon.innerHTML = available ? CIRCLE_SVG : LOCK_SVG;
+      icon.innerHTML = completed ? CHECK_CIRCLE_SVG
+                     : available ? CIRCLE_SVG
+                                 : LOCK_SVG;
       el.appendChild(icon);
 
       var titleEl = document.createElement('span');
@@ -553,7 +760,7 @@
       titleEl.textContent = step.label;
       el.appendChild(titleEl);
 
-      if (available) {
+      if (available && !completed) {
         el.addEventListener('click', function (e) {
           e.preventDefault();
           if (el.classList.contains('is-loading')) return;

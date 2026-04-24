@@ -27,7 +27,7 @@
     payload.plainText = ns.buildPlainText();
 
     if (CFG.debug) {
-      console.log('[SalesCR] Submit:', payload);
+      SCW.debug('[SalesCR] Submit:', payload);
     }
 
     SCW.knackAjax({
@@ -35,7 +35,7 @@
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
+        if (CFG.debug) SCW.debug('[SalesCR] Submit success:', resp);
         clearPending();
         autoRevertValidation(count);
         ns.showToast('Change request submitted', 'success');
@@ -43,7 +43,7 @@
       error: function (xhr) {
         if (xhr && xhr.status === 0) {
           autoRevertValidation(count);
-          if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
+          if (CFG.debug) SCW.debug('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
           clearPending();
           ns.showToast('Change request submitted', 'success');
         } else {

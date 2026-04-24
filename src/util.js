@@ -1,5 +1,27 @@
 window.SCW = window.SCW || {};
 
+// ── Gated debug logging ──────────────────────────────────────
+// All per-feature diagnostic logs go through SCW.debug / SCW.log
+// instead of console.log. They no-op unless SCW.DEBUG is truthy,
+// which keeps production quiet (and fast — DevTools retains object
+// references from every console.log, which adds up on grids with
+// hundreds of rows). Flip on in the browser console when
+// troubleshooting: SCW.DEBUG = true.
+//
+// console.error and console.warn are intentionally NOT gated —
+// real errors and auth failures should always surface.
+(function (namespace) {
+  function noop() {}
+  function realLog()   { if (namespace.DEBUG) console.log.apply(console, arguments); }
+  function realDebug() { if (namespace.DEBUG) (console.debug || console.log).apply(console, arguments); }
+  namespace.DEBUG = namespace.DEBUG || false;
+  namespace.log   = realLog;
+  namespace.debug = realDebug;
+  // Explicit no-op alias for call sites that want to fully strip
+  // a log without removing the line. Useful during triage.
+  namespace.nolog = noop;
+})(window.SCW);
+
 (function initBindingsHelpers(namespace) {
   function normalizeNamespace(ns) {
     if (!ns) return '.scw';

@@ -13,7 +13,11 @@
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Hide scene until transforms settle, then fade in ── */
+/* Reserve viewport height up-front so progressive view renders don't */
+/* push surrounding chrome (nav, menu, sibling sections) around as    */
+/* each view populates. Main contributor to CLS 0.60 on scene_1116.   */
 #kn-scene_1116 {
+  min-height: 100vh;
   opacity: 0;
   transition: opacity 350ms ease;
 }
@@ -202,16 +206,16 @@
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
       var container = document.getElementById(viewIds[v]);
-      if (!container) { console.log('[scw-totals] container not found:', viewIds[v]); continue; }
+      if (!container) { SCW.debug('[scw-totals] container not found:', viewIds[v]); continue; }
       var cells = container.querySelectorAll('td[data-field-key="' + fieldKey + '"]');
-      console.log('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
+      SCW.debug('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
       for (var i = 0; i < cells.length; i++) {
         var val = parseNum(cells[i].textContent);
-        console.log('  [' + i + ']', cells[i].textContent.trim(), '→', val);
+        SCW.debug('  [' + i + ']', cells[i].textContent.trim(), '→', val);
         total += val;
       }
     }
-    console.log('[scw-totals] SUM', fieldKey, '=', total);
+    SCW.debug('[scw-totals] SUM', fieldKey, '=', total);
     return total;
   }
 

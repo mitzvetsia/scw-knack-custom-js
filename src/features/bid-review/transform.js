@@ -147,7 +147,7 @@
     // Debug: log the SOW field shape from the first record
     if (CFG.debug && records.length) {
       var sample = records[0];
-      console.log('[BidReview] SOW field debug:', {
+      SCW.debug('[BidReview] SOW field debug:', {
         key: FK.sow,
         value: sample[FK.sow],
         raw: sample[FK.sow + '_raw'],
@@ -234,7 +234,7 @@
       var _dbg1946r = meta[FK.sowMdfIdf + '_raw'];
       var _dbg2375 = meta[FK.mdfIdf];
       var _dbg2375r = meta[FK.mdfIdf + '_raw'];
-      console.log('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
+      SCW.debug('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
         '| field_2375:', _dbg2375, '_raw:', _dbg2375r,
         '| label:', stripHtml(meta[FK.displayLabel] || ''));
     }
@@ -604,7 +604,7 @@
     });
 
     if (CFG.debug) {
-      console.log('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
+      SCW.debug('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
     }
     return map;
   }
@@ -640,7 +640,7 @@
       if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
       if (bidStatus) info.bidStatus = bidStatus;
       if (CFG.debug) {
-        console.log('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
+        SCW.debug('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
       }
 
       // File fields: try _raw (object with url) then fall back to HTML parsing
@@ -706,7 +706,7 @@
         };
       }
       if (CFG.debug) {
-        console.log('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
+        SCW.debug('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
       }
     }
 
@@ -766,7 +766,7 @@
       for (var nk = 0; nk < noBidSowIds.length; nk++) {
         noBidTotal += noBidBySow[noBidSowIds[nk]].length;
       }
-      console.log('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
+      SCW.debug('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
     }
 
     // Ensure SOW list includes any SOWs that only appear in the unbid items
@@ -814,7 +814,7 @@
       for (var nb = 0; nb < noBidRows.length; nb++) {
         if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) {
           if (CFG.debug) {
-            console.log('[BidReview] Skipping noBid row — already in view_3680:',
+            SCW.debug('[BidReview] Skipping noBid row — already in view_3680:',
                         noBidRows[nb].sowItem, noBidRows[nb].displayLabel);
           }
           continue;

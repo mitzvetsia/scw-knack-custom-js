@@ -13,7 +13,22 @@
     {
       sceneId: 'scene_1096',
       trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
-      skipViews: { view_3342: true },
+      // view_3861 is the Ops-side SOW details host (hidden via CSS)
+      // — its presence in the DOM is a signal for TBD-masking and the
+      // Ops stepper, not part of the published proposal. Keep it out
+      // of the PDF scrape.
+      // view_3345 is the Ops stepper host (rich-text role-gated).
+      // view_3883 is the published-quote info host we inject into.
+      // view_3886 is the published-proposals data source we read to
+      //   populate view_3883 — itself not part of the quote.
+      // Neither belongs in the published proposal content.
+      skipViews: {
+        view_3342: true,
+        view_3861: true,
+        view_3345: true,
+        view_3883: true,
+        view_3886: true
+      },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -420,6 +435,87 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // TBD MASK for published HTML
+  // ══════════════════════════════════════════════════════════════
+  //
+  // proposal-grid.js applies a visual TBD mask to install-labor cells
+  // when field_2725 is not "Yes" — but bypasses the mask for Ops users
+  // (so they can see real numbers on the proposal page). That bypass
+  // means Ops' DOM shows real figures, and a plain textContent scrape
+  // would leak them into the published HTML. Since Ops is the primary
+  // publisher (Mark Ready / Submit Final Proposal), we re-apply the
+  // TBD treatment to the scraped payload whenever the bid hasn't been
+  // validated, regardless of who's publishing.
+  //
+  // Reads field_2725 straight from view_3861 without the Ops bypass.
+  function shouldPublishAsTbd() {
+    try {
+      var view = document.getElementById('view_3861');
+      if (view) {
+        var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
+        if (cell) return !/^yes$/i.test((cell.textContent || '').trim());
+      }
+      var m = typeof Knack !== 'undefined'
+            && Knack.views && Knack.views.view_3861
+            && Knack.views.view_3861.model;
+      var attrs = m && (m.attributes || (m.toJSON && m.toJSON()) || {});
+      if (attrs && attrs.field_2725 !== undefined) {
+        return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
+      }
+    } catch (e) { /* fall through */ }
+    // Default to TBD when the state can't be read — same defensive
+    // posture as proposal-grid.js's isInstallationMasked().
+    return true;
+  }
+
+  // Mutate a scraped proposal payload so every install-labor surface
+  // renders "TBD". Targets:
+  //   - L4 line item cost (per-product install-labor line)
+  //   - L1 footer "Installation" subtotal
+  //   - Scene-level projectTotals "Installation Total" line
+  function applyTbdToPublishPayload(payload) {
+    var TBD = 'TBD';
+    if (!payload || !Array.isArray(payload.views)) return;
+
+    function tbdifyFooterLines(lines) {
+      if (!Array.isArray(lines)) return;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line && line.label && /installation/i.test(String(line.label))) {
+          line.value = TBD;
+        }
+      }
+    }
+
+    for (var v = 0; v < payload.views.length; v++) {
+      var view = payload.views[v];
+      if (!view) continue;
+      if (Array.isArray(view.sections)) {
+        for (var s = 0; s < view.sections.length; s++) {
+          var section = view.sections[s];
+          if (!section) continue;
+          if (Array.isArray(section.buckets)) {
+            for (var b = 0; b < section.buckets.length; b++) {
+              var bucket = section.buckets[b];
+              if (!bucket || !Array.isArray(bucket.products)) continue;
+              for (var p = 0; p < bucket.products.length; p++) {
+                var prod = bucket.products[p];
+                if (!prod || !Array.isArray(prod.lineItems)) continue;
+                for (var li = 0; li < prod.lineItems.length; li++) {
+                  prod.lineItems[li].cost = TBD;
+                }
+              }
+            }
+          }
+          if (section.footer) tbdifyFooterLines(section.footer.lines);
+        }
+      }
+      if (view.projectTotals) tbdifyFooterLines(view.projectTotals.lines);
+    }
+    if (payload.projectTotals) tbdifyFooterLines(payload.projectTotals.lines);
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
@@ -436,13 +532,13 @@
       if (cfg.skipViews[viewId]) continue;
 
       var viewType = detectViewType(viewId);
-      console.log('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
 
       var data = null;
 
       if (viewType === 'grid') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty grid, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
         data = scrapeGridView(viewId, cfg.gridKeys);
@@ -451,7 +547,7 @@
         }
       } else if (viewType === 'report') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty report, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty report, skipping');
           continue;
         }
         data = scrapeReportView(viewId);
@@ -469,6 +565,13 @@
         result.projectTotals = result.views[j].projectTotals;
         break;
       }
+    }
+
+    // Stamp TBD into every install-labor surface if the bid hasn't
+    // been validated (field_2725 != Yes). Only applies to proposal
+    // payloads — subcontractor bids have different semantics.
+    if (cfg.payloadType === 'proposal' && shouldPublishAsTbd()) {
+      applyTbdToPublishPayload(result);
     }
 
     return result;
@@ -1079,7 +1182,7 @@
   function runExport(cfg, extra) {
     var payload = scrapeAllViews(cfg);
     if (!payload.views.length) {
-      console.log('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
       return;
     }
     if (extra) {
@@ -1178,7 +1281,7 @@
               html: htmlStr,
               json: jsonSnapshot
             };
-            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
@@ -1188,7 +1291,7 @@
               crossDomain: true,
               timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                SCW.debug('[SCW PDF Export] Webhook accepted, redirecting to parent');
                 if (cfg.pollViewOnReturn) {
                   try {
                     sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
@@ -1273,7 +1376,7 @@
           }
         }
 
-        console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
+        SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
 
         // Flag for poll-refresh on the parent page
@@ -1427,9 +1530,9 @@
   function onPollViewRender() {
     if (!_pollActive) return;
     var newValue = readFieldText(_pollViewId, _pollFieldId);
-    console.log('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
+    SCW.debug('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
     if (_pollFieldId && newValue !== _pollInitial) {
-      console.log('[SCW PDF Export] Field changed — stopping poll');
+      SCW.debug('[SCW PDF Export] Field changed — stopping poll');
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
@@ -1447,7 +1550,7 @@
     var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
     _pollMsg = 'Generating ' + label + ' PDF\u2026';
 
-    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    SCW.debug('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
     showPollToast(_pollMsg);
     applyFieldOverlay(viewId, fieldId, _pollMsg);
 
@@ -1466,7 +1569,7 @@
       if (_pollFieldId) {
         var currentVal = readFieldText(_pollViewId, _pollFieldId);
         if (currentVal !== _pollInitial) {
-          console.log('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
+          SCW.debug('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
           stopPolling();
           return;
         }
@@ -1477,7 +1580,7 @@
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
-        console.log('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
+        SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
         stopPolling();
       }
     }, POLL_INTERVAL_MS);
@@ -1513,6 +1616,68 @@
   // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
   // before calling.
 
+  // Build the exact "save payload" shape the Publish Quote button sends
+  // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
+  // call this so Make receives identical inputs regardless of origin.
+  //
+  // sceneId is optional — when omitted we auto-detect by:
+  //   1. Knack.scene.attributes.key (Knack's JS model)
+  //   2. DOM presence of `#kn-<cfg.sceneId>` for any configured scene
+  // The DOM check is the more reliable fallback since Knack's JS model
+  // can briefly lag DOM state during transitions.
+  function resolveConfiguredScene(sceneId) {
+    // Explicit pass-through wins.
+    if (sceneId) {
+      for (var i = 0; i < SCENES.length; i++) {
+        if (SCENES[i].sceneId === sceneId) return SCENES[i];
+      }
+      return null;
+    }
+    // Try Knack's model.
+    try {
+      var key = (Knack && Knack.scene && Knack.scene.attributes && Knack.scene.attributes.key) || '';
+      if (key) {
+        for (var j = 0; j < SCENES.length; j++) {
+          if (SCENES[j].sceneId === key) return SCENES[j];
+        }
+      }
+    } catch (e) { /* fall through */ }
+    // Fallback: whichever configured scene is actually rendered in the DOM.
+    for (var k = 0; k < SCENES.length; k++) {
+      if (document.getElementById('kn-' + SCENES[k].sceneId)) return SCENES[k];
+    }
+    return null;
+  }
+
+  function buildPublishPayload(sceneId) {
+    var cfg = resolveConfiguredScene(sceneId);
+    if (!cfg) {
+      console.warn('[SCW pdfExport] buildPublishPayload: no matching SCENES entry for sceneId=' + sceneId + ' (auto-detect also failed).');
+      return null;
+    }
+    var payload = scrapeAllViews(cfg);
+    if (!payload.views.length) {
+      console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
+      return null;
+    }
+    var htmlStr      = buildPdfHtml(payload);
+    var summary      = extractSummaryFields(payload);
+    var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+    return {
+      recordId:          getPageRecordId() || '',
+      hash:              window.location.hash || '',
+      sceneId:           cfg.sceneId,
+      type:              cfg.payloadType,
+      sowId:             summary.sowId,
+      equipmentTotal:    summary.equipmentTotal,
+      installationTotal: summary.installationTotal,
+      grandTotal:        summary.grandTotal,
+      expirationDate:    summary.expirationDate,
+      html:              htmlStr,
+      json:              jsonSnapshot
+    };
+  }
+
   window.SCW = window.SCW || {};
   window.SCW.pdfExport = {
     run: function (sceneId) {
@@ -1526,7 +1691,8 @@
       payload.html = buildPdfHtml(payload);
       return payload;
     },
-    getCss: getPdfCss
+    getCss: getPdfCss,
+    buildPublishPayload: buildPublishPayload
   };
 
   // ══════════════════════════════════════════════════════════════

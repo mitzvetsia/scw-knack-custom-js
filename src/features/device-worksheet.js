@@ -3213,7 +3213,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
     }
     if (!card) {
-      console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
+      SCW.debug('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
       return;
     }
 
@@ -3229,7 +3229,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         readOnlyKeys.push(fk + (hasDisplay ? '=\u2713' : '=\u2717') + (hasRaw ? '/raw\u2713' : '/raw\u2717'));
       }
     });
-    console.log('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
+    SCW.debug('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
 
     // Helper: extract clean display text from a response value.
     // Prefers the formatted display string (resp[fk]) for readOnly fields
@@ -3330,7 +3330,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     });
 
-    console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
+    SCW.debug('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
 
     // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
     applyHideWhenFieldEquals(card, cfg);
@@ -3521,14 +3521,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!cfg || !fieldKey(cfg, 'label')) return;
     if (typeof Knack === 'undefined') return;
 
-    console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
+    SCW.debug('[scw-ws-header] Fetching label via view API for ' + recordId);
 
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'GET',
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
-        console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
+        SCW.debug('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
         if (txt) {
           _labelCache[recordId] = txt;
           applyLabelText(viewId, recordId, txt);
@@ -3557,7 +3557,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
       if (row && getRecordId(row) === recordId) {
         allLabels[i].textContent = txt;
-        console.log('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
+        SCW.debug('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
         return;
       }
     }
@@ -3587,7 +3587,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var current = (allLabels[i].textContent || '').trim();
         if (!current || current === '\u00a0') {
           allLabels[i].textContent = _labelCache[rid];
-          console.log('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
+          SCW.debug('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
         }
       }
     }

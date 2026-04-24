@@ -1053,4 +1053,66 @@
   $(document).on('knack-form-submit.view_3853' + NS, function () {
     onFormSubmit('view_3853');
   });
+
+  // ── Cross-tab refresh after Ops stepper completion ───────
+  // ops-stepper.js (on the Ops tab) writes
+  //   scw-ops-stepper-completed:<sowId> = <timestamp>
+  // to localStorage when its webhook returns success. Same-origin
+  // tabs receive a 'storage' event. If the signal is for the SOW
+  // currently loaded on this build page, show a "refreshing" banner
+  // then reload so the user doesn't stare at pre-action field values.
+  function showStaleDataBanner() {
+    if (document.getElementById('scw-stale-refresh-banner')) return;
+    // Inline styles so we don't need a separate stylesheet injection —
+    // the banner is short-lived and only appears on this one event.
+    var banner = document.createElement('div');
+    banner.id = 'scw-stale-refresh-banner';
+    banner.setAttribute('role', 'status');
+    banner.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:100000;' +
+      'background:#1e40af;color:#fff;' +
+      'font:600 13px/1.4 system-ui, sans-serif;' +
+      'padding:10px 16px;text-align:center;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.2);' +
+      'display:flex;align-items:center;justify-content:center;gap:10px;';
+    banner.innerHTML =
+      '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;' +
+      'border-radius:50%;animation:scw-stale-spin 0.8s linear infinite;"></span>' +
+      '<span>Data just changed on the Ops page — refreshing…</span>';
+
+    // Inject the keyframes once.
+    if (!document.getElementById('scw-stale-spin-css')) {
+      var s = document.createElement('style');
+      s.id = 'scw-stale-spin-css';
+      s.textContent = '@keyframes scw-stale-spin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(banner);
+  }
+
+  try {
+    SCW.debug('[scw-workflow-stepper] storage listener installing');
+    window.addEventListener('storage', function (e) {
+      // Catch-all log first so we can see if storage events are
+      // firing at all during debugging — previously the storage
+      // listener was silently skipping every event.
+      SCW.debug('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
+      var prefix = 'scw-ops-stepper-completed:';
+      if (!e.key || e.key.indexOf(prefix) !== 0) return;
+      // Reload on any ops-stepper completion signal, regardless of
+      // which SOW was affected. The previous SOW-id match bailed in
+      // two common cases: (a) the user was looking at the SOW list
+      // (view_3325) on a parent page that doesn't render view_3827,
+      // so getSourceSowId() returned empty; (b) the build page
+      // happened to have a sibling SOW loaded rather than the one
+      // just mark-readied. A blanket reload keeps view_3325's pills
+      // and view_3885's published-proposal rows fresh.
+      SCW.debug('[scw-workflow-stepper] ops-stepper signal matched — reloading');
+      showStaleDataBanner();
+      // ~1.2s gives Knack/Make a beat to commit and the user time
+      // to register the banner before the reload.
+      setTimeout(function () { window.location.reload(); }, 1200);
+    });
+  } catch (e) { /* ignore — non-fatal */ }
 })();

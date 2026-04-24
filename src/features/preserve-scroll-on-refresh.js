@@ -86,9 +86,9 @@
     if (!_debug) return;
     var elapsed = _debugT0 ? '+' + (Date.now() - _debugT0) + 'ms' : 't0';
     if (data !== undefined) {
-      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
+      SCW.debug('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
     } else {
-      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
+      SCW.debug('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
     }
   }
 
@@ -568,7 +568,7 @@
     set: function (val) {
       _debug = !!val;
       if (_debug) {
-        console.log(
+        SCW.debug(
           '%c[scroll] Debug ON — edit any cell to see the full restore timeline.',
           'color:#1a73e8; font-weight:bold'
         );

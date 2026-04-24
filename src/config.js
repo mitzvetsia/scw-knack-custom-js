@@ -29,7 +29,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
   //                    licenseIds, triggeredBy }
   //   Response body: { success: true } or { success: false, error: "..." }
-  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/PLACEHOLDER_OPS_MARK_READY",
+  MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
-  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_OPS_PUBLISH_PROPOSAL"
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b"
 };
