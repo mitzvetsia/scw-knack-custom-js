@@ -55,7 +55,7 @@
     var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
     if (match) {
       _sowRecordId = match[1];
-      if (CFG.debug) console.log('[SalesCR] SOW record ID:', _sowRecordId);
+      if (CFG.debug) SCW.debug('[SalesCR] SOW record ID:', _sowRecordId);
     }
   }
 
@@ -101,7 +101,7 @@
   function forceSaveDraft() {
     if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
     var count = Object.keys(_pending).length;
-    if (CFG.debug) console.log('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
+    if (CFG.debug) SCW.debug('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
     writeDraftField(count ? _pending : null);
   }
 
@@ -125,7 +125,7 @@
       if (merged) {
         ssave();
         if (ns.refresh) ns.refresh();
-        if (CFG.debug) console.log('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
+        if (CFG.debug) SCW.debug('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
       }
     }).fail(function () {
       if (CFG.debug) console.warn('[SalesCR] Knack rehydration failed — using sessionStorage');

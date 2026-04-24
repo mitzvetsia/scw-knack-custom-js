@@ -142,7 +142,7 @@
     });
 
     if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
-      console.log('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
+      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
     }
   }
 
@@ -642,7 +642,7 @@
       type: 'PUT',
       data: JSON.stringify(knackData),
       success: function () {
-        console.log('[SalesRevCol] Updated record', revId, 'to Rejected');
+        SCW.debug('[SalesRevCol] Updated record', revId, 'to Rejected');
         afterReject(btn);
       },
       error: function () {
@@ -786,7 +786,7 @@
         url: SCW.knackRecordUrl(SOW_VIEW, sowItemId),
         type: 'PUT',
         data: JSON.stringify(sowData),
-        success: function () { console.log('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] SOW update failed:', sowItemId); errors++; checkDone(); },
       });
     }
@@ -797,7 +797,7 @@
         url: SCW.knackRecordUrl(SURVEY_VIEW, surveyItemId),
         type: 'PUT',
         data: JSON.stringify(surveyData),
-        success: function () { console.log('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] Survey update failed:', surveyItemId); errors++; checkDone(); },
       });
     }
@@ -810,7 +810,7 @@
         url: SCW.knackRecordUrl(CFG.revisionView, revLineItemId),
         type: 'PUT',
         data: JSON.stringify(statusData),
-        success: function () { console.log('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] Revision status update failed:', revLineItemId); errors++; checkDone(); },
       });
     }

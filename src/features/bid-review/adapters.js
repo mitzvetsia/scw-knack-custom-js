@@ -105,7 +105,7 @@
     var records = extractRecords(model);
 
     if (CFG.debug) {
-      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
+      SCW.debug('[BidReview] Model records from ' + viewKey + ':', records.length);
     }
 
     if (records.length > 0) {
@@ -115,25 +115,25 @@
     // Model empty — try API, then retry model once if API also empty
     return fetchFromApi(viewKey).then(function (recs) {
       if (recs.length > 0) {
-        if (CFG.debug) console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+        if (CFG.debug) SCW.debug('[BidReview] API records from ' + viewKey + ':', recs.length);
         return recs;
       }
 
       // API returned 0 — the view may not be server-ready yet.
       // Wait 1.5 s and re-check the model (Knack may have rendered it by now).
-      if (CFG.debug) console.log('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
+      if (CFG.debug) SCW.debug('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
       var retry = $.Deferred();
       setTimeout(function () {
         var m2 = findModel(viewKey);
         var r2 = extractRecords(m2);
         if (r2.length > 0) {
-          if (CFG.debug) console.log('[BidReview] Retry model from ' + viewKey + ':', r2.length);
+          if (CFG.debug) SCW.debug('[BidReview] Retry model from ' + viewKey + ':', r2.length);
           retry.resolve(r2);
           return;
         }
         // Last resort: one more API attempt
         fetchFromApi(viewKey).then(function (r3) {
-          if (CFG.debug) console.log('[BidReview] Retry API from ' + viewKey + ':', r3.length);
+          if (CFG.debug) SCW.debug('[BidReview] Retry API from ' + viewKey + ':', r3.length);
           retry.resolve(r3);
         });
       }, 1500);
@@ -158,7 +158,7 @@
 
     return $.when(bidPromise, sowItemPromise, pkgPromise, mdfIdfPromise).then(function (bidRecs, sowRecs, pkgRecs, mdfRecs) {
       if (CFG.debug) {
-        console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
+        SCW.debug('[BidReview] Loaded', bidRecs.length, 'bid records,',
                     sowRecs.length, 'unbid SOW items,',
                     pkgRecs.length, 'bid packages,',
                     mdfRecs.length, 'MDF/IDF records');

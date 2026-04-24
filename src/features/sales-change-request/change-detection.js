@@ -114,7 +114,7 @@
       baseline[id] = snap;
     }
 
-    if (CFG.debug) console.log('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
+    if (CFG.debug) SCW.debug('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -125,7 +125,7 @@
     if (!record || !record.id) return;
     var id = record.id;
 
-    if (CFG.debug) console.log('[SalesCR] Cell update on', id);
+    if (CFG.debug) SCW.debug('[SalesCR] Cell update on', id);
 
     var baseline = S.baseline();
     var pending  = S.pending();
@@ -153,7 +153,7 @@
       var lhRaw2       = record[CFG.laborHoursField + '_raw'] != null ? record[CFG.laborHoursField + '_raw'] : record[CFG.laborHoursField];
       base._laborHours = typeof lhRaw2 === 'number' ? lhRaw2 : parseFloat(String(lhRaw2 || '0').replace(/[^0-9.\-]/g, '')) || 0;
       baseline[id] = base;
-      if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
+      if (CFG.debug) SCW.debug('[SalesCR] Late baseline for', id, '— first edit not captured');
       return;
     }
 
@@ -171,7 +171,7 @@
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
       if (CFG.debug && fk === 'field_1953') {
-        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+        SCW.debug('[SalesCR] field_1953 diff:', JSON.stringify({
           raw_exists: record[fk + '_raw'] != null,
           raw_val: record[fk + '_raw'],
           plain_val: record[fk],
@@ -190,7 +190,7 @@
     }
 
     if (!hasChanges) {
-      if (CFG.debug) console.log('[SalesCR] No tracked-field changes for', id);
+      if (CFG.debug) SCW.debug('[SalesCR] No tracked-field changes for', id);
       return;
     }
 
@@ -208,7 +208,7 @@
           existing.current[ik + '_ids'] = base[ik + '_ids'];
         }
       }
-      if (CFG.debug) console.log('[SalesCR] Updated existing CR for', id, ':', changes);
+      if (CFG.debug) SCW.debug('[SalesCR] Updated existing CR for', id, ':', changes);
     } else {
       // New CR — copy values AND IDs for connection fields
       var current = {};
@@ -234,7 +234,7 @@
         requested:    requested,
         changeNotes:  '',
       };
-      if (CFG.debug) console.log('[SalesCR] Created new CR for', id, ':', changes);
+      if (CFG.debug) SCW.debug('[SalesCR] Created new CR for', id, ':', changes);
     }
 
     ns.persist();
@@ -264,7 +264,7 @@
       if (/^yes$/i.test(val)) { active = true; break; }
     }
     S.setAddMode(active);
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
+    if (CFG.debug) SCW.debug('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
@@ -315,7 +315,7 @@
 
     if (added) {
       ns.persist();
-      if (CFG.debug) console.log('[SalesCR] Auto-detected', added, 'add records');
+      if (CFG.debug) SCW.debug('[SalesCR] Auto-detected', added, 'add records');
     }
   }
 

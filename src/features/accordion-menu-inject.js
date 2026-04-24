@@ -151,7 +151,7 @@
       var ids0 = MENU_MAP[viewKey].split(',').map(function (s) { return s.trim(); })
                     .filter(function (s) { return /^view_\d+$/.test(s); });
       if (ids0.length) {
-        console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
+        SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
         return ids0;
       }
     }
@@ -184,7 +184,7 @@
             var ids = val.split(',').map(function (s) { return s.trim(); })
                         .filter(function (s) { return /^view_\d+$/.test(s); });
             if (ids.length) {
-              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
+              SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
               return ids;
             }
           }
@@ -196,10 +196,10 @@
     try {
       var kwDbg = window.ktlKeywords;
       if (kwDbg && kwDbg[viewKey]) {
-        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
+        SCW.debug(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
           Object.keys(kwDbg[viewKey]).join(', '));
       } else {
-        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
+        SCW.debug(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
       }
     } catch (e) { /* ignore */ }
 
@@ -216,7 +216,7 @@
             var ids2 = match[1].split(',').map(function (v) { return v.trim(); })
                           .filter(function (v) { return /^view_\d+$/.test(v); });
             if (ids2.length) {
-              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
+              SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
               return ids2;
             }
           }
@@ -258,10 +258,10 @@
     if (!modelInspected[menuViewId]) {
       modelInspected[menuViewId] = true;
       try {
-        console.log(LOG, '  [model-inspect] Knack.views[' + menuViewId + '] keys:',
+        SCW.debug(LOG, '  [model-inspect] Knack.views[' + menuViewId + '] keys:',
           Object.keys(kv).join(', '));
         if (kv.model && kv.model.view) {
-          console.log(LOG, '  [model-inspect] .model.view:',
+          SCW.debug(LOG, '  [model-inspect] .model.view:',
             JSON.stringify(kv.model.view).substring(0, 1000));
         }
       } catch (e) { /* ignore */ }
@@ -370,7 +370,7 @@
 
   function enhance() {
     var accordions = document.querySelectorAll('.scw-ktl-accordion');
-    console.log(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
+    SCW.debug(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
 
     var injected = 0;
     var skipped = { noHeader: 0, alreadyInjected: 0, noKeyword: 0, noMenuEl: 0,
@@ -424,11 +424,11 @@
                   index: ml, menuViewId: menuViewId
                 });
               }
-              console.log(LOG, '  accordion', innerViewId,
+              SCW.debug(LOG, '  accordion', innerViewId,
                 '← menu', menuViewId, '— using', modelLinks.length, 'link(s) from model');
             }
           } else {
-            console.log(LOG, '  accordion', innerViewId,
+            SCW.debug(LOG, '  accordion', innerViewId,
               '← menu', menuViewId, '— injecting', domLinks.length, 'button(s) from DOM');
           }
 
@@ -546,7 +546,7 @@
       }
     }
 
-    console.log(LOG, 'enhance() done — injected:', injected,
+    SCW.debug(LOG, 'enhance() done — injected:', injected,
       '| skipped:', JSON.stringify(skipped));
 
     requestAnimationFrame(equalizeWidths);
@@ -587,7 +587,7 @@
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function (event, scene) {
       var sceneId = scene && scene.key ? scene.key : '(unknown)';
-      console.log(LOG, 'scene-render', sceneId);
+      SCW.debug(LOG, 'scene-render', sceneId);
       modelInspected = {};
 
       // Watch for .scw-ktl-accordion elements being created
@@ -606,7 +606,7 @@
     });
 
   $(document).ready(function () {
-    console.log(LOG, 'document.ready — initial enhance');
+    SCW.debug(LOG, 'document.ready — initial enhance');
     startAccordionObserver(document.body);
     scheduleEnhance(500);
     setTimeout(enhance, 3000);

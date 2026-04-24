@@ -532,13 +532,13 @@
       if (cfg.skipViews[viewId]) continue;
 
       var viewType = detectViewType(viewId);
-      console.log('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
 
       var data = null;
 
       if (viewType === 'grid') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty grid, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
         data = scrapeGridView(viewId, cfg.gridKeys);
@@ -547,7 +547,7 @@
         }
       } else if (viewType === 'report') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty report, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty report, skipping');
           continue;
         }
         data = scrapeReportView(viewId);
@@ -1182,7 +1182,7 @@
   function runExport(cfg, extra) {
     var payload = scrapeAllViews(cfg);
     if (!payload.views.length) {
-      console.log('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
       return;
     }
     if (extra) {
@@ -1281,7 +1281,7 @@
               html: htmlStr,
               json: jsonSnapshot
             };
-            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
@@ -1291,7 +1291,7 @@
               crossDomain: true,
               timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                SCW.debug('[SCW PDF Export] Webhook accepted, redirecting to parent');
                 if (cfg.pollViewOnReturn) {
                   try {
                     sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
@@ -1376,7 +1376,7 @@
           }
         }
 
-        console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
+        SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
 
         // Flag for poll-refresh on the parent page
@@ -1530,9 +1530,9 @@
   function onPollViewRender() {
     if (!_pollActive) return;
     var newValue = readFieldText(_pollViewId, _pollFieldId);
-    console.log('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
+    SCW.debug('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
     if (_pollFieldId && newValue !== _pollInitial) {
-      console.log('[SCW PDF Export] Field changed — stopping poll');
+      SCW.debug('[SCW PDF Export] Field changed — stopping poll');
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
@@ -1550,7 +1550,7 @@
     var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
     _pollMsg = 'Generating ' + label + ' PDF\u2026';
 
-    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    SCW.debug('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
     showPollToast(_pollMsg);
     applyFieldOverlay(viewId, fieldId, _pollMsg);
 
@@ -1569,7 +1569,7 @@
       if (_pollFieldId) {
         var currentVal = readFieldText(_pollViewId, _pollFieldId);
         if (currentVal !== _pollInitial) {
-          console.log('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
+          SCW.debug('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
           stopPolling();
           return;
         }
@@ -1580,7 +1580,7 @@
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
-        console.log('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
+        SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
         stopPolling();
       }
     }, POLL_INTERVAL_MS);

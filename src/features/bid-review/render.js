@@ -643,7 +643,7 @@
     };
 
     if (CFG.debug && (m.mdfIdf || row.sowMdfIdf || cell.bidMdfIdf)) {
-      console.log('[BidReview] MDF/IDF compare:', row.displayLabel,
+      SCW.debug('[BidReview] MDF/IDF compare:', row.displayLabel,
         '| sowMdfIdf:', JSON.stringify(row.sowMdfIdf),
         '| row.mdfIdf:', JSON.stringify(row.mdfIdf),
         '| cell.bidMdfIdf:', JSON.stringify(cell.bidMdfIdf),

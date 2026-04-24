@@ -177,7 +177,7 @@
   function log(ctx, ...args) {
     if (!CONFIG.debug) return;
     // eslint-disable-next-line no-console
-    console.log(`[SCW bid-items][${ctx.viewId}]`, ...args);
+    SCW.debug(`[SCW bid-items][${ctx.viewId}]`, ...args);
   }
 
   // ============================================================

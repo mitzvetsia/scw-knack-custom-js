@@ -34,7 +34,7 @@
       _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
-        console.log('[BidReview] State built:',
+        SCW.debug('[BidReview] State built:',
           _state.sowGrids.length, 'SOW grids,',
           _state.allPackages.length, 'packages,',
           _mdfIdfRecords.length, 'MDF/IDF records');
@@ -179,7 +179,7 @@
   function buildClaimedDeviceSet(grid, selfId) {
     var TAG = '[ClaimedDevices]';
     var claimed = {};
-    console.log(TAG, 'Building claimed set, selfId:', selfId);
+    SCW.debug(TAG, 'Building claimed set, selfId:', selfId);
     // 1. Existing bid records — scan all cells across all packages
     for (var ri = 0; ri < grid.rows.length; ri++) {
       var row = grid.rows[ri];
@@ -188,7 +188,7 @@
         var c = row.cellsByPackage[pkgs[pi]];
         if (c.id === selfId) continue; // skip self
         var ids = c.bidConnDeviceIds || [];
-        if (ids.length) console.log(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
+        if (ids.length) SCW.debug(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
         for (var di = 0; di < ids.length; di++) claimed[ids[di]] = true;
       }
     }
@@ -197,18 +197,18 @@
     if (crApi && typeof crApi.getPending === 'function') {
       var pending = crApi.getPending();
       var pkeys = Object.keys(pending);
-      console.log(TAG, '  pending packages:', pkeys.length);
+      SCW.debug(TAG, '  pending packages:', pkeys.length);
       for (var pk = 0; pk < pkeys.length; pk++) {
         var items = pending[pkeys[pk]].items || [];
         for (var ii = 0; ii < items.length; ii++) {
           var it = items[ii];
-          console.log(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
+          SCW.debug(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
             'displayLabel:', it.displayLabel,
             'req.bidConnDevice:', it.requested && it.requested.bidConnDevice,
             'req.bidConnDeviceIds:', it.requested && it.requested.bidConnDeviceIds);
           // Skip self
           if (it.bidRecordId === selfId || it.rowId === selfId) {
-            console.log(TAG, '    → SKIPPED (self)');
+            SCW.debug(TAG, '    → SKIPPED (self)');
             continue;
           }
           var reqIds = (it.requested && it.requested.bidConnDeviceIds) || [];
@@ -219,7 +219,7 @@
       console.warn(TAG, '  ns.changeRequests or getPending not available!');
     }
     var claimedKeys = Object.keys(claimed);
-    console.log(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
+    SCW.debug(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
     return claimed;
   }
 
@@ -462,7 +462,7 @@
       .done(function () {
         // Webhook responded 200 — Make scenario is complete.
         // Stop polling, refresh the grid immediately, and show success.
-        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
+        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed');
         stopCopyPoll();
         hideCopyToast();
         refreshSilently();
@@ -471,7 +471,7 @@
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing
         if (CFG.debug) {
-          console.log('[BidReview] Webhook timeout/error (status ' +
+          SCW.debug('[BidReview] Webhook timeout/error (status ' +
             (xhr && xhr.status) + ') — continuing to poll');
         }
       })
@@ -627,7 +627,7 @@
     }
 
     if (CFG.debug) {
-      console.log('[BidReview] connDevOpts:', connDevOpts.length,
+      SCW.debug('[BidReview] connDevOpts:', connDevOpts.length,
                   'connToOpts:', connToOpts.length);
     }
 
@@ -1323,7 +1323,7 @@
           _fallbackTimer = null;
           if (!allViewsReady()) {
             if (CFG.debug) {
-              console.log('[BidReview] Timeout waiting for:',
+              SCW.debug('[BidReview] Timeout waiting for:',
                 !_viewsReady[CFG.sowItemsViewKey] ? CFG.sowItemsViewKey : '',
                 CFG.bidPackagesViewKey && !_viewsReady[CFG.bidPackagesViewKey] ? CFG.bidPackagesViewKey : '');
             }

@@ -35,6 +35,28 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
 };
 window.SCW = window.SCW || {};
 
+// ── Gated debug logging ──────────────────────────────────────
+// All per-feature diagnostic logs go through SCW.debug / SCW.log
+// instead of console.log. They no-op unless SCW.DEBUG is truthy,
+// which keeps production quiet (and fast — DevTools retains object
+// references from every console.log, which adds up on grids with
+// hundreds of rows). Flip on in the browser console when
+// troubleshooting: SCW.DEBUG = true.
+//
+// console.error and console.warn are intentionally NOT gated —
+// real errors and auth failures should always surface.
+(function (namespace) {
+  function noop() {}
+  function realLog()   { if (namespace.DEBUG) console.log.apply(console, arguments); }
+  function realDebug() { if (namespace.DEBUG) (console.debug || console.log).apply(console, arguments); }
+  namespace.DEBUG = namespace.DEBUG || false;
+  namespace.log   = realLog;
+  namespace.debug = realDebug;
+  // Explicit no-op alias for call sites that want to fully strip
+  // a log without removing the line. Useful during triage.
+  namespace.nolog = noop;
+})(window.SCW);
+
 (function initBindingsHelpers(namespace) {
   function normalizeNamespace(ns) {
     if (!ns) return '.scw';
@@ -293,9 +315,9 @@ window.SCW = window.SCW || {};
     if (!_debug) return;
     var elapsed = _debugT0 ? '+' + (Date.now() - _debugT0) + 'ms' : 't0';
     if (data !== undefined) {
-      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
+      SCW.debug('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8', data);
     } else {
-      console.log('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
+      SCW.debug('%c[scroll] ' + elapsed + ' %c' + label, 'color:#888', 'color:#1a73e8');
     }
   }
 
@@ -775,7 +797,7 @@ window.SCW = window.SCW || {};
     set: function (val) {
       _debug = !!val;
       if (_debug) {
-        console.log(
+        SCW.debug(
           '%c[scroll] Debug ON — edit any cell to see the full restore timeline.',
           'color:#1a73e8; font-weight:bold'
         );
@@ -1579,16 +1601,16 @@ window.SCW = window.SCW || {};
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
       var container = document.getElementById(viewIds[v]);
-      if (!container) { console.log('[scw-totals] container not found:', viewIds[v]); continue; }
+      if (!container) { SCW.debug('[scw-totals] container not found:', viewIds[v]); continue; }
       var cells = container.querySelectorAll('td[data-field-key="' + fieldKey + '"]');
-      console.log('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
+      SCW.debug('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
       for (var i = 0; i < cells.length; i++) {
         var val = parseNum(cells[i].textContent);
-        console.log('  [' + i + ']', cells[i].textContent.trim(), '→', val);
+        SCW.debug('  [' + i + ']', cells[i].textContent.trim(), '→', val);
         total += val;
       }
     }
-    console.log('[scw-totals] SUM', fieldKey, '=', total);
+    SCW.debug('[scw-totals] SUM', fieldKey, '=', total);
     return total;
   }
 
@@ -4110,7 +4132,7 @@ window.SCW = window.SCW || {};
       var ids0 = MENU_MAP[viewKey].split(',').map(function (s) { return s.trim(); })
                     .filter(function (s) { return /^view_\d+$/.test(s); });
       if (ids0.length) {
-        console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
+        SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids0.join(','), '(config)');
         return ids0;
       }
     }
@@ -4143,7 +4165,7 @@ window.SCW = window.SCW || {};
             var ids = val.split(',').map(function (s) { return s.trim(); })
                         .filter(function (s) { return /^view_\d+$/.test(s); });
             if (ids.length) {
-              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
+              SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids.join(','), '(ktl cache)');
               return ids;
             }
           }
@@ -4155,10 +4177,10 @@ window.SCW = window.SCW || {};
     try {
       var kwDbg = window.ktlKeywords;
       if (kwDbg && kwDbg[viewKey]) {
-        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
+        SCW.debug(LOG, '  [debug] ktlKeywords[' + viewKey + '] keys:',
           Object.keys(kwDbg[viewKey]).join(', '));
       } else {
-        console.log(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
+        SCW.debug(LOG, '  [debug] ktlKeywords[' + viewKey + '] = (none)');
       }
     } catch (e) { /* ignore */ }
 
@@ -4175,7 +4197,7 @@ window.SCW = window.SCW || {};
             var ids2 = match[1].split(',').map(function (v) { return v.trim(); })
                           .filter(function (v) { return /^view_\d+$/.test(v); });
             if (ids2.length) {
-              console.log(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
+              SCW.debug(LOG, '  [keyword]', viewKey, KEYWORD, '=', ids2.join(','), '(model scrape)');
               return ids2;
             }
           }
@@ -4217,10 +4239,10 @@ window.SCW = window.SCW || {};
     if (!modelInspected[menuViewId]) {
       modelInspected[menuViewId] = true;
       try {
-        console.log(LOG, '  [model-inspect] Knack.views[' + menuViewId + '] keys:',
+        SCW.debug(LOG, '  [model-inspect] Knack.views[' + menuViewId + '] keys:',
           Object.keys(kv).join(', '));
         if (kv.model && kv.model.view) {
-          console.log(LOG, '  [model-inspect] .model.view:',
+          SCW.debug(LOG, '  [model-inspect] .model.view:',
             JSON.stringify(kv.model.view).substring(0, 1000));
         }
       } catch (e) { /* ignore */ }
@@ -4329,7 +4351,7 @@ window.SCW = window.SCW || {};
 
   function enhance() {
     var accordions = document.querySelectorAll('.scw-ktl-accordion');
-    console.log(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
+    SCW.debug(LOG, 'enhance() — found', accordions.length, 'accordion(s)');
 
     var injected = 0;
     var skipped = { noHeader: 0, alreadyInjected: 0, noKeyword: 0, noMenuEl: 0,
@@ -4383,11 +4405,11 @@ window.SCW = window.SCW || {};
                   index: ml, menuViewId: menuViewId
                 });
               }
-              console.log(LOG, '  accordion', innerViewId,
+              SCW.debug(LOG, '  accordion', innerViewId,
                 '← menu', menuViewId, '— using', modelLinks.length, 'link(s) from model');
             }
           } else {
-            console.log(LOG, '  accordion', innerViewId,
+            SCW.debug(LOG, '  accordion', innerViewId,
               '← menu', menuViewId, '— injecting', domLinks.length, 'button(s) from DOM');
           }
 
@@ -4505,7 +4527,7 @@ window.SCW = window.SCW || {};
       }
     }
 
-    console.log(LOG, 'enhance() done — injected:', injected,
+    SCW.debug(LOG, 'enhance() done — injected:', injected,
       '| skipped:', JSON.stringify(skipped));
 
     requestAnimationFrame(equalizeWidths);
@@ -4546,7 +4568,7 @@ window.SCW = window.SCW || {};
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function (event, scene) {
       var sceneId = scene && scene.key ? scene.key : '(unknown)';
-      console.log(LOG, 'scene-render', sceneId);
+      SCW.debug(LOG, 'scene-render', sceneId);
       modelInspected = {};
 
       // Watch for .scw-ktl-accordion elements being created
@@ -4565,7 +4587,7 @@ window.SCW = window.SCW || {};
     });
 
   $(document).ready(function () {
-    console.log(LOG, 'document.ready — initial enhance');
+    SCW.debug(LOG, 'document.ready — initial enhance');
     startAccordionObserver(document.body);
     scheduleEnhance(500);
     setTimeout(enhance, 3000);
@@ -5667,12 +5689,12 @@ window.SCW = window.SCW || {};
   }
 
   try {
-    console.log('[scw-workflow-stepper] storage listener installing');
+    SCW.debug('[scw-workflow-stepper] storage listener installing');
     window.addEventListener('storage', function (e) {
       // Catch-all log first so we can see if storage events are
       // firing at all during debugging — previously the storage
       // listener was silently skipping every event.
-      console.log('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
+      SCW.debug('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
       var prefix = 'scw-ops-stepper-completed:';
       if (!e.key || e.key.indexOf(prefix) !== 0) return;
       // Reload on any ops-stepper completion signal, regardless of
@@ -5683,7 +5705,7 @@ window.SCW = window.SCW || {};
       // happened to have a sibling SOW loaded rather than the one
       // just mark-readied. A blanket reload keeps view_3325's pills
       // and view_3885's published-proposal rows fresh.
-      console.log('[scw-workflow-stepper] ops-stepper signal matched — reloading');
+      SCW.debug('[scw-workflow-stepper] ops-stepper signal matched — reloading');
       showStaleDataBanner();
       // ~1.2s gives Knack/Make a beat to commit and the user time
       // to register the banner before the reload.
@@ -5822,8 +5844,8 @@ window.SCW = window.SCW || {};
   $(document).on('knack-record-update.view_1493', function (event, view, record) {
     alert("Click 'OK' to update equipment total");
     Knack.views["view_1493"].model.fetch();
-    console.log("hello world");
-    console.log(Knack.views);
+    SCW.debug("hello world");
+    SCW.debug(Knack.views);
   });
 })();
 
@@ -6122,7 +6144,7 @@ window.SCW = window.SCW || {};
   function log(ctx, ...args) {
     if (!CONFIG.debug) return;
     // eslint-disable-next-line no-console
-    console.log(`[SCW totals][${ctx.viewId}]`, ...args);
+    SCW.debug(`[SCW totals][${ctx.viewId}]`, ...args);
   }
 
   // ============================================================
@@ -8922,13 +8944,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (cfg.skipViews[viewId]) continue;
 
       var viewType = detectViewType(viewId);
-      console.log('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, viewId, '→', viewType);
 
       var data = null;
 
       if (viewType === 'grid') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty grid, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
         data = scrapeGridView(viewId, cfg.gridKeys);
@@ -8937,7 +8959,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
       } else if (viewType === 'report') {
         if (!viewHasDataRows(viewId)) {
-          console.log('[SCW PDF Export]', viewId, '→ empty report, skipping');
+          SCW.debug('[SCW PDF Export]', viewId, '→ empty report, skipping');
           continue;
         }
         data = scrapeReportView(viewId);
@@ -9572,7 +9594,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function runExport(cfg, extra) {
     var payload = scrapeAllViews(cfg);
     if (!payload.views.length) {
-      console.log('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
+      SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
       return;
     }
     if (extra) {
@@ -9671,7 +9693,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               html: htmlStr,
               json: jsonSnapshot
             };
-            console.log('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
               url: SAVE_HTML_WEBHOOK,
@@ -9681,7 +9703,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               crossDomain: true,
               timeout: 90000,
               success: function () {
-                console.log('[SCW PDF Export] Webhook accepted, redirecting to parent');
+                SCW.debug('[SCW PDF Export] Webhook accepted, redirecting to parent');
                 if (cfg.pollViewOnReturn) {
                   try {
                     sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
@@ -9766,7 +9788,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           }
         }
 
-        console.log('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
+        SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
         runExport(cfg, extra);
 
         // Flag for poll-refresh on the parent page
@@ -9920,9 +9942,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function onPollViewRender() {
     if (!_pollActive) return;
     var newValue = readFieldText(_pollViewId, _pollFieldId);
-    console.log('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
+    SCW.debug('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
     if (_pollFieldId && newValue !== _pollInitial) {
-      console.log('[SCW PDF Export] Field changed — stopping poll');
+      SCW.debug('[SCW PDF Export] Field changed — stopping poll');
       stopPolling();
     } else {
       // View re-rendered with same data; re-apply overlay to fresh td
@@ -9940,7 +9962,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
     _pollMsg = 'Generating ' + label + ' PDF\u2026';
 
-    console.log('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    SCW.debug('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
     showPollToast(_pollMsg);
     applyFieldOverlay(viewId, fieldId, _pollMsg);
 
@@ -9959,7 +9981,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (_pollFieldId) {
         var currentVal = readFieldText(_pollViewId, _pollFieldId);
         if (currentVal !== _pollInitial) {
-          console.log('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
+          SCW.debug('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
           stopPolling();
           return;
         }
@@ -9970,7 +9992,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         view.model.fetch();
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
-        console.log('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
+        SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
         stopPolling();
       }
     }, POLL_INTERVAL_MS);
@@ -10311,12 +10333,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     setTimeout(function () {
       var raw = getStoredHtml();
       if (!raw) {
-        console.log('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
+        SCW.debug('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
         return;
       }
-      console.log('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
+      SCW.debug('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
       var fullHtml = buildFullHtml(raw);
-      console.log('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
+      SCW.debug('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
       renderProposal(fullHtml);
       injectPrintButton(fullHtml);
     }, 500);
@@ -10501,7 +10523,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   function log(ctx, ...args) {
     if (!CONFIG.debug) return;
     // eslint-disable-next-line no-console
-    console.log(`[SCW bid-items][${ctx.viewId}]`, ...args);
+    SCW.debug(`[SCW bid-items][${ctx.viewId}]`, ...args);
   }
 
   // ============================================================
@@ -13364,7 +13386,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var records = extractRecords(model);
 
     if (CFG.debug) {
-      console.log('[BidReview] Model records from ' + viewKey + ':', records.length);
+      SCW.debug('[BidReview] Model records from ' + viewKey + ':', records.length);
     }
 
     if (records.length > 0) {
@@ -13374,25 +13396,25 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Model empty — try API, then retry model once if API also empty
     return fetchFromApi(viewKey).then(function (recs) {
       if (recs.length > 0) {
-        if (CFG.debug) console.log('[BidReview] API records from ' + viewKey + ':', recs.length);
+        if (CFG.debug) SCW.debug('[BidReview] API records from ' + viewKey + ':', recs.length);
         return recs;
       }
 
       // API returned 0 — the view may not be server-ready yet.
       // Wait 1.5 s and re-check the model (Knack may have rendered it by now).
-      if (CFG.debug) console.log('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
+      if (CFG.debug) SCW.debug('[BidReview] No records from ' + viewKey + ' — retrying model in 1.5 s');
       var retry = $.Deferred();
       setTimeout(function () {
         var m2 = findModel(viewKey);
         var r2 = extractRecords(m2);
         if (r2.length > 0) {
-          if (CFG.debug) console.log('[BidReview] Retry model from ' + viewKey + ':', r2.length);
+          if (CFG.debug) SCW.debug('[BidReview] Retry model from ' + viewKey + ':', r2.length);
           retry.resolve(r2);
           return;
         }
         // Last resort: one more API attempt
         fetchFromApi(viewKey).then(function (r3) {
-          if (CFG.debug) console.log('[BidReview] Retry API from ' + viewKey + ':', r3.length);
+          if (CFG.debug) SCW.debug('[BidReview] Retry API from ' + viewKey + ':', r3.length);
           retry.resolve(r3);
         });
       }, 1500);
@@ -13417,7 +13439,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     return $.when(bidPromise, sowItemPromise, pkgPromise, mdfIdfPromise).then(function (bidRecs, sowRecs, pkgRecs, mdfRecs) {
       if (CFG.debug) {
-        console.log('[BidReview] Loaded', bidRecs.length, 'bid records,',
+        SCW.debug('[BidReview] Loaded', bidRecs.length, 'bid records,',
                     sowRecs.length, 'unbid SOW items,',
                     pkgRecs.length, 'bid packages,',
                     mdfRecs.length, 'MDF/IDF records');
@@ -13576,7 +13598,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Debug: log the SOW field shape from the first record
     if (CFG.debug && records.length) {
       var sample = records[0];
-      console.log('[BidReview] SOW field debug:', {
+      SCW.debug('[BidReview] SOW field debug:', {
         key: FK.sow,
         value: sample[FK.sow],
         raw: sample[FK.sow + '_raw'],
@@ -13663,7 +13685,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       var _dbg1946r = meta[FK.sowMdfIdf + '_raw'];
       var _dbg2375 = meta[FK.mdfIdf];
       var _dbg2375r = meta[FK.mdfIdf + '_raw'];
-      console.log('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
+      SCW.debug('[BidReview] buildRow field_1946:', _dbg1946, '_raw:', _dbg1946r,
         '| field_2375:', _dbg2375, '_raw:', _dbg2375r,
         '| label:', stripHtml(meta[FK.displayLabel] || ''));
     }
@@ -14033,7 +14055,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 
     if (CFG.debug) {
-      console.log('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
+      SCW.debug('[BidReview] CR view scrape:', Object.keys(map).length, 'packages with pending CRs', map);
     }
     return map;
   }
@@ -14069,7 +14091,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
       if (bidStatus) info.bidStatus = bidStatus;
       if (CFG.debug) {
-        console.log('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
+        SCW.debug('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
       }
 
       // File fields: try _raw (object with url) then fall back to HTML parsing
@@ -14135,7 +14157,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         };
       }
       if (CFG.debug) {
-        console.log('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
+        SCW.debug('[BidReview] SOW item lookup built:', Object.keys(sowItemLookup).length, 'items');
       }
     }
 
@@ -14195,7 +14217,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       for (var nk = 0; nk < noBidSowIds.length; nk++) {
         noBidTotal += noBidBySow[noBidSowIds[nk]].length;
       }
-      console.log('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
+      SCW.debug('[BidReview] NO BID rows:', noBidTotal, 'across', noBidSowIds.length, 'SOWs');
     }
 
     // Ensure SOW list includes any SOWs that only appear in the unbid items
@@ -14243,7 +14265,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       for (var nb = 0; nb < noBidRows.length; nb++) {
         if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) {
           if (CFG.debug) {
-            console.log('[BidReview] Skipping noBid row — already in view_3680:',
+            SCW.debug('[BidReview] Skipping noBid row — already in view_3680:',
                         noBidRows[nb].sowItem, noBidRows[nb].displayLabel);
           }
           continue;
@@ -14961,7 +14983,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     };
 
     if (CFG.debug && (m.mdfIdf || row.sowMdfIdf || cell.bidMdfIdf)) {
-      console.log('[BidReview] MDF/IDF compare:', row.displayLabel,
+      SCW.debug('[BidReview] MDF/IDF compare:', row.displayLabel,
         '| sowMdfIdf:', JSON.stringify(row.sowMdfIdf),
         '| row.mdfIdf:', JSON.stringify(row.mdfIdf),
         '| cell.bidMdfIdf:', JSON.stringify(cell.bidMdfIdf),
@@ -15445,7 +15467,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (payload.items)       body.items       = payload.items;
 
     if (CFG.debug) {
-      console.log('[BidReview] Submitting action:', body);
+      SCW.debug('[BidReview] Submitting action:', body);
     }
 
     SCW.knackAjax({
@@ -15453,7 +15475,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       type: 'POST',
       data: JSON.stringify(body),
       success: function (resp) {
-        if (CFG.debug) console.log('[BidReview] Action success:', resp);
+        if (CFG.debug) SCW.debug('[BidReview] Action success:', resp);
 
         // Skip toast for copy_to_sow — handleCopyToSow manages its own messaging
         if (payload.actionType !== 'package_copy_to_sow') {
@@ -15788,7 +15810,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         _pending = merged;
         ssave();
         triggerRerender();
-        if (CFG.debug) console.log('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
+        if (CFG.debug) SCW.debug('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
       }
     }).fail(function () {
       if (CFG.debug) console.warn('[BidReview CR] Knack rehydration failed — using sessionStorage');
@@ -15937,7 +15959,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (CFG.debug) {
       var keys = Object.keys(connRecords);
       for (var ck = 0; ck < keys.length; ck++) {
-        console.log('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
+        SCW.debug('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
       }
     }
     buildModal(params, cell, vis, existing, connRecords);
@@ -17403,8 +17425,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     var html = payload.html;
 
     if (CFG.debug) {
-      console.log('[BidReview CR] Submitting:', payload);
-      console.log('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
+      SCW.debug('[BidReview CR] Submitting:', payload);
+      SCW.debug('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
     }
 
     var deferred = $.Deferred();
@@ -17414,7 +17436,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[BidReview CR] Submit success:', resp);
+        if (CFG.debug) SCW.debug('[BidReview CR] Submit success:', resp);
         delete _pending[pkgId];
         persist();
         triggerRerender();
@@ -17425,7 +17447,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         // CORS may block the response even though Make received and
         // processed the request (status 0). Treat as success if so.
         if (xhr && xhr.status === 0) {
-          if (CFG.debug) console.log('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
+          if (CFG.debug) SCW.debug('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
           delete _pending[pkgId];
           persist();
           triggerRerender();
@@ -17874,7 +17896,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       _mdfIdfRecords = raw.mdfIdfRecords || [];
 
       if (CFG.debug) {
-        console.log('[BidReview] State built:',
+        SCW.debug('[BidReview] State built:',
           _state.sowGrids.length, 'SOW grids,',
           _state.allPackages.length, 'packages,',
           _mdfIdfRecords.length, 'MDF/IDF records');
@@ -18019,7 +18041,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   function buildClaimedDeviceSet(grid, selfId) {
     var TAG = '[ClaimedDevices]';
     var claimed = {};
-    console.log(TAG, 'Building claimed set, selfId:', selfId);
+    SCW.debug(TAG, 'Building claimed set, selfId:', selfId);
     // 1. Existing bid records — scan all cells across all packages
     for (var ri = 0; ri < grid.rows.length; ri++) {
       var row = grid.rows[ri];
@@ -18028,7 +18050,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         var c = row.cellsByPackage[pkgs[pi]];
         if (c.id === selfId) continue; // skip self
         var ids = c.bidConnDeviceIds || [];
-        if (ids.length) console.log(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
+        if (ids.length) SCW.debug(TAG, '  bid cell', c.id, 'bidConnDeviceIds:', ids);
         for (var di = 0; di < ids.length; di++) claimed[ids[di]] = true;
       }
     }
@@ -18037,18 +18059,18 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     if (crApi && typeof crApi.getPending === 'function') {
       var pending = crApi.getPending();
       var pkeys = Object.keys(pending);
-      console.log(TAG, '  pending packages:', pkeys.length);
+      SCW.debug(TAG, '  pending packages:', pkeys.length);
       for (var pk = 0; pk < pkeys.length; pk++) {
         var items = pending[pkeys[pk]].items || [];
         for (var ii = 0; ii < items.length; ii++) {
           var it = items[ii];
-          console.log(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
+          SCW.debug(TAG, '  pending item:', it.rowId, 'bidRecordId:', it.bidRecordId,
             'displayLabel:', it.displayLabel,
             'req.bidConnDevice:', it.requested && it.requested.bidConnDevice,
             'req.bidConnDeviceIds:', it.requested && it.requested.bidConnDeviceIds);
           // Skip self
           if (it.bidRecordId === selfId || it.rowId === selfId) {
-            console.log(TAG, '    → SKIPPED (self)');
+            SCW.debug(TAG, '    → SKIPPED (self)');
             continue;
           }
           var reqIds = (it.requested && it.requested.bidConnDeviceIds) || [];
@@ -18059,7 +18081,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       console.warn(TAG, '  ns.changeRequests or getPending not available!');
     }
     var claimedKeys = Object.keys(claimed);
-    console.log(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
+    SCW.debug(TAG, 'Final claimed set (' + claimedKeys.length + '):', claimedKeys);
     return claimed;
   }
 
@@ -18302,7 +18324,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .done(function () {
         // Webhook responded 200 — Make scenario is complete.
         // Stop polling, refresh the grid immediately, and show success.
-        if (CFG.debug) console.log('[BidReview] Copy to SOW webhook completed');
+        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed');
         stopCopyPoll();
         hideCopyToast();
         refreshSilently();
@@ -18311,7 +18333,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing
         if (CFG.debug) {
-          console.log('[BidReview] Webhook timeout/error (status ' +
+          SCW.debug('[BidReview] Webhook timeout/error (status ' +
             (xhr && xhr.status) + ') — continuing to poll');
         }
       })
@@ -18467,7 +18489,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     if (CFG.debug) {
-      console.log('[BidReview] connDevOpts:', connDevOpts.length,
+      SCW.debug('[BidReview] connDevOpts:', connDevOpts.length,
                   'connToOpts:', connToOpts.length);
     }
 
@@ -19163,7 +19185,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           _fallbackTimer = null;
           if (!allViewsReady()) {
             if (CFG.debug) {
-              console.log('[BidReview] Timeout waiting for:',
+              SCW.debug('[BidReview] Timeout waiting for:',
                 !_viewsReady[CFG.sowItemsViewKey] ? CFG.sowItemsViewKey : '',
                 CFG.bidPackagesViewKey && !_viewsReady[CFG.bidPackagesViewKey] ? CFG.bidPackagesViewKey : '');
             }
@@ -19345,7 +19367,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 
     if (window.SCW && SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.debug) {
-      console.log('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
+      SCW.debug('[SalesRevCol] Loaded', _revisionData.length, 'revision records');
     }
   }
 
@@ -19845,7 +19867,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       type: 'PUT',
       data: JSON.stringify(knackData),
       success: function () {
-        console.log('[SalesRevCol] Updated record', revId, 'to Rejected');
+        SCW.debug('[SalesRevCol] Updated record', revId, 'to Rejected');
         afterReject(btn);
       },
       error: function () {
@@ -19989,7 +20011,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         url: SCW.knackRecordUrl(SOW_VIEW, sowItemId),
         type: 'PUT',
         data: JSON.stringify(sowData),
-        success: function () { console.log('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] SOW updated:', sowItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] SOW update failed:', sowItemId); errors++; checkDone(); },
       });
     }
@@ -20000,7 +20022,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         url: SCW.knackRecordUrl(SURVEY_VIEW, surveyItemId),
         type: 'PUT',
         data: JSON.stringify(surveyData),
-        success: function () { console.log('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] Survey updated:', surveyItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] Survey update failed:', surveyItemId); errors++; checkDone(); },
       });
     }
@@ -20013,7 +20035,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         url: SCW.knackRecordUrl(CFG.revisionView, revLineItemId),
         type: 'PUT',
         data: JSON.stringify(statusData),
-        success: function () { console.log('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
+        success: function () { SCW.debug('[SalesRevCol] Revision status updated:', revLineItemId); checkDone(); },
         error: function () { console.warn('[SalesRevCol] Revision status update failed:', revLineItemId); errors++; checkDone(); },
       });
     }
@@ -23970,7 +23992,7 @@ $(".kn-navigation-bar").hide();
   // UTILS
   // ======================
   function log(...args) {
-    if (CONFIG.DEBUG && window.console) console.log("[scwUnified2246]", ...args);
+    if (CONFIG.DEBUG && window.console) SCW.debug("[scwUnified2246]", ...args);
   }
 
   function uniq(arr) {
@@ -24603,14 +24625,14 @@ $(".kn-navigation-bar").hide();
           pending--;
           if (pending <= 0) hideRefreshing();
         });
-        console.log('[scw-refresh] Fetching source grid ' + viewId);
+        SCW.debug('[scw-refresh] Fetching source grid ' + viewId);
         view.model.fetch();
       }
     });
 
     if (!fetched) {
       // Fallback: just recalculate from current DOM
-      console.log('[scw-refresh] No source grids available, recalculating from DOM');
+      SCW.debug('[scw-refresh] No source grids available, recalculating from DOM');
       if (window.SCW && typeof SCW.restructureTotals === 'function') {
         SCW.restructureTotals();
       }
@@ -24634,7 +24656,7 @@ $(".kn-navigation-bar").hide();
       if (form.closest('#' + FORM_VIEWS[i])) { isTargetForm = true; break; }
     }
     if (isTargetForm) {
-      console.log('[scw-refresh] Submit button clicked — showing overlay');
+      SCW.debug('[scw-refresh] Submit button clicked — showing overlay');
       showRefreshing();
     }
   }, true); // capture phase — fires before Knack's handler
@@ -24644,7 +24666,7 @@ $(".kn-navigation-bar").hide();
   FORM_VIEWS.forEach(function (formViewId) {
     $(document).off('knack-form-submit.' + formViewId + NS)
                .on('knack-form-submit.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Form submit detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Form submit detected on ' + formViewId);
       refreshSourceGrids();
     });
   });
@@ -24653,12 +24675,12 @@ $(".kn-navigation-bar").hide();
   FORM_VIEWS.forEach(function (formViewId) {
     $(document).off('knack-record-create.' + formViewId + NS)
                .on('knack-record-create.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record create detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Record create detected on ' + formViewId);
       refreshSourceGrids();
     });
     $(document).off('knack-record-update.' + formViewId + NS)
                .on('knack-record-update.' + formViewId + NS, function () {
-      console.log('[scw-refresh] Record update detected on ' + formViewId);
+      SCW.debug('[scw-refresh] Record update detected on ' + formViewId);
       refreshSourceGrids();
     });
   });
@@ -24688,7 +24710,7 @@ $(".kn-navigation-bar").hide();
     views.forEach(function (viewId) {
       $(document).off('knack-cell-update.' + viewId + NS)
                  .on('knack-cell-update.' + viewId + NS, function () {
-        console.log('[scw-refresh] Cell update detected on ' + viewId);
+        SCW.debug('[scw-refresh] Cell update detected on ' + viewId);
         recalcDebounced();
       });
     });
@@ -24698,7 +24720,7 @@ $(".kn-navigation-bar").hide();
   $(document).off('scw-record-saved' + NS)
              .on('scw-record-saved' + NS, function () {
     if (typeof Knack !== 'undefined' && Knack.views && Knack.views[TARGET_VIEW]) {
-      console.log('[scw-refresh] Direct edit save detected');
+      SCW.debug('[scw-refresh] Direct edit save detected');
       setTimeout(recalcTotals, 1000);
       setTimeout(recalcTotals, 3000);
     }
@@ -24792,7 +24814,7 @@ $(".kn-navigation-bar").hide();
 
   $(document).off('knack-form-submit.' + DTO_FORM + DTO_NS)
              .on('knack-form-submit.' + DTO_FORM + DTO_NS, function () {
-    console.log('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
+    SCW.debug('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
     showDtoToast();
 
     // Capture initial record counts so we can detect when new records arrive
@@ -24819,7 +24841,7 @@ $(".kn-navigation-bar").hide();
       });
 
       if (gained) {
-        console.log('[scw-refresh] New records detected \u2014 stopping poll');
+        SCW.debug('[scw-refresh] New records detected \u2014 stopping poll');
         // Keep polling a few more times to catch stragglers
         setTimeout(function () {
           DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
@@ -24834,7 +24856,7 @@ $(".kn-navigation-bar").hide();
       }
 
       if (elapsed >= DTO_TIMEOUT_MS) {
-        console.log('[scw-refresh] DTO poll timeout');
+        SCW.debug('[scw-refresh] DTO poll timeout');
         clearInterval(_dtoPollTimer);
         _dtoPollTimer = null;
         hideDtoToast();
@@ -25829,7 +25851,7 @@ $(".kn-navigation-bar").hide();
 
   function waitForFieldAndSelect(srId, attempts) {
     if (attempts <= 0) {
-      console.log('[SCW] gave up after all attempts. srId=' + srId);
+      SCW.debug('[SCW] gave up after all attempts. srId=' + srId);
       return;
     }
     var $select = $('#' + ADD_PHOTO_VIEW + '-field_2423');
@@ -25848,7 +25870,7 @@ $(".kn-navigation-bar").hide();
     var $chosenContainer = $('#' + chznId);
 
     if (!$chosenContainer.length) {
-      console.log('[SCW] Chosen container #' + chznId + ' not found');
+      SCW.debug('[SCW] Chosen container #' + chznId + ' not found');
       return;
     }
 
@@ -25859,7 +25881,7 @@ $(".kn-navigation-bar").hide();
     setTimeout(function () {
       var resultId = chznId + '_o_' + optionIndex;
       var $resultItem = $('#' + resultId);
-      console.log('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
+      SCW.debug('[SCW] clicking result #' + resultId + ', found=' + $resultItem.length + ', text=' + $resultItem.text());
       if ($resultItem.length) {
         $resultItem.trigger('mouseup');
       }
@@ -25879,7 +25901,7 @@ $(".kn-navigation-bar").hide();
       var currentHash = window.location.hash || '';
       var srMatch = currentHash.match(/site-survey-request-details\/([a-f0-9]{24})/);
       var srId = srMatch ? srMatch[1] : '';
-      console.log('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
+      SCW.debug('[SCW] Edit clicked. hash=' + currentHash + ', srId=' + srId + ', href=' + href);
 
       window.location.hash = href.replace(/^#/, '');
 
@@ -27448,7 +27470,7 @@ $(".kn-navigation-bar").hide();
       }
     }
 
-    console.log('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
+    SCW.debug('[SCW][delete-intercept] DOM lookup for ' + recordId + ': found ' + ids.length + ' accessory IDs', ids);
     return ids;
   }
 
@@ -27467,7 +27489,7 @@ $(".kn-navigation-bar").hide();
       accessoryRecordIds: accessoryIds
     };
 
-    console.log('[SCW][delete-intercept] Sending to webhook:', payload);
+    SCW.debug('[SCW][delete-intercept] Sending to webhook:', payload);
 
     fetch(url, {
       method: 'POST',
@@ -27502,7 +27524,7 @@ $(".kn-navigation-bar").hide();
     var tr = link.closest('tr[id]');
     if (tr && /^[a-f0-9]{24}$/.test(tr.id)) {
       _lastClickedRecordId = tr.id;
-      console.log('[SCW][delete-intercept] Tracked click on record ' + tr.id);
+      SCW.debug('[SCW][delete-intercept] Tracked click on record ' + tr.id);
     }
   }, true); // capture phase
 
@@ -27559,13 +27581,13 @@ $(".kn-navigation-bar").hide();
     if (BULK_DELETE_RE.test(msg)) {
       // KTL bulk delete
       deletedRecordIds = getBulkSelectedRecordIds();
-      console.log('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
+      SCW.debug('[SCW][delete-intercept] Bulk delete confirmed — ' + deletedRecordIds.length + ' records:', deletedRecordIds);
 
     } else if (SINGLE_DELETE_RE.test(msg)) {
       // Single record delete
       if (_lastClickedRecordId) {
         deletedRecordIds = [_lastClickedRecordId];
-        console.log('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
+        SCW.debug('[SCW][delete-intercept] Single delete confirmed — record:', _lastClickedRecordId);
       } else {
         console.warn('[SCW][delete-intercept] Single delete confirmed but no record ID captured');
       }
@@ -27578,7 +27600,7 @@ $(".kn-navigation-bar").hide();
     for (var i = 0; i < deletedRecordIds.length; i++) {
       var accessories = getConnectedIdsFromDOM(deletedRecordIds[i]);
       if (accessories.length) {
-        console.log('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
+        SCW.debug('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
         allAccessoryIds = allAccessoryIds.concat(accessories);
       }
     }
@@ -27586,13 +27608,13 @@ $(".kn-navigation-bar").hide();
     if (allAccessoryIds.length) {
       fireWebhook(deletedRecordIds, allAccessoryIds);
     } else {
-      console.log('[SCW][delete-intercept] No connected accessories found for deleted records');
+      SCW.debug('[SCW][delete-intercept] No connected accessories found for deleted records');
     }
 
     return result;
   };
 
-  console.log('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
+  SCW.debug('[SCW][delete-intercept] Installed — patched window.confirm to monitor delete confirmations');
 })();
 /*** CONNECTED RECORDS EDITOR ***/
 (function () {
@@ -28130,7 +28152,7 @@ $(".kn-navigation-bar").hide();
     var cfg = findCfgForItem(itemEl);
     var parentField = cfg ? cfg.parentConnectionField : null;
 
-    console.log('[SCW][CR-DELETE] deleteRecord called', {
+    SCW.debug('[SCW][CR-DELETE] deleteRecord called', {
       recordId: recordId,
       recordName: recordName,
       parentConnectionField: parentField
@@ -28143,11 +28165,11 @@ $(".kn-navigation-bar").hide();
     var disconnectPromise;
     var viewId = cfg ? cfg.parentViewId : null;
     if (parentField && viewId) {
-      console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
+      SCW.debug('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
                   'on', recordId, 'via', viewId);
       disconnectPromise = clearFieldOnRecord(viewId, recordId, parentField)
         .then(function () {
-          console.log('[SCW][CR-DELETE] Disconnect succeeded');
+          SCW.debug('[SCW][CR-DELETE] Disconnect succeeded');
         })
         .catch(function (err) {
           console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
@@ -28158,7 +28180,7 @@ $(".kn-navigation-bar").hide();
 
     // Step 2: After disconnect, send the delete webhook
     disconnectPromise.then(function () {
-      console.log('[SCW][CR-DELETE] Sending webhook POST…');
+      SCW.debug('[SCW][CR-DELETE] Sending webhook POST…');
       return fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -28166,12 +28188,12 @@ $(".kn-navigation-bar").hide();
       });
     })
     .then(function (resp) {
-      console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
+      SCW.debug('[SCW][CR-DELETE] Webhook response status:', resp.status);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return {}; });
     })
     .then(function (body) {
-      console.log('[SCW][CR-DELETE] Webhook response body:', body);
+      SCW.debug('[SCW][CR-DELETE] Webhook response body:', body);
 
       // Remove the item from the DOM
       itemEl.remove();
@@ -28196,12 +28218,12 @@ $(".kn-navigation-bar").hide();
    * Handle trash icon click: confirm, then delete via webhook.
    */
   function onDeleteClick(recordId, recordName, itemEl) {
-    console.log('[SCW][CR-DELETE] onDeleteClick fired', {
+    SCW.debug('[SCW][CR-DELETE] onDeleteClick fired', {
       recordId: recordId,
       recordName: recordName
     });
     confirmDelete(recordName).then(function (confirmed) {
-      console.log('[SCW][CR-DELETE] Confirmation result:', confirmed);
+      SCW.debug('[SCW][CR-DELETE] Confirmation result:', confirmed);
       if (!confirmed) return;
       deleteRecord(recordId, recordName, itemEl);
     });
@@ -28310,7 +28332,7 @@ $(".kn-navigation-bar").hide();
     var links = readConnectionLinks(tr, fieldKey);
     var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug, recordId);
 
-    console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
+    SCW.debug('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
       return { text: l.text, recordId: l.recordId, href: l.href };
     }));
 
@@ -31671,7 +31693,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
     }
     if (!card) {
-      console.log('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
+      SCW.debug('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
       return;
     }
 
@@ -31687,7 +31709,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         readOnlyKeys.push(fk + (hasDisplay ? '=\u2713' : '=\u2717') + (hasRaw ? '/raw\u2713' : '/raw\u2717'));
       }
     });
-    console.log('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
+    SCW.debug('[scw-ws] patchCard readOnly fields in response: ' + readOnlyKeys.join(', '));
 
     // Helper: extract clean display text from a response value.
     // Prefers the formatted display string (resp[fk]) for readOnly fields
@@ -31788,7 +31810,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     });
 
-    console.log('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
+    SCW.debug('[scw-ws] Patched ' + patched + ' fields on card ' + recordId + ' in ' + viewId);
 
     // Re-evaluate hideWhenFieldEquals after patching (e.g. toggling HEADEND/IDF)
     applyHideWhenFieldEquals(card, cfg);
@@ -31979,14 +32001,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!cfg || !fieldKey(cfg, 'label')) return;
     if (typeof Knack === 'undefined') return;
 
-    console.log('[scw-ws-header] Fetching label via view API for ' + recordId);
+    SCW.debug('[scw-ws-header] Fetching label via view API for ' + recordId);
 
     SCW.knackAjax({
       url: SCW.knackRecordUrl(viewId, recordId),
       type: 'GET',
       success: function (resp) {
         var txt = extractLabelFromResponse(viewId, resp);
-        console.log('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
+        SCW.debug('[scw-ws-header] View API label for ' + recordId + ': "' + txt + '"');
         if (txt) {
           _labelCache[recordId] = txt;
           applyLabelText(viewId, recordId, txt);
@@ -32015,7 +32037,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var row = allLabels[i].closest('tr.' + WORKSHEET_ROW);
       if (row && getRecordId(row) === recordId) {
         allLabels[i].textContent = txt;
-        console.log('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
+        SCW.debug('[scw-ws-header] Applied label for ' + recordId + ': "' + txt + '"');
         return;
       }
     }
@@ -32045,7 +32067,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var current = (allLabels[i].textContent || '').trim();
         if (!current || current === '\u00a0') {
           allLabels[i].textContent = _labelCache[rid];
-          console.log('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
+          SCW.debug('[scw-ws-header] Restored cached label for ' + rid + ': "' + _labelCache[rid] + '"');
         }
       }
     }
@@ -34855,7 +34877,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var match = hash.match(/scope-of-work-details\/([a-f0-9]{24})/i);
     if (match) {
       _sowRecordId = match[1];
-      if (CFG.debug) console.log('[SalesCR] SOW record ID:', _sowRecordId);
+      if (CFG.debug) SCW.debug('[SalesCR] SOW record ID:', _sowRecordId);
     }
   }
 
@@ -34901,7 +34923,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function forceSaveDraft() {
     if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
     var count = Object.keys(_pending).length;
-    if (CFG.debug) console.log('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
+    if (CFG.debug) SCW.debug('[SalesCR] Force saving draft to Knack, sowId:', _sowRecordId, 'items:', count);
     writeDraftField(count ? _pending : null);
   }
 
@@ -34925,7 +34947,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (merged) {
         ssave();
         if (ns.refresh) ns.refresh();
-        if (CFG.debug) console.log('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
+        if (CFG.debug) SCW.debug('[SalesCR] Rehydrated from Knack:', Object.keys(data).length, 'items');
       }
     }).fail(function () {
       if (CFG.debug) console.warn('[SalesCR] Knack rehydration failed — using sessionStorage');
@@ -35457,7 +35479,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       baseline[id] = snap;
     }
 
-    if (CFG.debug) console.log('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
+    if (CFG.debug) SCW.debug('[SalesCR] Baseline:', Object.keys(baseline).length, 'records');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -35468,7 +35490,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!record || !record.id) return;
     var id = record.id;
 
-    if (CFG.debug) console.log('[SalesCR] Cell update on', id);
+    if (CFG.debug) SCW.debug('[SalesCR] Cell update on', id);
 
     var baseline = S.baseline();
     var pending  = S.pending();
@@ -35496,7 +35518,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var lhRaw2       = record[CFG.laborHoursField + '_raw'] != null ? record[CFG.laborHoursField + '_raw'] : record[CFG.laborHoursField];
       base._laborHours = typeof lhRaw2 === 'number' ? lhRaw2 : parseFloat(String(lhRaw2 || '0').replace(/[^0-9.\-]/g, '')) || 0;
       baseline[id] = base;
-      if (CFG.debug) console.log('[SalesCR] Late baseline for', id, '— first edit not captured');
+      if (CFG.debug) SCW.debug('[SalesCR] Late baseline for', id, '— first edit not captured');
       return;
     }
 
@@ -35514,7 +35536,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var raw = record[fk + '_raw'] != null ? record[fk + '_raw'] : record[fk];
       var newVal = H.normVal(def, raw);
       if (CFG.debug && fk === 'field_1953') {
-        console.log('[SalesCR] field_1953 diff:', JSON.stringify({
+        SCW.debug('[SalesCR] field_1953 diff:', JSON.stringify({
           raw_exists: record[fk + '_raw'] != null,
           raw_val: record[fk + '_raw'],
           plain_val: record[fk],
@@ -35533,7 +35555,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     if (!hasChanges) {
-      if (CFG.debug) console.log('[SalesCR] No tracked-field changes for', id);
+      if (CFG.debug) SCW.debug('[SalesCR] No tracked-field changes for', id);
       return;
     }
 
@@ -35551,7 +35573,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           existing.current[ik + '_ids'] = base[ik + '_ids'];
         }
       }
-      if (CFG.debug) console.log('[SalesCR] Updated existing CR for', id, ':', changes);
+      if (CFG.debug) SCW.debug('[SalesCR] Updated existing CR for', id, ':', changes);
     } else {
       // New CR — copy values AND IDs for connection fields
       var current = {};
@@ -35577,7 +35599,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         requested:    requested,
         changeNotes:  '',
       };
-      if (CFG.debug) console.log('[SalesCR] Created new CR for', id, ':', changes);
+      if (CFG.debug) SCW.debug('[SalesCR] Created new CR for', id, ':', changes);
     }
 
     ns.persist();
@@ -35607,7 +35629,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (/^yes$/i.test(val)) { active = true; break; }
     }
     S.setAddMode(active);
-    if (CFG.debug) console.log('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
+    if (CFG.debug) SCW.debug('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
 
   function detectAddRecords() {
@@ -35658,7 +35680,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     if (added) {
       ns.persist();
-      if (CFG.debug) console.log('[SalesCR] Auto-detected', added, 'add records');
+      if (CFG.debug) SCW.debug('[SalesCR] Auto-detected', added, 'add records');
     }
   }
 
@@ -37043,7 +37065,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       });
     });
 
-    if (CFG.debug && locked) console.log('[SalesCR] Locked fields on', locked, 'new-item rows');
+    if (CFG.debug && locked) SCW.debug('[SalesCR] Locked fields on', locked, 'new-item rows');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -37089,7 +37111,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     payload.plainText = ns.buildPlainText();
 
     if (CFG.debug) {
-      console.log('[SalesCR] Submit:', payload);
+      SCW.debug('[SalesCR] Submit:', payload);
     }
 
     SCW.knackAjax({
@@ -37097,7 +37119,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[SalesCR] Submit success:', resp);
+        if (CFG.debug) SCW.debug('[SalesCR] Submit success:', resp);
         clearPending();
         autoRevertValidation(count);
         ns.showToast('Change request submitted', 'success');
@@ -37105,7 +37127,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       error: function (xhr) {
         if (xhr && xhr.status === 0) {
           autoRevertValidation(count);
-          if (CFG.debug) console.log('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
+          if (CFG.debug) SCW.debug('[SalesCR] CORS-blocked (status 0) \u2014 treating as success');
           clearPending();
           ns.showToast('Change request submitted', 'success');
         } else {
@@ -37221,7 +37243,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
 
     S.setRevisionData(data);
-    if (CFG.debug) console.log('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
+    if (CFG.debug) SCW.debug('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -37417,7 +37439,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
-        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
+        if (CFG.debug) SCW.debug('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
         // Delay to let Knack model absorb the response (connection _raw fields)
         setTimeout(function () {
           var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
@@ -37428,7 +37450,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
             }
           }
-          if (CFG.debug) console.log('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
+          if (CFG.debug) SCW.debug('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
             'field_1953:', fresh ? fresh.field_1953 : resp.field_1953);
           ns.onCellUpdate(null, null, fresh || resp);
         }, 500);
@@ -37499,7 +37521,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   ns.getPending   = function () { return S.pending(); };
   ns.getBaseline  = function () { return S.baseline(); };
 
-  if (CFG.debug) console.log('[SalesCR] Module initialized');
+  if (CFG.debug) SCW.debug('[SalesCR] Module initialized');
 
 })();
 /*** BID REVISION INJECTION — view_3823 → view_3505 ***/
@@ -38026,9 +38048,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Build claimed set from pending change requests
     var pendingClaimed = buildPendingClaimedSet(selfId);
     var pClaimedKeys = Object.keys(pendingClaimed);
-    if (pClaimedKeys.length) console.log(TAG, 'pendingClaimed:', pClaimedKeys);
+    if (pClaimedKeys.length) SCW.debug(TAG, 'pendingClaimed:', pClaimedKeys);
 
-    console.log(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
+    SCW.debug(TAG, 'model records:', records.length, isAdd ? '(ADD mode)' : '');
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -38065,11 +38087,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           }
         }
         if (isAdd && connToPopulated) {
-          console.log(TAG, 'Skipping (field_2381 populated):', label, rec.id);
+          SCW.debug(TAG, 'Skipping (field_2381 populated):', label, rec.id);
         } else if (pendingClaimed[rec.id]) {
-          console.log(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
+          SCW.debug(TAG, 'Skipping (claimed by pending CR):', label, rec.id);
         } else {
-          console.log(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
+          SCW.debug(TAG, 'Strategy 1-2 (model):', matchedBy, '→', label, rec.id);
           if (!devMap[rec.id]) devMap[rec.id] = { id: rec.id, identifier: label };
         }
       }
@@ -38105,7 +38127,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // The worksheet puts field cells on tr[data-scw-worksheet] rows; the record ID is
     // on the next sibling tr.scw-ws-row.
     if (!foundCamReaderFromModel) {
-      console.log(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
+      SCW.debug(TAG, 'Strategy 3 (DOM scraping): model had no bucket data, scraping table…');
       var wsView = CFG.targetViews[0];
       var $wsTbl = $('#' + wsView + ' table.kn-table');
       if ($wsTbl.length) {
@@ -38124,17 +38146,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                 if (ctCell) {
                   var ctSpan = ctCell.querySelector('span[data-kn="connection-value"]');
                   if (ctSpan) {
-                    console.log(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
+                    SCW.debug(TAG, 'Strategy 3 skip (field_2381 populated):', rowId);
                     return; // jQuery .each() continue
                   }
                 }
               }
               if (pendingClaimed[rowId]) {
-                console.log(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
+                SCW.debug(TAG, 'Strategy 3 skip (claimed by pending CR):', rowId);
               } else if (!devMap[rowId]) {
                 var nameCell = dataTr.querySelector('td.field_2365') || dataTr.querySelector('td.field_2379');
                 var rowLabel = nameCell ? (nameCell.textContent || '').trim() : rowId;
-                console.log(TAG, 'Strategy 3 hit:', rowLabel, rowId);
+                SCW.debug(TAG, 'Strategy 3 hit:', rowLabel, rowId);
                 devMap[rowId] = { id: rowId, identifier: rowLabel };
               }
             }
@@ -38146,7 +38168,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Strategy 4+5: revision records (view_3823) — field_2698 direct, then JSON payload
     var revModel = findModel(CFG.revisionView);
     var revRecords = extractRecords(revModel);
-    console.log(TAG, 'revision records:', revRecords.length);
+    SCW.debug(TAG, 'revision records:', revRecords.length);
     for (var rri = 0; rri < revRecords.length; rri++) {
       var rr = revRecords[rri];
       var revBucketId = '';
@@ -38184,9 +38206,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           } catch (e) { /* skip */ }
         }
         if (pendingClaimed[rr.id]) {
-          console.log(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
+          SCW.debug(TAG, 'Strategy 4-5 skip (claimed by pending CR):', rlabel, rr.id);
         } else {
-          console.log(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
+          SCW.debug(TAG, 'Strategy 4-5 (revision):', revSource, '→', rlabel, rr.id);
           if (!devMap[rr.id]) devMap[rr.id] = { id: rr.id, identifier: rlabel };
         }
       }
@@ -38205,9 +38227,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             var pLabel = pItem.displayLabel || pItem.productName || pItem.rowId;
             var pId = pItem.sowItemId || pItem.rowId;
             if (pId && pendingClaimed[pId]) {
-              console.log(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
+              SCW.debug(TAG, 'Strategy 6 skip (claimed by pending CR):', pLabel, pId);
             } else if (pId && !devMap[pId]) {
-              console.log(TAG, 'Strategy 6 (pending):', pLabel, pId);
+              SCW.debug(TAG, 'Strategy 6 (pending):', pLabel, pId);
               devMap[pId] = { id: pId, identifier: pLabel };
             }
           }
@@ -38236,7 +38258,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var result = { bidMdfIdf: vals(mdfMap), bidConnDevice: vals(devMap), bidConnTo: vals(toMap) };
-    console.log(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
+    SCW.debug(TAG, 'RESULT → connDevice:', result.bidConnDevice.length,
       'connTo:', result.bidConnTo.length, 'mdfIdf:', result.bidMdfIdf.length, result);
     return result;
   }
@@ -38419,7 +38441,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function buildRevisionMap() {
     // Always try DOM first — most reliable for rich-text / JSON fields
     var domRecords = scrapeFromDom();
-    console.log('[BidRevInject] DOM-scraped records:', domRecords.length);
+    SCW.debug('[BidRevInject] DOM-scraped records:', domRecords.length);
 
     // Supplement with model data for records not found in the DOM
     var seen = {};
@@ -38429,7 +38451,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var model = findModel(CFG.revisionView);
     var modelRecords = extractRecords(model);
-    console.log('[BidRevInject] Model records:', modelRecords.length);
+    SCW.debug('[BidRevInject] Model records:', modelRecords.length);
 
     var records = domRecords.slice();
     for (var mi = 0; mi < modelRecords.length; mi++) {
@@ -38439,7 +38461,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         seen[mr.id] = true;
       }
     }
-    console.log('[BidRevInject] Total records (merged):', records.length);
+    SCW.debug('[BidRevInject] Total records (merged):', records.length);
 
     var map = {};
     var orphaned = [];
@@ -38448,7 +38470,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var siId = getSurveyItemId(rec);
       var entry = buildRevEntry(rec);
 
-      console.log('[BidRevInject] Record', rec.id,
+      SCW.debug('[BidRevInject] Record', rec.id,
                   '| surveyItemId:', siId,
                   '| hasHtml:', !!entry.changeHtml,
                   '| hasJson:', !!entry.changeJson,
@@ -38465,7 +38487,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!map[siId]) map[siId] = [];
       map[siId].push(entry);
     }
-    console.log('[BidRevInject] Revision map:', Object.keys(map).length,
+    SCW.debug('[BidRevInject] Revision map:', Object.keys(map).length,
                 'matched,', orphaned.length, 'orphaned');
     return { map: map, orphaned: orphaned };
   }
@@ -38476,12 +38498,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    */
   function scrapeFromDom() {
     var viewEl = document.getElementById(CFG.revisionView);
-    if (!viewEl) { console.log('[BidRevInject] View element not found for', CFG.revisionView); return []; }
+    if (!viewEl) { SCW.debug('[BidRevInject] View element not found for', CFG.revisionView); return []; }
     var table = viewEl.querySelector('table.kn-table-table') || viewEl.querySelector('table.kn-table');
-    if (!table) { console.log('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
+    if (!table) { SCW.debug('[BidRevInject] No DOM table for', CFG.revisionView); return []; }
     var rows = table.querySelectorAll('tbody > tr');
     if (!rows.length) rows = table.querySelectorAll('tr');
-    console.log('[BidRevInject] DOM table rows found:', rows.length);
+    SCW.debug('[BidRevInject] DOM table rows found:', rows.length);
     var records = [];
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
@@ -38661,7 +38683,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         fieldsLookup = data.fields;
       }
     }
-    console.log('[BidRevInject] Edit modal data keys:', Object.keys(data),
+    SCW.debug('[BidRevInject] Edit modal data keys:', Object.keys(data),
       '| requested keys:', Object.keys(requested),
       '| current keys:', Object.keys(current),
       '| fields type:', Array.isArray(data.fields) ? 'array(' + data.fields.length + ')' : typeof data.fields,
@@ -38727,7 +38749,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (resolved.length) {
             curIds = resolved;
             prefillIds[fd.key] = resolved;
-            console.log('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
+            SCW.debug('[SCW-connOpts] Resolved labels→IDs for', fd.key, ':', labels, '→', resolved);
           }
         }
         // Ensure already-selected IDs appear in the options (even if buildConnOptions missed them)
@@ -38931,14 +38953,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       saveOnlyBtn.disabled = true;
       saveOnlyBtn.textContent = 'Saving\u2026';
 
-      console.log('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
+      SCW.debug('[BidRevInject] Save PUT for', revisionId, '| JSON length:', updatedJson.length, '| HTML length:', updatedHtml.length);
 
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(CFG.revisionView, revisionId),
         type: 'PUT',
         data: JSON.stringify(putBody),
         success: function () {
-          console.log('[BidRevInject] Saved JSON + HTML for', revisionId);
+          SCW.debug('[BidRevInject] Saved JSON + HTML for', revisionId);
           // Update the in-memory reference so the next Edit click sees latest data
           if (jsonRef) jsonRef.data = updated;
           // Re-inject the updated HTML card into the DOM
@@ -39124,7 +39146,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    console.log('[BidRevInject] Submitting', action, 'for', revisionId, payload);
+    SCW.debug('[BidRevInject] Submitting', action, 'for', revisionId, payload);
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
                    ? window.SCW.bidReview.CONFIG.revisionResponseWebhook
@@ -39148,7 +39170,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       url: SCW.knackRecordUrl(CFG.revisionView, revisionId),
       type: 'PUT',
       data: JSON.stringify(directStatus),
-      success: function () { console.log('[BidRevInject] Status updated:', revisionId); },
+      success: function () { SCW.debug('[BidRevInject] Status updated:', revisionId); },
       error: function () { console.warn('[BidRevInject] Status update failed:', revisionId); },
     });
 
@@ -39158,7 +39180,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       data: JSON.stringify(payload),
       timeout: 90000,
       success: function (resp) {
-        console.log('[BidRevInject]', action, 'response for', revisionId, resp);
+        SCW.debug('[BidRevInject]', action, 'response for', revisionId, resp);
         var badge = document.createElement('div');
         badge.style.cssText = 'padding:4px 10px;border-radius:4px;font-size:12px;font-weight:600;display:inline-block;margin-top:6px;';
         if (extra.outcome === 'rejected') {
@@ -39212,7 +39234,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (fired) return;
               fired = true;
               $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
-              console.log('[BidRevInject] view_3823 re-rendered, refreshing targets');
+              SCW.debug('[BidRevInject] view_3823 re-rendered, refreshing targets');
               // Small delay to let DOM settle
               setTimeout(refreshTargets, 300);
             });
@@ -39222,7 +39244,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
               if (!fired) {
                 fired = true;
                 $(document).off('knack-view-render.' + CFG.revisionView + onceNs);
-                console.log('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
+                SCW.debug('[BidRevInject] view_3823 render timeout, refreshing targets anyway');
                 refreshTargets();
               }
             }, 5000);
@@ -39676,7 +39698,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
-    console.log('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
+    SCW.debug('[BidRevInject] Rendered', orphans.length, 'orphaned adds (' +
                 (orphans.length - ungrouped.length) + ' grouped, ' +
                 ungrouped.length + ' ungrouped)');
   }
@@ -39711,7 +39733,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function inject(viewId) {
     var viewEl = document.getElementById(viewId);
-    if (!viewEl) { console.log('[BidRevInject] View element not found:', viewId); return; }
+    if (!viewEl) { SCW.debug('[BidRevInject] View element not found:', viewId); return; }
 
     // Always clean up previous injections before rebuilding
     cleanupInjections(viewEl);
@@ -39721,7 +39743,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var orphaned = result.orphaned;
     var siIds = Object.keys(revMap);
     if (!siIds.length && !orphaned.length) {
-      console.log('[BidRevInject] No revisions to inject');
+      SCW.debug('[BidRevInject] No revisions to inject');
       return;
     }
 
@@ -39730,7 +39752,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (!wsRows.length && siIds.length) {
       _injectRetries++;
       if (_injectRetries < 10) {
-        console.log('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
+        SCW.debug('[BidRevInject] No scw-ws-row found in', viewId, '— retrying in 500ms (attempt', _injectRetries + ')');
         setTimeout(function () { inject(viewId); }, 500);
       } else {
         console.warn('[BidRevInject] Gave up waiting for scw-ws-row after', _injectRetries, 'attempts');
@@ -39803,7 +39825,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       injected++;
     }
-    console.log('[BidRevInject] Injected revisions onto', injected, 'cards,',
+    SCW.debug('[BidRevInject] Injected revisions onto', injected, 'cards,',
                 orphaned.length, 'orphaned adds');
 
     // Render orphaned add requests (includes any unmatched map entries)
@@ -40158,7 +40180,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    console.log('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
+    SCW.debug('[BidRevInject] fireRevisionAction payload:', JSON.stringify(payload, null, 2));
 
     // 1. Update field_2645 on each revision line item directly
     var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
@@ -40260,7 +40282,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── EVENT BINDING ───────────────────────────────────────
 
-  console.log('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
+  SCW.debug('[BidRevInject] IIFE executing — binding events for', CFG.revisionView, '→', CFG.targetViews.join(','));
   injectStyles();
 
   // We need both view_3823 and view_3505 to have rendered.
@@ -40274,7 +40296,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function onViewReady(viewId) {
     _ready[viewId] = true;
-    console.log('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
+    SCW.debug('[BidRevInject] View ready:', viewId, '| all ready:', JSON.stringify(_ready));
     // Only inject once the revision view AND at least one target have rendered
     if (!_ready[CFG.revisionView]) return;
     for (var i = 0; i < CFG.targetViews.length; i++) {
@@ -40335,7 +40357,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var targetView = document.getElementById(tv);
         if (!targetView) continue;
         // Both views exist in the DOM — mark ready and inject
-        console.log('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
+        SCW.debug('[BidRevInject] Fallback poll found both views:', CFG.revisionView, tv);
         _ready[CFG.revisionView] = true;
         _ready[tv] = true;
         clearInterval(pollId);
@@ -42136,7 +42158,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // Value is just the timestamp — every write triggers a storage
       // event in other tabs even if the key already existed.
       localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
-      console.log('[scw-ops-stepper] completion signal written:', sowId);
+      SCW.debug('[scw-ops-stepper] completion signal written:', sowId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 
@@ -42152,7 +42174,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         PENDING_KEY_PREFIX + sowId,
         JSON.stringify({ stepId: stepId, timestamp: Date.now() })
       );
-      console.log('[scw-ops-stepper] pending flag written:', sowId, stepId);
+      SCW.debug('[scw-ops-stepper] pending flag written:', sowId, stepId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 
@@ -42867,7 +42889,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return resp.text().then(function (body) {
         var data = null;
         try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
-        console.log('[SCW clone-sow] status=' + resp.status + ' body=' + body);
+        SCW.debug('[SCW clone-sow] status=' + resp.status + ' body=' + body);
         return { status: resp.status, body: body, data: data, ok: resp.ok };
       });
     }).then(function (resp) {
@@ -43888,7 +43910,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
       imageCache[viewId] = nextCache;
-      console.log('[SCW survey-pdf] image cache primed for ' + viewId, {
+      SCW.debug('[SCW survey-pdf] image cache primed for ' + viewId, {
         count: nextCache.length
       });
     } catch (e) {
@@ -44326,7 +44348,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (isCamerasReadersBucket(r)) rows.push(r);
     }
     if (!rows.length) {
-      console.log('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
+      SCW.debug('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
       return '';
     }
 
@@ -45027,7 +45049,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function handleFormSubmit() {
     var payload = scrape(DEFAULT_VIEW_ID);
     if (!payload.rows.length) {
-      console.log('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
+      SCW.debug('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
       return;
     }
     var htmlStr = buildHtml(payload);
@@ -45046,7 +45068,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       html: htmlStr
     };
 
-    console.log('[SCW survey-pdf] posting to webhook', {
+    SCW.debug('[SCW survey-pdf] posting to webhook', {
       recordId: recordId,
       rowCount: wire.rowCount
     });
@@ -45882,6 +45904,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var HEX24 = /^[0-9a-f]{24}$/i;
 
   function log() {
+    if (!window.SCW || !window.SCW.DEBUG) return;
     try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
   }
 
@@ -46812,7 +46835,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
 
     var fields = getFields(viewId);
     if (!fields.length) {
-      console.log('[' + PREFIX + '] No fields configured for ' + viewId);
+      SCW.debug('[' + PREFIX + '] No fields configured for ' + viewId);
       return;
     }
 
@@ -46869,7 +46892,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
       });
     }
 
-    console.log('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
+    SCW.debug('[' + PREFIX + '] Enhanced ' + viewId + ' with ' + cellsEnhanced + ' cells (' + fields.length + ' field types)');
   }
 
   // ── MutationObserver for re-render handling ────────────────────
@@ -46973,7 +46996,7 @@ td.' + PREFIX + '-cell.bulkEditSelectSrc .' + PREFIX + '-textarea {\
     });
   });
 
-  console.log('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
+  SCW.debug('[' + PREFIX + '] Grid direct-edit module loaded for: ' + VIEW_IDS.join(', '));
 })();
 /*************************** DYNAMIC CELL COLORS – EMPTY / ZERO FIELD HIGHLIGHTING *******************************/
 (function () {

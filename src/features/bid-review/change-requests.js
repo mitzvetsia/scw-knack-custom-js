@@ -199,7 +199,7 @@
         _pending = merged;
         ssave();
         triggerRerender();
-        if (CFG.debug) console.log('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
+        if (CFG.debug) SCW.debug('[BidReview CR] Rehydrated from Knack:', pendingCount(), 'items');
       }
     }).fail(function () {
       if (CFG.debug) console.warn('[BidReview CR] Knack rehydration failed — using sessionStorage');
@@ -348,7 +348,7 @@
     if (CFG.debug) {
       var keys = Object.keys(connRecords);
       for (var ck = 0; ck < keys.length; ck++) {
-        console.log('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
+        SCW.debug('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
       }
     }
     buildModal(params, cell, vis, existing, connRecords);
@@ -1814,8 +1814,8 @@
     var html = payload.html;
 
     if (CFG.debug) {
-      console.log('[BidReview CR] Submitting:', payload);
-      console.log('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
+      SCW.debug('[BidReview CR] Submitting:', payload);
+      SCW.debug('[BidReview CR] HTML preview:', html.substring(0, 500) + '...');
     }
 
     var deferred = $.Deferred();
@@ -1825,7 +1825,7 @@
       type: 'POST',
       data: JSON.stringify(payload),
       success: function (resp) {
-        if (CFG.debug) console.log('[BidReview CR] Submit success:', resp);
+        if (CFG.debug) SCW.debug('[BidReview CR] Submit success:', resp);
         delete _pending[pkgId];
         persist();
         triggerRerender();
@@ -1836,7 +1836,7 @@
         // CORS may block the response even though Make received and
         // processed the request (status 0). Treat as success if so.
         if (xhr && xhr.status === 0) {
-          if (CFG.debug) console.log('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
+          if (CFG.debug) SCW.debug('[BidReview CR] Webhook CORS-blocked (status 0) — treating as success');
           delete _pending[pkgId];
           persist();
           triggerRerender();

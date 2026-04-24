@@ -499,7 +499,7 @@
         }
       }
       imageCache[viewId] = nextCache;
-      console.log('[SCW survey-pdf] image cache primed for ' + viewId, {
+      SCW.debug('[SCW survey-pdf] image cache primed for ' + viewId, {
         count: nextCache.length
       });
     } catch (e) {
@@ -937,7 +937,7 @@
       if (isCamerasReadersBucket(r)) rows.push(r);
     }
     if (!rows.length) {
-      console.log('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
+      SCW.debug('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
       return '';
     }
 
@@ -1638,7 +1638,7 @@
   function handleFormSubmit() {
     var payload = scrape(DEFAULT_VIEW_ID);
     if (!payload.rows.length) {
-      console.log('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
+      SCW.debug('[SCW survey-pdf] view_3800 produced no rows — skipping webhook');
       return;
     }
     var htmlStr = buildHtml(payload);
@@ -1657,7 +1657,7 @@
       html: htmlStr
     };
 
-    console.log('[SCW survey-pdf] posting to webhook', {
+    SCW.debug('[SCW survey-pdf] posting to webhook', {
       recordId: recordId,
       rowCount: wire.rowCount
     });

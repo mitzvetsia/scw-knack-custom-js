@@ -68,7 +68,7 @@
     });
 
     S.setRevisionData(data);
-    if (CFG.debug) console.log('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
+    if (CFG.debug) SCW.debug('[SalesCR] Loaded', data.length, 'revision records from', CFG.revisionView);
   }
 
   // ═══════════════════════════════════════════════════════════

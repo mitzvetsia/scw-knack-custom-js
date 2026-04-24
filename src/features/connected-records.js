@@ -534,7 +534,7 @@
     var cfg = findCfgForItem(itemEl);
     var parentField = cfg ? cfg.parentConnectionField : null;
 
-    console.log('[SCW][CR-DELETE] deleteRecord called', {
+    SCW.debug('[SCW][CR-DELETE] deleteRecord called', {
       recordId: recordId,
       recordName: recordName,
       parentConnectionField: parentField
@@ -547,11 +547,11 @@
     var disconnectPromise;
     var viewId = cfg ? cfg.parentViewId : null;
     if (parentField && viewId) {
-      console.log('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
+      SCW.debug('[SCW][CR-DELETE] Disconnecting: clearing', parentField,
                   'on', recordId, 'via', viewId);
       disconnectPromise = clearFieldOnRecord(viewId, recordId, parentField)
         .then(function () {
-          console.log('[SCW][CR-DELETE] Disconnect succeeded');
+          SCW.debug('[SCW][CR-DELETE] Disconnect succeeded');
         })
         .catch(function (err) {
           console.warn('[SCW][CR-DELETE] Disconnect failed, proceeding with delete anyway:', err);
@@ -562,7 +562,7 @@
 
     // Step 2: After disconnect, send the delete webhook
     disconnectPromise.then(function () {
-      console.log('[SCW][CR-DELETE] Sending webhook POST…');
+      SCW.debug('[SCW][CR-DELETE] Sending webhook POST…');
       return fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -570,12 +570,12 @@
       });
     })
     .then(function (resp) {
-      console.log('[SCW][CR-DELETE] Webhook response status:', resp.status);
+      SCW.debug('[SCW][CR-DELETE] Webhook response status:', resp.status);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return {}; });
     })
     .then(function (body) {
-      console.log('[SCW][CR-DELETE] Webhook response body:', body);
+      SCW.debug('[SCW][CR-DELETE] Webhook response body:', body);
 
       // Remove the item from the DOM
       itemEl.remove();
@@ -600,12 +600,12 @@
    * Handle trash icon click: confirm, then delete via webhook.
    */
   function onDeleteClick(recordId, recordName, itemEl) {
-    console.log('[SCW][CR-DELETE] onDeleteClick fired', {
+    SCW.debug('[SCW][CR-DELETE] onDeleteClick fired', {
       recordId: recordId,
       recordName: recordName
     });
     confirmDelete(recordName).then(function (confirmed) {
-      console.log('[SCW][CR-DELETE] Confirmation result:', confirmed);
+      SCW.debug('[SCW][CR-DELETE] Confirmation result:', confirmed);
       if (!confirmed) return;
       deleteRecord(recordId, recordName, itemEl);
     });
@@ -714,7 +714,7 @@
     var links = readConnectionLinks(tr, fieldKey);
     var addUrl = findAddUrl(tr, cfg.addSlug, cfg.editSlug, recordId);
 
-    console.log('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
+    SCW.debug('[SCW][CR-DELETE] buildWidget links for', viewId, fieldKey, links.map(function (l) {
       return { text: l.text, recordId: l.recordId, href: l.href };
     }));
 

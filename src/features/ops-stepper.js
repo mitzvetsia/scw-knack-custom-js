@@ -581,7 +581,7 @@
       // Value is just the timestamp — every write triggers a storage
       // event in other tabs even if the key already existed.
       localStorage.setItem(COMPLETION_SIGNAL_KEY_PREFIX + sowId, String(Date.now()));
-      console.log('[scw-ops-stepper] completion signal written:', sowId);
+      SCW.debug('[scw-ops-stepper] completion signal written:', sowId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 
@@ -597,7 +597,7 @@
         PENDING_KEY_PREFIX + sowId,
         JSON.stringify({ stepId: stepId, timestamp: Date.now() })
       );
-      console.log('[scw-ops-stepper] pending flag written:', sowId, stepId);
+      SCW.debug('[scw-ops-stepper] pending flag written:', sowId, stepId);
     } catch (e) { /* localStorage might be disabled; non-fatal */ }
   }
 

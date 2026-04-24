@@ -1092,12 +1092,12 @@
   }
 
   try {
-    console.log('[scw-workflow-stepper] storage listener installing');
+    SCW.debug('[scw-workflow-stepper] storage listener installing');
     window.addEventListener('storage', function (e) {
       // Catch-all log first so we can see if storage events are
       // firing at all during debugging — previously the storage
       // listener was silently skipping every event.
-      console.log('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
+      SCW.debug('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
       var prefix = 'scw-ops-stepper-completed:';
       if (!e.key || e.key.indexOf(prefix) !== 0) return;
       // Reload on any ops-stepper completion signal, regardless of
@@ -1108,7 +1108,7 @@
       // happened to have a sibling SOW loaded rather than the one
       // just mark-readied. A blanket reload keeps view_3325's pills
       // and view_3885's published-proposal rows fresh.
-      console.log('[scw-workflow-stepper] ops-stepper signal matched — reloading');
+      SCW.debug('[scw-workflow-stepper] ops-stepper signal matched — reloading');
       showStaleDataBanner();
       // ~1.2s gives Knack/Make a beat to commit and the user time
       // to register the banner before the reload.

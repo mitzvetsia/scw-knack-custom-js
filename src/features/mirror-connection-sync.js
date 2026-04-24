@@ -87,6 +87,7 @@
   var HEX24 = /^[0-9a-f]{24}$/i;
 
   function log() {
+    if (!window.SCW || !window.SCW.DEBUG) return;
     try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (e) {}
   }
 

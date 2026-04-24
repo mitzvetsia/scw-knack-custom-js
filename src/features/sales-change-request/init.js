@@ -101,7 +101,7 @@
       var resp = typeof xhr.responseJSON === 'object' ? xhr.responseJSON
                : JSON.parse(xhr.responseText);
       if (resp && resp.id) {
-        if (CFG.debug) console.log('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
+        if (CFG.debug) SCW.debug('[SalesCR] AJAX PUT intercepted for', resp.id, 'resp.field_1953:', resp.field_1953);
         // Delay to let Knack model absorb the response (connection _raw fields)
         setTimeout(function () {
           var model = Knack.views[CFG.worksheetView] && Knack.views[CFG.worksheetView].model;
@@ -112,7 +112,7 @@
               if (records[ri].id === resp.id) { fresh = records[ri].attributes || records[ri].toJSON(); break; }
             }
           }
-          if (CFG.debug) console.log('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
+          if (CFG.debug) SCW.debug('[SalesCR] Using', fresh ? 'model' : 'resp', 'for', resp.id,
             'field_1953:', fresh ? fresh.field_1953 : resp.field_1953);
           ns.onCellUpdate(null, null, fresh || resp);
         }, 500);
@@ -183,6 +183,6 @@
   ns.getPending   = function () { return S.pending(); };
   ns.getBaseline  = function () { return S.baseline(); };
 
-  if (CFG.debug) console.log('[SalesCR] Module initialized');
+  if (CFG.debug) SCW.debug('[SalesCR] Module initialized');
 
 })();

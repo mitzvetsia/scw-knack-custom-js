@@ -159,7 +159,7 @@
       return resp.text().then(function (body) {
         var data = null;
         try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
-        console.log('[SCW clone-sow] status=' + resp.status + ' body=' + body);
+        SCW.debug('[SCW clone-sow] status=' + resp.status + ' body=' + body);
         return { status: resp.status, body: body, data: data, ok: resp.ok };
       });
     }).then(function (resp) {

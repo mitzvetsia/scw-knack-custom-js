@@ -210,12 +210,12 @@
     setTimeout(function () {
       var raw = getStoredHtml();
       if (!raw) {
-        console.log('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
+        SCW.debug('[SCW Published Proposal] No HTML found in ' + HTML_FIELD);
         return;
       }
-      console.log('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
+      SCW.debug('[SCW Published Proposal] Raw fragment:', raw.length, 'chars');
       var fullHtml = buildFullHtml(raw);
-      console.log('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
+      SCW.debug('[SCW Published Proposal] Full HTML:', fullHtml.length, 'chars');
       renderProposal(fullHtml);
       injectPrintButton(fullHtml);
     }, 500);

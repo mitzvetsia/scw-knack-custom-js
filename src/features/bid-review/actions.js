@@ -49,7 +49,7 @@
     if (payload.items)       body.items       = payload.items;
 
     if (CFG.debug) {
-      console.log('[BidReview] Submitting action:', body);
+      SCW.debug('[BidReview] Submitting action:', body);
     }
 
     SCW.knackAjax({
@@ -57,7 +57,7 @@
       type: 'POST',
       data: JSON.stringify(body),
       success: function (resp) {
-        if (CFG.debug) console.log('[BidReview] Action success:', resp);
+        if (CFG.debug) SCW.debug('[BidReview] Action success:', resp);
 
         // Skip toast for copy_to_sow — handleCopyToSow manages its own messaging
         if (payload.actionType !== 'package_copy_to_sow') {

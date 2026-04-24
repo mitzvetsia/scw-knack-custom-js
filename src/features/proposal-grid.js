@@ -237,7 +237,7 @@
   function log(ctx, ...args) {
     if (!CONFIG.debug) return;
     // eslint-disable-next-line no-console
-    console.log(`[SCW totals][${ctx.viewId}]`, ...args);
+    SCW.debug(`[SCW totals][${ctx.viewId}]`, ...args);
   }
 
   // ============================================================
