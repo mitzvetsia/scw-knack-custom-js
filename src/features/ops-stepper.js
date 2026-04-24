@@ -127,14 +127,10 @@
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
       modal: {
         title:       'Submit Final Proposal to Sales',
-        intro:       'Anything to include in the update to Sales? You can either submit the proposal quietly, or submit AND trigger the "proposal completed" workflows (Sales notification, CU task update, Slack post).',
+        intro:       'Anything to include in the update to Sales?',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
-        submitLabel: 'Submit & Notify Sales',
-        // Secondary action — fires the same webhook with mode=publish-only
-        // so Make can skip the Sales notification / CU task / Slack steps.
-        secondaryLabel: 'Submit (no notification)',
-        secondaryMode:  'publish-only',
-        primaryMode:    'publish-and-notify'
+        submitLabel: 'Submit',
+        primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
     }
