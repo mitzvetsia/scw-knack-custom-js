@@ -47356,6 +47356,77 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return { close: close };
   }
 
+  // ── Click interceptor (chunk 2) ───────────────────────────────────
+  // Capture-phase listener on document. Knack's inline-edit wiring is
+  // bubble-phase jQuery delegation on document, so our capture-phase
+  // handler runs first. stopImmediatePropagation then prevents Knack
+  // from seeing the click.
+  //
+  // The listener is document-wide but filters strictly: only fires when
+  // the click lands on an editable td.field_1957 inside #view_3586.
+  // Everything else (other fields, other views, locked cells, non-left-
+  // click) falls through untouched to the normal handlers.
+  var TARGET_VIEW  = 'view_3586';
+  var TARGET_FIELD = 'field_1957';
+  var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
+
+  function isCellLocked(td) {
+    if (!td) return true;
+    if (!td.classList.contains('cell-edit')) return true;       // not editable
+    if (td.classList.contains('scw-cell-locked')) return true;  // lock-fields.js
+    if (td.classList.contains('scw-ws-td-locked')) return true; // device-worksheet cell lock
+    // Row-level lock (field_2551 = Yes → card gets scw-ws-locked)
+    var card = td.closest('.scw-ws-card, .scw-ws-row');
+    if (card && card.classList.contains('scw-ws-locked')) return true;
+    return false;
+  }
+
+  function getRecordIdFromCell(td) {
+    // device-worksheet moves the id onto the wsTr wrapper
+    var wsTr = td.closest('tr.scw-ws-row');
+    if (wsTr && wsTr.id && RECORD_ID_RE.test(wsTr.id)) return wsTr.id;
+    // Flat view / pre-transform fallback
+    var tr = td.closest('tr[id]');
+    if (tr && RECORD_ID_RE.test(tr.id)) return tr.id;
+    return null;
+  }
+
+  function handleCellClick(e) {
+    if (!window.SCW.CONFIG.customConnectionPicker) return;
+    if (e.button !== undefined && e.button !== 0) return;      // left-click only
+    if (!e.target || !e.target.closest) return;
+
+    var td = e.target.closest('td.' + TARGET_FIELD);
+    if (!td) return;
+    if (!td.closest('#' + TARGET_VIEW)) return;
+    if (isCellLocked(td)) return;
+
+    var recordId = getRecordIdFromCell(td);
+    if (!recordId) return;
+
+    // Intercept — Knack's native popover must not open.
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    openPickerForRecord(recordId, td);
+  }
+
+  // Stub until chunk 3 wires the candidates fetch.
+  function openPickerForRecord(recordId, td) {
+    openModal({
+      title: 'Connected Devices',
+      groups: [],
+      onSave: function (ids) {
+        console.log('[scw-cp] save (stub)', { recordId: recordId, selectedIds: ids });
+      },
+      onCancel: function () {
+        console.log('[scw-cp] cancel (stub)', { recordId: recordId });
+      }
+    });
+  }
+
+  document.addEventListener('click', handleCellClick, true);
+
   // ── Public ────────────────────────────────────────────────────────
   window.SCW.connectionPicker = {
     open: openModal,
