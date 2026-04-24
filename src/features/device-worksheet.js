@@ -5264,7 +5264,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // TRANSFORM VIEW
   // ============================================================
 
-  function transformView(viewCfg) {
+  function transformView(viewCfg, onDone) {
     if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
@@ -5602,8 +5602,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // style recalculations.
     var pendingInserts = [];
 
-    for (var ri = 0; ri < eligible.length; ri++) {
-      var entry = eligible[ri];
+    function processRow(entry) {
       var tr = entry.tr;
 
       // Per-row bucket override: swap fields/layouts when row's bucket
@@ -5724,6 +5723,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       pendingInserts.push({ wsTr: wsTr, sourceTr: tr });
     }
 
+    function finalize() {
     // ── Reorder source <tr> elements by field_2218 sort value ──
     // Sort within each group section so group headers stay in place.
     if (pendingInserts.length > 1) {
@@ -6062,6 +6062,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
       detail: { viewId: viewCfg.viewId }
     }));
+      if (typeof onDone === 'function') onDone();
+    }
+
+    var CHUNK_THRESHOLD = 30;   // below this, skip chunking (cheap overhead)
+    var CHUNK_SIZE = 12;        // rows per rAF frame
+
+    if (eligible.length <= CHUNK_THRESHOLD) {
+      for (var ri = 0; ri < eligible.length; ri++) processRow(eligible[ri]);
+      finalize();
+    } else {
+      var _ri = 0;
+      (function processChunk() {
+        var end = Math.min(_ri + CHUNK_SIZE, eligible.length);
+        for (; _ri < end; _ri++) processRow(eligible[_ri]);
+        if (_ri < eligible.length) {
+          requestAnimationFrame(processChunk);
+        } else {
+          finalize();
+        }
+      })();
+    }
   }
 
   // ============================================================
@@ -6180,16 +6201,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
           setTimeout(function () {
-            transformView(viewCfg);
-            syncDeleteVisibility();
-            // KTL's hide/show toggle may not fire on SPA navigation,
-            // leaving .ktlHideShowSection without inline display:block.
-            // Backstop: if the section exists and has no display set, force it.
-            var $viewEl = $('#' + viewId);
-            var $section = $viewEl.find('.ktlHideShowSection').first();
-            if ($section.length && !$section[0].style.display) {
-              $section[0].style.display = 'block';
-            }
+            transformView(viewCfg, function () {
+              syncDeleteVisibility();
+              // KTL's hide/show toggle may not fire on SPA navigation,
+              // leaving .ktlHideShowSection without inline display:block.
+              // Backstop: if the section exists and has no display set, force it.
+              var $viewEl = $('#' + viewId);
+              var $section = $viewEl.find('.ktlHideShowSection').first();
+              if ($section.length && !$section[0].style.display) {
+                $section[0].style.display = 'block';
+              }
+            });
           }, 150);
         });
 

@@ -13,7 +13,11 @@
    ══════════════════════════════════════════════════════════════ */
 
 /* ── Hide scene until transforms settle, then fade in ── */
+/* Reserve viewport height up-front so progressive view renders don't */
+/* push surrounding chrome (nav, menu, sibling sections) around as    */
+/* each view populates. Main contributor to CLS 0.60 on scene_1116.   */
 #kn-scene_1116 {
+  min-height: 100vh;
   opacity: 0;
   transition: opacity 350ms ease;
 }
