@@ -2774,8 +2774,10 @@ window.SCW = window.SCW || {};
   var MULTI_COL_CLASS    = 'scw-checkbox-multi-col';
   var WIDE_POPOVER_CLASS = 'scw-popover-wide';
   var ITEM_THRESHOLD     = 20;   // below this → single column, no multi-col class
-  var ROWS_PER_COLUMN    = 30;   // target density: ~30 rows per column
+  var ROWS_PER_COLUMN    = 20;   // target density: ~20 rows per column
   var MAX_COLUMNS        = 6;    // hard cap; above this, each column gets more rows
+  var COLUMN_WIDTH_PX    = 220;  // target visual width per column (drives list min-width)
+  var COLUMN_GAP_PX      = 20;   // keeps in sync with CSS column-gap below
 
   // ── CSS (injected once) ─────────────────────────────────────
   if (!document.getElementById(STYLE_ID)) {
@@ -2853,8 +2855,13 @@ window.SCW = window.SCW || {};
         Math.min(MAX_COLUMNS, Math.ceil(count / ROWS_PER_COLUMN))
       );
       list.style.columnCount = String(cols);
+      // Force the list wide enough for the columns to breathe. The
+      // popover itself is `width: max-content`, so it grows to match.
+      list.style.minWidth =
+        (cols * COLUMN_WIDTH_PX + (cols - 1) * COLUMN_GAP_PX) + 'px';
     } else {
       list.style.columnCount = '';
+      list.style.minWidth = '';
     }
   }
 
