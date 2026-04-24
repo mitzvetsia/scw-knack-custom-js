@@ -2855,47 +2855,70 @@ window.SCW = window.SCW || {};
   // when the list element is removed from the DOM.
   var lastCheckbox = new WeakMap();
 
-  // Shift-click range selection. Click delegation on the popover — one
-  // listener per popover. Pattern: click A, then shift-click B, and
-  // every checkbox between A and B (DOM order) takes B's new checked
-  // state. change events are dispatched on the in-between inputs so
-  // Knack's internal model syncs before the user hits save.
-  function onPopoverClick(e) {
-    var cb = e.target;
-    if (!cb || cb.tagName !== 'INPUT' || cb.type !== 'checkbox') return;
+  // Shift-click range selection, hooked at the document level in CAPTURE
+  // phase on `mousedown`. Two reasons for this choice:
+  //   1. Capture phase runs before any bubble-phase handler can call
+  //      stopPropagation — so a popover-scoped listener that the drop
+  //      library or KTL might block is avoided.
+  //   2. Hooking mousedown (not click) fires before the native checkbox
+  //      toggle. We preventDefault on shift+mousedown, then flip the
+  //      range manually with the correct target state. This also
+  //      sidesteps the label→input click-synthesis quirk where the
+  //      synthesized click on the input may lose the shiftKey flag.
+  function resolveCheckbox(target) {
+    if (!target || !target.closest) return null;
+    if (target.tagName === 'INPUT' && target.type === 'checkbox') return target;
+    // Click on label text / span: find the input inside the label.
+    var label = target.closest('label');
+    if (!label) return null;
+    var input = label.querySelector('input[type="checkbox"]');
+    return (input && input.type === 'checkbox') ? input : null;
+  }
+
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;                     // left-click only
+    var cb = resolveCheckbox(e.target);
+    if (!cb) return;
     var list = cb.closest('.conn_inputs');
     if (!list) return;
 
-    var anchor = lastCheckbox.get(list);
+    if (e.shiftKey) {
+      var anchor = lastCheckbox.get(list);
+      if (anchor && anchor !== cb && list.contains(anchor)) {
+        // Cancel the native toggle so we can apply the range state
+        // ourselves (including the clicked box, with no double-toggle).
+        e.preventDefault();
 
-    if (e.shiftKey && anchor && anchor !== cb && list.contains(anchor)) {
-      var all = Array.prototype.slice.call(
-        list.querySelectorAll('input[type="checkbox"]')
-      );
-      var ai = all.indexOf(anchor);
-      var bi = all.indexOf(cb);
-      if (ai >= 0 && bi >= 0) {
-        var lo = Math.min(ai, bi);
-        var hi = Math.max(ai, bi);
-        // Target state = what the user's click just produced on cb.
-        // (The click event fires after the native toggle, so cb.checked
-        // already reflects the new value.)
-        var target = cb.checked;
-        for (var i = lo; i <= hi; i++) {
-          var node = all[i];
-          if (node !== cb && node.checked !== target) {
-            node.checked = target;
-            node.dispatchEvent(new Event('change', { bubbles: true }));
+        var all = Array.prototype.slice.call(
+          list.querySelectorAll('input[type="checkbox"]')
+        );
+        var ai = all.indexOf(anchor);
+        var bi = all.indexOf(cb);
+        if (ai >= 0 && bi >= 0) {
+          var lo = Math.min(ai, bi);
+          var hi = Math.max(ai, bi);
+          // Target state = what a plain click on cb would have produced.
+          // mousedown fires before the toggle, so cb.checked is the OLD
+          // state; invert it.
+          var target = !cb.checked;
+          for (var i = lo; i <= hi; i++) {
+            var node = all[i];
+            if (node.checked !== target) {
+              node.checked = target;
+              node.dispatchEvent(new Event('change', { bubbles: true }));
+            }
           }
+          try { window.getSelection().removeAllRanges(); } catch (_) {}
         }
-        // Shift-clicking labels typically selects text between the two
-        // clicks — clear it so the user doesn't see a weird highlight.
-        try { window.getSelection().removeAllRanges(); } catch (_) {}
+        lastCheckbox.set(list, cb);
+        return;
       }
+      // Shift held but no usable anchor — fall through and treat as a
+      // plain click (sets anchor, native toggle runs normally).
     }
 
     lastCheckbox.set(list, cb);
-  }
+  }, true);
 
   function trackPopover(popover) {
     if (seen.has(popover)) return;
@@ -2929,8 +2952,6 @@ window.SCW = window.SCW || {};
       else stopOpenObs();
     });
     classObs.observe(popover, { attributes: true, attributeFilter: ['class'] });
-
-    popover.addEventListener('click', onPopoverClick);
   }
 
   // ── Top-level: catch popovers appended to <body> ───────────
