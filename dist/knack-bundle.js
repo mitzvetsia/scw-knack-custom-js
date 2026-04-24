@@ -47620,6 +47620,72 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // boolean-chips.js comment — that path silently fails in the worksheet
   // context where device-worksheet has restructured the rows. Direct PUT
   // is the pattern every other SCW device-worksheet writer uses today.
+  /** Repaint the parent row's field_1957 cell from the PUT response.
+   *  patchCardFromResponse skips this field because it's `nativeEdit`
+   *  in the view_3586 config — readOnly/directEdit fields are the only
+   *  shapes the shared helper knows how to write. The cell shape is:
+   *    <td class="field_1957 ... scw-ws-field-value [--empty]">
+   *      <span class="col-N">
+   *        <span class="<recId>" data-kn="connection-value">label</span>,
+   *        <span class="<recId>" data-kn="connection-value">label</span>
+   *      </span>
+   *    </td>
+   *  When empty: just `&nbsp;` inside the col-N wrapper. */
+  function repaintParentConnectionCell(recordId, resp) {
+    var viewEl = document.getElementById(TARGET_VIEW);
+    if (!viewEl) return;
+    var row = viewEl.querySelector('tr#' + recordId);
+    if (!row) return;
+    // The clicked cell lives in the worksheet card's detail panel. Both
+    // the pre-transform tr and the scw-ws-card are inside view_3586, so
+    // grab every field_1957 td under the recordId row's neighbourhood.
+    var tds = viewEl.querySelectorAll('td.' + TARGET_FIELD);
+    if (!tds.length) return;
+
+    var raw = resp && resp[TARGET_FIELD + '_raw'];
+    if (!Array.isArray(raw)) raw = [];
+
+    for (var i = 0; i < tds.length; i++) {
+      var td = tds[i];
+      // Only patch tds belonging to this record's worksheet card. The
+      // card td lives inside a tr.scw-ws-row whose id matches recordId,
+      // OR inside a tr right after the matching scw-ws-row marker.
+      var owningCard = td.closest('tr.scw-ws-row');
+      if (!owningCard || owningCard.id !== recordId) continue;
+
+      var wrap = td.querySelector('span[class^="col-"]');
+      if (!wrap) continue;
+
+      if (raw.length === 0) {
+        wrap.innerHTML = '&nbsp;';
+        td.classList.add('scw-ws-field-value--empty');
+        continue;
+      }
+
+      td.classList.remove('scw-ws-field-value--empty');
+      var html = '';
+      for (var k = 0; k < raw.length; k++) {
+        var item = raw[k] || {};
+        if (!item.id) continue;
+        if (k > 0) html += ', ';
+        html += '<span class="' + escapeAttr(item.id) + '" data-kn="connection-value">' +
+                escapeText(item.identifier || item.id) + '</span>';
+      }
+      wrap.innerHTML = html;
+    }
+  }
+
+  function escapeAttr(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+    });
+  }
+  function escapeText(s) {
+    return String(s).replace(/[&<>]/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;' })[c];
+    });
+  }
+
   function saveSelection(recordId, selectedIds, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
@@ -47644,18 +47710,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           } catch (e) { /* best-effort */ }
         }
 
-        // Patch the clicked row's worksheet card from the PUT response so
-        // the field_1957 cell repaints with the new camera labels. The
-        // mirror (triggered below) handles the reciprocal children via
-        // the same patchCard helper, but not the parent — we have to.
-        try {
-          if (window.SCW && window.SCW.deviceWorksheet &&
-              typeof window.SCW.deviceWorksheet.patchCard === 'function') {
-            window.SCW.deviceWorksheet.patchCard(TARGET_VIEW, recordId, resp);
-          }
-        } catch (e) {
-          console.warn('[scw-cp] patchCard threw for parent', e);
-        }
+        // Repaint the clicked row's field_1957 cell from the PUT
+        // response. SCW.deviceWorksheet.patchCard is a no-op here —
+        // field_1957 is `nativeEdit` in view_3586's config, and the
+        // shared helper only handles readOnly + directEdit fields.
+        try { repaintParentConnectionCell(recordId, resp); }
+        catch (e) { console.warn('[scw-cp] repaintParentConnectionCell threw', e); }
 
         // Fire a synthetic cell-update event so the silent-regroup
         // mirror picks it up and handles the reciprocal children.
