@@ -138,6 +138,29 @@
     for (var i = 0; i < lists.length; i++) apply(popover, lists[i]);
   }
 
+  // Reorder .control children so already-checked items come first —
+  // because CSS columns flow in DOM order, this puts selected items at
+  // the top of the leftmost column. Runs once per popover open (not per
+  // mutation), so new selections the user makes don't shuffle while
+  // they're clicking; the reorder applies on the NEXT open.
+  //
+  // Returns true if the list had items and was reordered.
+  function reorderSelectedFirst(list) {
+    var controls = list.querySelectorAll(':scope > .control');
+    if (!controls.length) return false;
+
+    var checkedFrag = document.createDocumentFragment();
+    var otherFrag = document.createDocumentFragment();
+    for (var i = 0; i < controls.length; i++) {
+      var cb = controls[i].querySelector('input[type="checkbox"]');
+      if (cb && cb.checked) checkedFrag.appendChild(controls[i]);
+      else otherFrag.appendChild(controls[i]);
+    }
+    list.appendChild(checkedFrag);
+    list.appendChild(otherFrag);
+    return true;
+  }
+
   // ── Per-popover tracking ────────────────────────────────────
   // Knack's drop library creates one popover per connection cell and
   // toggles `drop-open` on open/close. On first open Knack fetches
@@ -173,6 +196,17 @@
     return (input && input.type === 'checkbox') ? input : null;
   }
 
+  // Window during which the click events immediately following a shift-
+  // range mousedown should be suppressed. We preventDefault on mousedown,
+  // but that only stops the native toggle when the user clicked the
+  // checkbox INPUT directly — if they clicked the label's text, the
+  // browser synthesizes a click on the input AFTER our mousedown, which
+  // toggles the last box back to its original state. Suppressing the
+  // click event that follows fixes the off-by-one on the shift-clicked
+  // box.
+  var _shiftHandledUntil = 0;
+  var SHIFT_CLICK_SUPPRESS_MS = 300;
+
   document.addEventListener('mousedown', function (e) {
     if (e.button !== 0) return;                     // left-click only
     var cb = resolveCheckbox(e.target);
@@ -186,6 +220,8 @@
         // Cancel the native toggle so we can apply the range state
         // ourselves (including the clicked box, with no double-toggle).
         e.preventDefault();
+        _shiftHandledUntil = (performance.now ? performance.now() : Date.now())
+                             + SHIFT_CLICK_SUPPRESS_MS;
 
         var all = Array.prototype.slice.call(
           list.querySelectorAll('input[type="checkbox"]')
@@ -218,19 +254,37 @@
     lastCheckbox.set(list, cb);
   }, true);
 
+  // Click suppressor — kills the label→input synthesized click (and the
+  // raw click on the label itself) that would otherwise re-toggle the
+  // shift-clicked box after our mousedown handler set it manually.
+  document.addEventListener('click', function (e) {
+    var now = performance.now ? performance.now() : Date.now();
+    if (now > _shiftHandledUntil) return;
+    var cb = resolveCheckbox(e.target);
+    if (!cb || !cb.closest('.conn_inputs')) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   function trackPopover(popover) {
     if (seen.has(popover)) return;
     seen.add(popover);
 
     var openObs = null;
+    // Once-per-open flag set of lists whose checked items have been
+    // reordered to the front for the current open cycle. Cleared on
+    // close so the next open re-runs the reorder.
+    var reorderedThisOpen = new WeakSet();
 
     function stopOpenObs() {
       if (openObs) { openObs.disconnect(); openObs = null; }
+      reorderedThisOpen = new WeakSet();  // reset for the next open
     }
 
     function startOpenObs() {
       stopOpenObs();
       scanPopover(popover);  // immediate pass (catches cached/preloaded content)
+      maybeReorder();
       var pending = false;
       openObs = new MutationObserver(function () {
         if (pending) return;
@@ -238,9 +292,22 @@
         requestAnimationFrame(function () {
           pending = false;
           scanPopover(popover);
+          maybeReorder();
         });
       });
       openObs.observe(popover, { childList: true, subtree: true });
+    }
+
+    // Reorder each list to selected-first — but only the first time we
+    // see items for a given list in this open cycle, so the user's
+    // in-progress selections don't shuffle under their cursor.
+    function maybeReorder() {
+      var lists = popover.querySelectorAll('.conn_inputs');
+      for (var i = 0; i < lists.length; i++) {
+        var list = lists[i];
+        if (reorderedThisOpen.has(list)) continue;
+        if (reorderSelectedFirst(list)) reorderedThisOpen.add(list);
+      }
     }
 
     if (popover.classList.contains('drop-open')) startOpenObs();
