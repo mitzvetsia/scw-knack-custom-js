@@ -8263,19 +8263,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $(this).html(TBD);
     });
 
-    // L4 group cost cells → TBD only if data rows in that group had non-zero labor
+    // L4 group cost cells → TBD. Mask applies uniformly: once the
+    // bid isn't validated, every install-labor cell reads TBD,
+    // regardless of whether descendant data rows happened to have
+    // non-zero labor originally. Previously we only masked L4s whose
+    // rows had labor, which left mounting-hardware sections showing
+    // "$0.00" alongside masked-TBD siblings.
     $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
-      var $l4 = $(this);
-      var hadLabor = false;
-      var $next = $l4.next();
-      while ($next.length && !$next.hasClass('kn-table-group') && !$next.hasClass('scw-level-total-row')) {
-        if ($next.attr('data-scw-had-labor') === '1') { hadLabor = true; break; }
-        $next = $next.next();
-      }
-      if (hadLabor) {
-        var $costCell = $l4.find('td.' + costKey);
-        if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
-      }
+      var $costCell = $(this).find('td.' + costKey);
+      if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
     });
 
     // Installation Total → TBD
