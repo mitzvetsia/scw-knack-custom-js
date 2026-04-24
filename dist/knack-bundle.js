@@ -8413,8 +8413,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       // of the PDF scrape.
       // view_3345 is the Ops stepper host (rich-text role-gated).
       // view_3883 is the published-quote info host we inject into.
+      // view_3886 is the published-proposals data source we read to
+      //   populate view_3883 — itself not part of the quote.
       // Neither belongs in the published proposal content.
-      skipViews: { view_3342: true, view_3861: true, view_3345: true, view_3883: true },
+      skipViews: {
+        view_3342: true,
+        view_3861: true,
+        view_3345: true,
+        view_3883: true,
+        view_3886: true
+      },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
