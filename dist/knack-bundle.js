@@ -8825,6 +8825,87 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ══════════════════════════════════════════════════════════════
+  // TBD MASK for published HTML
+  // ══════════════════════════════════════════════════════════════
+  //
+  // proposal-grid.js applies a visual TBD mask to install-labor cells
+  // when field_2725 is not "Yes" — but bypasses the mask for Ops users
+  // (so they can see real numbers on the proposal page). That bypass
+  // means Ops' DOM shows real figures, and a plain textContent scrape
+  // would leak them into the published HTML. Since Ops is the primary
+  // publisher (Mark Ready / Submit Final Proposal), we re-apply the
+  // TBD treatment to the scraped payload whenever the bid hasn't been
+  // validated, regardless of who's publishing.
+  //
+  // Reads field_2725 straight from view_3861 without the Ops bypass.
+  function shouldPublishAsTbd() {
+    try {
+      var view = document.getElementById('view_3861');
+      if (view) {
+        var cell = view.querySelector('.kn-detail.field_2725 .kn-detail-body');
+        if (cell) return !/^yes$/i.test((cell.textContent || '').trim());
+      }
+      var m = typeof Knack !== 'undefined'
+            && Knack.views && Knack.views.view_3861
+            && Knack.views.view_3861.model;
+      var attrs = m && (m.attributes || (m.toJSON && m.toJSON()) || {});
+      if (attrs && attrs.field_2725 !== undefined) {
+        return !/^yes$/i.test(String(attrs.field_2725).replace(/<[^>]*>/g, '').trim());
+      }
+    } catch (e) { /* fall through */ }
+    // Default to TBD when the state can't be read — same defensive
+    // posture as proposal-grid.js's isInstallationMasked().
+    return true;
+  }
+
+  // Mutate a scraped proposal payload so every install-labor surface
+  // renders "TBD". Targets:
+  //   - L4 line item cost (per-product install-labor line)
+  //   - L1 footer "Installation" subtotal
+  //   - Scene-level projectTotals "Installation Total" line
+  function applyTbdToPublishPayload(payload) {
+    var TBD = 'TBD';
+    if (!payload || !Array.isArray(payload.views)) return;
+
+    function tbdifyFooterLines(lines) {
+      if (!Array.isArray(lines)) return;
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line && line.label && /installation/i.test(String(line.label))) {
+          line.value = TBD;
+        }
+      }
+    }
+
+    for (var v = 0; v < payload.views.length; v++) {
+      var view = payload.views[v];
+      if (!view) continue;
+      if (Array.isArray(view.sections)) {
+        for (var s = 0; s < view.sections.length; s++) {
+          var section = view.sections[s];
+          if (!section) continue;
+          if (Array.isArray(section.buckets)) {
+            for (var b = 0; b < section.buckets.length; b++) {
+              var bucket = section.buckets[b];
+              if (!bucket || !Array.isArray(bucket.products)) continue;
+              for (var p = 0; p < bucket.products.length; p++) {
+                var prod = bucket.products[p];
+                if (!prod || !Array.isArray(prod.lineItems)) continue;
+                for (var li = 0; li < prod.lineItems.length; li++) {
+                  prod.lineItems[li].cost = TBD;
+                }
+              }
+            }
+          }
+          if (section.footer) tbdifyFooterLines(section.footer.lines);
+        }
+      }
+      if (view.projectTotals) tbdifyFooterLines(view.projectTotals.lines);
+    }
+    if (payload.projectTotals) tbdifyFooterLines(payload.projectTotals.lines);
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
@@ -8874,6 +8955,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         result.projectTotals = result.views[j].projectTotals;
         break;
       }
+    }
+
+    // Stamp TBD into every install-labor surface if the bid hasn't
+    // been validated (field_2725 != Yes). Only applies to proposal
+    // payloads — subcontractor bids have different semantics.
+    if (cfg.payloadType === 'proposal' && shouldPublishAsTbd()) {
+      applyTbdToPublishPayload(result);
     }
 
     return result;
