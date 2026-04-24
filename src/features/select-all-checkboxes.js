@@ -236,6 +236,47 @@
   // select-all / group-select to avoid N×handler calls.
   var _bulkOp = false;
 
+  // When a bulk op affects more than this many rows, dispatch the
+  // per-row change events in chunks via requestAnimationFrame so the
+  // page stays responsive. Below this threshold we stay fully
+  // synchronous (cheap + no async flicker).
+  var BULK_SYNC_THRESHOLD = 50;
+  var BULK_CHUNK_SIZE     = 25;
+
+  // Fire 'change' on each target checkbox (so KTL's internal bulk-edit
+  // state updates). `_bulkOp` stays true for the entire run so our own
+  // delegated change handlers skip — otherwise each dispatch re-runs
+  // findCheckboxes() over the whole view, giving O(N²) DOM work that
+  // locks the page on large views (view_3450 with ~180 rows).
+  function dispatchChangeEvents(targets, onDone) {
+    function done() {
+      _bulkOp = false;
+      if (onDone) onDone();
+    }
+    if (targets.length <= BULK_SYNC_THRESHOLD) {
+      for (var i = 0; i < targets.length; i++) {
+        targets[i].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      done();
+      return;
+    }
+    var idx = 0;
+    document.body.style.cursor = 'progress';
+    function pump() {
+      var end = Math.min(idx + BULK_CHUNK_SIZE, targets.length);
+      for (; idx < end; idx++) {
+        targets[idx].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (idx < targets.length) {
+        requestAnimationFrame(pump);
+      } else {
+        document.body.style.cursor = '';
+        done();
+      }
+    }
+    requestAnimationFrame(pump);
+  }
+
   // ───────────────────────────────────────────────
   //  1) Wire native <thead> master selector
   // ───────────────────────────────────────────────
@@ -275,15 +316,13 @@
           for (var k = 0; k < cbs.length; k++) {
             cbs[k].checked = shouldCheck;
           }
-          _bulkOp = false;
           master.indeterminate = false;
           syncKtlBulkState(el);
 
-          // Notify KTL — same as group handler: fire change on each
-          // row checkbox so KTL's internal bulk-edit state updates.
-          for (var j = 0; j < cbs.length; j++) {
-            cbs[j].dispatchEvent(new Event('change', { bubbles: true }));
-          }
+          // Notify KTL — chunked above the threshold so the page stays
+          // responsive on large views. `_bulkOp` is cleared inside
+          // dispatchChangeEvents when the last chunk finishes.
+          dispatchChangeEvents(cbs);
         });
 
         // Sync master state + header checkbox visibility on any row checkbox change
@@ -378,7 +417,6 @@
           for (var k = 0; k < targets.length; k++) {
             targets[k].checked = shouldCheck;
           }
-          _bulkOp = false;
           checkbox.indeterminate = false;
 
           var vEl = headerRow.closest('[id^="view_"]');
@@ -388,13 +426,9 @@
             if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
           }
 
-          // Notify KTL that selection changed — KTL tracks selected rows
-          // internally via change handlers that our stopImmediatePropagation
-          // blocked.  Fire change on each target so KTL's bulk-edit column
-          // targeting works.
-          for (var n = 0; n < targets.length; n++) {
-            targets[n].dispatchEvent(new Event('change', { bubbles: true }));
-          }
+          // Notify KTL — chunked above threshold so large groups don't
+          // lock the page. `_bulkOp` is cleared when the last chunk fires.
+          dispatchChangeEvents(targets);
         });
 
         var parentTable = headerRow.closest('table');
