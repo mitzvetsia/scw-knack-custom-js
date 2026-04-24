@@ -39,7 +39,9 @@
   var STYLE_ID           = 'scw-inline-checkbox-layout-css';
   var MULTI_COL_CLASS    = 'scw-checkbox-multi-col';
   var WIDE_POPOVER_CLASS = 'scw-popover-wide';
-  var ITEM_THRESHOLD     = 20;
+  var ITEM_THRESHOLD     = 20;   // below this → single column, no multi-col class
+  var ROWS_PER_COLUMN    = 30;   // target density: ~30 rows per column
+  var MAX_COLUMNS        = 6;    // hard cap; above this, each column gets more rows
 
   // ── CSS (injected once) ─────────────────────────────────────
   if (!document.getElementById(STYLE_ID)) {
@@ -61,8 +63,10 @@
       // next column — so a sorted list reads 1, 2, 3 down the left column
       // and 4, 5, 6 down the right. Grid would instead read 1, 2 across
       // the top row, which breaks scanning a sorted list.
+      //
+      // `column-count` itself is set inline by apply() so it can scale
+      // with the number of items (~30 rows per column, up to MAX_COLUMNS).
       '.kn-popover .conn_inputs.' + MULTI_COL_CLASS + ' {',
-      '  column-count: 2;',
       '  column-gap: 20px;',
       '  max-height: 70vh;',
       '  overflow-y: auto;',
@@ -92,11 +96,23 @@
   }
 
   // ── Apply / remove multi-column based on current item count ──
+  // Columns scale with item count: ceil(count / ROWS_PER_COLUMN),
+  // clamped to [2, MAX_COLUMNS]. Below ITEM_THRESHOLD the popover
+  // stays single-column and narrow.
   function apply(popover, list) {
-    var items = list.querySelectorAll(':scope > .control');
-    var multi = items.length > ITEM_THRESHOLD;
+    var count = list.querySelectorAll(':scope > .control').length;
+    var multi = count > ITEM_THRESHOLD;
     list.classList.toggle(MULTI_COL_CLASS, multi);
     popover.classList.toggle(WIDE_POPOVER_CLASS, multi);
+    if (multi) {
+      var cols = Math.max(
+        2,
+        Math.min(MAX_COLUMNS, Math.ceil(count / ROWS_PER_COLUMN))
+      );
+      list.style.columnCount = String(cols);
+    } else {
+      list.style.columnCount = '';
+    }
   }
 
   // Re-scan the popover for .conn_inputs lists and apply the multi-col
