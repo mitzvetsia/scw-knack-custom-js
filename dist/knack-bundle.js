@@ -47097,10 +47097,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       // Footer
       P + '-footer {',
-      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  display: flex; align-items: center; gap: 8px;',
       '  padding: 12px 18px;',
       '  border-top: 1px solid #e5e7eb;',
       '  background: #f9fafb;',
+      '}',
+      // Live "N connected" count — sits at footer-left
+      P + '-count {',
+      '  font-size: 12px; font-weight: 600; color: #4b5563;',
+      '  letter-spacing: 0.02em;',
+      '}',
+      // Saving state on the count: swap to a "Saving…" indicator
+      P + '-count.is-saving {',
+      '  color: #163C6E;',
+      '}',
+      P + '-count.is-saving::before {',
+      '  content: "";',
+      '  display: inline-block; width: 12px; height: 12px;',
+      '  margin-right: 6px; vertical-align: -2px;',
+      '  border: 2px solid #cbd5e1; border-top-color: #163C6E;',
+      '  border-radius: 50%;',
+      '  animation: scw-cp-spin 0.7s linear infinite;',
+      '}',
+      '@keyframes scw-cp-spin {',
+      '  to { transform: rotate(360deg); }',
       '}',
       P + '-btn {',
       '  appearance: none; border: 1px solid #d1d5db;',
@@ -47310,6 +47330,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Footer
     var footer = document.createElement('div');
     footer.className = CLASS_PREFIX + '-footer';
+    // Live count — sits on the left side of the footer, updates on
+    // every checkbox change. Keeps the "X connected" total visible
+    // without making the user count the rendered checks themselves.
+    var countEl = document.createElement('div');
+    countEl.className = CLASS_PREFIX + '-count';
+    var spacer = document.createElement('div');
+    spacer.style.flex = '1';
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = CLASS_PREFIX + '-btn';
@@ -47318,8 +47345,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     saveBtn.type = 'button';
     saveBtn.className = CLASS_PREFIX + '-btn ' + CLASS_PREFIX + '-btn-primary';
     saveBtn.textContent = 'Save';
+    footer.appendChild(countEl);
+    footer.appendChild(spacer);
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
+
+    function updateCount() {
+      var checks = backdrop.querySelectorAll(
+        '.' + CLASS_PREFIX + '-list input[type="checkbox"]:checked'
+      );
+      var n = checks.length;
+      countEl.textContent = n + ' connected';
+    }
+    // Refresh the count on every checkbox toggle, plus once now.
+    backdrop.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t && t.tagName === 'INPUT' && t.type === 'checkbox') updateCount();
+    }, false);
+    updateCount();
 
     modal.appendChild(header);
     modal.appendChild(errorBar);
@@ -47349,16 +47392,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     /** Replace the modal body with a new set of groups, in place. */
     function setGroups(groups) {
       renderGroups(groups);
+      updateCount();
     }
 
     /** Toggle the modal's saving state — disables Save, swaps its label,
-     *  and blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
+     *  swaps the footer count for a spinner + "Saving…" message, and
+     *  blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
     function setSaving(isSaving) {
       saving = !!isSaving;
       saveBtn.disabled = saving;
       cancelBtn.disabled = saving;
       closeBtn.disabled = saving;
       saveBtn.textContent = saving ? 'Saving…' : 'Save';
+      if (saving) {
+        countEl.classList.add('is-saving');
+        countEl.textContent = 'Saving connections…';
+      } else {
+        countEl.classList.remove('is-saving');
+        updateCount();
+      }
     }
 
     /** Show or clear an inline error banner inside the modal. */
@@ -47686,7 +47738,75 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
-  function saveSelection(recordId, selectedIds, onDone) {
+  /** Read the parent record's MDF/IDF group id, preferring the PUT
+   *  response (freshest) and falling back to the Backbone model. */
+  function readParentGroupId(R, parentId) {
+    var raw = R && R[GROUPING_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    var attrs = readRecordAttrs(parentId);
+    if (attrs) {
+      var rawM = attrs[GROUPING_FIELD + '_raw'];
+      if (Array.isArray(rawM) && rawM[0] && rawM[0].id) return rawM[0].id;
+    }
+    return null;
+  }
+
+  /** Fire a "repair" PUT for each currently-selected child whose
+   *  reciprocal/group should already match the parent. The mirror's
+   *  applyDeterministicRegroup only PUTs added/removed children — the
+   *  unchanged-but-still-connected set falls outside its diff. Running
+   *  this on every save guarantees a re-submit re-asserts field_2197 +
+   *  field_1946 across every connected child, even when nothing changed
+   *  at the parent. */
+  function fireRepairPuts(parentId, parentGroupId, childIds, onAllDone) {
+    if (!childIds || !childIds.length) {
+      if (typeof onAllDone === 'function') onAllDone();
+      return;
+    }
+    var remaining = childIds.length;
+    function tick() {
+      remaining--;
+      if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+    }
+    for (var i = 0; i < childIds.length; i++) {
+      var body = {};
+      if (parentGroupId) body[GROUPING_FIELD] = [parentGroupId];
+      body[RECIPROCAL_FIELD] = [parentId];
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: window.SCW.knackRecordUrl(TARGET_VIEW, childIds[i]),
+        data: JSON.stringify(body),
+        dataType: 'json',
+        success: function () { tick(); },
+        error: function (xhr) {
+          console.warn('[scw-cp] repair PUT failed',
+            xhr && xhr.status, xhr && xhr.responseText);
+          tick();
+        }
+      });
+    }
+  }
+
+  /** Wait for the next view re-render of TARGET_VIEW and call cb.
+   *  The mirror fires Knack.views[v].model.fetch() once all of its
+   *  child PUTs land, which causes a knack-view-render — that's our
+   *  signal that everything has settled server-side. timeoutMs is a
+   *  safety net for the (rare) case where no PUTs were dispatched and
+   *  no fetch happens. */
+  function waitForViewSettle(cb, timeoutMs) {
+    var ns = '.scwCpSettle' + Date.now();
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      $(document).off('knack-view-render.' + TARGET_VIEW + ns);
+      cb();
+    }
+    $(document).on('knack-view-render.' + TARGET_VIEW + ns, finish);
+    setTimeout(finish, timeoutMs || 5000);
+  }
+
+  function saveSelection(recordId, selectedIds, originalIds, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
       console.error('[scw-cp] SCW.knackAjax/knackRecordUrl unavailable — cannot save');
@@ -47717,18 +47837,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         try { repaintParentConnectionCell(recordId, resp); }
         catch (e) { console.warn('[scw-cp] repaintParentConnectionCell threw', e); }
 
-        // Drive the silent-regroup mirror directly. We used to fire
-        // knack-cell-update.view_3586 and let the mirror's handler
-        // catch it, but that path goes through a 400 ms settle timer
-        // plus jQuery's event-namespace matching — both unnecessary
-        // here. Calling applyDeterministicRegroup with the PUT
-        // response runs the children's field_1946 + field_2197 PUTs
-        // synchronously off the same payload Knack just returned.
+        // Knack view-scoped PUTs sometimes wrap the record under a
+        // "record" key; unwrap so downstream code sees record.id and
+        // record.field_1957_raw at the top level.
+        var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
+        var parentGroupId = readParentGroupId(R, recordId);
+
+        // Drive the silent-regroup mirror directly. Calling
+        // applyDeterministicRegroup with the PUT response runs the
+        // added/removed children's field_1946 + field_2197 PUTs
+        // synchronously, then triggers model.fetch() once they settle.
         try {
-          // Knack view-scoped PUTs sometimes wrap the record under a
-          // "record" key; unwrap so applyDeterministicRegroup sees
-          // record.id and record.field_1957_raw at the top level.
-          var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
           var mirror = window.SCW && window.SCW.silentRegroupView3586;
           if (mirror && typeof mirror.applyDeterministicRegroup === 'function') {
             mirror.applyDeterministicRegroup(R);
@@ -47739,7 +47858,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           console.warn('[scw-cp] applyDeterministicRegroup threw', e);
         }
 
-        if (typeof onDone === 'function') onDone(null, resp);
+        // Repair PUTs for the unchanged-but-still-connected children
+        // (selectedIds ∩ originalIds). Mirror's diff doesn't touch
+        // these, so without this pass a re-submit with no changes
+        // would be a no-op for the children. With it, every save
+        // re-asserts each child's field_2197 + field_1946.
+        var origSet = {};
+        for (var oi = 0; oi < (originalIds || []).length; oi++) {
+          origSet[originalIds[oi]] = true;
+        }
+        var stillSelected = [];
+        for (var si = 0; si < selectedIds.length; si++) {
+          if (origSet[selectedIds[si]]) stillSelected.push(selectedIds[si]);
+        }
+        fireRepairPuts(recordId, parentGroupId, stillSelected, function () {
+          // No-op: the mirror's model.fetch() will catch the world up.
+          // We just don't want stillSelected PUT failures to be silent.
+        });
+
+        // Hold the modal in saving state until the view re-renders
+        // (mirror fires model.fetch when its child PUTs settle), so
+        // the user sees a spinner for the full duration of the save
+        // — not just the parent PUT.
+        waitForViewSettle(function () {
+          if (typeof onDone === 'function') onDone(null, resp);
+        }, 5000);
       },
       error: function (xhr) {
         console.error('[scw-cp] save failed',
@@ -47790,7 +47933,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       onSave: function (ids) {
         handle.setSaving(true);
         handle.showError('');
-        saveSelection(recordId, ids, function (err) {
+        // Pass the snapshot of selectedIds taken at modal-open time as
+        // originalIds — saveSelection diffs against it to know which
+        // currently-selected children need a repair PUT (the unchanged
+        // intersection that mirror's added/removed diff doesn't touch).
+        saveSelection(recordId, ids, selectedIds, function (err) {
           if (err) {
             handle.setSaving(false);
             handle.showError('Failed to save. Please try again.');
