@@ -86,6 +86,14 @@
     var TRIGGER_FIELD     = config.TRIGGER_FIELD;     // children-connection on the edited record
     var GROUPING_FIELD    = config.GROUPING_FIELD;    // L1 group key (e.g. REL_mdf-idf)
     var CONNECTIONS_FIELD = config.CONNECTIONS_FIELD; // back-connection to parent (detail-panel)
+    // Optional: when a child's GROUPING_FIELD changes, also update the
+    // GROUPING_FIELD on every record connected to it via ACCESSORIES_FIELD.
+    // Used by view_3586 / view_3610 to cascade an MDF/IDF change down to
+    // the camera's mounting-hardware accessories (which live on
+    // ACCESSORIES_VIEW_ID and need to share the camera's MDF for grouping
+    // and totals to render correctly).
+    var ACCESSORIES_FIELD   = config.ACCESSORIES_FIELD   || null;
+    var ACCESSORIES_VIEW_ID = config.ACCESSORIES_VIEW_ID || null;
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
@@ -227,6 +235,31 @@
     return '';
   }
 
+  /** Scrape the accessory record ids connected to a given child via
+   *  ACCESSORIES_FIELD. The Knack-rendered td.<accField> lives on the
+   *  pre-transform <tr> sitting immediately above the child's worksheet
+   *  card row, with each accessory rendered as
+   *    <span id="<accId>" data-kn="connection-value">label</span>.
+   *  (Note the inner span uses `id`, not `class`, on this field — unlike
+   *  CONNECTIONS_FIELD where the id lives on the class.) */
+  function findAccessoryIds(childId) {
+    if (!ACCESSORIES_FIELD || !childId) return [];
+    var wsTr = document.getElementById(childId);
+    if (!wsTr) return [];
+    // Pre-transform tr is the immediate previous sibling.
+    var preTr = wsTr.previousElementSibling;
+    if (!preTr) return [];
+    var td = preTr.querySelector('td.' + ACCESSORIES_FIELD);
+    if (!td) return [];
+    var spans = td.querySelectorAll('span[data-kn="connection-value"][id]');
+    var out = [];
+    for (var i = 0; i < spans.length; i++) {
+      var id = (spans[i].getAttribute('id') || '').trim();
+      if (id && HEX24.test(id) && out.indexOf(id) === -1) out.push(id);
+    }
+    return out;
+  }
+
   // ======================================================================
   // L1 group header lookup.
   // ----------------------------------------------------------------------
@@ -318,6 +351,42 @@
   // ======================================================================
 
   var ownPuts = {};
+
+  /** PUT GROUPING_FIELD on an accessory record so its MDF/IDF stays
+   *  in sync with the parent camera/reader after a regroup. Uses
+   *  ACCESSORIES_VIEW_ID rather than VIEW_ID because the accessory
+   *  records don't appear on this view; failure logs but doesn't
+   *  bubble — at worst the user sees the accessory in the wrong
+   *  group section until the next page load. */
+  function fireAccessoryPut(accessoryId, mdfId, onDone) {
+    if (!ACCESSORIES_VIEW_ID || !mdfId || !accessoryId) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      if (typeof onDone === 'function') onDone(new Error('knackAjax unavailable'));
+      return;
+    }
+    var body = {};
+    body[GROUPING_FIELD] = [mdfId];
+    log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function () {
+        log('  PUT(accessory) ok ' + accessoryId);
+        if (typeof onDone === 'function') onDone();
+      },
+      error: function (xhr) {
+        console.warn(LOG_PREFIX, 'accessory PUT failed ' + accessoryId,
+          xhr && xhr.status, xhr && xhr.responseText);
+        if (typeof onDone === 'function') onDone(xhr);
+      }
+    });
+  }
 
   function firePut(recordId, body, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
@@ -594,7 +663,26 @@
     // real model.fetch() so Knack re-renders the view from fresh,
     // now-consistent server state. This replaces the user having to hit
     // browser-refresh manually after the silent regroup.
-    var totalPuts = added.length + removed.length;
+    // --- 6b. Compute accessory cascade -----------------------------------
+    // For each added child, look up every accessory connected to it via
+    // ACCESSORIES_FIELD and stage a PUT to update its GROUPING_FIELD to
+    // match the parent's MDF. Removed children keep their MDF, so their
+    // accessories don't move either.
+    var accessoryPuts = []; // [{ accId, mdfId }]
+    if (ACCESSORIES_FIELD && ACCESSORIES_VIEW_ID && rGroupId && added.length) {
+      for (var ax = 0; ax < added.length; ax++) {
+        var accIds = findAccessoryIds(added[ax]);
+        for (var ay = 0; ay < accIds.length; ay++) {
+          accessoryPuts.push({ accId: accIds[ay], mdfId: rGroupId });
+        }
+      }
+      if (accessoryPuts.length) {
+        log('  accessory cascade: ' + accessoryPuts.length +
+            ' PUT(s) queued for ' + added.length + ' added child(ren)');
+      }
+    }
+
+    var totalPuts = added.length + removed.length + accessoryPuts.length;
     var putsRemaining = totalPuts;
     function onPutFinished() {
       putsRemaining--;
@@ -625,6 +713,7 @@
       log('  no destHeader for R — PUT-only + fallbackFetch');
       added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id), onPutFinished); });
       removed.forEach(function (rid) { firePut(rid, buildRemovedPut(), onPutFinished); });
+      accessoryPuts.forEach(function (ap) { fireAccessoryPut(ap.accId, ap.mdfId, onPutFinished); });
       // Skip the duplicate fetch here — onPutFinished will fetch when
       // all PUTs land.
       clearPendingPlanSoon();
@@ -643,6 +732,9 @@
       }
       for (var r = 0; r < removed.length; r++) {
         firePut(removed[r], buildRemovedPut(), onPutFinished);
+      }
+      for (var ap = 0; ap < accessoryPuts.length; ap++) {
+        fireAccessoryPut(accessoryPuts[ap].accId, accessoryPuts[ap].mdfId, onPutFinished);
       }
     }
 
@@ -779,22 +871,30 @@
   });
 
   createMirror({
-    VIEW_ID:           'view_3586',
-    TRIGGER_FIELD:     'field_1957',
-    CONNECTIONS_FIELD: 'field_2197',
-    GROUPING_FIELD:    'field_1946',
-    PUBLIC_API_NAME:   'silentRegroupView3586'
+    VIEW_ID:             'view_3586',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    // Cascade MDF/IDF down to mounting-hardware accessories
+    // (field_1958 connections live on view_3887). When a camera/reader
+    // moves to a new MDF as part of a regroup, every accessory on it
+    // gets the same MDF write so they group with their parent.
+    ACCESSORIES_FIELD:   'field_1958',
+    ACCESSORIES_VIEW_ID: 'view_3887',
+    PUBLIC_API_NAME:     'silentRegroupView3586'
   });
 
   // view_3610 hosts the same SOW line items shape as view_3586 (same
   // field keys throughout), so the same mirror config applies — we just
   // need a second instance against this view's DOM/model.
   createMirror({
-    VIEW_ID:           'view_3610',
-    TRIGGER_FIELD:     'field_1957',
-    CONNECTIONS_FIELD: 'field_2197',
-    GROUPING_FIELD:    'field_1946',
-    PUBLIC_API_NAME:   'silentRegroupView3610'
+    VIEW_ID:             'view_3610',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    ACCESSORIES_FIELD:   'field_1958',
+    ACCESSORIES_VIEW_ID: 'view_3887',
+    PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
   // Backward-compat alias for any lingering DevTools snippets that
