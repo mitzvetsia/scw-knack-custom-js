@@ -32378,6 +32378,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
+  /** Re-fetch the record after a fee-affecting field change, with a delay
+   *  long enough for Knack's record rules to finish recomputing.
+   *
+   *  Why delayed and not immediate: Knack's PUT response is built
+   *  synchronously, but record rules that update derived fields based on
+   *  connected-record lookups (the camera/reader install fee depends on
+   *  field_2461 + field_1984 + field_2740 + drop length + connected
+   *  product price) often settle a beat AFTER the PUT acknowledgment.
+   *  Reading the PUT response in patchCardFromResponse paints the
+   *  pre-recompute value; a fresh GET ~700ms later picks up the
+   *  recomputed fee and lets us re-patch the card with the right number.
+   *
+   *  patchCardFromResponse is idempotent — readOnly fields like the
+   *  install fee, total, and applied-discount get rewritten from the
+   *  fresh response with no other side effects. */
+  var FEE_REFETCH_DELAY_MS = 700;
+  function scheduleFeeRefetch(viewId, recordId) {
+    if (typeof Knack === 'undefined') return;
+    setTimeout(function () {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
+        type: 'GET',
+        success: function (resp) {
+          patchCardFromResponse(viewId, recordId, resp);
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-fee] Refetch failed for ' + recordId, xhr && xhr.status);
+        }
+      });
+    }, FEE_REFETCH_DELAY_MS);
+  }
+
   /** Patch the label td text for a single record in the DOM. */
   function applyLabelText(viewId, recordId, txt) {
     var cfg = viewCfgFor(viewId);
@@ -32489,6 +32521,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
+        if (isFeeTrigger(viewId, fieldKey)) scheduleFeeRefetch(viewId, recordId);
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
@@ -32633,6 +32666,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
+        if (isFeeTrigger(viewId, fieldKey)) scheduleFeeRefetch(viewId, recordId);
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         if (onSuccess) onSuccess(resp);
       },
