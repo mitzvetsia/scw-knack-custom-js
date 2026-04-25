@@ -48059,8 +48059,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (typeof onDone === 'function') onDone(new Error('ajax helpers unavailable'));
       return;
     }
+
+    // Read parent's MDF/IDF group id from the model BEFORE the PUT.
+    // Knack's no-op PUT responses occasionally omit field_1946_raw,
+    // which would have left parentGroupId null and skipped the
+    // field_1946 portion of the repair + accessory cascade. The model
+    // always has it for an existing parent.
+    var preGroupAttrs = readRecordAttrs(viewId, recordId);
+    var preGroupRaw = preGroupAttrs && preGroupAttrs[GROUPING_FIELD + '_raw'];
+    var preGroupId = (Array.isArray(preGroupRaw) && preGroupRaw[0] && preGroupRaw[0].id)
+      ? preGroupRaw[0].id : null;
+
     var body = {};
     body[TARGET_FIELD] = selectedIds;
+    SCW.debug && SCW.debug('[scw-cp] saveSelection start',
+      { viewId: viewId, recordId: recordId,
+        selected: selectedIds.length, original: (originalIds || []).length,
+        preGroupId: preGroupId });
 
     window.SCW.knackAjax({
       type: 'PUT',
@@ -48087,7 +48102,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // "record" key; unwrap so downstream code sees record.id and
         // record.field_1957_raw at the top level.
         var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
-        var parentGroupId = readParentGroupId(viewId, R, recordId);
+        // Prefer the response's group id (freshest), fall back to the
+        // pre-PUT model snapshot, then to readParentGroupId's broader
+        // search. Triple fallback so a no-op PUT response shape can't
+        // strand parentGroupId at null.
+        var parentGroupId = readParentGroupId(viewId, R, recordId) || preGroupId;
 
         // Compute stillSelected up front — needed to feed both the
         // repair PUTs and the accessory cascade.
@@ -48099,6 +48118,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var si = 0; si < selectedIds.length; si++) {
           if (origSet[selectedIds[si]]) stillSelected.push(selectedIds[si]);
         }
+        SCW.debug && SCW.debug('[scw-cp] save success — stages dispatching',
+          { stillSelected: stillSelected.length,
+            parentGroupId: parentGroupId,
+            respHadGroup: !!(R && R[GROUPING_FIELD + '_raw']) });
 
         // ── Multi-stage completion gate ──────────────────────────
         // Why: every step below fires async PUTs. If the modal closes
@@ -48136,7 +48159,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // mirror-internal accessory cascade for added).
         try {
           if (mirrorApi && typeof mirrorApi.applyDeterministicRegroup === 'function') {
-            mirrorApi.applyDeterministicRegroup(R, stageDone);
+            mirrorApi.applyDeterministicRegroup(R, function () {
+              SCW.debug && SCW.debug('[scw-cp] stage 1 (mirror) done');
+              stageDone();
+            });
           } else {
             console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
                          ' unavailable — children will not regroup');
@@ -48152,7 +48178,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // include these, so without this pass a re-submit with no
         // changes would be a no-op. With it, every save re-asserts
         // each child's field_2197 + field_1946.
-        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, stageDone);
+        SCW.debug && SCW.debug('[scw-cp] stage 2 (repair PUTs) firing for ' +
+          stillSelected.length + ' children');
+        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, function () {
+          SCW.debug && SCW.debug('[scw-cp] stage 2 (repair PUTs) done');
+          stageDone();
+        });
 
         // Stage 3 — accessory cascade for still-connected children.
         // Mirror auto-cascades for `added`; we cover the unchanged
@@ -48161,8 +48192,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         try {
           if (mirrorApi && typeof mirrorApi.cascadeAccessoryMdf === 'function' &&
               parentGroupId && stillSelected.length) {
-            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId, stageDone);
+            SCW.debug && SCW.debug('[scw-cp] stage 3 (accessory cascade) firing');
+            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId, function () {
+              SCW.debug && SCW.debug('[scw-cp] stage 3 (accessory cascade) done');
+              stageDone();
+            });
           } else {
+            SCW.debug && SCW.debug('[scw-cp] stage 3 skipped',
+              { hasMirror: !!mirrorApi, hasGroupId: !!parentGroupId,
+                stillSelected: stillSelected.length });
             stageDone();
           }
         } catch (e) {
