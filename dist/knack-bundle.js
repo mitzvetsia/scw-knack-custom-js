@@ -28580,18 +28580,14 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * Handle trash icon click: confirm, then delete via webhook.
+   * Handle trash icon click: delete via webhook (no confirmation).
    */
   function onDeleteClick(recordId, recordName, itemEl) {
     SCW.debug('[SCW][CR-DELETE] onDeleteClick fired', {
       recordId: recordId,
       recordName: recordName
     });
-    confirmDelete(recordName).then(function (confirmed) {
-      SCW.debug('[SCW][CR-DELETE] Confirmation result:', confirmed);
-      if (!confirmed) return;
-      deleteRecord(recordId, recordName, itemEl);
-    });
+    deleteRecord(recordId, recordName, itemEl);
   }
 
   // ============================================================
