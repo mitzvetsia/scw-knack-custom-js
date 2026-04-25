@@ -47610,11 +47610,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // id array. On success:
   //   1. Patch Knack's Backbone model attrs (field_1957 + _raw) so
   //      subsequent reads don't revert to stale connection state.
-  //   2. Fire a synthetic knack-cell-update.view_3586 carrying the
-  //      updated record. SCW.silentRegroupView3586 (mirror-connection-
-  //      sync.js) listens on that event and deterministically reparents
-  //      the child rows, patches their field_2197 + field_1946, and
-  //      fires per-child PUTs with a final model.fetch() to resync.
+  //   2. Repaint the parent row's field_1957 cell from the response.
+  //   3. Drive SCW.silentRegroupView3586 directly (no synthetic
+  //      knack-cell-update event) so the children's field_2197 +
+  //      field_1946 PUTs fire off the same response without going
+  //      through the mirror's 400ms settle timer.
   //
   // We don't use Knack.views[...].model.updateRecord() because — per the
   // boolean-chips.js comment — that path silently fails in the worksheet
@@ -47717,17 +47717,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         try { repaintParentConnectionCell(recordId, resp); }
         catch (e) { console.warn('[scw-cp] repaintParentConnectionCell threw', e); }
 
-        // Fire a synthetic cell-update event so the silent-regroup
-        // mirror picks it up and handles the reciprocal children.
+        // Drive the silent-regroup mirror directly. We used to fire
+        // knack-cell-update.view_3586 and let the mirror's handler
+        // catch it, but that path goes through a 400 ms settle timer
+        // plus jQuery's event-namespace matching — both unnecessary
+        // here. Calling applyDeterministicRegroup with the PUT
+        // response runs the children's field_1946 + field_2197 PUTs
+        // synchronously off the same payload Knack just returned.
         try {
-          var viewObj = (typeof Knack !== 'undefined' && Knack.views)
-            ? Knack.views[TARGET_VIEW] : null;
-          // The mirror reads record[TARGET_FIELD + '_raw'] on the
-          // event payload; make sure it's populated from resp (Knack
-          // returns the raw shape for connection fields).
-          $(document).trigger('knack-cell-update.' + TARGET_VIEW, [viewObj, resp]);
+          // Knack view-scoped PUTs sometimes wrap the record under a
+          // "record" key; unwrap so applyDeterministicRegroup sees
+          // record.id and record.field_1957_raw at the top level.
+          var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
+          var mirror = window.SCW && window.SCW.silentRegroupView3586;
+          if (mirror && typeof mirror.applyDeterministicRegroup === 'function') {
+            mirror.applyDeterministicRegroup(R);
+          } else {
+            console.warn('[scw-cp] silentRegroupView3586 unavailable — children will not regroup');
+          }
         } catch (e) {
-          console.warn('[scw-cp] cell-update trigger threw', e);
+          console.warn('[scw-cp] applyDeterministicRegroup threw', e);
         }
 
         if (typeof onDone === 'function') onDone(null, resp);
