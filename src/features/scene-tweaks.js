@@ -499,6 +499,13 @@
     // Trigger after the totals container renders
     SCW.onViewRender('view_3418', debouncedTotals, NS);
     SCW.onViewRender('view_3814', debouncedTotals, NS);
+    // view_3815 hosts the Preview Draft Proposal menu link. It can
+    // render later than view_3418 / the equipment grids, in which case
+    // the debounced restructureTotals run that already finished saw an
+    // empty previewHref and never re-ran. Treat its render as another
+    // signal to redo the totals; restructureTotals is idempotent —
+    // it removes the old .scw-totals-proposal block and rebuilds.
+    SCW.onViewRender('view_3815', debouncedTotals, NS);
     // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
