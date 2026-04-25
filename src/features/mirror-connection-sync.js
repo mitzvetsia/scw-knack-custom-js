@@ -590,9 +590,15 @@
     setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
-  function applyDeterministicRegroup(R) {
+  function applyDeterministicRegroup(R, onComplete) {
+    function done() {
+      if (typeof onComplete === 'function') {
+        try { onComplete(); } catch (e) { /* swallow */ }
+      }
+    }
     if (!R || !R.id) {
       log('applyDeterministicRegroup: no R or R.id — abort', R);
+      done();
       return;
     }
     log('applyDeterministicRegroup: start R=' + R.id);
@@ -626,6 +632,7 @@
 
     if (!added.length && !removed.length) {
       log('  no changes — done');
+      done();
       return;
     }
 
@@ -707,6 +714,11 @@
       } catch (e) {
         console.warn(LOG_PREFIX, 'final model.fetch threw', e);
       }
+      // Signal upstream waiters (e.g. the connection picker keeping
+      // its modal open until everything settled). Fired AFTER model.
+      // fetch is dispatched so any "save complete" UI we trigger
+      // happens once the view is on its way to fresh data.
+      done();
     }
 
     if (added.length && !destHeader) {
@@ -726,6 +738,7 @@
     // --- 9. Fire background PUTs with completion tracking --------------
     if (totalPuts === 0) {
       log('  no PUTs to fire — skipping final fetch');
+      done();
     } else {
       for (var a = 0; a < added.length; a++) {
         firePut(added[a], buildAddedPut(rGroupId, R.id), onPutFinished);

@@ -46827,9 +46827,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
-  function applyDeterministicRegroup(R) {
+  function applyDeterministicRegroup(R, onComplete) {
+    function done() {
+      if (typeof onComplete === 'function') {
+        try { onComplete(); } catch (e) { /* swallow */ }
+      }
+    }
     if (!R || !R.id) {
       log('applyDeterministicRegroup: no R or R.id — abort', R);
+      done();
       return;
     }
     log('applyDeterministicRegroup: start R=' + R.id);
@@ -46863,6 +46869,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     if (!added.length && !removed.length) {
       log('  no changes — done');
+      done();
       return;
     }
 
@@ -46944,6 +46951,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       } catch (e) {
         console.warn(LOG_PREFIX, 'final model.fetch threw', e);
       }
+      // Signal upstream waiters (e.g. the connection picker keeping
+      // its modal open until everything settled). Fired AFTER model.
+      // fetch is dispatched so any "save complete" UI we trigger
+      // happens once the view is on its way to fresh data.
+      done();
     }
 
     if (added.length && !destHeader) {
@@ -46963,6 +46975,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // --- 9. Fire background PUTs with completion tracking --------------
     if (totalPuts === 0) {
       log('  no PUTs to fire — skipping final fetch');
+      done();
     } else {
       for (var a = 0; a < added.length; a++) {
         firePut(added[a], buildAddedPut(rGroupId, R.id), onPutFinished);
@@ -48039,25 +48052,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
-  /** Wait for the next view re-render of viewId and call cb.
-   *  The mirror fires Knack.views[v].model.fetch() once all of its
-   *  child PUTs land, which causes a knack-view-render — that's our
-   *  signal that everything has settled server-side. timeoutMs is a
-   *  safety net for the (rare) case where no PUTs were dispatched and
-   *  no fetch happens. */
-  function waitForViewSettle(viewId, cb, timeoutMs) {
-    var ns = '.scwCpSettle' + Date.now();
-    var done = false;
-    function finish() {
-      if (done) return;
-      done = true;
-      $(document).off('knack-view-render.' + viewId + ns);
-      cb();
-    }
-    $(document).on('knack-view-render.' + viewId + ns, finish);
-    setTimeout(finish, timeoutMs || 5000);
-  }
-
   function saveSelection(viewId, recordId, selectedIds, originalIds, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
@@ -48095,27 +48089,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
         var parentGroupId = readParentGroupId(viewId, R, recordId);
 
-        // Drive the silent-regroup mirror directly. Calling
-        // applyDeterministicRegroup with the PUT response runs the
-        // added/removed children's field_1946 + field_2197 PUTs
-        // synchronously, then triggers model.fetch() once they settle.
-        try {
-          var mirror = getMirrorApi(viewId);
-          if (mirror && typeof mirror.applyDeterministicRegroup === 'function') {
-            mirror.applyDeterministicRegroup(R);
-          } else {
-            console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
-                         ' unavailable — children will not regroup');
-          }
-        } catch (e) {
-          console.warn('[scw-cp] applyDeterministicRegroup threw', e);
-        }
-
-        // Repair PUTs for the unchanged-but-still-connected children
-        // (selectedIds ∩ originalIds). Mirror's diff doesn't touch
-        // these, so without this pass a re-submit with no changes
-        // would be a no-op for the children. With it, every save
-        // re-asserts each child's field_2197 + field_1946.
+        // Compute stillSelected up front — needed to feed both the
+        // repair PUTs and the accessory cascade.
         var origSet = {};
         for (var oi = 0; oi < (originalIds || []).length; oi++) {
           origSet[originalIds[oi]] = true;
@@ -48124,33 +48099,76 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var si = 0; si < selectedIds.length; si++) {
           if (origSet[selectedIds[si]]) stillSelected.push(selectedIds[si]);
         }
-        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, function () {
-          // No-op: the mirror's model.fetch() will catch the world up.
-          // We just don't want stillSelected PUT failures to be silent.
-        });
 
-        // Mirror cascades accessory MDF only for `added` children.
-        // For still-connected children we have to ask the mirror to
-        // run the cascade ourselves — otherwise a no-op submit (or any
-        // submit where existing children's accessories drifted out of
-        // sync with their parent's MDF) leaves the accessories stale.
+        // ── Multi-stage completion gate ──────────────────────────
+        // Why: every step below fires async PUTs. If the modal closes
+        // before they all land and the user navigates away, the
+        // browser cancels in-flight requests and field_2197 / accessory
+        // MDFs end up missing. Hold the modal in `saving` state until
+        // mirror PUTs + repair PUTs + accessory PUTs have ALL settled.
+        var doneFired = false;
+        var pendingStages = 3;
+        function stageDone() {
+          pendingStages--;
+          if (pendingStages > 0 || doneFired) return;
+          doneFired = true;
+          if (typeof onDone === 'function') onDone(null, resp);
+        }
+        // Hard ceiling so a hung PUT doesn't leave the modal open
+        // forever. ~10s is generous — typical settle is sub-2s.
+        var hardTimeout = setTimeout(function () {
+          if (doneFired) return;
+          doneFired = true;
+          console.warn('[scw-cp] save timeout — closing modal with ' +
+                       pendingStages + ' stage(s) still pending');
+          if (typeof onDone === 'function') onDone(null, resp);
+        }, 10000);
+        // Wrap stageDone so the timeout gets cleared on natural completion.
+        var rawStageDone = stageDone;
+        stageDone = function () {
+          if (pendingStages === 1) clearTimeout(hardTimeout);
+          rawStageDone();
+        };
+
+        var mirrorApi = getMirrorApi(viewId);
+
+        // Stage 1 — silent-regroup mirror (added/removed children +
+        // mirror-internal accessory cascade for added).
         try {
-          var mirrorApi = getMirrorApi(viewId);
+          if (mirrorApi && typeof mirrorApi.applyDeterministicRegroup === 'function') {
+            mirrorApi.applyDeterministicRegroup(R, stageDone);
+          } else {
+            console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
+                         ' unavailable — children will not regroup');
+            stageDone();
+          }
+        } catch (e) {
+          console.warn('[scw-cp] applyDeterministicRegroup threw', e);
+          stageDone();
+        }
+
+        // Stage 2 — repair PUTs for still-connected children
+        // (selectedIds ∩ originalIds). The mirror's diff doesn't
+        // include these, so without this pass a re-submit with no
+        // changes would be a no-op. With it, every save re-asserts
+        // each child's field_2197 + field_1946.
+        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, stageDone);
+
+        // Stage 3 — accessory cascade for still-connected children.
+        // Mirror auto-cascades for `added`; we cover the unchanged
+        // intersection here so accessory MDFs stay in sync on no-op
+        // submits and during drift recovery.
+        try {
           if (mirrorApi && typeof mirrorApi.cascadeAccessoryMdf === 'function' &&
               parentGroupId && stillSelected.length) {
-            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId);
+            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId, stageDone);
+          } else {
+            stageDone();
           }
         } catch (e) {
           console.warn('[scw-cp] cascadeAccessoryMdf threw', e);
+          stageDone();
         }
-
-        // Hold the modal in saving state until the view re-renders
-        // (mirror fires model.fetch when its child PUTs settle), so
-        // the user sees a spinner for the full duration of the save
-        // — not just the parent PUT.
-        waitForViewSettle(viewId, function () {
-          if (typeof onDone === 'function') onDone(null, resp);
-        }, 5000);
       },
       error: function (xhr) {
         console.error('[scw-cp] save failed',
