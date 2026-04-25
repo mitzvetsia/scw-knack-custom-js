@@ -46947,6 +46947,17 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     PUBLIC_API_NAME:   'silentRegroupView3586'
   });
 
+  // view_3610 hosts the same SOW line items shape as view_3586 (same
+  // field keys throughout), so the same mirror config applies — we just
+  // need a second instance against this view's DOM/model.
+  createMirror({
+    VIEW_ID:           'view_3610',
+    TRIGGER_FIELD:     'field_1957',
+    CONNECTIONS_FIELD: 'field_2197',
+    GROUPING_FIELD:    'field_1946',
+    PUBLIC_API_NAME:   'silentRegroupView3610'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};
@@ -46958,7 +46969,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 /*** FEATURE: Custom connection picker — replaces Knack's native popover *********
  *
  * Scope:
- *   - Target: field_1957 (Connected Devices) on view_3586 (SOW line items).
+ *   - Target: field_1957 (Connected Devices) on the SOW-line-items views
+ *     listed in VIEWS below (view_3586 + view_3610). Both views share the
+ *     same field shape; the picker reads/writes the clicked view's model.
  *   - Other connection fields and other views keep Knack's native picker.
  *
  * Why:
@@ -46967,8 +46980,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *     and has a label→input click-synthesis quirk that fights shift-range
  *     selection. Replacing it with our own UI puts every interaction on
  *     our own fast path.
- *   - Save uses the existing silent-regroup pipeline
- *     (SCW.silentRegroupView3586 — see mirror-connection-sync.js), so the
+ *   - Save uses the existing silent-regroup pipeline (SCW.silentRegroup
+ *     View<N> per view — see mirror-connection-sync.js), so the
  *     reciprocal field_2197 and parent-group field_1946 propagate to
  *     children without a view-wide re-render flash.
  *
@@ -47479,16 +47492,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
   var IDENTIFIER_FIELD        = 'field_1950';   // Human label (E-001, RA-I-020, ...)
 
-  function getViewModels() {
-    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return [];
-    var view = Knack.views[TARGET_VIEW];
+  function getViewModels(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[viewId]) return [];
+    var view = Knack.views[viewId];
     var model = view && view.model;
     if (!model) return [];
     return (model.data && model.data.models) || model.models || [];
   }
 
-  function readRecordAttrs(recordId) {
-    var records = getViewModels();
+  function readRecordAttrs(viewId, recordId) {
+    var records = getViewModels(viewId);
     for (var i = 0; i < records.length; i++) {
       var entry = records[i];
       if (!entry) continue;
@@ -47498,8 +47511,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return null;
   }
 
-  function getCurrentlySelectedIds(recordId) {
-    var attrs = readRecordAttrs(recordId);
+  function getCurrentlySelectedIds(viewId, recordId) {
+    var attrs = readRecordAttrs(viewId, recordId);
     if (!attrs) return [];
     var raw = attrs[TARGET_FIELD + '_raw'];
     if (!Array.isArray(raw)) return [];
@@ -47534,8 +47547,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *  selectedIdSet: { id -> true } for items already picked by the clicked
    *  record — those always stay visible so the user can uncheck them,
    *  even if their reciprocal is no longer blank. */
-  function collectCandidates(selectedIdSet) {
-    var records = getViewModels();
+  function collectCandidates(viewId, selectedIdSet) {
+    var records = getViewModels(viewId);
     var out = [];
     for (var i = 0; i < records.length; i++) {
       var entry = records[i];
@@ -47609,12 +47622,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // from seeing the click.
   //
   // The listener is document-wide but filters strictly: only fires when
-  // the click lands on an editable td.field_1957 inside #view_3586.
-  // Everything else (other fields, other views, locked cells, non-left-
-  // click) falls through untouched to the normal handlers.
-  var TARGET_VIEW  = 'view_3586';
+  // the click lands on an editable td.field_1957 inside one of the
+  // configured VIEWS. Everything else (other fields, other views, locked
+  // cells, non-left-click) falls through untouched to the normal handlers.
+  //
+  // VIEWS hosts the same SOW-line-items shape across both the legacy
+  // worksheet (view_3586) and the new one (view_3610). Field keys are
+  // identical between them, so the picker just needs to know which
+  // view's DOM/model to read from for each click.
+  var VIEWS = ['view_3586', 'view_3610'];
   var TARGET_FIELD = 'field_1957';
   var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
+
+  /** Find which configured view contains the given td (if any). */
+  function findOwningView(td) {
+    if (!td || !td.closest) return null;
+    for (var i = 0; i < VIEWS.length; i++) {
+      if (td.closest('#' + VIEWS[i])) return VIEWS[i];
+    }
+    return null;
+  }
+
+  /** Resolve the silent-regroup mirror API for a given view. Names
+   *  follow the pattern `silentRegroupView<N>` registered by
+   *  mirror-connection-sync.js — so view_3586 → silentRegroupView3586. */
+  function getMirrorApi(viewId) {
+    var name = 'silentRegroupView' + String(viewId).replace(/^view_/, '');
+    return window.SCW && window.SCW[name];
+  }
 
   function isCellLocked(td) {
     if (!td) return true;
@@ -47644,7 +47679,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var td = e.target.closest('td.' + TARGET_FIELD);
     if (!td) return;
-    if (!td.closest('#' + TARGET_VIEW)) return;
+    var viewId = findOwningView(td);
+    if (!viewId) return;
     if (isCellLocked(td)) return;
 
     var recordId = getRecordIdFromCell(td);
@@ -47654,7 +47690,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     e.preventDefault();
     e.stopImmediatePropagation();
 
-    openPickerForRecord(recordId, td);
+    openPickerForRecord(viewId, recordId, td);
   }
 
   // ── Save (chunk 4) ────────────────────────────────────────────────
@@ -47674,8 +47710,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // is the pattern every other SCW device-worksheet writer uses today.
   /** Repaint the parent row's field_1957 cell from the PUT response.
    *  patchCardFromResponse skips this field because it's `nativeEdit`
-   *  in the view_3586 config — readOnly/directEdit fields are the only
-   *  shapes the shared helper knows how to write. The cell shape is:
+   *  in the view_3586/view_3610 configs — readOnly/directEdit fields
+   *  are the only shapes the shared helper knows how to write. The
+   *  cell shape is:
    *    <td class="field_1957 ... scw-ws-field-value [--empty]">
    *      <span class="col-N">
    *        <span class="<recId>" data-kn="connection-value">label</span>,
@@ -47683,8 +47720,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *      </span>
    *    </td>
    *  When empty: just `&nbsp;` inside the col-N wrapper. */
-  function repaintParentConnectionCell(recordId, resp) {
-    var viewEl = document.getElementById(TARGET_VIEW);
+  function repaintParentConnectionCell(viewId, recordId, resp) {
+    var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
     var row = viewEl.querySelector('tr#' + recordId);
     if (!row) return;
@@ -47740,10 +47777,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   /** Read the parent record's MDF/IDF group id, preferring the PUT
    *  response (freshest) and falling back to the Backbone model. */
-  function readParentGroupId(R, parentId) {
+  function readParentGroupId(viewId, R, parentId) {
     var raw = R && R[GROUPING_FIELD + '_raw'];
     if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
-    var attrs = readRecordAttrs(parentId);
+    var attrs = readRecordAttrs(viewId, parentId);
     if (attrs) {
       var rawM = attrs[GROUPING_FIELD + '_raw'];
       if (Array.isArray(rawM) && rawM[0] && rawM[0].id) return rawM[0].id;
@@ -47758,7 +47795,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *  this on every save guarantees a re-submit re-asserts field_2197 +
    *  field_1946 across every connected child, even when nothing changed
    *  at the parent. */
-  function fireRepairPuts(parentId, parentGroupId, childIds, onAllDone) {
+  function fireRepairPuts(viewId, parentId, parentGroupId, childIds, onAllDone) {
     if (!childIds || !childIds.length) {
       if (typeof onAllDone === 'function') onAllDone();
       return;
@@ -47774,7 +47811,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       body[RECIPROCAL_FIELD] = [parentId];
       window.SCW.knackAjax({
         type: 'PUT',
-        url: window.SCW.knackRecordUrl(TARGET_VIEW, childIds[i]),
+        url: window.SCW.knackRecordUrl(viewId, childIds[i]),
         data: JSON.stringify(body),
         dataType: 'json',
         success: function () { tick(); },
@@ -47787,26 +47824,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
-  /** Wait for the next view re-render of TARGET_VIEW and call cb.
+  /** Wait for the next view re-render of viewId and call cb.
    *  The mirror fires Knack.views[v].model.fetch() once all of its
    *  child PUTs land, which causes a knack-view-render — that's our
    *  signal that everything has settled server-side. timeoutMs is a
    *  safety net for the (rare) case where no PUTs were dispatched and
    *  no fetch happens. */
-  function waitForViewSettle(cb, timeoutMs) {
+  function waitForViewSettle(viewId, cb, timeoutMs) {
     var ns = '.scwCpSettle' + Date.now();
     var done = false;
     function finish() {
       if (done) return;
       done = true;
-      $(document).off('knack-view-render.' + TARGET_VIEW + ns);
+      $(document).off('knack-view-render.' + viewId + ns);
       cb();
     }
-    $(document).on('knack-view-render.' + TARGET_VIEW + ns, finish);
+    $(document).on('knack-view-render.' + viewId + ns, finish);
     setTimeout(finish, timeoutMs || 5000);
   }
 
-  function saveSelection(recordId, selectedIds, originalIds, onDone) {
+  function saveSelection(viewId, recordId, selectedIds, originalIds, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
       console.error('[scw-cp] SCW.knackAjax/knackRecordUrl unavailable — cannot save');
@@ -47818,7 +47855,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     window.SCW.knackAjax({
       type: 'PUT',
-      url: window.SCW.knackRecordUrl(TARGET_VIEW, recordId),
+      url: window.SCW.knackRecordUrl(viewId, recordId),
       data: JSON.stringify(body),
       dataType: 'json',
       success: function (resp) {
@@ -47826,33 +47863,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // selection immediately (no visible "flash then populate").
         if (typeof window.SCW.syncKnackModel === 'function') {
           try {
-            window.SCW.syncKnackModel(TARGET_VIEW, recordId, resp, TARGET_FIELD, selectedIds);
+            window.SCW.syncKnackModel(viewId, recordId, resp, TARGET_FIELD, selectedIds);
           } catch (e) { /* best-effort */ }
         }
 
         // Repaint the clicked row's field_1957 cell from the PUT
         // response. SCW.deviceWorksheet.patchCard is a no-op here —
-        // field_1957 is `nativeEdit` in view_3586's config, and the
+        // field_1957 is `nativeEdit` in this view's config, and the
         // shared helper only handles readOnly + directEdit fields.
-        try { repaintParentConnectionCell(recordId, resp); }
+        try { repaintParentConnectionCell(viewId, recordId, resp); }
         catch (e) { console.warn('[scw-cp] repaintParentConnectionCell threw', e); }
 
         // Knack view-scoped PUTs sometimes wrap the record under a
         // "record" key; unwrap so downstream code sees record.id and
         // record.field_1957_raw at the top level.
         var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
-        var parentGroupId = readParentGroupId(R, recordId);
+        var parentGroupId = readParentGroupId(viewId, R, recordId);
 
         // Drive the silent-regroup mirror directly. Calling
         // applyDeterministicRegroup with the PUT response runs the
         // added/removed children's field_1946 + field_2197 PUTs
         // synchronously, then triggers model.fetch() once they settle.
         try {
-          var mirror = window.SCW && window.SCW.silentRegroupView3586;
+          var mirror = getMirrorApi(viewId);
           if (mirror && typeof mirror.applyDeterministicRegroup === 'function') {
             mirror.applyDeterministicRegroup(R);
           } else {
-            console.warn('[scw-cp] silentRegroupView3586 unavailable — children will not regroup');
+            console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
+                         ' unavailable — children will not regroup');
           }
         } catch (e) {
           console.warn('[scw-cp] applyDeterministicRegroup threw', e);
@@ -47871,7 +47909,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var si = 0; si < selectedIds.length; si++) {
           if (origSet[selectedIds[si]]) stillSelected.push(selectedIds[si]);
         }
-        fireRepairPuts(recordId, parentGroupId, stillSelected, function () {
+        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, function () {
           // No-op: the mirror's model.fetch() will catch the world up.
           // We just don't want stillSelected PUT failures to be silent.
         });
@@ -47880,7 +47918,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // (mirror fires model.fetch when its child PUTs settle), so
         // the user sees a spinner for the full duration of the save
         // — not just the parent PUT.
-        waitForViewSettle(function () {
+        waitForViewSettle(viewId, function () {
           if (typeof onDone === 'function') onDone(null, resp);
         }, 5000);
       },
@@ -47892,15 +47930,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
-  function openPickerForRecord(recordId, td) {
-    var selectedIds = getCurrentlySelectedIds(recordId);
+  function openPickerForRecord(viewId, recordId, td) {
+    var selectedIds = getCurrentlySelectedIds(viewId, recordId);
     var selectedSet = {};
     for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
 
     // Candidates come straight from the view model — synchronous, no
     // network call — so we can build the grouped list before opening
     // the modal and skip the Loading… placeholder entirely.
-    var candidates = collectCandidates(selectedSet);
+    var candidates = collectCandidates(viewId, selectedSet);
     var grouped = groupByMdfIdf(candidates, selectedSet);
 
     // Orphans: currently-selected items whose reciprocal is no longer
@@ -47914,7 +47952,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     for (var s = 0; s < selectedIds.length; s++) {
       var sid = selectedIds[s];
       if (!candidateById[sid]) {
-        var attrs = readRecordAttrs(sid) || {};
+        var attrs = readRecordAttrs(viewId, sid) || {};
         orphans.push({
           id: sid,
           identifier: (attrs[IDENTIFIER_FIELD] && String(attrs[IDENTIFIER_FIELD]).replace(/<[^>]*>/g, '').trim()) ||
@@ -47937,7 +47975,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // originalIds — saveSelection diffs against it to know which
         // currently-selected children need a repair PUT (the unchanged
         // intersection that mirror's added/removed diff doesn't touch).
-        saveSelection(recordId, ids, selectedIds, function (err) {
+        saveSelection(viewId, recordId, ids, selectedIds, function (err) {
           if (err) {
             handle.setSaving(false);
             handle.showError('Failed to save. Please try again.');

@@ -786,6 +786,17 @@
     PUBLIC_API_NAME:   'silentRegroupView3586'
   });
 
+  // view_3610 hosts the same SOW line items shape as view_3586 (same
+  // field keys throughout), so the same mirror config applies — we just
+  // need a second instance against this view's DOM/model.
+  createMirror({
+    VIEW_ID:           'view_3610',
+    TRIGGER_FIELD:     'field_1957',
+    CONNECTIONS_FIELD: 'field_2197',
+    GROUPING_FIELD:    'field_1946',
+    PUBLIC_API_NAME:   'silentRegroupView3610'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};
