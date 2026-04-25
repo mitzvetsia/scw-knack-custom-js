@@ -20424,6 +20424,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Prevents a single large group from pushing every other group off
     // the viewport. Starts all-collapsed so the user picks where to work.
     view_3586: { exclusive: true },
+    view_3610: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -22445,7 +22446,7 @@ $(document).on('knack-view-render.view_3313', function () {
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586'];
+  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610'];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';
@@ -46086,6 +46087,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       ]
     },
     {
+      viewId: 'view_3610',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    },
+    {
       viewId: 'view_3450',
       sort: [
         { field: 'field_2240', order: 'asc' },
@@ -46133,10 +46141,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // NOTE: intentionally NOT calling view.model.fetch() here. Refetching
     // to change the server-side sort doubles the initial load cost: a
-    // second HTTP round-trip for every view_3586 record plus a full
-    // knack-view-render cycle, which re-runs every feature bound to this
-    // view (device-worksheet card rebuild for ~180 rows, group-collapse,
-    // etc.). It's the primary contributor to the ~3.6s INP on scene_1116.
+    // second HTTP round-trip for every record (view_3586/view_3610) plus
+    // a full knack-view-render cycle, which re-runs every feature bound
+    // to this view (device-worksheet card rebuild for ~180 rows, group-
+    // collapse, etc.). It's the primary contributor to the ~3.6s INP on
+    // scene_1116.
     //
     // Safe to skip because:
     //  - device-worksheet.js applies its own client-side rowSort on every

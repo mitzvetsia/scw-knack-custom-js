@@ -49,6 +49,7 @@
     // Prevents a single large group from pushing every other group off
     // the viewport. Starts all-collapsed so the user picks where to work.
     view_3586: { exclusive: true },
+    view_3610: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
