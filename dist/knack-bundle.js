@@ -47061,6 +47061,92 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   });
 
+  // ======================================================================
+  // Inverse cascade: child's CONNECTIONS_FIELD (field_2197) changes
+  // ----------------------------------------------------------------------
+  // The handler above watches the parent's TRIGGER_FIELD (field_1957) and
+  // cascades down. But the user can ALSO change a child's CONNECTIONS_FIELD
+  // directly — native inline edit, form save, anywhere Knack fires a
+  // knack-cell-update on the child row. In that case the child has a new
+  // parent, and the child's mounting-hardware accessories need their
+  // GROUPING_FIELD (field_1946) updated to match the new parent's group.
+  //
+  // We compare the post-edit record's CONNECTIONS_FIELD to a per-record
+  // cache primed from the model on each view-render. When a difference is
+  // detected on a record that has accessories, fire accessory PUTs.
+  // ownPuts still suppresses echoes from our own outbound child PUTs so
+  // this doesn't double-cascade with the field_1957 flow.
+  // ======================================================================
+
+  var lastReciprocalSeen = {};
+
+  function serializeReciprocal(attrs) {
+    var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return '';
+    return raw
+      .map(function (r) { return r && r.id; })
+      .filter(Boolean)
+      .sort()
+      .join(',');
+  }
+
+  function primeReciprocalCache() {
+    var records = getModelRecords();
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] && (records[i].attributes || records[i]);
+      if (attrs && attrs.id) {
+        lastReciprocalSeen[attrs.id] = serializeReciprocal(attrs);
+      }
+    }
+  }
+
+  $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-prime',
+    function () { primeReciprocalCache(); });
+
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
+    function (event, view, record) {
+      try {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID) return;
+        if (!record || !record.id) return;
+        if (ownPuts[record.id]) return;
+
+        var prev = lastReciprocalSeen[record.id] || '';
+        var curr = serializeReciprocal(record);
+        if (prev === curr) return;
+        lastReciprocalSeen[record.id] = curr;
+
+        // No new parent → nothing to cascade. (Disconnect doesn't
+        // implicitly relocate the child's accessories; they keep the
+        // last-known group until a new parent assignment.)
+        var raw = record[CONNECTIONS_FIELD + '_raw'];
+        if (!Array.isArray(raw) || !raw.length || !raw[0] || !raw[0].id) return;
+
+        var newParentId = raw[0].id;
+        var parentAttrs = getModelAttrs(newParentId);
+        if (!parentAttrs) {
+          log('inverse cascade: new parent ' + newParentId + ' not in model — skipping');
+          return;
+        }
+        var parentGroupRaw = parentAttrs[GROUPING_FIELD + '_raw'];
+        if (!Array.isArray(parentGroupRaw) || !parentGroupRaw[0] || !parentGroupRaw[0].id) {
+          log('inverse cascade: parent ' + newParentId + ' has no MDF — skipping');
+          return;
+        }
+        var parentGroupId = parentGroupRaw[0].id;
+
+        var accIds = findAccessoryIds(record.id);
+        if (!accIds.length) return;
+
+        log('inverse cascade: field_2197 on ' + record.id +
+            ' → cascade ' + accIds.length + ' accessory MDF PUT(s) to ' + parentGroupId);
+        for (var i = 0; i < accIds.length; i++) {
+          fireAccessoryPut(accIds[i], parentGroupId);
+        }
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'inverse cascade handler threw', e);
+      }
+    });
+
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
   // After the initial regroup has run, the MutationObserver watchdog is
