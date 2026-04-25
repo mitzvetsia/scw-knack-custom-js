@@ -76,6 +76,109 @@
   var HEX24 = /^[0-9a-f]{24}$/i;
 
   // ======================================================================
+  // Cascade-in-flight tracker (shared by ALL mirror instances).
+  // ----------------------------------------------------------------------
+  // Both forward (field_1957 → children) and inverse (field_2197 →
+  // accessories) cascades fire PUTs in the background and return
+  // immediately. If the user navigates within ~500 ms the browser
+  // cancels every in-flight request and writes are lost.
+  //
+  // The connection-picker has its own stage gate that keeps the modal
+  // open until everything settles. But native inline edits and form
+  // submits don't go through the picker, so the cascade fires-and-
+  // forgets with no UI feedback at all.
+  //
+  // This tracker increments on every cascade PUT begin and decrements
+  // on settle. While the count is non-zero we show a small toast
+  // ("Syncing groups…") and bind a beforeunload handler that prompts
+  // the user before they leave the page.
+  // ======================================================================
+
+  var _cascadeInFlight   = 0;
+  var _cascadeToastEl    = null;
+  var _cascadeUnloadBound = false;
+  var CASCADE_TOAST_CSS_ID = 'scw-cascade-toast-css';
+
+  function injectCascadeToastStyles() {
+    if (document.getElementById(CASCADE_TOAST_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = CASCADE_TOAST_CSS_ID;
+    s.textContent = [
+      '.scw-cascade-toast {',
+      '  position: fixed; bottom: 24px; right: 24px; z-index: 100000;',
+      '  background: #1f2937; color: #f9fafb;',
+      '  padding: 10px 16px; border-radius: 8px;',
+      '  font: 500 13px/1.3 system-ui, -apple-system, sans-serif;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,0.18);',
+      '  display: inline-flex; align-items: center; gap: 10px;',
+      '  pointer-events: none;',
+      '}',
+      '.scw-cascade-toast__spinner {',
+      '  width: 12px; height: 12px;',
+      '  border: 2px solid rgba(255,255,255,0.3);',
+      '  border-top-color: #fff;',
+      '  border-radius: 50%;',
+      '  animation: scwCascadeSpin 0.8s linear infinite;',
+      '}',
+      '@keyframes scwCascadeSpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showCascadeToast() {
+    if (_cascadeToastEl) return;
+    injectCascadeToastStyles();
+    _cascadeToastEl = document.createElement('div');
+    _cascadeToastEl.className = 'scw-cascade-toast';
+    _cascadeToastEl.innerHTML =
+      '<span class="scw-cascade-toast__spinner"></span><span>Syncing groups…</span>';
+    document.body.appendChild(_cascadeToastEl);
+  }
+
+  function hideCascadeToast() {
+    if (!_cascadeToastEl) return;
+    if (_cascadeToastEl.parentNode) _cascadeToastEl.parentNode.removeChild(_cascadeToastEl);
+    _cascadeToastEl = null;
+  }
+
+  function cascadeUnloadHandler(e) {
+    if (_cascadeInFlight <= 0) return;
+    var msg = 'Saves still in progress — wait a moment before leaving.';
+    e.preventDefault();
+    e.returnValue = msg;
+    return msg;
+  }
+
+  function bindCascadeUnloadGuard() {
+    if (_cascadeUnloadBound) return;
+    _cascadeUnloadBound = true;
+    window.addEventListener('beforeunload', cascadeUnloadHandler);
+  }
+
+  function unbindCascadeUnloadGuard() {
+    if (!_cascadeUnloadBound) return;
+    _cascadeUnloadBound = false;
+    window.removeEventListener('beforeunload', cascadeUnloadHandler);
+  }
+
+  function cascadeBegin() {
+    _cascadeInFlight++;
+    if (_cascadeInFlight === 1) {
+      showCascadeToast();
+      bindCascadeUnloadGuard();
+    }
+  }
+
+  function cascadeEnd() {
+    _cascadeInFlight--;
+    if (_cascadeInFlight <= 0) {
+      _cascadeInFlight = 0;
+      hideCascadeToast();
+      unbindCascadeUnloadGuard();
+    }
+  }
+
+  // ======================================================================
   // FACTORY — one instance per view that needs the silent-regroup pattern.
   // All state below (ownPuts, pendingPlan, settleTimer, mutObserver, …)
   // is closure-scoped per call, so instances never share state.
@@ -371,16 +474,19 @@
     var body = {};
     body[GROUPING_FIELD] = [mdfId];
     log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
+    cascadeBegin();
     window.SCW.knackAjax({
       type: 'PUT',
       url: window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
       data: JSON.stringify(body),
       dataType: 'json',
       success: function () {
+        cascadeEnd();
         log('  PUT(accessory) ok ' + accessoryId);
         if (typeof onDone === 'function') onDone();
       },
       error: function (xhr) {
+        cascadeEnd();
         console.warn(LOG_PREFIX, 'accessory PUT failed ' + accessoryId,
           xhr && xhr.status, xhr && xhr.responseText);
         if (typeof onDone === 'function') onDone(xhr);
@@ -398,6 +504,7 @@
     var url = window.SCW.knackRecordUrl(VIEW_ID, recordId);
     log('  PUT → ' + recordId + ' body=' + JSON.stringify(body));
     ownPuts[recordId] = true;
+    cascadeBegin();
     window.SCW.knackAjax({
       type: 'PUT',
       url: url,
@@ -405,11 +512,13 @@
       dataType: 'json',
       success: function (resp) {
         delete ownPuts[recordId];
+        cascadeEnd();
         log('  PUT ok ' + recordId);
         if (typeof onDone === 'function') onDone(null, resp);
       },
       error: function (xhr) {
         delete ownPuts[recordId];
+        cascadeEnd();
         console.warn(LOG_PREFIX, 'PUT failed ' + recordId,
           xhr && xhr.status, xhr && xhr.responseText);
         if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed'));
