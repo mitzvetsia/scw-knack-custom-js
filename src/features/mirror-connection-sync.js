@@ -893,7 +893,9 @@
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     ACCESSORIES_FIELD:   'field_1958',
-    ACCESSORIES_VIEW_ID: 'view_3887',
+    // Same accessory cascade as view_3586, but the accessory records on
+    // this scene live on view_3888 instead of view_3887.
+    ACCESSORIES_VIEW_ID: 'view_3888',
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 

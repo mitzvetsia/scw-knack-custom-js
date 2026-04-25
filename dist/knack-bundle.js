@@ -1351,8 +1351,14 @@ window.SCW = window.SCW || {};
       display: flex !important;
     }
 
-    /* Hide view_3770 visually but keep it in the DOM */
-    #view_3770 {
+    /* Hide view_3770 visually but keep it in the DOM
+       view_3887 + view_3888: mounting-hardware accessory views read by
+       mirror-connection-sync's MDF cascade. Must stay in the DOM/model
+       so findAccessoryIds + fireAccessoryPut can resolve records, but
+       should never be visible to the user. */
+    #view_3770,
+    #view_3887,
+    #view_3888 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;
@@ -47124,7 +47130,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     ACCESSORIES_FIELD:   'field_1958',
-    ACCESSORIES_VIEW_ID: 'view_3887',
+    // Same accessory cascade as view_3586, but the accessory records on
+    // this scene live on view_3888 instead of view_3887.
+    ACCESSORIES_VIEW_ID: 'view_3888',
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 

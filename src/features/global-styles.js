@@ -151,8 +151,14 @@
       display: flex !important;
     }
 
-    /* Hide view_3770 visually but keep it in the DOM */
-    #view_3770 {
+    /* Hide view_3770 visually but keep it in the DOM
+       view_3887 + view_3888: mounting-hardware accessory views read by
+       mirror-connection-sync's MDF cascade. Must stay in the DOM/model
+       so findAccessoryIds + fireAccessoryPut can resolve records, but
+       should never be visible to the user. */
+    #view_3770,
+    #view_3887,
+    #view_3888 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;
