@@ -844,6 +844,39 @@
       applyPlanToDom: applyPlanToDom,
       findRowsPointingTo: findRowsPointingTo,
       findL1HeaderBefore: findL1HeaderBefore,
+      /** Cascade GROUPING_FIELD = [mdfId] to every accessory connected
+       *  to each child via ACCESSORIES_FIELD. Used by the connection
+       *  picker on resubmit so still-connected children get their
+       *  accessories' MDF refreshed even when the parent's selection
+       *  didn't change (the regroup diff returns empty in that case
+       *  and the built-in accessory cascade only fires for `added`
+       *  children). onAllDone fires after every accessory PUT settles. */
+      cascadeAccessoryMdf: function (childIds, mdfId, onAllDone) {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID || !mdfId ||
+            !childIds || !childIds.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        var queue = [];
+        for (var i = 0; i < childIds.length; i++) {
+          var accIds = findAccessoryIds(childIds[i]);
+          for (var j = 0; j < accIds.length; j++) queue.push(accIds[j]);
+        }
+        if (!queue.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        log('cascadeAccessoryMdf: ' + queue.length +
+            ' accessory PUT(s) for ' + childIds.length + ' child(ren)');
+        var remaining = queue.length;
+        function tick() {
+          remaining--;
+          if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+        }
+        for (var k = 0; k < queue.length; k++) {
+          fireAccessoryPut(queue[k], mdfId, tick);
+        }
+      },
       inspectState: function () {
         return {
           hasPendingRecord: pendingRecord != null,

@@ -47081,6 +47081,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       applyPlanToDom: applyPlanToDom,
       findRowsPointingTo: findRowsPointingTo,
       findL1HeaderBefore: findL1HeaderBefore,
+      /** Cascade GROUPING_FIELD = [mdfId] to every accessory connected
+       *  to each child via ACCESSORIES_FIELD. Used by the connection
+       *  picker on resubmit so still-connected children get their
+       *  accessories' MDF refreshed even when the parent's selection
+       *  didn't change (the regroup diff returns empty in that case
+       *  and the built-in accessory cascade only fires for `added`
+       *  children). onAllDone fires after every accessory PUT settles. */
+      cascadeAccessoryMdf: function (childIds, mdfId, onAllDone) {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID || !mdfId ||
+            !childIds || !childIds.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        var queue = [];
+        for (var i = 0; i < childIds.length; i++) {
+          var accIds = findAccessoryIds(childIds[i]);
+          for (var j = 0; j < accIds.length; j++) queue.push(accIds[j]);
+        }
+        if (!queue.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        log('cascadeAccessoryMdf: ' + queue.length +
+            ' accessory PUT(s) for ' + childIds.length + ' child(ren)');
+        var remaining = queue.length;
+        function tick() {
+          remaining--;
+          if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+        }
+        for (var k = 0; k < queue.length; k++) {
+          fireAccessoryPut(queue[k], mdfId, tick);
+        }
+      },
       inspectState: function () {
         return {
           hasPendingRecord: pendingRecord != null,
@@ -48095,6 +48128,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           // No-op: the mirror's model.fetch() will catch the world up.
           // We just don't want stillSelected PUT failures to be silent.
         });
+
+        // Mirror cascades accessory MDF only for `added` children.
+        // For still-connected children we have to ask the mirror to
+        // run the cascade ourselves — otherwise a no-op submit (or any
+        // submit where existing children's accessories drifted out of
+        // sync with their parent's MDF) leaves the accessories stale.
+        try {
+          var mirrorApi = getMirrorApi(viewId);
+          if (mirrorApi && typeof mirrorApi.cascadeAccessoryMdf === 'function' &&
+              parentGroupId && stillSelected.length) {
+            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId);
+          }
+        } catch (e) {
+          console.warn('[scw-cp] cascadeAccessoryMdf threw', e);
+        }
 
         // Hold the modal in saving state until the view re-renders
         // (mirror fires model.fetch when its child PUTs settle), so

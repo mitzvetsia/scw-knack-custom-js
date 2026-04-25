@@ -950,6 +950,21 @@
           // We just don't want stillSelected PUT failures to be silent.
         });
 
+        // Mirror cascades accessory MDF only for `added` children.
+        // For still-connected children we have to ask the mirror to
+        // run the cascade ourselves — otherwise a no-op submit (or any
+        // submit where existing children's accessories drifted out of
+        // sync with their parent's MDF) leaves the accessories stale.
+        try {
+          var mirrorApi = getMirrorApi(viewId);
+          if (mirrorApi && typeof mirrorApi.cascadeAccessoryMdf === 'function' &&
+              parentGroupId && stillSelected.length) {
+            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId);
+          }
+        } catch (e) {
+          console.warn('[scw-cp] cascadeAccessoryMdf threw', e);
+        }
+
         // Hold the modal in saving state until the view re-renders
         // (mirror fires model.fetch when its child PUTs settle), so
         // the user sees a spinner for the full duration of the save
