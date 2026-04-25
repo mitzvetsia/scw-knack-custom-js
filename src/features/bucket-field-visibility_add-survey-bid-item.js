@@ -29,7 +29,8 @@
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2462', 'FLAG_use existing cabling'],
-      ['field_2187', 'INPUT_DROP: variables'],
+      ['field_2739', 'FLAG_exterior'],
+      ['field_2740', 'FLAG_plenum'],
       ['field_2432', 'INPUT_survey notes'],
       ['field_2233', 'INPUT_expected sub bid #'],
       ['field_2246', 'REL_unified product field'],
@@ -83,7 +84,8 @@
 
   const ALL_FIELD_KEYS = [
     'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2211','field_2233','field_2246',
+    'field_2206','field_2195','field_2241','field_2184','field_2211','field_2233','field_2246',
+    'field_2739','field_2740',
   ];
 
   function compileRules(human) {
