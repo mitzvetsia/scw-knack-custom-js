@@ -96,6 +96,7 @@ cat \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/connection-picker.js \
+  src/features/connected-device-count-on-form.js \
   src/features/grid-direct-edit.js \
   src/features/dynamic-cell-colors.js \
   src/features/revenue-tier-progress.js \
