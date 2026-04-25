@@ -1791,61 +1791,75 @@ window.SCW = window.SCW || {};
         }
       }
 
-      if (!proposalName && !pdfUrl) return;
+      var hasPublished = !!(proposalName || pdfUrl);
+
+      // Scrape the Preview Draft Proposal href from view_3815 once, so
+      // we can inject it whether or not a published proposal exists.
+      var previewHref = '';
+      var previewMenu = document.getElementById('view_3815');
+      if (previewMenu) {
+        var previewLink = previewMenu.querySelector('a.kn-link-page');
+        if (previewLink) previewHref = previewLink.getAttribute('href') || '';
+      }
+
+      // Nothing to render in either column — bail.
+      if (!hasPublished && !previewHref) return;
 
       var wrap = document.createElement('div');
       wrap.className = 'scw-totals-proposal';
       wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;text-align:right;padding-right:10px;';
 
-      var hdr = document.createElement('div');
-      hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
-      hdr.textContent = 'Published Proposal';
-      wrap.appendChild(hdr);
+      if (hasPublished) {
+        var hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
+        hdr.textContent = 'Published Proposal';
+        wrap.appendChild(hdr);
 
-      if (proposalName) {
-        var nameRow = document.createElement('div');
-        nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
-        if (viewLink) {
-          var nameLink = document.createElement('a');
-          nameLink.href = viewLink;
-          nameLink.textContent = proposalName;
-          nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
-          nameRow.appendChild(nameLink);
-        } else {
-          nameRow.textContent = proposalName;
+        if (proposalName) {
+          var nameRow = document.createElement('div');
+          nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
+          if (viewLink) {
+            var nameLink = document.createElement('a');
+            nameLink.href = viewLink;
+            nameLink.textContent = proposalName;
+            nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
+            nameRow.appendChild(nameLink);
+          } else {
+            nameRow.textContent = proposalName;
+          }
+          wrap.appendChild(nameRow);
         }
-        wrap.appendChild(nameRow);
-      }
 
-      if (expDate) {
-        var expRow = document.createElement('div');
-        expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
-        expRow.textContent = 'Expires: ' + expDate;
-        wrap.appendChild(expRow);
-      }
-
-      if (pdfUrl) {
-        var pdfRow = document.createElement('a');
-        pdfRow.href = pdfUrl;
-        pdfRow.target = '_blank';
-        pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
-        pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
-        pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
-        wrap.appendChild(pdfRow);
-      }
-
-      // Pull Preview Proposal link from view_3815
-      var previewMenu = document.getElementById('view_3815');
-      if (previewMenu) {
-        var previewLink = previewMenu.querySelector('a.kn-link-page');
-        if (previewLink) {
-          var previewHdr = document.createElement('a');
-          previewHdr.href = previewLink.getAttribute('href') || '#';
-          previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:10px;text-decoration:none;';
-          previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-          previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
-          wrap.appendChild(previewHdr);
+        if (expDate) {
+          var expRow = document.createElement('div');
+          expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
+          expRow.textContent = 'Expires: ' + expDate;
+          wrap.appendChild(expRow);
         }
+
+        if (pdfUrl) {
+          var pdfRow = document.createElement('a');
+          pdfRow.href = pdfUrl;
+          pdfRow.target = '_blank';
+          pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
+          pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+          pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
+          wrap.appendChild(pdfRow);
+        }
+      }
+
+      // Preview Draft Proposal — always rendered when the link exists,
+      // regardless of whether a published proposal is present. Drops a
+      // little extra top-margin so it floats on its own when there's no
+      // published-proposal block above it.
+      if (previewHref) {
+        var previewHdr = document.createElement('a');
+        previewHdr.href = previewHref;
+        var topMargin = hasPublished ? '10px' : '0';
+        previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:' + topMargin + ';text-decoration:none;';
+        previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+        previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
+        wrap.appendChild(previewHdr);
       }
 
       container.appendChild(wrap);
