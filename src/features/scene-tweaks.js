@@ -202,6 +202,36 @@
   /** Sum a field across all td cells with data-field-key in the given views.
    *  Device-worksheet moves td elements from original rows into card panels,
    *  but each cell appears exactly once per record in the DOM tree. */
+  /** Read a single field off the SOW record on this scene.
+   *  Tries the totals view (view_3418) and the SOW detail view
+   *  (view_3827) — each is a kn-details view of the SOW. We check
+   *  the Backbone model first (which holds every attribute on the
+   *  record, even fields the view doesn't display) and fall back to
+   *  scraping a visible kn-detail cell if the field happens to be
+   *  rendered. Strips HTML so callers always get plain text. */
+  var SOW_DETAIL_VIEWS = ['view_3418', 'view_3827'];
+  function readSowField(fieldKey) {
+    if (typeof Knack !== 'undefined' && Knack.views) {
+      for (var i = 0; i < SOW_DETAIL_VIEWS.length; i++) {
+        var v = Knack.views[SOW_DETAIL_VIEWS[i]];
+        if (!v || !v.model) continue;
+        var attrs = (v.model.data && v.model.data.attributes) ||
+                    v.model.attributes || null;
+        if (attrs && attrs[fieldKey] != null) {
+          return String(attrs[fieldKey]).replace(/<[^>]*>/g, '').trim();
+        }
+      }
+    }
+    // DOM fallback for fields rendered as kn-detail rows
+    for (var j = 0; j < SOW_DETAIL_VIEWS.length; j++) {
+      var el = document.getElementById(SOW_DETAIL_VIEWS[j]);
+      if (!el) continue;
+      var cell = el.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+      if (cell) return (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    return '';
+  }
+
   function sumViewField(viewIds, fieldKey) {
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
@@ -250,7 +280,13 @@
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
     var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
-    var projTotal    = eqSubtotal + installTotal;
+    // field_2725 (FLAG_validated bid) gates whether the install fee is
+    // a real number or a TBD placeholder. Same convention ops-stepper
+    // and ops-review-pill use: anything other than "Yes" is TBD. When
+    // not validated, the user shouldn't see a project total that bakes
+    // in unvalidated installation figures.
+    var bidValidated = readSowField('field_2725').toLowerCase() === 'yes';
+    var projTotal    = bidValidated ? (eqSubtotal + installTotal) : eqSubtotal;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
@@ -272,7 +308,8 @@
 
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
-    layout.appendChild(createSubtotal('Subtotal', formatMoney(installTotal)));
+    layout.appendChild(createSubtotal('Subtotal',
+      bidValidated ? formatMoney(installTotal) : 'TBD'));
 
     // ── PROJECT TOTAL ──
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
