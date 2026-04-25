@@ -47364,7 +47364,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     footer.appendChild(saveBtn);
 
     function updateCount() {
-      var checks = backdrop.querySelectorAll(
+      // Query inside `body` (not `backdrop`) — at modal-construction
+      // time the body is already populated by renderGroups but the
+      // backdrop has not yet had `modal` appended to it, so a backdrop
+      // query would find zero checkboxes on first paint.
+      var checks = body.querySelectorAll(
         '.' + CLASS_PREFIX + '-list input[type="checkbox"]:checked'
       );
       var n = checks.length;
