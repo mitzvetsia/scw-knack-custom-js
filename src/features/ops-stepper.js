@@ -19,9 +19,10 @@
  *                  updates CU task, posts to Slack
  *
  *   3. Publish and Submit Completed Proposal to Sales
- *        showWhen: field_2725 = No
+ *        showWhen: field_2725 (FLAG_released to sales) = No
  *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
- *        server  : flips field_2725 = Yes, updates CU task, Slack
+ *        server  : flips field_2725 = Yes (i.e. releases to Sales),
+ *                  updates CU task, Slack
  *
  * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
  * (view_3861) plus field_2126, line-item record ids from view_3341,
@@ -379,11 +380,13 @@
   }
 
   // ── Payload ──────────────────────────────────────────────
-  // True when the SOW's bid isn't validated yet — Make's Publish
-  // scenario publishes with TBD placeholder numbers rather than
-  // finalized figures. Ops can SEE the real numbers on the proposal
-  // page, but until field_2725 is flipped to Yes, the published quote
-  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  // True when the SOW hasn't been released to Sales yet — Make's
+  // Publish scenario publishes with TBD placeholder numbers rather
+  // than finalized figures. Ops can SEE the real numbers internally
+  // (including via Submit-to-Second-Set), but until field_2725
+  // (FLAG_released to sales) flips to Yes, the published quote
+  // keeps TBDs so Sales / customers aren't shown numbers Ops hasn't
+  // signed off on for external delivery.
   function shouldPublishAsTbd() {
     return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
   }

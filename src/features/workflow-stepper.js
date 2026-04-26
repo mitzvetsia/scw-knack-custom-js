@@ -95,7 +95,7 @@
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
-      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
+      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Not yet released to Sales' }
     }
   ];
 

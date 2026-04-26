@@ -1684,13 +1684,14 @@ window.SCW = window.SCW || {};
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
     var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
-    // field_2725 (FLAG_validated bid) gates whether the install fee is
-    // a real number or a TBD placeholder. Same convention ops-stepper
-    // and ops-review-pill use: anything other than "Yes" is TBD. When
-    // not validated, the user shouldn't see a project total that bakes
-    // in unvalidated installation figures.
-    var bidValidated = readSowField('field_2725').toLowerCase() === 'yes';
-    var projTotal    = bidValidated ? (eqSubtotal + installTotal) : eqSubtotal;
+    // field_2725 (FLAG_released to sales) gates whether Sales sees a
+    // real number or a TBD placeholder. Until Ops has explicitly
+    // released this quote to Sales, the install fee is still a draft
+    // and the user shouldn't see a project total that bakes it in.
+    // Same convention ops-stepper + ops-review-pill use: anything
+    // other than "Yes" is TBD.
+    var releasedToSales = readSowField('field_2725').toLowerCase() === 'yes';
+    var projTotal       = releasedToSales ? (eqSubtotal + installTotal) : eqSubtotal;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
@@ -1713,7 +1714,7 @@ window.SCW = window.SCW || {};
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
     layout.appendChild(createSubtotal('Subtotal',
-      bidValidated ? formatMoney(installTotal) : 'TBD'));
+      releasedToSales ? formatMoney(installTotal) : 'TBD'));
 
     // ── PROJECT TOTAL ──
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
@@ -5023,7 +5024,7 @@ window.SCW = window.SCW || {};
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
-      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
+      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Not yet released to Sales' }
     }
   ];
 
@@ -8555,9 +8556,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // ============================================================
   // FEATURE: Mask installation values with "TBD"
-  // When field_2725 in view_3861 is not "Yes", zero out labor
-  // cells BEFORE the pipeline so all sums exclude installation,
-  // then label the zeroed cells as "TBD" after.
+  // When field_2725 (FLAG_released to sales) in view_3861 is not
+  // "Yes", zero out labor cells BEFORE the pipeline so all sums
+  // exclude installation, then label the zeroed cells as "TBD"
+  // after. Sales-facing viewers shouldn't see install figures
+  // until Ops has explicitly released the quote.
   // ============================================================
 
   function isInstallationMasked() {
@@ -37701,10 +37704,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (ns.refresh) ns.refresh();
   }
 
-  // Flip field_2725 (FLAG_validated bid) back to No and drop a note into
-  // field_2736 so the Ops Review pill on view_3325 surfaces why the
-  // validation was revoked. No-op if the ops-review feature hasn't loaded
-  // or the SOW id can't be resolved.
+  // Flip field_2725 (FLAG_released to sales) back to No and drop a note
+  // into field_2736 so the Ops Review pill on view_3325 surfaces why the
+  // released-to-sales state was revoked — Sales submitting a change
+  // request invalidates whatever Ops had previously released. No-op if
+  // the ops-review feature hasn't loaded or the SOW id can't be resolved.
   function autoRevertValidation(count) {
     if (!window.SCW || !SCW.opsReview ||
         typeof SCW.opsReview.autoRevertValidation !== 'function') return;
@@ -41174,7 +41178,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *      Sales hasn't requested the survey yet.
  *   4. field_2725 = No                    → "Publish & Submit Completed
  *      Proposal" — survey + bids are back, proposal ready to go.
- *   5. field_2725 = Yes (terminal)        → "Bid Published" (grey check,
+ *   5. field_2725 = Yes (terminal)        → "Released to Sales" (grey check,
  *      non-clickable).
  *
  * All active (clickable) pills share one teal background — the pill is
@@ -41185,7 +41189,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  * columns on view_3325 (hidden by this feature's CSS):
  *   field_2706  FLAG_survey requested
  *   field_2728  count of pending change requests
- *   field_2725  FLAG_validated bid
+ *   field_2725  FLAG_released to sales (formerly "validated bid"; flipped
+ *               only by the Submit-to-Sales action, drives Sales-side
+ *               visibility / TBD-vs-real-numbers gates)
  *   field_2736  auto-revert note (surfaced as pill tooltip)
  *
  * Also exposes SCW.opsReview.autoRevertValidation(sowId, opts) —
@@ -41201,7 +41207,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var READY_FIELD    = 'field_2723';   // FLAG_ready for survey (flipped by Ops Mark Ready)
   var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested (flipped by Sales)
   var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
-  var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
+  var RELEASED_FIELD = 'field_2725';   // FLAG_released to sales (was "validated bid")
   var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
 
   var WRITE_VIEW   = 'view_3841';      // form that edits 2725 + 2736 (for auto-revert)
@@ -41277,8 +41283,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (document.getElementById(STYLE_ID)) return;
     var css =
       /* Hide source columns this feature consumes. */
-      '#' + VIEW_ID + ' th.' + VALID_FIELD + ',' +
-      '#' + VIEW_ID + ' td.' + VALID_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + RELEASED_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + RELEASED_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + NOTE_FIELD + ',' +
       '#' + VIEW_ID + ' td.' + NOTE_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + SURVEY_FIELD + ',' +
@@ -41502,7 +41508,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       ready:     readBool(tr, READY_FIELD),
       survey:    readBool(tr, SURVEY_FIELD),
       crCount:   readText(tr, CR_COUNT_FIELD),
-      validated: readBool(tr, VALID_FIELD)
+      validated: readBool(tr, RELEASED_FIELD)
     };
     for (var i = 0; i < STEPS.length; i++) {
       if (STEPS[i].showWhen(fields)) return STEPS[i];
@@ -41918,7 +41924,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       pill.appendChild(check);
 
       var t = document.createElement('span');
-      t.textContent = 'Bid Published';
+      t.textContent = 'Released to Sales';
       pill.appendChild(t);
 
       if (note) {
@@ -41930,7 +41936,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Per-row published-proposal info (view_3885 → matched via field_2666).
     // Rendered regardless of step state so a published proposal shows
-    // up even when the SOW is in "Bid Published" terminal state.
+    // up even when the SOW is in "Released to Sales" terminal state.
     if (proposalIndex && tr.id) {
       var proposal = proposalIndex[tr.id];
       if (proposal) {
@@ -42079,7 +42085,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── Public API ──────────────────────────────────────────
   // Called from sales-change-request/submit.js after a successful submit.
-  // Flips field_2725 → No on the SOW (so the "Bid Published" pill drops
+  // Flips field_2725 → No on the SOW (so the "Released to Sales" pill drops
   // back to "Publish & Submit Proposal") and drops a timestamped note
   // into field_2736 so the UI can surface the "why" as a tooltip.
   function autoRevertValidation(sowRecordId, opts) {
@@ -42091,7 +42097,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                    (count ? ' (' + count + ' item' + (count === 1 ? '' : 's') + ')' : '');
 
     var body = {};
-    body[VALID_FIELD] = 'No';
+    body[RELEASED_FIELD] = 'No';
     body[NOTE_FIELD]  = noteText;
 
     var writeView = opts.viewId || WRITE_VIEW;
@@ -42101,7 +42107,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       data: JSON.stringify(body),
       success: function (resp) {
         if (typeof SCW.syncKnackModel === 'function') {
-          SCW.syncKnackModel(writeView, sowRecordId, resp, VALID_FIELD, 'No');
+          SCW.syncKnackModel(writeView, sowRecordId, resp, RELEASED_FIELD, 'No');
           SCW.syncKnackModel(writeView, sowRecordId, resp, NOTE_FIELD,  noteText);
         }
       },
@@ -42142,9 +42148,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *                  updates CU task, posts to Slack
  *
  *   3. Publish and Submit Completed Proposal to Sales
- *        showWhen: field_2725 = No
+ *        showWhen: field_2725 (FLAG_released to sales) = No
  *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
- *        server  : flips field_2725 = Yes, updates CU task, Slack
+ *        server  : flips field_2725 = Yes (i.e. releases to Sales),
+ *                  updates CU task, Slack
  *
  * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
  * (view_3861) plus field_2126, line-item record ids from view_3341,
@@ -42502,11 +42509,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Payload ──────────────────────────────────────────────
-  // True when the SOW's bid isn't validated yet — Make's Publish
-  // scenario publishes with TBD placeholder numbers rather than
-  // finalized figures. Ops can SEE the real numbers on the proposal
-  // page, but until field_2725 is flipped to Yes, the published quote
-  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  // True when the SOW hasn't been released to Sales yet — Make's
+  // Publish scenario publishes with TBD placeholder numbers rather
+  // than finalized figures. Ops can SEE the real numbers internally
+  // (including via Submit-to-Second-Set), but until field_2725
+  // (FLAG_released to sales) flips to Yes, the published quote
+  // keeps TBDs so Sales / customers aren't shown numbers Ops hasn't
+  // signed off on for external delivery.
   function shouldPublishAsTbd() {
     return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
   }

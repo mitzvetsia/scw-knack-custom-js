@@ -19,7 +19,7 @@
  *      Sales hasn't requested the survey yet.
  *   4. field_2725 = No                    → "Publish & Submit Completed
  *      Proposal" — survey + bids are back, proposal ready to go.
- *   5. field_2725 = Yes (terminal)        → "Bid Published" (grey check,
+ *   5. field_2725 = Yes (terminal)        → "Released to Sales" (grey check,
  *      non-clickable).
  *
  * All active (clickable) pills share one teal background — the pill is
@@ -30,7 +30,9 @@
  * columns on view_3325 (hidden by this feature's CSS):
  *   field_2706  FLAG_survey requested
  *   field_2728  count of pending change requests
- *   field_2725  FLAG_validated bid
+ *   field_2725  FLAG_released to sales (formerly "validated bid"; flipped
+ *               only by the Submit-to-Sales action, drives Sales-side
+ *               visibility / TBD-vs-real-numbers gates)
  *   field_2736  auto-revert note (surfaced as pill tooltip)
  *
  * Also exposes SCW.opsReview.autoRevertValidation(sowId, opts) —
@@ -46,7 +48,7 @@
   var READY_FIELD    = 'field_2723';   // FLAG_ready for survey (flipped by Ops Mark Ready)
   var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested (flipped by Sales)
   var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
-  var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
+  var RELEASED_FIELD = 'field_2725';   // FLAG_released to sales (was "validated bid")
   var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
 
   var WRITE_VIEW   = 'view_3841';      // form that edits 2725 + 2736 (for auto-revert)
@@ -122,8 +124,8 @@
     if (document.getElementById(STYLE_ID)) return;
     var css =
       /* Hide source columns this feature consumes. */
-      '#' + VIEW_ID + ' th.' + VALID_FIELD + ',' +
-      '#' + VIEW_ID + ' td.' + VALID_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + RELEASED_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + RELEASED_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + NOTE_FIELD + ',' +
       '#' + VIEW_ID + ' td.' + NOTE_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + SURVEY_FIELD + ',' +
@@ -347,7 +349,7 @@
       ready:     readBool(tr, READY_FIELD),
       survey:    readBool(tr, SURVEY_FIELD),
       crCount:   readText(tr, CR_COUNT_FIELD),
-      validated: readBool(tr, VALID_FIELD)
+      validated: readBool(tr, RELEASED_FIELD)
     };
     for (var i = 0; i < STEPS.length; i++) {
       if (STEPS[i].showWhen(fields)) return STEPS[i];
@@ -763,7 +765,7 @@
       pill.appendChild(check);
 
       var t = document.createElement('span');
-      t.textContent = 'Bid Published';
+      t.textContent = 'Released to Sales';
       pill.appendChild(t);
 
       if (note) {
@@ -775,7 +777,7 @@
 
     // Per-row published-proposal info (view_3885 → matched via field_2666).
     // Rendered regardless of step state so a published proposal shows
-    // up even when the SOW is in "Bid Published" terminal state.
+    // up even when the SOW is in "Released to Sales" terminal state.
     if (proposalIndex && tr.id) {
       var proposal = proposalIndex[tr.id];
       if (proposal) {
@@ -924,7 +926,7 @@
 
   // ── Public API ──────────────────────────────────────────
   // Called from sales-change-request/submit.js after a successful submit.
-  // Flips field_2725 → No on the SOW (so the "Bid Published" pill drops
+  // Flips field_2725 → No on the SOW (so the "Released to Sales" pill drops
   // back to "Publish & Submit Proposal") and drops a timestamped note
   // into field_2736 so the UI can surface the "why" as a tooltip.
   function autoRevertValidation(sowRecordId, opts) {
@@ -936,7 +938,7 @@
                    (count ? ' (' + count + ' item' + (count === 1 ? '' : 's') + ')' : '');
 
     var body = {};
-    body[VALID_FIELD] = 'No';
+    body[RELEASED_FIELD] = 'No';
     body[NOTE_FIELD]  = noteText;
 
     var writeView = opts.viewId || WRITE_VIEW;
@@ -946,7 +948,7 @@
       data: JSON.stringify(body),
       success: function (resp) {
         if (typeof SCW.syncKnackModel === 'function') {
-          SCW.syncKnackModel(writeView, sowRecordId, resp, VALID_FIELD, 'No');
+          SCW.syncKnackModel(writeView, sowRecordId, resp, RELEASED_FIELD, 'No');
           SCW.syncKnackModel(writeView, sowRecordId, resp, NOTE_FIELD,  noteText);
         }
       },

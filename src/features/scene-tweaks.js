@@ -280,13 +280,14 @@
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
     var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
-    // field_2725 (FLAG_validated bid) gates whether the install fee is
-    // a real number or a TBD placeholder. Same convention ops-stepper
-    // and ops-review-pill use: anything other than "Yes" is TBD. When
-    // not validated, the user shouldn't see a project total that bakes
-    // in unvalidated installation figures.
-    var bidValidated = readSowField('field_2725').toLowerCase() === 'yes';
-    var projTotal    = bidValidated ? (eqSubtotal + installTotal) : eqSubtotal;
+    // field_2725 (FLAG_released to sales) gates whether Sales sees a
+    // real number or a TBD placeholder. Until Ops has explicitly
+    // released this quote to Sales, the install fee is still a draft
+    // and the user shouldn't see a project total that bakes it in.
+    // Same convention ops-stepper + ops-review-pill use: anything
+    // other than "Yes" is TBD.
+    var releasedToSales = readSowField('field_2725').toLowerCase() === 'yes';
+    var projTotal       = releasedToSales ? (eqSubtotal + installTotal) : eqSubtotal;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
@@ -309,7 +310,7 @@
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
     layout.appendChild(createSubtotal('Subtotal',
-      bidValidated ? formatMoney(installTotal) : 'TBD'));
+      releasedToSales ? formatMoney(installTotal) : 'TBD'));
 
     // ── PROJECT TOTAL ──
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));

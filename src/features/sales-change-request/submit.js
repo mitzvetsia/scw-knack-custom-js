@@ -71,10 +71,11 @@
     if (ns.refresh) ns.refresh();
   }
 
-  // Flip field_2725 (FLAG_validated bid) back to No and drop a note into
-  // field_2736 so the Ops Review pill on view_3325 surfaces why the
-  // validation was revoked. No-op if the ops-review feature hasn't loaded
-  // or the SOW id can't be resolved.
+  // Flip field_2725 (FLAG_released to sales) back to No and drop a note
+  // into field_2736 so the Ops Review pill on view_3325 surfaces why the
+  // released-to-sales state was revoked — Sales submitting a change
+  // request invalidates whatever Ops had previously released. No-op if
+  // the ops-review feature hasn't loaded or the SOW id can't be resolved.
   function autoRevertValidation(count) {
     if (!window.SCW || !SCW.opsReview ||
         typeof SCW.opsReview.autoRevertValidation !== 'function') return;
