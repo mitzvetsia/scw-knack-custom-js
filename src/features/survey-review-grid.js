@@ -292,7 +292,11 @@
     // Trim leading/trailing whitespace including &nbsp; in the cell text.
     var html = td.innerHTML || '';
     var text = (td.textContent || '').replace(/[\s ]+/g, '');
-    if (!text) return '';
+    var hasMedia = !!td.querySelector('img, a, [data-kn="connection-value"]');
+    // Image-only cells like field_771 photos have empty textContent
+    // (the <img> renders no text) but ARE meaningful — bailing on text
+    // alone was the bug that hid every photo cell.
+    if (!text && !hasMedia) return '';
     return html;
   }
 
