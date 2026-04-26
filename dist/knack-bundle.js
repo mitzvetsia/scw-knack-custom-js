@@ -1835,14 +1835,15 @@ window.SCW = window.SCW || {};
 
       var hasPublished = !!(proposalName || pdfUrl);
 
-      // Scrape the Preview Draft Proposal href from view_3815 once, so
-      // we can inject it whether or not a published proposal exists.
-      var previewHref = '';
-      var previewMenu = document.getElementById('view_3815');
-      if (previewMenu) {
-        var previewLink = previewMenu.querySelector('a.kn-link-page');
-        if (previewLink) previewHref = previewLink.getAttribute('href') || '';
-      }
+      // Build the Preview Draft Proposal href directly from the SOW
+      // record id. Same construction as preview-proposal-btn.js — the
+      // earlier view_3815 scrape was an intermittent failure on first
+      // render because the menu view sometimes lagged behind view_3418.
+      // Reading from the model is synchronous against scene state.
+      var sowId = readSowField('id');
+      var previewHref = (sowId && /^[0-9a-f]{24}$/i.test(sowId))
+        ? '#proposals/proposal/' + sowId + '/'
+        : '';
 
       // Nothing to render in either column — bail.
       if (!hasPublished && !previewHref) return;
@@ -1937,16 +1938,14 @@ window.SCW = window.SCW || {};
   }
 
   if (window.SCW && SCW.onViewRender) {
-    // Trigger after the totals container renders
+    // Trigger after the totals container renders. view_3814 + view_3827
+    // are SOW-context details views — view_3814 carries the published
+    // proposal record, view_3827 carries the SOW record we read field_2725
+    // and the SOW id off of. Re-run on either, plus on every equipment
+    // grid render so the totals stay in sync with the visible data.
     SCW.onViewRender('view_3418', debouncedTotals, NS);
     SCW.onViewRender('view_3814', debouncedTotals, NS);
-    // view_3815 hosts the Preview Draft Proposal menu link. It can
-    // render later than view_3418 / the equipment grids, in which case
-    // the debounced restructureTotals run that already finished saw an
-    // empty previewHref and never re-ran. Treat its render as another
-    // signal to redo the totals; restructureTotals is idempotent —
-    // it removes the old .scw-totals-proposal block and rebuilds.
-    SCW.onViewRender('view_3815', debouncedTotals, NS);
+    SCW.onViewRender('view_3827', debouncedTotals, NS);
     // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
