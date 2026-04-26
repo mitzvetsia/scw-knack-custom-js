@@ -27,6 +27,7 @@ cat \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
   src/features/view-3341-loading-overlay.js \
+  src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/published-proposal-render.js \
   src/features/bid-items-grid.js \
