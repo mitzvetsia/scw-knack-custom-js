@@ -42539,14 +42539,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     // Any payload that will trigger publishing server-side carries the
     // TBD flag so Make knows whether to stamp real numbers or
-    // placeholders. Both Mark Ready (which also publishes a draft) and
-    // the standalone Publish step qualify.
+    // placeholders. Mark Ready (which also publishes a draft), the
+    // standalone Publish step, and Request Alt Bid (which packages
+    // the current SOW into an alt-bid request — Make needs the same
+    // html/json snapshot for that) all qualify.
     //
     // Also merges in the exact shape the standalone "Publish Quote"
     // button (proposal-pdf-export.js) sends to its save webhook —
     // html / json / sowId / totals / expirationDate / etc. — so every
-    // code path that publishes a quote looks identical on Make's side.
-    if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
+    // code path that publishes (or snapshots) a quote looks identical
+    // on Make's side.
+    if (step.id === 'publish-proposal' ||
+        step.id === 'mark-ready' ||
+        step.id === 'request-alt-bid') {
       payload.publishAsTbd = shouldPublishAsTbd();
       try {
         // Pass the proposal scene explicitly — more reliable than
