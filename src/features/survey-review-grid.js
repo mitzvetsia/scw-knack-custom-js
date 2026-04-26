@@ -31,6 +31,7 @@
   var SCENE_ID                  = 'scene_1303';
   var SURVEY_REQUESTS_VIEW      = 'view_3890';
   var SURVEY_LINE_ITEMS_VIEW    = 'view_3889';
+  var MDF_IDF_VIEW              = 'view_3894';   // OPS_MDF-IDFs records — group decoration
 
   // Survey Request fields (column header data)
   var FIELD_SUB                 = 'field_2347'; // subcontractor connection
@@ -38,6 +39,12 @@
   var FIELD_QA_REVIEWED         = 'field_2743'; // Yes/No flag
   var FIELD_QA_REVIEWED_BY      = 'field_2744'; // user connection
   var FIELD_QA_REVIEWED_AT      = 'field_2745'; // timestamp
+
+  // MDF/IDF record fields (view_3894) — group accordion decoration
+  var MDF_FIELD_LABEL           = 'field_1642'; // full label (e.g. "HEADEND: : Pole #1")
+  var MDF_FIELD_NOTES           = 'field_1643'; // free-text notes
+  var MDF_FIELD_PHOTOS          = 'field_771';  // photos cell (same shape as line items)
+  var MDF_FIELD_SURVEY_NOTES    = 'field_2457'; // surveyor's notes for the MDF/IDF
 
   // Survey Line Item fields (cell data + axes)
   var FIELD_SOW_LI              = 'field_2404'; // ROW pivot — connection to SOW Line Item
@@ -66,6 +73,10 @@
   var FIELD_QTY                 = 'field_2399'; // bid quantity
   var FIELD_LABOR               = 'field_2400'; // labor $
   var FIELD_PRODUCT             = 'field_2379'; // product name (under SOW row label)
+  // Sort order within MDF/IDF group. Same convention every other
+  // Survey/SOW worksheet uses (numeric on the proposal-bucket join,
+  // exposed as a column on view_3889 by the Builder).
+  var FIELD_SORT_ORDER          = 'field_2218';
 
   // Detail fields rendered via DOM-scrape order: [fieldKey, label]
   // Each is rendered only if the row has non-empty content for that
@@ -138,10 +149,45 @@
       '  display: block; font-weight: 400; font-size: 12px; color: #6b7280; margin-top: 2px;',
       '}',
       '.scw-srv-table thead .scw-srv-row-label { background: #f9fafb; z-index: 3; }',
+      // Group accordion — dark blue header that's clickable to
+      // collapse/expand all rows tagged with the same data-group.
+      '.scw-srv-group-row { cursor: pointer; user-select: none; }',
       '.scw-srv-group-row td {',
       '  background: #163C6E; color: #fff;',
       '  font-weight: 700; letter-spacing: 0.04em;',
-      '  text-transform: uppercase; font-size: 11px; padding: 8px 12px;',
+      '  text-transform: uppercase; font-size: 12px; padding: 10px 12px;',
+      '}',
+      '.scw-srv-group-row:hover td { background: #0f2d55; }',
+      '.scw-srv-group-chevron {',
+      '  display: inline-block; margin-right: 8px;',
+      '  transition: transform 0.15s ease;',
+      '  font-size: 13px;',
+      '}',
+      '.scw-srv-group-row[data-collapsed="true"] .scw-srv-group-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+      '.scw-srv-group-title { font-weight: 700; }',
+      '.scw-srv-group-count {',
+      '  margin-left: 12px; opacity: 0.75; font-weight: 500;',
+      '  text-transform: none; letter-spacing: 0;',
+      '}',
+      // MDF/IDF detail row — sits below the group header, hosts
+      // photos + survey notes scraped from view_3894.
+      '.scw-srv-mdf-detail-row > td {',
+      '  background: #f0f4f8; padding: 12px 16px;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '}',
+      '.scw-srv-mdf-detail {',
+      '  display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-start;',
+      '}',
+      '.scw-srv-mdf-photos { margin: 0; }',
+      '.scw-srv-mdf-notes {',
+      '  flex: 1 1 280px; min-width: 0;',
+      '  font-size: 12px; line-height: 1.4; color: #1f2937;',
+      '}',
+      '.scw-srv-mdf-notes-label {',
+      '  font-weight: 700; color: #4b5563; margin-right: 4px;',
+      '  text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px;',
       '}',
       // Column header pieces
       '.scw-srv-colhead {',
@@ -296,6 +342,44 @@
     return byId;
   }
 
+  /** Index view_3894 (MDF/IDF records) by record id so each group
+   *  accordion can pull its photos + survey notes from the matching
+   *  record at render time. Reads from the model for label/notes
+   *  text and keeps a parallel DOM-row index for photo HTML scraping
+   *  (same pattern as line item rows). */
+  function indexMdfRecords() {
+    var byId = {};
+    var models = getModels(MDF_IDF_VIEW);
+    for (var i = 0; i < models.length; i++) {
+      var attrs = attrsOf(models[i]);
+      if (attrs && attrs.id) byId[attrs.id] = attrs;
+    }
+    return byId;
+  }
+
+  function indexMdfRowsById() {
+    var byId = {};
+    var view = document.getElementById(MDF_IDF_VIEW);
+    if (!view) return byId;
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var id = rows[i].id;
+      if (id && /^[a-f0-9]{24}$/i.test(id)) byId[id] = rows[i];
+    }
+    return byId;
+  }
+
+  /** Read field_2218 from a Survey Line Item row's DOM as a number.
+   *  Returns POSITIVE_INFINITY when missing so unsorted rows fall
+   *  to the bottom of their group instead of getting picked first. */
+  function readSortOrder(tr) {
+    if (!tr) return Number.POSITIVE_INFINITY;
+    var raw = scrapeCellText(tr, FIELD_SORT_ORDER);
+    if (!raw) return Number.POSITIVE_INFINITY;
+    var n = parseFloat(raw.replace(/[^\d.\-]/g, ''));
+    return isFinite(n) ? n : Number.POSITIVE_INFINITY;
+  }
+
   function scrapeCellTd(tr, fieldKey) {
     if (!tr) return null;
     // data-field-key is the safest path — it's an exact-match attribute
@@ -411,14 +495,25 @@
     // from Knack's rendered DOM (more reliable than the model for
     // file/connection cells that don't always populate _raw cleanly).
     var rowDomById = indexLineItemRowsById();
+    // MDF/IDF records (view_3894) keyed by id — used to decorate each
+    // group accordion with its photos + survey notes from the MDF
+    // record. Falls back gracefully when a group's MDF record isn't
+    // in the view (rare; usually only on a stale page state).
+    var mdfRecordById = indexMdfRecords();
+    var mdfRowDomById = indexMdfRowsById();
+
     var cells = {};                 // cells[sowLiId][surveyId] = { surveyLineItemId, attrs, tr }
     var sowLiLabel = {};            // sowLiId -> display label
     var sowLiProduct = {};          // sowLiId -> first-seen product name
-    var groupBySowLi = {};          // sowLiId -> mdf label
-    var groupOrder = [];            // ordered list of group labels seen
+    var sowLiSortKey = {};          // sowLiId -> numeric sort order (lower = first)
+
+    var groupOrder = [];            // ordered list of group ids seen
     var groupSeen = {};
+    var groupLabel = {};            // groupId -> mdf full label (for header)
     var sowLiSeen = {};
-    var sowLiByGroup = {};          // groupLabel -> [sowLiIds] in insertion order
+    var sowLiByGroup = {};          // groupId -> [sowLiIds]
+
+    var UNASSIGNED_KEY = '__unassigned__';
 
     for (var i = 0; i < lineItems.length; i++) {
       var a = attrsOf(lineItems[i]);
@@ -427,33 +522,56 @@
       var surveyId  = connId(a, FIELD_SURVEY);
       if (!sowLiId || !surveyId) continue;
 
+      var slTr = rowDomById[sliId] || null;
+
       if (!cells[sowLiId]) cells[sowLiId] = {};
       cells[sowLiId][surveyId] = {
         surveyLineItemId: sliId,
         attrs:            a,
-        tr:               rowDomById[sliId] || null
+        tr:               slTr
       };
 
       if (!sowLiSeen[sowLiId]) {
         sowLiSeen[sowLiId] = true;
         sowLiLabel[sowLiId] = connLabel(a, FIELD_SOW_LI) || sowLiId;
         sowLiProduct[sowLiId] = connLabel(a, FIELD_PRODUCT);
-        var grp = connLabel(a, FIELD_MDF_IDF) || 'Unassigned';
-        groupBySowLi[sowLiId] = grp;
-        if (!groupSeen[grp]) {
-          groupSeen[grp] = true;
-          groupOrder.push(grp);
-          sowLiByGroup[grp] = [];
+        // Sort key: read from the first-seen Survey Line Item row for
+        // this SOW LI. All survey rows for the same SOW LI share the
+        // same sort order (it lives on the proposal-bucket join), so
+        // any one of them is fine.
+        sowLiSortKey[sowLiId] = readSortOrder(slTr);
+
+        var grpId = connId(a, FIELD_MDF_IDF) || UNASSIGNED_KEY;
+        if (!groupSeen[grpId]) {
+          groupSeen[grpId] = true;
+          groupOrder.push(grpId);
+          sowLiByGroup[grpId] = [];
+          groupLabel[grpId] = (grpId === UNASSIGNED_KEY)
+            ? 'Unassigned'
+            : (connLabel(a, FIELD_MDF_IDF) || grpId);
         }
-        sowLiByGroup[grp].push(sowLiId);
+        sowLiByGroup[grpId].push(sowLiId);
       }
     }
 
+    // Sort SOW Line Items WITHIN each group by sort order (ascending).
+    // Items with no sort value sink to the bottom of the group via
+    // Number.POSITIVE_INFINITY default in readSortOrder().
+    Object.keys(sowLiByGroup).forEach(function (grpId) {
+      sowLiByGroup[grpId].sort(function (a, b) {
+        var sa = sowLiSortKey[a];
+        var sb = sowLiSortKey[b];
+        if (sa !== sb) return sa - sb;
+        // Tiebreak on label so the order is stable when sort key is missing.
+        return String(sowLiLabel[a]).localeCompare(String(sowLiLabel[b]));
+      });
+    });
+
     // Pull "Unassigned" group to the end if present
-    var unIdx = groupOrder.indexOf('Unassigned');
+    var unIdx = groupOrder.indexOf(UNASSIGNED_KEY);
     if (unIdx !== -1 && unIdx !== groupOrder.length - 1) {
       groupOrder.splice(unIdx, 1);
-      groupOrder.push('Unassigned');
+      groupOrder.push(UNASSIGNED_KEY);
     }
 
     // ── Status line ──
@@ -488,15 +606,45 @@
     });
     html.push('</tr></thead>');
 
-    // Body
+    // Body. Each group gets:
+    //   1. A clickable group-header row (dark blue, accordion).
+    //   2. An MDF/IDF detail row scraped from view_3894 (photos + notes).
+    //   3. The actual line-item rows for that group.
+    // Detail + line item rows carry data-group="<id>" so the click
+    // handler can toggle visibility without touching the header.
+    var totalCols = columns.length + 1;
     html.push('<tbody>');
-    groupOrder.forEach(function (grp) {
-      // Group header row spans the whole table
-      html.push('<tr class="scw-srv-group-row"><td colspan="' + (columns.length + 1) + '">' +
-        escapeHtml(grp) + '</td></tr>');
+    groupOrder.forEach(function (grpId) {
+      var grpAttrId = grpId.replace(/[^a-zA-Z0-9_-]/g, ''); // safe for selectors
+      var label = groupLabel[grpId];
+      var itemCount = sowLiByGroup[grpId].length;
+      var mdfAttrs = mdfRecordById[grpId];
+      var mdfTr    = mdfRowDomById[grpId];
 
-      sowLiByGroup[grp].forEach(function (sowLiId) {
-        html.push('<tr>');
+      html.push(
+        '<tr class="scw-srv-group-row" data-group="' + escapeAttr(grpAttrId) +
+        '" data-collapsed="false">' +
+          '<td colspan="' + totalCols + '">' +
+            '<span class="scw-srv-group-chevron" aria-hidden="true">▾</span>' +
+            '<span class="scw-srv-group-title">' + escapeHtml(label) + '</span>' +
+            '<span class="scw-srv-group-count">' + itemCount +
+              ' item' + (itemCount === 1 ? '' : 's') + '</span>' +
+          '</td>' +
+        '</tr>'
+      );
+
+      // MDF detail row — only render if we have anything to show
+      var mdfDetailHtml = buildMdfDetailHtml(mdfAttrs, mdfTr);
+      if (mdfDetailHtml) {
+        html.push(
+          '<tr class="scw-srv-mdf-detail-row" data-group="' + escapeAttr(grpAttrId) + '">' +
+            '<td colspan="' + totalCols + '">' + mdfDetailHtml + '</td>' +
+          '</tr>'
+        );
+      }
+
+      sowLiByGroup[grpId].forEach(function (sowLiId) {
+        html.push('<tr data-group="' + escapeAttr(grpAttrId) + '">');
         html.push('<td class="scw-srv-row-label">' +
           escapeHtml(sowLiLabel[sowLiId]) +
           (sowLiProduct[sowLiId]
@@ -543,6 +691,41 @@
       parts.push('<button type="button" class="scw-srv-mark-btn" ' +
         'data-action="mark-reviewed" data-survey-id="' + escapeAttr(col.id) + '">' +
         'Mark Reviewed</button>');
+    }
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  /** Build the MDF/IDF detail panel HTML — photos + survey notes
+   *  scraped from view_3894's matching record. Returns '' if there's
+   *  nothing meaningful to show, so the caller can skip the row. */
+  function buildMdfDetailHtml(attrs, tr) {
+    if (!attrs && !tr) return '';
+
+    // Photos: scrape from the v3894 row DOM (same lightbox pattern
+    // as the cell photos — clicks routed through openPhotoLightbox).
+    var photosHtml = scrapeCellHtml(tr, MDF_FIELD_PHOTOS);
+    var surveyNotes = (attrs && attrs[MDF_FIELD_SURVEY_NOTES])
+      ? String(attrs[MDF_FIELD_SURVEY_NOTES]).replace(/<[^>]*>/g, '').trim() : '';
+    var notes = (attrs && attrs[MDF_FIELD_NOTES])
+      ? String(attrs[MDF_FIELD_NOTES]).replace(/<[^>]*>/g, '').trim() : '';
+
+    if (!photosHtml && !surveyNotes && !notes) return '';
+
+    var parts = ['<div class="scw-srv-mdf-detail">'];
+    if (photosHtml) {
+      parts.push('<div class="scw-srv-mdf-photos scw-srv-cell-photos">' +
+        photosHtml + '</div>');
+    }
+    if (surveyNotes) {
+      parts.push('<div class="scw-srv-mdf-notes">' +
+        '<span class="scw-srv-mdf-notes-label">Surveyor notes:</span> ' +
+        escapeHtml(surveyNotes) + '</div>');
+    }
+    if (notes) {
+      parts.push('<div class="scw-srv-mdf-notes">' +
+        '<span class="scw-srv-mdf-notes-label">Notes:</span> ' +
+        escapeHtml(notes) + '</div>');
     }
     parts.push('</div>');
     return parts.join('');
@@ -620,6 +803,23 @@
         if (img) {
           var fullUrl = img.getAttribute('data-kn-img-gallery') || img.src;
           if (fullUrl) openPhotoLightbox(fullUrl);
+        }
+        return;
+      }
+
+      // Group accordion toggle — click anywhere on the dark blue
+      // group-header row collapses or expands all rows tagged with
+      // the same data-group, including the MDF detail row.
+      var groupRow = e.target.closest('.scw-srv-group-row');
+      if (groupRow) {
+        var groupId = groupRow.getAttribute('data-group');
+        var collapsed = groupRow.getAttribute('data-collapsed') === 'true';
+        groupRow.setAttribute('data-collapsed', collapsed ? 'false' : 'true');
+        var toggleRows = container.querySelectorAll(
+          'tr[data-group="' + groupId + '"]:not(.scw-srv-group-row)'
+        );
+        for (var i = 0; i < toggleRows.length; i++) {
+          toggleRows[i].style.display = collapsed ? '' : 'none';
         }
         return;
       }
@@ -743,11 +943,14 @@
   if (window.SCW && SCW.onViewRender) {
     SCW.onViewRender(SURVEY_REQUESTS_VIEW, debouncedBuild, EVENT_NS);
     SCW.onViewRender(SURVEY_LINE_ITEMS_VIEW, debouncedBuild, EVENT_NS);
+    SCW.onViewRender(MDF_IDF_VIEW, debouncedBuild, EVENT_NS);
   } else {
     $(document).off('knack-view-render.' + SURVEY_REQUESTS_VIEW + EVENT_NS)
                .on('knack-view-render.' + SURVEY_REQUESTS_VIEW + EVENT_NS, debouncedBuild);
     $(document).off('knack-view-render.' + SURVEY_LINE_ITEMS_VIEW + EVENT_NS)
                .on('knack-view-render.' + SURVEY_LINE_ITEMS_VIEW + EVENT_NS, debouncedBuild);
+    $(document).off('knack-view-render.' + MDF_IDF_VIEW + EVENT_NS)
+               .on('knack-view-render.' + MDF_IDF_VIEW + EVENT_NS, debouncedBuild);
   }
 
   // First-paint attempt for hot reloads / direct navigation.
