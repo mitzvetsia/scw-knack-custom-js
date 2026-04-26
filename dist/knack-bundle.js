@@ -9030,17 +9030,41 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       '  color: #9ca3af; font-size: 16px; text-align: center;',
       '}',
       // Photo strip — scraped HTML may include <a class="kn-img-gallery">,
-      // <img>, etc. Style them so they render compactly + preserve Knack
-      // gallery click behavior. Multiple thumbs wrap to a row.
+      // <img>, etc. Knack's own gallery JS isn't bound to our cloned
+      // cells, so we hijack clicks ourselves (see openPhotoLightbox)
+      // rather than letting the bare href="#" anchors fire and route
+      // back to the home scene. Multiple thumbs wrap to a row.
       '.scw-srv-cell-photos {',
-      '  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;',
+      '  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;',
       '}',
       '.scw-srv-cell-photos a, .scw-srv-cell-photos img {',
-      '  display: inline-block; width: 44px; height: 44px;',
-      '  object-fit: cover; border-radius: 4px;',
+      '  display: inline-block; width: 96px; height: 96px;',
+      '  object-fit: cover; border-radius: 6px;',
       '  border: 1px solid #e5e7eb;',
+      '  cursor: zoom-in;',
       '}',
-      '.scw-srv-cell-photos a img { width: 100%; height: 100%; }',
+      '.scw-srv-cell-photos a { padding: 0; line-height: 0; }',
+      '.scw-srv-cell-photos a img { width: 100%; height: 100%; border: 0; border-radius: 6px; }',
+      // Lightbox overlay
+      '.scw-srv-lightbox {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(0,0,0,0.85);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  cursor: zoom-out; padding: 32px;',
+      '}',
+      '.scw-srv-lightbox img {',
+      '  max-width: 100%; max-height: 100%;',
+      '  box-shadow: 0 12px 40px rgba(0,0,0,0.5);',
+      '  border-radius: 6px;',
+      '}',
+      '.scw-srv-lightbox-close {',
+      '  position: absolute; top: 16px; right: 16px;',
+      '  width: 36px; height: 36px; border: none; border-radius: 50%;',
+      '  background: rgba(255,255,255,0.15); color: #fff;',
+      '  font: 700 22px/1 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '}',
+      '.scw-srv-lightbox-close:hover { background: rgba(255,255,255,0.3); }',
       '.scw-srv-cell-no-photos {',
       '  color: #9ca3af; font-style: italic; font-size: 12px;',
       '  margin-bottom: 4px;',
@@ -9434,6 +9458,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // ── Mark Reviewed actions ────────────────────────────────
   function bindCardActions(container) {
     container.addEventListener('click', function (e) {
+      // Photo click → open in our own lightbox. The cloned <a class=
+      // "kn-img-gallery" href="#"> would otherwise route the SPA hash
+      // to "#" and dump the user back on the home scene because
+      // Knack's gallery binding isn't attached to our cells.
+      var photo = e.target.closest('.scw-srv-cell-photos img, .scw-srv-cell-photos a');
+      if (photo) {
+        e.preventDefault();
+        e.stopPropagation();
+        var img = (photo.tagName === 'IMG') ? photo : photo.querySelector('img');
+        if (img) {
+          var fullUrl = img.getAttribute('data-kn-img-gallery') || img.src;
+          if (fullUrl) openPhotoLightbox(fullUrl);
+        }
+        return;
+      }
+
       var btn = e.target.closest('[data-action]');
       if (!btn) return;
       var action = btn.getAttribute('data-action');
@@ -9445,6 +9485,34 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         flipReviewed(surveyId, false, btn);
       }
     });
+  }
+
+  function openPhotoLightbox(url) {
+    if (!url) return;
+    // Reuse existing overlay if user clicks fast.
+    var existing = document.querySelector('.scw-srv-lightbox');
+    if (existing) existing.parentNode.removeChild(existing);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-srv-lightbox';
+    overlay.innerHTML =
+      '<img src="' + escapeAttr(url) + '" alt="">' +
+      '<button type="button" class="scw-srv-lightbox-close" aria-label="Close">&times;</button>';
+
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    overlay.addEventListener('click', function (e) {
+      // Click anywhere except the image itself dismisses; the close
+      // button is also handled here. Stops the click from bubbling
+      // up to the grid's handler.
+      e.stopPropagation();
+      if (e.target.tagName !== 'IMG') close();
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
   }
 
   function currentUserId() {
