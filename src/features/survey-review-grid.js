@@ -233,7 +233,8 @@
       '.scw-srv-cell-photos {',
       '  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;',
       '}',
-      '.scw-srv-cell-photos a, .scw-srv-cell-photos img {',
+      '.scw-srv-cell-photos a, .scw-srv-cell-photos img,',
+      '.scw-srv-cell-photos .scw-srv-thumb {',
       '  display: inline-block; width: 96px; height: 96px;',
       '  object-fit: cover; border-radius: 6px;',
       '  border: 1px solid #e5e7eb;',
@@ -241,6 +242,30 @@
       '}',
       '.scw-srv-cell-photos a { padding: 0; line-height: 0; }',
       '.scw-srv-cell-photos a img { width: 100%; height: 100%; border: 0; border-radius: 6px; }',
+      // Missing-required photo placeholder. Dashed amber border so it
+      // reads as "needs attention" without screaming. Type label
+      // wraps inside the box so Ops sees what kind of photo is owed.
+      '.scw-srv-thumb-missing {',
+      '  display: inline-flex !important; flex-direction: column;',
+      '  align-items: center; justify-content: center; gap: 4px;',
+      '  padding: 4px;',
+      '  border: 2px dashed #d97706 !important;',
+      '  background: #fffbeb;',
+      '  cursor: default !important;',
+      '  text-align: center;',
+      '}',
+      '.scw-srv-thumb-missing-icon {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 22px; height: 22px; border-radius: 50%;',
+      '  background: #d97706; color: #fff;',
+      '  font: 700 14px/1 system-ui, sans-serif;',
+      '}',
+      '.scw-srv-thumb-missing-label {',
+      '  font-size: 10px; font-weight: 600; color: #92400e;',
+      '  line-height: 1.15; padding: 0 2px;',
+      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+      '  overflow: hidden;',
+      '}',
       // Lightbox overlay
       '.scw-srv-lightbox {',
       '  position: fixed; inset: 0; z-index: 100000;',
@@ -367,6 +392,90 @@
       if (id && /^[a-f0-9]{24}$/i.test(id)) byId[id] = rows[i];
     }
     return byId;
+  }
+
+  /** Parse the per-photo records for a Survey Line Item row, mirroring
+   *  inline-photo-row.js's extractPhotoRecords logic. Each connected
+   *  photo record exposes:
+   *    - field_771   image (uploaded thumb / kn-img-gallery URL)
+   *    - field_2445  CONFIG_photo type (label like "Proposed Mounting Location")
+   *    - field_2446  FLAG_required (Yes / No)
+   *    - field_2447  FLAG_complete (Yes / No)
+   *  Spans share an `id="<photoRecordId>"` across all four columns,
+   *  so we accumulate by id and return the merged records.
+   *  Lets the cell renderer surface required-but-not-yet-uploaded
+   *  photos as missing slots — same behavior view_3505 has. */
+  function extractPhotoRecords(tr) {
+    var map = {};
+    function ensure(rid) {
+      if (!map[rid]) {
+        map[rid] = { id: rid, imgUrl: '', thumbUrl: '', type: '', required: false, completed: false };
+      }
+      return map[rid];
+    }
+
+    var imgCell = scrapeCellTd(tr, FIELD_PHOTOS);
+    if (imgCell) {
+      var imgSpans = imgCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < imgSpans.length; i++) {
+        var rid = (imgSpans[i].id || '').trim();
+        if (!rid) continue;
+        var rec = ensure(rid);
+        var img = imgSpans[i].querySelector('img');
+        if (img) {
+          rec.imgUrl   = img.getAttribute('data-kn-img-gallery') || img.src || '';
+          rec.thumbUrl = img.src || rec.imgUrl;
+        }
+      }
+    }
+
+    var typeCell = scrapeCellTd(tr, 'field_2445');
+    if (typeCell) {
+      var typeSpans = typeCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var j = 0; j < typeSpans.length; j++) {
+        var rid2 = (typeSpans[j].id || '').trim();
+        if (!rid2) continue;
+        var inner = typeSpans[j].querySelector('span[data-kn="connection-value"]');
+        ensure(rid2).type = inner ? inner.textContent.trim()
+                                  : typeSpans[j].textContent.trim();
+      }
+    }
+
+    var reqCell = scrapeCellTd(tr, 'field_2446');
+    if (reqCell) {
+      var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var r = 0; r < reqSpans.length; r++) {
+        var rid3 = (reqSpans[r].id || '').trim();
+        if (!rid3) continue;
+        ensure(rid3).required =
+          (reqSpans[r].textContent || '').trim().toLowerCase() === 'yes';
+      }
+    }
+
+    var compCell = scrapeCellTd(tr, 'field_2447');
+    if (compCell) {
+      var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var c = 0; c < compSpans.length; c++) {
+        var rid4 = (compSpans[c].id || '').trim();
+        if (!rid4) continue;
+        ensure(rid4).completed =
+          (compSpans[c].textContent || '').trim().toLowerCase() === 'yes';
+      }
+    }
+
+    var arr = [];
+    for (var k in map) if (map.hasOwnProperty(k)) arr.push(map[k]);
+    // Sort: missing-required first (so Ops sees gaps without scanning),
+    // then existing photos by type then id.
+    arr.sort(function (a, b) {
+      var aMiss = a.required && !a.completed;
+      var bMiss = b.required && !b.completed;
+      if (aMiss !== bMiss) return aMiss ? -1 : 1;
+      var t = (a.type || '').localeCompare(b.type || '');
+      if (t !== 0) return t;
+      return a.id.localeCompare(b.id);
+    });
+    return arr;
   }
 
   /** Read field_2218 from a Survey Line Item row's DOM as a number.
@@ -662,6 +771,7 @@
 
     container.innerHTML = html.join('');
     bindCardActions(container);
+    applyCollapsedState(container);
   }
 
   function buildColumnHeaderHtml(col) {
@@ -736,12 +846,42 @@
 
     var parts = [];
 
-    // ── Photos: scrape rendered cell HTML from the row in view_3889.
-    // This preserves Knack's <a class="kn-img-gallery"> markup so
-    // clicking a thumbnail still opens the lightbox.
-    var photosHtml = scrapeCellHtml(cell.tr, FIELD_PHOTOS);
-    if (photosHtml) {
-      parts.push('<div class="scw-srv-cell-photos">' + photosHtml + '</div>');
+    // ── Photos: render per-record so missing-required slots show up
+    // as placeholders (same behavior view_3505 has). Required +
+    // not-yet-uploaded photos are surfaced first as dashed placeholder
+    // tiles so Ops can spot survey deliverable gaps without drilling
+    // into each record. Existing thumbnails render after.
+    var photoRecords = extractPhotoRecords(cell.tr);
+    if (photoRecords.length) {
+      var thumbs = photoRecords.map(function (rec) {
+        if (rec.imgUrl || rec.thumbUrl) {
+          // Uploaded — render as thumbnail. data-kn-img-gallery on
+          // the img is what openPhotoLightbox reads to find the
+          // full-size URL when the user clicks.
+          return '<a href="javascript:void(0)" class="scw-srv-thumb"' +
+            ' title="' + escapeAttr(rec.type || 'Photo') + '">' +
+            '<img src="' + escapeAttr(rec.thumbUrl || rec.imgUrl) + '"' +
+            ' data-kn-img-gallery="' + escapeAttr(rec.imgUrl || rec.thumbUrl) + '"' +
+            ' alt="' + escapeAttr(rec.type || '') + '">' +
+            '</a>';
+        }
+        if (rec.required) {
+          // Missing required photo — dashed placeholder with type label.
+          return '<div class="scw-srv-thumb scw-srv-thumb-missing"' +
+            ' title="Missing required photo: ' + escapeAttr(rec.type || 'Photo') + '">' +
+            '<span class="scw-srv-thumb-missing-icon">!</span>' +
+            '<span class="scw-srv-thumb-missing-label">' +
+            escapeHtml(rec.type || 'Required') + '</span>' +
+            '</div>';
+        }
+        // Optional + missing → skip; not worth the screen space.
+        return '';
+      }).filter(Boolean);
+      if (thumbs.length) {
+        parts.push('<div class="scw-srv-cell-photos">' + thumbs.join('') + '</div>');
+      } else {
+        parts.push('<div class="scw-srv-cell-no-photos">No photos</div>');
+      }
     } else {
       parts.push('<div class="scw-srv-cell-no-photos">No photos</div>');
     }
@@ -788,8 +928,32 @@
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
+  // ── Persistent collapsed-group state across rebuilds ──────
+  // build() does container.innerHTML = …, which wipes inline
+  // display:none we set on the rows. We track which groups are
+  // collapsed in a module-level Set and re-apply after each render.
+  var _collapsedGroups = {};
+  function applyCollapsedState(container) {
+    var groupRows = container.querySelectorAll('.scw-srv-group-row');
+    for (var g = 0; g < groupRows.length; g++) {
+      var gid = groupRows[g].getAttribute('data-group');
+      if (!gid || !_collapsedGroups[gid]) continue;
+      groupRows[g].setAttribute('data-collapsed', 'true');
+      var rows = container.querySelectorAll(
+        'tr[data-group="' + gid + '"]:not(.scw-srv-group-row)'
+      );
+      for (var r = 0; r < rows.length; r++) rows[r].style.display = 'none';
+    }
+  }
+
   // ── Mark Reviewed actions ────────────────────────────────
   function bindCardActions(container) {
+    // Bind ONCE per container element. Subsequent build() calls reuse
+    // the same container but reset innerHTML — without this guard the
+    // click listener stacks N deep and clicks toggle the accordion N
+    // times in a single event, often appearing not to work.
+    if (container._scwSurvBound) return;
+    container._scwSurvBound = true;
     container.addEventListener('click', function (e) {
       // Photo click → open in our own lightbox. The cloned <a class=
       // "kn-img-gallery" href="#"> would otherwise route the SPA hash
@@ -814,12 +978,18 @@
       if (groupRow) {
         var groupId = groupRow.getAttribute('data-group');
         var collapsed = groupRow.getAttribute('data-collapsed') === 'true';
-        groupRow.setAttribute('data-collapsed', collapsed ? 'false' : 'true');
+        var nextCollapsed = !collapsed;
+        groupRow.setAttribute('data-collapsed', nextCollapsed ? 'true' : 'false');
+        // Persist so the next build() (e.g. triggered by a Mark
+        // Reviewed save or a model.fetch elsewhere) doesn't snap
+        // every group back to expanded.
+        if (nextCollapsed) _collapsedGroups[groupId] = true;
+        else delete _collapsedGroups[groupId];
         var toggleRows = container.querySelectorAll(
           'tr[data-group="' + groupId + '"]:not(.scw-srv-group-row)'
         );
         for (var i = 0; i < toggleRows.length; i++) {
-          toggleRows[i].style.display = collapsed ? '' : 'none';
+          toggleRows[i].style.display = nextCollapsed ? 'none' : '';
         }
         return;
       }
