@@ -8893,8 +8893,44 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   var FIELD_SOW_LI              = 'field_2404'; // ROW pivot — connection to SOW Line Item
   var FIELD_SURVEY              = 'field_2360'; // COLUMN pivot — connection to Survey Request
   var FIELD_MDF_IDF             = 'field_2375'; // grouping field
-  var FIELD_PHOTOS              = 'field_2697'; // file-array of photos
+  var FIELD_PHOTOS              = 'field_2697'; // photos cell (rendered HTML scraped)
   var FIELD_NOTES               = 'field_2412'; // long-text per-item observations
+
+  // Detail fields surfaced inside each cell — pulled from the same
+  // device-worksheet config view_3505 uses for the per-survey detail
+  // worksheet, so the comparison grid surfaces the same data the user
+  // sees when drilling into one survey at a time.
+  var FIELD_EXISTING_CABLING    = 'field_2370'; // Yes/No
+  var FIELD_EXTERIOR            = 'field_2372'; // Yes/No (or chip stack)
+  var FIELD_PLENUM              = 'field_2371'; // Yes/No
+  var FIELD_DROP_LENGTH         = 'field_2367'; // numeric (ft)
+  var FIELD_CONDUIT             = 'field_2368'; // numeric (ft)
+  var FIELD_MOUNT_HEIGHT        = 'field_2455'; // height range
+  var FIELD_CONNECTED_TO        = 'field_2381'; // connection back to NVR/switch
+  var FIELD_MOUNTING            = 'field_2463'; // mounting hardware text/connection
+  var FIELD_QTY                 = 'field_2399'; // bid quantity
+  var FIELD_LABOR               = 'field_2400'; // labor $
+  var FIELD_PRODUCT             = 'field_2379'; // product name (under SOW row label)
+
+  // Detail fields rendered via DOM-scrape order: [fieldKey, label]
+  // Each is rendered only if the row has non-empty content for that
+  // field. Rendering order top→bottom matches reading order.
+  var DETAIL_FIELDS = [
+    ['CONNECTED_TO',     'Connected To',  FIELD_CONNECTED_TO],
+    ['MOUNTING',         'Mounting',      FIELD_MOUNTING],
+    ['EXISTING_CABLING', 'Existing Cab.', FIELD_EXISTING_CABLING],
+    ['EXTERIOR',         'Exterior',      FIELD_EXTERIOR],
+    ['PLENUM',           'Plenum',        FIELD_PLENUM],
+    ['DROP_LENGTH',      'Drop Length',   FIELD_DROP_LENGTH],
+    ['CONDUIT',          'Conduit',       FIELD_CONDUIT],
+    ['MOUNT_HEIGHT',     'Mount Height',  FIELD_MOUNT_HEIGHT],
+    ['QTY',              'Qty',           FIELD_QTY],
+    ['LABOR',            'Labor',         FIELD_LABOR]
+  ];
+
+  // Where the grid mounts. If view_44 isn't on this scene, the grid
+  // falls back to inserting at the top of the scene container.
+  var ANCHOR_VIEW_ID            = 'view_44';
 
   var GRID_CONTAINER_ID         = 'scw-survey-review-grid';
   var STYLE_ID                  = 'scw-survey-review-grid-css';
@@ -8910,79 +8946,54 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     s.textContent = [
       '#' + GRID_CONTAINER_ID + ' {',
       '  margin: 16px 0;',
+      '  width: 100%;',
       '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
       '  color: #1f2937;',
       '}',
       '.scw-srv-status {',
-      '  margin-bottom: 14px;',
-      '  font-size: 13px;',
-      '  color: #4b5563;',
-      '  font-weight: 500;',
+      '  margin-bottom: 14px; font-size: 13px;',
+      '  color: #4b5563; font-weight: 500;',
       '}',
       '.scw-srv-status strong { color: #1f2937; font-weight: 700; }',
       '.scw-srv-empty {',
-      '  padding: 32px 20px;',
-      '  text-align: center;',
-      '  color: #6b7280;',
-      '  background: #f9fafb;',
-      '  border-radius: 8px;',
-      '  border: 1px dashed #d1d5db;',
+      '  padding: 32px 20px; text-align: center; color: #6b7280;',
+      '  background: #f9fafb; border-radius: 8px; border: 1px dashed #d1d5db;',
       '}',
       '.scw-srv-table-wrap {',
-      '  overflow-x: auto;',
-      '  background: #fff;',
-      '  border: 1px solid #e5e7eb;',
-      '  border-radius: 8px;',
+      '  overflow-x: auto; width: 100%;',
+      '  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;',
       '}',
       '.scw-srv-table {',
-      '  border-collapse: collapse;',
-      '  width: 100%;',
-      '  min-width: 720px;',
+      '  border-collapse: collapse; width: 100%;',
       '}',
       '.scw-srv-table th, .scw-srv-table td {',
       '  border-bottom: 1px solid #f3f4f6;',
-      '  vertical-align: top;',
-      '  text-align: left;',
-      '  padding: 10px 12px;',
+      '  vertical-align: top; text-align: left; padding: 10px 12px;',
       '}',
       '.scw-srv-table thead th {',
-      '  position: sticky; top: 0;',
-      '  background: #f9fafb;',
+      '  position: sticky; top: 0; background: #f9fafb;',
       '  border-bottom: 2px solid #e5e7eb;',
-      '  z-index: 2;',
-      '  font-weight: 600;',
+      '  z-index: 2; font-weight: 600;',
       '}',
       '.scw-srv-row-label {',
-      '  position: sticky; left: 0;',
-      '  background: #fff;',
-      '  font-weight: 600;',
-      '  min-width: 220px; max-width: 280px;',
-      '  z-index: 1;',
+      '  position: sticky; left: 0; background: #fff; font-weight: 600;',
+      '  min-width: 200px; max-width: 240px; z-index: 1;',
       '}',
-      '.scw-srv-table thead .scw-srv-row-label {',
-      '  background: #f9fafb;',
-      '  z-index: 3;',
+      '.scw-srv-row-label .scw-srv-row-product {',
+      '  display: block; font-weight: 400; font-size: 12px; color: #6b7280; margin-top: 2px;',
       '}',
+      '.scw-srv-table thead .scw-srv-row-label { background: #f9fafb; z-index: 3; }',
       '.scw-srv-group-row td {',
-      '  background: #163C6E;',
-      '  color: #fff;',
-      '  font-weight: 700;',
-      '  letter-spacing: 0.04em;',
-      '  text-transform: uppercase;',
-      '  font-size: 11px;',
-      '  padding: 8px 12px;',
+      '  background: #163C6E; color: #fff;',
+      '  font-weight: 700; letter-spacing: 0.04em;',
+      '  text-transform: uppercase; font-size: 11px; padding: 8px 12px;',
       '}',
       // Column header pieces
       '.scw-srv-colhead {',
-      '  display: flex; flex-direction: column; gap: 4px;',
-      '  min-width: 220px;',
+      '  display: flex; flex-direction: column; gap: 4px; min-width: 220px;',
       '}',
-      '.scw-srv-colhead-name {',
-      '  font-size: 13px; font-weight: 700; color: #111827;',
-      '}',
-      '.scw-srv-colhead-date {',
-      '  font-size: 11px; color: #6b7280; font-weight: 500;',
-      '}',
+      '.scw-srv-colhead-name { font-size: 13px; font-weight: 700; color: #111827; }',
+      '.scw-srv-colhead-date { font-size: 11px; color: #6b7280; font-weight: 500; }',
       '.scw-srv-status-badge {',
       '  display: inline-flex; align-items: center; gap: 4px;',
       '  padding: 2px 8px; border-radius: 999px;',
@@ -8990,49 +9001,62 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       '  text-transform: uppercase; letter-spacing: 0.04em;',
       '  width: fit-content;',
       '}',
-      '.scw-srv-status-badge--reviewed {',
-      '  background: #d1fae5; color: #065f46;',
-      '}',
-      '.scw-srv-status-badge--pending {',
-      '  background: #fef3c7; color: #92400e;',
-      '}',
-      '.scw-srv-reviewed-stamp {',
-      '  font-size: 11px; color: #6b7280; font-weight: 500;',
-      '}',
+      '.scw-srv-status-badge--reviewed { background: #d1fae5; color: #065f46; }',
+      '.scw-srv-status-badge--pending  { background: #fef3c7; color: #92400e; }',
+      '.scw-srv-reviewed-stamp { font-size: 11px; color: #6b7280; font-weight: 500; }',
       '.scw-srv-mark-btn {',
       '  appearance: none; border: 1px solid #163C6E;',
       '  background: #163C6E; color: #fff;',
       '  font: 600 12px system-ui, sans-serif;',
       '  padding: 6px 12px; border-radius: 6px;',
-      '  cursor: pointer; align-self: flex-start;',
-      '  letter-spacing: 0.02em;',
+      '  cursor: pointer; align-self: flex-start; letter-spacing: 0.02em;',
       '}',
       '.scw-srv-mark-btn:hover { background: #0f2d55; }',
       '.scw-srv-mark-btn[disabled] { opacity: 0.55; cursor: default; }',
       '.scw-srv-reopen-link {',
-      '  font: 500 11px system-ui, sans-serif;',
-      '  color: #2563eb; cursor: pointer;',
-      '  align-self: flex-start;',
-      '  text-decoration: underline;',
-      '  background: none; border: none; padding: 0;',
+      '  font: 500 11px system-ui, sans-serif; color: #2563eb;',
+      '  cursor: pointer; align-self: flex-start;',
+      '  text-decoration: underline; background: none; border: none; padding: 0;',
       '}',
       '.scw-srv-reopen-link:hover { color: #1d4ed8; }',
       // Cell pieces
+      '.scw-srv-cell { min-width: 240px; }',
       '.scw-srv-cell--empty {',
-      '  color: #9ca3af; font-size: 16px;',
-      '  text-align: center;',
+      '  color: #9ca3af; font-size: 16px; text-align: center;',
       '}',
+      // Photo strip — scraped HTML may include <a class="kn-img-gallery">,
+      // <img>, etc. Style them so they render compactly + preserve Knack
+      // gallery click behavior. Multiple thumbs wrap to a row.
       '.scw-srv-cell-photos {',
-      '  display: inline-flex; align-items: center; gap: 4px;',
-      '  font-weight: 600; color: #111827;',
+      '  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;',
+      '}',
+      '.scw-srv-cell-photos a, .scw-srv-cell-photos img {',
+      '  display: inline-block; width: 44px; height: 44px;',
+      '  object-fit: cover; border-radius: 4px;',
+      '  border: 1px solid #e5e7eb;',
+      '}',
+      '.scw-srv-cell-photos a img { width: 100%; height: 100%; }',
+      '.scw-srv-cell-no-photos {',
+      '  color: #9ca3af; font-style: italic; font-size: 12px;',
+      '  margin-bottom: 4px;',
       '}',
       '.scw-srv-cell-notes {',
-      '  margin-top: 4px;',
-      '  color: #4b5563;',
-      '  font-size: 12px;',
-      '  line-height: 1.35;',
+      '  margin: 4px 0; color: #1f2937;',
+      '  font-size: 12px; line-height: 1.4;',
       '}',
-      '.scw-srv-cell-no-photos { color: #9ca3af; font-style: italic; font-size: 12px; }'
+      '.scw-srv-cell-notes-label {',
+      '  font-weight: 700; color: #4b5563; margin-right: 4px;',
+      '}',
+      // Detail key/value list — compact label·value rows.
+      '.scw-srv-cell-details {',
+      '  margin-top: 6px;',
+      '  display: grid; grid-template-columns: max-content 1fr;',
+      '  gap: 2px 8px; font-size: 11px;',
+      '}',
+      '.scw-srv-cell-details .k { color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }',
+      '.scw-srv-cell-details .v { color: #1f2937; }',
+      '.scw-srv-cell-details .v--yes { color: #047857; font-weight: 600; }',
+      '.scw-srv-cell-details .v--no  { color: #9ca3af; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -9063,14 +9087,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return !!v && String(v).trim().toLowerCase() === 'yes';
   }
 
-  function readPhotoCount(attrs) {
-    var raw = attrs && attrs[FIELD_PHOTOS + '_raw'];
-    if (Array.isArray(raw)) return raw.length;
-    // file fields sometimes show as a single object — count it as 1
-    if (raw && typeof raw === 'object') return 1;
-    return 0;
-  }
-
   function readNotes(attrs) {
     var raw = attrs && (attrs[FIELD_NOTES] || attrs[FIELD_NOTES + '_raw']);
     if (raw == null) return '';
@@ -9083,16 +9099,81 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return s.slice(0, n).replace(/\s+\S*$/, '') + '…';
   }
 
+  // ── DOM scraping for view_3889 cells ─────────────────────
+  // The Knack model doesn't always populate file/photo fields with
+  // structured data we can render thumbnails from, but the rendered
+  // table cell DOES contain the right markup (kn-img-gallery anchors
+  // wrapping <img> thumbs that already have the lightbox click bound).
+  // Scraping per-row is more reliable than re-deriving from _raw.
+  function indexLineItemRowsById() {
+    var byId = {};
+    var view = document.getElementById(SURVEY_LINE_ITEMS_VIEW);
+    if (!view) return byId;
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var id = rows[i].id;
+      if (id && /^[a-f0-9]{24}$/i.test(id)) byId[id] = rows[i];
+    }
+    return byId;
+  }
+
+  function scrapeCellTd(tr, fieldKey) {
+    if (!tr) return null;
+    return tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+  }
+
+  function scrapeCellHtml(tr, fieldKey) {
+    var td = scrapeCellTd(tr, fieldKey);
+    if (!td) return '';
+    // Trim leading/trailing whitespace including &nbsp; in the cell text.
+    var html = td.innerHTML || '';
+    var text = (td.textContent || '').replace(/[\s ]+/g, '');
+    if (!text) return '';
+    return html;
+  }
+
+  function scrapeCellText(tr, fieldKey) {
+    var td = scrapeCellTd(tr, fieldKey);
+    if (!td) return '';
+    return (td.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function countPhotosInCell(html) {
+    if (!html) return 0;
+    // Each <img> tag = one photo. Knack image-gallery cells render one
+    // <img> per attached photo (sometimes wrapped in <a class="kn-img-gallery">).
+    var matches = String(html).match(/<img\b/gi);
+    return matches ? matches.length : 0;
+  }
+
   // ── Build / render ────────────────────────────────────────
   function getOrCreateContainer() {
     var existing = document.getElementById(GRID_CONTAINER_ID);
-    if (existing) return existing;
     var sceneEl = document.getElementById('kn-' + SCENE_ID);
     if (!sceneEl) return null;
+
+    // Anchor: insert below view_44 if it's on the scene; otherwise at
+    // the top of the scene container as a fallback.
+    var anchor = document.getElementById(ANCHOR_VIEW_ID);
+    if (anchor && !sceneEl.contains(anchor)) anchor = null;
+
+    if (existing) {
+      // Move to correct position in case the DOM shifted between renders.
+      if (anchor) {
+        if (existing.previousElementSibling !== anchor) {
+          anchor.parentNode.insertBefore(existing, anchor.nextSibling);
+        }
+      }
+      return existing;
+    }
+
     var c = document.createElement('div');
     c.id = GRID_CONTAINER_ID;
-    // Insert at top of the scene so the grid is the first thing the user sees.
-    sceneEl.insertBefore(c, sceneEl.firstChild);
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(c, anchor.nextSibling);
+    } else {
+      sceneEl.insertBefore(c, sceneEl.firstChild);
+    }
     return c;
   }
 
@@ -9131,9 +9212,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     });
 
     // ── Index Survey Line Items into a 2-D matrix ──
-    // cells[sowLiId][surveyId] = { photoCount, notes }
-    var cells = {};
+    // Each Survey Line Item record produces one cell at the intersection
+    // of its SOW Line Item (row) and its Survey Request (column).
+    // We carry a reference to the rendered <tr> from view_3889 so the
+    // cell builder can scrape photo HTML + detail-field text directly
+    // from Knack's rendered DOM (more reliable than the model for
+    // file/connection cells that don't always populate _raw cleanly).
+    var rowDomById = indexLineItemRowsById();
+    var cells = {};                 // cells[sowLiId][surveyId] = { surveyLineItemId, attrs, tr }
     var sowLiLabel = {};            // sowLiId -> display label
+    var sowLiProduct = {};          // sowLiId -> first-seen product name
     var groupBySowLi = {};          // sowLiId -> mdf label
     var groupOrder = [];            // ordered list of group labels seen
     var groupSeen = {};
@@ -9142,19 +9230,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     for (var i = 0; i < lineItems.length; i++) {
       var a = attrsOf(lineItems[i]);
+      var sliId     = a.id;
       var sowLiId   = connId(a, FIELD_SOW_LI);
       var surveyId  = connId(a, FIELD_SURVEY);
       if (!sowLiId || !surveyId) continue;
 
       if (!cells[sowLiId]) cells[sowLiId] = {};
       cells[sowLiId][surveyId] = {
-        photoCount: readPhotoCount(a),
-        notes:      readNotes(a)
+        surveyLineItemId: sliId,
+        attrs:            a,
+        tr:               rowDomById[sliId] || null
       };
 
       if (!sowLiSeen[sowLiId]) {
         sowLiSeen[sowLiId] = true;
         sowLiLabel[sowLiId] = connLabel(a, FIELD_SOW_LI) || sowLiId;
+        sowLiProduct[sowLiId] = connLabel(a, FIELD_PRODUCT);
         var grp = connLabel(a, FIELD_MDF_IDF) || 'Unassigned';
         groupBySowLi[sowLiId] = grp;
         if (!groupSeen[grp]) {
@@ -9214,10 +9305,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
       sowLiByGroup[grp].forEach(function (sowLiId) {
         html.push('<tr>');
-        html.push('<td class="scw-srv-row-label">' + escapeHtml(sowLiLabel[sowLiId]) + '</td>');
+        html.push('<td class="scw-srv-row-label">' +
+          escapeHtml(sowLiLabel[sowLiId]) +
+          (sowLiProduct[sowLiId]
+            ? '<span class="scw-srv-row-product">' + escapeHtml(sowLiProduct[sowLiId]) + '</span>'
+            : '') +
+          '</td>');
         columns.forEach(function (col) {
           var cell = cells[sowLiId] && cells[sowLiId][col.id];
-          html.push('<td>' + buildCellHtml(cell) + '</td>');
+          html.push('<td class="scw-srv-cell">' + buildCellHtml(cell) + '</td>');
         });
         html.push('</tr>');
       });
@@ -9262,17 +9358,51 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   function buildCellHtml(cell) {
     if (!cell) return '<span class="scw-srv-cell--empty">—</span>';
+
     var parts = [];
-    if (cell.photoCount > 0) {
-      parts.push('<span class="scw-srv-cell-photos">📷 ' + cell.photoCount + '</span>');
+
+    // ── Photos: scrape rendered cell HTML from the row in view_3889.
+    // This preserves Knack's <a class="kn-img-gallery"> markup so
+    // clicking a thumbnail still opens the lightbox.
+    var photosHtml = scrapeCellHtml(cell.tr, FIELD_PHOTOS);
+    if (photosHtml) {
+      parts.push('<div class="scw-srv-cell-photos">' + photosHtml + '</div>');
     } else {
-      parts.push('<span class="scw-srv-cell-no-photos">No photos</span>');
+      parts.push('<div class="scw-srv-cell-no-photos">No photos</div>');
     }
-    if (cell.notes) {
+
+    // ── Notes (model is fine for this — long-text field).
+    var notes = readNotes(cell.attrs);
+    if (notes) {
       parts.push('<div class="scw-srv-cell-notes" title="' +
-        escapeAttr(cell.notes) + '">📝 ' +
-        escapeHtml(truncate(cell.notes, NOTES_PREVIEW_LEN)) + '</div>');
+        escapeAttr(notes) + '">' +
+        '<span class="scw-srv-cell-notes-label">Notes:</span>' +
+        escapeHtml(truncate(notes, NOTES_PREVIEW_LEN)) + '</div>');
     }
+
+    // ── Detail fields: each rendered as a small key·value row.
+    // Read from the rendered td so a Yes/No formatted as a chip in
+    // Knack still resolves to "Yes"/"No" text. Skip rows whose value
+    // is empty / "—" / "No" (No is implied — only call out Yes).
+    var detailRows = [];
+    for (var i = 0; i < DETAIL_FIELDS.length; i++) {
+      var def = DETAIL_FIELDS[i];
+      var label = def[1];
+      var fk    = def[2];
+      var val   = scrapeCellText(cell.tr, fk);
+      if (!val) continue;
+      var lc = val.toLowerCase();
+      if (lc === 'no' || lc === '—' || lc === '0') continue;
+      var vCls = (lc === 'yes') ? 'v v--yes' : 'v';
+      detailRows.push(
+        '<span class="k">' + escapeHtml(label) + '</span>' +
+        '<span class="' + vCls + '">' + escapeHtml(val) + '</span>'
+      );
+    }
+    if (detailRows.length) {
+      parts.push('<div class="scw-srv-cell-details">' + detailRows.join('') + '</div>');
+    }
+
     return parts.join('');
   }
 
