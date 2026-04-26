@@ -43,7 +43,12 @@
   var FIELD_SOW_LI              = 'field_2404'; // ROW pivot — connection to SOW Line Item
   var FIELD_SURVEY              = 'field_2360'; // COLUMN pivot — connection to Survey Request
   var FIELD_MDF_IDF             = 'field_2375'; // grouping field
-  var FIELD_PHOTOS              = 'field_2697'; // photos cell (rendered HTML scraped)
+  // The photos column on view_3889 is rendered with class
+  // `field_771:thumb_14` (the `:thumb_14` is Knack's image-size suffix);
+  // the cell's data-field-key is the bare `field_771`. We scrape via
+  // the data-field-key attribute selector so the colon doesn't confuse
+  // querySelector (it would parse as an invalid pseudo-class).
+  var FIELD_PHOTOS              = 'field_771';
   var FIELD_NOTES               = 'field_2412'; // long-text per-item observations
 
   // Detail fields surfaced inside each cell — pulled from the same
@@ -269,7 +274,16 @@
 
   function scrapeCellTd(tr, fieldKey) {
     if (!tr) return null;
-    return tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+    // data-field-key is the safest path — it's an exact-match attribute
+    // selector that handles colons / suffixes (e.g. `field_771:thumb_14`)
+    // that would otherwise fail as CSS class selectors.
+    var byAttr = tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (byAttr) return byAttr;
+    // Class-selector fallback for older Knack views that don't set
+    // data-field-key. Skip the call if the key has a colon (invalid CSS).
+    if (fieldKey.indexOf(':') !== -1) return null;
+    try { return tr.querySelector('td.' + fieldKey); }
+    catch (e) { return null; }
   }
 
   function scrapeCellHtml(tr, fieldKey) {
