@@ -336,3 +336,34 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **CLS → green (<0.1)**: remaining 0.0079 cluster is the workflow stepper — `div.scw-ktl-accordion.scw-step-disabled` + `a#scw-step-review-final-proposal.scw-step-action.is-disabled` resizing when `is-disabled` resolves late. Fix would be a `min-width` / `min-height` on `.scw-step-action` (or `.scw-ktl-accordion`) so the disabled-state visual doesn't change the layout box.
 - **Checkbox-click INP in field_1957 picker (~408ms)**: already down from 1,544ms via `contain: layout style` on the multi-col container and a narrowed observer scope (commit 721058d). The remaining ~400ms is almost certainly Knack's own change-handler on the connection popover — updating internal form state, re-evaluating validation, refreshing whatever live-value indicator the popover shows. Further reduction would require intercepting / monkey-patching Knack's connection picker handler, which is brittle (Knack-internal surface). Not worth pursuing unless this specific interaction becomes a major daily pain. Diagnostic next step if re-attempted: DevTools Performance recording on a single checkbox click — the call tree will show whether time is in Knack's bundle, style/layout, or something else we can actually reach.
 - **Warning — do NOT naively re-try chunking `transformView`**: commit 567d975 split Phase 2 into rAF chunks and regressed INP to 4,400ms in live testing because there's no in-flight guard and `knack-view-render` fires repeatedly on this scene (filter changes, cross-view refreshes from `refresh-on-inline-edit.js`). Multiple `transformView` runs end up overlapping, each stacking its own rAF queue and its own `finalize()` pass. If chunking is attempted again, it needs (a) per-view in-flight guard that cancels or skips concurrent runs, (b) a shared `finalize()` that isn't re-run per overlapping call, and (c) testing under real event storms (filter changes, cell edits) not just first load.
+
+### 6. Tighten ops-stepper "Processing…" pill polling cadence
+- **Location**: `src/features/ops-review-pill.js` → `POLL_INTERVAL_MS` (currently `5 * 1000`) and `schedulePoll()` / `pollOnce()` flow.
+- **Symptom**: after an Ops action fires (Mark Ready / Request Alt Bid / Publish Proposal), Make's webhook returns `{success: true}` immediately because the scenario also generates a PDF and can't hold the connection for 40+s. The build-SOW page reloads, view_3325's pill shows "Processing X…" with the spinner, and then *waits up to 5s* per poll cycle to detect the underlying fields flipping. Users sit on the spinner longer than the actual Make work takes.
+- **Why we can't just wait for the webhook**: PDF generation may exceed Make's 40s webhook-response timeout. Webhook Response module has to fire early; client-side polling has to bridge the gap until the SOW's flag fields actually update.
+- **Recommended fix (adaptive)**: poll fast (1.5s) for the first ~15s of the pending window — covers the bulk of cases — then back off to 5s baseline. Plus: when `transform()` first sees a row in pending state on a fresh page load, schedule a 500ms first poll instead of waiting a full interval (handles the "Make finished a hair before reload" case).
+- **Cheaper variant**: drop `POLL_INTERVAL_MS` from 5000 to 2000 flat. One-line change. Worst-case detection latency 2s instead of 5s. Knack rate limit is ~10 req/s; 2 fetches per cycle (`view_3325` + `view_3885`) every 2s is comfortably under budget.
+- **Why deferred**: this is UX polish on a flow that already works. Ship the simple flat-interval change first if/when it bubbles up as a real complaint; only do adaptive if PDF gen times stay long.
+
+### 7. SOW filter pills above view_3610 (Scope of Work Line Items grid)
+- **Goal**: a row in this grid can connect to one or more SOWs via `field_2154` (e.g. the same line item is in `SW-1001` AND `SW-1060`). Currently you have to scroll/scan to figure out which SOW a row belongs to. Add a quick-filter strip above the grid: one pill per unique SOW (label = SW-####), plus a "Show All" pill. Clicking a SOW pill hides rows that don't connect to that SOW; "Show All" resets.
+- **DOM contract for `field_2154`**: each cell looks like
+  ```html
+  <td class="field_2154 ..." data-field-key="field_2154">
+    <span class="col-1">
+      <span class="69dd0f8333dbe73a5cdfc652" data-kn="connection-value">SW-1001</span><br>
+      <span class="69ea62103a04f2f006dde85c" data-kn="connection-value">SW-1060</span>
+    </span>
+  </td>
+  ```
+  The 24-hex `class` on each inner span is the SOW record id; `textContent` is the display label. Empty cells have `&nbsp;` only.
+- **Where to read SOWs**: prefer `Knack.views.view_3610.model.data.models[*].field_2154_raw` — that's an array of `{id, identifier}` per row, fully reliable. DOM scrape is the fallback if the model isn't populated yet.
+- **Where to inject the pill strip**: above the table, beneath the existing `.kn-records-nav` / `Add filters` / per-page block. Look at how `bulk-delete-confirm.js` mounts the moved button cluster on `#bulkOpsControlsDiv-view_3610` for the right insertion-point pattern.
+- **Filtering implementation**: the safest approach is row-level `display:none` on:
+  - the data row (`tr[data-scw-worksheet="1"]`)
+  - the paired worksheet card row (`tr.scw-ws-row` with the matching record id)
+  - the paired inline-photo row (`tr.scw-inline-photo-row`)
+  Each "logical row" in this grid is actually a triplet of `<tr>` elements — they need to hide together. Group-collapse already coordinates `display:none` on these triplets; mirror its `rowsUntilNextRelevantGroup` pattern. Group headers (`tr.kn-table-group`) should auto-hide when none of their children are visible.
+- **Coexistence with group-collapse exclusive accordion**: view_3610 is `exclusive: true`, so only one MDF/IDF L1 group is open at a time. The SOW filter is orthogonal to the group accordion — applying both is "row must be visible per accordion AND match SOW filter." Pills should not flip the accordion state; group-collapse should not clobber the filter when re-enhancing.
+- **Sibling to copy from**: `bid-items-grid.js` for header-strip injection idiom; `group-collapse.js` for triplet/row-pairing logic.
+- **Stretch**: persist last-selected SOW per view in `localStorage` keyed by sceneId (matches group-collapse's `storageKey` convention). Empty-default = Show All.
