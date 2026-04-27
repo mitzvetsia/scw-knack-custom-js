@@ -50028,13 +50028,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return out;
   }
 
-  /** Group candidate records by their MDF/IDF identifier, preserving
-   *  the model-provided order within each group. Records with a blank
-   *  MDF/IDF land in a trailing "Unassigned" group. */
+  /** Group candidate records by their MDF/IDF identifier and sort:
+   *    - groups by label, alphanumeric / natural order (so "IDF 2" < "IDF 10")
+   *    - items within each group by identifier, same natural order
+   *  Records with a blank MDF/IDF land in a trailing "Unassigned" group
+   *  regardless of where it would fall alphabetically. */
   function groupByMdfIdf(records, selectedIdSet) {
     var orderedLabels = [];
     var groupMap = {};  // label → { label, items }
     var UNASSIGNED_LABEL = 'Unassigned';
+
+    // Natural-order comparator: "Camera 2" < "Camera 10", case-insensitive,
+    // matches the device-worksheet sort pattern (localeCompare numeric:true).
+    function naturalCmp(a, b) {
+      return String(a || '').localeCompare(
+        String(b || ''),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      );
+    }
 
     function bucketFor(label) {
       if (!groupMap[label]) {
@@ -50071,13 +50083,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       });
     }
 
-    // Pull Unassigned to the end if present
-    var unassignedIdx = orderedLabels.indexOf(UNASSIGNED_LABEL);
-    if (unassignedIdx !== -1 && unassignedIdx !== orderedLabels.length - 1) {
-      orderedLabels.splice(unassignedIdx, 1);
-      orderedLabels.push(UNASSIGNED_LABEL);
-    }
-    return orderedLabels.map(function (l) { return groupMap[l]; });
+    // Sort group labels alphanumerically, but force Unassigned to the end.
+    orderedLabels.sort(function (a, b) {
+      if (a === UNASSIGNED_LABEL) return 1;
+      if (b === UNASSIGNED_LABEL) return -1;
+      return naturalCmp(a, b);
+    });
+
+    // Sort items within each group alphanumerically by identifier.
+    return orderedLabels.map(function (l) {
+      var g = groupMap[l];
+      g.items.sort(function (a, b) { return naturalCmp(a.identifier, b.identifier); });
+      return g;
+    });
   }
 
   // ── Click interceptor (chunk 2) ───────────────────────────────────
