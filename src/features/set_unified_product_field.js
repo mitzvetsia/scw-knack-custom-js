@@ -227,6 +227,17 @@
     let isMulti = false;
     if (hasSelect) isMulti = isMultiSelect($sel);
 
+    // Skip work if the field is already empty. Chosen.js rebuilds are
+    // O(N options), so on dropdowns with 200+ products each call costs
+    // hundreds of ms. On a bucket change where parents weren't selected
+    // yet, this turns the cascade from 4 rebuilds into 0.
+    const cur = hasSelect ? $sel.val() : null;
+    const alreadyEmpty = !cur || (Array.isArray(cur) && cur.length === 0);
+    if (alreadyEmpty) {
+      log("Skipped clear (already empty)", fieldKey);
+      return;
+    }
+
     const clearedVal = isMulti ? [] : "";
 
     if (hasSelect) {

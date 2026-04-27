@@ -23677,6 +23677,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ======================
   // Binding strategy
   // ======================
+  // Defer applyRules to the next animation frame so the dropdown can
+  // close and the click event can finish before we do hide/show DOM
+  // work across 24 fields. Coalesces multiple changes per frame.
+  function deferApplyRules($scope, viewId) {
+    var key = '_scwBucketRulesRAF_' + viewId;
+    if ($scope[0] && $scope[0][key]) return;
+    if ($scope[0]) $scope[0][key] = true;
+    requestAnimationFrame(function () {
+      if ($scope[0]) $scope[0][key] = false;
+      applyRules($scope, viewId);
+    });
+  }
+
   function bindDelegatedChange(viewId) {
     const sel = `#${viewId} select[name="${BUCKET_FIELD_KEY}"], #${viewId} #${viewId}-${BUCKET_FIELD_KEY}`;
 
@@ -23688,7 +23701,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           ? $bucketWrap.closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
 
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
 
     // Re-evaluate when assumption type field changes (multi-select)
@@ -23699,7 +23712,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         const $scope = $(this).closest('form, .kn-form, .kn-view').length
           ? $(this).closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
   }
 
@@ -26225,6 +26238,17 @@ $(".kn-navigation-bar").hide();
 
     let isMulti = false;
     if (hasSelect) isMulti = isMultiSelect($sel);
+
+    // Skip work if the field is already empty. Chosen.js rebuilds are
+    // O(N options), so on dropdowns with 200+ products each call costs
+    // hundreds of ms. On a bucket change where parents weren't selected
+    // yet, this turns the cascade from 4 rebuilds into 0.
+    const cur = hasSelect ? $sel.val() : null;
+    const alreadyEmpty = !cur || (Array.isArray(cur) && cur.length === 0);
+    if (alreadyEmpty) {
+      log("Skipped clear (already empty)", fieldKey);
+      return;
+    }
 
     const clearedVal = isMulti ? [] : "";
 

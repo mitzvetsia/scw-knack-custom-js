@@ -238,6 +238,19 @@
   // ======================
   // Binding strategy
   // ======================
+  // Defer applyRules to the next animation frame so the dropdown can
+  // close and the click event can finish before we do hide/show DOM
+  // work across 24 fields. Coalesces multiple changes per frame.
+  function deferApplyRules($scope, viewId) {
+    var key = '_scwBucketRulesRAF_' + viewId;
+    if ($scope[0] && $scope[0][key]) return;
+    if ($scope[0]) $scope[0][key] = true;
+    requestAnimationFrame(function () {
+      if ($scope[0]) $scope[0][key] = false;
+      applyRules($scope, viewId);
+    });
+  }
+
   function bindDelegatedChange(viewId) {
     const sel = `#${viewId} select[name="${BUCKET_FIELD_KEY}"], #${viewId} #${viewId}-${BUCKET_FIELD_KEY}`;
 
@@ -249,7 +262,7 @@
           ? $bucketWrap.closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
 
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
 
     // Re-evaluate when assumption type field changes (multi-select)
@@ -260,7 +273,7 @@
         const $scope = $(this).closest('form, .kn-form, .kn-view').length
           ? $(this).closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
   }
 
