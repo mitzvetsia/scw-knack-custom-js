@@ -972,13 +972,29 @@
 
   function bindPlaybookRules() {
     var form = document.getElementById(PLAYBOOK_VIEW);
-    if (!form || form.getAttribute('data-scw-playbook-rules') === '1') return;
+    if (!form) return;
+    // Mark the form (purely informational — handlers are idempotent
+    // via jQuery namespace .off().on() below). The previous once-only
+    // guard on this attribute caused intermittent breakage: Knack's
+    // post-submit re-render replaces the inner <select> + <input>
+    // elements while keeping the outer <form>, which left our flag
+    // set but the handlers detached. Re-binding every render is safe
+    // because .off(NS) clears any prior listeners first.
     form.setAttribute('data-scw-playbook-rules', '1');
 
-    // Connection field change (Chosen.js fires change on the original select)
-    $('#' + PLAYBOOK_VIEW + '-field_2228').on('change' + NS, applyPlaybookRules);
-    // Radio change for field_1752
-    $(form).on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
+    // Connection field change (Chosen.js fires change on the original select).
+    // The select element is replaced on every form re-render, so we have
+    // to re-bind each time — namespace .off() clears the previous handler
+    // (if any) without affecting other modules' listeners.
+    $('#' + PLAYBOOK_VIEW + '-field_2228')
+      .off('change' + NS)
+      .on('change' + NS, applyPlaybookRules);
+
+    // Radio change for field_1752 — delegated on the form so it survives
+    // input replacement, but still namespaced + .off()'d for safety.
+    $(form)
+      .off('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]')
+      .on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
 
     applyPlaybookRules();
   }
