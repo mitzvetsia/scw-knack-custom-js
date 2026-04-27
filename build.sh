@@ -50,6 +50,7 @@ cat \
   src/features/bid-review/init.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
+  src/features/sow-filter-pills.js \
   src/features/select-all-checkboxes.js \
   src/features/bulk-delete-confirm.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
