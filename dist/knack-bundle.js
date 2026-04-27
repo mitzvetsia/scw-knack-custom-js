@@ -48296,18 +48296,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ----------------------------------------------------------------------
   // Both forward (field_1957 → children) and inverse (field_2197 →
   // accessories) cascades fire PUTs in the background and return
-  // immediately. If the user navigates within ~500 ms the browser
-  // cancels every in-flight request and writes are lost.
+  // immediately. If the user navigates while requests are still pending,
+  // the browser would normally cancel every in-flight XHR and writes
+  // would be lost — which is exactly the "some children got updated, not
+  // all" partial-cascade bug.
+  //
+  // Two-layer protection:
+  //   1. fetch(..., { keepalive: true }) — the browser is required to
+  //      finish the request even after the page unloads. This is the
+  //      hard guarantee. See knackPutKeepalive() below.
+  //   2. A loud toast + a beforeunload prompt while count > 0 so the
+  //      user notices and (hopefully) pauses before navigating.
   //
   // The connection-picker has its own stage gate that keeps the modal
   // open until everything settles. But native inline edits and form
   // submits don't go through the picker, so the cascade fires-and-
-  // forgets with no UI feedback at all.
-  //
-  // This tracker increments on every cascade PUT begin and decrements
-  // on settle. While the count is non-zero we show a small toast
-  // ("Syncing groups…") and bind a beforeunload handler that prompts
-  // the user before they leave the page.
+  // forgets with no UI feedback at all without this tracker.
   // ======================================================================
 
   var _cascadeInFlight   = 0;
@@ -48321,21 +48325,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     s.id = CASCADE_TOAST_CSS_ID;
     s.textContent = [
       '.scw-cascade-toast {',
-      '  position: fixed; bottom: 24px; right: 24px; z-index: 100000;',
-      '  background: #1f2937; color: #f9fafb;',
-      '  padding: 10px 16px; border-radius: 8px;',
-      '  font: 500 13px/1.3 system-ui, -apple-system, sans-serif;',
-      '  box-shadow: 0 4px 12px rgba(0,0,0,0.18);',
-      '  display: inline-flex; align-items: center; gap: 10px;',
+      '  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);',
+      '  z-index: 100000;',
+      '  background: #b45309; color: #fff;',
+      '  padding: 12px 20px; border-radius: 10px;',
+      '  font: 600 13px/1.3 system-ui, -apple-system, sans-serif;',
+      '  box-shadow: 0 6px 22px rgba(0,0,0,0.28);',
+      '  display: inline-flex; align-items: center; gap: 12px;',
       '  pointer-events: none;',
+      '  max-width: 92vw;',
       '}',
       '.scw-cascade-toast__spinner {',
-      '  width: 12px; height: 12px;',
-      '  border: 2px solid rgba(255,255,255,0.3);',
+      '  width: 14px; height: 14px;',
+      '  border: 2px solid rgba(255,255,255,0.4);',
       '  border-top-color: #fff;',
       '  border-radius: 50%;',
       '  animation: scwCascadeSpin 0.8s linear infinite;',
+      '  flex: 0 0 auto;',
       '}',
+      '.scw-cascade-toast__msg { display: flex; flex-direction: column; gap: 2px; }',
+      '.scw-cascade-toast__msg b { font-weight: 700; }',
+      '.scw-cascade-toast__msg small { font-weight: 500; opacity: 0.9; font-size: 11px; }',
       '@keyframes scwCascadeSpin { to { transform: rotate(360deg); } }'
     ].join('\n');
     document.head.appendChild(s);
@@ -48347,7 +48357,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     _cascadeToastEl = document.createElement('div');
     _cascadeToastEl.className = 'scw-cascade-toast';
     _cascadeToastEl.innerHTML =
-      '<span class="scw-cascade-toast__spinner"></span><span>Syncing groups…</span>';
+      '<span class="scw-cascade-toast__spinner"></span>' +
+      '<span class="scw-cascade-toast__msg">' +
+        '<b>Saving changes — please don\'t leave this page</b>' +
+        '<small>Syncing connected records. This takes a few seconds.</small>' +
+      '</span>';
     document.body.appendChild(_cascadeToastEl);
   }
 
@@ -48359,10 +48373,73 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function cascadeUnloadHandler(e) {
     if (_cascadeInFlight <= 0) return;
+    // Modern browsers ignore the custom string but still show a generic
+    // "Are you sure you want to leave?" prompt as long as we set
+    // returnValue. The actual writes are protected by keepalive:true on
+    // the fetch — this prompt is just a soft warning.
     var msg = 'Saves still in progress — wait a moment before leaving.';
     e.preventDefault();
     e.returnValue = msg;
     return msg;
+  }
+
+  // ======================================================================
+  // PUT helper that survives page unload.
+  // ----------------------------------------------------------------------
+  // fetch(..., { keepalive: true }) tells the browser it must finish
+  // the request even if the page is unloading (tab close, navigation,
+  // refresh). XHR / $.ajax / SCW.knackAjax do NOT have this guarantee —
+  // the browser cancels them as soon as the page tears down. This is the
+  // hard fix for "some children got the cascade write, others didn't"
+  // when the user navigates partway through a multi-PUT cascade.
+  //
+  // Keepalive constraints:
+  //   - body must be ≤ 64 KB (we send tiny JSON, no issue)
+  //   - method-agnostic, request-body-only (no streaming response)
+  //
+  // Falls back to SCW.knackAjax if fetch() is unavailable for any reason.
+  // ======================================================================
+  function knackPutKeepalive(url, body, onDone) {
+    var hasFetch = typeof window.fetch === 'function';
+    if (!hasFetch) {
+      if (window.SCW && typeof window.SCW.knackAjax === 'function') {
+        window.SCW.knackAjax({
+          type: 'PUT', url: url, data: JSON.stringify(body), dataType: 'json',
+          success: function (resp) { if (typeof onDone === 'function') onDone(null, resp); },
+          error:   function (xhr)  { if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed')); }
+        });
+        return;
+      }
+      if (typeof onDone === 'function') onDone(new Error('fetch+knackAjax both unavailable'));
+      return;
+    }
+    try {
+      window.fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type':           'application/json',
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key':   'knack',
+          'Authorization':          Knack.getUserToken()
+        },
+        body: JSON.stringify(body),
+        keepalive: true,
+        credentials: 'include'
+      }).then(function (resp) {
+        if (!resp.ok) {
+          if (typeof onDone === 'function') onDone(new Error('PUT ' + resp.status));
+          return;
+        }
+        // We don't actually need the parsed body for these PUTs — patchCard
+        // already updated the UI optimistically. Resolve as soon as the
+        // server acknowledges with 2xx.
+        if (typeof onDone === 'function') onDone(null, resp);
+      }).catch(function (err) {
+        if (typeof onDone === 'function') onDone(err);
+      });
+    } catch (e) {
+      if (typeof onDone === 'function') onDone(e);
+    }
   }
 
   function bindCascadeUnloadGuard() {
@@ -48682,62 +48759,48 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (typeof onDone === 'function') onDone();
       return;
     }
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') {
-      if (typeof onDone === 'function') onDone(new Error('knackAjax unavailable'));
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
       return;
     }
     var body = {};
     body[GROUPING_FIELD] = [mdfId];
     log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
     cascadeBegin();
-    window.SCW.knackAjax({
-      type: 'PUT',
-      url: window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
-      data: JSON.stringify(body),
-      dataType: 'json',
-      success: function () {
+    knackPutKeepalive(
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      body,
+      function (err) {
         cascadeEnd();
-        log('  PUT(accessory) ok ' + accessoryId);
-        if (typeof onDone === 'function') onDone();
-      },
-      error: function (xhr) {
-        cascadeEnd();
-        console.warn(LOG_PREFIX, 'accessory PUT failed ' + accessoryId,
-          xhr && xhr.status, xhr && xhr.responseText);
-        if (typeof onDone === 'function') onDone(xhr);
+        if (err) {
+          console.warn(LOG_PREFIX, 'accessory PUT failed ' + accessoryId, err);
+        } else {
+          log('  PUT(accessory) ok ' + accessoryId);
+        }
+        if (typeof onDone === 'function') onDone(err);
       }
-    });
+    );
   }
 
   function firePut(recordId, body, onDone) {
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') {
-      console.warn(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable — skipping PUT for ' + recordId);
-      if (typeof onDone === 'function') onDone(new Error('knackAjax unavailable'));
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      console.warn(LOG_PREFIX, 'SCW.knackRecordUrl unavailable — skipping PUT for ' + recordId);
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
       return;
     }
     var url = window.SCW.knackRecordUrl(VIEW_ID, recordId);
     log('  PUT → ' + recordId + ' body=' + JSON.stringify(body));
     ownPuts[recordId] = true;
     cascadeBegin();
-    window.SCW.knackAjax({
-      type: 'PUT',
-      url: url,
-      data: JSON.stringify(body),
-      dataType: 'json',
-      success: function (resp) {
-        delete ownPuts[recordId];
-        cascadeEnd();
+    knackPutKeepalive(url, body, function (err, resp) {
+      delete ownPuts[recordId];
+      cascadeEnd();
+      if (err) {
+        console.warn(LOG_PREFIX, 'PUT failed ' + recordId, err);
+        if (typeof onDone === 'function') onDone(err);
+      } else {
         log('  PUT ok ' + recordId);
         if (typeof onDone === 'function') onDone(null, resp);
-      },
-      error: function (xhr) {
-        delete ownPuts[recordId];
-        cascadeEnd();
-        console.warn(LOG_PREFIX, 'PUT failed ' + recordId,
-          xhr && xhr.status, xhr && xhr.responseText);
-        if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed'));
       }
     });
   }
