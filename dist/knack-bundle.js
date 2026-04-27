@@ -10018,10 +10018,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         // includes every field downstream Make pipelines need (e.g.
         // duplicating Survey Line Item records on Request Alt Bid).
         // Lives in the Builder, hidden from users via global-styles.js.
-        // Dropped from the rendered proposal (skipViews) but picked up
-        // by buildJsonSnapshot (NOT in jsonSkipViews).
+        // Dropped from the rendered proposal (skipViews) but is the
+        // sole grid in the JSON payload via jsonIncludeViews below.
         view_3896: true
       },
+      // JSON snapshot for this scene is intentionally slim:
+      //   { sowRecordId, view_3896: [...full records...] }
+      // No header detail, no other grids — Make pipelines that
+      // duplicate records only care about view_3896's projection.
+      // The rendered HTML proposal is unaffected.
+      jsonIncludeViews: ['view_3896'],
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -11042,15 +11048,35 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     var sceneEl = document.getElementById('kn-' + sceneId);
     if (!sceneEl) return {};
 
-    // skipViews is HTML-only (drives scrapeAllViews → the rendered
-    // proposal). For the JSON snapshot we want the OPPOSITE: include
-    // everything the scene exposes — utility views, hidden data-only
-    // grids, the SOW detail header that's CSS-hidden via skipViews
-    // (view_3861) — because Make pipelines clone records from this
-    // payload. Honor cfg.jsonSkipViews instead, which defaults empty
-    // unless explicitly set; that lets a scene opt out a specific
-    // view from the JSON without affecting the HTML render.
     var cfg = resolveConfiguredScene(sceneId);
+
+    // ── Slim shape: cfg.jsonIncludeViews (allow-list) ──
+    // When set, the snapshot is just `{ sowRecordId, <view>: [...] }`
+    // for each listed view — no header, no other grids, nothing else.
+    // Used by scenes whose Make pipelines only need a focused subset
+    // (e.g. view_3896 on scene_1096, the hidden data-only grid that
+    // carries the full Survey/SOW Line Item projection).
+    if (cfg && Array.isArray(cfg.jsonIncludeViews) && cfg.jsonIncludeViews.length) {
+      var slim = { sowRecordId: getPageRecordId() || '' };
+      for (var s = 0; s < cfg.jsonIncludeViews.length; s++) {
+        var vid = cfg.jsonIncludeViews[s];
+        if (typeof vid !== 'string') continue;
+        var slimT = detectViewType(vid);
+        if (slimT === 'grid') {
+          slim[vid] = extractGridRecords(vid);
+        } else if (slimT === 'detail') {
+          slim[vid] = extractDetailRecord(vid);
+        }
+      }
+      return slim;
+    }
+
+    // ── Full shape (default) ──
+    // skipViews is HTML-only (drives scrapeAllViews → the rendered
+    // proposal). The JSON snapshot wants the opposite by default —
+    // include everything the scene exposes — because Make pipelines
+    // clone records from this payload. cfg.jsonSkipViews lets a
+    // scene opt out a specific view from JSON without affecting HTML.
     var jsonSkip = (cfg && cfg.jsonSkipViews) || {};
 
     var snapshot = { header: null, headerId: '' };
