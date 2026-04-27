@@ -27202,30 +27202,47 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
-  // BINDINGS (delegated + chosen-safe)
+  // BINDINGS — direct, not document-delegated
   // ============================================================
+  // Earlier versions of this module used $(document).on('change', selector, …)
+  // and $(document).on('click', '… *', …) to be resilient against KTL's
+  // form rebuilds. That came with a brutal cost: every change event
+  // anywhere in the app paid ~100 ms of jQuery selector matching against
+  // a 4-clause compound selector, and every click anywhere paid ~450 ms
+  // because of the trailing `*` which forces an ancestor walk through
+  // the compound matcher for every click target. On a busy form like
+  // view_3329 (multi-add), one bucket pick triggers 8+ change events as
+  // we cascade-clear parent product fields, and each one paid that
+  // 100 ms toll on the document handler — even though the matching
+  // selector targets a different view (view_466) entirely.
+  //
+  // The fix: bind directly to the actual elements. We're already
+  // re-running initEverywhere on knack-view-render, knack-scene-render,
+  // the KTL hide/show toggle, and the MutationObserver — so KTL
+  // rebuilding the form re-attaches handlers naturally. No document
+  // delegation needed.
   function bindChangeHandlers(cfg) {
-    const roots = viewRoots(cfg).join(', ');
-    const sel = `${roots} select[name="${cfg.bucketFieldKey}"], ${roots} #${cfg.viewKey}-${cfg.bucketFieldKey}`;
+    const $scopes = findActiveScopes(cfg);
+    $scopes.forEach(function ($scope) {
+      const $sel = findBucketSelect($scope, cfg);
+      if ($sel.length) {
+        $sel.off('change' + EVENT_NS).on('change' + EVENT_NS, function () {
+          applyRulesToScope($scope, cfg);
+        });
+      }
 
-    // Underlying select change
-    $(document)
-      .off('change' + EVENT_NS, sel)
-      .on('change' + EVENT_NS, sel, function () {
-        const $scopes = findActiveScopes(cfg);
-        $scopes.forEach(($s) => applyRulesToScope($s, cfg));
-      });
-
-    // Chosen UI clicks can change value without firing a normal change immediately in some setups.
-    // Re-apply after user interacts with the chosen container.
-    $(document)
-      .off('click' + EVENT_NS, `${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn, ${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn *`)
-      .on('click' + EVENT_NS, `${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn, ${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn *`, function () {
-        setTimeout(function () {
-          const $scopes = findActiveScopes(cfg);
-          $scopes.forEach(($s) => applyRulesToScope($s, cfg));
-        }, 0);
-      });
+      // Chosen UI: bind directly to the chosen container.
+      // (Some Chosen setups don't fire `change` on the underlying
+      // <select> immediately; clicking inside the chzn container is
+      // a backup signal.)
+      const chznId = '#' + cfg.viewKey + '_' + cfg.bucketFieldKey + '_chzn';
+      const $chzn = $scope.find(chznId);
+      if ($chzn.length) {
+        $chzn.off('click' + EVENT_NS).on('click' + EVENT_NS, function () {
+          setTimeout(function () { applyRulesToScope($scope, cfg); }, 0);
+        });
+      }
+    });
   }
 
   // ============================================================
