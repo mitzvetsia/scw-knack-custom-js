@@ -3,6 +3,14 @@ set -e
 
 mkdir -p dist
 
+# Concatenate all source files into a temp bundle, then minify with
+# esbuild.  No transpilation beyond what --target=es2015 implies — we
+# only want whitespace/comment removal and local-identifier mangling.
+# Globals (window.SCW, Knack, $, jQuery) are preserved because they're
+# accessed via property paths that esbuild leaves alone.
+TMP_BUNDLE="$(mktemp -t knack-bundle.XXXXXX.js)"
+trap 'rm -f "$TMP_BUNDLE"' EXIT
+
 cat \
   src/config.js \
   src/util.js \
@@ -15,6 +23,7 @@ cat \
   src/features/inline-form-recompose.js \
   src/features/inline-edit-checkbox-layout.js \
   src/features/extract-hsv-color.js \
+  src/features/heavy-grid-perf.js \
   src/features/ktl-accordion/ktl-accordion.js \
   src/features/accordion-menu-inject.js \
   src/features/workflow-stepper.js \
@@ -107,6 +116,17 @@ cat \
   src/features/legacy/expand-collapse-legacy-function.js \
   src/features/legacy/add-checkboxes.js \
   src/features/legacy/get-tl-photos.js \
-  > dist/knack-bundle.js
+  > "$TMP_BUNDLE"
 
-echo "✔ Built dist/knack-bundle.js"
+UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
+
+npx --yes esbuild "$TMP_BUNDLE" \
+  --minify \
+  --target=es2015 \
+  --legal-comments=none \
+  --outfile=dist/knack-bundle.js \
+  --log-level=warning
+
+MIN_BYTES=$(wc -c < dist/knack-bundle.js | tr -d ' ')
+RATIO=$(awk -v a="$MIN_BYTES" -v b="$UNMIN_BYTES" 'BEGIN { printf "%.1f", (a / b) * 100 }')
+echo "✔ Built dist/knack-bundle.js  (${UNMIN_BYTES} → ${MIN_BYTES} bytes, ${RATIO}%)"
