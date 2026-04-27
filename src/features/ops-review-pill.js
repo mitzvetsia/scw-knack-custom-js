@@ -730,6 +730,12 @@
       if (note) pill.setAttribute('data-scw-tip', note);
     } else if (step) {
       // Active next-step → link to the proposal page.
+      // The visible label is fixed ("Preview Proposal for Next Steps")
+      // because every active state — request-alt-bid, mark-ready,
+      // publish-proposal — does the same thing here: navigate to the
+      // proposal page where the actual action lives. step.label is still
+      // used for the "Processing X…" pending message so reviewers can
+      // see what action ops-stepper kicked off.
       pill = document.createElement('a');
       pill.className = 'scw-ops-pill';
       var href = getRowLink(tr);
@@ -738,7 +744,7 @@
       pill.setAttribute('rel', 'noopener');
 
       var labelSpan = document.createElement('span');
-      labelSpan.textContent = step.label;
+      labelSpan.textContent = 'Preview Proposal for Next Steps';
       pill.appendChild(labelSpan);
 
       if (note) {
