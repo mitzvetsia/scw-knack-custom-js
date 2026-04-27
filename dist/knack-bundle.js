@@ -26199,8 +26199,21 @@ $(".kn-navigation-bar").hide();
 
     if (!unionIds.length) {
       const isMulti = isMultiSelect($unifiedSelect);
-      const encodedClear = encodeConnValue([], isMulti);
 
+      // Skip the entire clear path when the unified field is already empty.
+      // A no-op .val('') + .trigger('change') + chosenUpdate still costs a
+      // full Chosen rebuild (proportional to the option count), and on the
+      // form the unified <select> accumulates options across bucket picks
+      // via ensureOptions(). Without this guard, every bucket pick after
+      // the first is paying for a Chosen rebuild for no behavioral reason.
+      const cur = $unifiedSelect.val();
+      const alreadyEmpty = !cur || (Array.isArray(cur) && cur.length === 0);
+      if (alreadyEmpty) {
+        log("Skipped unified clear (already empty)");
+        return;
+      }
+
+      const encodedClear = encodeConnValue([], isMulti);
       $unifiedSelect.val(isMulti ? [] : "").trigger("change");
       $unifiedHidden.val(encodedClear).trigger("change");
       chosenUpdate($unifiedSelect);
@@ -26289,18 +26302,35 @@ $(".kn-navigation-bar").hide();
 
     const sync = debounce(() => setUnifiedFromParents($view, viewId), 80);
 
-    // ✅ RESET: when bucket changes, clear ALL parent product fields AND unified
+    // ✅ RESET: when bucket changes, clear ALL parent product fields AND unified.
+    //
+    // The clearing cascade is deferred to the next animation frame so the
+    // bucket-pick click can return immediately — Chosen's own "close
+    // dropdown / paint selected text" work happens in that same frame, and
+    // INP is measured from click to next paint. Doing the parent clears
+    // synchronously inside the change handler used to push INP to 1.5–2 s
+    // because each cleared parent select fires its own Chosen rebuild
+    // (proportional to its option count, ~200+ products on this form).
+    //
+    // A small flag coalesces multiple bucket changes within the same frame
+    // (defensive — Chosen normally only fires one change per pick).
     if (CONFIG.RESET_ON_FIELD) {
       const $bucket = getSelect($view, viewId, CONFIG.RESET_ON_FIELD);
       if ($bucket.length) {
+        const FRAME_FLAG = "_scwUnifiedResetRAF_" + viewId;
         $bucket
           .off(`change${EVENT_NS}-reset`)
           .on(`change${EVENT_NS}-reset`, function () {
-            clearParentsAndUnified($view, viewId);
-
-            // optional: one more pass to ensure unified stays cleared
-            // (since parents are now empty, sync will clear unified anyway)
-            sync();
+            if ($view[0] && $view[0][FRAME_FLAG]) return;
+            if ($view[0]) $view[0][FRAME_FLAG] = true;
+            requestAnimationFrame(function () {
+              if ($view[0]) $view[0][FRAME_FLAG] = false;
+              clearParentsAndUnified($view, viewId);
+              // One more pass to ensure unified stays cleared. With the
+              // already-empty guard in setUnifiedFromParents, this is a
+              // no-op once the cascade has settled.
+              sync();
+            });
           });
       }
     }
