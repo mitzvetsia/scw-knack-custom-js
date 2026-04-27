@@ -155,9 +155,13 @@
        view_3887: mounting-hardware accessory view read by
        mirror-connection-sync's MDF cascade. Must stay in the DOM/model
        so findAccessoryIds + fireAccessoryPut can resolve records, but
-       should never be visible to the user. */
+       should never be visible to the user.
+       view_REPLACE_ME: hidden data-only grid on scene_1096 used only
+       to enrich the publish JSON payload (Make duplicates these
+       records server-side). TODO: swap placeholder for real view id. */
     #view_3770,
-    #view_3887 {
+    #view_3887,
+    #view_REPLACE_ME {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;

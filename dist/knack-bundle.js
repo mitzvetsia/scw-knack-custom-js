@@ -1355,9 +1355,13 @@ window.SCW = window.SCW || {};
        view_3887: mounting-hardware accessory view read by
        mirror-connection-sync's MDF cascade. Must stay in the DOM/model
        so findAccessoryIds + fireAccessoryPut can resolve records, but
-       should never be visible to the user. */
+       should never be visible to the user.
+       view_REPLACE_ME: hidden data-only grid on scene_1096 used only
+       to enrich the publish JSON payload (Make duplicates these
+       records server-side). TODO: swap placeholder for real view id. */
     #view_3770,
-    #view_3887 {
+    #view_3887,
+    #view_REPLACE_ME {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;
@@ -10007,7 +10011,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         view_3861: true,
         view_3345: true,
         view_3883: true,
-        view_3886: true
+        view_3886: true,
+        // Hidden data-only grid: a richer Survey Line Item / SOW Line
+        // Item projection added solely so the publish JSON payload
+        // includes every field downstream Make pipelines need (e.g.
+        // duplicating Survey Line Item records on Request Alt Bid).
+        // Lives in the Builder, hidden from users via global-styles.js.
+        // Dropped from the rendered proposal (skipViews) but picked up
+        // by buildJsonSnapshot (NOT in jsonSkipViews).
+        // TODO: replace 'view_REPLACE_ME' with the real view id.
+        view_REPLACE_ME: true
       },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
@@ -11017,26 +11030,23 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     var sceneEl = document.getElementById('kn-' + sceneId);
     if (!sceneEl) return {};
 
-    // Honor the scene's skipViews list (same one scrapeAllViews uses)
-    // so utility / data-source-only views don't leak into the
-    // publish payload.
+    // skipViews is HTML-only (drives scrapeAllViews → the rendered
+    // proposal). For the JSON snapshot we want the OPPOSITE: include
+    // everything the scene exposes — utility views, hidden data-only
+    // grids, the SOW detail header that's CSS-hidden via skipViews
+    // (view_3861) — because Make pipelines clone records from this
+    // payload. Honor cfg.jsonSkipViews instead, which defaults empty
+    // unless explicitly set; that lets a scene opt out a specific
+    // view from the JSON without affecting the HTML render.
     var cfg = resolveConfiguredScene(sceneId);
-    var skipViews = (cfg && cfg.skipViews) || {};
+    var jsonSkip = (cfg && cfg.jsonSkipViews) || {};
 
     var snapshot = { header: null };
 
-    // Walk every view on the scene rather than hard-coding view_3341 +
-    // view_3371. Buttons that fire publish from any scene now get the
-    // full record dump for every grid that scene actually has —
-    // necessary for Make to clone Survey Line Item records on alt-bid
-    // requests, populate webhooks for new build pages, etc. Existing
-    // Make scenarios that read snapshot.view_3341 / .view_3371 keep
-    // working because we still write to those exact keys when the
-    // scene has them.
     var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
     for (var i = 0; i < allViewEls.length; i++) {
       var viewId = allViewEls[i].id;
-      if (skipViews[viewId]) continue;
+      if (jsonSkip[viewId]) continue;
       if (!/^view_\d+$/.test(viewId)) continue;  // skip pseudo-ids
       var t = detectViewType(viewId);
       if (t === 'grid') {
