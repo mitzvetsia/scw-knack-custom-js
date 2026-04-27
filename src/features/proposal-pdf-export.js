@@ -35,8 +35,7 @@
         // Lives in the Builder, hidden from users via global-styles.js.
         // Dropped from the rendered proposal (skipViews) but picked up
         // by buildJsonSnapshot (NOT in jsonSkipViews).
-        // TODO: replace 'view_REPLACE_ME' with the real view id.
-        view_REPLACE_ME: true
+        view_3896: true
       },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },

@@ -1356,12 +1356,13 @@ window.SCW = window.SCW || {};
        mirror-connection-sync's MDF cascade. Must stay in the DOM/model
        so findAccessoryIds + fireAccessoryPut can resolve records, but
        should never be visible to the user.
-       view_REPLACE_ME: hidden data-only grid on scene_1096 used only
-       to enrich the publish JSON payload (Make duplicates these
-       records server-side). TODO: swap placeholder for real view id. */
+       view_3896: hidden data-only grid on scene_1096 used only to
+       enrich the publish JSON payload (Make duplicates these records
+       server-side). Listed in proposal-pdf-export.js cfg.skipViews
+       so the rendered proposal doesn't include it. */
     #view_3770,
     #view_3887,
-    #view_REPLACE_ME {
+    #view_3896 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;
@@ -10019,8 +10020,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         // Lives in the Builder, hidden from users via global-styles.js.
         // Dropped from the rendered proposal (skipViews) but picked up
         // by buildJsonSnapshot (NOT in jsonSkipViews).
-        // TODO: replace 'view_REPLACE_ME' with the real view id.
-        view_REPLACE_ME: true
+        view_3896: true
       },
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
