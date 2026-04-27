@@ -76,6 +76,186 @@
   var HEX24 = /^[0-9a-f]{24}$/i;
 
   // ======================================================================
+  // Cascade-in-flight tracker (shared by ALL mirror instances).
+  // ----------------------------------------------------------------------
+  // Both forward (field_1957 → children) and inverse (field_2197 →
+  // accessories) cascades fire PUTs in the background and return
+  // immediately. If the user navigates while requests are still pending,
+  // the browser would normally cancel every in-flight XHR and writes
+  // would be lost — which is exactly the "some children got updated, not
+  // all" partial-cascade bug.
+  //
+  // Two-layer protection:
+  //   1. fetch(..., { keepalive: true }) — the browser is required to
+  //      finish the request even after the page unloads. This is the
+  //      hard guarantee. See knackPutKeepalive() below.
+  //   2. A loud toast + a beforeunload prompt while count > 0 so the
+  //      user notices and (hopefully) pauses before navigating.
+  //
+  // The connection-picker has its own stage gate that keeps the modal
+  // open until everything settles. But native inline edits and form
+  // submits don't go through the picker, so the cascade fires-and-
+  // forgets with no UI feedback at all without this tracker.
+  // ======================================================================
+
+  var _cascadeInFlight   = 0;
+  var _cascadeToastEl    = null;
+  var _cascadeUnloadBound = false;
+  var CASCADE_TOAST_CSS_ID = 'scw-cascade-toast-css';
+
+  function injectCascadeToastStyles() {
+    if (document.getElementById(CASCADE_TOAST_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = CASCADE_TOAST_CSS_ID;
+    s.textContent = [
+      '.scw-cascade-toast {',
+      '  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);',
+      '  z-index: 100000;',
+      '  background: #b45309; color: #fff;',
+      '  padding: 12px 20px; border-radius: 10px;',
+      '  font: 600 13px/1.3 system-ui, -apple-system, sans-serif;',
+      '  box-shadow: 0 6px 22px rgba(0,0,0,0.28);',
+      '  display: inline-flex; align-items: center; gap: 12px;',
+      '  pointer-events: none;',
+      '  max-width: 92vw;',
+      '}',
+      '.scw-cascade-toast__spinner {',
+      '  width: 14px; height: 14px;',
+      '  border: 2px solid rgba(255,255,255,0.4);',
+      '  border-top-color: #fff;',
+      '  border-radius: 50%;',
+      '  animation: scwCascadeSpin 0.8s linear infinite;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.scw-cascade-toast__msg { display: flex; flex-direction: column; gap: 2px; }',
+      '.scw-cascade-toast__msg b { font-weight: 700; }',
+      '.scw-cascade-toast__msg small { font-weight: 500; opacity: 0.9; font-size: 11px; }',
+      '@keyframes scwCascadeSpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showCascadeToast() {
+    if (_cascadeToastEl) return;
+    injectCascadeToastStyles();
+    _cascadeToastEl = document.createElement('div');
+    _cascadeToastEl.className = 'scw-cascade-toast';
+    _cascadeToastEl.innerHTML =
+      '<span class="scw-cascade-toast__spinner"></span>' +
+      '<span class="scw-cascade-toast__msg">' +
+        '<b>Saving changes — please don\'t leave this page</b>' +
+        '<small>Syncing connected records. This takes a few seconds.</small>' +
+      '</span>';
+    document.body.appendChild(_cascadeToastEl);
+  }
+
+  function hideCascadeToast() {
+    if (!_cascadeToastEl) return;
+    if (_cascadeToastEl.parentNode) _cascadeToastEl.parentNode.removeChild(_cascadeToastEl);
+    _cascadeToastEl = null;
+  }
+
+  function cascadeUnloadHandler(e) {
+    if (_cascadeInFlight <= 0) return;
+    // Modern browsers ignore the custom string but still show a generic
+    // "Are you sure you want to leave?" prompt as long as we set
+    // returnValue. The actual writes are protected by keepalive:true on
+    // the fetch — this prompt is just a soft warning.
+    var msg = 'Saves still in progress — wait a moment before leaving.';
+    e.preventDefault();
+    e.returnValue = msg;
+    return msg;
+  }
+
+  // ======================================================================
+  // PUT helper that survives page unload.
+  // ----------------------------------------------------------------------
+  // fetch(..., { keepalive: true }) tells the browser it must finish
+  // the request even if the page is unloading (tab close, navigation,
+  // refresh). XHR / $.ajax / SCW.knackAjax do NOT have this guarantee —
+  // the browser cancels them as soon as the page tears down. This is the
+  // hard fix for "some children got the cascade write, others didn't"
+  // when the user navigates partway through a multi-PUT cascade.
+  //
+  // Keepalive constraints:
+  //   - body must be ≤ 64 KB (we send tiny JSON, no issue)
+  //   - method-agnostic, request-body-only (no streaming response)
+  //
+  // Falls back to SCW.knackAjax if fetch() is unavailable for any reason.
+  // ======================================================================
+  function knackPutKeepalive(url, body, onDone) {
+    var hasFetch = typeof window.fetch === 'function';
+    if (!hasFetch) {
+      if (window.SCW && typeof window.SCW.knackAjax === 'function') {
+        window.SCW.knackAjax({
+          type: 'PUT', url: url, data: JSON.stringify(body), dataType: 'json',
+          success: function (resp) { if (typeof onDone === 'function') onDone(null, resp); },
+          error:   function (xhr)  { if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed')); }
+        });
+        return;
+      }
+      if (typeof onDone === 'function') onDone(new Error('fetch+knackAjax both unavailable'));
+      return;
+    }
+    try {
+      window.fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type':           'application/json',
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key':   'knack',
+          'Authorization':          Knack.getUserToken()
+        },
+        body: JSON.stringify(body),
+        keepalive: true,
+        credentials: 'include'
+      }).then(function (resp) {
+        if (!resp.ok) {
+          if (typeof onDone === 'function') onDone(new Error('PUT ' + resp.status));
+          return;
+        }
+        // We don't actually need the parsed body for these PUTs — patchCard
+        // already updated the UI optimistically. Resolve as soon as the
+        // server acknowledges with 2xx.
+        if (typeof onDone === 'function') onDone(null, resp);
+      }).catch(function (err) {
+        if (typeof onDone === 'function') onDone(err);
+      });
+    } catch (e) {
+      if (typeof onDone === 'function') onDone(e);
+    }
+  }
+
+  function bindCascadeUnloadGuard() {
+    if (_cascadeUnloadBound) return;
+    _cascadeUnloadBound = true;
+    window.addEventListener('beforeunload', cascadeUnloadHandler);
+  }
+
+  function unbindCascadeUnloadGuard() {
+    if (!_cascadeUnloadBound) return;
+    _cascadeUnloadBound = false;
+    window.removeEventListener('beforeunload', cascadeUnloadHandler);
+  }
+
+  function cascadeBegin() {
+    _cascadeInFlight++;
+    if (_cascadeInFlight === 1) {
+      showCascadeToast();
+      bindCascadeUnloadGuard();
+    }
+  }
+
+  function cascadeEnd() {
+    _cascadeInFlight--;
+    if (_cascadeInFlight <= 0) {
+      _cascadeInFlight = 0;
+      hideCascadeToast();
+      unbindCascadeUnloadGuard();
+    }
+  }
+
+  // ======================================================================
   // FACTORY — one instance per view that needs the silent-regroup pattern.
   // All state below (ownPuts, pendingPlan, settleTimer, mutObserver, …)
   // is closure-scoped per call, so instances never share state.
@@ -86,6 +266,14 @@
     var TRIGGER_FIELD     = config.TRIGGER_FIELD;     // children-connection on the edited record
     var GROUPING_FIELD    = config.GROUPING_FIELD;    // L1 group key (e.g. REL_mdf-idf)
     var CONNECTIONS_FIELD = config.CONNECTIONS_FIELD; // back-connection to parent (detail-panel)
+    // Optional: when a child's GROUPING_FIELD changes, also update the
+    // GROUPING_FIELD on every record connected to it via ACCESSORIES_FIELD.
+    // Used by view_3586 / view_3610 to cascade an MDF/IDF change down to
+    // the camera's mounting-hardware accessories (which live on
+    // ACCESSORIES_VIEW_ID and need to share the camera's MDF for grouping
+    // and totals to render correctly).
+    var ACCESSORIES_FIELD   = config.ACCESSORIES_FIELD   || null;
+    var ACCESSORIES_VIEW_ID = config.ACCESSORIES_VIEW_ID || null;
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
@@ -227,6 +415,31 @@
     return '';
   }
 
+  /** Scrape the accessory record ids connected to a given child via
+   *  ACCESSORIES_FIELD. The Knack-rendered td.<accField> lives on the
+   *  pre-transform <tr> sitting immediately above the child's worksheet
+   *  card row, with each accessory rendered as
+   *    <span id="<accId>" data-kn="connection-value">label</span>.
+   *  (Note the inner span uses `id`, not `class`, on this field — unlike
+   *  CONNECTIONS_FIELD where the id lives on the class.) */
+  function findAccessoryIds(childId) {
+    if (!ACCESSORIES_FIELD || !childId) return [];
+    var wsTr = document.getElementById(childId);
+    if (!wsTr) return [];
+    // Pre-transform tr is the immediate previous sibling.
+    var preTr = wsTr.previousElementSibling;
+    if (!preTr) return [];
+    var td = preTr.querySelector('td.' + ACCESSORIES_FIELD);
+    if (!td) return [];
+    var spans = td.querySelectorAll('span[data-kn="connection-value"][id]');
+    var out = [];
+    for (var i = 0; i < spans.length; i++) {
+      var id = (spans[i].getAttribute('id') || '').trim();
+      if (id && HEX24.test(id) && out.indexOf(id) === -1) out.push(id);
+    }
+    return out;
+  }
+
   // ======================================================================
   // L1 group header lookup.
   // ----------------------------------------------------------------------
@@ -319,31 +532,59 @@
 
   var ownPuts = {};
 
+  /** PUT GROUPING_FIELD on an accessory record so its MDF/IDF stays
+   *  in sync with the parent camera/reader after a regroup. Uses
+   *  ACCESSORIES_VIEW_ID rather than VIEW_ID because the accessory
+   *  records don't appear on this view; failure logs but doesn't
+   *  bubble — at worst the user sees the accessory in the wrong
+   *  group section until the next page load. */
+  function fireAccessoryPut(accessoryId, mdfId, onDone) {
+    if (!ACCESSORIES_VIEW_ID || !mdfId || !accessoryId) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
+      return;
+    }
+    var body = {};
+    body[GROUPING_FIELD] = [mdfId];
+    log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
+    cascadeBegin();
+    knackPutKeepalive(
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      body,
+      function (err) {
+        cascadeEnd();
+        if (err) {
+          console.warn(LOG_PREFIX, 'accessory PUT failed ' + accessoryId, err);
+        } else {
+          log('  PUT(accessory) ok ' + accessoryId);
+        }
+        if (typeof onDone === 'function') onDone(err);
+      }
+    );
+  }
+
   function firePut(recordId, body, onDone) {
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') {
-      console.warn(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable — skipping PUT for ' + recordId);
-      if (typeof onDone === 'function') onDone(new Error('knackAjax unavailable'));
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      console.warn(LOG_PREFIX, 'SCW.knackRecordUrl unavailable — skipping PUT for ' + recordId);
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
       return;
     }
     var url = window.SCW.knackRecordUrl(VIEW_ID, recordId);
     log('  PUT → ' + recordId + ' body=' + JSON.stringify(body));
     ownPuts[recordId] = true;
-    window.SCW.knackAjax({
-      type: 'PUT',
-      url: url,
-      data: JSON.stringify(body),
-      dataType: 'json',
-      success: function (resp) {
-        delete ownPuts[recordId];
+    cascadeBegin();
+    knackPutKeepalive(url, body, function (err, resp) {
+      delete ownPuts[recordId];
+      cascadeEnd();
+      if (err) {
+        console.warn(LOG_PREFIX, 'PUT failed ' + recordId, err);
+        if (typeof onDone === 'function') onDone(err);
+      } else {
         log('  PUT ok ' + recordId);
         if (typeof onDone === 'function') onDone(null, resp);
-      },
-      error: function (xhr) {
-        delete ownPuts[recordId];
-        console.warn(LOG_PREFIX, 'PUT failed ' + recordId,
-          xhr && xhr.status, xhr && xhr.responseText);
-        if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed'));
       }
     });
   }
@@ -521,9 +762,15 @@
     setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
-  function applyDeterministicRegroup(R) {
+  function applyDeterministicRegroup(R, onComplete) {
+    function done() {
+      if (typeof onComplete === 'function') {
+        try { onComplete(); } catch (e) { /* swallow */ }
+      }
+    }
     if (!R || !R.id) {
       log('applyDeterministicRegroup: no R or R.id — abort', R);
+      done();
       return;
     }
     log('applyDeterministicRegroup: start R=' + R.id);
@@ -557,6 +804,7 @@
 
     if (!added.length && !removed.length) {
       log('  no changes — done');
+      done();
       return;
     }
 
@@ -594,7 +842,26 @@
     // real model.fetch() so Knack re-renders the view from fresh,
     // now-consistent server state. This replaces the user having to hit
     // browser-refresh manually after the silent regroup.
-    var totalPuts = added.length + removed.length;
+    // --- 6b. Compute accessory cascade -----------------------------------
+    // For each added child, look up every accessory connected to it via
+    // ACCESSORIES_FIELD and stage a PUT to update its GROUPING_FIELD to
+    // match the parent's MDF. Removed children keep their MDF, so their
+    // accessories don't move either.
+    var accessoryPuts = []; // [{ accId, mdfId }]
+    if (ACCESSORIES_FIELD && ACCESSORIES_VIEW_ID && rGroupId && added.length) {
+      for (var ax = 0; ax < added.length; ax++) {
+        var accIds = findAccessoryIds(added[ax]);
+        for (var ay = 0; ay < accIds.length; ay++) {
+          accessoryPuts.push({ accId: accIds[ay], mdfId: rGroupId });
+        }
+      }
+      if (accessoryPuts.length) {
+        log('  accessory cascade: ' + accessoryPuts.length +
+            ' PUT(s) queued for ' + added.length + ' added child(ren)');
+      }
+    }
+
+    var totalPuts = added.length + removed.length + accessoryPuts.length;
     var putsRemaining = totalPuts;
     function onPutFinished() {
       putsRemaining--;
@@ -619,12 +886,18 @@
       } catch (e) {
         console.warn(LOG_PREFIX, 'final model.fetch threw', e);
       }
+      // Signal upstream waiters (e.g. the connection picker keeping
+      // its modal open until everything settled). Fired AFTER model.
+      // fetch is dispatched so any "save complete" UI we trigger
+      // happens once the view is on its way to fresh data.
+      done();
     }
 
     if (added.length && !destHeader) {
       log('  no destHeader for R — PUT-only + fallbackFetch');
       added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id), onPutFinished); });
       removed.forEach(function (rid) { firePut(rid, buildRemovedPut(), onPutFinished); });
+      accessoryPuts.forEach(function (ap) { fireAccessoryPut(ap.accId, ap.mdfId, onPutFinished); });
       // Skip the duplicate fetch here — onPutFinished will fetch when
       // all PUTs land.
       clearPendingPlanSoon();
@@ -637,12 +910,16 @@
     // --- 9. Fire background PUTs with completion tracking --------------
     if (totalPuts === 0) {
       log('  no PUTs to fire — skipping final fetch');
+      done();
     } else {
       for (var a = 0; a < added.length; a++) {
         firePut(added[a], buildAddedPut(rGroupId, R.id), onPutFinished);
       }
       for (var r = 0; r < removed.length; r++) {
         firePut(removed[r], buildRemovedPut(), onPutFinished);
+      }
+      for (var ap = 0; ap < accessoryPuts.length; ap++) {
+        fireAccessoryPut(accessoryPuts[ap].accId, accessoryPuts[ap].mdfId, onPutFinished);
       }
     }
 
@@ -711,6 +988,92 @@
     }
   });
 
+  // ======================================================================
+  // Inverse cascade: child's CONNECTIONS_FIELD (field_2197) changes
+  // ----------------------------------------------------------------------
+  // The handler above watches the parent's TRIGGER_FIELD (field_1957) and
+  // cascades down. But the user can ALSO change a child's CONNECTIONS_FIELD
+  // directly — native inline edit, form save, anywhere Knack fires a
+  // knack-cell-update on the child row. In that case the child has a new
+  // parent, and the child's mounting-hardware accessories need their
+  // GROUPING_FIELD (field_1946) updated to match the new parent's group.
+  //
+  // We compare the post-edit record's CONNECTIONS_FIELD to a per-record
+  // cache primed from the model on each view-render. When a difference is
+  // detected on a record that has accessories, fire accessory PUTs.
+  // ownPuts still suppresses echoes from our own outbound child PUTs so
+  // this doesn't double-cascade with the field_1957 flow.
+  // ======================================================================
+
+  var lastReciprocalSeen = {};
+
+  function serializeReciprocal(attrs) {
+    var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return '';
+    return raw
+      .map(function (r) { return r && r.id; })
+      .filter(Boolean)
+      .sort()
+      .join(',');
+  }
+
+  function primeReciprocalCache() {
+    var records = getModelRecords();
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] && (records[i].attributes || records[i]);
+      if (attrs && attrs.id) {
+        lastReciprocalSeen[attrs.id] = serializeReciprocal(attrs);
+      }
+    }
+  }
+
+  $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-prime',
+    function () { primeReciprocalCache(); });
+
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
+    function (event, view, record) {
+      try {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID) return;
+        if (!record || !record.id) return;
+        if (ownPuts[record.id]) return;
+
+        var prev = lastReciprocalSeen[record.id] || '';
+        var curr = serializeReciprocal(record);
+        if (prev === curr) return;
+        lastReciprocalSeen[record.id] = curr;
+
+        // No new parent → nothing to cascade. (Disconnect doesn't
+        // implicitly relocate the child's accessories; they keep the
+        // last-known group until a new parent assignment.)
+        var raw = record[CONNECTIONS_FIELD + '_raw'];
+        if (!Array.isArray(raw) || !raw.length || !raw[0] || !raw[0].id) return;
+
+        var newParentId = raw[0].id;
+        var parentAttrs = getModelAttrs(newParentId);
+        if (!parentAttrs) {
+          log('inverse cascade: new parent ' + newParentId + ' not in model — skipping');
+          return;
+        }
+        var parentGroupRaw = parentAttrs[GROUPING_FIELD + '_raw'];
+        if (!Array.isArray(parentGroupRaw) || !parentGroupRaw[0] || !parentGroupRaw[0].id) {
+          log('inverse cascade: parent ' + newParentId + ' has no MDF — skipping');
+          return;
+        }
+        var parentGroupId = parentGroupRaw[0].id;
+
+        var accIds = findAccessoryIds(record.id);
+        if (!accIds.length) return;
+
+        log('inverse cascade: field_2197 on ' + record.id +
+            ' → cascade ' + accIds.length + ' accessory MDF PUT(s) to ' + parentGroupId);
+        for (var i = 0; i < accIds.length; i++) {
+          fireAccessoryPut(accIds[i], parentGroupId);
+        }
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'inverse cascade handler threw', e);
+      }
+    });
+
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
   // After the initial regroup has run, the MutationObserver watchdog is
@@ -752,6 +1115,39 @@
       applyPlanToDom: applyPlanToDom,
       findRowsPointingTo: findRowsPointingTo,
       findL1HeaderBefore: findL1HeaderBefore,
+      /** Cascade GROUPING_FIELD = [mdfId] to every accessory connected
+       *  to each child via ACCESSORIES_FIELD. Used by the connection
+       *  picker on resubmit so still-connected children get their
+       *  accessories' MDF refreshed even when the parent's selection
+       *  didn't change (the regroup diff returns empty in that case
+       *  and the built-in accessory cascade only fires for `added`
+       *  children). onAllDone fires after every accessory PUT settles. */
+      cascadeAccessoryMdf: function (childIds, mdfId, onAllDone) {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID || !mdfId ||
+            !childIds || !childIds.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        var queue = [];
+        for (var i = 0; i < childIds.length; i++) {
+          var accIds = findAccessoryIds(childIds[i]);
+          for (var j = 0; j < accIds.length; j++) queue.push(accIds[j]);
+        }
+        if (!queue.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        log('cascadeAccessoryMdf: ' + queue.length +
+            ' accessory PUT(s) for ' + childIds.length + ' child(ren)');
+        var remaining = queue.length;
+        function tick() {
+          remaining--;
+          if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+        }
+        for (var k = 0; k < queue.length; k++) {
+          fireAccessoryPut(queue[k], mdfId, tick);
+        }
+      },
       inspectState: function () {
         return {
           hasPendingRecord: pendingRecord != null,
@@ -779,11 +1175,32 @@
   });
 
   createMirror({
-    VIEW_ID:           'view_3586',
-    TRIGGER_FIELD:     'field_1957',
-    CONNECTIONS_FIELD: 'field_2197',
-    GROUPING_FIELD:    'field_1946',
-    PUBLIC_API_NAME:   'silentRegroupView3586'
+    VIEW_ID:             'view_3586',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    // Cascade MDF/IDF down to mounting-hardware accessories
+    // (field_1958 connections live on view_3887). When a camera/reader
+    // moves to a new MDF as part of a regroup, every accessory on it
+    // gets the same MDF write so they group with their parent.
+    ACCESSORIES_FIELD:   'field_1958',
+    ACCESSORIES_VIEW_ID: 'view_3887',
+    PUBLIC_API_NAME:     'silentRegroupView3586'
+  });
+
+  // view_3610 hosts the same SOW line items shape as view_3586 (same
+  // field keys throughout), so the same mirror config applies — we just
+  // need a second instance against this view's DOM/model.
+  createMirror({
+    VIEW_ID:             'view_3610',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    ACCESSORIES_FIELD:   'field_1958',
+    // Same accessory cascade as view_3586, but the accessory records on
+    // this scene live on view_3888 instead of view_3887.
+    ACCESSORIES_VIEW_ID: 'view_3888',
+    PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
   // Backward-compat alias for any lingering DevTools snippets that

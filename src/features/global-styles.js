@@ -151,8 +151,18 @@
       display: flex !important;
     }
 
-    /* Hide view_3770 visually but keep it in the DOM */
-    #view_3770 {
+    /* Hide view_3770 visually but keep it in the DOM
+       view_3887: mounting-hardware accessory view read by
+       mirror-connection-sync's MDF cascade. Must stay in the DOM/model
+       so findAccessoryIds + fireAccessoryPut can resolve records, but
+       should never be visible to the user.
+       view_3896: hidden data-only grid on scene_1096 used only to
+       enrich the publish JSON payload (Make duplicates these records
+       server-side). Listed in proposal-pdf-export.js cfg.skipViews
+       so the rendered proposal doesn't include it. */
+    #view_3770,
+    #view_3887,
+    #view_3896 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;

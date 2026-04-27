@@ -24,6 +24,7 @@
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
         editSlug: 'edit-scope-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       },
@@ -597,18 +598,14 @@
   }
 
   /**
-   * Handle trash icon click: confirm, then delete via webhook.
+   * Handle trash icon click: delete via webhook (no confirmation).
    */
   function onDeleteClick(recordId, recordName, itemEl) {
     SCW.debug('[SCW][CR-DELETE] onDeleteClick fired', {
       recordId: recordId,
       recordName: recordName
     });
-    confirmDelete(recordName).then(function (confirmed) {
-      SCW.debug('[SCW][CR-DELETE] Confirmation result:', confirmed);
-      if (!confirmed) return;
-      deleteRecord(recordId, recordName, itemEl);
-    });
+    deleteRecord(recordId, recordName, itemEl);
   }
 
   // ============================================================
@@ -736,19 +733,31 @@
         var linkEl;
         var itemHref = links[i].href;
 
-        // Rewrite item href when itemSlug is configured
+        // Rewrite item href when itemSlug is configured.
+        //
+        // field_1958 cells render as bare <span data-kn="connection-value">
+        // (no anchor wrapper), so links[i].href is '' here. We have to
+        // construct the edit URL from either addUrl (the +Add action
+        // link on the same row) or the current page hash. Both endings
+        // — addUrl's `.../add-accessory-line-item/<parentId>` and an
+        // existing edit href's `.../<oldSlug>/<oldId>` — share the
+        // same `/<segment>/<24-hex>/?` shape, so we use one regex to
+        // swap BOTH the slug and the trailing id in a single pass.
         if (cfg.itemSlug && links[i].recordId) {
-          if (itemHref) {
-            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → edit-accessory-line-item2)
-            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})\/?$/, '/' + cfg.itemSlug + '/$1');
-          } else if (addUrl) {
-            // Construct from addUrl by swapping in the accessory record ID
-            itemHref = addUrl.replace(/[a-f0-9]{24}\/?$/, links[i].recordId);
-          }
-          // Fallback: if regex didn't match, construct from current hash path
-          if (cfg.itemSlug && links[i].recordId && itemHref === links[i].href) {
-            var hashBase = (window.location.hash || '').replace(/\/[^\/]+\/[a-f0-9]{24}\/?$/, '');
-            if (hashBase) itemHref = hashBase + '/' + cfg.itemSlug + '/' + links[i].recordId;
+          var slugTailRe = /\/[^\/]+\/[a-f0-9]{24}\/?$/;
+          var newTail = '/' + cfg.itemSlug + '/' + links[i].recordId;
+          if (itemHref && slugTailRe.test(itemHref)) {
+            itemHref = itemHref.replace(slugTailRe, newTail);
+          } else if (addUrl && slugTailRe.test(addUrl)) {
+            itemHref = addUrl.replace(slugTailRe, newTail);
+          } else {
+            // Last resort: build from current hash. Strip any trailing
+            // /<slug>/<id>/? AND any ?query=... section (Knack appends
+            // pagination state like ?view_3586_per_page=1000 that would
+            // otherwise be inserted between the path and the new tail).
+            var rawHash = window.location.hash || '';
+            var hashBase = rawHash.split('?')[0].replace(slugTailRe, '');
+            if (hashBase) itemHref = hashBase + newTail;
           }
         }
 

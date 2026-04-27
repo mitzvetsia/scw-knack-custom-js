@@ -35,8 +35,9 @@
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2462', 'FLAG_use existing cabling'],
+      ['field_2739', 'FLAG_exterior'],
+      ['field_2740', 'FLAG_plenum'],
       ['field_2246', 'REL_unified product field'],
-      ['field_2187', 'INPUT_DROP: variables'],
       ['field_2466', 'field_2466'],
     ],
     //networking or headend
@@ -80,7 +81,8 @@
 
   const ALL_FIELD_KEYS = [
     'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
+    'field_2206','field_2195','field_2241','field_2184','field_2204', 'field_2211','field_2233','field_2246','field_2466',
+    'field_2739','field_2740',
   ];
 
   function compileRules(human) {
@@ -236,6 +238,19 @@
   // ======================
   // Binding strategy
   // ======================
+  // Defer applyRules to the next animation frame so the dropdown can
+  // close and the click event can finish before we do hide/show DOM
+  // work across 24 fields. Coalesces multiple changes per frame.
+  function deferApplyRules($scope, viewId) {
+    var key = '_scwBucketRulesRAF_' + viewId;
+    if ($scope[0] && $scope[0][key]) return;
+    if ($scope[0]) $scope[0][key] = true;
+    requestAnimationFrame(function () {
+      if ($scope[0]) $scope[0][key] = false;
+      applyRules($scope, viewId);
+    });
+  }
+
   function bindDelegatedChange(viewId) {
     const sel = `#${viewId} select[name="${BUCKET_FIELD_KEY}"], #${viewId} #${viewId}-${BUCKET_FIELD_KEY}`;
 
@@ -247,7 +262,7 @@
           ? $bucketWrap.closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
 
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
 
     // Re-evaluate when assumption type field changes (multi-select)
@@ -258,7 +273,7 @@
         const $scope = $(this).closest('form, .kn-form, .kn-view').length
           ? $(this).closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
   }
 

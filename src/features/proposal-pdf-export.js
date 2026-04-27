@@ -27,8 +27,22 @@
         view_3861: true,
         view_3345: true,
         view_3883: true,
-        view_3886: true
+        view_3886: true,
+        // Hidden data-only grid: a richer Survey Line Item / SOW Line
+        // Item projection added solely so the publish JSON payload
+        // includes every field downstream Make pipelines need (e.g.
+        // duplicating Survey Line Item records on Request Alt Bid).
+        // Lives in the Builder, hidden from users via global-styles.js.
+        // Dropped from the rendered proposal (skipViews) but is the
+        // sole grid in the JSON payload via jsonIncludeViews below.
+        view_3896: true
       },
+      // JSON snapshot for this scene is intentionally slim:
+      //   { sowRecordId, view_3896: [...full records...] }
+      // No header detail, no other grids — Make pipelines that
+      // duplicate records only care about view_3896's projection.
+      // The rendered HTML proposal is unaffected.
+      jsonIncludeViews: ['view_3896'],
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -1030,39 +1044,79 @@
              || (view.model.data && view.model.data.attributes)
              || null;
     if (!attrs) return null;
-    return typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+    var src = typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+    // Copy so we don't mutate live model attrs when patching in id below.
+    var rec = {};
+    for (var k in src) if (src.hasOwnProperty(k)) rec[k] = src[k];
+    // Backbone keeps the record id on model.id (not attributes.id) for
+    // some Knack detail views — that left snapshot.header.id missing
+    // and Make pipelines couldn't identify the SOW record being
+    // published. Backfill from model.id when attributes don't carry it.
+    if (!rec.id) {
+      rec.id = (view.model && view.model.id) ||
+               (view.model && view.model.data && view.model.data.id) || '';
+    }
+    return rec;
   }
 
   function buildJsonSnapshot(sceneId) {
     var sceneEl = document.getElementById('kn-' + sceneId);
     if (!sceneEl) return {};
 
-    var snapshot = {
-      header: null,
-      view_3341: [],
-      view_3371: []
-    };
+    var cfg = resolveConfiguredScene(sceneId);
 
-    // Collect line item records from each grid view separately
-    var gridViewIds = ['view_3341', 'view_3371'];
-    for (var g = 0; g < gridViewIds.length; g++) {
-      var vid = gridViewIds[g];
-      var records = extractGridRecords(vid);
-      for (var r = 0; r < records.length; r++) {
-        snapshot[vid].push(records[r]);
+    // ── Slim shape: cfg.jsonIncludeViews (allow-list) ──
+    // When set, the snapshot is just `{ sowRecordId, <view>: [...] }`
+    // for each listed view — no header, no other grids, nothing else.
+    // Used by scenes whose Make pipelines only need a focused subset
+    // (e.g. view_3896 on scene_1096, the hidden data-only grid that
+    // carries the full Survey/SOW Line Item projection).
+    if (cfg && Array.isArray(cfg.jsonIncludeViews) && cfg.jsonIncludeViews.length) {
+      var slim = { sowRecordId: getPageRecordId() || '' };
+      for (var s = 0; s < cfg.jsonIncludeViews.length; s++) {
+        var vid = cfg.jsonIncludeViews[s];
+        if (typeof vid !== 'string') continue;
+        var slimT = detectViewType(vid);
+        if (slimT === 'grid') {
+          slim[vid] = extractGridRecords(vid);
+        } else if (slimT === 'detail') {
+          slim[vid] = extractDetailRecord(vid);
+        }
+      }
+      return slim;
+    }
+
+    // ── Full shape (default) ──
+    // skipViews is HTML-only (drives scrapeAllViews → the rendered
+    // proposal). The JSON snapshot wants the opposite by default —
+    // include everything the scene exposes — because Make pipelines
+    // clone records from this payload. cfg.jsonSkipViews lets a
+    // scene opt out a specific view from JSON without affecting HTML.
+    var jsonSkip = (cfg && cfg.jsonSkipViews) || {};
+
+    var snapshot = { header: null, headerId: '' };
+
+    var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
+    for (var i = 0; i < allViewEls.length; i++) {
+      var viewId = allViewEls[i].id;
+      if (jsonSkip[viewId]) continue;
+      if (!/^view_\d+$/.test(viewId)) continue;  // skip pseudo-ids
+      var t = detectViewType(viewId);
+      if (t === 'grid') {
+        snapshot[viewId] = extractGridRecords(viewId);
+      } else if (t === 'detail' && !snapshot.header) {
+        var rec = extractDetailRecord(viewId);
+        if (rec) {
+          snapshot.header   = rec;
+          snapshot.headerId = rec.id || '';
+        }
       }
     }
 
-    // Collect SOW header from first detail view on the scene
-    var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
-    for (var d = 0; d < allViewEls.length; d++) {
-      var viewId = allViewEls[d].id;
-      if (detectViewType(viewId) !== 'detail') continue;
-      var rec = extractDetailRecord(viewId);
-      if (rec) {
-        snapshot.header = rec;
-        break;
-      }
+    // Final fallback: if no detail view yielded an id, drop in the
+    // page-hash record id so Make always has SOMETHING addressable.
+    if (!snapshot.headerId) {
+      snapshot.headerId = getPageRecordId() || '';
     }
 
     return snapshot;

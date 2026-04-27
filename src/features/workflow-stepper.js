@@ -23,7 +23,17 @@
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
       lockWhenCompleted: true,
-      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
+      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // After the user clicks → submits the form → returns here, Make
+      // takes a few seconds to populate field_1199 with the install
+      // project link. Lock the action and poll view_3827 until that
+      // field appears so the user can't double-fire the action and the
+      // step transitions to "completed" automatically.
+      pollAfterClick: {
+        pendingLabel: 'Initializing project — please wait…',
+        pollMs:       4000,
+        timeoutMs:    120 * 1000
+      }
     },
     {
       type: 'accordion',
@@ -95,7 +105,7 @@
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
-      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
+      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Not yet released to Sales' }
     }
   ];
 
@@ -121,6 +131,15 @@
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
     '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+  // Animated spinner used while a pollAfterClick step is waiting for
+  // a Make automation to populate the field that flips it to completed.
+  var SPIN_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'class="scw-step-spin">' +
+    '<path d="M12 2a10 10 0 1 0 10 10" />' +
+    '</svg>';
 
   var LOCK_SM_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
@@ -235,6 +254,17 @@
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      // Processing state — locked while a Make automation runs after
+      // the user clicks. Keep full opacity (so it doesn't read as
+      // "disabled / unavailable"), block clicks, and spin the icon.
+      '.scw-step-action.is-processing {' +
+      '  opacity: 1; pointer-events: none; cursor: wait;' +
+      '  background: rgba(41,95,145,0.04);' +
+      '}' +
+      '.scw-step-action.is-processing .scw-step-icon { color: #295F91; opacity: 1; }' +
+      '.scw-step-action.is-processing .scw-step-title { color: #295F91; font-style: italic; }' +
+      '.scw-step-spin { animation: scw-step-spin 0.8s linear infinite; transform-origin: 50% 50%; }' +
+      '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
       /* Completed + locked (no re-trigger): keep normal appearance,
          only block clicks. No opacity fade, no gray icon. */
       '.scw-step-action.is-completed.is-disabled {' +
@@ -392,6 +422,22 @@
     } else {
       var href = resolveHref(step);
       if (href) el.href = href;
+      // pollAfterClick steps: stamp a per-SOW flag the moment the
+      // user clicks. The browser then navigates to the form view as
+      // normal; when the user returns, applyActionState sees the
+      // flag and locks the step into "processing" + starts polling.
+      // Block the click outright if we're already processing or
+      // disabled so a double-tap doesn't navigate twice.
+      if (step.pollAfterClick) {
+        el.addEventListener('click', function (e) {
+          if (el.classList.contains('is-disabled') ||
+              el.classList.contains('is-processing')) {
+            e.preventDefault();
+            return;
+          }
+          setPollFlag(step.id);
+        });
+      }
     }
 
     var icon = document.createElement('span');
@@ -897,9 +943,58 @@
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
     var isDisabled = baseDisabled || lockedByCompletion;
 
+    // ── pollAfterClick: processing-state override ──
+    // When the user has clicked this step recently (flag set in click
+    // handler) and the completion field hasn't flipped yet, lock the
+    // step into a "Processing — please wait…" state and start polling
+    // SOURCE_VIEW so the moment the field flips we re-render to the
+    // completed state. Cleanup once the step IS completed (the flag
+    // becomes irrelevant) so a future fresh click works.
+    var processing = false;
+    if (step.pollAfterClick) {
+      var flag = getPollFlag(step.id, step.pollAfterClick.timeoutMs);
+      if (flag && !isCompleted) {
+        processing = true;
+        startStepPoll(step);
+      } else if (isCompleted && flag) {
+        // Field flipped → drop the flag + stop polling so the step
+        // renders as a normal "completed" action.
+        clearPollFlag(step.id);
+        stopStepPoll(step.id);
+      }
+    }
+
+    var icon = el.querySelector('.scw-step-icon');
+    if (processing) {
+      // Override visual + lock click. is-disabled blocks pointer events
+      // via existing CSS, plus is-processing adds the spinner styling.
+      if (icon) icon.innerHTML = SPIN_SVG;
+      var titleEl = el.querySelector('.scw-step-title');
+      if (titleEl) {
+        titleEl.textContent = step.pollAfterClick.pendingLabel || 'Processing…';
+      }
+      el.classList.add('is-processing');
+      el.classList.add('is-disabled');
+      el.classList.remove('is-completed');
+      // Drop the href so even an accessibility-tab-Enter doesn't fire.
+      el.removeAttribute('href');
+      renderHeaderMessage(el, step, step.id, false, false);
+      return;
+    }
+
+    // Not processing — restore in case we just exited that state.
+    el.classList.remove('is-processing');
+    var titleEl2 = el.querySelector('.scw-step-title');
+    if (titleEl2 && titleEl2.textContent !== step.label) {
+      titleEl2.textContent = step.label;
+    }
+    if (!step.webhookAction) {
+      var hrefAfter = resolveHref(step);
+      if (hrefAfter && el.getAttribute('href') !== hrefAfter) el.href = hrefAfter;
+    }
+
     // Icon — keep the completed check when locked-by-completion so the
     // user still sees the "done" state rather than a lock.
-    var icon = el.querySelector('.scw-step-icon');
     if (icon) icon.innerHTML = getIcon(isCompleted, baseDisabled, step);
 
     // Classes: prefer is-completed styling when locked by completion so
@@ -927,6 +1022,79 @@
       else if (step.type === 'action') applyActionState(step);
     }
   }
+
+  // ── pollAfterClick: lock + poll until a step's completion field flips ──
+  // For action steps that fire a Knack form whose post-submit data is
+  // populated by an async Make automation. Click sets a per-SOW
+  // localStorage flag; on next render we lock the step ("processing")
+  // and start polling SOURCE_VIEW's model until step.completed flips.
+  // Cleared on success, on timeout, or when the SOW changes.
+  var POLL_FLAG_PREFIX = 'scw-step-polling:';
+  var _activePolls = {};   // stepId -> intervalId
+
+  function pollFlagKey(stepId) {
+    return POLL_FLAG_PREFIX + stepId + ':' + (getSourceSowId() || '');
+  }
+  function getPollFlag(stepId, timeoutMs) {
+    try {
+      var raw = localStorage.getItem(pollFlagKey(stepId));
+      if (!raw) return null;
+      var ts = parseInt(raw, 10);
+      if (!isFinite(ts)) return null;
+      if (Date.now() - ts > (timeoutMs || 120000)) {
+        localStorage.removeItem(pollFlagKey(stepId));
+        return null;
+      }
+      return ts;
+    } catch (e) { return null; }
+  }
+  function setPollFlag(stepId) {
+    try { localStorage.setItem(pollFlagKey(stepId), String(Date.now())); }
+    catch (e) {}
+  }
+  function clearPollFlag(stepId) {
+    try { localStorage.removeItem(pollFlagKey(stepId)); } catch (e) {}
+  }
+
+  function startStepPoll(step) {
+    if (_activePolls[step.id]) return;
+    var opts = step.pollAfterClick || {};
+    var pollMs    = opts.pollMs    || 4000;
+    var timeoutMs = opts.timeoutMs || 120000;
+
+    _activePolls[step.id] = setInterval(function () {
+      // Bail out if the user navigated to a different SOW or cleared
+      // the flag manually.
+      if (!getPollFlag(step.id, timeoutMs)) {
+        stopStepPoll(step.id);
+        applySteps();
+        return;
+      }
+      // Refetch the SOW detail view so step.completed re-evaluates
+      // against the freshest field values.
+      try {
+        var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch({
+            success: function () {
+              if (step.completed && conditionMet(step.completed)) {
+                clearPollFlag(step.id);
+                stopStepPoll(step.id);
+              }
+              applySteps();
+            }
+          });
+        }
+      } catch (e) { /* swallow — try again on next tick */ }
+    }, pollMs);
+  }
+  function stopStepPoll(stepId) {
+    if (_activePolls[stepId]) {
+      clearInterval(_activePolls[stepId]);
+      delete _activePolls[stepId];
+    }
+  }
+
 
   // ── Playbook form display rules (view_2924) ──────────────
   var PLAYBOOK_VIEW = 'view_2924';
@@ -972,13 +1140,29 @@
 
   function bindPlaybookRules() {
     var form = document.getElementById(PLAYBOOK_VIEW);
-    if (!form || form.getAttribute('data-scw-playbook-rules') === '1') return;
+    if (!form) return;
+    // Mark the form (purely informational — handlers are idempotent
+    // via jQuery namespace .off().on() below). The previous once-only
+    // guard on this attribute caused intermittent breakage: Knack's
+    // post-submit re-render replaces the inner <select> + <input>
+    // elements while keeping the outer <form>, which left our flag
+    // set but the handlers detached. Re-binding every render is safe
+    // because .off(NS) clears any prior listeners first.
     form.setAttribute('data-scw-playbook-rules', '1');
 
-    // Connection field change (Chosen.js fires change on the original select)
-    $('#' + PLAYBOOK_VIEW + '-field_2228').on('change' + NS, applyPlaybookRules);
-    // Radio change for field_1752
-    $(form).on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
+    // Connection field change (Chosen.js fires change on the original select).
+    // The select element is replaced on every form re-render, so we have
+    // to re-bind each time — namespace .off() clears the previous handler
+    // (if any) without affecting other modules' listeners.
+    $('#' + PLAYBOOK_VIEW + '-field_2228')
+      .off('change' + NS)
+      .on('change' + NS, applyPlaybookRules);
+
+    // Radio change for field_1752 — delegated on the form so it survives
+    // input replacement, but still namespaced + .off()'d for safety.
+    $(form)
+      .off('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]')
+      .on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
 
     applyPlaybookRules();
   }

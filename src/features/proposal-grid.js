@@ -2317,9 +2317,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // ============================================================
   // FEATURE: Mask installation values with "TBD"
-  // When field_2725 in view_3861 is not "Yes", zero out labor
-  // cells BEFORE the pipeline so all sums exclude installation,
-  // then label the zeroed cells as "TBD" after.
+  // When field_2725 (FLAG_released to sales) in view_3861 is not
+  // "Yes", zero out labor cells BEFORE the pipeline so all sums
+  // exclude installation, then label the zeroed cells as "TBD"
+  // after. Sales-facing viewers shouldn't see install figures
+  // until Ops has explicitly released the quote.
   // ============================================================
 
   function isInstallationMasked() {

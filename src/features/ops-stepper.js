@@ -19,9 +19,10 @@
  *                  updates CU task, posts to Slack
  *
  *   3. Publish and Submit Completed Proposal to Sales
- *        showWhen: field_2725 = No
+ *        showWhen: field_2725 (FLAG_released to sales) = No
  *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
- *        server  : flips field_2725 = Yes, updates CU task, Slack
+ *        server  : flips field_2725 = Yes (i.e. releases to Sales),
+ *                  updates CU task, Slack
  *
  * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
  * (view_3861) plus field_2126, line-item record ids from view_3341,
@@ -37,6 +38,12 @@
   var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
   var LICENSE_VIEW   = 'view_3371';   // License records table on the proposal page
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
+
+  // Survey picker — used by the Request Alt Bid step to ask Ops
+  // which survey(s) the alt-bid request should target.
+  var SURVEY_PICKER_VIEW    = 'view_3897';   // grid of available surveys for this SOW
+  var PICKER_SUB_FIELD      = 'field_2347';  // subcontractor connection / identifier
+  var PICKER_LABEL_FIELD    = 'field_2345';  // survey identifier (e.g. SR-1)
 
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
@@ -101,6 +108,11 @@
         ]
       },
       webhookKey: 'MAKE_OPS_REQUEST_ALT_BID_WEBHOOK',
+      // Survey picker — Ops chooses which survey(s) the alt bid
+      // request goes to before the notes prompt opens. Selected
+      // survey ids land in the webhook payload as
+      // selectedSurveyIds[].
+      pickSurveys: true,
       modal: {
         title:       'Request Alternative Bid',
         intro:       'Note for the subcontractor (and a heads-up will also post back to Sales that an alternative bid was requested).',
@@ -276,6 +288,28 @@
       '.scw-ops-modal-submit:hover { background: #1d4ed8; }' +
       '.scw-ops-modal-submit[disabled] {' +
       '  opacity: 0.6; cursor: wait;' +
+      '}' +
+      // Survey-picker list (Request Alt Bid step).
+      '.scw-ops-modal-list {' +
+      '  list-style: none; margin: 0 0 6px; padding: 6px 0;' +
+      '  max-height: 340px; overflow-y: auto;' +
+      '  border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;' +
+      '}' +
+      '.scw-ops-modal-list li { padding: 0; }' +
+      '.scw-ops-modal-list label {' +
+      '  display: flex; align-items: center; gap: 8px;' +
+      '  padding: 7px 4px; cursor: pointer;' +
+      '  font-size: 13px; color: #1f2937;' +
+      '  border-radius: 4px;' +
+      '}' +
+      '.scw-ops-modal-list label:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-list input[type="checkbox"] { flex-shrink: 0; cursor: pointer; }' +
+      '.scw-ops-modal-list .scw-ops-modal-list-all {' +
+      '  font-weight: 700; color: #111827; border-bottom: 1px solid #e5e7eb;' +
+      '  margin-bottom: 4px; padding-bottom: 8px;' +
+      '}' +
+      '.scw-ops-modal-list-empty {' +
+      '  padding: 16px; text-align: center; color: #6b7280; font-size: 13px;' +
       '}';
 
     var s = document.createElement('style');
@@ -379,11 +413,13 @@
   }
 
   // ── Payload ──────────────────────────────────────────────
-  // True when the SOW's bid isn't validated yet — Make's Publish
-  // scenario publishes with TBD placeholder numbers rather than
-  // finalized figures. Ops can SEE the real numbers on the proposal
-  // page, but until field_2725 is flipped to Yes, the published quote
-  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  // True when the SOW hasn't been released to Sales yet — Make's
+  // Publish scenario publishes with TBD placeholder numbers rather
+  // than finalized figures. Ops can SEE the real numbers internally
+  // (including via Submit-to-Second-Set), but until field_2725
+  // (FLAG_released to sales) flips to Yes, the published quote
+  // keeps TBDs so Sales / customers aren't shown numbers Ops hasn't
+  // signed off on for external delivery.
   function shouldPublishAsTbd() {
     return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
   }
@@ -407,14 +443,19 @@
     }
     // Any payload that will trigger publishing server-side carries the
     // TBD flag so Make knows whether to stamp real numbers or
-    // placeholders. Both Mark Ready (which also publishes a draft) and
-    // the standalone Publish step qualify.
+    // placeholders. Mark Ready (which also publishes a draft), the
+    // standalone Publish step, and Request Alt Bid (which packages
+    // the current SOW into an alt-bid request — Make needs the same
+    // html/json snapshot for that) all qualify.
     //
     // Also merges in the exact shape the standalone "Publish Quote"
     // button (proposal-pdf-export.js) sends to its save webhook —
     // html / json / sowId / totals / expirationDate / etc. — so every
-    // code path that publishes a quote looks identical on Make's side.
-    if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
+    // code path that publishes (or snapshots) a quote looks identical
+    // on Make's side.
+    if (step.id === 'publish-proposal' ||
+        step.id === 'mark-ready' ||
+        step.id === 'request-alt-bid') {
       payload.publishAsTbd = shouldPublishAsTbd();
       try {
         // Pass the proposal scene explicitly — more reliable than
@@ -447,6 +488,182 @@
   }
 
   // ── Notes prompt modal ───────────────────────────────────
+  // ── Survey picker modal ─────────────────────────────────
+  // Reads the available surveys from view_3897, displays them as a
+  // multi-select list (with a Select-All toggle), and calls onPick
+  // with the array of selected survey-record ids. onCancel fires
+  // when the user dismisses without picking. Used by Request Alt Bid
+  // so Ops can target a single sub or fan the request out to all.
+  function openSurveyPickerModal(opts, onPick, onCancel) {
+    opts = opts || {};
+    var surveys = readSurveyOptions();
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ops-modal-overlay';
+
+    var card = document.createElement('div');
+    card.className = 'scw-ops-modal';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'scw-ops-modal-hdr';
+    hdr.textContent = opts.title || 'Pick survey(s)';
+    card.appendChild(hdr);
+
+    if (opts.intro) {
+      var intro = document.createElement('div');
+      intro.className = 'scw-ops-modal-intro';
+      intro.textContent = opts.intro;
+      card.appendChild(intro);
+    }
+
+    var list = document.createElement('ul');
+    list.className = 'scw-ops-modal-list';
+
+    if (!surveys.length) {
+      var empty = document.createElement('li');
+      empty.className = 'scw-ops-modal-list-empty';
+      empty.textContent = 'No surveys available for this SOW.';
+      list.appendChild(empty);
+    } else {
+      // Select-All toggle row.
+      var allLi = document.createElement('li');
+      allLi.className = 'scw-ops-modal-list-all';
+      var allLbl = document.createElement('label');
+      var allCb = document.createElement('input');
+      allCb.type = 'checkbox';
+      allCb.setAttribute('data-id', '__all__');
+      allLbl.appendChild(allCb);
+      var allTxt = document.createElement('span');
+      allTxt.textContent = 'Select all (' + surveys.length + ')';
+      allLbl.appendChild(allTxt);
+      allLi.appendChild(allLbl);
+      list.appendChild(allLi);
+
+      surveys.forEach(function (s) {
+        var li = document.createElement('li');
+        var lbl = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('data-id', s.id);
+        lbl.appendChild(cb);
+        var txt = document.createElement('span');
+        txt.textContent = s.label;
+        lbl.appendChild(txt);
+        li.appendChild(lbl);
+        list.appendChild(li);
+      });
+
+      allCb.addEventListener('change', function () {
+        var on = allCb.checked;
+        var rows = list.querySelectorAll('input[type="checkbox"][data-id]:not([data-id="__all__"])');
+        for (var i = 0; i < rows.length; i++) rows[i].checked = on;
+        refreshSubmitState();
+      });
+      list.addEventListener('change', function (e) {
+        if (e.target === allCb) return;
+        if (e.target.tagName !== 'INPUT') return;
+        // Sync the all-toggle state based on individual selections.
+        var rows = list.querySelectorAll('input[type="checkbox"][data-id]:not([data-id="__all__"])');
+        var checkedCount = 0;
+        for (var i = 0; i < rows.length; i++) if (rows[i].checked) checkedCount++;
+        allCb.checked = (checkedCount === rows.length && rows.length > 0);
+        refreshSubmitState();
+      });
+    }
+
+    card.appendChild(list);
+
+    var actions = document.createElement('div');
+    actions.className = 'scw-ops-modal-actions';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'scw-ops-modal-cancel';
+    cancelBtn.textContent = 'Cancel';
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'scw-ops-modal-submit';
+    submitBtn.textContent = opts.submitLabel || 'Continue';
+    submitBtn.disabled = true; // until at least one survey is checked
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+    card.appendChild(actions);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    function close(viaCancel) {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', escListener);
+      if (viaCancel && typeof onCancel === 'function') onCancel();
+    }
+    function escListener(e) {
+      if (e.key === 'Escape') close(true);
+    }
+    function refreshSubmitState() {
+      var picked = list.querySelectorAll(
+        'input[type="checkbox"][data-id]:checked:not([data-id="__all__"])'
+      );
+      submitBtn.disabled = picked.length === 0;
+    }
+
+    cancelBtn.addEventListener('click', function () { close(true); });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) close(true);
+    });
+    document.addEventListener('keydown', escListener);
+    submitBtn.addEventListener('click', function () {
+      var picked = list.querySelectorAll(
+        'input[type="checkbox"][data-id]:checked:not([data-id="__all__"])'
+      );
+      var ids = [];
+      for (var i = 0; i < picked.length; i++) ids.push(picked[i].getAttribute('data-id'));
+      if (!ids.length) return;
+      close(false);
+      onPick(ids, surveys);
+    });
+  }
+
+  /** Read the survey records from view_3897's model and return
+   *  { id, label } pairs for the picker. Label is the concatenation
+   *  of field_2347 (subcontractor) and field_2345 (survey identifier),
+   *  separated by a middle-dot. Falls back to record id if neither
+   *  field has data. */
+  function readSurveyOptions() {
+    var out = [];
+    try {
+      var v = Knack && Knack.views && Knack.views[SURVEY_PICKER_VIEW];
+      var data = v && v.model && v.model.data;
+      var models = (data && data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i].attributes || models[i];
+        if (!attrs || !attrs.id) continue;
+        var sub   = readDisplayValue(attrs, PICKER_SUB_FIELD);
+        var label = readDisplayValue(attrs, PICKER_LABEL_FIELD);
+        var combined = [sub, label].filter(Boolean).join(' · ') || attrs.id;
+        out.push({ id: attrs.id, label: combined, sub: sub, surveyLabel: label });
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
+  /** Resolve a Knack field's display string from a model attrs object.
+   *  Prefers the connection identifier (_raw[0].identifier) for
+   *  connection fields, falls back to stripped HTML from the bare
+   *  field. Returns '' when the field is empty. */
+  function readDisplayValue(attrs, fieldKey) {
+    if (!attrs) return '';
+    var raw = attrs[fieldKey + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
+      return String(raw[0].identifier).trim();
+    }
+    if (raw && typeof raw === 'object' && raw.identifier) {
+      return String(raw.identifier).trim();
+    }
+    var v = attrs[fieldKey];
+    if (v == null) return '';
+    return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
   function openNotesPromptModal(opts, onSubmit) {
     opts = opts || {};
     var overlay = document.createElement('div');
@@ -658,10 +875,41 @@
       return;
     }
 
+    // Steps that target a subset of surveys (Request Alt Bid) ask
+    // the user to pick first, then fall through to the standard
+    // notes prompt with the picked ids in scope.
+    if (step.pickSurveys) {
+      openSurveyPickerModal({
+        title: 'Choose survey(s) for the alt bid',
+        intro: 'Pick one or more subcontractors. The alt bid request will be sent to each selected survey separately.',
+        submitLabel: 'Continue'
+      }, function (selectedSurveyIds, surveyOptions) {
+        runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions);
+      });
+      return;
+    }
+
+    runNotesPromptAndFire(step, btn, url, null, null);
+  }
+
+  function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions) {
     openNotesPromptModal(step.modal, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
       var payload = buildPayload(step, notes, ctx.mode);
+      if (selectedSurveyIds && selectedSurveyIds.length) {
+        payload.selectedSurveyIds = selectedSurveyIds;
+        // Echo the labels Ops actually saw in the picker so Make
+        // doesn't have to re-derive them when, e.g., posting a
+        // confirmation Slack message.
+        if (surveyOptions && surveyOptions.length) {
+          var byId = {};
+          for (var i = 0; i < surveyOptions.length; i++) byId[surveyOptions[i].id] = surveyOptions[i];
+          payload.selectedSurveys = selectedSurveyIds
+            .map(function (id) { return byId[id]; })
+            .filter(Boolean);
+        }
+      }
 
       postWebhook(url, payload).then(function (resp) {
         // Accept either `success: true` or `status: 'accepted'` —

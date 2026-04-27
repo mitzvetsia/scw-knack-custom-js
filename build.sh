@@ -26,6 +26,8 @@ cat \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
+  src/features/view-3341-loading-overlay.js \
+  src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/published-proposal-render.js \
   src/features/bid-items-grid.js \
@@ -40,6 +42,7 @@ cat \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/select-all-checkboxes.js \
+  src/features/bulk-delete-confirm.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
@@ -96,6 +99,7 @@ cat \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/connection-picker.js \
+  src/features/connected-device-count-on-form.js \
   src/features/grid-direct-edit.js \
   src/features/dynamic-cell-colors.js \
   src/features/revenue-tier-progress.js \

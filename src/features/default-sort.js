@@ -29,6 +29,13 @@
       ]
     },
     {
+      viewId: 'view_3610',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    },
+    {
       viewId: 'view_3450',
       sort: [
         { field: 'field_2240', order: 'asc' },
@@ -76,10 +83,11 @@
 
     // NOTE: intentionally NOT calling view.model.fetch() here. Refetching
     // to change the server-side sort doubles the initial load cost: a
-    // second HTTP round-trip for every view_3586 record plus a full
-    // knack-view-render cycle, which re-runs every feature bound to this
-    // view (device-worksheet card rebuild for ~180 rows, group-collapse,
-    // etc.). It's the primary contributor to the ~3.6s INP on scene_1116.
+    // second HTTP round-trip for every record (view_3586/view_3610) plus
+    // a full knack-view-render cycle, which re-runs every feature bound
+    // to this view (device-worksheet card rebuild for ~180 rows, group-
+    // collapse, etc.). It's the primary contributor to the ~3.6s INP on
+    // scene_1116.
     //
     // Safe to skip because:
     //  - device-worksheet.js applies its own client-side rowSort on every

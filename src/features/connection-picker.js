@@ -1,7 +1,9 @@
 /*** FEATURE: Custom connection picker — replaces Knack's native popover *********
  *
  * Scope:
- *   - Target: field_1957 (Connected Devices) on view_3586 (SOW line items).
+ *   - Target: field_1957 (Connected Devices) on the SOW-line-items views
+ *     listed in VIEWS below (view_3586 + view_3610). Both views share the
+ *     same field shape; the picker reads/writes the clicked view's model.
  *   - Other connection fields and other views keep Knack's native picker.
  *
  * Why:
@@ -10,8 +12,8 @@
  *     and has a label→input click-synthesis quirk that fights shift-range
  *     selection. Replacing it with our own UI puts every interaction on
  *     our own fast path.
- *   - Save uses the existing silent-regroup pipeline
- *     (SCW.silentRegroupView3586 — see mirror-connection-sync.js), so the
+ *   - Save uses the existing silent-regroup pipeline (SCW.silentRegroup
+ *     View<N> per view — see mirror-connection-sync.js), so the
  *     reciprocal field_2197 and parent-group field_1946 propagate to
  *     children without a view-wide re-render flash.
  *
@@ -140,10 +142,30 @@
 
       // Footer
       P + '-footer {',
-      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  display: flex; align-items: center; gap: 8px;',
       '  padding: 12px 18px;',
       '  border-top: 1px solid #e5e7eb;',
       '  background: #f9fafb;',
+      '}',
+      // Live "N connected" count — sits at footer-left
+      P + '-count {',
+      '  font-size: 12px; font-weight: 600; color: #4b5563;',
+      '  letter-spacing: 0.02em;',
+      '}',
+      // Saving state on the count: swap to a "Saving…" indicator
+      P + '-count.is-saving {',
+      '  color: #163C6E;',
+      '}',
+      P + '-count.is-saving::before {',
+      '  content: "";',
+      '  display: inline-block; width: 12px; height: 12px;',
+      '  margin-right: 6px; vertical-align: -2px;',
+      '  border: 2px solid #cbd5e1; border-top-color: #163C6E;',
+      '  border-radius: 50%;',
+      '  animation: scw-cp-spin 0.7s linear infinite;',
+      '}',
+      '@keyframes scw-cp-spin {',
+      '  to { transform: rotate(360deg); }',
       '}',
       P + '-btn {',
       '  appearance: none; border: 1px solid #d1d5db;',
@@ -353,6 +375,13 @@
     // Footer
     var footer = document.createElement('div');
     footer.className = CLASS_PREFIX + '-footer';
+    // Live count — sits on the left side of the footer, updates on
+    // every checkbox change. Keeps the "X connected" total visible
+    // without making the user count the rendered checks themselves.
+    var countEl = document.createElement('div');
+    countEl.className = CLASS_PREFIX + '-count';
+    var spacer = document.createElement('div');
+    spacer.style.flex = '1';
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = CLASS_PREFIX + '-btn';
@@ -361,8 +390,28 @@
     saveBtn.type = 'button';
     saveBtn.className = CLASS_PREFIX + '-btn ' + CLASS_PREFIX + '-btn-primary';
     saveBtn.textContent = 'Save';
+    footer.appendChild(countEl);
+    footer.appendChild(spacer);
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
+
+    function updateCount() {
+      // Query inside `body` (not `backdrop`) — at modal-construction
+      // time the body is already populated by renderGroups but the
+      // backdrop has not yet had `modal` appended to it, so a backdrop
+      // query would find zero checkboxes on first paint.
+      var checks = body.querySelectorAll(
+        '.' + CLASS_PREFIX + '-list input[type="checkbox"]:checked'
+      );
+      var n = checks.length;
+      countEl.textContent = n + ' connected';
+    }
+    // Refresh the count on every checkbox toggle, plus once now.
+    backdrop.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t && t.tagName === 'INPUT' && t.type === 'checkbox') updateCount();
+    }, false);
+    updateCount();
 
     modal.appendChild(header);
     modal.appendChild(errorBar);
@@ -392,16 +441,25 @@
     /** Replace the modal body with a new set of groups, in place. */
     function setGroups(groups) {
       renderGroups(groups);
+      updateCount();
     }
 
     /** Toggle the modal's saving state — disables Save, swaps its label,
-     *  and blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
+     *  swaps the footer count for a spinner + "Saving…" message, and
+     *  blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
     function setSaving(isSaving) {
       saving = !!isSaving;
       saveBtn.disabled = saving;
       cancelBtn.disabled = saving;
       closeBtn.disabled = saving;
       saveBtn.textContent = saving ? 'Saving…' : 'Save';
+      if (saving) {
+        countEl.classList.add('is-saving');
+        countEl.textContent = 'Saving connections…';
+      } else {
+        countEl.classList.remove('is-saving');
+        updateCount();
+      }
     }
 
     /** Show or clear an inline error banner inside the modal. */
@@ -450,27 +508,36 @@
   }
 
   // ── Candidate fetching (chunk 3) ──────────────────────────────────
-  // We hit Knack's own /connections endpoint, which is the same URL the
-  // native popover uses — so the Builder filter and auth wiring Just
-  // Works. Our filter is hardcoded to match what the Builder applies:
-  //   field_2219 = camera/reader bucket
-  //   field_2197 = blank (candidate not already connected to something)
-  //   field_2154 = current SOW (pulled off the clicked row's model)
-  // A per-SOW in-memory cache avoids re-fetching on rapid reopens.
+  // All candidate camera/reader line items are already rendered on
+  // view_3586 — the SOW line-items view we're editing. Every row is the
+  // same SOW (that's the view's scope), bucket classification lives in
+  // field_2219, and the reciprocal on each camera row is field_2197.
+  // So we read from Knack.views[view_3586].model directly and filter
+  // client-side; no HTTP round-trip required.
+  //
+  // The earlier REST-based approach (GET /v1/pages/.../connections/
+  // field_1957) 400s live on this scene — the endpoint isn't the one
+  // the native popover uses, and even after matching the documented
+  // filter shape the response never comes back. Reading the already-
+  // loaded model is strictly simpler and faster.
 
   var CAMERAS_BUCKET_ID       = '6481e5ba38f283002898113c';
   var BUCKET_FIELD            = 'field_2219';
   var RECIPROCAL_FIELD        = 'field_2197';
   var SOW_CONNECTION_FIELD    = 'field_2154';
   var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
-  var CANDIDATES_CACHE        = {};             // { sowId: { records: [...], fetchedAt: ms } }
-  var CACHE_TTL_MS            = 60 * 1000;
+  var IDENTIFIER_FIELD        = 'field_1950';   // Human label (E-001, RA-I-020, ...)
 
-  function readRecordAttrs(recordId) {
-    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return null;
-    var model = Knack.views[TARGET_VIEW].model;
-    if (!model) return null;
-    var records = (model.data && model.data.models) || model.models || [];
+  function getViewModels(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[viewId]) return [];
+    var view = Knack.views[viewId];
+    var model = view && view.model;
+    if (!model) return [];
+    return (model.data && model.data.models) || model.models || [];
+  }
+
+  function readRecordAttrs(viewId, recordId) {
+    var records = getViewModels(viewId);
     for (var i = 0; i < records.length; i++) {
       var entry = records[i];
       if (!entry) continue;
@@ -480,16 +547,8 @@
     return null;
   }
 
-  function getSowIdForRecord(recordId) {
-    var attrs = readRecordAttrs(recordId);
-    if (!attrs) return null;
-    var raw = attrs[SOW_CONNECTION_FIELD + '_raw'];
-    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
-    return null;
-  }
-
-  function getCurrentlySelectedIds(recordId) {
-    var attrs = readRecordAttrs(recordId);
+  function getCurrentlySelectedIds(viewId, recordId) {
+    var attrs = readRecordAttrs(viewId, recordId);
     if (!attrs) return [];
     var raw = attrs[TARGET_FIELD + '_raw'];
     if (!Array.isArray(raw)) return [];
@@ -500,57 +559,65 @@
     return out;
   }
 
-  function buildConnectionsUrl(sowId) {
-    var sceneKey = (typeof Knack !== 'undefined' && Knack.router && Knack.router.current_scene_key)
-      ? Knack.router.current_scene_key : 'scene_1116';
-    var filters = [
-      { field: BUCKET_FIELD,         value: [CAMERAS_BUCKET_ID], operator: 'is' },
-      { field: RECIPROCAL_FIELD,     value: '',                  operator: 'is blank' },
-      { field: SOW_CONNECTION_FIELD, value: sowId,               operator: 'is' }
-    ];
-    return Knack.api_url + '/v1/pages/' + sceneKey +
-           '/views/' + TARGET_VIEW + '/connections/' + TARGET_FIELD +
-           '?rows_per_page=2000&limit_return=true' +
-           '&filters=' + encodeURIComponent(JSON.stringify(filters));
-  }
-
-  /** Fire the connections request. onDone(err, records). */
-  function fetchCandidates(sowId, onDone) {
-    var cached = CANDIDATES_CACHE[sowId];
-    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
-      onDone(null, cached.records);
-      return;
-    }
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function') {
-      onDone(new Error('SCW.knackAjax unavailable'));
-      return;
-    }
-    window.SCW.knackAjax({
-      type: 'GET',
-      url: buildConnectionsUrl(sowId),
-      dataType: 'json',
-      success: function (resp) {
-        var records = (resp && (resp.records || resp)) || [];
-        // Some Knack endpoints wrap in { records: [...] }, others return
-        // the array directly; tolerate both.
-        if (!Array.isArray(records) && records.records) records = records.records;
-        if (!Array.isArray(records)) records = [];
-        CANDIDATES_CACHE[sowId] = { records: records, fetchedAt: Date.now() };
-        onDone(null, records);
-      },
-      error: function (xhr) {
-        onDone(xhr || new Error('fetch failed'));
+  function attrsHaveBucket(attrs, bucketId) {
+    var raw = attrs[BUCKET_FIELD + '_raw'];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id === bucketId) return true;
       }
-    });
+      return false;
+    }
+    if (raw && typeof raw === 'object' && raw.id === bucketId) return true;
+    return false;
   }
 
-  /** Group candidate records by their MDF/IDF identifier, preserving
-   *  the server-provided order within each group. Records with a blank
-   *  MDF/IDF land in a trailing "Unassigned" group. */
+  function attrsReciprocalIsBlank(attrs) {
+    var raw = attrs[RECIPROCAL_FIELD + '_raw'];
+    if (Array.isArray(raw)) return raw.length === 0;
+    if (!raw) return true;
+    if (typeof raw === 'object' && !raw.id) return true;
+    return false;
+  }
+
+  /** Enumerate camera/reader candidates from the view model.
+   *  selectedIdSet: { id -> true } for items already picked by the clicked
+   *  record — those always stay visible so the user can uncheck them,
+   *  even if their reciprocal is no longer blank. */
+  function collectCandidates(viewId, selectedIdSet) {
+    var records = getViewModels(viewId);
+    var out = [];
+    for (var i = 0; i < records.length; i++) {
+      var entry = records[i];
+      if (!entry) continue;
+      var attrs = entry.attributes || entry;
+      if (!attrs || !attrs.id) continue;
+      if (!attrsHaveBucket(attrs, CAMERAS_BUCKET_ID)) continue;
+      var alreadySelected = !!(selectedIdSet && selectedIdSet[attrs.id]);
+      if (!alreadySelected && !attrsReciprocalIsBlank(attrs)) continue;
+      out.push(attrs);
+    }
+    return out;
+  }
+
+  /** Group candidate records by their MDF/IDF identifier and sort:
+   *    - groups by label, alphanumeric / natural order (so "IDF 2" < "IDF 10")
+   *    - items within each group by identifier, same natural order
+   *  Records with a blank MDF/IDF land in a trailing "Unassigned" group
+   *  regardless of where it would fall alphabetically. */
   function groupByMdfIdf(records, selectedIdSet) {
     var orderedLabels = [];
     var groupMap = {};  // label → { label, items }
     var UNASSIGNED_LABEL = 'Unassigned';
+
+    // Natural-order comparator: "Camera 2" < "Camera 10", case-insensitive,
+    // matches the device-worksheet sort pattern (localeCompare numeric:true).
+    function naturalCmp(a, b) {
+      return String(a || '').localeCompare(
+        String(b || ''),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      );
+    }
 
     function bucketFor(label) {
       if (!groupMap[label]) {
@@ -560,32 +627,46 @@
       return groupMap[label];
     }
 
+    function identifierFor(attrs) {
+      var raw = attrs[IDENTIFIER_FIELD];
+      if (typeof raw === 'string' && raw.trim()) {
+        return raw.replace(/<[^>]*>/g, '').trim();
+      }
+      if (attrs.identifier) return String(attrs.identifier).trim();
+      return attrs.id;
+    }
+
     for (var i = 0; i < records.length; i++) {
-      var rec = records[i] || {};
-      var id = rec.id;
-      if (!id) continue;
+      var attrs = records[i];
+      if (!attrs || !attrs.id) continue;
       var label = UNASSIGNED_LABEL;
-      var raw = rec[GROUPING_FIELD + '_raw'];
+      var raw = attrs[GROUPING_FIELD + '_raw'];
       if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
         label = String(raw[0].identifier).trim() || UNASSIGNED_LABEL;
-      } else if (rec[GROUPING_FIELD]) {
-        var stripped = String(rec[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
+      } else if (attrs[GROUPING_FIELD]) {
+        var stripped = String(attrs[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
         if (stripped) label = stripped;
       }
       bucketFor(label).items.push({
-        id: id,
-        identifier: rec.identifier || rec.field_1950 || rec[TARGET_FIELD + '_display'] || id,
-        checked: !!(selectedIdSet && selectedIdSet[id])
+        id: attrs.id,
+        identifier: identifierFor(attrs),
+        checked: !!(selectedIdSet && selectedIdSet[attrs.id])
       });
     }
 
-    // Pull Unassigned to the end if present
-    var unassignedIdx = orderedLabels.indexOf(UNASSIGNED_LABEL);
-    if (unassignedIdx !== -1 && unassignedIdx !== orderedLabels.length - 1) {
-      orderedLabels.splice(unassignedIdx, 1);
-      orderedLabels.push(UNASSIGNED_LABEL);
-    }
-    return orderedLabels.map(function (l) { return groupMap[l]; });
+    // Sort group labels alphanumerically, but force Unassigned to the end.
+    orderedLabels.sort(function (a, b) {
+      if (a === UNASSIGNED_LABEL) return 1;
+      if (b === UNASSIGNED_LABEL) return -1;
+      return naturalCmp(a, b);
+    });
+
+    // Sort items within each group alphanumerically by identifier.
+    return orderedLabels.map(function (l) {
+      var g = groupMap[l];
+      g.items.sort(function (a, b) { return naturalCmp(a.identifier, b.identifier); });
+      return g;
+    });
   }
 
   // ── Click interceptor (chunk 2) ───────────────────────────────────
@@ -595,12 +676,34 @@
   // from seeing the click.
   //
   // The listener is document-wide but filters strictly: only fires when
-  // the click lands on an editable td.field_1957 inside #view_3586.
-  // Everything else (other fields, other views, locked cells, non-left-
-  // click) falls through untouched to the normal handlers.
-  var TARGET_VIEW  = 'view_3586';
+  // the click lands on an editable td.field_1957 inside one of the
+  // configured VIEWS. Everything else (other fields, other views, locked
+  // cells, non-left-click) falls through untouched to the normal handlers.
+  //
+  // VIEWS hosts the same SOW-line-items shape across both the legacy
+  // worksheet (view_3586) and the new one (view_3610). Field keys are
+  // identical between them, so the picker just needs to know which
+  // view's DOM/model to read from for each click.
+  var VIEWS = ['view_3586', 'view_3610'];
   var TARGET_FIELD = 'field_1957';
   var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
+
+  /** Find which configured view contains the given td (if any). */
+  function findOwningView(td) {
+    if (!td || !td.closest) return null;
+    for (var i = 0; i < VIEWS.length; i++) {
+      if (td.closest('#' + VIEWS[i])) return VIEWS[i];
+    }
+    return null;
+  }
+
+  /** Resolve the silent-regroup mirror API for a given view. Names
+   *  follow the pattern `silentRegroupView<N>` registered by
+   *  mirror-connection-sync.js — so view_3586 → silentRegroupView3586. */
+  function getMirrorApi(viewId) {
+    var name = 'silentRegroupView' + String(viewId).replace(/^view_/, '');
+    return window.SCW && window.SCW[name];
+  }
 
   function isCellLocked(td) {
     if (!td) return true;
@@ -630,7 +733,8 @@
 
     var td = e.target.closest('td.' + TARGET_FIELD);
     if (!td) return;
-    if (!td.closest('#' + TARGET_VIEW)) return;
+    var viewId = findOwningView(td);
+    if (!viewId) return;
     if (isCellLocked(td)) return;
 
     var recordId = getRecordIdFromCell(td);
@@ -640,7 +744,7 @@
     e.preventDefault();
     e.stopImmediatePropagation();
 
-    openPickerForRecord(recordId, td);
+    openPickerForRecord(viewId, recordId, td);
   }
 
   // ── Save (chunk 4) ────────────────────────────────────────────────
@@ -648,61 +752,287 @@
   // id array. On success:
   //   1. Patch Knack's Backbone model attrs (field_1957 + _raw) so
   //      subsequent reads don't revert to stale connection state.
-  //   2. Fire a synthetic knack-cell-update.view_3586 carrying the
-  //      updated record. SCW.silentRegroupView3586 (mirror-connection-
-  //      sync.js) listens on that event and deterministically reparents
-  //      the child rows, patches their field_2197 + field_1946, and
-  //      fires per-child PUTs with a final model.fetch() to resync.
+  //   2. Repaint the parent row's field_1957 cell from the response.
+  //   3. Drive SCW.silentRegroupView3586 directly (no synthetic
+  //      knack-cell-update event) so the children's field_2197 +
+  //      field_1946 PUTs fire off the same response without going
+  //      through the mirror's 400ms settle timer.
   //
   // We don't use Knack.views[...].model.updateRecord() because — per the
   // boolean-chips.js comment — that path silently fails in the worksheet
   // context where device-worksheet has restructured the rows. Direct PUT
   // is the pattern every other SCW device-worksheet writer uses today.
-  function saveSelection(recordId, selectedIds, onDone) {
+  /** Repaint the parent row's field_1957 cell from the PUT response.
+   *  patchCardFromResponse skips this field because it's `nativeEdit`
+   *  in the view_3586/view_3610 configs — readOnly/directEdit fields
+   *  are the only shapes the shared helper knows how to write. The
+   *  cell shape is:
+   *    <td class="field_1957 ... scw-ws-field-value [--empty]">
+   *      <span class="col-N">
+   *        <span class="<recId>" data-kn="connection-value">label</span>,
+   *        <span class="<recId>" data-kn="connection-value">label</span>
+   *      </span>
+   *    </td>
+   *  When empty: just `&nbsp;` inside the col-N wrapper. */
+  function repaintParentConnectionCell(viewId, recordId, resp) {
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+    var row = viewEl.querySelector('tr#' + recordId);
+    if (!row) return;
+    // The clicked cell lives in the worksheet card's detail panel. Both
+    // the pre-transform tr and the scw-ws-card are inside view_3586, so
+    // grab every field_1957 td under the recordId row's neighbourhood.
+    var tds = viewEl.querySelectorAll('td.' + TARGET_FIELD);
+    if (!tds.length) return;
+
+    var raw = resp && resp[TARGET_FIELD + '_raw'];
+    if (!Array.isArray(raw)) raw = [];
+
+    for (var i = 0; i < tds.length; i++) {
+      var td = tds[i];
+      // Only patch tds belonging to this record's worksheet card. The
+      // card td lives inside a tr.scw-ws-row whose id matches recordId,
+      // OR inside a tr right after the matching scw-ws-row marker.
+      var owningCard = td.closest('tr.scw-ws-row');
+      if (!owningCard || owningCard.id !== recordId) continue;
+
+      var wrap = td.querySelector('span[class^="col-"]');
+      if (!wrap) continue;
+
+      if (raw.length === 0) {
+        wrap.innerHTML = '&nbsp;';
+        td.classList.add('scw-ws-field-value--empty');
+        continue;
+      }
+
+      td.classList.remove('scw-ws-field-value--empty');
+      var html = '';
+      for (var k = 0; k < raw.length; k++) {
+        var item = raw[k] || {};
+        if (!item.id) continue;
+        if (k > 0) html += ', ';
+        html += '<span class="' + escapeAttr(item.id) + '" data-kn="connection-value">' +
+                escapeText(item.identifier || item.id) + '</span>';
+      }
+      wrap.innerHTML = html;
+    }
+  }
+
+  function escapeAttr(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+    });
+  }
+  function escapeText(s) {
+    return String(s).replace(/[&<>]/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;' })[c];
+    });
+  }
+
+  /** Read the parent record's MDF/IDF group id, preferring the PUT
+   *  response (freshest) and falling back to the Backbone model. */
+  function readParentGroupId(viewId, R, parentId) {
+    var raw = R && R[GROUPING_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    var attrs = readRecordAttrs(viewId, parentId);
+    if (attrs) {
+      var rawM = attrs[GROUPING_FIELD + '_raw'];
+      if (Array.isArray(rawM) && rawM[0] && rawM[0].id) return rawM[0].id;
+    }
+    return null;
+  }
+
+  /** Fire a "repair" PUT for each currently-selected child whose
+   *  reciprocal/group should already match the parent. The mirror's
+   *  applyDeterministicRegroup only PUTs added/removed children — the
+   *  unchanged-but-still-connected set falls outside its diff. Running
+   *  this on every save guarantees a re-submit re-asserts field_2197 +
+   *  field_1946 across every connected child, even when nothing changed
+   *  at the parent. */
+  function fireRepairPuts(viewId, parentId, parentGroupId, childIds, onAllDone) {
+    if (!childIds || !childIds.length) {
+      if (typeof onAllDone === 'function') onAllDone();
+      return;
+    }
+    var remaining = childIds.length;
+    function tick() {
+      remaining--;
+      if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+    }
+    for (var i = 0; i < childIds.length; i++) {
+      var body = {};
+      if (parentGroupId) body[GROUPING_FIELD] = [parentGroupId];
+      body[RECIPROCAL_FIELD] = [parentId];
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: window.SCW.knackRecordUrl(viewId, childIds[i]),
+        data: JSON.stringify(body),
+        dataType: 'json',
+        success: function () { tick(); },
+        error: function (xhr) {
+          console.warn('[scw-cp] repair PUT failed',
+            xhr && xhr.status, xhr && xhr.responseText);
+          tick();
+        }
+      });
+    }
+  }
+
+  function saveSelection(viewId, recordId, selectedIds, originalIds, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
       console.error('[scw-cp] SCW.knackAjax/knackRecordUrl unavailable — cannot save');
       if (typeof onDone === 'function') onDone(new Error('ajax helpers unavailable'));
       return;
     }
+
+    // Read parent's MDF/IDF group id from the model BEFORE the PUT.
+    // Knack's no-op PUT responses occasionally omit field_1946_raw,
+    // which would have left parentGroupId null and skipped the
+    // field_1946 portion of the repair + accessory cascade. The model
+    // always has it for an existing parent.
+    var preGroupAttrs = readRecordAttrs(viewId, recordId);
+    var preGroupRaw = preGroupAttrs && preGroupAttrs[GROUPING_FIELD + '_raw'];
+    var preGroupId = (Array.isArray(preGroupRaw) && preGroupRaw[0] && preGroupRaw[0].id)
+      ? preGroupRaw[0].id : null;
+
     var body = {};
     body[TARGET_FIELD] = selectedIds;
+    SCW.debug && SCW.debug('[scw-cp] saveSelection start',
+      { viewId: viewId, recordId: recordId,
+        selected: selectedIds.length, original: (originalIds || []).length,
+        preGroupId: preGroupId });
 
     window.SCW.knackAjax({
       type: 'PUT',
-      url: window.SCW.knackRecordUrl(TARGET_VIEW, recordId),
+      url: window.SCW.knackRecordUrl(viewId, recordId),
       data: JSON.stringify(body),
       dataType: 'json',
       success: function (resp) {
-        // Invalidate the candidate cache for this SOW so the NEXT open
-        // sees fresh field_2197 values (the just-saved children now
-        // point at this parent; the filter would have excluded them on
-        // a fresh fetch).
-        var sowId = getSowIdForRecord(recordId);
-        if (sowId) delete CANDIDATES_CACHE[sowId];
-
         // Patch Knack's model so the parent row reflects the new
         // selection immediately (no visible "flash then populate").
         if (typeof window.SCW.syncKnackModel === 'function') {
           try {
-            window.SCW.syncKnackModel(TARGET_VIEW, recordId, resp, TARGET_FIELD, selectedIds);
+            window.SCW.syncKnackModel(viewId, recordId, resp, TARGET_FIELD, selectedIds);
           } catch (e) { /* best-effort */ }
         }
 
-        // Fire a synthetic cell-update event so the silent-regroup
-        // mirror picks it up and handles the reciprocal children.
+        // Repaint the clicked row's field_1957 cell from the PUT
+        // response. SCW.deviceWorksheet.patchCard is a no-op here —
+        // field_1957 is `nativeEdit` in this view's config, and the
+        // shared helper only handles readOnly + directEdit fields.
+        try { repaintParentConnectionCell(viewId, recordId, resp); }
+        catch (e) { console.warn('[scw-cp] repaintParentConnectionCell threw', e); }
+
+        // Knack view-scoped PUTs sometimes wrap the record under a
+        // "record" key; unwrap so downstream code sees record.id and
+        // record.field_1957_raw at the top level.
+        var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
+        // Prefer the response's group id (freshest), fall back to the
+        // pre-PUT model snapshot, then to readParentGroupId's broader
+        // search. Triple fallback so a no-op PUT response shape can't
+        // strand parentGroupId at null.
+        var parentGroupId = readParentGroupId(viewId, R, recordId) || preGroupId;
+
+        // Compute stillSelected up front — needed to feed both the
+        // repair PUTs and the accessory cascade.
+        var origSet = {};
+        for (var oi = 0; oi < (originalIds || []).length; oi++) {
+          origSet[originalIds[oi]] = true;
+        }
+        var stillSelected = [];
+        for (var si = 0; si < selectedIds.length; si++) {
+          if (origSet[selectedIds[si]]) stillSelected.push(selectedIds[si]);
+        }
+        SCW.debug && SCW.debug('[scw-cp] save success — stages dispatching',
+          { stillSelected: stillSelected.length,
+            parentGroupId: parentGroupId,
+            respHadGroup: !!(R && R[GROUPING_FIELD + '_raw']) });
+
+        // ── Multi-stage completion gate ──────────────────────────
+        // Why: every step below fires async PUTs. If the modal closes
+        // before they all land and the user navigates away, the
+        // browser cancels in-flight requests and field_2197 / accessory
+        // MDFs end up missing. Hold the modal in `saving` state until
+        // mirror PUTs + repair PUTs + accessory PUTs have ALL settled.
+        var doneFired = false;
+        var pendingStages = 3;
+        function stageDone() {
+          pendingStages--;
+          if (pendingStages > 0 || doneFired) return;
+          doneFired = true;
+          if (typeof onDone === 'function') onDone(null, resp);
+        }
+        // Hard ceiling so a hung PUT doesn't leave the modal open
+        // forever. ~10s is generous — typical settle is sub-2s.
+        var hardTimeout = setTimeout(function () {
+          if (doneFired) return;
+          doneFired = true;
+          console.warn('[scw-cp] save timeout — closing modal with ' +
+                       pendingStages + ' stage(s) still pending');
+          if (typeof onDone === 'function') onDone(null, resp);
+        }, 10000);
+        // Wrap stageDone so the timeout gets cleared on natural completion.
+        var rawStageDone = stageDone;
+        stageDone = function () {
+          if (pendingStages === 1) clearTimeout(hardTimeout);
+          rawStageDone();
+        };
+
+        var mirrorApi = getMirrorApi(viewId);
+
+        // Stage 1 — silent-regroup mirror (added/removed children +
+        // mirror-internal accessory cascade for added).
         try {
-          var viewObj = (typeof Knack !== 'undefined' && Knack.views)
-            ? Knack.views[TARGET_VIEW] : null;
-          // The mirror reads record[TARGET_FIELD + '_raw'] on the
-          // event payload; make sure it's populated from resp (Knack
-          // returns the raw shape for connection fields).
-          $(document).trigger('knack-cell-update.' + TARGET_VIEW, [viewObj, resp]);
+          if (mirrorApi && typeof mirrorApi.applyDeterministicRegroup === 'function') {
+            mirrorApi.applyDeterministicRegroup(R, function () {
+              SCW.debug && SCW.debug('[scw-cp] stage 1 (mirror) done');
+              stageDone();
+            });
+          } else {
+            console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
+                         ' unavailable — children will not regroup');
+            stageDone();
+          }
         } catch (e) {
-          console.warn('[scw-cp] cell-update trigger threw', e);
+          console.warn('[scw-cp] applyDeterministicRegroup threw', e);
+          stageDone();
         }
 
-        if (typeof onDone === 'function') onDone(null, resp);
+        // Stage 2 — repair PUTs for still-connected children
+        // (selectedIds ∩ originalIds). The mirror's diff doesn't
+        // include these, so without this pass a re-submit with no
+        // changes would be a no-op. With it, every save re-asserts
+        // each child's field_2197 + field_1946.
+        SCW.debug && SCW.debug('[scw-cp] stage 2 (repair PUTs) firing for ' +
+          stillSelected.length + ' children');
+        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, function () {
+          SCW.debug && SCW.debug('[scw-cp] stage 2 (repair PUTs) done');
+          stageDone();
+        });
+
+        // Stage 3 — accessory cascade for still-connected children.
+        // Mirror auto-cascades for `added`; we cover the unchanged
+        // intersection here so accessory MDFs stay in sync on no-op
+        // submits and during drift recovery.
+        try {
+          if (mirrorApi && typeof mirrorApi.cascadeAccessoryMdf === 'function' &&
+              parentGroupId && stillSelected.length) {
+            SCW.debug && SCW.debug('[scw-cp] stage 3 (accessory cascade) firing');
+            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId, function () {
+              SCW.debug && SCW.debug('[scw-cp] stage 3 (accessory cascade) done');
+              stageDone();
+            });
+          } else {
+            SCW.debug && SCW.debug('[scw-cp] stage 3 skipped',
+              { hasMirror: !!mirrorApi, hasGroupId: !!parentGroupId,
+                stillSelected: stillSelected.length });
+            stageDone();
+          }
+        } catch (e) {
+          console.warn('[scw-cp] cascadeAccessoryMdf threw', e);
+          stageDone();
+        }
       },
       error: function (xhr) {
         console.error('[scw-cp] save failed',
@@ -712,27 +1042,52 @@
     });
   }
 
-  function openPickerForRecord(recordId, td) {
-    var sowId = getSowIdForRecord(recordId);
-    if (!sowId) {
-      console.warn('[scw-cp] cannot resolve SOW id for record', recordId,
-                   '— leaving Knack native picker disabled; no fallback.');
-      return;
-    }
-    var selectedIds = getCurrentlySelectedIds(recordId);
+  function openPickerForRecord(viewId, recordId, td) {
+    var selectedIds = getCurrentlySelectedIds(viewId, recordId);
     var selectedSet = {};
     for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
 
-    // Open with a placeholder group so the modal shell paints
-    // immediately; swap in real data when the fetch lands via
-    // handle.setGroups() (in place, no close+reopen flicker).
+    // Candidates come straight from the view model — synchronous, no
+    // network call — so we can build the grouped list before opening
+    // the modal and skip the Loading… placeholder entirely.
+    var candidates = collectCandidates(viewId, selectedSet);
+    var grouped = groupByMdfIdf(candidates, selectedSet);
+
+    // Orphans: currently-selected items whose reciprocal is no longer
+    // blank AND whose row is not on this view page. Preserve them so
+    // the user can still uncheck.
+    var candidateById = {};
+    for (var c = 0; c < candidates.length; c++) {
+      candidateById[candidates[c].id] = true;
+    }
+    var orphans = [];
+    for (var s = 0; s < selectedIds.length; s++) {
+      var sid = selectedIds[s];
+      if (!candidateById[sid]) {
+        var attrs = readRecordAttrs(viewId, sid) || {};
+        orphans.push({
+          id: sid,
+          identifier: (attrs[IDENTIFIER_FIELD] && String(attrs[IDENTIFIER_FIELD]).replace(/<[^>]*>/g, '').trim()) ||
+                      attrs.identifier || sid,
+          checked: true
+        });
+      }
+    }
+    if (orphans.length) {
+      grouped.unshift({ label: 'Already selected', items: orphans });
+    }
+
     var handle = openModal({
       title: 'Connected Devices',
-      groups: [{ label: 'Loading…', items: [] }],
+      groups: grouped.length ? grouped : [{ label: 'No candidates', items: [] }],
       onSave: function (ids) {
         handle.setSaving(true);
         handle.showError('');
-        saveSelection(recordId, ids, function (err) {
+        // Pass the snapshot of selectedIds taken at modal-open time as
+        // originalIds — saveSelection diffs against it to know which
+        // currently-selected children need a repair PUT (the unchanged
+        // intersection that mirror's added/removed diff doesn't touch).
+        saveSelection(viewId, recordId, ids, selectedIds, function (err) {
           if (err) {
             handle.setSaving(false);
             handle.showError('Failed to save. Please try again.');
@@ -742,42 +1097,6 @@
         });
       },
       onCancel: function () { /* no-op */ }
-    });
-
-    fetchCandidates(sowId, function (err, records) {
-      if (err) {
-        console.error('[scw-cp] fetch failed', err);
-        handle.showError('Failed to load candidates. Close and try again.');
-        return;
-      }
-      // Ensure any currently-selected records that aren't in the
-      // candidate set (e.g. the filter would have excluded them because
-      // they're now connected to something else) still appear in the
-      // modal as checked — otherwise a user who just wants to UNCHECK
-      // one couldn't see it. Fold them in under an "Already selected"
-      // section at the top.
-      var byId = {};
-      for (var r = 0; r < records.length; r++) {
-        if (records[r] && records[r].id) byId[records[r].id] = records[r];
-      }
-      var grouped = groupByMdfIdf(records, selectedSet);
-      var orphans = [];
-      for (var s = 0; s < selectedIds.length; s++) {
-        var sid = selectedIds[s];
-        if (!byId[sid]) {
-          var attrs = readRecordAttrs(sid) || {};
-          orphans.push({
-            id: sid,
-            identifier: attrs.identifier || attrs.field_1950 || sid,
-            checked: true
-          });
-        }
-      }
-      if (orphans.length) {
-        grouped.unshift({ label: 'Already selected', items: orphans });
-      }
-
-      handle.setGroups(grouped);
     });
   }
 

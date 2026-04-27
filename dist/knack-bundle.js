@@ -30,7 +30,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                    licenseIds, triggeredBy }
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_OPS_MARK_READY_WEBHOOK:       "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
-  MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_OPS_REQUEST_ALT_BID",
+  MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:  "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
   MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b"
 };
 window.SCW = window.SCW || {};
@@ -1351,8 +1351,18 @@ window.SCW = window.SCW || {};
       display: flex !important;
     }
 
-    /* Hide view_3770 visually but keep it in the DOM */
-    #view_3770 {
+    /* Hide view_3770 visually but keep it in the DOM
+       view_3887: mounting-hardware accessory view read by
+       mirror-connection-sync's MDF cascade. Must stay in the DOM/model
+       so findAccessoryIds + fireAccessoryPut can resolve records, but
+       should never be visible to the user.
+       view_3896: hidden data-only grid on scene_1096 used only to
+       enrich the publish JSON payload (Make duplicates these records
+       server-side). Listed in proposal-pdf-export.js cfg.skipViews
+       so the rendered proposal doesn't include it. */
+    #view_3770,
+    #view_3887,
+    #view_3896 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;
@@ -1601,6 +1611,36 @@ window.SCW = window.SCW || {};
   /** Sum a field across all td cells with data-field-key in the given views.
    *  Device-worksheet moves td elements from original rows into card panels,
    *  but each cell appears exactly once per record in the DOM tree. */
+  /** Read a single field off the SOW record on this scene.
+   *  Tries the totals view (view_3418) and the SOW detail view
+   *  (view_3827) — each is a kn-details view of the SOW. We check
+   *  the Backbone model first (which holds every attribute on the
+   *  record, even fields the view doesn't display) and fall back to
+   *  scraping a visible kn-detail cell if the field happens to be
+   *  rendered. Strips HTML so callers always get plain text. */
+  var SOW_DETAIL_VIEWS = ['view_3418', 'view_3827'];
+  function readSowField(fieldKey) {
+    if (typeof Knack !== 'undefined' && Knack.views) {
+      for (var i = 0; i < SOW_DETAIL_VIEWS.length; i++) {
+        var v = Knack.views[SOW_DETAIL_VIEWS[i]];
+        if (!v || !v.model) continue;
+        var attrs = (v.model.data && v.model.data.attributes) ||
+                    v.model.attributes || null;
+        if (attrs && attrs[fieldKey] != null) {
+          return String(attrs[fieldKey]).replace(/<[^>]*>/g, '').trim();
+        }
+      }
+    }
+    // DOM fallback for fields rendered as kn-detail rows
+    for (var j = 0; j < SOW_DETAIL_VIEWS.length; j++) {
+      var el = document.getElementById(SOW_DETAIL_VIEWS[j]);
+      if (!el) continue;
+      var cell = el.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
+      if (cell) return (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    return '';
+  }
+
   function sumViewField(viewIds, fieldKey) {
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
@@ -1649,7 +1689,14 @@ window.SCW = window.SCW || {};
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
     var eqSubtotal   = retail - discount;
     var installTotal = sumViewField(EQUIPMENT_VIEWS, 'field_2028');  // per-row installation fee
-    var projTotal    = eqSubtotal + installTotal;
+    // field_2725 (FLAG_released to sales) gates whether Sales sees a
+    // real number or a TBD placeholder. Until Ops has explicitly
+    // released this quote to Sales, the install fee is still a draft
+    // and the user shouldn't see a project total that bakes it in.
+    // Same convention ops-stepper + ops-review-pill use: anything
+    // other than "Yes" is TBD.
+    var releasedToSales = readSowField('field_2725').toLowerCase() === 'yes';
+    var projTotal       = releasedToSales ? (eqSubtotal + installTotal) : eqSubtotal;
 
     var layout = document.createElement('div');
     layout.className = 'scw-totals-custom';
@@ -1671,7 +1718,8 @@ window.SCW = window.SCW || {};
 
     // ── INSTALLATION ──
     layout.appendChild(createSectionHeader('Installation'));
-    layout.appendChild(createSubtotal('Subtotal', formatMoney(installTotal)));
+    layout.appendChild(createSubtotal('Subtotal',
+      releasedToSales ? formatMoney(installTotal) : 'TBD'));
 
     // ── PROJECT TOTAL ──
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
@@ -1791,61 +1839,76 @@ window.SCW = window.SCW || {};
         }
       }
 
-      if (!proposalName && !pdfUrl) return;
+      var hasPublished = !!(proposalName || pdfUrl);
+
+      // Build the Preview Draft Proposal href directly from the SOW
+      // record id. Same construction as preview-proposal-btn.js — the
+      // earlier view_3815 scrape was an intermittent failure on first
+      // render because the menu view sometimes lagged behind view_3418.
+      // Reading from the model is synchronous against scene state.
+      var sowId = readSowField('id');
+      var previewHref = (sowId && /^[0-9a-f]{24}$/i.test(sowId))
+        ? '#proposals/proposal/' + sowId + '/'
+        : '';
+
+      // Nothing to render in either column — bail.
+      if (!hasPublished && !previewHref) return;
 
       var wrap = document.createElement('div');
       wrap.className = 'scw-totals-proposal';
       wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;text-align:right;padding-right:10px;';
 
-      var hdr = document.createElement('div');
-      hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
-      hdr.textContent = 'Published Proposal';
-      wrap.appendChild(hdr);
+      if (hasPublished) {
+        var hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
+        hdr.textContent = 'Published Proposal';
+        wrap.appendChild(hdr);
 
-      if (proposalName) {
-        var nameRow = document.createElement('div');
-        nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
-        if (viewLink) {
-          var nameLink = document.createElement('a');
-          nameLink.href = viewLink;
-          nameLink.textContent = proposalName;
-          nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
-          nameRow.appendChild(nameLink);
-        } else {
-          nameRow.textContent = proposalName;
+        if (proposalName) {
+          var nameRow = document.createElement('div');
+          nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
+          if (viewLink) {
+            var nameLink = document.createElement('a');
+            nameLink.href = viewLink;
+            nameLink.textContent = proposalName;
+            nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
+            nameRow.appendChild(nameLink);
+          } else {
+            nameRow.textContent = proposalName;
+          }
+          wrap.appendChild(nameRow);
         }
-        wrap.appendChild(nameRow);
-      }
 
-      if (expDate) {
-        var expRow = document.createElement('div');
-        expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
-        expRow.textContent = 'Expires: ' + expDate;
-        wrap.appendChild(expRow);
-      }
-
-      if (pdfUrl) {
-        var pdfRow = document.createElement('a');
-        pdfRow.href = pdfUrl;
-        pdfRow.target = '_blank';
-        pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
-        pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
-        pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
-        wrap.appendChild(pdfRow);
-      }
-
-      // Pull Preview Proposal link from view_3815
-      var previewMenu = document.getElementById('view_3815');
-      if (previewMenu) {
-        var previewLink = previewMenu.querySelector('a.kn-link-page');
-        if (previewLink) {
-          var previewHdr = document.createElement('a');
-          previewHdr.href = previewLink.getAttribute('href') || '#';
-          previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:10px;text-decoration:none;';
-          previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-          previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
-          wrap.appendChild(previewHdr);
+        if (expDate) {
+          var expRow = document.createElement('div');
+          expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
+          expRow.textContent = 'Expires: ' + expDate;
+          wrap.appendChild(expRow);
         }
+
+        if (pdfUrl) {
+          var pdfRow = document.createElement('a');
+          pdfRow.href = pdfUrl;
+          pdfRow.target = '_blank';
+          pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
+          pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+          pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
+          wrap.appendChild(pdfRow);
+        }
+      }
+
+      // Preview Draft Proposal — always rendered when the link exists,
+      // regardless of whether a published proposal is present. Drops a
+      // little extra top-margin so it floats on its own when there's no
+      // published-proposal block above it.
+      if (previewHref) {
+        var previewHdr = document.createElement('a');
+        previewHdr.href = previewHref;
+        var topMargin = hasPublished ? '10px' : '0';
+        previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:' + topMargin + ';text-decoration:none;';
+        previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+        previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
+        wrap.appendChild(previewHdr);
       }
 
       container.appendChild(wrap);
@@ -1881,9 +1944,14 @@ window.SCW = window.SCW || {};
   }
 
   if (window.SCW && SCW.onViewRender) {
-    // Trigger after the totals container renders
+    // Trigger after the totals container renders. view_3814 + view_3827
+    // are SOW-context details views — view_3814 carries the published
+    // proposal record, view_3827 carries the SOW record we read field_2725
+    // and the SOW id off of. Re-run on either, plus on every equipment
+    // grid render so the totals stay in sync with the visible data.
     SCW.onViewRender('view_3418', debouncedTotals, NS);
     SCW.onViewRender('view_3814', debouncedTotals, NS);
+    SCW.onViewRender('view_3827', debouncedTotals, NS);
     // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
@@ -4889,7 +4957,17 @@ window.SCW = window.SCW || {};
       insertAfter: 'view_2924',
       completed: { field: 'field_1199', hasValue: true },
       lockWhenCompleted: true,
-      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' }
+      disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // After the user clicks → submits the form → returns here, Make
+      // takes a few seconds to populate field_1199 with the install
+      // project link. Lock the action and poll view_3827 until that
+      // field appears so the user can't double-fire the action and the
+      // step transitions to "completed" automatically.
+      pollAfterClick: {
+        pendingLabel: 'Initializing project — please wait…',
+        pollMs:       4000,
+        timeoutMs:    120 * 1000
+      }
     },
     {
       type: 'accordion',
@@ -4961,7 +5039,7 @@ window.SCW = window.SCW || {};
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
-      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Bid not yet validated' }
+      disabled: { field: 'field_2725', notValue: 'Yes', message: 'Not yet released to Sales' }
     }
   ];
 
@@ -4987,6 +5065,15 @@ window.SCW = window.SCW || {};
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
     '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+  // Animated spinner used while a pollAfterClick step is waiting for
+  // a Make automation to populate the field that flips it to completed.
+  var SPIN_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'class="scw-step-spin">' +
+    '<path d="M12 2a10 10 0 1 0 10 10" />' +
+    '</svg>';
 
   var LOCK_SM_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" ' +
@@ -5101,6 +5188,17 @@ window.SCW = window.SCW || {};
       '  opacity: 0.45; pointer-events: none; cursor: default;' +
       '}' +
       '.scw-step-action.is-disabled .scw-step-icon { color: #94a3b8; opacity: 1; }' +
+      // Processing state — locked while a Make automation runs after
+      // the user clicks. Keep full opacity (so it doesn't read as
+      // "disabled / unavailable"), block clicks, and spin the icon.
+      '.scw-step-action.is-processing {' +
+      '  opacity: 1; pointer-events: none; cursor: wait;' +
+      '  background: rgba(41,95,145,0.04);' +
+      '}' +
+      '.scw-step-action.is-processing .scw-step-icon { color: #295F91; opacity: 1; }' +
+      '.scw-step-action.is-processing .scw-step-title { color: #295F91; font-style: italic; }' +
+      '.scw-step-spin { animation: scw-step-spin 0.8s linear infinite; transform-origin: 50% 50%; }' +
+      '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
       /* Completed + locked (no re-trigger): keep normal appearance,
          only block clicks. No opacity fade, no gray icon. */
       '.scw-step-action.is-completed.is-disabled {' +
@@ -5258,6 +5356,22 @@ window.SCW = window.SCW || {};
     } else {
       var href = resolveHref(step);
       if (href) el.href = href;
+      // pollAfterClick steps: stamp a per-SOW flag the moment the
+      // user clicks. The browser then navigates to the form view as
+      // normal; when the user returns, applyActionState sees the
+      // flag and locks the step into "processing" + starts polling.
+      // Block the click outright if we're already processing or
+      // disabled so a double-tap doesn't navigate twice.
+      if (step.pollAfterClick) {
+        el.addEventListener('click', function (e) {
+          if (el.classList.contains('is-disabled') ||
+              el.classList.contains('is-processing')) {
+            e.preventDefault();
+            return;
+          }
+          setPollFlag(step.id);
+        });
+      }
     }
 
     var icon = document.createElement('span');
@@ -5763,9 +5877,58 @@ window.SCW = window.SCW || {};
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
     var isDisabled = baseDisabled || lockedByCompletion;
 
+    // ── pollAfterClick: processing-state override ──
+    // When the user has clicked this step recently (flag set in click
+    // handler) and the completion field hasn't flipped yet, lock the
+    // step into a "Processing — please wait…" state and start polling
+    // SOURCE_VIEW so the moment the field flips we re-render to the
+    // completed state. Cleanup once the step IS completed (the flag
+    // becomes irrelevant) so a future fresh click works.
+    var processing = false;
+    if (step.pollAfterClick) {
+      var flag = getPollFlag(step.id, step.pollAfterClick.timeoutMs);
+      if (flag && !isCompleted) {
+        processing = true;
+        startStepPoll(step);
+      } else if (isCompleted && flag) {
+        // Field flipped → drop the flag + stop polling so the step
+        // renders as a normal "completed" action.
+        clearPollFlag(step.id);
+        stopStepPoll(step.id);
+      }
+    }
+
+    var icon = el.querySelector('.scw-step-icon');
+    if (processing) {
+      // Override visual + lock click. is-disabled blocks pointer events
+      // via existing CSS, plus is-processing adds the spinner styling.
+      if (icon) icon.innerHTML = SPIN_SVG;
+      var titleEl = el.querySelector('.scw-step-title');
+      if (titleEl) {
+        titleEl.textContent = step.pollAfterClick.pendingLabel || 'Processing…';
+      }
+      el.classList.add('is-processing');
+      el.classList.add('is-disabled');
+      el.classList.remove('is-completed');
+      // Drop the href so even an accessibility-tab-Enter doesn't fire.
+      el.removeAttribute('href');
+      renderHeaderMessage(el, step, step.id, false, false);
+      return;
+    }
+
+    // Not processing — restore in case we just exited that state.
+    el.classList.remove('is-processing');
+    var titleEl2 = el.querySelector('.scw-step-title');
+    if (titleEl2 && titleEl2.textContent !== step.label) {
+      titleEl2.textContent = step.label;
+    }
+    if (!step.webhookAction) {
+      var hrefAfter = resolveHref(step);
+      if (hrefAfter && el.getAttribute('href') !== hrefAfter) el.href = hrefAfter;
+    }
+
     // Icon — keep the completed check when locked-by-completion so the
     // user still sees the "done" state rather than a lock.
-    var icon = el.querySelector('.scw-step-icon');
     if (icon) icon.innerHTML = getIcon(isCompleted, baseDisabled, step);
 
     // Classes: prefer is-completed styling when locked by completion so
@@ -5793,6 +5956,79 @@ window.SCW = window.SCW || {};
       else if (step.type === 'action') applyActionState(step);
     }
   }
+
+  // ── pollAfterClick: lock + poll until a step's completion field flips ──
+  // For action steps that fire a Knack form whose post-submit data is
+  // populated by an async Make automation. Click sets a per-SOW
+  // localStorage flag; on next render we lock the step ("processing")
+  // and start polling SOURCE_VIEW's model until step.completed flips.
+  // Cleared on success, on timeout, or when the SOW changes.
+  var POLL_FLAG_PREFIX = 'scw-step-polling:';
+  var _activePolls = {};   // stepId -> intervalId
+
+  function pollFlagKey(stepId) {
+    return POLL_FLAG_PREFIX + stepId + ':' + (getSourceSowId() || '');
+  }
+  function getPollFlag(stepId, timeoutMs) {
+    try {
+      var raw = localStorage.getItem(pollFlagKey(stepId));
+      if (!raw) return null;
+      var ts = parseInt(raw, 10);
+      if (!isFinite(ts)) return null;
+      if (Date.now() - ts > (timeoutMs || 120000)) {
+        localStorage.removeItem(pollFlagKey(stepId));
+        return null;
+      }
+      return ts;
+    } catch (e) { return null; }
+  }
+  function setPollFlag(stepId) {
+    try { localStorage.setItem(pollFlagKey(stepId), String(Date.now())); }
+    catch (e) {}
+  }
+  function clearPollFlag(stepId) {
+    try { localStorage.removeItem(pollFlagKey(stepId)); } catch (e) {}
+  }
+
+  function startStepPoll(step) {
+    if (_activePolls[step.id]) return;
+    var opts = step.pollAfterClick || {};
+    var pollMs    = opts.pollMs    || 4000;
+    var timeoutMs = opts.timeoutMs || 120000;
+
+    _activePolls[step.id] = setInterval(function () {
+      // Bail out if the user navigated to a different SOW or cleared
+      // the flag manually.
+      if (!getPollFlag(step.id, timeoutMs)) {
+        stopStepPoll(step.id);
+        applySteps();
+        return;
+      }
+      // Refetch the SOW detail view so step.completed re-evaluates
+      // against the freshest field values.
+      try {
+        var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch({
+            success: function () {
+              if (step.completed && conditionMet(step.completed)) {
+                clearPollFlag(step.id);
+                stopStepPoll(step.id);
+              }
+              applySteps();
+            }
+          });
+        }
+      } catch (e) { /* swallow — try again on next tick */ }
+    }, pollMs);
+  }
+  function stopStepPoll(stepId) {
+    if (_activePolls[stepId]) {
+      clearInterval(_activePolls[stepId]);
+      delete _activePolls[stepId];
+    }
+  }
+
 
   // ── Playbook form display rules (view_2924) ──────────────
   var PLAYBOOK_VIEW = 'view_2924';
@@ -5838,13 +6074,29 @@ window.SCW = window.SCW || {};
 
   function bindPlaybookRules() {
     var form = document.getElementById(PLAYBOOK_VIEW);
-    if (!form || form.getAttribute('data-scw-playbook-rules') === '1') return;
+    if (!form) return;
+    // Mark the form (purely informational — handlers are idempotent
+    // via jQuery namespace .off().on() below). The previous once-only
+    // guard on this attribute caused intermittent breakage: Knack's
+    // post-submit re-render replaces the inner <select> + <input>
+    // elements while keeping the outer <form>, which left our flag
+    // set but the handlers detached. Re-binding every render is safe
+    // because .off(NS) clears any prior listeners first.
     form.setAttribute('data-scw-playbook-rules', '1');
 
-    // Connection field change (Chosen.js fires change on the original select)
-    $('#' + PLAYBOOK_VIEW + '-field_2228').on('change' + NS, applyPlaybookRules);
-    // Radio change for field_1752
-    $(form).on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
+    // Connection field change (Chosen.js fires change on the original select).
+    // The select element is replaced on every form re-render, so we have
+    // to re-bind each time — namespace .off() clears the previous handler
+    // (if any) without affecting other modules' listeners.
+    $('#' + PLAYBOOK_VIEW + '-field_2228')
+      .off('change' + NS)
+      .on('change' + NS, applyPlaybookRules);
+
+    // Radio change for field_1752 — delegated on the form so it survives
+    // input replacement, but still namespaced + .off()'d for safety.
+    $(form)
+      .off('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]')
+      .on('change' + NS, 'input[name="' + PLAYBOOK_VIEW + '-field_1752"]', applyPlaybookRules);
 
     applyPlaybookRules();
   }
@@ -8493,9 +8745,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   // ============================================================
   // FEATURE: Mask installation values with "TBD"
-  // When field_2725 in view_3861 is not "Yes", zero out labor
-  // cells BEFORE the pipeline so all sums exclude installation,
-  // then label the zeroed cells as "TBD" after.
+  // When field_2725 (FLAG_released to sales) in view_3861 is not
+  // "Yes", zero out labor cells BEFORE the pipeline so all sums
+  // exclude installation, then label the zeroed cells as "TBD"
+  // after. Sales-facing viewers shouldn't see install figures
+  // until Ops has explicitly released the quote.
   // ============================================================
 
   function isInstallationMasked() {
@@ -8679,7 +8933,1241 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
     });
   });
-})();/*** SCW PDF EXPORT — Multi-Scene Template ***/
+})();/*** FEATURE: Loading overlay on view_3341 ***********************************
+ *
+ * view_3341 is the SOW Line Items grid on the proposal page. Knack's own
+ * "Loading…" spinner clears as soon as the records arrive, but on a large
+ * SOW (1000+ rows) there's a noticeable post-data window where:
+ *
+ *   - Knack is still inserting <tr>s into the DOM
+ *   - proposal-grid.js is restructuring groups, injecting headers,
+ *     and running label rewrites
+ *   - dynamic-cell-colors / group-collapse are kicking in
+ *
+ * The user sees a half-rendered grid during all of that — partial groups,
+ * unstyled rows, missing camera labels — which reads as a broken view.
+ *
+ * Cover view_3341 with a full overlay (spinner + "Loading line items…")
+ * from the moment the scene renders until ~250ms after knack-view-render
+ * fires for view_3341. The delay gives proposal-grid + the other
+ * view-render-bound modules time to finish their synchronous work before
+ * we expose the grid.
+ ******************************************************************************/
+(function () {
+  'use strict';
+
+  var TARGET_VIEW = 'view_3341';
+  var OVERLAY_ID  = 'scw-view-3341-loading';
+  var STYLE_ID    = 'scw-view-3341-loading-css';
+  var EVENT_NS    = '.scwView3341Loading';
+  var HIDE_DELAY  = 250; // ms after view-render before we drop the overlay
+
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = [
+      '#' + OVERLAY_ID + ' {',
+      '  position: absolute; inset: 0;',
+      '  z-index: 50;',
+      '  background: rgba(255,255,255,0.92);',
+      '  display: flex; flex-direction: column;',
+      '  align-items: center; justify-content: center;',
+      '  gap: 14px;',
+      '  font: 500 14px/1.3 system-ui, -apple-system, sans-serif;',
+      '  color: #4b5563;',
+      '  border-radius: 8px;',
+      '  pointer-events: auto;',
+      '}',
+      '#' + OVERLAY_ID + ' .scw-v3341-spin {',
+      '  width: 28px; height: 28px;',
+      '  border: 3px solid #e5e7eb;',
+      '  border-top-color: #163C6E;',
+      '  border-radius: 50%;',
+      '  animation: scwV3341Spin 0.9s linear infinite;',
+      '}',
+      '#' + OVERLAY_ID + ' .scw-v3341-msg {',
+      '  letter-spacing: 0.02em;',
+      '}',
+      '@keyframes scwV3341Spin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function show() {
+    injectStyles();
+    var view = document.getElementById(TARGET_VIEW);
+    if (!view) return;
+    // Ensure overlay anchors to the view.
+    if (getComputedStyle(view).position === 'static') {
+      view.style.position = 'relative';
+    }
+    if (document.getElementById(OVERLAY_ID)) return;
+    var overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.innerHTML =
+      '<div class="scw-v3341-spin"></div>' +
+      '<div class="scw-v3341-msg">Loading line items…</div>';
+    view.appendChild(overlay);
+  }
+
+  function hide() {
+    var overlay = document.getElementById(OVERLAY_ID);
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  }
+
+  // Show on every scene render — if view_3341 is on this scene the
+  // shell is in the DOM by the time scene-render fires, even though
+  // the rows haven't loaded yet. (If the view isn't on this scene
+  // the show() call is a silent no-op.)
+  $(document)
+    .off('knack-scene-render.any' + EVENT_NS)
+    .on('knack-scene-render.any' + EVENT_NS, function () { show(); });
+
+  // Hide ~250ms after the view finishes rendering so proposal-grid's
+  // bound handler (also on knack-view-render.view_3341) has time to
+  // complete its synchronous restructure before we expose the grid.
+  $(document)
+    .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
+    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
+      setTimeout(hide, HIDE_DELAY);
+    });
+
+  // First-paint attempt for the case where the scene is already
+  // rendered when this IIFE runs (e.g. hot reload during development).
+  setTimeout(show, 0);
+})();
+/*** FEATURE: Survey Review Comparison Grid (scene_1303) **********************
+ *
+ * Side-by-side comparison of survey deliverables across all subs who
+ * surveyed a single SOW. Mirrors the bid-review grid shape:
+ *
+ *   - Rows: unique SOW Line Items across all surveys, grouped by MDF/IDF
+ *   - Columns: Survey Requests (one per sub)
+ *   - Cells: photos count + notes preview from that sub's coverage of
+ *            that SOW Line Item (or "—" if the sub didn't survey it)
+ *
+ * Top of each column: subcontractor identity, submitted date, QA-status
+ * badge, and a Mark Reviewed button. "Reviewed" is decorate-only — it
+ * doesn't gate any other view (per design discussion: surveys with
+ * unreviewed deliverables still appear on the Bids comparison page,
+ * just flagged with a `⚠ Survey not reviewed` badge there).
+ *
+ * Mount: kn-scene_1303
+ * Sources:
+ *   - view_3890 (Survey Requests) → column headers
+ *   - view_3889 (Survey Line Items) → cell data, indexed by
+ *     field_2404 (SOW Line Item) × field_2360 (Survey Request)
+ *
+ * Mark Reviewed: PUT field_2743=Yes, field_2744=current user,
+ * field_2745=now against view_3890 record. Column transitions to
+ * reviewed state in place; no page reload.
+ ******************************************************************************/
+(function () {
+  'use strict';
+
+  // ── Config ────────────────────────────────────────────────
+  var SCENE_ID                  = 'scene_1303';
+  var SURVEY_REQUESTS_VIEW      = 'view_3890';
+  var SURVEY_LINE_ITEMS_VIEW    = 'view_3889';
+  var MDF_IDF_VIEW              = 'view_3894';   // OPS_MDF-IDFs records — group decoration
+
+  // Survey Request fields (column header data)
+  var FIELD_SUB                 = 'field_2347'; // subcontractor connection
+  var FIELD_SUBMITTED           = 'field_2354'; // submitted date
+  var FIELD_QA_REVIEWED         = 'field_2743'; // Yes/No flag
+  var FIELD_QA_REVIEWED_BY      = 'field_2744'; // user connection
+  var FIELD_QA_REVIEWED_AT      = 'field_2745'; // timestamp
+
+  // MDF/IDF record fields (view_3894) — group accordion decoration
+  var MDF_FIELD_LABEL           = 'field_1642'; // full label (e.g. "HEADEND: : Pole #1")
+  var MDF_FIELD_NOTES           = 'field_1643'; // free-text notes
+  var MDF_FIELD_PHOTOS          = 'field_771';  // photos cell (same shape as line items)
+  var MDF_FIELD_SURVEY_NOTES    = 'field_2457'; // surveyor's notes for the MDF/IDF
+
+  // Survey Line Item fields (cell data + axes)
+  var FIELD_SOW_LI              = 'field_2404'; // ROW pivot — connection to SOW Line Item
+  var FIELD_SURVEY              = 'field_2360'; // COLUMN pivot — connection to Survey Request
+  var FIELD_MDF_IDF             = 'field_2375'; // grouping field
+  // The photos column on view_3889 is rendered with class
+  // `field_771:thumb_14` (the `:thumb_14` is Knack's image-size suffix);
+  // the cell's data-field-key is the bare `field_771`. We scrape via
+  // the data-field-key attribute selector so the colon doesn't confuse
+  // querySelector (it would parse as an invalid pseudo-class).
+  var FIELD_PHOTOS              = 'field_771';
+  var FIELD_NOTES               = 'field_2412'; // long-text per-item observations
+
+  // Detail fields surfaced inside each cell — pulled from the same
+  // device-worksheet config view_3505 uses for the per-survey detail
+  // worksheet, so the comparison grid surfaces the same data the user
+  // sees when drilling into one survey at a time.
+  var FIELD_EXISTING_CABLING    = 'field_2370'; // Yes/No
+  var FIELD_EXTERIOR            = 'field_2372'; // Yes/No (or chip stack)
+  var FIELD_PLENUM              = 'field_2371'; // Yes/No
+  var FIELD_DROP_LENGTH         = 'field_2367'; // numeric (ft)
+  var FIELD_CONDUIT             = 'field_2368'; // numeric (ft)
+  var FIELD_MOUNT_HEIGHT        = 'field_2455'; // height range
+  var FIELD_CONNECTED_TO        = 'field_2381'; // connection back to NVR/switch
+  var FIELD_MOUNTING            = 'field_2463'; // mounting hardware text/connection
+  var FIELD_QTY                 = 'field_2399'; // bid quantity
+  var FIELD_LABOR               = 'field_2400'; // labor $
+  var FIELD_PRODUCT             = 'field_2379'; // product name (under SOW row label)
+  // Sort order within MDF/IDF group. Same convention every other
+  // Survey/SOW worksheet uses (numeric on the proposal-bucket join,
+  // exposed as a column on view_3889 by the Builder).
+  var FIELD_SORT_ORDER          = 'field_2218';
+
+  // Detail fields rendered via DOM-scrape order: [fieldKey, label]
+  // Each is rendered only if the row has non-empty content for that
+  // field. Rendering order top→bottom matches reading order.
+  var DETAIL_FIELDS = [
+    ['CONNECTED_TO',     'Connected To',  FIELD_CONNECTED_TO],
+    ['MOUNTING',         'Mounting',      FIELD_MOUNTING],
+    ['EXISTING_CABLING', 'Existing Cab.', FIELD_EXISTING_CABLING],
+    ['EXTERIOR',         'Exterior',      FIELD_EXTERIOR],
+    ['PLENUM',           'Plenum',        FIELD_PLENUM],
+    ['DROP_LENGTH',      'Drop Length',   FIELD_DROP_LENGTH],
+    ['CONDUIT',          'Conduit',       FIELD_CONDUIT],
+    ['MOUNT_HEIGHT',     'Mount Height',  FIELD_MOUNT_HEIGHT],
+    ['QTY',              'Qty',           FIELD_QTY],
+    ['LABOR',            'Labor',         FIELD_LABOR]
+  ];
+
+  // Where the grid mounts. If view_44 isn't on this scene, the grid
+  // falls back to inserting at the top of the scene container.
+  var ANCHOR_VIEW_ID            = 'view_44';
+
+  var GRID_CONTAINER_ID         = 'scw-survey-review-grid';
+  var STYLE_ID                  = 'scw-survey-review-grid-css';
+  var EVENT_NS                  = '.scwSurveyReview';
+  var NOTES_PREVIEW_LEN         = 80;
+  var BUILD_DEBOUNCE_MS         = 150;
+
+  // ── Styles ────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = [
+      '#' + GRID_CONTAINER_ID + ' {',
+      '  margin: 16px 0;',
+      '  width: 100%;',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '  color: #1f2937;',
+      '}',
+      '.scw-srv-status {',
+      '  margin-bottom: 14px; font-size: 13px;',
+      '  color: #4b5563; font-weight: 500;',
+      '}',
+      '.scw-srv-status strong { color: #1f2937; font-weight: 700; }',
+      '.scw-srv-empty {',
+      '  padding: 32px 20px; text-align: center; color: #6b7280;',
+      '  background: #f9fafb; border-radius: 8px; border: 1px dashed #d1d5db;',
+      '}',
+      '.scw-srv-table-wrap {',
+      '  overflow-x: auto; width: 100%;',
+      '  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;',
+      '}',
+      '.scw-srv-table {',
+      '  border-collapse: collapse; width: 100%;',
+      '}',
+      '.scw-srv-table th, .scw-srv-table td {',
+      '  border-bottom: 1px solid #f3f4f6;',
+      '  vertical-align: top; text-align: left; padding: 10px 12px;',
+      '}',
+      '.scw-srv-table thead th {',
+      '  position: sticky; top: 0; background: #f9fafb;',
+      '  border-bottom: 2px solid #e5e7eb;',
+      '  z-index: 2; font-weight: 600;',
+      '}',
+      '.scw-srv-row-label {',
+      '  position: sticky; left: 0; background: #fff; font-weight: 600;',
+      '  min-width: 200px; max-width: 240px; z-index: 1;',
+      '}',
+      '.scw-srv-row-label .scw-srv-row-product {',
+      '  display: block; font-weight: 400; font-size: 12px; color: #6b7280; margin-top: 2px;',
+      '}',
+      '.scw-srv-table thead .scw-srv-row-label { background: #f9fafb; z-index: 3; }',
+      // Group accordion — dark blue header that's clickable to
+      // collapse/expand all rows tagged with the same data-group.
+      '.scw-srv-group-row { cursor: pointer; user-select: none; }',
+      '.scw-srv-group-row td {',
+      '  background: #163C6E; color: #fff;',
+      '  font-weight: 700; letter-spacing: 0.04em;',
+      '  text-transform: uppercase; font-size: 12px; padding: 10px 12px;',
+      '}',
+      '.scw-srv-group-row:hover td { background: #0f2d55; }',
+      '.scw-srv-group-chevron {',
+      '  display: inline-block; margin-right: 8px;',
+      '  transition: transform 0.15s ease;',
+      '  font-size: 13px;',
+      '}',
+      '.scw-srv-group-row[data-collapsed="true"] .scw-srv-group-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+      '.scw-srv-group-title { font-weight: 700; }',
+      '.scw-srv-group-count {',
+      '  margin-left: 12px; opacity: 0.75; font-weight: 500;',
+      '  text-transform: none; letter-spacing: 0;',
+      '}',
+      // MDF/IDF detail row — sits below the group header, hosts
+      // photos + survey notes scraped from view_3894.
+      '.scw-srv-mdf-detail-row > td {',
+      '  background: #f0f4f8; padding: 12px 16px;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '}',
+      '.scw-srv-mdf-detail {',
+      '  display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-start;',
+      '}',
+      '.scw-srv-mdf-photos { margin: 0; }',
+      '.scw-srv-mdf-notes {',
+      '  flex: 1 1 280px; min-width: 0;',
+      '  font-size: 12px; line-height: 1.4; color: #1f2937;',
+      '}',
+      '.scw-srv-mdf-notes-label {',
+      '  font-weight: 700; color: #4b5563; margin-right: 4px;',
+      '  text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px;',
+      '}',
+      // Column header pieces
+      '.scw-srv-colhead {',
+      '  display: flex; flex-direction: column; gap: 4px; min-width: 220px;',
+      '}',
+      '.scw-srv-colhead-name { font-size: 13px; font-weight: 700; color: #111827; }',
+      '.scw-srv-colhead-date { font-size: 11px; color: #6b7280; font-weight: 500; }',
+      '.scw-srv-status-badge {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 2px 8px; border-radius: 999px;',
+      '  font-size: 11px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  width: fit-content;',
+      '}',
+      '.scw-srv-status-badge--reviewed { background: #d1fae5; color: #065f46; }',
+      '.scw-srv-status-badge--pending  { background: #fef3c7; color: #92400e; }',
+      '.scw-srv-reviewed-stamp { font-size: 11px; color: #6b7280; font-weight: 500; }',
+      '.scw-srv-mark-btn {',
+      '  appearance: none; border: 1px solid #163C6E;',
+      '  background: #163C6E; color: #fff;',
+      '  font: 600 12px system-ui, sans-serif;',
+      '  padding: 6px 12px; border-radius: 6px;',
+      '  cursor: pointer; align-self: flex-start; letter-spacing: 0.02em;',
+      '}',
+      '.scw-srv-mark-btn:hover { background: #0f2d55; }',
+      '.scw-srv-mark-btn[disabled] { opacity: 0.55; cursor: default; }',
+      '.scw-srv-reopen-link {',
+      '  font: 500 11px system-ui, sans-serif; color: #2563eb;',
+      '  cursor: pointer; align-self: flex-start;',
+      '  text-decoration: underline; background: none; border: none; padding: 0;',
+      '}',
+      '.scw-srv-reopen-link:hover { color: #1d4ed8; }',
+      // Cell pieces
+      '.scw-srv-cell { min-width: 240px; }',
+      '.scw-srv-cell--empty {',
+      '  color: #9ca3af; font-size: 16px; text-align: center;',
+      '}',
+      // Photo strip — scraped HTML may include <a class="kn-img-gallery">,
+      // <img>, etc. Knack's own gallery JS isn't bound to our cloned
+      // cells, so we hijack clicks ourselves (see openPhotoLightbox)
+      // rather than letting the bare href="#" anchors fire and route
+      // back to the home scene. Multiple thumbs wrap to a row.
+      '.scw-srv-cell-photos {',
+      '  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;',
+      '}',
+      '.scw-srv-cell-photos a, .scw-srv-cell-photos img,',
+      '.scw-srv-cell-photos .scw-srv-thumb {',
+      '  display: inline-block; width: 96px; height: 96px;',
+      '  object-fit: cover; border-radius: 6px;',
+      '  border: 1px solid #e5e7eb;',
+      '  cursor: zoom-in;',
+      '}',
+      '.scw-srv-cell-photos a { padding: 0; line-height: 0; }',
+      '.scw-srv-cell-photos a img { width: 100%; height: 100%; border: 0; border-radius: 6px; }',
+      // Missing-required photo placeholder. Dashed amber border so it
+      // reads as "needs attention" without screaming. Type label
+      // wraps inside the box so Ops sees what kind of photo is owed.
+      '.scw-srv-thumb-missing {',
+      '  display: inline-flex !important; flex-direction: column;',
+      '  align-items: center; justify-content: center; gap: 4px;',
+      '  padding: 4px;',
+      '  border: 2px dashed #d97706 !important;',
+      '  background: #fffbeb;',
+      '  cursor: default !important;',
+      '  text-align: center;',
+      '}',
+      '.scw-srv-thumb-missing-icon {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 22px; height: 22px; border-radius: 50%;',
+      '  background: #d97706; color: #fff;',
+      '  font: 700 14px/1 system-ui, sans-serif;',
+      '}',
+      '.scw-srv-thumb-missing-label {',
+      '  font-size: 10px; font-weight: 600; color: #92400e;',
+      '  line-height: 1.15; padding: 0 2px;',
+      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+      '  overflow: hidden;',
+      '}',
+      // Lightbox overlay
+      '.scw-srv-lightbox {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(0,0,0,0.85);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  cursor: zoom-out; padding: 32px;',
+      '}',
+      '.scw-srv-lightbox img {',
+      '  max-width: 100%; max-height: 100%;',
+      '  box-shadow: 0 12px 40px rgba(0,0,0,0.5);',
+      '  border-radius: 6px;',
+      '}',
+      '.scw-srv-lightbox-close {',
+      '  position: absolute; top: 16px; right: 16px;',
+      '  width: 36px; height: 36px; border: none; border-radius: 50%;',
+      '  background: rgba(255,255,255,0.15); color: #fff;',
+      '  font: 700 22px/1 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '}',
+      '.scw-srv-lightbox-close:hover { background: rgba(255,255,255,0.3); }',
+      '.scw-srv-cell-no-photos {',
+      '  color: #9ca3af; font-style: italic; font-size: 12px;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.scw-srv-cell-notes {',
+      '  margin: 4px 0; color: #1f2937;',
+      '  font-size: 12px; line-height: 1.4;',
+      '}',
+      '.scw-srv-cell-notes-label {',
+      '  font-weight: 700; color: #4b5563; margin-right: 4px;',
+      '}',
+      // Detail key/value list — compact label·value rows.
+      '.scw-srv-cell-details {',
+      '  margin-top: 6px;',
+      '  display: grid; grid-template-columns: max-content 1fr;',
+      '  gap: 2px 8px; font-size: 11px;',
+      '}',
+      '.scw-srv-cell-details .k { color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }',
+      '.scw-srv-cell-details .v { color: #1f2937; }',
+      '.scw-srv-cell-details .v--yes { color: #047857; font-weight: 600; }',
+      '.scw-srv-cell-details .v--no  { color: #9ca3af; }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  // ── Read helpers ──────────────────────────────────────────
+  function getModels(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[viewId]) return [];
+    var view = Knack.views[viewId];
+    var data = view.model && view.model.data;
+    return (data && data.models) || [];
+  }
+
+  function attrsOf(model) { return model.attributes || model; }
+
+  function rawConn(attrs, fieldKey) {
+    var raw = attrs && attrs[fieldKey + '_raw'];
+    if (!Array.isArray(raw) || !raw.length || !raw[0]) return null;
+    return raw[0];
+  }
+  function connId(attrs, fk) { var c = rawConn(attrs, fk); return c && c.id ? c.id : null; }
+  function connLabel(attrs, fk) {
+    var c = rawConn(attrs, fk);
+    return c && c.identifier ? String(c.identifier).trim() : '';
+  }
+
+  function isReviewed(attrs) {
+    var v = attrs && attrs[FIELD_QA_REVIEWED];
+    return !!v && String(v).trim().toLowerCase() === 'yes';
+  }
+
+  function readNotes(attrs) {
+    var raw = attrs && (attrs[FIELD_NOTES] || attrs[FIELD_NOTES + '_raw']);
+    if (raw == null) return '';
+    return String(raw).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function truncate(s, n) {
+    if (!s) return '';
+    if (s.length <= n) return s;
+    return s.slice(0, n).replace(/\s+\S*$/, '') + '…';
+  }
+
+  // ── DOM scraping for view_3889 cells ─────────────────────
+  // The Knack model doesn't always populate file/photo fields with
+  // structured data we can render thumbnails from, but the rendered
+  // table cell DOES contain the right markup (kn-img-gallery anchors
+  // wrapping <img> thumbs that already have the lightbox click bound).
+  // Scraping per-row is more reliable than re-deriving from _raw.
+  function indexLineItemRowsById() {
+    var byId = {};
+    var view = document.getElementById(SURVEY_LINE_ITEMS_VIEW);
+    if (!view) return byId;
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var id = rows[i].id;
+      if (id && /^[a-f0-9]{24}$/i.test(id)) byId[id] = rows[i];
+    }
+    return byId;
+  }
+
+  /** Index view_3894 (MDF/IDF records) by record id so each group
+   *  accordion can pull its photos + survey notes from the matching
+   *  record at render time. Reads from the model for label/notes
+   *  text and keeps a parallel DOM-row index for photo HTML scraping
+   *  (same pattern as line item rows). */
+  function indexMdfRecords() {
+    var byId = {};
+    var models = getModels(MDF_IDF_VIEW);
+    for (var i = 0; i < models.length; i++) {
+      var attrs = attrsOf(models[i]);
+      if (attrs && attrs.id) byId[attrs.id] = attrs;
+    }
+    return byId;
+  }
+
+  function indexMdfRowsById() {
+    var byId = {};
+    var view = document.getElementById(MDF_IDF_VIEW);
+    if (!view) return byId;
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var id = rows[i].id;
+      if (id && /^[a-f0-9]{24}$/i.test(id)) byId[id] = rows[i];
+    }
+    return byId;
+  }
+
+  /** Parse the per-photo records for a Survey Line Item row, mirroring
+   *  inline-photo-row.js's extractPhotoRecords logic. Each connected
+   *  photo record exposes:
+   *    - field_771   image (uploaded thumb / kn-img-gallery URL)
+   *    - field_2445  CONFIG_photo type (label like "Proposed Mounting Location")
+   *    - field_2446  FLAG_required (Yes / No)
+   *    - field_2447  FLAG_complete (Yes / No)
+   *  Spans share an `id="<photoRecordId>"` across all four columns,
+   *  so we accumulate by id and return the merged records.
+   *  Lets the cell renderer surface required-but-not-yet-uploaded
+   *  photos as missing slots — same behavior view_3505 has. */
+  function extractPhotoRecords(tr) {
+    var map = {};
+    function ensure(rid) {
+      if (!map[rid]) {
+        map[rid] = { id: rid, imgUrl: '', thumbUrl: '', type: '', required: false, completed: false };
+      }
+      return map[rid];
+    }
+
+    var imgCell = scrapeCellTd(tr, FIELD_PHOTOS);
+    if (imgCell) {
+      var imgSpans = imgCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < imgSpans.length; i++) {
+        var rid = (imgSpans[i].id || '').trim();
+        if (!rid) continue;
+        var rec = ensure(rid);
+        var img = imgSpans[i].querySelector('img');
+        if (img) {
+          rec.imgUrl   = img.getAttribute('data-kn-img-gallery') || img.src || '';
+          rec.thumbUrl = img.src || rec.imgUrl;
+        }
+      }
+    }
+
+    var typeCell = scrapeCellTd(tr, 'field_2445');
+    if (typeCell) {
+      var typeSpans = typeCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var j = 0; j < typeSpans.length; j++) {
+        var rid2 = (typeSpans[j].id || '').trim();
+        if (!rid2) continue;
+        var inner = typeSpans[j].querySelector('span[data-kn="connection-value"]');
+        ensure(rid2).type = inner ? inner.textContent.trim()
+                                  : typeSpans[j].textContent.trim();
+      }
+    }
+
+    var reqCell = scrapeCellTd(tr, 'field_2446');
+    if (reqCell) {
+      var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var r = 0; r < reqSpans.length; r++) {
+        var rid3 = (reqSpans[r].id || '').trim();
+        if (!rid3) continue;
+        ensure(rid3).required =
+          (reqSpans[r].textContent || '').trim().toLowerCase() === 'yes';
+      }
+    }
+
+    var compCell = scrapeCellTd(tr, 'field_2447');
+    if (compCell) {
+      var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var c = 0; c < compSpans.length; c++) {
+        var rid4 = (compSpans[c].id || '').trim();
+        if (!rid4) continue;
+        ensure(rid4).completed =
+          (compSpans[c].textContent || '').trim().toLowerCase() === 'yes';
+      }
+    }
+
+    var arr = [];
+    for (var k in map) if (map.hasOwnProperty(k)) arr.push(map[k]);
+    // Sort: missing-required first (so Ops sees gaps without scanning),
+    // then existing photos by type then id.
+    arr.sort(function (a, b) {
+      var aMiss = a.required && !a.completed;
+      var bMiss = b.required && !b.completed;
+      if (aMiss !== bMiss) return aMiss ? -1 : 1;
+      var t = (a.type || '').localeCompare(b.type || '');
+      if (t !== 0) return t;
+      return a.id.localeCompare(b.id);
+    });
+    return arr;
+  }
+
+  /** Read field_2218 from a Survey Line Item row's DOM as a number.
+   *  Returns POSITIVE_INFINITY when missing so unsorted rows fall
+   *  to the bottom of their group instead of getting picked first. */
+  function readSortOrder(tr) {
+    if (!tr) return Number.POSITIVE_INFINITY;
+    var raw = scrapeCellText(tr, FIELD_SORT_ORDER);
+    if (!raw) return Number.POSITIVE_INFINITY;
+    var n = parseFloat(raw.replace(/[^\d.\-]/g, ''));
+    return isFinite(n) ? n : Number.POSITIVE_INFINITY;
+  }
+
+  function scrapeCellTd(tr, fieldKey) {
+    if (!tr) return null;
+    // data-field-key is the safest path — it's an exact-match attribute
+    // selector that handles colons / suffixes (e.g. `field_771:thumb_14`)
+    // that would otherwise fail as CSS class selectors.
+    var byAttr = tr.querySelector('td[data-field-key="' + fieldKey + '"]');
+    if (byAttr) return byAttr;
+    // Class-selector fallback for older Knack views that don't set
+    // data-field-key. Skip the call if the key has a colon (invalid CSS).
+    if (fieldKey.indexOf(':') !== -1) return null;
+    try { return tr.querySelector('td.' + fieldKey); }
+    catch (e) { return null; }
+  }
+
+  function scrapeCellHtml(tr, fieldKey) {
+    var td = scrapeCellTd(tr, fieldKey);
+    if (!td) return '';
+    // Trim leading/trailing whitespace including &nbsp; in the cell text.
+    var html = td.innerHTML || '';
+    var text = (td.textContent || '').replace(/[\s ]+/g, '');
+    var hasMedia = !!td.querySelector('img, a, [data-kn="connection-value"]');
+    // Image-only cells like field_771 photos have empty textContent
+    // (the <img> renders no text) but ARE meaningful — bailing on text
+    // alone was the bug that hid every photo cell.
+    if (!text && !hasMedia) return '';
+    return html;
+  }
+
+  function scrapeCellText(tr, fieldKey) {
+    var td = scrapeCellTd(tr, fieldKey);
+    if (!td) return '';
+    return (td.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function countPhotosInCell(html) {
+    if (!html) return 0;
+    // Each <img> tag = one photo. Knack image-gallery cells render one
+    // <img> per attached photo (sometimes wrapped in <a class="kn-img-gallery">).
+    var matches = String(html).match(/<img\b/gi);
+    return matches ? matches.length : 0;
+  }
+
+  // ── Build / render ────────────────────────────────────────
+  function getOrCreateContainer() {
+    var existing = document.getElementById(GRID_CONTAINER_ID);
+    var sceneEl = document.getElementById('kn-' + SCENE_ID);
+    if (!sceneEl) return null;
+
+    // Anchor: insert below view_44 if it's on the scene; otherwise at
+    // the top of the scene container as a fallback.
+    var anchor = document.getElementById(ANCHOR_VIEW_ID);
+    if (anchor && !sceneEl.contains(anchor)) anchor = null;
+
+    if (existing) {
+      // Move to correct position in case the DOM shifted between renders.
+      if (anchor) {
+        if (existing.previousElementSibling !== anchor) {
+          anchor.parentNode.insertBefore(existing, anchor.nextSibling);
+        }
+      }
+      return existing;
+    }
+
+    var c = document.createElement('div');
+    c.id = GRID_CONTAINER_ID;
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(c, anchor.nextSibling);
+    } else {
+      sceneEl.insertBefore(c, sceneEl.firstChild);
+    }
+    return c;
+  }
+
+  function build() {
+    injectStyles();
+    var container = getOrCreateContainer();
+    if (!container) return;
+
+    var requests  = getModels(SURVEY_REQUESTS_VIEW);
+    var lineItems = getModels(SURVEY_LINE_ITEMS_VIEW);
+
+    if (!requests.length) {
+      container.innerHTML = '<div class="scw-srv-empty">' +
+        'No surveys received yet. Once subcontractors submit, they’ll appear here for review.' +
+        '</div>';
+      return;
+    }
+
+    // ── Build columns (one per Survey Request) ──
+    var columns = requests.map(function (m) {
+      var a = attrsOf(m);
+      return {
+        id:           a.id,
+        sub:          connLabel(a, FIELD_SUB) || '(no subcontractor)',
+        submitted:    a[FIELD_SUBMITTED] || '',
+        reviewed:     isReviewed(a),
+        reviewedBy:   connLabel(a, FIELD_QA_REVIEWED_BY),
+        reviewedAt:   a[FIELD_QA_REVIEWED_AT] || ''
+      };
+    });
+    // Stable order: by submitted date asc, then by sub name
+    columns.sort(function (a, b) {
+      var d = String(a.submitted).localeCompare(String(b.submitted));
+      if (d !== 0) return d;
+      return a.sub.localeCompare(b.sub);
+    });
+
+    // ── Index Survey Line Items into a 2-D matrix ──
+    // Each Survey Line Item record produces one cell at the intersection
+    // of its SOW Line Item (row) and its Survey Request (column).
+    // We carry a reference to the rendered <tr> from view_3889 so the
+    // cell builder can scrape photo HTML + detail-field text directly
+    // from Knack's rendered DOM (more reliable than the model for
+    // file/connection cells that don't always populate _raw cleanly).
+    var rowDomById = indexLineItemRowsById();
+    // MDF/IDF records (view_3894) keyed by id — used to decorate each
+    // group accordion with its photos + survey notes from the MDF
+    // record. Falls back gracefully when a group's MDF record isn't
+    // in the view (rare; usually only on a stale page state).
+    var mdfRecordById = indexMdfRecords();
+    var mdfRowDomById = indexMdfRowsById();
+
+    var cells = {};                 // cells[sowLiId][surveyId] = { surveyLineItemId, attrs, tr }
+    var sowLiLabel = {};            // sowLiId -> display label
+    var sowLiProduct = {};          // sowLiId -> first-seen product name
+    var sowLiSortKey = {};          // sowLiId -> numeric sort order (lower = first)
+
+    var groupOrder = [];            // ordered list of group ids seen
+    var groupSeen = {};
+    var groupLabel = {};            // groupId -> mdf full label (for header)
+    var sowLiSeen = {};
+    var sowLiByGroup = {};          // groupId -> [sowLiIds]
+
+    var UNASSIGNED_KEY = '__unassigned__';
+
+    for (var i = 0; i < lineItems.length; i++) {
+      var a = attrsOf(lineItems[i]);
+      var sliId     = a.id;
+      var sowLiId   = connId(a, FIELD_SOW_LI);
+      var surveyId  = connId(a, FIELD_SURVEY);
+      if (!sowLiId || !surveyId) continue;
+
+      var slTr = rowDomById[sliId] || null;
+
+      if (!cells[sowLiId]) cells[sowLiId] = {};
+      cells[sowLiId][surveyId] = {
+        surveyLineItemId: sliId,
+        attrs:            a,
+        tr:               slTr
+      };
+
+      if (!sowLiSeen[sowLiId]) {
+        sowLiSeen[sowLiId] = true;
+        sowLiLabel[sowLiId] = connLabel(a, FIELD_SOW_LI) || sowLiId;
+        sowLiProduct[sowLiId] = connLabel(a, FIELD_PRODUCT);
+        // Sort key: read from the first-seen Survey Line Item row for
+        // this SOW LI. All survey rows for the same SOW LI share the
+        // same sort order (it lives on the proposal-bucket join), so
+        // any one of them is fine.
+        sowLiSortKey[sowLiId] = readSortOrder(slTr);
+
+        var grpId = connId(a, FIELD_MDF_IDF) || UNASSIGNED_KEY;
+        if (!groupSeen[grpId]) {
+          groupSeen[grpId] = true;
+          groupOrder.push(grpId);
+          sowLiByGroup[grpId] = [];
+          groupLabel[grpId] = (grpId === UNASSIGNED_KEY)
+            ? 'Unassigned'
+            : (connLabel(a, FIELD_MDF_IDF) || grpId);
+        }
+        sowLiByGroup[grpId].push(sowLiId);
+      }
+    }
+
+    // Sort SOW Line Items WITHIN each group by sort order (ascending).
+    // Items with no sort value sink to the bottom of the group via
+    // Number.POSITIVE_INFINITY default in readSortOrder().
+    Object.keys(sowLiByGroup).forEach(function (grpId) {
+      sowLiByGroup[grpId].sort(function (a, b) {
+        var sa = sowLiSortKey[a];
+        var sb = sowLiSortKey[b];
+        if (sa !== sb) return sa - sb;
+        // Tiebreak on label so the order is stable when sort key is missing.
+        return String(sowLiLabel[a]).localeCompare(String(sowLiLabel[b]));
+      });
+    });
+
+    // Pull "Unassigned" group to the end if present
+    var unIdx = groupOrder.indexOf(UNASSIGNED_KEY);
+    if (unIdx !== -1 && unIdx !== groupOrder.length - 1) {
+      groupOrder.splice(unIdx, 1);
+      groupOrder.push(UNASSIGNED_KEY);
+    }
+
+    // ── Status line ──
+    var reviewedCount = columns.filter(function (c) { return c.reviewed; }).length;
+    var statusHtml =
+      '<div class="scw-srv-status">' +
+        '<strong>' + columns.length + '</strong> survey' +
+        (columns.length === 1 ? '' : 's') + ' received · ' +
+        '<strong>' + reviewedCount + '</strong> reviewed · ' +
+        '<strong>' + (columns.length - reviewedCount) + '</strong> awaiting review' +
+      '</div>';
+
+    // ── Build the table ──
+    var html = [];
+    html.push(statusHtml);
+
+    if (!sowLiSeen || !Object.keys(sowLiSeen).length) {
+      html.push('<div class="scw-srv-empty">' +
+        'Surveys received, but no Survey Line Item records have been submitted yet.' +
+        '</div>');
+      container.innerHTML = html.join('');
+      return;
+    }
+
+    html.push('<div class="scw-srv-table-wrap"><table class="scw-srv-table">');
+
+    // Header row
+    html.push('<thead><tr>');
+    html.push('<th class="scw-srv-row-label">SOW Line Item</th>');
+    columns.forEach(function (col) {
+      html.push('<th>' + buildColumnHeaderHtml(col) + '</th>');
+    });
+    html.push('</tr></thead>');
+
+    // Body. Each group gets:
+    //   1. A clickable group-header row (dark blue, accordion).
+    //   2. An MDF/IDF detail row scraped from view_3894 (photos + notes).
+    //   3. The actual line-item rows for that group.
+    // Detail + line item rows carry data-group="<id>" so the click
+    // handler can toggle visibility without touching the header.
+    var totalCols = columns.length + 1;
+    html.push('<tbody>');
+    groupOrder.forEach(function (grpId) {
+      var grpAttrId = grpId.replace(/[^a-zA-Z0-9_-]/g, ''); // safe for selectors
+      var label = groupLabel[grpId];
+      var itemCount = sowLiByGroup[grpId].length;
+      var mdfAttrs = mdfRecordById[grpId];
+      var mdfTr    = mdfRowDomById[grpId];
+
+      html.push(
+        '<tr class="scw-srv-group-row" data-group="' + escapeAttr(grpAttrId) +
+        '" data-collapsed="false">' +
+          '<td colspan="' + totalCols + '">' +
+            '<span class="scw-srv-group-chevron" aria-hidden="true">▾</span>' +
+            '<span class="scw-srv-group-title">' + escapeHtml(label) + '</span>' +
+            '<span class="scw-srv-group-count">' + itemCount +
+              ' item' + (itemCount === 1 ? '' : 's') + '</span>' +
+          '</td>' +
+        '</tr>'
+      );
+
+      // MDF detail row — only render if we have anything to show
+      var mdfDetailHtml = buildMdfDetailHtml(mdfAttrs, mdfTr);
+      if (mdfDetailHtml) {
+        html.push(
+          '<tr class="scw-srv-mdf-detail-row" data-group="' + escapeAttr(grpAttrId) + '">' +
+            '<td colspan="' + totalCols + '">' + mdfDetailHtml + '</td>' +
+          '</tr>'
+        );
+      }
+
+      sowLiByGroup[grpId].forEach(function (sowLiId) {
+        html.push('<tr data-group="' + escapeAttr(grpAttrId) + '">');
+        html.push('<td class="scw-srv-row-label">' +
+          escapeHtml(sowLiLabel[sowLiId]) +
+          (sowLiProduct[sowLiId]
+            ? '<span class="scw-srv-row-product">' + escapeHtml(sowLiProduct[sowLiId]) + '</span>'
+            : '') +
+          '</td>');
+        columns.forEach(function (col) {
+          var cell = cells[sowLiId] && cells[sowLiId][col.id];
+          html.push('<td class="scw-srv-cell">' + buildCellHtml(cell) + '</td>');
+        });
+        html.push('</tr>');
+      });
+    });
+    html.push('</tbody></table></div>');
+
+    container.innerHTML = html.join('');
+    bindCardActions(container);
+    applyCollapsedState(container);
+  }
+
+  function buildColumnHeaderHtml(col) {
+    var parts = [];
+    parts.push('<div class="scw-srv-colhead">');
+    parts.push('<span class="scw-srv-colhead-name">' + escapeHtml(col.sub) + '</span>');
+    if (col.submitted) {
+      parts.push('<span class="scw-srv-colhead-date">Submitted ' +
+        escapeHtml(String(col.submitted)) + '</span>');
+    }
+    if (col.reviewed) {
+      parts.push('<span class="scw-srv-status-badge scw-srv-status-badge--reviewed">' +
+        '✓ Reviewed</span>');
+      if (col.reviewedBy || col.reviewedAt) {
+        parts.push('<span class="scw-srv-reviewed-stamp">' +
+          (col.reviewedBy ? 'by ' + escapeHtml(col.reviewedBy) : '') +
+          (col.reviewedBy && col.reviewedAt ? ' · ' : '') +
+          (col.reviewedAt ? escapeHtml(String(col.reviewedAt)) : '') +
+          '</span>');
+      }
+      parts.push('<button type="button" class="scw-srv-reopen-link" ' +
+        'data-action="reopen" data-survey-id="' + escapeAttr(col.id) + '">' +
+        'Re-open Review</button>');
+    } else {
+      parts.push('<span class="scw-srv-status-badge scw-srv-status-badge--pending">' +
+        '⚠ Awaiting Review</span>');
+      parts.push('<button type="button" class="scw-srv-mark-btn" ' +
+        'data-action="mark-reviewed" data-survey-id="' + escapeAttr(col.id) + '">' +
+        'Mark Reviewed</button>');
+    }
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  /** Build the MDF/IDF detail panel HTML — photos + survey notes
+   *  scraped from view_3894's matching record. Returns '' if there's
+   *  nothing meaningful to show, so the caller can skip the row. */
+  function buildMdfDetailHtml(attrs, tr) {
+    if (!attrs && !tr) return '';
+
+    // Photos: scrape from the v3894 row DOM (same lightbox pattern
+    // as the cell photos — clicks routed through openPhotoLightbox).
+    var photosHtml = scrapeCellHtml(tr, MDF_FIELD_PHOTOS);
+    var surveyNotes = (attrs && attrs[MDF_FIELD_SURVEY_NOTES])
+      ? String(attrs[MDF_FIELD_SURVEY_NOTES]).replace(/<[^>]*>/g, '').trim() : '';
+    var notes = (attrs && attrs[MDF_FIELD_NOTES])
+      ? String(attrs[MDF_FIELD_NOTES]).replace(/<[^>]*>/g, '').trim() : '';
+
+    if (!photosHtml && !surveyNotes && !notes) return '';
+
+    var parts = ['<div class="scw-srv-mdf-detail">'];
+    if (photosHtml) {
+      parts.push('<div class="scw-srv-mdf-photos scw-srv-cell-photos">' +
+        photosHtml + '</div>');
+    }
+    if (surveyNotes) {
+      parts.push('<div class="scw-srv-mdf-notes">' +
+        '<span class="scw-srv-mdf-notes-label">Surveyor notes:</span> ' +
+        escapeHtml(surveyNotes) + '</div>');
+    }
+    if (notes) {
+      parts.push('<div class="scw-srv-mdf-notes">' +
+        '<span class="scw-srv-mdf-notes-label">Notes:</span> ' +
+        escapeHtml(notes) + '</div>');
+    }
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  function buildCellHtml(cell) {
+    if (!cell) return '<span class="scw-srv-cell--empty">—</span>';
+
+    var parts = [];
+
+    // ── Photos: render per-record so missing-required slots show up
+    // as placeholders (same behavior view_3505 has). Required +
+    // not-yet-uploaded photos are surfaced first as dashed placeholder
+    // tiles so Ops can spot survey deliverable gaps without drilling
+    // into each record. Existing thumbnails render after.
+    var photoRecords = extractPhotoRecords(cell.tr);
+    if (photoRecords.length) {
+      var thumbs = photoRecords.map(function (rec) {
+        if (rec.imgUrl || rec.thumbUrl) {
+          // Uploaded — render as thumbnail. data-kn-img-gallery on
+          // the img is what openPhotoLightbox reads to find the
+          // full-size URL when the user clicks.
+          return '<a href="javascript:void(0)" class="scw-srv-thumb"' +
+            ' title="' + escapeAttr(rec.type || 'Photo') + '">' +
+            '<img src="' + escapeAttr(rec.thumbUrl || rec.imgUrl) + '"' +
+            ' data-kn-img-gallery="' + escapeAttr(rec.imgUrl || rec.thumbUrl) + '"' +
+            ' alt="' + escapeAttr(rec.type || '') + '">' +
+            '</a>';
+        }
+        if (rec.required) {
+          // Missing required photo — dashed placeholder with type label.
+          return '<div class="scw-srv-thumb scw-srv-thumb-missing"' +
+            ' title="Missing required photo: ' + escapeAttr(rec.type || 'Photo') + '">' +
+            '<span class="scw-srv-thumb-missing-icon">!</span>' +
+            '<span class="scw-srv-thumb-missing-label">' +
+            escapeHtml(rec.type || 'Required') + '</span>' +
+            '</div>';
+        }
+        // Optional + missing → skip; not worth the screen space.
+        return '';
+      }).filter(Boolean);
+      if (thumbs.length) {
+        parts.push('<div class="scw-srv-cell-photos">' + thumbs.join('') + '</div>');
+      } else {
+        parts.push('<div class="scw-srv-cell-no-photos">No photos</div>');
+      }
+    } else {
+      parts.push('<div class="scw-srv-cell-no-photos">No photos</div>');
+    }
+
+    // ── Notes (model is fine for this — long-text field).
+    var notes = readNotes(cell.attrs);
+    if (notes) {
+      parts.push('<div class="scw-srv-cell-notes" title="' +
+        escapeAttr(notes) + '">' +
+        '<span class="scw-srv-cell-notes-label">Notes:</span>' +
+        escapeHtml(truncate(notes, NOTES_PREVIEW_LEN)) + '</div>');
+    }
+
+    // ── Detail fields: each rendered as a small key·value row.
+    // Read from the rendered td so a Yes/No formatted as a chip in
+    // Knack still resolves to "Yes"/"No" text. Skip rows whose value
+    // is empty / "—" / "No" (No is implied — only call out Yes).
+    var detailRows = [];
+    for (var i = 0; i < DETAIL_FIELDS.length; i++) {
+      var def = DETAIL_FIELDS[i];
+      var label = def[1];
+      var fk    = def[2];
+      var val   = scrapeCellText(cell.tr, fk);
+      if (!val) continue;
+      var lc = val.toLowerCase();
+      if (lc === 'no' || lc === '—' || lc === '0') continue;
+      var vCls = (lc === 'yes') ? 'v v--yes' : 'v';
+      detailRows.push(
+        '<span class="k">' + escapeHtml(label) + '</span>' +
+        '<span class="' + vCls + '">' + escapeHtml(val) + '</span>'
+      );
+    }
+    if (detailRows.length) {
+      parts.push('<div class="scw-srv-cell-details">' + detailRows.join('') + '</div>');
+    }
+
+    return parts.join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+    });
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  // ── Persistent collapsed-group state across rebuilds ──────
+  // build() does container.innerHTML = …, which wipes inline
+  // display:none we set on the rows. We track which groups are
+  // collapsed in a module-level Set and re-apply after each render.
+  var _collapsedGroups = {};
+  function applyCollapsedState(container) {
+    var groupRows = container.querySelectorAll('.scw-srv-group-row');
+    for (var g = 0; g < groupRows.length; g++) {
+      var gid = groupRows[g].getAttribute('data-group');
+      if (!gid || !_collapsedGroups[gid]) continue;
+      groupRows[g].setAttribute('data-collapsed', 'true');
+      var rows = container.querySelectorAll(
+        'tr[data-group="' + gid + '"]:not(.scw-srv-group-row)'
+      );
+      for (var r = 0; r < rows.length; r++) rows[r].style.display = 'none';
+    }
+  }
+
+  // ── Mark Reviewed actions ────────────────────────────────
+  function bindCardActions(container) {
+    // Bind ONCE per container element. Subsequent build() calls reuse
+    // the same container but reset innerHTML — without this guard the
+    // click listener stacks N deep and clicks toggle the accordion N
+    // times in a single event, often appearing not to work.
+    if (container._scwSurvBound) return;
+    container._scwSurvBound = true;
+    container.addEventListener('click', function (e) {
+      // Photo click → open in our own lightbox. The cloned <a class=
+      // "kn-img-gallery" href="#"> would otherwise route the SPA hash
+      // to "#" and dump the user back on the home scene because
+      // Knack's gallery binding isn't attached to our cells.
+      var photo = e.target.closest('.scw-srv-cell-photos img, .scw-srv-cell-photos a');
+      if (photo) {
+        e.preventDefault();
+        e.stopPropagation();
+        var img = (photo.tagName === 'IMG') ? photo : photo.querySelector('img');
+        if (img) {
+          var fullUrl = img.getAttribute('data-kn-img-gallery') || img.src;
+          if (fullUrl) openPhotoLightbox(fullUrl);
+        }
+        return;
+      }
+
+      // Group accordion toggle — click anywhere on the dark blue
+      // group-header row collapses or expands all rows tagged with
+      // the same data-group, including the MDF detail row.
+      var groupRow = e.target.closest('.scw-srv-group-row');
+      if (groupRow) {
+        var groupId = groupRow.getAttribute('data-group');
+        var collapsed = groupRow.getAttribute('data-collapsed') === 'true';
+        var nextCollapsed = !collapsed;
+        groupRow.setAttribute('data-collapsed', nextCollapsed ? 'true' : 'false');
+        // Persist so the next build() (e.g. triggered by a Mark
+        // Reviewed save or a model.fetch elsewhere) doesn't snap
+        // every group back to expanded.
+        if (nextCollapsed) _collapsedGroups[groupId] = true;
+        else delete _collapsedGroups[groupId];
+        var toggleRows = container.querySelectorAll(
+          'tr[data-group="' + groupId + '"]:not(.scw-srv-group-row)'
+        );
+        for (var i = 0; i < toggleRows.length; i++) {
+          toggleRows[i].style.display = nextCollapsed ? 'none' : '';
+        }
+        return;
+      }
+
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-action');
+      var surveyId = btn.getAttribute('data-survey-id');
+      if (!surveyId) return;
+      if (action === 'mark-reviewed') {
+        flipReviewed(surveyId, true, btn);
+      } else if (action === 'reopen') {
+        flipReviewed(surveyId, false, btn);
+      }
+    });
+  }
+
+  function openPhotoLightbox(url) {
+    if (!url) return;
+    // Reuse existing overlay if user clicks fast.
+    var existing = document.querySelector('.scw-srv-lightbox');
+    if (existing) existing.parentNode.removeChild(existing);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-srv-lightbox';
+    overlay.innerHTML =
+      '<img src="' + escapeAttr(url) + '" alt="">' +
+      '<button type="button" class="scw-srv-lightbox-close" aria-label="Close">&times;</button>';
+
+    function close() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    overlay.addEventListener('click', function (e) {
+      // Click anywhere except the image itself dismisses; the close
+      // button is also handled here. Stops the click from bubbling
+      // up to the grid's handler.
+      e.stopPropagation();
+      if (e.target.tagName !== 'IMG') close();
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+  }
+
+  function currentUserId() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && u.id) return u.id;
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function flipReviewed(surveyId, toReviewed, btn) {
+    if (!window.SCW || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      console.error('[scw-srv] knackAjax/knackRecordUrl unavailable');
+      return;
+    }
+
+    var body = {};
+    body[FIELD_QA_REVIEWED] = toReviewed ? 'Yes' : 'No';
+    if (toReviewed) {
+      var uid = currentUserId();
+      if (uid) body[FIELD_QA_REVIEWED_BY] = [uid];
+      // Knack accepts ISO timestamps for date/time fields.
+      body[FIELD_QA_REVIEWED_AT] = new Date().toISOString();
+    } else {
+      body[FIELD_QA_REVIEWED_BY] = [];
+      body[FIELD_QA_REVIEWED_AT] = '';
+    }
+
+    var origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = toReviewed ? 'Saving…' : 'Re-opening…';
+
+    SCW.knackAjax({
+      type: 'PUT',
+      url: SCW.knackRecordUrl(SURVEY_REQUESTS_VIEW, surveyId),
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        // Patch model so the next build() reflects the new state without a fetch.
+        try {
+          if (typeof SCW.syncKnackModel === 'function') {
+            SCW.syncKnackModel(SURVEY_REQUESTS_VIEW, surveyId, resp,
+              FIELD_QA_REVIEWED, body[FIELD_QA_REVIEWED]);
+            SCW.syncKnackModel(SURVEY_REQUESTS_VIEW, surveyId, resp,
+              FIELD_QA_REVIEWED_BY, body[FIELD_QA_REVIEWED_BY]);
+            SCW.syncKnackModel(SURVEY_REQUESTS_VIEW, surveyId, resp,
+              FIELD_QA_REVIEWED_AT, body[FIELD_QA_REVIEWED_AT]);
+          }
+        } catch (e) { /* best-effort */ }
+        // Re-render so the column transitions to the new state.
+        build();
+      },
+      error: function (xhr) {
+        console.error('[scw-srv] Mark Reviewed failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+        btn.disabled = false;
+        btn.textContent = origLabel;
+        alert('Could not update review status. Please try again.');
+      }
+    });
+  }
+
+  // ── Triggers ──────────────────────────────────────────────
+  var _buildTimer = null;
+  function debouncedBuild() {
+    clearTimeout(_buildTimer);
+    _buildTimer = setTimeout(build, BUILD_DEBOUNCE_MS);
+  }
+
+  if (window.SCW && SCW.onSceneRender) {
+    SCW.onSceneRender(SCENE_ID, debouncedBuild, EVENT_NS);
+  } else {
+    $(document).off('knack-scene-render.' + SCENE_ID + EVENT_NS)
+               .on('knack-scene-render.' + SCENE_ID + EVENT_NS, debouncedBuild);
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender(SURVEY_REQUESTS_VIEW, debouncedBuild, EVENT_NS);
+    SCW.onViewRender(SURVEY_LINE_ITEMS_VIEW, debouncedBuild, EVENT_NS);
+    SCW.onViewRender(MDF_IDF_VIEW, debouncedBuild, EVENT_NS);
+  } else {
+    $(document).off('knack-view-render.' + SURVEY_REQUESTS_VIEW + EVENT_NS)
+               .on('knack-view-render.' + SURVEY_REQUESTS_VIEW + EVENT_NS, debouncedBuild);
+    $(document).off('knack-view-render.' + SURVEY_LINE_ITEMS_VIEW + EVENT_NS)
+               .on('knack-view-render.' + SURVEY_LINE_ITEMS_VIEW + EVENT_NS, debouncedBuild);
+    $(document).off('knack-view-render.' + MDF_IDF_VIEW + EVENT_NS)
+               .on('knack-view-render.' + MDF_IDF_VIEW + EVENT_NS, debouncedBuild);
+  }
+
+  // First-paint attempt for hot reloads / direct navigation.
+  setTimeout(function () {
+    if (document.getElementById('kn-' + SCENE_ID)) build();
+  }, 300);
+})();
+/*** SCW PDF EXPORT — Multi-Scene Template ***/
 (function () {
   'use strict';
 
@@ -8708,8 +10196,22 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         view_3861: true,
         view_3345: true,
         view_3883: true,
-        view_3886: true
+        view_3886: true,
+        // Hidden data-only grid: a richer Survey Line Item / SOW Line
+        // Item projection added solely so the publish JSON payload
+        // includes every field downstream Make pipelines need (e.g.
+        // duplicating Survey Line Item records on Request Alt Bid).
+        // Lives in the Builder, hidden from users via global-styles.js.
+        // Dropped from the rendered proposal (skipViews) but is the
+        // sole grid in the JSON payload via jsonIncludeViews below.
+        view_3896: true
       },
+      // JSON snapshot for this scene is intentionally slim:
+      //   { sowRecordId, view_3896: [...full records...] }
+      // No header detail, no other grids — Make pipelines that
+      // duplicate records only care about view_3896's projection.
+      // The rendered HTML proposal is unaffected.
+      jsonIncludeViews: ['view_3896'],
       hideEmptyGrids: ['view_3371', 'view_3343'],
       gridKeys: { qty: 'field_1964', cost: 'field_2203', field2019: 'field_2019' },
       recurringGrids: ['view_3371'],
@@ -9711,39 +11213,79 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
              || (view.model.data && view.model.data.attributes)
              || null;
     if (!attrs) return null;
-    return typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+    var src = typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+    // Copy so we don't mutate live model attrs when patching in id below.
+    var rec = {};
+    for (var k in src) if (src.hasOwnProperty(k)) rec[k] = src[k];
+    // Backbone keeps the record id on model.id (not attributes.id) for
+    // some Knack detail views — that left snapshot.header.id missing
+    // and Make pipelines couldn't identify the SOW record being
+    // published. Backfill from model.id when attributes don't carry it.
+    if (!rec.id) {
+      rec.id = (view.model && view.model.id) ||
+               (view.model && view.model.data && view.model.data.id) || '';
+    }
+    return rec;
   }
 
   function buildJsonSnapshot(sceneId) {
     var sceneEl = document.getElementById('kn-' + sceneId);
     if (!sceneEl) return {};
 
-    var snapshot = {
-      header: null,
-      view_3341: [],
-      view_3371: []
-    };
+    var cfg = resolveConfiguredScene(sceneId);
 
-    // Collect line item records from each grid view separately
-    var gridViewIds = ['view_3341', 'view_3371'];
-    for (var g = 0; g < gridViewIds.length; g++) {
-      var vid = gridViewIds[g];
-      var records = extractGridRecords(vid);
-      for (var r = 0; r < records.length; r++) {
-        snapshot[vid].push(records[r]);
+    // ── Slim shape: cfg.jsonIncludeViews (allow-list) ──
+    // When set, the snapshot is just `{ sowRecordId, <view>: [...] }`
+    // for each listed view — no header, no other grids, nothing else.
+    // Used by scenes whose Make pipelines only need a focused subset
+    // (e.g. view_3896 on scene_1096, the hidden data-only grid that
+    // carries the full Survey/SOW Line Item projection).
+    if (cfg && Array.isArray(cfg.jsonIncludeViews) && cfg.jsonIncludeViews.length) {
+      var slim = { sowRecordId: getPageRecordId() || '' };
+      for (var s = 0; s < cfg.jsonIncludeViews.length; s++) {
+        var vid = cfg.jsonIncludeViews[s];
+        if (typeof vid !== 'string') continue;
+        var slimT = detectViewType(vid);
+        if (slimT === 'grid') {
+          slim[vid] = extractGridRecords(vid);
+        } else if (slimT === 'detail') {
+          slim[vid] = extractDetailRecord(vid);
+        }
+      }
+      return slim;
+    }
+
+    // ── Full shape (default) ──
+    // skipViews is HTML-only (drives scrapeAllViews → the rendered
+    // proposal). The JSON snapshot wants the opposite by default —
+    // include everything the scene exposes — because Make pipelines
+    // clone records from this payload. cfg.jsonSkipViews lets a
+    // scene opt out a specific view from JSON without affecting HTML.
+    var jsonSkip = (cfg && cfg.jsonSkipViews) || {};
+
+    var snapshot = { header: null, headerId: '' };
+
+    var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
+    for (var i = 0; i < allViewEls.length; i++) {
+      var viewId = allViewEls[i].id;
+      if (jsonSkip[viewId]) continue;
+      if (!/^view_\d+$/.test(viewId)) continue;  // skip pseudo-ids
+      var t = detectViewType(viewId);
+      if (t === 'grid') {
+        snapshot[viewId] = extractGridRecords(viewId);
+      } else if (t === 'detail' && !snapshot.header) {
+        var rec = extractDetailRecord(viewId);
+        if (rec) {
+          snapshot.header   = rec;
+          snapshot.headerId = rec.id || '';
+        }
       }
     }
 
-    // Collect SOW header from first detail view on the scene
-    var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
-    for (var d = 0; d < allViewEls.length; d++) {
-      var viewId = allViewEls[d].id;
-      if (detectViewType(viewId) !== 'detail') continue;
-      var rec = extractDetailRecord(viewId);
-      if (rec) {
-        snapshot.header = rec;
-        break;
-      }
+    // Final fallback: if no detail view yielded an id, drop in the
+    // page-hash record id so Make always has SOMETHING addressable.
+    if (!snapshot.headerId) {
+      snapshot.headerId = getPageRecordId() || '';
     }
 
     return snapshot;
@@ -20424,6 +21966,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // Prevents a single large group from pushing every other group off
     // the viewport. Starts all-collapsed so the user picks where to work.
     view_3586: { exclusive: true },
+    view_3610: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
@@ -21732,6 +23275,168 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     });
 })();
 /*** END SELECT-ALL CHECKBOXES ***/
+/*** FEATURE: Bulk-delete confirmation + control-bar positioning ***************
+ *
+ * Two related tweaks for KTL's bulkOpsControlsDiv:
+ *
+ *  1. Move #bulkOpsControlsDiv-view_3610's button cluster to the far
+ *     right of its container (KTL renders it left-aligned by default).
+ *
+ *  2. Add a confirm-before-delete prompt to the "Delete Selected: N"
+ *     button. Per-record deletes elsewhere in the app (connected-records
+ *     trash icon) are intentionally one-click; bulk delete is much more
+ *     destructive, so an extra "are you sure?" is warranted.
+ *
+ * Adds the same protection to view_3586's bulk-delete button if it
+ * shows up — same control shape, same risk.
+ ******************************************************************************/
+(function () {
+  'use strict';
+
+  var CONFIRM_VIEWS = ['view_3610', 'view_3586'];
+  var STYLE_ID      = 'scw-bulk-delete-confirm-css';
+  var EVENT_NS      = '.scwBulkDeleteConfirm';
+
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = [
+      // ── Position the bulk-ops control row to the far right ──
+      '#bulkOpsControlsDiv-view_3610,',
+      '#bulkOpsControlsDiv-view_3586 {',
+      '  display: flex !important;',
+      '  justify-content: flex-end !important;',
+      '  gap: 6px;',
+      '}',
+
+      // ── Confirm modal ──
+      '.scw-bdc-overlay {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(15, 23, 42, 0.55);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
+      '}',
+      '.scw-bdc-card {',
+      '  background: #fff; border-radius: 10px;',
+      '  box-shadow: 0 18px 50px rgba(0,0,0,0.35);',
+      '  padding: 22px 24px; min-width: 360px; max-width: 520px;',
+      '  text-align: center;',
+      '}',
+      '.scw-bdc-icon {',
+      '  font-size: 30px; margin-bottom: 8px;',
+      '}',
+      '.scw-bdc-msg {',
+      '  font-size: 15px; font-weight: 700; color: #111827;',
+      '  margin-bottom: 6px;',
+      '}',
+      '.scw-bdc-sub {',
+      '  font-size: 13px; color: #4b5563; margin-bottom: 18px;',
+      '}',
+      '.scw-bdc-btns {',
+      '  display: flex; justify-content: center; gap: 8px;',
+      '}',
+      '.scw-bdc-btn {',
+      '  appearance: none; cursor: pointer;',
+      '  padding: 9px 20px; border-radius: 6px;',
+      '  font: 600 13px system-ui, sans-serif;',
+      '  border: 1px solid transparent;',
+      '}',
+      '.scw-bdc-btn--cancel {',
+      '  background: #fff; color: #1f2937; border-color: #d1d5db;',
+      '}',
+      '.scw-bdc-btn--cancel:hover { background: #f3f4f6; }',
+      '.scw-bdc-btn--confirm {',
+      '  background: #b91c1c; color: #fff; border-color: #991b1b;',
+      '}',
+      '.scw-bdc-btn--confirm:hover { background: #991b1b; }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showConfirm(count) {
+    return new Promise(function (resolve) {
+      var overlay = document.createElement('div');
+      overlay.className = 'scw-bdc-overlay';
+      overlay.innerHTML =
+        '<div class="scw-bdc-card" role="alertdialog" aria-modal="true">' +
+          '<div class="scw-bdc-icon">⚠️</div>' +
+          '<div class="scw-bdc-msg">Bulk delete ' + count +
+            ' record' + (count === 1 ? '' : 's') + '?</div>' +
+          '<div class="scw-bdc-sub">This cannot be undone.</div>' +
+          '<div class="scw-bdc-btns">' +
+            '<button type="button" class="scw-bdc-btn scw-bdc-btn--cancel">Cancel</button>' +
+            '<button type="button" class="scw-bdc-btn scw-bdc-btn--confirm">Delete ' +
+              count + '</button>' +
+          '</div>' +
+        '</div>';
+
+      function close(answer) {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        document.removeEventListener('keydown', onKey);
+        resolve(answer);
+      }
+      function onKey(e) { if (e.key === 'Escape') close(false); }
+
+      overlay.querySelector('.scw-bdc-btn--cancel')
+        .addEventListener('click', function () { close(false); });
+      overlay.querySelector('.scw-bdc-btn--confirm')
+        .addEventListener('click', function () { close(true); });
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close(false);
+      });
+      document.addEventListener('keydown', onKey);
+
+      document.body.appendChild(overlay);
+      // Default focus on Cancel so Enter doesn't blow through.
+      var cancelBtn = overlay.querySelector('.scw-bdc-btn--cancel');
+      if (cancelBtn) cancelBtn.focus();
+    });
+  }
+
+  /** Best-effort selected-row count from the button label
+   *  ("Delete Selected: 12") — KTL keeps that text in sync as the user
+   *  toggles checkboxes, and we don't want to depend on a specific row
+   *  selector that varies between worksheet and grid views. */
+  function readCount(btn) {
+    var m = String(btn.textContent || '').match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  // Capture-phase click listener — runs BEFORE KTL's bubble-phase
+  // delete handler. We swallow the click, ask for confirmation, and
+  // (on yes) re-fire the click with a one-shot flag so our handler
+  // lets the second click reach KTL untouched.
+  injectStyles();
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('button[id^="ktl-bulk-delete-selected-"]');
+    if (!btn) return;
+    if (btn.disabled) return;
+
+    // One of the views we're protecting?
+    var viewMatch = btn.id.match(/ktl-bulk-delete-selected-(view_\d+)$/);
+    if (!viewMatch) return;
+    if (CONFIRM_VIEWS.indexOf(viewMatch[1]) === -1) return;
+
+    // Already confirmed → let this click flow through to KTL.
+    if (btn._scwBdcConfirmed) {
+      btn._scwBdcConfirmed = false;
+      return;
+    }
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    var count = readCount(btn);
+    if (count <= 0) return; // nothing selected — nothing to confirm
+
+    showConfirm(count).then(function (ok) {
+      if (!ok) return;
+      btn._scwBdcConfirmed = true;
+      btn.click();
+    });
+  }, true);
+})();
 ////************* DTO: SCOPE OF WORK LINE ITEM MULTI-ADD (view_3329)***************//////
 
 (function () {
@@ -21769,8 +23474,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2462', 'FLAG_use existing cabling'],
+      ['field_2739', 'FLAG_exterior'],
+      ['field_2740', 'FLAG_plenum'],
       ['field_2246', 'REL_unified product field'],
-      ['field_2187', 'INPUT_DROP: variables'],
       ['field_2466', 'field_2466'],
     ],
     //networking or headend
@@ -21814,7 +23520,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   const ALL_FIELD_KEYS = [
     'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
+    'field_2206','field_2195','field_2241','field_2184','field_2204', 'field_2211','field_2233','field_2246','field_2466',
+    'field_2739','field_2740',
   ];
 
   function compileRules(human) {
@@ -21970,6 +23677,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // ======================
   // Binding strategy
   // ======================
+  // Defer applyRules to the next animation frame so the dropdown can
+  // close and the click event can finish before we do hide/show DOM
+  // work across 24 fields. Coalesces multiple changes per frame.
+  function deferApplyRules($scope, viewId) {
+    var key = '_scwBucketRulesRAF_' + viewId;
+    if ($scope[0] && $scope[0][key]) return;
+    if ($scope[0]) $scope[0][key] = true;
+    requestAnimationFrame(function () {
+      if ($scope[0]) $scope[0][key] = false;
+      applyRules($scope, viewId);
+    });
+  }
+
   function bindDelegatedChange(viewId) {
     const sel = `#${viewId} select[name="${BUCKET_FIELD_KEY}"], #${viewId} #${viewId}-${BUCKET_FIELD_KEY}`;
 
@@ -21981,7 +23701,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           ? $bucketWrap.closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
 
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
 
     // Re-evaluate when assumption type field changes (multi-select)
@@ -21992,7 +23712,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         const $scope = $(this).closest('form, .kn-form, .kn-view').length
           ? $(this).closest('form, .kn-form, .kn-view')
           : $('#' + viewId);
-        applyRules($scope, viewId);
+        deferApplyRules($scope, viewId);
       });
   }
 
@@ -22045,8 +23765,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2462', 'FLAG_use existing cabling'],
+      ['field_2739', 'FLAG_exterior'],
+      ['field_2740', 'FLAG_plenum'],
       ['field_2246', 'REL_unified product field'],
-      ['field_2187', 'INPUT_DROP: variables'],
       ['field_2466', 'field_2466'],
     ],
     //networking or headend
@@ -22090,7 +23811,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
   const ALL_FIELD_KEYS = [
     'field_2180','field_2182','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2204', 'field_2211','field_2233','field_2246','field_2466',
+    'field_2206','field_2195','field_2241','field_2184','field_2204', 'field_2211','field_2233','field_2246','field_2466',
+    'field_2739','field_2740',
   ];
 
   function compileRules(human) {
@@ -22445,7 +24167,7 @@ $(document).on('knack-view-render.view_3313', function () {
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586'];
+  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610'];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';
@@ -24475,13 +26197,31 @@ $(".kn-navigation-bar").hide();
 
     const { unionIds, idToLabel } = computeUnionIdsAndLabels($view, viewId);
 
+    // The unified <select>'s Chosen UI is hidden off-screen by
+    // safeHideUnifiedField (position: absolute; left: -99999px). Calling
+    // chosenUpdate on it does a full rebuild proportional to the option
+    // count — ensureOptions only ever appends, never removes, so the
+    // option list grows for the lifetime of the form. Skip the rebuild
+    // when the field is hidden; Knack reads the submitted value from the
+    // hidden connection input ($unifiedHidden) anyway, so the Chosen UI
+    // is irrelevant.
+    const unifiedIsHidden = !!CONFIG.HIDE_UNIFIED_FIELD;
+
     if (!unionIds.length) {
       const isMulti = isMultiSelect($unifiedSelect);
-      const encodedClear = encodeConnValue([], isMulti);
 
+      // Skip the entire clear path when the unified field is already empty.
+      const cur = $unifiedSelect.val();
+      const alreadyEmpty = !cur || (Array.isArray(cur) && cur.length === 0);
+      if (alreadyEmpty) {
+        log("Skipped unified clear (already empty)");
+        return;
+      }
+
+      const encodedClear = encodeConnValue([], isMulti);
       $unifiedSelect.val(isMulti ? [] : "").trigger("change");
       $unifiedHidden.val(encodedClear).trigger("change");
-      chosenUpdate($unifiedSelect);
+      if (!unifiedIsHidden) chosenUpdate($unifiedSelect);
       return;
     }
 
@@ -24495,7 +26235,7 @@ $(".kn-navigation-bar").hide();
     const encoded = encodeConnValue(finalIds, unifiedIsMulti);
     $unifiedHidden.val(encoded).trigger("change");
 
-    chosenUpdate($unifiedSelect);
+    if (!unifiedIsHidden) chosenUpdate($unifiedSelect);
 
     log("Unified set", { unifiedIsMulti, finalIds, encoded });
   }
@@ -24517,11 +26257,26 @@ $(".kn-navigation-bar").hide();
     let isMulti = false;
     if (hasSelect) isMulti = isMultiSelect($sel);
 
+    // Skip work if the field is already empty. Chosen.js rebuilds are
+    // O(N options), so on dropdowns with 200+ products each call costs
+    // hundreds of ms. On a bucket change where parents weren't selected
+    // yet, this turns the cascade from 4 rebuilds into 0.
+    const cur = hasSelect ? $sel.val() : null;
+    const alreadyEmpty = !cur || (Array.isArray(cur) && cur.length === 0);
+    if (alreadyEmpty) {
+      log("Skipped clear (already empty)", fieldKey);
+      return;
+    }
+
     const clearedVal = isMulti ? [] : "";
+    // Skip Chosen rebuilds for the off-screen unified <select> — its UI
+    // is invisible, and the rebuild cost grows with option count
+    // (ensureOptions is append-only).
+    const isHiddenUnified = (fieldKey === CONFIG.UNIFIED) && !!CONFIG.HIDE_UNIFIED_FIELD;
 
     if (hasSelect) {
       $sel.val(clearedVal).trigger("change");
-      chosenUpdate($sel);
+      if (!isHiddenUnified) chosenUpdate($sel);
     }
 
     if (hasHidden) {
@@ -24556,18 +26311,46 @@ $(".kn-navigation-bar").hide();
 
     const sync = debounce(() => setUnifiedFromParents($view, viewId), 80);
 
-    // ✅ RESET: when bucket changes, clear ALL parent product fields AND unified
+    // ✅ RESET: when bucket changes, clear ALL parent product fields AND unified.
+    //
+    // The clearing cascade is deferred via setTimeout(0) so it runs in a
+    // separate task AFTER the browser paints the bucket pick. INP is the
+    // worst phase of the interaction's click → next-paint round trip;
+    // anything synchronous inside the change handler (or in rAF, which
+    // runs *before* paint) lands in that window. setTimeout pushes the
+    // Chosen rebuilds on the 3 parent product selects to a later tick so
+    // they stop dominating the bucket-pick INP.
+    //
+    // Why this is safe even though the work is "deferred":
+    //   - applyRules in the visibility module (still rAF, runs pre-paint)
+    //     immediately hides the parent product fields that aren't part of
+    //     the new bucket — so the user never sees stale parent values.
+    //   - The unified field is permanently hidden off-screen
+    //     (HIDE_UNIFIED_FIELD), so its UI state is invisible to the user.
+    //   - The PUT for form-submit reads from the hidden connection input
+    //     (which we set synchronously inside the cleared-tick anyway, just
+    //     one task later). The form can't be submitted faster than the
+    //     setTimeout(0) tick, so submit data stays consistent.
+    //
+    // A per-view flag coalesces overlapping change events within the
+    // same tick (defensive — Chosen normally fires one change per pick).
     if (CONFIG.RESET_ON_FIELD) {
       const $bucket = getSelect($view, viewId, CONFIG.RESET_ON_FIELD);
       if ($bucket.length) {
+        const TICK_FLAG = "_scwUnifiedResetPending_" + viewId;
         $bucket
           .off(`change${EVENT_NS}-reset`)
           .on(`change${EVENT_NS}-reset`, function () {
-            clearParentsAndUnified($view, viewId);
-
-            // optional: one more pass to ensure unified stays cleared
-            // (since parents are now empty, sync will clear unified anyway)
-            sync();
+            if ($view[0] && $view[0][TICK_FLAG]) return;
+            if ($view[0]) $view[0][TICK_FLAG] = true;
+            setTimeout(function () {
+              if ($view[0]) $view[0][TICK_FLAG] = false;
+              clearParentsAndUnified($view, viewId);
+              // One more pass to ensure unified stays cleared. With the
+              // already-empty guard in setUnifiedFromParents, this is a
+              // no-op once the cascade has settled.
+              sync();
+            }, 0);
           });
       }
     }
@@ -25419,30 +27202,47 @@ $(".kn-navigation-bar").hide();
   }
 
   // ============================================================
-  // BINDINGS (delegated + chosen-safe)
+  // BINDINGS — direct, not document-delegated
   // ============================================================
+  // Earlier versions of this module used $(document).on('change', selector, …)
+  // and $(document).on('click', '… *', …) to be resilient against KTL's
+  // form rebuilds. That came with a brutal cost: every change event
+  // anywhere in the app paid ~100 ms of jQuery selector matching against
+  // a 4-clause compound selector, and every click anywhere paid ~450 ms
+  // because of the trailing `*` which forces an ancestor walk through
+  // the compound matcher for every click target. On a busy form like
+  // view_3329 (multi-add), one bucket pick triggers 8+ change events as
+  // we cascade-clear parent product fields, and each one paid that
+  // 100 ms toll on the document handler — even though the matching
+  // selector targets a different view (view_466) entirely.
+  //
+  // The fix: bind directly to the actual elements. We're already
+  // re-running initEverywhere on knack-view-render, knack-scene-render,
+  // the KTL hide/show toggle, and the MutationObserver — so KTL
+  // rebuilding the form re-attaches handlers naturally. No document
+  // delegation needed.
   function bindChangeHandlers(cfg) {
-    const roots = viewRoots(cfg).join(', ');
-    const sel = `${roots} select[name="${cfg.bucketFieldKey}"], ${roots} #${cfg.viewKey}-${cfg.bucketFieldKey}`;
+    const $scopes = findActiveScopes(cfg);
+    $scopes.forEach(function ($scope) {
+      const $sel = findBucketSelect($scope, cfg);
+      if ($sel.length) {
+        $sel.off('change' + EVENT_NS).on('change' + EVENT_NS, function () {
+          applyRulesToScope($scope, cfg);
+        });
+      }
 
-    // Underlying select change
-    $(document)
-      .off('change' + EVENT_NS, sel)
-      .on('change' + EVENT_NS, sel, function () {
-        const $scopes = findActiveScopes(cfg);
-        $scopes.forEach(($s) => applyRulesToScope($s, cfg));
-      });
-
-    // Chosen UI clicks can change value without firing a normal change immediately in some setups.
-    // Re-apply after user interacts with the chosen container.
-    $(document)
-      .off('click' + EVENT_NS, `${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn, ${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn *`)
-      .on('click' + EVENT_NS, `${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn, ${roots} #${cfg.viewKey}_${cfg.bucketFieldKey}_chzn *`, function () {
-        setTimeout(function () {
-          const $scopes = findActiveScopes(cfg);
-          $scopes.forEach(($s) => applyRulesToScope($s, cfg));
-        }, 0);
-      });
+      // Chosen UI: bind directly to the chosen container.
+      // (Some Chosen setups don't fire `change` on the underlying
+      // <select> immediately; clicking inside the chzn container is
+      // a backup signal.)
+      const chznId = '#' + cfg.viewKey + '_' + cfg.bucketFieldKey + '_chzn';
+      const $chzn = $scope.find(chznId);
+      if ($chzn.length) {
+        $chzn.off('click' + EVENT_NS).on('click' + EVENT_NS, function () {
+          setTimeout(function () { applyRulesToScope($scope, cfg); }, 0);
+        });
+      }
+    });
   }
 
   // ============================================================
@@ -25570,7 +27370,8 @@ $(".kn-navigation-bar").hide();
       ['field_2241', 'INPUT_DROP: Pre-fix'],
       ['field_2184', 'INPUT_DROP: label number'],
       ['field_2462', 'FLAG_use existing cabling'],
-      ['field_2187', 'INPUT_DROP: variables'],
+      ['field_2739', 'FLAG_exterior'],
+      ['field_2740', 'FLAG_plenum'],
       ['field_2432', 'INPUT_survey notes'],
       ['field_2233', 'INPUT_expected sub bid #'],
       ['field_2246', 'REL_unified product field'],
@@ -25624,7 +27425,8 @@ $(".kn-navigation-bar").hide();
 
   const ALL_FIELD_KEYS = [
     'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181','field_2462',
-    'field_2206','field_2195','field_2241','field_2184','field_2187','field_2211','field_2233','field_2246',
+    'field_2206','field_2195','field_2241','field_2184','field_2211','field_2233','field_2246',
+    'field_2739','field_2740',
   ];
 
   function compileRules(human) {
@@ -27972,6 +29774,7 @@ $(".kn-navigation-bar").hide();
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
         editSlug: 'edit-scope-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
       },
@@ -28545,18 +30348,14 @@ $(".kn-navigation-bar").hide();
   }
 
   /**
-   * Handle trash icon click: confirm, then delete via webhook.
+   * Handle trash icon click: delete via webhook (no confirmation).
    */
   function onDeleteClick(recordId, recordName, itemEl) {
     SCW.debug('[SCW][CR-DELETE] onDeleteClick fired', {
       recordId: recordId,
       recordName: recordName
     });
-    confirmDelete(recordName).then(function (confirmed) {
-      SCW.debug('[SCW][CR-DELETE] Confirmation result:', confirmed);
-      if (!confirmed) return;
-      deleteRecord(recordId, recordName, itemEl);
-    });
+    deleteRecord(recordId, recordName, itemEl);
   }
 
   // ============================================================
@@ -28684,19 +30483,31 @@ $(".kn-navigation-bar").hide();
         var linkEl;
         var itemHref = links[i].href;
 
-        // Rewrite item href when itemSlug is configured
+        // Rewrite item href when itemSlug is configured.
+        //
+        // field_1958 cells render as bare <span data-kn="connection-value">
+        // (no anchor wrapper), so links[i].href is '' here. We have to
+        // construct the edit URL from either addUrl (the +Add action
+        // link on the same row) or the current page hash. Both endings
+        // — addUrl's `.../add-accessory-line-item/<parentId>` and an
+        // existing edit href's `.../<oldSlug>/<oldId>` — share the
+        // same `/<segment>/<24-hex>/?` shape, so we use one regex to
+        // swap BOTH the slug and the trailing id in a single pass.
         if (cfg.itemSlug && links[i].recordId) {
-          if (itemHref) {
-            // Replace the slug portion in existing href (e.g. add-photo-to-sow-line-item2 → edit-accessory-line-item2)
-            itemHref = itemHref.replace(/\/[^\/]+\/([a-f0-9]{24})\/?$/, '/' + cfg.itemSlug + '/$1');
-          } else if (addUrl) {
-            // Construct from addUrl by swapping in the accessory record ID
-            itemHref = addUrl.replace(/[a-f0-9]{24}\/?$/, links[i].recordId);
-          }
-          // Fallback: if regex didn't match, construct from current hash path
-          if (cfg.itemSlug && links[i].recordId && itemHref === links[i].href) {
-            var hashBase = (window.location.hash || '').replace(/\/[^\/]+\/[a-f0-9]{24}\/?$/, '');
-            if (hashBase) itemHref = hashBase + '/' + cfg.itemSlug + '/' + links[i].recordId;
+          var slugTailRe = /\/[^\/]+\/[a-f0-9]{24}\/?$/;
+          var newTail = '/' + cfg.itemSlug + '/' + links[i].recordId;
+          if (itemHref && slugTailRe.test(itemHref)) {
+            itemHref = itemHref.replace(slugTailRe, newTail);
+          } else if (addUrl && slugTailRe.test(addUrl)) {
+            itemHref = addUrl.replace(slugTailRe, newTail);
+          } else {
+            // Last resort: build from current hash. Strip any trailing
+            // /<slug>/<id>/? AND any ?query=... section (Knack appends
+            // pagination state like ?view_3586_per_page=1000 that would
+            // otherwise be inserted between the path and the new tail).
+            var rawHash = window.location.hash || '';
+            var hashBase = rawHash.split('?')[0].replace(slugTailRe, '');
+            if (hashBase) itemHref = hashBase + newTail;
           }
         }
 
@@ -32350,6 +34161,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
+  /** Re-fetch the record after a fee-affecting field change, with a delay
+   *  long enough for Knack's record rules to finish recomputing.
+   *
+   *  Why delayed and not immediate: Knack's PUT response is built
+   *  synchronously, but record rules that update derived fields based on
+   *  connected-record lookups (the camera/reader install fee depends on
+   *  field_2461 + field_1984 + field_2740 + drop length + connected
+   *  product price) often settle a beat AFTER the PUT acknowledgment.
+   *  Reading the PUT response in patchCardFromResponse paints the
+   *  pre-recompute value; a fresh GET ~700ms later picks up the
+   *  recomputed fee and lets us re-patch the card with the right number.
+   *
+   *  patchCardFromResponse is idempotent — readOnly fields like the
+   *  install fee, total, and applied-discount get rewritten from the
+   *  fresh response with no other side effects. */
+  var FEE_REFETCH_DELAY_MS = 700;
+  function scheduleFeeRefetch(viewId, recordId) {
+    if (typeof Knack === 'undefined') return;
+    setTimeout(function () {
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, recordId),
+        type: 'GET',
+        success: function (resp) {
+          patchCardFromResponse(viewId, recordId, resp);
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-fee] Refetch failed for ' + recordId, xhr && xhr.status);
+        }
+      });
+    }, FEE_REFETCH_DELAY_MS);
+  }
+
   /** Patch the label td text for a single record in the DOM. */
   function applyLabelText(viewId, recordId, txt) {
     var cfg = viewCfgFor(viewId);
@@ -32461,6 +34304,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
+        if (isFeeTrigger(viewId, fieldKey)) scheduleFeeRefetch(viewId, recordId);
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         $(document).trigger('scw-record-saved');
         if (onSuccess) onSuccess(resp);
@@ -32605,6 +34449,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       success: function (resp) {
         patchCardFromResponse(viewId, recordId, resp);
         if (trigger) fetchAndApplyLabel(viewId, recordId);
+        if (isFeeTrigger(viewId, fieldKey)) scheduleFeeRefetch(viewId, recordId);
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
         if (onSuccess) onSuccess(resp);
       },
@@ -37485,10 +39330,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (ns.refresh) ns.refresh();
   }
 
-  // Flip field_2725 (FLAG_validated bid) back to No and drop a note into
-  // field_2736 so the Ops Review pill on view_3325 surfaces why the
-  // validation was revoked. No-op if the ops-review feature hasn't loaded
-  // or the SOW id can't be resolved.
+  // Flip field_2725 (FLAG_released to sales) back to No and drop a note
+  // into field_2736 so the Ops Review pill on view_3325 surfaces why the
+  // released-to-sales state was revoked — Sales submitting a change
+  // request invalidates whatever Ops had previously released. No-op if
+  // the ops-review feature hasn't loaded or the SOW id can't be resolved.
   function autoRevertValidation(count) {
     if (!window.SCW || !SCW.opsReview ||
         typeof SCW.opsReview.autoRevertValidation !== 'function') return;
@@ -40958,7 +42804,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *      Sales hasn't requested the survey yet.
  *   4. field_2725 = No                    → "Publish & Submit Completed
  *      Proposal" — survey + bids are back, proposal ready to go.
- *   5. field_2725 = Yes (terminal)        → "Bid Published" (grey check,
+ *   5. field_2725 = Yes (terminal)        → "Released to Sales" (grey check,
  *      non-clickable).
  *
  * All active (clickable) pills share one teal background — the pill is
@@ -40969,7 +42815,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  * columns on view_3325 (hidden by this feature's CSS):
  *   field_2706  FLAG_survey requested
  *   field_2728  count of pending change requests
- *   field_2725  FLAG_validated bid
+ *   field_2725  FLAG_released to sales (formerly "validated bid"; flipped
+ *               only by the Submit-to-Sales action, drives Sales-side
+ *               visibility / TBD-vs-real-numbers gates)
  *   field_2736  auto-revert note (surfaced as pill tooltip)
  *
  * Also exposes SCW.opsReview.autoRevertValidation(sowId, opts) —
@@ -40985,7 +42833,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var READY_FIELD    = 'field_2723';   // FLAG_ready for survey (flipped by Ops Mark Ready)
   var SURVEY_FIELD   = 'field_2706';   // FLAG_survey requested (flipped by Sales)
   var CR_COUNT_FIELD = 'field_2728';   // count of pending change requests
-  var VALID_FIELD    = 'field_2725';   // FLAG_validated bid
+  var RELEASED_FIELD = 'field_2725';   // FLAG_released to sales (was "validated bid")
   var NOTE_FIELD     = 'field_2736';   // auto-revert note (tooltip)
 
   var WRITE_VIEW   = 'view_3841';      // form that edits 2725 + 2736 (for auto-revert)
@@ -41061,8 +42909,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (document.getElementById(STYLE_ID)) return;
     var css =
       /* Hide source columns this feature consumes. */
-      '#' + VIEW_ID + ' th.' + VALID_FIELD + ',' +
-      '#' + VIEW_ID + ' td.' + VALID_FIELD + ',' +
+      '#' + VIEW_ID + ' th.' + RELEASED_FIELD + ',' +
+      '#' + VIEW_ID + ' td.' + RELEASED_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + NOTE_FIELD + ',' +
       '#' + VIEW_ID + ' td.' + NOTE_FIELD + ',' +
       '#' + VIEW_ID + ' th.' + SURVEY_FIELD + ',' +
@@ -41286,7 +43134,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       ready:     readBool(tr, READY_FIELD),
       survey:    readBool(tr, SURVEY_FIELD),
       crCount:   readText(tr, CR_COUNT_FIELD),
-      validated: readBool(tr, VALID_FIELD)
+      validated: readBool(tr, RELEASED_FIELD)
     };
     for (var i = 0; i < STEPS.length; i++) {
       if (STEPS[i].showWhen(fields)) return STEPS[i];
@@ -41702,7 +43550,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       pill.appendChild(check);
 
       var t = document.createElement('span');
-      t.textContent = 'Bid Published';
+      t.textContent = 'Released to Sales';
       pill.appendChild(t);
 
       if (note) {
@@ -41714,7 +43562,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Per-row published-proposal info (view_3885 → matched via field_2666).
     // Rendered regardless of step state so a published proposal shows
-    // up even when the SOW is in "Bid Published" terminal state.
+    // up even when the SOW is in "Released to Sales" terminal state.
     if (proposalIndex && tr.id) {
       var proposal = proposalIndex[tr.id];
       if (proposal) {
@@ -41863,7 +43711,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   // ── Public API ──────────────────────────────────────────
   // Called from sales-change-request/submit.js after a successful submit.
-  // Flips field_2725 → No on the SOW (so the "Bid Published" pill drops
+  // Flips field_2725 → No on the SOW (so the "Released to Sales" pill drops
   // back to "Publish & Submit Proposal") and drops a timestamped note
   // into field_2736 so the UI can surface the "why" as a tooltip.
   function autoRevertValidation(sowRecordId, opts) {
@@ -41875,7 +43723,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
                    (count ? ' (' + count + ' item' + (count === 1 ? '' : 's') + ')' : '');
 
     var body = {};
-    body[VALID_FIELD] = 'No';
+    body[RELEASED_FIELD] = 'No';
     body[NOTE_FIELD]  = noteText;
 
     var writeView = opts.viewId || WRITE_VIEW;
@@ -41885,7 +43733,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       data: JSON.stringify(body),
       success: function (resp) {
         if (typeof SCW.syncKnackModel === 'function') {
-          SCW.syncKnackModel(writeView, sowRecordId, resp, VALID_FIELD, 'No');
+          SCW.syncKnackModel(writeView, sowRecordId, resp, RELEASED_FIELD, 'No');
           SCW.syncKnackModel(writeView, sowRecordId, resp, NOTE_FIELD,  noteText);
         }
       },
@@ -41926,9 +43774,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *                  updates CU task, posts to Slack
  *
  *   3. Publish and Submit Completed Proposal to Sales
- *        showWhen: field_2725 = No
+ *        showWhen: field_2725 (FLAG_released to sales) = No
  *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
- *        server  : flips field_2725 = Yes, updates CU task, Slack
+ *        server  : flips field_2725 = Yes (i.e. releases to Sales),
+ *                  updates CU task, Slack
  *
  * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
  * (view_3861) plus field_2126, line-item record ids from view_3341,
@@ -41944,6 +43793,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var LINE_ITEM_VIEW = 'view_3341';   // SOW Line Items grid
   var LICENSE_VIEW   = 'view_3371';   // License records table on the proposal page
   var EXTRA_FIELD    = 'field_2126';  // SOW Name — always in the payload
+
+  // Survey picker — used by the Request Alt Bid step to ask Ops
+  // which survey(s) the alt-bid request should target.
+  var SURVEY_PICKER_VIEW    = 'view_3897';   // grid of available surveys for this SOW
+  var PICKER_SUB_FIELD      = 'field_2347';  // subcontractor connection / identifier
+  var PICKER_LABEL_FIELD    = 'field_2345';  // survey identifier (e.g. SR-1)
 
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
@@ -42008,6 +43863,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         ]
       },
       webhookKey: 'MAKE_OPS_REQUEST_ALT_BID_WEBHOOK',
+      // Survey picker — Ops chooses which survey(s) the alt bid
+      // request goes to before the notes prompt opens. Selected
+      // survey ids land in the webhook payload as
+      // selectedSurveyIds[].
+      pickSurveys: true,
       modal: {
         title:       'Request Alternative Bid',
         intro:       'Note for the subcontractor (and a heads-up will also post back to Sales that an alternative bid was requested).',
@@ -42183,6 +44043,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       '.scw-ops-modal-submit:hover { background: #1d4ed8; }' +
       '.scw-ops-modal-submit[disabled] {' +
       '  opacity: 0.6; cursor: wait;' +
+      '}' +
+      // Survey-picker list (Request Alt Bid step).
+      '.scw-ops-modal-list {' +
+      '  list-style: none; margin: 0 0 6px; padding: 6px 0;' +
+      '  max-height: 340px; overflow-y: auto;' +
+      '  border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;' +
+      '}' +
+      '.scw-ops-modal-list li { padding: 0; }' +
+      '.scw-ops-modal-list label {' +
+      '  display: flex; align-items: center; gap: 8px;' +
+      '  padding: 7px 4px; cursor: pointer;' +
+      '  font-size: 13px; color: #1f2937;' +
+      '  border-radius: 4px;' +
+      '}' +
+      '.scw-ops-modal-list label:hover { background: #f3f4f6; }' +
+      '.scw-ops-modal-list input[type="checkbox"] { flex-shrink: 0; cursor: pointer; }' +
+      '.scw-ops-modal-list .scw-ops-modal-list-all {' +
+      '  font-weight: 700; color: #111827; border-bottom: 1px solid #e5e7eb;' +
+      '  margin-bottom: 4px; padding-bottom: 8px;' +
+      '}' +
+      '.scw-ops-modal-list-empty {' +
+      '  padding: 16px; text-align: center; color: #6b7280; font-size: 13px;' +
       '}';
 
     var s = document.createElement('style');
@@ -42286,11 +44168,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Payload ──────────────────────────────────────────────
-  // True when the SOW's bid isn't validated yet — Make's Publish
-  // scenario publishes with TBD placeholder numbers rather than
-  // finalized figures. Ops can SEE the real numbers on the proposal
-  // page, but until field_2725 is flipped to Yes, the published quote
-  // keeps TBDs so Sales/customers aren't shown unvalidated totals.
+  // True when the SOW hasn't been released to Sales yet — Make's
+  // Publish scenario publishes with TBD placeholder numbers rather
+  // than finalized figures. Ops can SEE the real numbers internally
+  // (including via Submit-to-Second-Set), but until field_2725
+  // (FLAG_released to sales) flips to Yes, the published quote
+  // keeps TBDs so Sales / customers aren't shown numbers Ops hasn't
+  // signed off on for external delivery.
   function shouldPublishAsTbd() {
     return (readField('field_2725') || '').trim().toLowerCase() !== 'yes';
   }
@@ -42314,14 +44198,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     // Any payload that will trigger publishing server-side carries the
     // TBD flag so Make knows whether to stamp real numbers or
-    // placeholders. Both Mark Ready (which also publishes a draft) and
-    // the standalone Publish step qualify.
+    // placeholders. Mark Ready (which also publishes a draft), the
+    // standalone Publish step, and Request Alt Bid (which packages
+    // the current SOW into an alt-bid request — Make needs the same
+    // html/json snapshot for that) all qualify.
     //
     // Also merges in the exact shape the standalone "Publish Quote"
     // button (proposal-pdf-export.js) sends to its save webhook —
     // html / json / sowId / totals / expirationDate / etc. — so every
-    // code path that publishes a quote looks identical on Make's side.
-    if (step.id === 'publish-proposal' || step.id === 'mark-ready') {
+    // code path that publishes (or snapshots) a quote looks identical
+    // on Make's side.
+    if (step.id === 'publish-proposal' ||
+        step.id === 'mark-ready' ||
+        step.id === 'request-alt-bid') {
       payload.publishAsTbd = shouldPublishAsTbd();
       try {
         // Pass the proposal scene explicitly — more reliable than
@@ -42354,6 +44243,182 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Notes prompt modal ───────────────────────────────────
+  // ── Survey picker modal ─────────────────────────────────
+  // Reads the available surveys from view_3897, displays them as a
+  // multi-select list (with a Select-All toggle), and calls onPick
+  // with the array of selected survey-record ids. onCancel fires
+  // when the user dismisses without picking. Used by Request Alt Bid
+  // so Ops can target a single sub or fan the request out to all.
+  function openSurveyPickerModal(opts, onPick, onCancel) {
+    opts = opts || {};
+    var surveys = readSurveyOptions();
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ops-modal-overlay';
+
+    var card = document.createElement('div');
+    card.className = 'scw-ops-modal';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'scw-ops-modal-hdr';
+    hdr.textContent = opts.title || 'Pick survey(s)';
+    card.appendChild(hdr);
+
+    if (opts.intro) {
+      var intro = document.createElement('div');
+      intro.className = 'scw-ops-modal-intro';
+      intro.textContent = opts.intro;
+      card.appendChild(intro);
+    }
+
+    var list = document.createElement('ul');
+    list.className = 'scw-ops-modal-list';
+
+    if (!surveys.length) {
+      var empty = document.createElement('li');
+      empty.className = 'scw-ops-modal-list-empty';
+      empty.textContent = 'No surveys available for this SOW.';
+      list.appendChild(empty);
+    } else {
+      // Select-All toggle row.
+      var allLi = document.createElement('li');
+      allLi.className = 'scw-ops-modal-list-all';
+      var allLbl = document.createElement('label');
+      var allCb = document.createElement('input');
+      allCb.type = 'checkbox';
+      allCb.setAttribute('data-id', '__all__');
+      allLbl.appendChild(allCb);
+      var allTxt = document.createElement('span');
+      allTxt.textContent = 'Select all (' + surveys.length + ')';
+      allLbl.appendChild(allTxt);
+      allLi.appendChild(allLbl);
+      list.appendChild(allLi);
+
+      surveys.forEach(function (s) {
+        var li = document.createElement('li');
+        var lbl = document.createElement('label');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('data-id', s.id);
+        lbl.appendChild(cb);
+        var txt = document.createElement('span');
+        txt.textContent = s.label;
+        lbl.appendChild(txt);
+        li.appendChild(lbl);
+        list.appendChild(li);
+      });
+
+      allCb.addEventListener('change', function () {
+        var on = allCb.checked;
+        var rows = list.querySelectorAll('input[type="checkbox"][data-id]:not([data-id="__all__"])');
+        for (var i = 0; i < rows.length; i++) rows[i].checked = on;
+        refreshSubmitState();
+      });
+      list.addEventListener('change', function (e) {
+        if (e.target === allCb) return;
+        if (e.target.tagName !== 'INPUT') return;
+        // Sync the all-toggle state based on individual selections.
+        var rows = list.querySelectorAll('input[type="checkbox"][data-id]:not([data-id="__all__"])');
+        var checkedCount = 0;
+        for (var i = 0; i < rows.length; i++) if (rows[i].checked) checkedCount++;
+        allCb.checked = (checkedCount === rows.length && rows.length > 0);
+        refreshSubmitState();
+      });
+    }
+
+    card.appendChild(list);
+
+    var actions = document.createElement('div');
+    actions.className = 'scw-ops-modal-actions';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'scw-ops-modal-cancel';
+    cancelBtn.textContent = 'Cancel';
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'scw-ops-modal-submit';
+    submitBtn.textContent = opts.submitLabel || 'Continue';
+    submitBtn.disabled = true; // until at least one survey is checked
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+    card.appendChild(actions);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    function close(viaCancel) {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', escListener);
+      if (viaCancel && typeof onCancel === 'function') onCancel();
+    }
+    function escListener(e) {
+      if (e.key === 'Escape') close(true);
+    }
+    function refreshSubmitState() {
+      var picked = list.querySelectorAll(
+        'input[type="checkbox"][data-id]:checked:not([data-id="__all__"])'
+      );
+      submitBtn.disabled = picked.length === 0;
+    }
+
+    cancelBtn.addEventListener('click', function () { close(true); });
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) close(true);
+    });
+    document.addEventListener('keydown', escListener);
+    submitBtn.addEventListener('click', function () {
+      var picked = list.querySelectorAll(
+        'input[type="checkbox"][data-id]:checked:not([data-id="__all__"])'
+      );
+      var ids = [];
+      for (var i = 0; i < picked.length; i++) ids.push(picked[i].getAttribute('data-id'));
+      if (!ids.length) return;
+      close(false);
+      onPick(ids, surveys);
+    });
+  }
+
+  /** Read the survey records from view_3897's model and return
+   *  { id, label } pairs for the picker. Label is the concatenation
+   *  of field_2347 (subcontractor) and field_2345 (survey identifier),
+   *  separated by a middle-dot. Falls back to record id if neither
+   *  field has data. */
+  function readSurveyOptions() {
+    var out = [];
+    try {
+      var v = Knack && Knack.views && Knack.views[SURVEY_PICKER_VIEW];
+      var data = v && v.model && v.model.data;
+      var models = (data && data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i].attributes || models[i];
+        if (!attrs || !attrs.id) continue;
+        var sub   = readDisplayValue(attrs, PICKER_SUB_FIELD);
+        var label = readDisplayValue(attrs, PICKER_LABEL_FIELD);
+        var combined = [sub, label].filter(Boolean).join(' · ') || attrs.id;
+        out.push({ id: attrs.id, label: combined, sub: sub, surveyLabel: label });
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
+  /** Resolve a Knack field's display string from a model attrs object.
+   *  Prefers the connection identifier (_raw[0].identifier) for
+   *  connection fields, falls back to stripped HTML from the bare
+   *  field. Returns '' when the field is empty. */
+  function readDisplayValue(attrs, fieldKey) {
+    if (!attrs) return '';
+    var raw = attrs[fieldKey + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
+      return String(raw[0].identifier).trim();
+    }
+    if (raw && typeof raw === 'object' && raw.identifier) {
+      return String(raw.identifier).trim();
+    }
+    var v = attrs[fieldKey];
+    if (v == null) return '';
+    return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
   function openNotesPromptModal(opts, onSubmit) {
     opts = opts || {};
     var overlay = document.createElement('div');
@@ -42565,10 +44630,41 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return;
     }
 
+    // Steps that target a subset of surveys (Request Alt Bid) ask
+    // the user to pick first, then fall through to the standard
+    // notes prompt with the picked ids in scope.
+    if (step.pickSurveys) {
+      openSurveyPickerModal({
+        title: 'Choose survey(s) for the alt bid',
+        intro: 'Pick one or more subcontractors. The alt bid request will be sent to each selected survey separately.',
+        submitLabel: 'Continue'
+      }, function (selectedSurveyIds, surveyOptions) {
+        runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions);
+      });
+      return;
+    }
+
+    runNotesPromptAndFire(step, btn, url, null, null);
+  }
+
+  function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions) {
     openNotesPromptModal(step.modal, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
       var payload = buildPayload(step, notes, ctx.mode);
+      if (selectedSurveyIds && selectedSurveyIds.length) {
+        payload.selectedSurveyIds = selectedSurveyIds;
+        // Echo the labels Ops actually saw in the picker so Make
+        // doesn't have to re-derive them when, e.g., posting a
+        // confirmation Slack message.
+        if (surveyOptions && surveyOptions.length) {
+          var byId = {};
+          for (var i = 0; i < surveyOptions.length; i++) byId[surveyOptions[i].id] = surveyOptions[i];
+          payload.selectedSurveys = selectedSurveyIds
+            .map(function (id) { return byId[id]; })
+            .filter(Boolean);
+        }
+      }
 
       postWebhook(url, payload).then(function (resp) {
         // Accept either `success: true` or `status: 'accepted'` —
@@ -42958,27 +45054,51 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setTimeout(transform, 150);
   }
 })();
-/*** FEATURE: Preview Proposal Button → view_3814 header ***/
+/*** FEATURE: Preview Proposal Button → view_3814 header **********************
+ *
+ * Adds a "Preview Proposal" button to view_3814's accordion header. The
+ * button always navigates to:
+ *
+ *   #proposals/proposal/<sowRecordId>/
+ *
+ * The SOW record id comes from view_3827's Backbone model — a kn-details
+ * view of the SOW that's always present on this scene. Constructing the
+ * hash directly is more reliable than scraping a menu view: there's no
+ * "first link wins" ambiguity, no stale `_href` race after scene-render,
+ * and no slug to keep in sync if Knack reorders menu items.
+ ******************************************************************************/
 (function () {
   'use strict';
 
-  var SOURCE_VIEW = 'view_3491';
-  var TARGET_VIEW = 'view_3814';
+  var SOW_VIEW    = 'view_3827';   // SOW kn-details view on this scene
+  var TARGET_VIEW = 'view_3814';   // Published-proposals accordion host
   var BTN_MARKER  = 'scw-preview-proposal-btn';
   var EVENT_NS    = '.scwPreviewProposal';
   var BTN_LABEL   = 'Preview Proposal';
+  var HEX24       = /^[0-9a-f]{24}$/i;
 
-  var _href = '';
+  function getSowId() {
+    try {
+      var v = Knack && Knack.views && Knack.views[SOW_VIEW];
+      var attrs = v && v.model && (
+        (v.model.data && v.model.data.attributes) ||
+        v.model.attributes
+      );
+      var id = attrs && attrs.id;
+      return (id && HEX24.test(id)) ? id : '';
+    } catch (e) {
+      return '';
+    }
+  }
 
-  function scrapeHref() {
-    var el = document.getElementById(SOURCE_VIEW);
-    if (!el) return '';
-    var link = el.querySelector('a.kn-link-page') || el.querySelector('a[href*="proposal"]');
-    return link ? (link.getAttribute('href') || '') : '';
+  function buildHref(sowId) {
+    return '#proposals/proposal/' + sowId + '/';
   }
 
   function injectOrUpdate() {
-    if (!_href) return;
+    var sowId = getSowId();
+    if (!sowId) return;
+    var href = buildHref(sowId);
 
     var targetEl = document.getElementById(TARGET_VIEW);
     if (!targetEl) return;
@@ -42988,17 +45108,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var header = accordion.querySelector('.scw-ktl-accordion__header');
     if (!header) return;
 
+    // Already injected — refresh the href in case the SOW id ever
+    // changes mid-scene (e.g. parent page swap without full reload).
     var existing = header.querySelector('.' + BTN_MARKER);
     if (existing) {
-      existing.setAttribute('data-link-href', _href);
+      existing.setAttribute('data-link-href', href);
       return;
     }
 
+    // Pre-existing accordion-action button with the same label gets
+    // adopted rather than duplicated — keeps the header tidy when
+    // another module also injected it.
     var existingBtns = header.querySelectorAll('.scw-acc-action-btn');
     for (var i = 0; i < existingBtns.length; i++) {
       if ((existingBtns[i].textContent || '').trim() === BTN_LABEL) {
         existingBtns[i].classList.add(BTN_MARKER);
-        existingBtns[i].setAttribute('data-link-href', _href);
+        existingBtns[i].setAttribute('data-link-href', href);
         existingBtns[i].addEventListener('click', clickHandler);
         return;
       }
@@ -43009,17 +45134,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       actions = document.createElement('div');
       actions.className = 'scw-acc-actions';
       var chevron = header.querySelector('.scw-acc-chevron');
-      if (chevron) {
-        header.insertBefore(actions, chevron);
-      } else {
-        header.appendChild(actions);
-      }
+      if (chevron) header.insertBefore(actions, chevron);
+      else header.appendChild(actions);
     }
 
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn ' + BTN_MARKER;
-    btn.setAttribute('data-link-href', _href);
+    btn.setAttribute('data-link-href', href);
     btn.textContent = BTN_LABEL;
     btn.addEventListener('click', clickHandler);
     actions.appendChild(btn);
@@ -43033,30 +45155,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (href) window.location.hash = href;
   }
 
-  function tryInject() {
-    _href = scrapeHref();
-    injectOrUpdate();
-  }
-
+  // Re-attempt on every render of either view we depend on. The SOW
+  // model is populated once per scene, but view_3814's accordion
+  // header is what we mount onto, so we need both to exist.
   $(document)
-    .off('knack-view-render.' + SOURCE_VIEW + EVENT_NS)
-    .on('knack-view-render.' + SOURCE_VIEW + EVENT_NS, function () {
-      _href = scrapeHref();
-      setTimeout(injectOrUpdate, 300);
-    });
+    .off('knack-view-render.' + SOW_VIEW + EVENT_NS)
+    .on('knack-view-render.' + SOW_VIEW + EVENT_NS,
+      function () { setTimeout(injectOrUpdate, 200); });
 
   $(document)
     .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
-    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
-      setTimeout(tryInject, 500);
-    });
+    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS,
+      function () { setTimeout(injectOrUpdate, 300); });
 
-  $(document)
-    .off('knack-scene-render.any' + EVENT_NS)
-    .on('knack-scene-render.any' + EVENT_NS, function () {
-      _href = '';
-      setTimeout(tryInject, 2000);
-    });
+  // First-paint attempt for the case where both views are already in
+  // the DOM by the time this IIFE runs.
+  setTimeout(injectOrUpdate, 500);
 })();
 /*** FEATURE: Create Alternate SOW button → view_3869 accordion header ***/
 /**
@@ -46086,6 +48200,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       ]
     },
     {
+      viewId: 'view_3610',
+      sort: [
+        { field: 'field_2240', order: 'asc' },
+        { field: 'field_1951', order: 'asc' }
+      ]
+    },
+    {
       viewId: 'view_3450',
       sort: [
         { field: 'field_2240', order: 'asc' },
@@ -46133,10 +48254,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // NOTE: intentionally NOT calling view.model.fetch() here. Refetching
     // to change the server-side sort doubles the initial load cost: a
-    // second HTTP round-trip for every view_3586 record plus a full
-    // knack-view-render cycle, which re-runs every feature bound to this
-    // view (device-worksheet card rebuild for ~180 rows, group-collapse,
-    // etc.). It's the primary contributor to the ~3.6s INP on scene_1116.
+    // second HTTP round-trip for every record (view_3586/view_3610) plus
+    // a full knack-view-render cycle, which re-runs every feature bound
+    // to this view (device-worksheet card rebuild for ~180 rows, group-
+    // collapse, etc.). It's the primary contributor to the ~3.6s INP on
+    // scene_1116.
     //
     // Safe to skip because:
     //  - device-worksheet.js applies its own client-side rowSort on every
@@ -46237,6 +48359,186 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var HEX24 = /^[0-9a-f]{24}$/i;
 
   // ======================================================================
+  // Cascade-in-flight tracker (shared by ALL mirror instances).
+  // ----------------------------------------------------------------------
+  // Both forward (field_1957 → children) and inverse (field_2197 →
+  // accessories) cascades fire PUTs in the background and return
+  // immediately. If the user navigates while requests are still pending,
+  // the browser would normally cancel every in-flight XHR and writes
+  // would be lost — which is exactly the "some children got updated, not
+  // all" partial-cascade bug.
+  //
+  // Two-layer protection:
+  //   1. fetch(..., { keepalive: true }) — the browser is required to
+  //      finish the request even after the page unloads. This is the
+  //      hard guarantee. See knackPutKeepalive() below.
+  //   2. A loud toast + a beforeunload prompt while count > 0 so the
+  //      user notices and (hopefully) pauses before navigating.
+  //
+  // The connection-picker has its own stage gate that keeps the modal
+  // open until everything settles. But native inline edits and form
+  // submits don't go through the picker, so the cascade fires-and-
+  // forgets with no UI feedback at all without this tracker.
+  // ======================================================================
+
+  var _cascadeInFlight   = 0;
+  var _cascadeToastEl    = null;
+  var _cascadeUnloadBound = false;
+  var CASCADE_TOAST_CSS_ID = 'scw-cascade-toast-css';
+
+  function injectCascadeToastStyles() {
+    if (document.getElementById(CASCADE_TOAST_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = CASCADE_TOAST_CSS_ID;
+    s.textContent = [
+      '.scw-cascade-toast {',
+      '  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);',
+      '  z-index: 100000;',
+      '  background: #b45309; color: #fff;',
+      '  padding: 12px 20px; border-radius: 10px;',
+      '  font: 600 13px/1.3 system-ui, -apple-system, sans-serif;',
+      '  box-shadow: 0 6px 22px rgba(0,0,0,0.28);',
+      '  display: inline-flex; align-items: center; gap: 12px;',
+      '  pointer-events: none;',
+      '  max-width: 92vw;',
+      '}',
+      '.scw-cascade-toast__spinner {',
+      '  width: 14px; height: 14px;',
+      '  border: 2px solid rgba(255,255,255,0.4);',
+      '  border-top-color: #fff;',
+      '  border-radius: 50%;',
+      '  animation: scwCascadeSpin 0.8s linear infinite;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.scw-cascade-toast__msg { display: flex; flex-direction: column; gap: 2px; }',
+      '.scw-cascade-toast__msg b { font-weight: 700; }',
+      '.scw-cascade-toast__msg small { font-weight: 500; opacity: 0.9; font-size: 11px; }',
+      '@keyframes scwCascadeSpin { to { transform: rotate(360deg); } }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function showCascadeToast() {
+    if (_cascadeToastEl) return;
+    injectCascadeToastStyles();
+    _cascadeToastEl = document.createElement('div');
+    _cascadeToastEl.className = 'scw-cascade-toast';
+    _cascadeToastEl.innerHTML =
+      '<span class="scw-cascade-toast__spinner"></span>' +
+      '<span class="scw-cascade-toast__msg">' +
+        '<b>Saving changes — please don\'t leave this page</b>' +
+        '<small>Syncing connected records. This takes a few seconds.</small>' +
+      '</span>';
+    document.body.appendChild(_cascadeToastEl);
+  }
+
+  function hideCascadeToast() {
+    if (!_cascadeToastEl) return;
+    if (_cascadeToastEl.parentNode) _cascadeToastEl.parentNode.removeChild(_cascadeToastEl);
+    _cascadeToastEl = null;
+  }
+
+  function cascadeUnloadHandler(e) {
+    if (_cascadeInFlight <= 0) return;
+    // Modern browsers ignore the custom string but still show a generic
+    // "Are you sure you want to leave?" prompt as long as we set
+    // returnValue. The actual writes are protected by keepalive:true on
+    // the fetch — this prompt is just a soft warning.
+    var msg = 'Saves still in progress — wait a moment before leaving.';
+    e.preventDefault();
+    e.returnValue = msg;
+    return msg;
+  }
+
+  // ======================================================================
+  // PUT helper that survives page unload.
+  // ----------------------------------------------------------------------
+  // fetch(..., { keepalive: true }) tells the browser it must finish
+  // the request even if the page is unloading (tab close, navigation,
+  // refresh). XHR / $.ajax / SCW.knackAjax do NOT have this guarantee —
+  // the browser cancels them as soon as the page tears down. This is the
+  // hard fix for "some children got the cascade write, others didn't"
+  // when the user navigates partway through a multi-PUT cascade.
+  //
+  // Keepalive constraints:
+  //   - body must be ≤ 64 KB (we send tiny JSON, no issue)
+  //   - method-agnostic, request-body-only (no streaming response)
+  //
+  // Falls back to SCW.knackAjax if fetch() is unavailable for any reason.
+  // ======================================================================
+  function knackPutKeepalive(url, body, onDone) {
+    var hasFetch = typeof window.fetch === 'function';
+    if (!hasFetch) {
+      if (window.SCW && typeof window.SCW.knackAjax === 'function') {
+        window.SCW.knackAjax({
+          type: 'PUT', url: url, data: JSON.stringify(body), dataType: 'json',
+          success: function (resp) { if (typeof onDone === 'function') onDone(null, resp); },
+          error:   function (xhr)  { if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed')); }
+        });
+        return;
+      }
+      if (typeof onDone === 'function') onDone(new Error('fetch+knackAjax both unavailable'));
+      return;
+    }
+    try {
+      window.fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type':           'application/json',
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key':   'knack',
+          'Authorization':          Knack.getUserToken()
+        },
+        body: JSON.stringify(body),
+        keepalive: true,
+        credentials: 'include'
+      }).then(function (resp) {
+        if (!resp.ok) {
+          if (typeof onDone === 'function') onDone(new Error('PUT ' + resp.status));
+          return;
+        }
+        // We don't actually need the parsed body for these PUTs — patchCard
+        // already updated the UI optimistically. Resolve as soon as the
+        // server acknowledges with 2xx.
+        if (typeof onDone === 'function') onDone(null, resp);
+      }).catch(function (err) {
+        if (typeof onDone === 'function') onDone(err);
+      });
+    } catch (e) {
+      if (typeof onDone === 'function') onDone(e);
+    }
+  }
+
+  function bindCascadeUnloadGuard() {
+    if (_cascadeUnloadBound) return;
+    _cascadeUnloadBound = true;
+    window.addEventListener('beforeunload', cascadeUnloadHandler);
+  }
+
+  function unbindCascadeUnloadGuard() {
+    if (!_cascadeUnloadBound) return;
+    _cascadeUnloadBound = false;
+    window.removeEventListener('beforeunload', cascadeUnloadHandler);
+  }
+
+  function cascadeBegin() {
+    _cascadeInFlight++;
+    if (_cascadeInFlight === 1) {
+      showCascadeToast();
+      bindCascadeUnloadGuard();
+    }
+  }
+
+  function cascadeEnd() {
+    _cascadeInFlight--;
+    if (_cascadeInFlight <= 0) {
+      _cascadeInFlight = 0;
+      hideCascadeToast();
+      unbindCascadeUnloadGuard();
+    }
+  }
+
+  // ======================================================================
   // FACTORY — one instance per view that needs the silent-regroup pattern.
   // All state below (ownPuts, pendingPlan, settleTimer, mutObserver, …)
   // is closure-scoped per call, so instances never share state.
@@ -46247,6 +48549,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var TRIGGER_FIELD     = config.TRIGGER_FIELD;     // children-connection on the edited record
     var GROUPING_FIELD    = config.GROUPING_FIELD;    // L1 group key (e.g. REL_mdf-idf)
     var CONNECTIONS_FIELD = config.CONNECTIONS_FIELD; // back-connection to parent (detail-panel)
+    // Optional: when a child's GROUPING_FIELD changes, also update the
+    // GROUPING_FIELD on every record connected to it via ACCESSORIES_FIELD.
+    // Used by view_3586 / view_3610 to cascade an MDF/IDF change down to
+    // the camera's mounting-hardware accessories (which live on
+    // ACCESSORIES_VIEW_ID and need to share the camera's MDF for grouping
+    // and totals to render correctly).
+    var ACCESSORIES_FIELD   = config.ACCESSORIES_FIELD   || null;
+    var ACCESSORIES_VIEW_ID = config.ACCESSORIES_VIEW_ID || null;
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
@@ -46388,6 +48698,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return '';
   }
 
+  /** Scrape the accessory record ids connected to a given child via
+   *  ACCESSORIES_FIELD. The Knack-rendered td.<accField> lives on the
+   *  pre-transform <tr> sitting immediately above the child's worksheet
+   *  card row, with each accessory rendered as
+   *    <span id="<accId>" data-kn="connection-value">label</span>.
+   *  (Note the inner span uses `id`, not `class`, on this field — unlike
+   *  CONNECTIONS_FIELD where the id lives on the class.) */
+  function findAccessoryIds(childId) {
+    if (!ACCESSORIES_FIELD || !childId) return [];
+    var wsTr = document.getElementById(childId);
+    if (!wsTr) return [];
+    // Pre-transform tr is the immediate previous sibling.
+    var preTr = wsTr.previousElementSibling;
+    if (!preTr) return [];
+    var td = preTr.querySelector('td.' + ACCESSORIES_FIELD);
+    if (!td) return [];
+    var spans = td.querySelectorAll('span[data-kn="connection-value"][id]');
+    var out = [];
+    for (var i = 0; i < spans.length; i++) {
+      var id = (spans[i].getAttribute('id') || '').trim();
+      if (id && HEX24.test(id) && out.indexOf(id) === -1) out.push(id);
+    }
+    return out;
+  }
+
   // ======================================================================
   // L1 group header lookup.
   // ----------------------------------------------------------------------
@@ -46480,31 +48815,59 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   var ownPuts = {};
 
+  /** PUT GROUPING_FIELD on an accessory record so its MDF/IDF stays
+   *  in sync with the parent camera/reader after a regroup. Uses
+   *  ACCESSORIES_VIEW_ID rather than VIEW_ID because the accessory
+   *  records don't appear on this view; failure logs but doesn't
+   *  bubble — at worst the user sees the accessory in the wrong
+   *  group section until the next page load. */
+  function fireAccessoryPut(accessoryId, mdfId, onDone) {
+    if (!ACCESSORIES_VIEW_ID || !mdfId || !accessoryId) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
+      return;
+    }
+    var body = {};
+    body[GROUPING_FIELD] = [mdfId];
+    log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
+    cascadeBegin();
+    knackPutKeepalive(
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      body,
+      function (err) {
+        cascadeEnd();
+        if (err) {
+          console.warn(LOG_PREFIX, 'accessory PUT failed ' + accessoryId, err);
+        } else {
+          log('  PUT(accessory) ok ' + accessoryId);
+        }
+        if (typeof onDone === 'function') onDone(err);
+      }
+    );
+  }
+
   function firePut(recordId, body, onDone) {
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') {
-      console.warn(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable — skipping PUT for ' + recordId);
-      if (typeof onDone === 'function') onDone(new Error('knackAjax unavailable'));
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      console.warn(LOG_PREFIX, 'SCW.knackRecordUrl unavailable — skipping PUT for ' + recordId);
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
       return;
     }
     var url = window.SCW.knackRecordUrl(VIEW_ID, recordId);
     log('  PUT → ' + recordId + ' body=' + JSON.stringify(body));
     ownPuts[recordId] = true;
-    window.SCW.knackAjax({
-      type: 'PUT',
-      url: url,
-      data: JSON.stringify(body),
-      dataType: 'json',
-      success: function (resp) {
-        delete ownPuts[recordId];
+    cascadeBegin();
+    knackPutKeepalive(url, body, function (err, resp) {
+      delete ownPuts[recordId];
+      cascadeEnd();
+      if (err) {
+        console.warn(LOG_PREFIX, 'PUT failed ' + recordId, err);
+        if (typeof onDone === 'function') onDone(err);
+      } else {
         log('  PUT ok ' + recordId);
         if (typeof onDone === 'function') onDone(null, resp);
-      },
-      error: function (xhr) {
-        delete ownPuts[recordId];
-        console.warn(LOG_PREFIX, 'PUT failed ' + recordId,
-          xhr && xhr.status, xhr && xhr.responseText);
-        if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed'));
       }
     });
   }
@@ -46682,9 +49045,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
-  function applyDeterministicRegroup(R) {
+  function applyDeterministicRegroup(R, onComplete) {
+    function done() {
+      if (typeof onComplete === 'function') {
+        try { onComplete(); } catch (e) { /* swallow */ }
+      }
+    }
     if (!R || !R.id) {
       log('applyDeterministicRegroup: no R or R.id — abort', R);
+      done();
       return;
     }
     log('applyDeterministicRegroup: start R=' + R.id);
@@ -46718,6 +49087,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     if (!added.length && !removed.length) {
       log('  no changes — done');
+      done();
       return;
     }
 
@@ -46755,7 +49125,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // real model.fetch() so Knack re-renders the view from fresh,
     // now-consistent server state. This replaces the user having to hit
     // browser-refresh manually after the silent regroup.
-    var totalPuts = added.length + removed.length;
+    // --- 6b. Compute accessory cascade -----------------------------------
+    // For each added child, look up every accessory connected to it via
+    // ACCESSORIES_FIELD and stage a PUT to update its GROUPING_FIELD to
+    // match the parent's MDF. Removed children keep their MDF, so their
+    // accessories don't move either.
+    var accessoryPuts = []; // [{ accId, mdfId }]
+    if (ACCESSORIES_FIELD && ACCESSORIES_VIEW_ID && rGroupId && added.length) {
+      for (var ax = 0; ax < added.length; ax++) {
+        var accIds = findAccessoryIds(added[ax]);
+        for (var ay = 0; ay < accIds.length; ay++) {
+          accessoryPuts.push({ accId: accIds[ay], mdfId: rGroupId });
+        }
+      }
+      if (accessoryPuts.length) {
+        log('  accessory cascade: ' + accessoryPuts.length +
+            ' PUT(s) queued for ' + added.length + ' added child(ren)');
+      }
+    }
+
+    var totalPuts = added.length + removed.length + accessoryPuts.length;
     var putsRemaining = totalPuts;
     function onPutFinished() {
       putsRemaining--;
@@ -46780,12 +49169,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       } catch (e) {
         console.warn(LOG_PREFIX, 'final model.fetch threw', e);
       }
+      // Signal upstream waiters (e.g. the connection picker keeping
+      // its modal open until everything settled). Fired AFTER model.
+      // fetch is dispatched so any "save complete" UI we trigger
+      // happens once the view is on its way to fresh data.
+      done();
     }
 
     if (added.length && !destHeader) {
       log('  no destHeader for R — PUT-only + fallbackFetch');
       added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id), onPutFinished); });
       removed.forEach(function (rid) { firePut(rid, buildRemovedPut(), onPutFinished); });
+      accessoryPuts.forEach(function (ap) { fireAccessoryPut(ap.accId, ap.mdfId, onPutFinished); });
       // Skip the duplicate fetch here — onPutFinished will fetch when
       // all PUTs land.
       clearPendingPlanSoon();
@@ -46798,12 +49193,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // --- 9. Fire background PUTs with completion tracking --------------
     if (totalPuts === 0) {
       log('  no PUTs to fire — skipping final fetch');
+      done();
     } else {
       for (var a = 0; a < added.length; a++) {
         firePut(added[a], buildAddedPut(rGroupId, R.id), onPutFinished);
       }
       for (var r = 0; r < removed.length; r++) {
         firePut(removed[r], buildRemovedPut(), onPutFinished);
+      }
+      for (var ap = 0; ap < accessoryPuts.length; ap++) {
+        fireAccessoryPut(accessoryPuts[ap].accId, accessoryPuts[ap].mdfId, onPutFinished);
       }
     }
 
@@ -46872,6 +49271,92 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   });
 
+  // ======================================================================
+  // Inverse cascade: child's CONNECTIONS_FIELD (field_2197) changes
+  // ----------------------------------------------------------------------
+  // The handler above watches the parent's TRIGGER_FIELD (field_1957) and
+  // cascades down. But the user can ALSO change a child's CONNECTIONS_FIELD
+  // directly — native inline edit, form save, anywhere Knack fires a
+  // knack-cell-update on the child row. In that case the child has a new
+  // parent, and the child's mounting-hardware accessories need their
+  // GROUPING_FIELD (field_1946) updated to match the new parent's group.
+  //
+  // We compare the post-edit record's CONNECTIONS_FIELD to a per-record
+  // cache primed from the model on each view-render. When a difference is
+  // detected on a record that has accessories, fire accessory PUTs.
+  // ownPuts still suppresses echoes from our own outbound child PUTs so
+  // this doesn't double-cascade with the field_1957 flow.
+  // ======================================================================
+
+  var lastReciprocalSeen = {};
+
+  function serializeReciprocal(attrs) {
+    var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return '';
+    return raw
+      .map(function (r) { return r && r.id; })
+      .filter(Boolean)
+      .sort()
+      .join(',');
+  }
+
+  function primeReciprocalCache() {
+    var records = getModelRecords();
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] && (records[i].attributes || records[i]);
+      if (attrs && attrs.id) {
+        lastReciprocalSeen[attrs.id] = serializeReciprocal(attrs);
+      }
+    }
+  }
+
+  $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-prime',
+    function () { primeReciprocalCache(); });
+
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
+    function (event, view, record) {
+      try {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID) return;
+        if (!record || !record.id) return;
+        if (ownPuts[record.id]) return;
+
+        var prev = lastReciprocalSeen[record.id] || '';
+        var curr = serializeReciprocal(record);
+        if (prev === curr) return;
+        lastReciprocalSeen[record.id] = curr;
+
+        // No new parent → nothing to cascade. (Disconnect doesn't
+        // implicitly relocate the child's accessories; they keep the
+        // last-known group until a new parent assignment.)
+        var raw = record[CONNECTIONS_FIELD + '_raw'];
+        if (!Array.isArray(raw) || !raw.length || !raw[0] || !raw[0].id) return;
+
+        var newParentId = raw[0].id;
+        var parentAttrs = getModelAttrs(newParentId);
+        if (!parentAttrs) {
+          log('inverse cascade: new parent ' + newParentId + ' not in model — skipping');
+          return;
+        }
+        var parentGroupRaw = parentAttrs[GROUPING_FIELD + '_raw'];
+        if (!Array.isArray(parentGroupRaw) || !parentGroupRaw[0] || !parentGroupRaw[0].id) {
+          log('inverse cascade: parent ' + newParentId + ' has no MDF — skipping');
+          return;
+        }
+        var parentGroupId = parentGroupRaw[0].id;
+
+        var accIds = findAccessoryIds(record.id);
+        if (!accIds.length) return;
+
+        log('inverse cascade: field_2197 on ' + record.id +
+            ' → cascade ' + accIds.length + ' accessory MDF PUT(s) to ' + parentGroupId);
+        for (var i = 0; i < accIds.length; i++) {
+          fireAccessoryPut(accIds[i], parentGroupId);
+        }
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'inverse cascade handler threw', e);
+      }
+    });
+
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
   // After the initial regroup has run, the MutationObserver watchdog is
@@ -46913,6 +49398,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       applyPlanToDom: applyPlanToDom,
       findRowsPointingTo: findRowsPointingTo,
       findL1HeaderBefore: findL1HeaderBefore,
+      /** Cascade GROUPING_FIELD = [mdfId] to every accessory connected
+       *  to each child via ACCESSORIES_FIELD. Used by the connection
+       *  picker on resubmit so still-connected children get their
+       *  accessories' MDF refreshed even when the parent's selection
+       *  didn't change (the regroup diff returns empty in that case
+       *  and the built-in accessory cascade only fires for `added`
+       *  children). onAllDone fires after every accessory PUT settles. */
+      cascadeAccessoryMdf: function (childIds, mdfId, onAllDone) {
+        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID || !mdfId ||
+            !childIds || !childIds.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        var queue = [];
+        for (var i = 0; i < childIds.length; i++) {
+          var accIds = findAccessoryIds(childIds[i]);
+          for (var j = 0; j < accIds.length; j++) queue.push(accIds[j]);
+        }
+        if (!queue.length) {
+          if (typeof onAllDone === 'function') onAllDone();
+          return;
+        }
+        log('cascadeAccessoryMdf: ' + queue.length +
+            ' accessory PUT(s) for ' + childIds.length + ' child(ren)');
+        var remaining = queue.length;
+        function tick() {
+          remaining--;
+          if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+        }
+        for (var k = 0; k < queue.length; k++) {
+          fireAccessoryPut(queue[k], mdfId, tick);
+        }
+      },
       inspectState: function () {
         return {
           hasPendingRecord: pendingRecord != null,
@@ -46940,11 +49458,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   });
 
   createMirror({
-    VIEW_ID:           'view_3586',
-    TRIGGER_FIELD:     'field_1957',
-    CONNECTIONS_FIELD: 'field_2197',
-    GROUPING_FIELD:    'field_1946',
-    PUBLIC_API_NAME:   'silentRegroupView3586'
+    VIEW_ID:             'view_3586',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    // Cascade MDF/IDF down to mounting-hardware accessories
+    // (field_1958 connections live on view_3887). When a camera/reader
+    // moves to a new MDF as part of a regroup, every accessory on it
+    // gets the same MDF write so they group with their parent.
+    ACCESSORIES_FIELD:   'field_1958',
+    ACCESSORIES_VIEW_ID: 'view_3887',
+    PUBLIC_API_NAME:     'silentRegroupView3586'
+  });
+
+  // view_3610 hosts the same SOW line items shape as view_3586 (same
+  // field keys throughout), so the same mirror config applies — we just
+  // need a second instance against this view's DOM/model.
+  createMirror({
+    VIEW_ID:             'view_3610',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    ACCESSORIES_FIELD:   'field_1958',
+    // Same accessory cascade as view_3586, but the accessory records on
+    // this scene live on view_3888 instead of view_3887.
+    ACCESSORIES_VIEW_ID: 'view_3888',
+    PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
   // Backward-compat alias for any lingering DevTools snippets that
@@ -46958,7 +49497,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 /*** FEATURE: Custom connection picker — replaces Knack's native popover *********
  *
  * Scope:
- *   - Target: field_1957 (Connected Devices) on view_3586 (SOW line items).
+ *   - Target: field_1957 (Connected Devices) on the SOW-line-items views
+ *     listed in VIEWS below (view_3586 + view_3610). Both views share the
+ *     same field shape; the picker reads/writes the clicked view's model.
  *   - Other connection fields and other views keep Knack's native picker.
  *
  * Why:
@@ -46967,8 +49508,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
  *     and has a label→input click-synthesis quirk that fights shift-range
  *     selection. Replacing it with our own UI puts every interaction on
  *     our own fast path.
- *   - Save uses the existing silent-regroup pipeline
- *     (SCW.silentRegroupView3586 — see mirror-connection-sync.js), so the
+ *   - Save uses the existing silent-regroup pipeline (SCW.silentRegroup
+ *     View<N> per view — see mirror-connection-sync.js), so the
  *     reciprocal field_2197 and parent-group field_1946 propagate to
  *     children without a view-wide re-render flash.
  *
@@ -47097,10 +49638,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       // Footer
       P + '-footer {',
-      '  display: flex; justify-content: flex-end; gap: 8px;',
+      '  display: flex; align-items: center; gap: 8px;',
       '  padding: 12px 18px;',
       '  border-top: 1px solid #e5e7eb;',
       '  background: #f9fafb;',
+      '}',
+      // Live "N connected" count — sits at footer-left
+      P + '-count {',
+      '  font-size: 12px; font-weight: 600; color: #4b5563;',
+      '  letter-spacing: 0.02em;',
+      '}',
+      // Saving state on the count: swap to a "Saving…" indicator
+      P + '-count.is-saving {',
+      '  color: #163C6E;',
+      '}',
+      P + '-count.is-saving::before {',
+      '  content: "";',
+      '  display: inline-block; width: 12px; height: 12px;',
+      '  margin-right: 6px; vertical-align: -2px;',
+      '  border: 2px solid #cbd5e1; border-top-color: #163C6E;',
+      '  border-radius: 50%;',
+      '  animation: scw-cp-spin 0.7s linear infinite;',
+      '}',
+      '@keyframes scw-cp-spin {',
+      '  to { transform: rotate(360deg); }',
       '}',
       P + '-btn {',
       '  appearance: none; border: 1px solid #d1d5db;',
@@ -47310,6 +49871,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Footer
     var footer = document.createElement('div');
     footer.className = CLASS_PREFIX + '-footer';
+    // Live count — sits on the left side of the footer, updates on
+    // every checkbox change. Keeps the "X connected" total visible
+    // without making the user count the rendered checks themselves.
+    var countEl = document.createElement('div');
+    countEl.className = CLASS_PREFIX + '-count';
+    var spacer = document.createElement('div');
+    spacer.style.flex = '1';
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = CLASS_PREFIX + '-btn';
@@ -47318,8 +49886,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     saveBtn.type = 'button';
     saveBtn.className = CLASS_PREFIX + '-btn ' + CLASS_PREFIX + '-btn-primary';
     saveBtn.textContent = 'Save';
+    footer.appendChild(countEl);
+    footer.appendChild(spacer);
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
+
+    function updateCount() {
+      // Query inside `body` (not `backdrop`) — at modal-construction
+      // time the body is already populated by renderGroups but the
+      // backdrop has not yet had `modal` appended to it, so a backdrop
+      // query would find zero checkboxes on first paint.
+      var checks = body.querySelectorAll(
+        '.' + CLASS_PREFIX + '-list input[type="checkbox"]:checked'
+      );
+      var n = checks.length;
+      countEl.textContent = n + ' connected';
+    }
+    // Refresh the count on every checkbox toggle, plus once now.
+    backdrop.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t && t.tagName === 'INPUT' && t.type === 'checkbox') updateCount();
+    }, false);
+    updateCount();
 
     modal.appendChild(header);
     modal.appendChild(errorBar);
@@ -47349,16 +49937,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     /** Replace the modal body with a new set of groups, in place. */
     function setGroups(groups) {
       renderGroups(groups);
+      updateCount();
     }
 
     /** Toggle the modal's saving state — disables Save, swaps its label,
-     *  and blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
+     *  swaps the footer count for a spinner + "Saving…" message, and
+     *  blocks cancel/backdrop-click so the user can't dismiss mid-PUT. */
     function setSaving(isSaving) {
       saving = !!isSaving;
       saveBtn.disabled = saving;
       cancelBtn.disabled = saving;
       closeBtn.disabled = saving;
       saveBtn.textContent = saving ? 'Saving…' : 'Save';
+      if (saving) {
+        countEl.classList.add('is-saving');
+        countEl.textContent = 'Saving connections…';
+      } else {
+        countEl.classList.remove('is-saving');
+        updateCount();
+      }
     }
 
     /** Show or clear an inline error banner inside the modal. */
@@ -47407,27 +50004,36 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   // ── Candidate fetching (chunk 3) ──────────────────────────────────
-  // We hit Knack's own /connections endpoint, which is the same URL the
-  // native popover uses — so the Builder filter and auth wiring Just
-  // Works. Our filter is hardcoded to match what the Builder applies:
-  //   field_2219 = camera/reader bucket
-  //   field_2197 = blank (candidate not already connected to something)
-  //   field_2154 = current SOW (pulled off the clicked row's model)
-  // A per-SOW in-memory cache avoids re-fetching on rapid reopens.
+  // All candidate camera/reader line items are already rendered on
+  // view_3586 — the SOW line-items view we're editing. Every row is the
+  // same SOW (that's the view's scope), bucket classification lives in
+  // field_2219, and the reciprocal on each camera row is field_2197.
+  // So we read from Knack.views[view_3586].model directly and filter
+  // client-side; no HTTP round-trip required.
+  //
+  // The earlier REST-based approach (GET /v1/pages/.../connections/
+  // field_1957) 400s live on this scene — the endpoint isn't the one
+  // the native popover uses, and even after matching the documented
+  // filter shape the response never comes back. Reading the already-
+  // loaded model is strictly simpler and faster.
 
   var CAMERAS_BUCKET_ID       = '6481e5ba38f283002898113c';
   var BUCKET_FIELD            = 'field_2219';
   var RECIPROCAL_FIELD        = 'field_2197';
   var SOW_CONNECTION_FIELD    = 'field_2154';
   var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
-  var CANDIDATES_CACHE        = {};             // { sowId: { records: [...], fetchedAt: ms } }
-  var CACHE_TTL_MS            = 60 * 1000;
+  var IDENTIFIER_FIELD        = 'field_1950';   // Human label (E-001, RA-I-020, ...)
 
-  function readRecordAttrs(recordId) {
-    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[TARGET_VIEW]) return null;
-    var model = Knack.views[TARGET_VIEW].model;
-    if (!model) return null;
-    var records = (model.data && model.data.models) || model.models || [];
+  function getViewModels(viewId) {
+    if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[viewId]) return [];
+    var view = Knack.views[viewId];
+    var model = view && view.model;
+    if (!model) return [];
+    return (model.data && model.data.models) || model.models || [];
+  }
+
+  function readRecordAttrs(viewId, recordId) {
+    var records = getViewModels(viewId);
     for (var i = 0; i < records.length; i++) {
       var entry = records[i];
       if (!entry) continue;
@@ -47437,16 +50043,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return null;
   }
 
-  function getSowIdForRecord(recordId) {
-    var attrs = readRecordAttrs(recordId);
-    if (!attrs) return null;
-    var raw = attrs[SOW_CONNECTION_FIELD + '_raw'];
-    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
-    return null;
-  }
-
-  function getCurrentlySelectedIds(recordId) {
-    var attrs = readRecordAttrs(recordId);
+  function getCurrentlySelectedIds(viewId, recordId) {
+    var attrs = readRecordAttrs(viewId, recordId);
     if (!attrs) return [];
     var raw = attrs[TARGET_FIELD + '_raw'];
     if (!Array.isArray(raw)) return [];
@@ -47457,57 +50055,65 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return out;
   }
 
-  function buildConnectionsUrl(sowId) {
-    var sceneKey = (typeof Knack !== 'undefined' && Knack.router && Knack.router.current_scene_key)
-      ? Knack.router.current_scene_key : 'scene_1116';
-    var filters = [
-      { field: BUCKET_FIELD,         value: [CAMERAS_BUCKET_ID], operator: 'is' },
-      { field: RECIPROCAL_FIELD,     value: '',                  operator: 'is blank' },
-      { field: SOW_CONNECTION_FIELD, value: sowId,               operator: 'is' }
-    ];
-    return Knack.api_url + '/v1/pages/' + sceneKey +
-           '/views/' + TARGET_VIEW + '/connections/' + TARGET_FIELD +
-           '?rows_per_page=2000&limit_return=true' +
-           '&filters=' + encodeURIComponent(JSON.stringify(filters));
-  }
-
-  /** Fire the connections request. onDone(err, records). */
-  function fetchCandidates(sowId, onDone) {
-    var cached = CANDIDATES_CACHE[sowId];
-    if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
-      onDone(null, cached.records);
-      return;
-    }
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function') {
-      onDone(new Error('SCW.knackAjax unavailable'));
-      return;
-    }
-    window.SCW.knackAjax({
-      type: 'GET',
-      url: buildConnectionsUrl(sowId),
-      dataType: 'json',
-      success: function (resp) {
-        var records = (resp && (resp.records || resp)) || [];
-        // Some Knack endpoints wrap in { records: [...] }, others return
-        // the array directly; tolerate both.
-        if (!Array.isArray(records) && records.records) records = records.records;
-        if (!Array.isArray(records)) records = [];
-        CANDIDATES_CACHE[sowId] = { records: records, fetchedAt: Date.now() };
-        onDone(null, records);
-      },
-      error: function (xhr) {
-        onDone(xhr || new Error('fetch failed'));
+  function attrsHaveBucket(attrs, bucketId) {
+    var raw = attrs[BUCKET_FIELD + '_raw'];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id === bucketId) return true;
       }
-    });
+      return false;
+    }
+    if (raw && typeof raw === 'object' && raw.id === bucketId) return true;
+    return false;
   }
 
-  /** Group candidate records by their MDF/IDF identifier, preserving
-   *  the server-provided order within each group. Records with a blank
-   *  MDF/IDF land in a trailing "Unassigned" group. */
+  function attrsReciprocalIsBlank(attrs) {
+    var raw = attrs[RECIPROCAL_FIELD + '_raw'];
+    if (Array.isArray(raw)) return raw.length === 0;
+    if (!raw) return true;
+    if (typeof raw === 'object' && !raw.id) return true;
+    return false;
+  }
+
+  /** Enumerate camera/reader candidates from the view model.
+   *  selectedIdSet: { id -> true } for items already picked by the clicked
+   *  record — those always stay visible so the user can uncheck them,
+   *  even if their reciprocal is no longer blank. */
+  function collectCandidates(viewId, selectedIdSet) {
+    var records = getViewModels(viewId);
+    var out = [];
+    for (var i = 0; i < records.length; i++) {
+      var entry = records[i];
+      if (!entry) continue;
+      var attrs = entry.attributes || entry;
+      if (!attrs || !attrs.id) continue;
+      if (!attrsHaveBucket(attrs, CAMERAS_BUCKET_ID)) continue;
+      var alreadySelected = !!(selectedIdSet && selectedIdSet[attrs.id]);
+      if (!alreadySelected && !attrsReciprocalIsBlank(attrs)) continue;
+      out.push(attrs);
+    }
+    return out;
+  }
+
+  /** Group candidate records by their MDF/IDF identifier and sort:
+   *    - groups by label, alphanumeric / natural order (so "IDF 2" < "IDF 10")
+   *    - items within each group by identifier, same natural order
+   *  Records with a blank MDF/IDF land in a trailing "Unassigned" group
+   *  regardless of where it would fall alphabetically. */
   function groupByMdfIdf(records, selectedIdSet) {
     var orderedLabels = [];
     var groupMap = {};  // label → { label, items }
     var UNASSIGNED_LABEL = 'Unassigned';
+
+    // Natural-order comparator: "Camera 2" < "Camera 10", case-insensitive,
+    // matches the device-worksheet sort pattern (localeCompare numeric:true).
+    function naturalCmp(a, b) {
+      return String(a || '').localeCompare(
+        String(b || ''),
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      );
+    }
 
     function bucketFor(label) {
       if (!groupMap[label]) {
@@ -47517,32 +50123,46 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       return groupMap[label];
     }
 
+    function identifierFor(attrs) {
+      var raw = attrs[IDENTIFIER_FIELD];
+      if (typeof raw === 'string' && raw.trim()) {
+        return raw.replace(/<[^>]*>/g, '').trim();
+      }
+      if (attrs.identifier) return String(attrs.identifier).trim();
+      return attrs.id;
+    }
+
     for (var i = 0; i < records.length; i++) {
-      var rec = records[i] || {};
-      var id = rec.id;
-      if (!id) continue;
+      var attrs = records[i];
+      if (!attrs || !attrs.id) continue;
       var label = UNASSIGNED_LABEL;
-      var raw = rec[GROUPING_FIELD + '_raw'];
+      var raw = attrs[GROUPING_FIELD + '_raw'];
       if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
         label = String(raw[0].identifier).trim() || UNASSIGNED_LABEL;
-      } else if (rec[GROUPING_FIELD]) {
-        var stripped = String(rec[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
+      } else if (attrs[GROUPING_FIELD]) {
+        var stripped = String(attrs[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
         if (stripped) label = stripped;
       }
       bucketFor(label).items.push({
-        id: id,
-        identifier: rec.identifier || rec.field_1950 || rec[TARGET_FIELD + '_display'] || id,
-        checked: !!(selectedIdSet && selectedIdSet[id])
+        id: attrs.id,
+        identifier: identifierFor(attrs),
+        checked: !!(selectedIdSet && selectedIdSet[attrs.id])
       });
     }
 
-    // Pull Unassigned to the end if present
-    var unassignedIdx = orderedLabels.indexOf(UNASSIGNED_LABEL);
-    if (unassignedIdx !== -1 && unassignedIdx !== orderedLabels.length - 1) {
-      orderedLabels.splice(unassignedIdx, 1);
-      orderedLabels.push(UNASSIGNED_LABEL);
-    }
-    return orderedLabels.map(function (l) { return groupMap[l]; });
+    // Sort group labels alphanumerically, but force Unassigned to the end.
+    orderedLabels.sort(function (a, b) {
+      if (a === UNASSIGNED_LABEL) return 1;
+      if (b === UNASSIGNED_LABEL) return -1;
+      return naturalCmp(a, b);
+    });
+
+    // Sort items within each group alphanumerically by identifier.
+    return orderedLabels.map(function (l) {
+      var g = groupMap[l];
+      g.items.sort(function (a, b) { return naturalCmp(a.identifier, b.identifier); });
+      return g;
+    });
   }
 
   // ── Click interceptor (chunk 2) ───────────────────────────────────
@@ -47552,12 +50172,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // from seeing the click.
   //
   // The listener is document-wide but filters strictly: only fires when
-  // the click lands on an editable td.field_1957 inside #view_3586.
-  // Everything else (other fields, other views, locked cells, non-left-
-  // click) falls through untouched to the normal handlers.
-  var TARGET_VIEW  = 'view_3586';
+  // the click lands on an editable td.field_1957 inside one of the
+  // configured VIEWS. Everything else (other fields, other views, locked
+  // cells, non-left-click) falls through untouched to the normal handlers.
+  //
+  // VIEWS hosts the same SOW-line-items shape across both the legacy
+  // worksheet (view_3586) and the new one (view_3610). Field keys are
+  // identical between them, so the picker just needs to know which
+  // view's DOM/model to read from for each click.
+  var VIEWS = ['view_3586', 'view_3610'];
   var TARGET_FIELD = 'field_1957';
   var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
+
+  /** Find which configured view contains the given td (if any). */
+  function findOwningView(td) {
+    if (!td || !td.closest) return null;
+    for (var i = 0; i < VIEWS.length; i++) {
+      if (td.closest('#' + VIEWS[i])) return VIEWS[i];
+    }
+    return null;
+  }
+
+  /** Resolve the silent-regroup mirror API for a given view. Names
+   *  follow the pattern `silentRegroupView<N>` registered by
+   *  mirror-connection-sync.js — so view_3586 → silentRegroupView3586. */
+  function getMirrorApi(viewId) {
+    var name = 'silentRegroupView' + String(viewId).replace(/^view_/, '');
+    return window.SCW && window.SCW[name];
+  }
 
   function isCellLocked(td) {
     if (!td) return true;
@@ -47587,7 +50229,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     var td = e.target.closest('td.' + TARGET_FIELD);
     if (!td) return;
-    if (!td.closest('#' + TARGET_VIEW)) return;
+    var viewId = findOwningView(td);
+    if (!viewId) return;
     if (isCellLocked(td)) return;
 
     var recordId = getRecordIdFromCell(td);
@@ -47597,7 +50240,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     e.preventDefault();
     e.stopImmediatePropagation();
 
-    openPickerForRecord(recordId, td);
+    openPickerForRecord(viewId, recordId, td);
   }
 
   // ── Save (chunk 4) ────────────────────────────────────────────────
@@ -47605,61 +50248,287 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // id array. On success:
   //   1. Patch Knack's Backbone model attrs (field_1957 + _raw) so
   //      subsequent reads don't revert to stale connection state.
-  //   2. Fire a synthetic knack-cell-update.view_3586 carrying the
-  //      updated record. SCW.silentRegroupView3586 (mirror-connection-
-  //      sync.js) listens on that event and deterministically reparents
-  //      the child rows, patches their field_2197 + field_1946, and
-  //      fires per-child PUTs with a final model.fetch() to resync.
+  //   2. Repaint the parent row's field_1957 cell from the response.
+  //   3. Drive SCW.silentRegroupView3586 directly (no synthetic
+  //      knack-cell-update event) so the children's field_2197 +
+  //      field_1946 PUTs fire off the same response without going
+  //      through the mirror's 400ms settle timer.
   //
   // We don't use Knack.views[...].model.updateRecord() because — per the
   // boolean-chips.js comment — that path silently fails in the worksheet
   // context where device-worksheet has restructured the rows. Direct PUT
   // is the pattern every other SCW device-worksheet writer uses today.
-  function saveSelection(recordId, selectedIds, onDone) {
+  /** Repaint the parent row's field_1957 cell from the PUT response.
+   *  patchCardFromResponse skips this field because it's `nativeEdit`
+   *  in the view_3586/view_3610 configs — readOnly/directEdit fields
+   *  are the only shapes the shared helper knows how to write. The
+   *  cell shape is:
+   *    <td class="field_1957 ... scw-ws-field-value [--empty]">
+   *      <span class="col-N">
+   *        <span class="<recId>" data-kn="connection-value">label</span>,
+   *        <span class="<recId>" data-kn="connection-value">label</span>
+   *      </span>
+   *    </td>
+   *  When empty: just `&nbsp;` inside the col-N wrapper. */
+  function repaintParentConnectionCell(viewId, recordId, resp) {
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return;
+    var row = viewEl.querySelector('tr#' + recordId);
+    if (!row) return;
+    // The clicked cell lives in the worksheet card's detail panel. Both
+    // the pre-transform tr and the scw-ws-card are inside view_3586, so
+    // grab every field_1957 td under the recordId row's neighbourhood.
+    var tds = viewEl.querySelectorAll('td.' + TARGET_FIELD);
+    if (!tds.length) return;
+
+    var raw = resp && resp[TARGET_FIELD + '_raw'];
+    if (!Array.isArray(raw)) raw = [];
+
+    for (var i = 0; i < tds.length; i++) {
+      var td = tds[i];
+      // Only patch tds belonging to this record's worksheet card. The
+      // card td lives inside a tr.scw-ws-row whose id matches recordId,
+      // OR inside a tr right after the matching scw-ws-row marker.
+      var owningCard = td.closest('tr.scw-ws-row');
+      if (!owningCard || owningCard.id !== recordId) continue;
+
+      var wrap = td.querySelector('span[class^="col-"]');
+      if (!wrap) continue;
+
+      if (raw.length === 0) {
+        wrap.innerHTML = '&nbsp;';
+        td.classList.add('scw-ws-field-value--empty');
+        continue;
+      }
+
+      td.classList.remove('scw-ws-field-value--empty');
+      var html = '';
+      for (var k = 0; k < raw.length; k++) {
+        var item = raw[k] || {};
+        if (!item.id) continue;
+        if (k > 0) html += ', ';
+        html += '<span class="' + escapeAttr(item.id) + '" data-kn="connection-value">' +
+                escapeText(item.identifier || item.id) + '</span>';
+      }
+      wrap.innerHTML = html;
+    }
+  }
+
+  function escapeAttr(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+    });
+  }
+  function escapeText(s) {
+    return String(s).replace(/[&<>]/g, function (c) {
+      return ({ '&':'&amp;','<':'&lt;','>':'&gt;' })[c];
+    });
+  }
+
+  /** Read the parent record's MDF/IDF group id, preferring the PUT
+   *  response (freshest) and falling back to the Backbone model. */
+  function readParentGroupId(viewId, R, parentId) {
+    var raw = R && R[GROUPING_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    var attrs = readRecordAttrs(viewId, parentId);
+    if (attrs) {
+      var rawM = attrs[GROUPING_FIELD + '_raw'];
+      if (Array.isArray(rawM) && rawM[0] && rawM[0].id) return rawM[0].id;
+    }
+    return null;
+  }
+
+  /** Fire a "repair" PUT for each currently-selected child whose
+   *  reciprocal/group should already match the parent. The mirror's
+   *  applyDeterministicRegroup only PUTs added/removed children — the
+   *  unchanged-but-still-connected set falls outside its diff. Running
+   *  this on every save guarantees a re-submit re-asserts field_2197 +
+   *  field_1946 across every connected child, even when nothing changed
+   *  at the parent. */
+  function fireRepairPuts(viewId, parentId, parentGroupId, childIds, onAllDone) {
+    if (!childIds || !childIds.length) {
+      if (typeof onAllDone === 'function') onAllDone();
+      return;
+    }
+    var remaining = childIds.length;
+    function tick() {
+      remaining--;
+      if (remaining <= 0 && typeof onAllDone === 'function') onAllDone();
+    }
+    for (var i = 0; i < childIds.length; i++) {
+      var body = {};
+      if (parentGroupId) body[GROUPING_FIELD] = [parentGroupId];
+      body[RECIPROCAL_FIELD] = [parentId];
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: window.SCW.knackRecordUrl(viewId, childIds[i]),
+        data: JSON.stringify(body),
+        dataType: 'json',
+        success: function () { tick(); },
+        error: function (xhr) {
+          console.warn('[scw-cp] repair PUT failed',
+            xhr && xhr.status, xhr && xhr.responseText);
+          tick();
+        }
+      });
+    }
+  }
+
+  function saveSelection(viewId, recordId, selectedIds, originalIds, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
       console.error('[scw-cp] SCW.knackAjax/knackRecordUrl unavailable — cannot save');
       if (typeof onDone === 'function') onDone(new Error('ajax helpers unavailable'));
       return;
     }
+
+    // Read parent's MDF/IDF group id from the model BEFORE the PUT.
+    // Knack's no-op PUT responses occasionally omit field_1946_raw,
+    // which would have left parentGroupId null and skipped the
+    // field_1946 portion of the repair + accessory cascade. The model
+    // always has it for an existing parent.
+    var preGroupAttrs = readRecordAttrs(viewId, recordId);
+    var preGroupRaw = preGroupAttrs && preGroupAttrs[GROUPING_FIELD + '_raw'];
+    var preGroupId = (Array.isArray(preGroupRaw) && preGroupRaw[0] && preGroupRaw[0].id)
+      ? preGroupRaw[0].id : null;
+
     var body = {};
     body[TARGET_FIELD] = selectedIds;
+    SCW.debug && SCW.debug('[scw-cp] saveSelection start',
+      { viewId: viewId, recordId: recordId,
+        selected: selectedIds.length, original: (originalIds || []).length,
+        preGroupId: preGroupId });
 
     window.SCW.knackAjax({
       type: 'PUT',
-      url: window.SCW.knackRecordUrl(TARGET_VIEW, recordId),
+      url: window.SCW.knackRecordUrl(viewId, recordId),
       data: JSON.stringify(body),
       dataType: 'json',
       success: function (resp) {
-        // Invalidate the candidate cache for this SOW so the NEXT open
-        // sees fresh field_2197 values (the just-saved children now
-        // point at this parent; the filter would have excluded them on
-        // a fresh fetch).
-        var sowId = getSowIdForRecord(recordId);
-        if (sowId) delete CANDIDATES_CACHE[sowId];
-
         // Patch Knack's model so the parent row reflects the new
         // selection immediately (no visible "flash then populate").
         if (typeof window.SCW.syncKnackModel === 'function') {
           try {
-            window.SCW.syncKnackModel(TARGET_VIEW, recordId, resp, TARGET_FIELD, selectedIds);
+            window.SCW.syncKnackModel(viewId, recordId, resp, TARGET_FIELD, selectedIds);
           } catch (e) { /* best-effort */ }
         }
 
-        // Fire a synthetic cell-update event so the silent-regroup
-        // mirror picks it up and handles the reciprocal children.
+        // Repaint the clicked row's field_1957 cell from the PUT
+        // response. SCW.deviceWorksheet.patchCard is a no-op here —
+        // field_1957 is `nativeEdit` in this view's config, and the
+        // shared helper only handles readOnly + directEdit fields.
+        try { repaintParentConnectionCell(viewId, recordId, resp); }
+        catch (e) { console.warn('[scw-cp] repaintParentConnectionCell threw', e); }
+
+        // Knack view-scoped PUTs sometimes wrap the record under a
+        // "record" key; unwrap so downstream code sees record.id and
+        // record.field_1957_raw at the top level.
+        var R = (resp && resp.record && resp.record.id) ? resp.record : resp;
+        // Prefer the response's group id (freshest), fall back to the
+        // pre-PUT model snapshot, then to readParentGroupId's broader
+        // search. Triple fallback so a no-op PUT response shape can't
+        // strand parentGroupId at null.
+        var parentGroupId = readParentGroupId(viewId, R, recordId) || preGroupId;
+
+        // Compute stillSelected up front — needed to feed both the
+        // repair PUTs and the accessory cascade.
+        var origSet = {};
+        for (var oi = 0; oi < (originalIds || []).length; oi++) {
+          origSet[originalIds[oi]] = true;
+        }
+        var stillSelected = [];
+        for (var si = 0; si < selectedIds.length; si++) {
+          if (origSet[selectedIds[si]]) stillSelected.push(selectedIds[si]);
+        }
+        SCW.debug && SCW.debug('[scw-cp] save success — stages dispatching',
+          { stillSelected: stillSelected.length,
+            parentGroupId: parentGroupId,
+            respHadGroup: !!(R && R[GROUPING_FIELD + '_raw']) });
+
+        // ── Multi-stage completion gate ──────────────────────────
+        // Why: every step below fires async PUTs. If the modal closes
+        // before they all land and the user navigates away, the
+        // browser cancels in-flight requests and field_2197 / accessory
+        // MDFs end up missing. Hold the modal in `saving` state until
+        // mirror PUTs + repair PUTs + accessory PUTs have ALL settled.
+        var doneFired = false;
+        var pendingStages = 3;
+        function stageDone() {
+          pendingStages--;
+          if (pendingStages > 0 || doneFired) return;
+          doneFired = true;
+          if (typeof onDone === 'function') onDone(null, resp);
+        }
+        // Hard ceiling so a hung PUT doesn't leave the modal open
+        // forever. ~10s is generous — typical settle is sub-2s.
+        var hardTimeout = setTimeout(function () {
+          if (doneFired) return;
+          doneFired = true;
+          console.warn('[scw-cp] save timeout — closing modal with ' +
+                       pendingStages + ' stage(s) still pending');
+          if (typeof onDone === 'function') onDone(null, resp);
+        }, 10000);
+        // Wrap stageDone so the timeout gets cleared on natural completion.
+        var rawStageDone = stageDone;
+        stageDone = function () {
+          if (pendingStages === 1) clearTimeout(hardTimeout);
+          rawStageDone();
+        };
+
+        var mirrorApi = getMirrorApi(viewId);
+
+        // Stage 1 — silent-regroup mirror (added/removed children +
+        // mirror-internal accessory cascade for added).
         try {
-          var viewObj = (typeof Knack !== 'undefined' && Knack.views)
-            ? Knack.views[TARGET_VIEW] : null;
-          // The mirror reads record[TARGET_FIELD + '_raw'] on the
-          // event payload; make sure it's populated from resp (Knack
-          // returns the raw shape for connection fields).
-          $(document).trigger('knack-cell-update.' + TARGET_VIEW, [viewObj, resp]);
+          if (mirrorApi && typeof mirrorApi.applyDeterministicRegroup === 'function') {
+            mirrorApi.applyDeterministicRegroup(R, function () {
+              SCW.debug && SCW.debug('[scw-cp] stage 1 (mirror) done');
+              stageDone();
+            });
+          } else {
+            console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
+                         ' unavailable — children will not regroup');
+            stageDone();
+          }
         } catch (e) {
-          console.warn('[scw-cp] cell-update trigger threw', e);
+          console.warn('[scw-cp] applyDeterministicRegroup threw', e);
+          stageDone();
         }
 
-        if (typeof onDone === 'function') onDone(null, resp);
+        // Stage 2 — repair PUTs for still-connected children
+        // (selectedIds ∩ originalIds). The mirror's diff doesn't
+        // include these, so without this pass a re-submit with no
+        // changes would be a no-op. With it, every save re-asserts
+        // each child's field_2197 + field_1946.
+        SCW.debug && SCW.debug('[scw-cp] stage 2 (repair PUTs) firing for ' +
+          stillSelected.length + ' children');
+        fireRepairPuts(viewId, recordId, parentGroupId, stillSelected, function () {
+          SCW.debug && SCW.debug('[scw-cp] stage 2 (repair PUTs) done');
+          stageDone();
+        });
+
+        // Stage 3 — accessory cascade for still-connected children.
+        // Mirror auto-cascades for `added`; we cover the unchanged
+        // intersection here so accessory MDFs stay in sync on no-op
+        // submits and during drift recovery.
+        try {
+          if (mirrorApi && typeof mirrorApi.cascadeAccessoryMdf === 'function' &&
+              parentGroupId && stillSelected.length) {
+            SCW.debug && SCW.debug('[scw-cp] stage 3 (accessory cascade) firing');
+            mirrorApi.cascadeAccessoryMdf(stillSelected, parentGroupId, function () {
+              SCW.debug && SCW.debug('[scw-cp] stage 3 (accessory cascade) done');
+              stageDone();
+            });
+          } else {
+            SCW.debug && SCW.debug('[scw-cp] stage 3 skipped',
+              { hasMirror: !!mirrorApi, hasGroupId: !!parentGroupId,
+                stillSelected: stillSelected.length });
+            stageDone();
+          }
+        } catch (e) {
+          console.warn('[scw-cp] cascadeAccessoryMdf threw', e);
+          stageDone();
+        }
       },
       error: function (xhr) {
         console.error('[scw-cp] save failed',
@@ -47669,27 +50538,52 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     });
   }
 
-  function openPickerForRecord(recordId, td) {
-    var sowId = getSowIdForRecord(recordId);
-    if (!sowId) {
-      console.warn('[scw-cp] cannot resolve SOW id for record', recordId,
-                   '— leaving Knack native picker disabled; no fallback.');
-      return;
-    }
-    var selectedIds = getCurrentlySelectedIds(recordId);
+  function openPickerForRecord(viewId, recordId, td) {
+    var selectedIds = getCurrentlySelectedIds(viewId, recordId);
     var selectedSet = {};
     for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
 
-    // Open with a placeholder group so the modal shell paints
-    // immediately; swap in real data when the fetch lands via
-    // handle.setGroups() (in place, no close+reopen flicker).
+    // Candidates come straight from the view model — synchronous, no
+    // network call — so we can build the grouped list before opening
+    // the modal and skip the Loading… placeholder entirely.
+    var candidates = collectCandidates(viewId, selectedSet);
+    var grouped = groupByMdfIdf(candidates, selectedSet);
+
+    // Orphans: currently-selected items whose reciprocal is no longer
+    // blank AND whose row is not on this view page. Preserve them so
+    // the user can still uncheck.
+    var candidateById = {};
+    for (var c = 0; c < candidates.length; c++) {
+      candidateById[candidates[c].id] = true;
+    }
+    var orphans = [];
+    for (var s = 0; s < selectedIds.length; s++) {
+      var sid = selectedIds[s];
+      if (!candidateById[sid]) {
+        var attrs = readRecordAttrs(viewId, sid) || {};
+        orphans.push({
+          id: sid,
+          identifier: (attrs[IDENTIFIER_FIELD] && String(attrs[IDENTIFIER_FIELD]).replace(/<[^>]*>/g, '').trim()) ||
+                      attrs.identifier || sid,
+          checked: true
+        });
+      }
+    }
+    if (orphans.length) {
+      grouped.unshift({ label: 'Already selected', items: orphans });
+    }
+
     var handle = openModal({
       title: 'Connected Devices',
-      groups: [{ label: 'Loading…', items: [] }],
+      groups: grouped.length ? grouped : [{ label: 'No candidates', items: [] }],
       onSave: function (ids) {
         handle.setSaving(true);
         handle.showError('');
-        saveSelection(recordId, ids, function (err) {
+        // Pass the snapshot of selectedIds taken at modal-open time as
+        // originalIds — saveSelection diffs against it to know which
+        // currently-selected children need a repair PUT (the unchanged
+        // intersection that mirror's added/removed diff doesn't touch).
+        saveSelection(viewId, recordId, ids, selectedIds, function (err) {
           if (err) {
             handle.setSaving(false);
             handle.showError('Failed to save. Please try again.');
@@ -47699,42 +50593,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         });
       },
       onCancel: function () { /* no-op */ }
-    });
-
-    fetchCandidates(sowId, function (err, records) {
-      if (err) {
-        console.error('[scw-cp] fetch failed', err);
-        handle.showError('Failed to load candidates. Close and try again.');
-        return;
-      }
-      // Ensure any currently-selected records that aren't in the
-      // candidate set (e.g. the filter would have excluded them because
-      // they're now connected to something else) still appear in the
-      // modal as checked — otherwise a user who just wants to UNCHECK
-      // one couldn't see it. Fold them in under an "Already selected"
-      // section at the top.
-      var byId = {};
-      for (var r = 0; r < records.length; r++) {
-        if (records[r] && records[r].id) byId[records[r].id] = records[r];
-      }
-      var grouped = groupByMdfIdf(records, selectedSet);
-      var orphans = [];
-      for (var s = 0; s < selectedIds.length; s++) {
-        var sid = selectedIds[s];
-        if (!byId[sid]) {
-          var attrs = readRecordAttrs(sid) || {};
-          orphans.push({
-            id: sid,
-            identifier: attrs.identifier || attrs.field_1950 || sid,
-            checked: true
-          });
-        }
-      }
-      if (orphans.length) {
-        grouped.unshift({ label: 'Already selected', items: orphans });
-      }
-
-      handle.setGroups(grouped);
     });
   }
 
@@ -47790,6 +50648,106 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   };
 })();
 /*** END FEATURE: Custom connection picker ********************************************/
+/*** FEATURE: Connected-device count below the field_1957 form input *********
+ *
+ * On any form/details view that renders the field_1957 (Connected Devices)
+ * connection input, drop a small "N connected" line directly below the
+ * input. The count reads the number of selected <option>s from the Knack
+ * form's underlying <select> and re-counts on every change so it stays
+ * live as the user picks/unpicks devices.
+ *
+ * Scope:
+ *   View-agnostic — we hook the wrapper by `kn-input-field_1957` (Knack's
+ *   stable id-pattern for connection inputs) so this works on the line-
+ *   item details/edit form regardless of which view_NNNN hosts it.
+ *
+ * Why a separate module:
+ *   The connection-picker IIFE replaces Knack's table-cell popover. This
+ *   is a strict additive read-out for the existing Knack form widget —
+ *   no click interception, no save flow. Keeping them split keeps each
+ *   file's responsibility narrow.
+ ********************************************************************************/
+(function () {
+  'use strict';
+
+  var TARGET_FIELD = 'field_1957';
+  var COUNT_CLASS  = 'scw-conn-count';
+  var STYLE_ID     = 'scw-conn-count-css';
+  var BOUND_FLAG   = 'scwConnCountBound';
+
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var css = [
+      '.' + COUNT_CLASS + ' {',
+      '  font: 600 12px/1.3 system-ui, -apple-system, sans-serif;',
+      '  color: #4b5563;',
+      '  letter-spacing: 0.02em;',
+      '  margin-top: 6px;',
+      '}'
+    ].join('\n');
+    var s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  /** Read the selected-option count from the wrapper's <select>. */
+  function countSelected(wrap) {
+    var $select = $(wrap).find('select[name="' + TARGET_FIELD + '"]').first();
+    if (!$select.length) return 0;
+    return $select.find('option:selected').length;
+  }
+
+  /** Find or create the count badge inside `wrap` and refresh its text. */
+  function refresh(wrap) {
+    var el = wrap.querySelector('.' + COUNT_CLASS);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = COUNT_CLASS;
+      wrap.appendChild(el);
+    }
+    var n = countSelected(wrap);
+    el.textContent = n + ' connected';
+  }
+
+  /** Walk every kn-input-field_1957 wrapper currently in the DOM and
+   *  ensure each has a count + a change-listener installed. Knack's
+   *  kn-input id is repeated per view, not unique, so we use the
+   *  attribute-selector form to catch every wrapper on the scene. */
+  function scan() {
+    injectStyles();
+    var wraps = document.querySelectorAll('[id="kn-input-' + TARGET_FIELD + '"]');
+    for (var i = 0; i < wraps.length; i++) {
+      var wrap = wraps[i];
+      refresh(wrap);
+      if (wrap[BOUND_FLAG]) continue;
+      wrap[BOUND_FLAG] = true;
+      var $select = $(wrap).find('select[name="' + TARGET_FIELD + '"]').first();
+      // chosen.js fires `change` on the underlying <select> after every
+      // pick/remove. That's also what Knack's form-state syncs on, so we
+      // get a free, accurate update for every UI interaction.
+      $select.on('change.scwConnCount', function () {
+        // `this` is the changed <select>; walk up to its kn-input wrapper.
+        var w = this.closest('[id="kn-input-' + TARGET_FIELD + '"]');
+        if (w) refresh(w);
+      });
+    }
+  }
+
+  // Re-scan on every scene render — covers the initial paint plus any
+  // form view that mounts later in the lifecycle (modal forms, etc).
+  if (window.SCW && SCW.onSceneRender) {
+    SCW.onSceneRender('any', function () { setTimeout(scan, 50); }, 'scwConnCount');
+  } else {
+    $(document)
+      .off('knack-scene-render.any.scwConnCount')
+      .on('knack-scene-render.any.scwConnCount', function () { setTimeout(scan, 50); });
+  }
+
+  // First-paint attempt for the case where the form is already in the
+  // DOM by the time this IIFE runs.
+  setTimeout(scan, 150);
+})();
 /*** GRID DIRECT-EDIT — type-and-save inputs for standard Knack grids ***/
 (function () {
   'use strict';
