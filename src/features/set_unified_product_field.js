@@ -185,15 +185,20 @@
 
     const { unionIds, idToLabel } = computeUnionIdsAndLabels($view, viewId);
 
+    // The unified <select>'s Chosen UI is hidden off-screen by
+    // safeHideUnifiedField (position: absolute; left: -99999px). Calling
+    // chosenUpdate on it does a full rebuild proportional to the option
+    // count — ensureOptions only ever appends, never removes, so the
+    // option list grows for the lifetime of the form. Skip the rebuild
+    // when the field is hidden; Knack reads the submitted value from the
+    // hidden connection input ($unifiedHidden) anyway, so the Chosen UI
+    // is irrelevant.
+    const unifiedIsHidden = !!CONFIG.HIDE_UNIFIED_FIELD;
+
     if (!unionIds.length) {
       const isMulti = isMultiSelect($unifiedSelect);
 
       // Skip the entire clear path when the unified field is already empty.
-      // A no-op .val('') + .trigger('change') + chosenUpdate still costs a
-      // full Chosen rebuild (proportional to the option count), and on the
-      // form the unified <select> accumulates options across bucket picks
-      // via ensureOptions(). Without this guard, every bucket pick after
-      // the first is paying for a Chosen rebuild for no behavioral reason.
       const cur = $unifiedSelect.val();
       const alreadyEmpty = !cur || (Array.isArray(cur) && cur.length === 0);
       if (alreadyEmpty) {
@@ -204,7 +209,7 @@
       const encodedClear = encodeConnValue([], isMulti);
       $unifiedSelect.val(isMulti ? [] : "").trigger("change");
       $unifiedHidden.val(encodedClear).trigger("change");
-      chosenUpdate($unifiedSelect);
+      if (!unifiedIsHidden) chosenUpdate($unifiedSelect);
       return;
     }
 
@@ -218,7 +223,7 @@
     const encoded = encodeConnValue(finalIds, unifiedIsMulti);
     $unifiedHidden.val(encoded).trigger("change");
 
-    chosenUpdate($unifiedSelect);
+    if (!unifiedIsHidden) chosenUpdate($unifiedSelect);
 
     log("Unified set", { unifiedIsMulti, finalIds, encoded });
   }
@@ -252,10 +257,14 @@
     }
 
     const clearedVal = isMulti ? [] : "";
+    // Skip Chosen rebuilds for the off-screen unified <select> — its UI
+    // is invisible, and the rebuild cost grows with option count
+    // (ensureOptions is append-only).
+    const isHiddenUnified = (fieldKey === CONFIG.UNIFIED) && !!CONFIG.HIDE_UNIFIED_FIELD;
 
     if (hasSelect) {
       $sel.val(clearedVal).trigger("change");
-      chosenUpdate($sel);
+      if (!isHiddenUnified) chosenUpdate($sel);
     }
 
     if (hasHidden) {
@@ -292,33 +301,44 @@
 
     // ✅ RESET: when bucket changes, clear ALL parent product fields AND unified.
     //
-    // The clearing cascade is deferred to the next animation frame so the
-    // bucket-pick click can return immediately — Chosen's own "close
-    // dropdown / paint selected text" work happens in that same frame, and
-    // INP is measured from click to next paint. Doing the parent clears
-    // synchronously inside the change handler used to push INP to 1.5–2 s
-    // because each cleared parent select fires its own Chosen rebuild
-    // (proportional to its option count, ~200+ products on this form).
+    // The clearing cascade is deferred via setTimeout(0) so it runs in a
+    // separate task AFTER the browser paints the bucket pick. INP is the
+    // worst phase of the interaction's click → next-paint round trip;
+    // anything synchronous inside the change handler (or in rAF, which
+    // runs *before* paint) lands in that window. setTimeout pushes the
+    // Chosen rebuilds on the 3 parent product selects to a later tick so
+    // they stop dominating the bucket-pick INP.
     //
-    // A small flag coalesces multiple bucket changes within the same frame
-    // (defensive — Chosen normally only fires one change per pick).
+    // Why this is safe even though the work is "deferred":
+    //   - applyRules in the visibility module (still rAF, runs pre-paint)
+    //     immediately hides the parent product fields that aren't part of
+    //     the new bucket — so the user never sees stale parent values.
+    //   - The unified field is permanently hidden off-screen
+    //     (HIDE_UNIFIED_FIELD), so its UI state is invisible to the user.
+    //   - The PUT for form-submit reads from the hidden connection input
+    //     (which we set synchronously inside the cleared-tick anyway, just
+    //     one task later). The form can't be submitted faster than the
+    //     setTimeout(0) tick, so submit data stays consistent.
+    //
+    // A per-view flag coalesces overlapping change events within the
+    // same tick (defensive — Chosen normally fires one change per pick).
     if (CONFIG.RESET_ON_FIELD) {
       const $bucket = getSelect($view, viewId, CONFIG.RESET_ON_FIELD);
       if ($bucket.length) {
-        const FRAME_FLAG = "_scwUnifiedResetRAF_" + viewId;
+        const TICK_FLAG = "_scwUnifiedResetPending_" + viewId;
         $bucket
           .off(`change${EVENT_NS}-reset`)
           .on(`change${EVENT_NS}-reset`, function () {
-            if ($view[0] && $view[0][FRAME_FLAG]) return;
-            if ($view[0]) $view[0][FRAME_FLAG] = true;
-            requestAnimationFrame(function () {
-              if ($view[0]) $view[0][FRAME_FLAG] = false;
+            if ($view[0] && $view[0][TICK_FLAG]) return;
+            if ($view[0]) $view[0][TICK_FLAG] = true;
+            setTimeout(function () {
+              if ($view[0]) $view[0][TICK_FLAG] = false;
               clearParentsAndUnified($view, viewId);
               // One more pass to ensure unified stays cleared. With the
               // already-empty guard in setUnifiedFromParents, this is a
               // no-op once the cascade has settled.
               sync();
-            });
+            }, 0);
           });
       }
     }
