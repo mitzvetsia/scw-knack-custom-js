@@ -1038,7 +1038,19 @@
              || (view.model.data && view.model.data.attributes)
              || null;
     if (!attrs) return null;
-    return typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+    var src = typeof attrs.toJSON === 'function' ? attrs.toJSON() : attrs;
+    // Copy so we don't mutate live model attrs when patching in id below.
+    var rec = {};
+    for (var k in src) if (src.hasOwnProperty(k)) rec[k] = src[k];
+    // Backbone keeps the record id on model.id (not attributes.id) for
+    // some Knack detail views — that left snapshot.header.id missing
+    // and Make pipelines couldn't identify the SOW record being
+    // published. Backfill from model.id when attributes don't carry it.
+    if (!rec.id) {
+      rec.id = (view.model && view.model.id) ||
+               (view.model && view.model.data && view.model.data.id) || '';
+    }
+    return rec;
   }
 
   function buildJsonSnapshot(sceneId) {
@@ -1056,7 +1068,7 @@
     var cfg = resolveConfiguredScene(sceneId);
     var jsonSkip = (cfg && cfg.jsonSkipViews) || {};
 
-    var snapshot = { header: null };
+    var snapshot = { header: null, headerId: '' };
 
     var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
     for (var i = 0; i < allViewEls.length; i++) {
@@ -1068,8 +1080,17 @@
         snapshot[viewId] = extractGridRecords(viewId);
       } else if (t === 'detail' && !snapshot.header) {
         var rec = extractDetailRecord(viewId);
-        if (rec) snapshot.header = rec;
+        if (rec) {
+          snapshot.header   = rec;
+          snapshot.headerId = rec.id || '';
+        }
       }
+    }
+
+    // Final fallback: if no detail view yielded an id, drop in the
+    // page-hash record id so Make always has SOMETHING addressable.
+    if (!snapshot.headerId) {
+      snapshot.headerId = getPageRecordId() || '';
     }
 
     return snapshot;
