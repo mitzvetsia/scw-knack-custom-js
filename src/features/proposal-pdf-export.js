@@ -1037,31 +1037,33 @@
     var sceneEl = document.getElementById('kn-' + sceneId);
     if (!sceneEl) return {};
 
-    var snapshot = {
-      header: null,
-      view_3341: [],
-      view_3371: []
-    };
+    // Honor the scene's skipViews list (same one scrapeAllViews uses)
+    // so utility / data-source-only views don't leak into the
+    // publish payload.
+    var cfg = resolveConfiguredScene(sceneId);
+    var skipViews = (cfg && cfg.skipViews) || {};
 
-    // Collect line item records from each grid view separately
-    var gridViewIds = ['view_3341', 'view_3371'];
-    for (var g = 0; g < gridViewIds.length; g++) {
-      var vid = gridViewIds[g];
-      var records = extractGridRecords(vid);
-      for (var r = 0; r < records.length; r++) {
-        snapshot[vid].push(records[r]);
-      }
-    }
+    var snapshot = { header: null };
 
-    // Collect SOW header from first detail view on the scene
+    // Walk every view on the scene rather than hard-coding view_3341 +
+    // view_3371. Buttons that fire publish from any scene now get the
+    // full record dump for every grid that scene actually has —
+    // necessary for Make to clone Survey Line Item records on alt-bid
+    // requests, populate webhooks for new build pages, etc. Existing
+    // Make scenarios that read snapshot.view_3341 / .view_3371 keep
+    // working because we still write to those exact keys when the
+    // scene has them.
     var allViewEls = sceneEl.querySelectorAll('[id^="view_"]');
-    for (var d = 0; d < allViewEls.length; d++) {
-      var viewId = allViewEls[d].id;
-      if (detectViewType(viewId) !== 'detail') continue;
-      var rec = extractDetailRecord(viewId);
-      if (rec) {
-        snapshot.header = rec;
-        break;
+    for (var i = 0; i < allViewEls.length; i++) {
+      var viewId = allViewEls[i].id;
+      if (skipViews[viewId]) continue;
+      if (!/^view_\d+$/.test(viewId)) continue;  // skip pseudo-ids
+      var t = detectViewType(viewId);
+      if (t === 'grid') {
+        snapshot[viewId] = extractGridRecords(viewId);
+      } else if (t === 'detail' && !snapshot.header) {
+        var rec = extractDetailRecord(viewId);
+        if (rec) snapshot.header = rec;
       }
     }
 
