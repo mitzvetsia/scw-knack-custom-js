@@ -1,31 +1,44 @@
-/*************  SOW filter pills above view_3610  *************/
+/*************  Connection-filter pills above grid views  *************/
 /**
- * Adds a quick-filter pill strip above the Scope of Work Line Items grid
- * (view_3610). Each unique SOW that any row connects to via field_2154
- * gets its own pill (label = SW-####). Clicking a pill scopes the grid
- * to rows that connect to that SOW; clicking "Show All" resets.
+ * Adds a quick-filter pill strip above a grid view, listing every unique
+ * connected record on a given connection field, plus a "Show All" reset.
+ * Clicking a pill scopes the grid to rows that connect to that record.
  *
- * Why this is useful: a single line item can connect to multiple SOWs
- * (e.g. a shared assumption appears in SW-1001 AND SW-1060). The grid
- * doesn't otherwise let the user focus on one SOW at a time.
+ * Configured per-target in the TARGETS array below:
+ *   - view_3610 / field_2154 ("SOW") — Scope of Work Line Items
+ *   - view_3505 / field_2415 ("Bid") — Survey Line Items
+ *
+ * Both views share the same row layout: a card row (tr.scw-ws-row[id])
+ * is the canonical record marker; an inline-photo row immediately
+ * follows; a worksheet "data" row sits adjacent to the card row (either
+ * before or after, depending on row class). indexRows() pairs every
+ * non-card row with its nearest card row inside the same group so a
+ * filter hides each record's full triplet as a unit.
  *
  * Coexists with group-collapse's exclusive accordion: rows are hidden
  * via a class with !important so jQuery .show()/.hide() from group-
- * collapse can't override the filter. Group headers are auto-hidden
- * when none of their child records match the current SOW.
+ * collapse can't override the filter when expanding/collapsing groups.
  *
- * Filter selection persists in localStorage per (scene, view).
+ * Selection persists per (scene, view) in localStorage; a stale
+ * selection (e.g. the connected record was deleted) gracefully falls
+ * back to "Show All" instead of leaving every row hidden.
  */
 (function () {
   'use strict';
 
-  // ── Config ──────────────────────────────────────────────
-  var VIEW_ID    = 'view_3610';
-  var SOW_FIELD  = 'field_2154';
-  var STYLE_ID   = 'scw-sow-filter-pills-css';
-  var STRIP_CLS  = 'scw-sow-filter-strip';
-  var HIDE_CLS   = 'scw-sow-filter-hidden';
-  var EVENT_NS   = '.scwSowFilter';
+  // ── Targets ─────────────────────────────────────────────
+  // To enable the strip on another grid view, add a target here.
+  // `label` is the singular noun shown in the strip header ("SOW:" /
+  // "Bid:"); `pluralPath` is only used for log messages.
+  var TARGETS = [
+    { viewId: 'view_3610', fieldKey: 'field_2154', label: 'SOW' },
+    { viewId: 'view_3505', fieldKey: 'field_2415', label: 'Bid' }
+  ];
+
+  var STYLE_ID  = 'scw-conn-filter-pills-css';
+  var STRIP_CLS = 'scw-conn-filter-strip';
+  var HIDE_CLS  = 'scw-conn-filter-hidden';
+  var EVENT_NS  = '.scwConnFilter';
 
   // ── Styles ──────────────────────────────────────────────
   function injectStyles() {
@@ -34,7 +47,7 @@
     s.id = STYLE_ID;
     s.textContent = [
       // Strip container
-      '#' + VIEW_ID + ' .' + STRIP_CLS + ' {',
+      '.' + STRIP_CLS + ' {',
       '  display: flex; flex-wrap: wrap; align-items: center;',
       '  gap: 6px; margin: 0 0 12px;',
       '  padding: 8px 10px;',
@@ -43,12 +56,12 @@
       '  border-radius: 6px;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__label {',
+      '.' + STRIP_CLS + '__label {',
       '  font-weight: 600; color: #475569; margin-right: 4px;',
       '  letter-spacing: 0.02em; text-transform: uppercase; font-size: 11px;',
       '}',
       // Pill base
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__pill {',
+      '.' + STRIP_CLS + '__pill {',
       '  display: inline-flex; align-items: center; gap: 4px;',
       '  padding: 4px 10px;',
       '  border: 1px solid #cbd5e1;',
@@ -58,33 +71,34 @@
       '  cursor: pointer; user-select: none;',
       '  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;',
       '}',
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__pill:hover {',
+      '.' + STRIP_CLS + '__pill:hover {',
       '  background: #f1f5f9; border-color: #94a3b8;',
       '}',
       // Active pill — primary teal, matches the ops-review pill language
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__pill.is-active {',
+      '.' + STRIP_CLS + '__pill.is-active {',
       '  background: #0891b2; border-color: #0e7490; color: #fff;',
       '}',
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__pill.is-active:hover {',
+      '.' + STRIP_CLS + '__pill.is-active:hover {',
       '  background: #0e7490;',
       '}',
-      // "All" pill — slightly different so it reads as a reset, not a SOW
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__pill--all:not(.is-active) {',
+      // "All" pill — slightly different so it reads as a reset
+      '.' + STRIP_CLS + '__pill--all:not(.is-active) {',
       '  background: transparent;',
       '}',
       // Per-pill record count
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__count {',
+      '.' + STRIP_CLS + '__count {',
       '  display: inline-flex; align-items: center; justify-content: center;',
       '  min-width: 18px; padding: 0 5px;',
       '  background: rgba(15, 23, 42, 0.08); color: #475569;',
       '  border-radius: 9px; font-size: 11px; font-weight: 600;',
       '}',
-      '#' + VIEW_ID + ' .' + STRIP_CLS + '__pill.is-active .' + STRIP_CLS + '__count {',
+      '.' + STRIP_CLS + '__pill.is-active .' + STRIP_CLS + '__count {',
       '  background: rgba(255, 255, 255, 0.25); color: #fff;',
       '}',
-      // Filter-hidden rows — !important so we can't be defeated by jQuery
-      // .show() that group-collapse runs when expanding an accordion.
-      '#' + VIEW_ID + ' tr.' + HIDE_CLS + ' {',
+      // Filter-hidden rows — !important so we can't be defeated by
+      // jQuery .show() that group-collapse runs when expanding an
+      // accordion group.
+      'tr.' + HIDE_CLS + ' {',
       '  display: none !important;',
       '}'
     ].join('\n');
@@ -108,47 +122,49 @@
   }
 
   // ── Persisted state ─────────────────────────────────────
-  function storageKey() {
-    return 'scw:sow-filter:' + getCurrentSceneId() + ':' + VIEW_ID;
+  function storageKey(target) {
+    return 'scw:conn-filter:' + getCurrentSceneId() + ':' + target.viewId;
   }
-  function loadSelected() {
-    try { return localStorage.getItem(storageKey()) || ''; }
+  function loadSelected(target) {
+    try { return localStorage.getItem(storageKey(target)) || ''; }
     catch (e) { return ''; }
   }
-  function saveSelected(sowId) {
+  function saveSelected(target, recordId) {
     try {
-      if (sowId) localStorage.setItem(storageKey(), sowId);
-      else       localStorage.removeItem(storageKey());
+      if (recordId) localStorage.setItem(storageKey(target), recordId);
+      else          localStorage.removeItem(storageKey(target));
     } catch (e) { /* ignore */ }
   }
 
-  // ── SOW collection from Knack model ─────────────────────
-  // Returns an array of { id, label, count } sorted by label, plus
-  // the per-record SOW set (recordId -> Set of sow ids).
-  function collectSows() {
-    var sowsById = {};       // sowId -> { id, label, count }
-    var recordSows = {};     // recordId -> Set(sowId)
+  // ── Connection collection from Knack model ──────────────
+  // Returns { items, recordConns, totalRecords } where:
+  //   items[]      = { id, label, count } sorted by label (natural sort)
+  //   recordConns  = { recordId: { connId: true } } — fast lookup
+  function collectConnections(target) {
+    var byId = {};
+    var recordConns = {};
     var totalRecords = 0;
 
-    var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
+    var v = window.Knack && Knack.views && Knack.views[target.viewId];
     var models = v && v.model && v.model.data && v.model.data.models;
     if (!models || !models.length) return null;
 
+    var rawKey = target.fieldKey + '_raw';
     for (var i = 0; i < models.length; i++) {
       var m = models[i];
       var attrs = m && m.attributes;
       if (!attrs) continue;
       totalRecords++;
 
-      var raw = attrs[SOW_FIELD + '_raw'];
+      var raw = attrs[rawKey];
       if (!Array.isArray(raw)) continue;
 
-      var perRecord = recordSows[m.id] || (recordSows[m.id] = {});
+      var perRecord = recordConns[m.id] || (recordConns[m.id] = {});
       for (var j = 0; j < raw.length; j++) {
         var conn = raw[j];
         if (!conn || !conn.id) continue;
-        if (!sowsById[conn.id]) {
-          sowsById[conn.id] = {
+        if (!byId[conn.id]) {
+          byId[conn.id] = {
             id: conn.id,
             label: String(conn.identifier || conn.id),
             count: 0
@@ -156,96 +172,102 @@
         }
         if (!perRecord[conn.id]) {
           perRecord[conn.id] = true;
-          sowsById[conn.id].count++;
+          byId[conn.id].count++;
         }
       }
     }
 
-    var sows = Object.keys(sowsById).map(function (k) { return sowsById[k]; });
-    sows.sort(function (a, b) {
-      // Natural sort so SW-2 sorts before SW-10
+    var items = Object.keys(byId).map(function (k) { return byId[k]; });
+    items.sort(function (a, b) {
       return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
     });
 
-    return { sows: sows, recordSows: recordSows, totalRecords: totalRecords };
+    return { items: items, recordConns: recordConns, totalRecords: totalRecords };
   }
 
   // ── DOM row indexing ────────────────────────────────────
-  // Walk the tbody and group every <tr> by the record id it belongs to.
-  // Card rows have id="<24-hex>". Photo rows are immediate next siblings
-  // of card rows. Worksheet data rows carry the record id inside the
-  // edit-link href (.../edit-from-nvr-grid3/<24-hex>).
-  function indexRows() {
-    var view = document.getElementById(VIEW_ID);
+  // Walk the tbody and group every <tr> by the record id it belongs
+  // to. Card rows have id="<24-hex>"; everything else (photo rows,
+  // worksheet data rows) is paired with its nearest card row inside
+  // the same group. This avoids depending on view-specific edit-link
+  // URL patterns, which differ between view_3610 and view_3505.
+  function indexRows(target) {
+    var view = document.getElementById(target.viewId);
     if (!view) return null;
     var tbody = view.querySelector('table tbody');
     if (!tbody) return null;
 
-    var rowsByRecord = {};   // recordId -> [tr, tr, ...]
-    var groupHeaders = [];   // [{ tr, recordIds: Set }]
-    var currentGroup = null;
-
     var ID_RE = /^[a-f0-9]{24}$/i;
     var children = tbody.children;
-    var lastCardId = null;
+    var n = children.length;
 
-    for (var i = 0; i < children.length; i++) {
+    // First pass: locate group headers and card rows by index.
+    var groupAt = new Array(n);  // for each row index, which group bucket it belongs to
+    var groups = [];             // [{ tr, recordIds: {} }]
+    var cardIndices = [];        // [{ idx, recordId }]
+    var cur = -1;                // current group bucket (-1 = before first group)
+
+    for (var i = 0; i < n; i++) {
       var tr = children[i];
-
       if (tr.classList.contains('kn-table-group')) {
-        currentGroup = { tr: tr, recordIds: {} };
-        groupHeaders.push(currentGroup);
-        lastCardId = null;
+        groups.push({ tr: tr, recordIds: {} });
+        cur = groups.length - 1;
+        groupAt[i] = -1;  // group header itself isn't a member of any bucket
         continue;
       }
-
-      var recordId = null;
-
+      groupAt[i] = cur;
       if (tr.classList.contains('scw-ws-row') && tr.id && ID_RE.test(tr.id)) {
-        recordId = tr.id;
-        lastCardId = recordId;
-      } else if (tr.classList.contains('scw-inline-photo-row')) {
-        // Photo row inherits from the most recent card row.
-        recordId = lastCardId;
-      } else if (tr.hasAttribute('data-scw-worksheet')) {
-        // Worksheet "raw" row — find the record id from the edit link.
-        var link = tr.querySelector('a[href*="/edit-from-nvr-grid3/"]');
-        if (link) {
-          var m = String(link.getAttribute('href') || '').match(/edit-from-nvr-grid3\/([a-f0-9]{24})/i);
-          if (m) recordId = m[1];
-        }
-      } else if (tr.classList.contains('scw-synth-divider')) {
-        // Synthetic divider between assumption block and real groups.
-        // Treat as group boundary so the next records aren't lumped in.
-        lastCardId = null;
-        continue;
-      }
-
-      if (recordId) {
-        if (!rowsByRecord[recordId]) rowsByRecord[recordId] = [];
-        rowsByRecord[recordId].push(tr);
-        if (currentGroup) currentGroup.recordIds[recordId] = true;
+        cardIndices.push({ idx: i, recordId: tr.id });
       }
     }
 
-    return { rowsByRecord: rowsByRecord, groupHeaders: groupHeaders };
+    // Second pass: assign every non-group, non-divider row to a record.
+    var rowsByRecord = {};
+    for (var r = 0; r < n; r++) {
+      var row = children[r];
+      if (row.classList.contains('kn-table-group')) continue;
+      if (row.classList.contains('scw-synth-divider')) continue;
+
+      var recordId = null;
+      if (row.classList.contains('scw-ws-row') && row.id && ID_RE.test(row.id)) {
+        recordId = row.id;
+      } else {
+        // Find nearest card row inside the same group bucket.
+        var bucket = groupAt[r];
+        var minDist = Infinity;
+        for (var c = 0; c < cardIndices.length; c++) {
+          var ci = cardIndices[c];
+          if (groupAt[ci.idx] !== bucket) continue;
+          var d = Math.abs(ci.idx - r);
+          if (d < minDist) { minDist = d; recordId = ci.recordId; }
+        }
+      }
+      if (!recordId) continue;
+
+      if (!rowsByRecord[recordId]) rowsByRecord[recordId] = [];
+      rowsByRecord[recordId].push(row);
+
+      var b = groupAt[r];
+      if (b >= 0) groups[b].recordIds[recordId] = true;
+    }
+
+    return { rowsByRecord: rowsByRecord, groupHeaders: groups };
   }
 
   // ── Apply filter ────────────────────────────────────────
-  function applyFilter(selectedSowId, data) {
-    if (!data) data = collectSows();
+  function applyFilter(target, selectedId, data) {
+    if (!data) data = collectConnections(target);
     if (!data) return;
-    var idx = indexRows();
+    var idx = indexRows(target);
     if (!idx) return;
 
     var recordIds = Object.keys(idx.rowsByRecord);
-
     for (var i = 0; i < recordIds.length; i++) {
       var rid = recordIds[i];
       var hide = false;
-      if (selectedSowId) {
-        var perRecord = data.recordSows[rid];
-        hide = !(perRecord && perRecord[selectedSowId]);
+      if (selectedId) {
+        var perRecord = data.recordConns[rid];
+        hide = !(perRecord && perRecord[selectedId]);
       }
       var trs = idx.rowsByRecord[rid];
       for (var j = 0; j < trs.length; j++) {
@@ -257,13 +279,13 @@
     for (var g = 0; g < idx.groupHeaders.length; g++) {
       var grp = idx.groupHeaders[g];
       var anyVisible = false;
-      if (!selectedSowId) {
+      if (!selectedId) {
         anyVisible = true;
       } else {
         var ids = Object.keys(grp.recordIds);
         for (var k = 0; k < ids.length; k++) {
-          var pr = data.recordSows[ids[k]];
-          if (pr && pr[selectedSowId]) { anyVisible = true; break; }
+          var pr = data.recordConns[ids[k]];
+          if (pr && pr[selectedId]) { anyVisible = true; break; }
         }
       }
       grp.tr.classList.toggle(HIDE_CLS, !anyVisible);
@@ -271,25 +293,26 @@
   }
 
   // ── Pill strip render ───────────────────────────────────
-  function renderStrip(data, selectedSowId) {
-    var view = document.getElementById(VIEW_ID);
+  function renderStrip(target, data, selectedId) {
+    var view = document.getElementById(target.viewId);
     if (!view) return;
     var nav = view.querySelector('.kn-records-nav');
     if (!nav) return;
 
-    // Tear down any prior strip — Knack re-renders the view from
-    // scratch on a lot of events; we want fresh markup, not stale.
+    // Tear down any prior strip — Knack rebuilds the view from
+    // scratch on lots of events; we want fresh markup, not stale.
     var prior = nav.querySelector('.' + STRIP_CLS);
     if (prior) prior.parentNode.removeChild(prior);
 
-    if (!data || !data.sows.length) return;
+    if (!data || !data.items.length) return;
 
     var strip = document.createElement('div');
     strip.className = STRIP_CLS;
+    strip.setAttribute('data-view-id', target.viewId);
 
     var label = document.createElement('span');
     label.className = STRIP_CLS + '__label';
-    label.textContent = 'SOW:';
+    label.textContent = target.label + ':';
     strip.appendChild(label);
 
     function addPill(opts) {
@@ -297,7 +320,7 @@
       pill.type = 'button';
       pill.className = STRIP_CLS + '__pill' + (opts.extraCls ? ' ' + opts.extraCls : '');
       if (opts.active) pill.classList.add('is-active');
-      pill.setAttribute('data-sow-id', opts.sowId || '');
+      pill.setAttribute('data-conn-id', opts.connId || '');
 
       var text = document.createElement('span');
       text.textContent = opts.label;
@@ -313,88 +336,93 @@
     }
 
     addPill({
-      sowId:    '',
+      connId:   '',
       label:    'Show All',
       count:    data.totalRecords,
-      active:   !selectedSowId,
+      active:   !selectedId,
       extraCls: STRIP_CLS + '__pill--all'
     });
 
-    data.sows.forEach(function (sow) {
+    data.items.forEach(function (item) {
       addPill({
-        sowId:  sow.id,
-        label:  sow.label,
-        count:  sow.count,
-        active: selectedSowId === sow.id
+        connId: item.id,
+        label:  item.label,
+        count:  item.count,
+        active: selectedId === item.id
       });
     });
 
     nav.insertBefore(strip, nav.firstChild);
   }
 
-  // ── Click handling ──────────────────────────────────────
-  // Delegated, attached once at module load.
+  // ── Lookup target by view container ─────────────────────
+  function findTargetForElement(el) {
+    for (var i = 0; i < TARGETS.length; i++) {
+      if (el.closest('#' + TARGETS[i].viewId)) return TARGETS[i];
+    }
+    return null;
+  }
+
+  // ── Click handling (delegated) ──────────────────────────
   document.addEventListener('click', function (e) {
     var pill = e.target.closest && e.target.closest('.' + STRIP_CLS + '__pill');
     if (!pill) return;
-    var view = pill.closest('#' + VIEW_ID);
-    if (!view) return;
+    var target = findTargetForElement(pill);
+    if (!target) return;
 
-    var sowId = pill.getAttribute('data-sow-id') || '';
-    saveSelected(sowId);
+    var connId = pill.getAttribute('data-conn-id') || '';
+    saveSelected(target, connId);
 
     // Update active class without a full re-render — cheaper and
-    // avoids losing focus on the clicked pill.
-    var siblings = view.querySelectorAll('.' + STRIP_CLS + '__pill');
+    // keeps focus on the clicked pill.
+    var view = document.getElementById(target.viewId);
+    var siblings = view ? view.querySelectorAll('.' + STRIP_CLS + '__pill') : [];
     for (var i = 0; i < siblings.length; i++) {
       siblings[i].classList.toggle(
         'is-active',
-        (siblings[i].getAttribute('data-sow-id') || '') === sowId
+        (siblings[i].getAttribute('data-conn-id') || '') === connId
       );
     }
 
-    var data = collectSows();
-    applyFilter(sowId, data);
+    var data = collectConnections(target);
+    applyFilter(target, connId, data);
   });
 
-  // ── Render entry point ──────────────────────────────────
-  function refresh() {
-    var data = collectSows();
+  // ── Refresh entry point per target ──────────────────────
+  function refresh(target) {
+    var data = collectConnections(target);
     if (!data) return;
-    var selected = loadSelected();
-    // If the persisted SOW is no longer in the data set (e.g. its
-    // record was deleted), drop the selection back to "All".
-    if (selected && !data.sows.some(function (s) { return s.id === selected; })) {
+    var selected = loadSelected(target);
+    if (selected && !data.items.some(function (it) { return it.id === selected; })) {
       selected = '';
-      saveSelected('');
+      saveSelected(target, '');
     }
-    renderStrip(data, selected);
-    applyFilter(selected, data);
+    renderStrip(target, data, selected);
+    applyFilter(target, selected, data);
   }
 
   // ── Bindings ────────────────────────────────────────────
   injectStyles();
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    // 150ms after view-render — gives device-worksheet's transformView
-    // (which runs at 150ms too) a beat to finish swapping rows in,
-    // and matches the cadence of other view_3610 features.
-    SCW.onViewRender(VIEW_ID, function () {
-      setTimeout(refresh, 200);
-    }, 'scwSowFilter');
-  }
 
-  // Re-apply on inline-edit cell updates so the strip stays accurate
-  // when a row's SOW connections change.
-  $(document)
-    .off('knack-cell-update.' + VIEW_ID + EVENT_NS)
-    .on('knack-cell-update.' + VIEW_ID + EVENT_NS, function () {
-      setTimeout(refresh, 200);
-    });
+  TARGETS.forEach(function (target) {
+    if (window.SCW && typeof SCW.onViewRender === 'function') {
+      // 200ms after view-render — gives device-worksheet's
+      // transformView (also at ~150ms) a beat to finish swapping rows
+      // in. Matches the cadence of other view-3610/view-3505 features.
+      SCW.onViewRender(target.viewId, function () {
+        setTimeout(function () { refresh(target); }, 200);
+      }, 'scwConnFilter_' + target.viewId);
+    }
 
-  // First render — if the view is already in the DOM when this script
-  // loads, apply immediately.
-  if (document.getElementById(VIEW_ID)) {
-    setTimeout(refresh, 200);
-  }
+    $(document)
+      .off('knack-cell-update.' + target.viewId + EVENT_NS)
+      .on('knack-cell-update.' + target.viewId + EVENT_NS, function () {
+        setTimeout(function () { refresh(target); }, 200);
+      });
+
+    if (document.getElementById(target.viewId)) {
+      setTimeout(function () { refresh(target); }, 200);
+    }
+  });
 })();
-/*************  SOW filter pills  *************/
+/*************  Connection-filter pills  *************/
