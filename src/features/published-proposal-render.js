@@ -251,9 +251,9 @@
     bar.className = 'scw-cta-bar';
     bar.style.cssText =
       'margin: 16px 0 24px 0; padding: 14px 18px;' +
-      'background: #f0f7ff; border: 2px solid #07467c;' +
+      'background: #fff5e6; border: none;' +
       'border-radius: 8px; display: flex; gap: 10px;' +
-      'flex-wrap: wrap; align-items: center; justify-content: center;';
+      'flex-direction: column; align-items: stretch;';
 
     for (var i = 0; i < links.length; i++) {
       var btn = doc.createElement('a');
@@ -264,10 +264,11 @@
       // Knack routing.
       btn.setAttribute('target', '_top');
       btn.style.cssText =
-        'display: inline-flex; align-items: center;' +
-        'padding: 10px 22px; font-size: 15px; font-weight: 700;' +
-        'background: #07467c; color: #fff; text-decoration: none;' +
-        'border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.18);';
+        'display: block; width: 100%; box-sizing: border-box;' +
+        'padding: 10px 22px; font-size: 15px; font-weight: 400;' +
+        'background: orange; color: #fff; text-decoration: none;' +
+        'border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.18);' +
+        'text-align: center;';
       bar.appendChild(btn);
     }
 
