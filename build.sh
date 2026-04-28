@@ -84,6 +84,7 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
   src/features/sales-change-request/state.js \
   src/features/sales-change-request/styles.js \
