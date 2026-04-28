@@ -67,6 +67,18 @@
   var BLOCK_CLS  = 'scw-ops-stepper';
   var STYLE_ID   = 'scw-ops-stepper-css';
 
+  // Shared ClickUp status radio config — same prompt + options on all three
+  // publish steps. Make's scenario reads payload.clickupStatus and updates
+  // the matching CU task field.
+  var CLICKUP_STATUS_RADIO = {
+    question:  'Update ClickUp Status?',
+    noneLabel: 'No status change',
+    options: [
+      { value: 'gfe-submitted',       label: 'GFE Submitted' },
+      { value: 'final-bid-submitted', label: 'Final Bid Submitted' }
+    ]
+  };
+
   var STEPS = [
     {
       id: 'mark-ready',
@@ -190,6 +202,10 @@
           { value: 'sales', label: 'Also submit to Sales' }
         ]
       },
+      // Optional ClickUp status update — second radio group rendered below
+      // submission. Selected value rides on payload.clickupStatus so Make
+      // can flip the project task without us caring which CU list/field.
+      clickupStatus: CLICKUP_STATUS_RADIO,
       modal: {
         title:       'Publish as SOW only (TBD Labor)',
         intro:       'Publishing the SOW with placeholder labor figures.',
@@ -218,6 +234,7 @@
           { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
         ]
       },
+      clickupStatus: CLICKUP_STATUS_RADIO,
       modal: {
         title:       'Publish Quote as GFE',
         intro:       'Publishing as a Good-Faith Estimate (labor included).',
@@ -246,6 +263,7 @@
           { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
         ]
       },
+      clickupStatus: CLICKUP_STATUS_RADIO,
       modal: {
         title:       'Publish Quote as Final',
         intro:       'Publishing the final, fully-priced quote.',
@@ -919,54 +937,58 @@
     err.style.display = 'none';
     card.appendChild(err);
 
-    // Submission options — only rendered when the step config supplies
-    // them. Radio group with a "no submission" default plus one entry
-    // per option. Selected value rides on ctx.submission so Make can
-    // branch on it.
-    var submissionRadios = null;
-    var submissionGroupName = '';
-    if (opts.submission && Array.isArray(opts.submission.options) && opts.submission.options.length) {
-      var sub = opts.submission;
-      submissionGroupName = 'scw-ops-submission-' + Math.random().toString(36).slice(2, 9);
+    // Build a single radio-group section (question + "no" default +
+    // one entry per option). Returns { element, getValue } or null when
+    // the config is missing/empty so we can no-op cheaply.
+    function buildRadioGroup(config) {
+      if (!config || !Array.isArray(config.options) || !config.options.length) return null;
+      var groupName = 'scw-ops-radio-' + Math.random().toString(36).slice(2, 9);
 
-      var subWrap = document.createElement('div');
-      subWrap.className = 'scw-ops-modal-submission';
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
 
-      var subQ = document.createElement('div');
-      subQ.className = 'scw-ops-modal-submission__q';
-      subQ.textContent = sub.question || 'Also submit?';
-      subWrap.appendChild(subQ);
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = config.question || '';
+      wrap.appendChild(q);
 
       function addOption(value, label, isDefault) {
         var optLbl = document.createElement('label');
         optLbl.className = 'scw-ops-modal-submission__opt';
         var radio = document.createElement('input');
         radio.type = 'radio';
-        radio.name = submissionGroupName;
+        radio.name = groupName;
         radio.value = value;
         if (isDefault) radio.checked = true;
         var span = document.createElement('span');
         span.textContent = label;
         optLbl.appendChild(radio);
         optLbl.appendChild(span);
-        subWrap.appendChild(optLbl);
+        wrap.appendChild(optLbl);
       }
-      addOption('', sub.noneLabel || 'No', true);
-      sub.options.forEach(function (o) { addOption(o.value, o.label, false); });
+      addOption('', config.noneLabel || 'No', true);
+      config.options.forEach(function (o) { addOption(o.value, o.label, false); });
 
-      card.appendChild(subWrap);
-      submissionRadios = subWrap.querySelectorAll('input[type="radio"]');
-    }
-
-    function getSelectedSubmission() {
-      if (!submissionRadios) return null;
-      for (var i = 0; i < submissionRadios.length; i++) {
-        if (submissionRadios[i].checked) {
-          return submissionRadios[i].value || null;
+      var radios = wrap.querySelectorAll('input[type="radio"]');
+      return {
+        element: wrap,
+        getValue: function () {
+          for (var i = 0; i < radios.length; i++) {
+            if (radios[i].checked) return radios[i].value || null;
+          }
+          return null;
         }
-      }
-      return null;
+      };
     }
+
+    // Submission options — also-submit-to-Sales / Second Set / no.
+    var submissionGroup = buildRadioGroup(opts.submission);
+    if (submissionGroup) card.appendChild(submissionGroup.element);
+
+    // ClickUp status — independent radio group, rendered beneath
+    // submission. Selected value rides on ctx.clickupStatus.
+    var clickupGroup = buildRadioGroup(opts.clickupStatus);
+    if (clickupGroup) card.appendChild(clickupGroup.element);
 
     var actions = document.createElement('div');
     actions.className = 'scw-ops-modal-actions';
@@ -1023,7 +1045,8 @@
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
         mode: opts.primaryMode || null,
-        submission: getSelectedSubmission()
+        submission:    submissionGroup ? submissionGroup.getValue() : null,
+        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
       });
     });
     if (secondaryBtn) {
@@ -1033,7 +1056,8 @@
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
           mode: opts.secondaryMode || null,
-          submission: getSelectedSubmission()
+          submission:    submissionGroup ? submissionGroup.getValue() : null,
+          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
         });
       });
     }
@@ -1174,7 +1198,8 @@
     // the data on the step (where the rest of the step config lives)
     // instead of cluttering step.modal.
     var modalOpts = $.extend({}, step.modal, {
-      submission: step.submission || null
+      submission:    step.submission    || null,
+      clickupStatus: step.clickupStatus || null
     });
     openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
@@ -1191,7 +1216,10 @@
       // Selected submission option ('sales' / 'second-set' / null).
       // Make's scenario branches on this — it's orthogonal to step.id
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
-      if (ctx.submission) payload.submission = ctx.submission;
+      if (ctx.submission)    payload.submission    = ctx.submission;
+      // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
+      // null). Independent of submission — the user can pick any combo.
+      if (ctx.clickupStatus) payload.clickupStatus = ctx.clickupStatus;
       if (selectedSurveyIds && selectedSurveyIds.length) {
         payload.selectedSurveyIds = selectedSurveyIds;
         // Echo the labels Ops actually saw in the picker so Make
