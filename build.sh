@@ -79,6 +79,7 @@ cat \
   src/features/jotform-embed-sow-photos.js \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
+  src/features/mdf-summary-panel.js \
   src/features/boolean-chips.js \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
