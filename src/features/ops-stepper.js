@@ -26,7 +26,7 @@
  *        server  : updates the matching bid record(s) for the chosen
  *                  survey(s); same payload shape as Request Alt Bid.
  *
- *   4. Publish Quote as SOW only (TBD Labor)
+ *   4. Publish as SOW only (TBD Labor)
  *        showWhen: any of field_2728 > 0 / field_2723 = Yes
  *        webhook : MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK
  *
@@ -167,7 +167,7 @@
     },
     {
       id: 'publish-sow-tbd',
-      label: 'Publish Quote as SOW only (TBD Labor)',
+      label: 'Publish as SOW only (TBD Labor)',
       tone: 'success',
       // Same gate as the legacy publish-proposal: at least one CR queued
       // OR Ops has marked the SOW ready. Either signal means there's
@@ -191,7 +191,7 @@
         ]
       },
       modal: {
-        title:       'Publish Quote as SOW only (TBD Labor)',
+        title:       'Publish as SOW only (TBD Labor)',
         intro:       'Publishing the SOW with placeholder labor figures.',
         placeholder: 'e.g. SOW finalized, labor pending sub bids',
         submitLabel: 'Publish',

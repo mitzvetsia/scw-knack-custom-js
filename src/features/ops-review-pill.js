@@ -134,7 +134,7 @@
     // here for the "Processing X…" message to be accurate.
     {
       id:       'publish-sow-tbd',
-      label:    'Publish Quote as SOW only (TBD Labor)',
+      label:    'Publish as SOW only (TBD Labor)',
       showWhen: function (f) { return f.validated !== 'yes'; }
     },
     {
