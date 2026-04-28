@@ -71,11 +71,15 @@
       '  font: 400 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: #1e293b;' +
       '}' +
+      // !important on the alignment rules — Knack's .kn-table td
+      // selector has the same specificity (0,2,0) as ours and may load
+      // after, so center alignment was bleeding to whatever Knack set.
       '.scw-mdf-summary-table th,' +
       '.scw-mdf-summary-table td {' +
-      '  padding: 5px 10px;' +
-      '  text-align: center;' +
+      '  padding: 5px 10px !important;' +
+      '  text-align: center !important;' +
       '  border-bottom: 1px solid #e2e8f0;' +
+      '  vertical-align: middle !important;' +
       '}' +
       '.scw-mdf-summary-table th {' +
       '  font-size: 10px; font-weight: 700;' +
@@ -85,8 +89,12 @@
       '  border-bottom: 1px solid #cbd5e1;' +
       '  white-space: nowrap;' +
       '}' +
+      '.scw-mdf-summary-table th.scw-mdf-product-h,' +
       '.scw-mdf-summary-table td.scw-mdf-product {' +
-      '  text-align: left; color: #07467c; font-weight: 600;' +
+      '  text-align: left !important;' +
+      '}' +
+      '.scw-mdf-summary-table td.scw-mdf-product {' +
+      '  color: #07467c; font-weight: 600;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
@@ -266,7 +274,7 @@
     return '' +
       '<table class="scw-mdf-summary-table">' +
         '<thead><tr>' +
-          '<th style="text-align:left;">Product</th>' +
+          '<th class="scw-mdf-product-h">Product</th>' +
           '<th>Qty</th>' +
           '<th>Existing<br>Cabling</th>' +
           '<th>New<br>Cabling</th>' +
