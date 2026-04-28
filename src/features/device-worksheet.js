@@ -4033,22 +4033,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var chit = e.target.closest(CABLING_CHIT_SEL);
     if (!chit) return;
 
-    // Let KTL bulk-edit handle the click when active. KTL signals
-    // bulk-edit mode via three class hooks; bail on any of them so
-    // the click reaches its source-select handler instead of our
-    // toggle-and-save:
-    //   - .bulkEditSelectSrc  on the td (already-marked source)
-    //   - .bulkEditSelectedRow on the td (row is part of a bulk set)
-    //   - .bulkEditTh         anywhere in the view (a column is in
-    //                          bulk-edit mode and the next cell click
-    //                          marks it as source)
+    // Let KTL bulk-edit handle the click when active. .bulkEditSelectSrc
+    // marks the source cell; .bulkEditSelectedRow is on tds in a row that
+    // got picked for bulk ops. Either signal means our toggle would
+    // fight KTL's source-select / apply flow, so bail.
+    //
+    // (Earlier revisions also bailed on .bulkEditTh anywhere in the view,
+    //  but that class is statically present on every column header label
+    //  span and would suppress every click. The two td-level signals
+    //  above are dynamic and reliable.)
     var chitTd = chit.closest('td');
     if (chitTd && (
       chitTd.classList.contains('bulkEditSelectSrc') ||
       chitTd.classList.contains('bulkEditSelectedRow')
     )) return;
-    var chitView = chitTd && chitTd.closest('[id^="view_"]');
-    if (chitView && chitView.querySelector('.bulkEditTh')) return;
 
     // Block clicks on locked chits (record lock)
     if (chitTd && chitTd.classList.contains(P + '-chit-locked')) return;
