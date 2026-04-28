@@ -96,6 +96,7 @@ cat \
   src/features/bid-revision-inject.js \
   src/features/revision-accept-reject.js \
   src/features/proposal-type-chip.js \
+  src/features/published-quote-info.js \
   src/features/ops-review-pill.js \
   src/features/ops-stepper.js \
   src/features/published-quote-on-proposal-page.js \

@@ -174,42 +174,9 @@
       '  text-align: center;' +
       '}' +
 
-      /* Per-row published-proposal info block — sits below the pill.
-         Styled compact + muted so the pill stays the primary element. */
-      '.scw-ops-proposal-info {' +
-      '  margin-top: 8px;' +
-      '  padding-top: 6px;' +
-      '  border-top: 1px solid #e5e7eb;' +
-      '  font: 400 11px/1.4 system-ui, sans-serif;' +
-      '  color: #64748b;' +
-      '  text-align: center;' +
-      '}' +
-      '.scw-ops-proposal-name {' +
-      '  font-weight: 500;' +
-      '  margin-bottom: 2px;' +
-      '}' +
-      '.scw-ops-proposal-name a,' +
-      '.scw-ops-proposal-name a:visited {' +
-      '  color: #2563eb; text-decoration: none;' +
-      '}' +
-      '.scw-ops-proposal-name a:hover { text-decoration: underline; }' +
-      '.scw-ops-proposal-exp {' +
-      '  font-size: 10.5px;' +
-      '  color: #64748b;' +
-      '}' +
-      '.scw-ops-proposal-pdf,' +
-      '.scw-ops-proposal-pdf:visited {' +
-      '  display: inline-flex; align-items: center;' +
-      '  margin-top: 3px; color: #2563eb;' +
-      '  text-decoration: none; font-size: 10.5px;' +
-      '}' +
-      '.scw-ops-proposal-pdf:hover { text-decoration: underline; }' +
-      /* Empty-state message when no matching published proposal
-         exists for a SOW. Same layout as the info block, but muted
-         and italicised so it reads as an absence rather than data. */
-      '.scw-ops-proposal-empty {' +
-      '  font-style: italic; color: #94a3b8;' +
-      '}' +
+      // Per-row published-proposal block CSS lives in the shared
+      // published-quote-info.js (.scw-pq-info / --compact / etc.). This
+      // file only contains the SOW-grid-specific styles below.
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -408,270 +375,33 @@
   }
 
   // ── Published-proposal index ────────────────────────────
-  // Keyed by the SOW id each proposal connects to (field_2666). Tries
-  // the Knack model first; falls back to DOM scraping of view_3885's
-  // table rows when the model isn't populated yet.
-  //
-  // Filters to status=Published (field_2658). view_3885 includes drafts
-  // and earlier revisions as well — without the filter we'd pick up
-  // whatever row happened to render first for a given SOW, not the
-  // currently-published one.
+  // Delegates to the shared SCW.publishedQuoteInfo helper. Field keys
+  // were defined at the top of this file as PROPOSAL_NAME / etc. and
+  // are passed through; the helper handles model-first / DOM-fallback
+  // and Published-status filtering.
   function buildProposalIndex() {
-    var idx = {};
-    var hits = 0;
-
-    // 1. Knack model (preferred — has _raw values for every field).
-    try {
-      var v = Knack && Knack.views && Knack.views[PROPOSAL_VIEW];
-      var models = v && v.model && v.model.data && v.model.data.models;
-      if (models && models.length) {
-        for (var i = 0; i < models.length; i++) {
-          var a = models[i].attributes;
-          if (!a) continue;
-          if (!isPublishedFromAttrs(a)) continue;
-          var sowId = readSowIdFromAttrs(a);
-          if (!sowId || idx[sowId]) continue;
-          idx[sowId] = extractProposalInfoFromAttrs(a);
-          hits++;
-        }
-      }
-    } catch (e) { /* fall through to DOM */ }
-
-    // 2. DOM fallback — when the model is unavailable, scrape directly
-    // from the rendered table. Works as long as field_2666 is one of
-    // the columns on view_3885 (connection cells carry the record id
-    // as the inner span's class attribute) and field_2658 (status) is
-    // either in the view or absent entirely. If the status column is
-    // absent from the DOM AND the model isn't ready, every row is
-    // kept — but that's a degenerate case you'd only hit during a
-    // race with initial render.
-    if (!hits) {
-      try {
-        var viewEl = document.getElementById(PROPOSAL_VIEW);
-        if (viewEl) {
-          var rows = viewEl.querySelectorAll('tbody tr[id]');
-          for (var r = 0; r < rows.length; r++) {
-            var tr = rows[r];
-            if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
-            if (!isPublishedFromDom(tr)) continue;
-            var sowIdDom = readSowIdFromDom(tr);
-            if (!sowIdDom || idx[sowIdDom]) continue;
-            idx[sowIdDom] = extractProposalInfoFromDom(tr);
-            hits++;
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    return idx;
+    if (!window.SCW || !SCW.publishedQuoteInfo) return {};
+    return SCW.publishedQuoteInfo.readById({
+      sourceView:  PROPOSAL_VIEW,
+      statusField: PROPOSAL_STATUS,
+      nameField:   PROPOSAL_NAME,
+      expField:    PROPOSAL_EXP,
+      pdfField:    PROPOSAL_PDF,
+      sowField:    PROPOSAL_SOW
+    });
   }
 
-  function isPublishedFromAttrs(attrs) {
-    var raw = attrs[PROPOSAL_STATUS + '_raw'];
-    if (typeof raw === 'string' && raw.trim()) {
-      return /published/i.test(raw);
-    }
-    var v = attrs[PROPOSAL_STATUS];
-    if (typeof v === 'string' && v.trim()) {
-      return /published/i.test(v.replace(/<[^>]*>/g, ''));
-    }
-    return false;
-  }
-
-  function isPublishedFromDom(tr) {
-    var cell = tr.querySelector('td.' + PROPOSAL_STATUS +
-                                ', td[data-field-key="' + PROPOSAL_STATUS + '"]');
-    if (!cell) {
-      // Status column isn't on the view — accept all rows rather than
-      // silently filtering everything out.
-      return true;
-    }
-    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
-    return /published/i.test(text);
-  }
-
-  function readSowIdFromAttrs(attrs) {
-    var raw = attrs[PROPOSAL_SOW + '_raw'];
-    if (Array.isArray(raw) && raw.length) {
-      var id = raw[0] && raw[0].id;
-      return (id && /^[a-f0-9]{24}$/i.test(id)) ? id : '';
-    }
-    if (typeof raw === 'string' && /^[a-f0-9]{24}$/i.test(raw)) return raw;
-    return '';
-  }
-
-  function readSowIdFromDom(tr) {
-    var cell = tr.querySelector('td.' + PROPOSAL_SOW +
-                                ', td[data-field-key="' + PROPOSAL_SOW + '"]');
-    if (!cell) return '';
-    var span = cell.querySelector('span[data-kn="connection-value"]');
-    if (!span) return '';
-    var cls = (span.className || '').trim();
-    return /^[a-f0-9]{24}$/i.test(cls) ? cls : '';
-  }
-
-  function extractProposalInfoFromAttrs(attrs) {
-    var id = attrs.id || '';
-    var name    = String(attrs[PROPOSAL_NAME] || '').replace(/<[^>]*>/g, '').trim();
-    var expDate = String(attrs[PROPOSAL_EXP]  || '').replace(/<[^>]*>/g, '').trim();
-
-    // File fields have two raw forms depending on Knack's version —
-    // try both, plus an HTML-anchor regex fallback.
-    var pdfUrl = '', pdfName = '';
-    var pdfRaw = attrs[PROPOSAL_PDF + '_raw'];
-    if (pdfRaw && typeof pdfRaw === 'object') {
-      pdfUrl  = pdfRaw.url || '';
-      pdfName = pdfRaw.filename || '';
-    }
-    if (!pdfUrl) {
-      var pdfHtml = String(attrs[PROPOSAL_PDF] || '');
-      var mHref = pdfHtml.match(/href="([^"]+)"/i);
-      if (mHref) pdfUrl = mHref[1];
-      var mName = pdfHtml.match(/>([^<]+\.pdf)</i);
-      if (mName) pdfName = mName[1];
-    }
-
-    // "View Published Proposal" link — the kn-link-page anchor Knack
-    // renders in the row. Scrape from the DOM since the href isn't
-    // in the model.
-    var viewLink = '';
-    if (id) {
-      var viewEl = document.getElementById(PROPOSAL_VIEW);
-      if (viewEl) {
-        var row = viewEl.querySelector('tr#' + id);
-        if (row) {
-          var a = row.querySelector('a.kn-link-page');
-          if (a) viewLink = a.getAttribute('href') || '';
-        }
-      }
-    }
-
-    return {
-      recordId: id,
-      name:     name,
-      expDate:  expDate,
-      pdfUrl:   pdfUrl,
-      pdfName:  pdfName || 'Download PDF',
-      viewLink: viewLink,
-      // Type chip (GFE / Final / Equipment Only) — one of the three
-      // booleans on the published-proposal record drives it. Reading
-      // attrs directly works whether or not the field is on the view's
-      // displayed columns (Knack model carries the full record).
-      type:     (window.SCW && SCW.proposalTypeChip)
-                  ? SCW.proposalTypeChip.getType(attrs) : null
-    };
-  }
-
-  function extractProposalInfoFromDom(tr) {
-    function cellText(fieldKey) {
-      var td = tr.querySelector('td.' + fieldKey +
-                                ', td[data-field-key="' + fieldKey + '"]');
-      if (!td) return '';
-      // Strip the outer col-N wrapper and return clean text.
-      return (td.textContent || '').replace(/\s+/g, ' ').trim();
-    }
-    function cellAnchor(fieldKey) {
-      var td = tr.querySelector('td.' + fieldKey +
-                                ', td[data-field-key="' + fieldKey + '"]');
-      if (!td) return null;
-      return td.querySelector('a');
-    }
-
-    var pdfA = cellAnchor(PROPOSAL_PDF);
-    var pageA = tr.querySelector('a.kn-link-page');
-
-    // Type chip — DOM fallback path. The boolean fields (field_2746/47/48)
-    // probably aren't on view_3325's displayed columns, so this returns
-    // null in the DOM-only path. The model path above is the primary
-    // source for type.
-    var typeFromDom = null;
-    if (window.SCW && SCW.proposalTypeChip) {
-      function flagFromCell(fk) {
-        var td = tr.querySelector('td.' + fk +
-                                  ', td[data-field-key="' + fk + '"]');
-        if (!td) return false;
-        return /yes/i.test((td.textContent || '').trim());
-      }
-      if (flagFromCell(SCW.proposalTypeChip.GFE_FIELD))        typeFromDom = 'gfe';
-      else if (flagFromCell(SCW.proposalTypeChip.FINAL_FIELD)) typeFromDom = 'final';
-      else if (flagFromCell(SCW.proposalTypeChip.EQUIP_ONLY_FIELD)) typeFromDom = 'equipment-only';
-    }
-
-    return {
-      recordId: tr.id || '',
-      name:     cellText(PROPOSAL_NAME),
-      expDate:  cellText(PROPOSAL_EXP),
-      pdfUrl:   pdfA ? (pdfA.getAttribute('href') || '') : '',
-      pdfName:  pdfA ? ((pdfA.textContent || '').trim() || 'Download PDF') : 'Download PDF',
-      viewLink: pageA ? (pageA.getAttribute('href') || '') : '',
-      type:     typeFromDom
-    };
-  }
-
-  function renderProposalBlock(hostTd, proposal, tr) {
-    if (!proposal) return;
-    var wrap = document.createElement('div');
-    wrap.className = 'scw-ops-proposal-info';
-
-    // Type chip — GFE / Final / Equipment Only. Sits at the top so the
-    // disclaimer category is the first thing the reader sees alongside
-    // the proposal name and PDF link.
-    if (proposal.type && window.SCW && SCW.proposalTypeChip) {
-      var chip = SCW.proposalTypeChip.buildChip(proposal.type);
-      if (chip) wrap.appendChild(chip);
-    }
-
-    if (proposal.name) {
-      var nameRow = document.createElement('div');
-      nameRow.className = 'scw-ops-proposal-name';
-      // Proposal name links to the published-proposals detail page
-      // for THIS proposal record (not the SOW's proposal-page route
-      // the pill itself navigates to). The published-proposals route
-      // is the canonical "view the published quote" destination —
-      // distinct from the Ops/Sales preview view.
-      var nameHref = proposal.recordId
-        ? '#published-proposals/sow-published-proposal-details/' + proposal.recordId
-        : '';
-      if (nameHref) {
-        var a = document.createElement('a');
-        a.setAttribute('href', nameHref);
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener');
-        a.textContent = proposal.name;
-        nameRow.appendChild(a);
-      } else {
-        nameRow.textContent = proposal.name;
-      }
-      wrap.appendChild(nameRow);
-    }
-
-    if (proposal.expDate) {
-      var expRow = document.createElement('div');
-      expRow.className = 'scw-ops-proposal-exp';
-      expRow.textContent = 'Expires: ' + proposal.expDate;
-      wrap.appendChild(expRow);
-    }
-
-    if (proposal.pdfUrl) {
-      var pdfLink = document.createElement('a');
-      pdfLink.className = 'scw-ops-proposal-pdf';
-      pdfLink.setAttribute('href', proposal.pdfUrl);
-      // No target="_blank" here — PDFs should use the browser's
-      // native handling (in-page viewer / download) rather than
-      // opening in a new tab.
-      // Small paperclip glyph + filename — same vocabulary the sales
-      // totals panel uses so both pages read the same.
-      pdfLink.innerHTML =
-        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-        'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-        'stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">' +
-        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-        '<polyline points="14 2 14 8 20 8"/></svg>';
-      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
-      wrap.appendChild(pdfLink);
-    }
-
-    hostTd.appendChild(wrap);
+  function renderProposalBlock(hostTd, proposal /*, tr */) {
+    if (!proposal || !window.SCW || !SCW.publishedQuoteInfo) return;
+    var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
+      variant: 'compact'
+      // Default linkBuilder targets
+      //   #published-proposals/sow-published-proposal-details/<recordId>
+      // — the canonical "view the published quote" destination. The pill
+      // itself navigates to the SOW proposal page; this link is for the
+      // proposal record specifically.
+    });
+    if (block) hostTd.appendChild(block);
   }
 
   function findStepById(stepId) {
@@ -860,10 +590,12 @@
   }
 
   function renderNoProposalMessage(hostTd) {
-    var wrap = document.createElement('div');
-    wrap.className = 'scw-ops-proposal-info scw-ops-proposal-empty';
-    wrap.textContent = 'No published quotes';
-    hostTd.appendChild(wrap);
+    if (!window.SCW || !SCW.publishedQuoteInfo) return;
+    var block = SCW.publishedQuoteInfo.buildBlock(null, {
+      variant: 'compact',
+      emptyText: 'No published quotes'
+    });
+    if (block) hostTd.appendChild(block);
   }
 
   // ── Scan view, transform each data row ──────────────────
@@ -908,14 +640,14 @@
   document.addEventListener('mousedown', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-pq-info')) {
       e.stopPropagation();
     }
   }, true);
   document.addEventListener('click', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-pq-info')) {
       e.stopPropagation();
     }
   }, true);
