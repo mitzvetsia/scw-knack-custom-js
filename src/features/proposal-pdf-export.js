@@ -865,8 +865,10 @@
   // {{...}} as references to other modules' output, which made the
   // {{TOKEN}} form unworkable inside a static HTML string.
   //
-  //   [Proposal_Name]     display name (e.g. "20260427-10055_v30")
-  //   [Proposal_ID]       24-hex Knack record id
+  //   [Proposal_ID]       public-facing identifier (e.g. "20260427-10055_v30")
+  //                       — this is the human-readable proposal name,
+  //                       NOT the 24-hex Knack record id (Make has that
+  //                       in its own context already).
   //   [Proposal_URL]      canonical published-proposals details link
   //   [Expiration_Date]   formatted MM/DD/YYYY
   //   [Published_Date]    when Make ran (formatted)
@@ -877,7 +879,6 @@
   // (e.g. version number on a draft), Make should replace it with an
   // empty string so the placeholder doesn't leak into the PDF.
   var PROPOSAL_TOKENS = [
-    'Proposal_Name',
     'Proposal_ID',
     'Proposal_URL',
     'Expiration_Date',
@@ -896,7 +897,7 @@
         'margin:0 0 6px 0; padding:0;' +
       '">' +
         '<div style="font-weight:700; color:#163C6E;">' +
-          'Proposal [Proposal_Name]' +
+          'Proposal [Proposal_ID]' +
         '</div>' +
         '<div>Expires: [Expiration_Date]</div>' +
         '<div>Generated: [Published_Date]</div>' +
@@ -911,10 +912,10 @@
 
     html.push('<!DOCTYPE html>');
     html.push('<html><head><meta charset="utf-8">');
-    // Document title carries the proposal display name token so Make
-    // gets a nice tab/file name (e.g. "20260427-10055_v30") after the
-    // record is created.
-    html.push('<title>[Proposal_Name]</title>');
+    // Document title carries the proposal id token so Make gets a nice
+    // tab/file name (e.g. "20260427-10055_v30") after the record is
+    // created.
+    html.push('<title>[Proposal_ID]</title>');
     html.push('<style>');
     html.push(getPdfCss());
     html.push('</style>');
