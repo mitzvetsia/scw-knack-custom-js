@@ -930,31 +930,27 @@
   // the time Make's PDF generator runs. Keep this list in sync with
   // the "Tools → Replace" / Iterator step in the Make scenario.
   //
-  // Double-underscore syntax (NOT {{...}} or [...]) — Make's UI
-  // auto-resolves {{...}} as references to other modules' output, and
-  // its replace() treats [...] as a regex character class. Underscores
-  // are never special in regex, HTML, or Make formulas, so the literal
-  // matches whatever Make sends to the replace step.
+  // Square-bracket syntax — switched back from __Foo__ at the user's
+  // request after they hit issues with both {{Foo}} (Make resolves it
+  // as a module reference) and __Foo__ (still wasn't substituting).
+  // Note: Make's replace() may treat [...] as a regex character class
+  // depending on the function variant — if a literal replace fails,
+  // try escaping the brackets in the pattern string.
   //
-  //   __Proposal_ID__       public-facing identifier (e.g. "20260427-10055_v30")
-  //                         — the human-readable proposal name, NOT
-  //                         the 24-hex Knack record id (Make has that
-  //                         in its own context already).
-  //   __Proposal_URL__      canonical published-proposals details link
-  //   __Expiration_Date__   formatted MM/DD/YYYY
-  //   __Version__           proposal version number
-  //
-  // Make's "Replace" step should match the token text literally — no
-  // regex needed. If a token is intentionally missing from the record
-  // (e.g. version number on a draft), Make should replace it with an
-  // empty string so the placeholder doesn't leak into the PDF.
+  //   [Proposal_ID]       public-facing identifier (e.g. "20260427-10055_v30")
+  //                       — the human-readable proposal name, NOT the
+  //                       24-hex Knack record id (Make has that in
+  //                       its own context already).
+  //   [Proposal_URL]      canonical published-proposals details link
+  //   [Expiration_Date]   formatted MM/DD/YYYY
+  //   [Version]           proposal version number
   var PROPOSAL_TOKENS = [
     'Proposal_ID',
     'Proposal_URL',
     'Expiration_Date',
     'Version'
   ];
-  function tok(name) { return '__' + name + '__'; }
+  function tok(name) { return '[' + name + ']'; }
 
   // (The previous floating "Proposal __Proposal_ID__" letterhead tag
   // has been removed in favor of a detail-table row above SOW ID, so
