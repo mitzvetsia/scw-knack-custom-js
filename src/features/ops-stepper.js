@@ -1179,7 +1179,15 @@
     openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
-      var payload = buildPayload(step, notes, ctx.mode);
+      // mode is meaningful only when the user actually opted into a
+      // submission. The publish-* steps set primaryMode='publish-and-notify'
+      // on their modal so the Submit button has a default action, but if
+      // the user picks "No — just publish" on the radio, ctx.submission
+      // is null and 'publish-and-notify' would be misleading on the
+      // payload. Null it out in that case so Make's scenario can read
+      // payload.mode as the source of truth alongside payload.submission.
+      var effectiveMode = (step.submission && !ctx.submission) ? null : ctx.mode;
+      var payload = buildPayload(step, notes, effectiveMode);
       // Selected submission option ('sales' / 'second-set' / null).
       // Make's scenario branches on this — it's orthogonal to step.id
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
