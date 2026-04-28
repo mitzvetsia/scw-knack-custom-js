@@ -135,7 +135,11 @@
   }
   function isYes(v) {
     if (v === true) return true;
-    if (typeof v === 'string') return /^yes$/i.test(v.trim());
+    // Match "yes" AND "true" — Knack stores Yes/No fields as booleans
+    // in *_raw, which readVal stringifies to "true"/"false". Without
+    // the "true" branch, every chit reading from the raw value got
+    // miscounted as No.
+    if (typeof v === 'string') return /^(yes|true)$/i.test(v.trim());
     return false;
   }
   function fmtMoney(n) {

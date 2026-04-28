@@ -69,7 +69,9 @@
   // treated as not-set.
   function isYes(v) {
     if (v === true) return true;
-    if (typeof v === 'string') return /^yes$/i.test(v.trim());
+    // Match "yes" AND "true" — Knack stores Yes/No fields as booleans
+    // in *_raw, and stringified reads can come through as "true"/"false".
+    if (typeof v === 'string') return /^(yes|true)$/i.test(v.trim());
     return false;
   }
 
