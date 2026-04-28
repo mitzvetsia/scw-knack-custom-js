@@ -15,12 +15,12 @@
  *   2. Request Alternative Bid from Subcontractor
  *        showWhen: field_2706 = No  AND field_2728 > 0
  *        hideWhen: field_2706 = Yes — once survey is requested we offer
- *                  Update Matching Bid instead.
+ *                  Update Subcontractor Bid Request instead.
  *        webhook : MAKE_OPS_REQUEST_ALT_BID_WEBHOOK
  *        server  : creates missing Survey Item records + alt-bid package,
  *                  updates CU task, posts to Slack
  *
- *   3. Update Matching Bid from Subcontractor
+ *   3. Update Subcontractor Bid Request
  *        showWhen: field_2706 = Yes
  *        webhook : MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK
  *        server  : updates the matching bid record(s) for the chosen
@@ -118,7 +118,7 @@
       // Hide entirely in either of:
       //   - no change requests yet — nothing to alt-bid against
       //   - survey already requested (field_2706 = Yes) — at that point
-      //     the bid record exists and Update Matching Bid takes over
+      //     the bid record exists and Update Subcontractor Bid Request takes over
       hideWhen: {
         any: [
           { not: { field: 'field_2728', gt: 0 } },
@@ -147,7 +147,7 @@
     },
     {
       id: 'update-matching-bid',
-      label: 'Update Matching Bid from Subcontractor',
+      label: 'Update Subcontractor Bid Request',
       tone: 'amber',
       // Mirror image of request-alt-bid — only available once the
       // survey has been requested (field_2706 = Yes). Same payload, same
@@ -158,7 +158,7 @@
       webhookKey: 'MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK',
       pickSurveys: true,
       modal: {
-        title:       'Update Matching Bid',
+        title:       'Update Subcontractor Bid Request',
         intro:       'Note for the subcontractor (Sales will also be notified that the matching bid was updated).',
         placeholder: 'e.g. Updated cabling assumptions per latest survey notes',
         submitLabel: 'Send Update'

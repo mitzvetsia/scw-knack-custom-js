@@ -102,7 +102,7 @@
       // exists, so an "update" path makes sense. Same pending label
       // shape as the alt-bid path.
       id:       'update-matching-bid',
-      label:    'Update Matching Bid',
+      label:    'Update Subcontractor Bid Request',
       showWhen: function (f) { return f.survey === 'yes' && toNum(f.crCount) > 0; }
     },
     {

@@ -31,7 +31,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_OPS_MARK_READY_WEBHOOK:           "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:      "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
-  // Update Matching Bid: same payload shape as Request Alt Bid (incl.
+  // Update Subcontractor Bid Request: same payload shape as Request Alt Bid (incl.
   // selectedSurveyIds[]) but routed to a different scenario that updates
   // an existing bid record instead of creating a new alt-bid package.
   // Shown only when field_2706 = "Yes" (survey already requested).
