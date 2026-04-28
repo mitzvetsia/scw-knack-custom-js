@@ -342,8 +342,14 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
-            hideDetailFields: ['field_1958'],
-            showProductInDetail: true,
+            // Hide the entire left-column block for assumption rows:
+            // mountingHardware (field_1958) and connectedDevice (field_1957)
+            // are device-specific concepts that don't apply to project-wide
+            // assumption text. Once both are hidden the left column has no
+            // content, so singleColumnDetail collapses the layout into one
+            // column (right-hand fields move into the left section).
+            hideDetailFields: ['field_1958', 'field_1957'],
+            singleColumnDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -2618,6 +2624,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
             pVal.textContent = pText;
             pField.appendChild(pVal);
             detSect.insertBefore(pField, detSect.firstChild);
+          }
+        }
+      }
+    }
+
+    // ── Single-column detail (e.g. Assumptions on view_3610) ──
+    // Move every .scw-ws-field from later sections into the first
+    // section, then remove the now-empty later sections. Run after
+    // hideDetailFields so genuinely-hidden fields stay hidden when
+    // they migrate into the left column.
+    if (rule.singleColumnDetail) {
+      var sectionsEl = card.querySelector('.' + P + '-sections');
+      if (sectionsEl) {
+        var allSections = sectionsEl.querySelectorAll(':scope > .' + P + '-section');
+        if (allSections.length > 1) {
+          var firstSection = allSections[0];
+          for (var sx = 1; sx < allSections.length; sx++) {
+            var src = allSections[sx];
+            var fields = src.querySelectorAll(':scope > .' + P + '-field');
+            for (var fx = 0; fx < fields.length; fx++) {
+              firstSection.appendChild(fields[fx]);
+            }
+            src.parentNode.removeChild(src);
           }
         }
       }
