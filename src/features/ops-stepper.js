@@ -693,9 +693,12 @@
 
   // ── GFE callout ──────────────────────────────────────────
   // Big bold disclaimer panel injected into the published-quote html
-  // BELOW the SCW logo (first <img> in the body) and ABOVE the project
-  // name heading. Inline-styled because the published html is consumed
-  // by external tools / PDF renderers that may strip or remap classes.
+  // in two places: BELOW the SCW logo (first <img> in the body) so it's
+  // the first thing the reader sees, and AGAIN below the project-totals
+  // block so it stays in view alongside the bottom-line numbers without
+  // the reader having to scroll back up. Inline-styled because the
+  // published html is consumed by external tools / PDF renderers that
+  // may strip or remap classes.
   function injectGfeCallout(html) {
     if (!html || typeof html !== 'string') return html;
     var calloutText = 'This is a Good Faith Estimate based on the ' +
@@ -719,30 +722,68 @@
         '">Good Faith Estimate</div>' +
         calloutText +
       '</div>';
-    // Preferred anchor: drop the callout immediately after the closing
-    // </div> of the block that holds the first <img> (the SCW logo).
-    // That block is a Knack `.detail-label-none` wrapper rendered by
-    // proposal-pdf-export.js — closing it cleanly puts the callout
-    // between the logo row and the project-name heading without
+
+    // ── Top placement: after the SCW logo ──
+    // Anchor to the closing </div> of the block that holds the first
+    // <img> (the Knack `.detail-label-none` wrapper that proposal-pdf-
+    // export.js renders the logo into). Closing it cleanly puts the
+    // callout between the logo row and the project-name heading without
     // ever splitting an element.
+    var inserted = false;
     var imgMatch = html.match(/<img\b[^>]*>/i);
     if (imgMatch) {
       var imgEnd = imgMatch.index + imgMatch[0].length;
       var divCloseIdx = html.indexOf('</div>', imgEnd);
       if (divCloseIdx >= 0) {
         var insertAt = divCloseIdx + '</div>'.length;
-        return html.slice(0, insertAt) + callout + html.slice(insertAt);
+        html = html.slice(0, insertAt) + callout + html.slice(insertAt);
+        inserted = true;
       }
     }
-    // Fallback: inject immediately after <body ...> if no <img> anchor
-    // was found (no logo on this proposal — rare but possible).
-    var bodyOpen = html.match(/<body\b[^>]*>/i);
-    if (bodyOpen) {
-      var idx = bodyOpen.index + bodyOpen[0].length;
-      return html.slice(0, idx) + callout + html.slice(idx);
+    // Fallback for the top placement: inject immediately after <body…>
+    // if no <img> anchor was found (no logo on this proposal — rare).
+    if (!inserted) {
+      var bodyOpen = html.match(/<body\b[^>]*>/i);
+      if (bodyOpen) {
+        var bIdx = bodyOpen.index + bodyOpen[0].length;
+        html = html.slice(0, bIdx) + callout + html.slice(bIdx);
+      } else {
+        // Final fallback: fragment with no <body>, just prepend.
+        html = callout + html;
+      }
     }
-    // Final fallback: fragment with no <body>, just prepend.
-    return callout + html;
+
+    // ── Bottom placement: under the project-totals block ──
+    // proposal-pdf-export.js wraps the totals in
+    // `<div class="project-totals">…</div>`. Find that opening tag and
+    // walk forward to its matching closing tag (the next `</div>` after
+    // the opener — the totals body uses `<div class="pt-line">` children
+    // but those each close their own div before the wrapper's close).
+    // To be safe against nested children, count opens vs. closes.
+    var totalsOpen = html.match(/<div\b[^>]*class="[^"]*\bproject-totals\b[^"]*"[^>]*>/i);
+    if (totalsOpen) {
+      var scanFrom = totalsOpen.index + totalsOpen[0].length;
+      var depth = 1;
+      var i = scanFrom;
+      while (i < html.length && depth > 0) {
+        var nextOpen  = html.indexOf('<div', i);
+        var nextClose = html.indexOf('</div>', i);
+        if (nextClose === -1) break;
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          depth++;
+          i = nextOpen + 4;
+        } else {
+          depth--;
+          i = nextClose + '</div>'.length;
+          if (depth === 0) {
+            html = html.slice(0, i) + callout + html.slice(i);
+            break;
+          }
+        }
+      }
+    }
+
+    return html;
   }
 
   // ── Notes prompt modal ───────────────────────────────────
