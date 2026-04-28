@@ -19,16 +19,16 @@
   var EVENT_NS = '.scwHideViewCond';
 
   var CONFIG = [
-    // Published-proposal details page: hide view_3858 when the SOW is
-    // neither ready for survey (field_2723 != Yes) AND the survey has
-    // already been requested (field_2706 != No). Equivalently, show
-    // it when either field_2723 = Yes OR field_2706 = No.
+    // Published-proposal details page (scene_1279): show view_3858's
+    // button only when the proposal is a GFE (field_2746 = Yes) or a
+    // SOW-only / Equipment-Only quote (field_2748 = Yes). Anything else
+    // (Final, draft, etc.) hides the button.
     {
       viewId: 'view_3858',
       hideWhen: {
         all: [
-          { field: 'field_2723', notValue: 'Yes' },
-          { field: 'field_2706', notValue: 'No' }
+          { field: 'field_2746', notValue: 'Yes' },
+          { field: 'field_2748', notValue: 'Yes' }
         ]
       }
     }

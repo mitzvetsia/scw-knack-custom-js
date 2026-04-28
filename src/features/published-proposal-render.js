@@ -4,6 +4,7 @@
 
   var SCENE_ID    = 'scene_1279';
   var VIEW_ID     = 'view_3813';
+  var ACTION_VIEW_ID = 'view_3858';   // call-to-action banner (gated by hide-view-conditional)
   var HTML_FIELD  = 'field_2680';
   var STYLE_ID    = 'scw-published-proposal-css';
   var IFRAME_ID   = 'scw-published-proposal-frame';
@@ -34,6 +35,36 @@
       '  cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.25);',
       '}',
       '#' + BTN_ID + ':hover { opacity: 0.9; }',
+      '',
+      // ── view_3858 banner styling (call-to-action) ──
+      // Repositioned above the iframe by JS so it sits at the top of
+      // the published-proposal page when visible. The banner padding +
+      // background frames whatever buttons / links Knack rendered into
+      // the view, scaling the bare KTL buttons into a prominent CTA.
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner {',
+      '  display: block;',
+      '  margin: 0 0 18px 0;',
+      '  padding: 16px 20px;',
+      '  background: #f0f7ff; border: 2px solid #07467c;',
+      '  border-radius: 8px;',
+      '}',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner .view-header,',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-records-nav { display: none !important; }',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-submit,',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-button,',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner a.kn-link,',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner button {',
+      '  font-size: 15px !important; font-weight: 700 !important;',
+      '  padding: 10px 22px !important; border-radius: 6px !important;',
+      '  background: #07467c !important; color: #fff !important;',
+      '  border: none !important; box-shadow: 0 1px 3px rgba(0,0,0,.18) !important;',
+      '  cursor: pointer; text-decoration: none !important;',
+      '}',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-button:hover,',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner a.kn-link:hover,',
+      '#' + ACTION_VIEW_ID + '.scw-cta-banner button:hover {',
+      '  opacity: 0.92;',
+      '}',
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -147,6 +178,16 @@
     // Insert iframe after the hidden view element
     viewEl.parentNode.insertBefore(iframe, viewEl.nextSibling);
 
+    // Reposition the call-to-action view (view_3858) above the iframe
+    // so the button is the first thing on the page when visible. The
+    // hide/show gate is handled by hide-view-conditional.js — we just
+    // move it. Also stamps a class for the banner styling above.
+    var ctaEl = document.getElementById(ACTION_VIEW_ID);
+    if (ctaEl) {
+      ctaEl.classList.add('scw-cta-banner');
+      iframe.parentNode.insertBefore(ctaEl, iframe);
+    }
+
     // Write HTML into iframe
     var doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open();
@@ -203,6 +244,18 @@
       document.body.classList.remove('scw-hide-crumbtrail');
       var oldBtn = document.getElementById(BTN_ID);
       if (oldBtn) oldBtn.remove();
+    }
+  });
+
+  // If view_3858 renders later than the iframe is built (Knack doesn't
+  // guarantee view-render order), do the reposition then. The hide
+  // gating in hide-view-conditional.js still controls whether it shows.
+  $(document).on('knack-view-render.' + ACTION_VIEW_ID + NS, function () {
+    var iframe = document.getElementById(IFRAME_ID);
+    var ctaEl  = document.getElementById(ACTION_VIEW_ID);
+    if (iframe && ctaEl && ctaEl.previousElementSibling !== iframe.previousElementSibling) {
+      ctaEl.classList.add('scw-cta-banner');
+      iframe.parentNode.insertBefore(ctaEl, iframe);
     }
   });
 

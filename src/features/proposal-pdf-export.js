@@ -28,6 +28,10 @@
         view_3345: true,
         view_3883: true,
         view_3886: true,
+        // CTA button surfaced on the published-proposal page
+        // (scene_1279) by published-proposal-render.js. Belongs around
+        // the iframe, not inside the scraped quote html.
+        view_3858: true,
         // Hidden data-only grid: a richer Survey Line Item / SOW Line
         // Item projection added solely so the publish JSON payload
         // includes every field downstream Make pipelines need (e.g.
