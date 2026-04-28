@@ -67,7 +67,11 @@
       pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { name: 'bidId', source: 'url' },
+        // bidId comes from the resolved record id — same source the
+        // form's hidden `id` input feeds extra.recordId from. URL-based
+        // extraction missed it when the bid-submit URL didn't end in a
+        // 24-hex segment.
+        { name: 'bidId', source: 'recordId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
         { field: 'field_2633', name: 'field_2633' },
@@ -83,6 +87,21 @@
   function getPageRecordId() {
     var match = (window.location.hash || '').split('?')[0].match(/\/([a-f0-9]{24})\/?$/);
     return match ? match[1] : '';
+  }
+
+  // Identity of the user who clicked / submitted — included on every
+  // webhook payload so Make scenarios can attribute the action in
+  // Slack messages, audit trails, CU task descriptions, etc.
+  function getTriggeredBy() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes)
+        ? Knack.getUserAttributes()
+        : null;
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
   }
 
   function norm(s) {
@@ -1485,6 +1504,12 @@
           extra.recordId = getPageRecordId();
         }
 
+        // Stamp the user who clicked Submit. Read from Knack.getUserAttributes
+        // — works for any logged-in user. null if Knack isn't ready (form
+        // submits without auth shouldn't happen, but guard anyway).
+        var triggeredBy = getTriggeredBy();
+        if (triggeredBy) extra.triggeredBy = triggeredBy;
+
         // Extract additional field values from the scene DOM
         if (cfg.extraFields) {
           var _fNum;
@@ -1493,6 +1518,13 @@
             if (spec.source === 'url') {
               var urlVal = getPageRecordId();
               if (urlVal) extra[spec.name] = urlVal;
+              continue;
+            }
+            // Echo the resolved recordId under a different key — useful
+            // when the receiving Make scenario expects a domain-specific
+            // name like "bidId" alongside the generic "recordId".
+            if (spec.source === 'recordId') {
+              if (extra.recordId) extra[spec.name] = extra.recordId;
               continue;
             }
             _fNum = spec.field.replace('field_', '');
