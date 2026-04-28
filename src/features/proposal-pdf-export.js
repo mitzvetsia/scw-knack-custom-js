@@ -55,6 +55,10 @@
       saveHtml: true,
       pollViewOnReturn: 'view_3814',
       pollField: 'field_2681',
+      // Field rendered just below the "Proposed Solution" view title
+      // (matches the layout on the in-app preview page). Scraped from
+      // wherever it appears on scene_1096 — typically a detail view.
+      proposedSolutionField: 'field_2128',
     },
     {
       sceneId: 'scene_1149',
@@ -661,6 +665,26 @@
       }
     }
 
+    // Stash the optional "Proposed Solution" narrative field on the
+    // matching grid view. Pulled from the live DOM rather than from
+    // an already-scraped detail view so callers don't have to know
+    // which detail view it lives on; renderGridSections then renders
+    // it just below the view title to mirror the preview-page layout.
+    if (cfg.proposedSolutionField) {
+      var narrativeEl = sceneEl &&
+        sceneEl.querySelector('.kn-detail.' + cfg.proposedSolutionField + ' .kn-detail-body');
+      var narrativeHtml = narrativeEl ? (narrativeEl.innerHTML || '').trim() : '';
+      if (narrativeHtml) {
+        for (var pv = 0; pv < result.views.length; pv++) {
+          var rv = result.views[pv];
+          if (rv.type === 'grid' && /proposed\s+solution/i.test(rv.title || '')) {
+            rv.narrativeHtml = narrativeHtml;
+            break;
+          }
+        }
+      }
+    }
+
     // Stamp TBD into every install-labor surface if the bid hasn't
     // been validated (field_2725 != Yes). Only applies to proposal
     // payloads — subcontractor bids have different semantics.
@@ -729,6 +753,17 @@
   function renderGridSections(view, html) {
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
+    }
+    // Optional narrative block right below the title — used by
+    // scene_1096 to drop field_2128 ("Proposed Solution" intro text)
+    // beneath the heading, matching the in-app preview layout.
+    if (view.narrativeHtml) {
+      html.push(
+        '<div class="view-narrative" style="' +
+          'margin: 4px 0 12px 0; line-height: 1.5; color: #333;' +
+          'font-size: 11px;' +
+        '">' + view.narrativeHtml + '</div>'
+      );
     }
 
     for (var s = 0; s < view.sections.length; s++) {
@@ -871,7 +906,6 @@
   //                       in its own context already).
   //   [Proposal_URL]      canonical published-proposals details link
   //   [Expiration_Date]   formatted MM/DD/YYYY
-  //   [Published_Date]    when Make ran (formatted)
   //   [Version]           proposal version number
   //
   // Make's "Replace" step should match the token text literally — no
@@ -882,27 +916,44 @@
     'Proposal_ID',
     'Proposal_URL',
     'Expiration_Date',
-    'Published_Date',
     'Version'
   ];
 
-  // Small right-aligned metadata block injected at the top of <body>.
-  // Sits in the same flow as the SCW logo + project title; tokens are
-  // replaced by Make after the proposal record is created. Inline-
-  // styled so external PDF renderers don't need any of our class CSS.
+  // Inline "Proposal <id>" tag — anchored next to the SCW logo so the
+  // proposal identifier reads as part of the document letterhead.
+  // Tokens are replaced by Make after the proposal record is created.
   function buildProposalMetaHtml() {
     return (
       '<div class="proposal-meta" style="' +
-        'text-align:right; font-size:11px; color:#475569;' +
-        'margin:0 0 6px 0; padding:0;' +
-      '">' +
-        '<div style="font-weight:700; color:#163C6E;">' +
-          'Proposal [Proposal_ID]' +
-        '</div>' +
-        '<div>Expires: [Expiration_Date]</div>' +
-        '<div>Generated: [Published_Date]</div>' +
-      '</div>'
+        'text-align:right; font-size:12px; font-weight:700;' +
+        'color:#163C6E; margin:4px 0 6px 0; padding:0;' +
+      '">Proposal [Proposal_ID]</div>'
     );
+  }
+
+  // Anchor the meta tag to the first <img> in the document — that's
+  // the SCW logo rendered by the first detail view. Inserting after
+  // its closing </div> drops the meta tag right beneath the logo
+  // (and above the project-name heading) without splitting an
+  // element. Falls back to the body-open if no <img> is present.
+  function injectProposalMeta(html) {
+    if (!html || typeof html !== 'string') return html;
+    var meta = buildProposalMetaHtml();
+    var imgMatch = html.match(/<img\b[^>]*>/i);
+    if (imgMatch) {
+      var imgEnd = imgMatch.index + imgMatch[0].length;
+      var divCloseIdx = html.indexOf('</div>', imgEnd);
+      if (divCloseIdx >= 0) {
+        var insertAt = divCloseIdx + '</div>'.length;
+        return html.slice(0, insertAt) + meta + html.slice(insertAt);
+      }
+    }
+    var bodyOpen = html.match(/<body\b[^>]*>/i);
+    if (bodyOpen) {
+      var bIdx = bodyOpen.index + bodyOpen[0].length;
+      return html.slice(0, bIdx) + meta + html.slice(bIdx);
+    }
+    return meta + html;
   }
 
   function buildPdfHtml(payload) {
@@ -920,8 +971,6 @@
     html.push(getPdfCss());
     html.push('</style>');
     html.push('</head><body>');
-    // Proposal metadata header — tokens, replaced by Make.
-    html.push(buildProposalMetaHtml());
 
     // Split views into project vs. recurring vs. report
     var projectViews = [];
@@ -987,7 +1036,10 @@
     }
 
     html.push('</body></html>');
-    return html.join('\n');
+    // Anchor the proposal-id tag next to the logo (first <img>) so it
+    // reads as part of the letterhead rather than a floating header
+    // block above the GFE callout.
+    return injectProposalMeta(html.join('\n'));
   }
 
   function hasSectionContent(section) {
