@@ -305,8 +305,15 @@
         if (!isVisibleRow(tr)) continue;
 
         var l3Label = groupLabelText(tr);
-        var hideCost = tr.classList.contains('scw-hide-cost');
+        // Either flag suppresses qty + cost in the published HTML.
+        // - scw-hide-cost — legacy cost-only suppressor (rarely used)
+        // - scw-hide-qty-cost — what proposal-grid.js actually adds for
+        //   buckets configured with hideQtyCostColumns=true (e.g. the
+        //   Assumptions bucket, recordId 697b7a023a31502ec68b3303). The
+        //   bucket flag was being set but never made it through to the
+        //   published HTML because we only checked the legacy class.
         var hideQtyCost = tr.classList.contains('scw-hide-qty-cost');
+        var hideCost = hideQtyCost || tr.classList.contains('scw-hide-cost');
         var l3Qty = hideQtyCost ? 0 : parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l3Cost = hideCost ? '' : norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
 
@@ -673,8 +680,18 @@
         }
 
         if (bucket.products.length) {
+          // When EVERY product in a bucket hides cost (Assumptions
+          // bucket, recordId 697b7a023a31502ec68b3303), skip the
+          // Qty/Cost column headers entirely — otherwise the thead
+          // shows "Qty Cost" labels above colspan-3 rows with no
+          // values, which reads as a broken table.
+          var bucketHideCost = bucket.products.every(function (p) { return p.hideCost; });
           html.push('<table class="product-table">');
-          html.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
+          if (bucketHideCost) {
+            html.push('<thead><tr><th class="col-desc"></th></tr></thead>');
+          } else {
+            html.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
+          }
           html.push('<tbody>');
 
           for (var p = 0; p < bucket.products.length; p++) {
