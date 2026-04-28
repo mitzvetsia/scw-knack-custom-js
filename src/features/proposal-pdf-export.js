@@ -861,24 +861,28 @@
   // the time Make's PDF generator runs. Keep this list in sync with
   // the "Tools → Replace" / Iterator step in the Make scenario.
   //
-  //   {{PROPOSAL_NAME}}     display name (e.g. "20260427-10055_v30")
-  //   {{PROPOSAL_ID}}       24-hex Knack record id
-  //   {{PROPOSAL_URL}}      canonical published-proposals details link
-  //   {{EXPIRATION_DATE}}   formatted MM/DD/YYYY
-  //   {{PUBLISHED_DATE}}    when Make ran (formatted)
-  //   {{VERSION}}           proposal version number
+  // Square-bracket syntax (NOT double-curly) — Make's UI auto-resolves
+  // {{...}} as references to other modules' output, which made the
+  // {{TOKEN}} form unworkable inside a static HTML string.
+  //
+  //   [Proposal_Name]     display name (e.g. "20260427-10055_v30")
+  //   [Proposal_ID]       24-hex Knack record id
+  //   [Proposal_URL]      canonical published-proposals details link
+  //   [Expiration_Date]   formatted MM/DD/YYYY
+  //   [Published_Date]    when Make ran (formatted)
+  //   [Version]           proposal version number
   //
   // Make's "Replace" step should match the token text literally — no
   // regex needed. If a token is intentionally missing from the record
   // (e.g. version number on a draft), Make should replace it with an
   // empty string so the placeholder doesn't leak into the PDF.
   var PROPOSAL_TOKENS = [
-    'PROPOSAL_NAME',
-    'PROPOSAL_ID',
-    'PROPOSAL_URL',
-    'EXPIRATION_DATE',
-    'PUBLISHED_DATE',
-    'VERSION'
+    'Proposal_Name',
+    'Proposal_ID',
+    'Proposal_URL',
+    'Expiration_Date',
+    'Published_Date',
+    'Version'
   ];
 
   // Small right-aligned metadata block injected at the top of <body>.
@@ -892,10 +896,10 @@
         'margin:0 0 6px 0; padding:0;' +
       '">' +
         '<div style="font-weight:700; color:#163C6E;">' +
-          'Proposal {{PROPOSAL_NAME}}' +
+          'Proposal [Proposal_Name]' +
         '</div>' +
-        '<div>Expires: {{EXPIRATION_DATE}}</div>' +
-        '<div>Generated: {{PUBLISHED_DATE}}</div>' +
+        '<div>Expires: [Expiration_Date]</div>' +
+        '<div>Generated: [Published_Date]</div>' +
       '</div>'
     );
   }
@@ -910,7 +914,7 @@
     // Document title carries the proposal display name token so Make
     // gets a nice tab/file name (e.g. "20260427-10055_v30") after the
     // record is created.
-    html.push('<title>{{PROPOSAL_NAME}}</title>');
+    html.push('<title>[Proposal_Name]</title>');
     html.push('<style>');
     html.push(getPdfCss());
     html.push('</style>');
