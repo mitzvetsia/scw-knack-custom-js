@@ -104,10 +104,32 @@
   function groupLabelText(tr) {
     var td = tr.querySelector('td:first-child');
     if (!td) return '';
-    // Clone and strip injected spans so label doesn't include connected-devices or field_2019 text
+    // Clone and strip injected spans so label doesn't include
+    // connected-devices or field_2019 text.
     var clone = td.cloneNode(true);
-    var injected = clone.querySelectorAll('.scw-l3-connected-devices, br.scw-l3-connected-br, .scw-l4-2019, br.scw-l4-2019-br, .scw-concat-cameras');
+    var injected = clone.querySelectorAll(
+      '.scw-l3-connected-devices, br.scw-l3-connected-br, ' +
+      '.scw-l4-2019, br.scw-l4-2019-br'
+    );
     for (var ci = 0; ci < injected.length; ci++) injected[ci].remove();
+    // .scw-concat-cameras is special: on most L3 rows it contains
+    // ONLY the camera-list pill (e.g. "(RA-E-70, RA-E-71)"), but on
+    // Mounting Hardware L3 rows it WRAPS the product label too. So
+    // we can't just strip the whole div — we'd lose the label and
+    // the L3 row would never render. Instead, strip only the <b>
+    // children whose text matches the parenthesized camera-list
+    // pattern, plus their preceding <br>s.
+    var concatBlocks = clone.querySelectorAll('.scw-concat-cameras');
+    for (var cb = 0; cb < concatBlocks.length; cb++) {
+      var bs = concatBlocks[cb].querySelectorAll('b');
+      for (var bi = 0; bi < bs.length; bi++) {
+        if (/^\(.*\)$/.test(norm(bs[bi].textContent))) {
+          var prev = bs[bi].previousSibling;
+          if (prev && prev.nodeType === 1 && prev.tagName === 'BR') prev.remove();
+          bs[bi].remove();
+        }
+      }
+    }
     return norm(clone.textContent);
   }
 
@@ -347,6 +369,12 @@
       if (tr.classList.contains('kn-group-level-4')) {
         if (!isVisibleRow(tr)) continue;
 
+        // proposal-grid tags assumption-bucket L4 rows with
+        // scw-hide-qty-cost (the parent L3 was already hidden via
+        // scw-hide-level3-header so the L4 carries the flag instead).
+        // We need this when auto-creating a synthetic L3 below.
+        var l4HideQtyCost = tr.classList.contains('scw-hide-qty-cost');
+
         var labelCell = tr.querySelector('td:first-child');
         var l4Label = labelCell ? norm(labelCell.textContent) : '';
 
@@ -390,11 +418,22 @@
         };
 
         if (!currentL3 && currentL2) {
+          // Auto-create a synthetic L3 to host this orphan L4 (the real
+          // L3 was hidden, e.g. assumption rows). Propagate the L4's
+          // hide-qty-cost flag so the renderer suppresses the qty/cost
+          // columns for the whole synthetic product — matches what
+          // proposal-grid does on the live grid.
           currentL3 = {
             level: 3, label: '', qty: l4Qty, cost: l4Cost,
+            hideCost: l4HideQtyCost,
             connectedDevices: [], isMountingHardware: false, lineItems: [],
           };
           currentL2.products.push(currentL3);
+        } else if (currentL3 && l4HideQtyCost && !currentL3.hideCost) {
+          // Existing synthetic L3 picked up another hide-qty-cost L4 —
+          // promote the whole product to hideCost so the renderer
+          // suppresses qty/cost across all of its line items.
+          currentL3.hideCost = true;
         }
         if (currentL3) currentL3.lineItems.push(lineItem);
         continue;
