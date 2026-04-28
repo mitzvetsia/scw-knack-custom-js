@@ -125,16 +125,6 @@
         return f.ready !== 'yes' && !(toNum(f.crCount) > 0);
       }
     },
-    {
-      // Ops has marked ready but Sales hasn't requested the survey
-      // yet — waiting state. Non-clickable status message.
-      id:       'ready-for-survey',
-      label:    'Ready for Survey!',
-      info:     true,
-      showWhen: function (f) {
-        return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
-      }
-    },
     // ── Publish variants ─────────────────────────────────
     // All three share the same showWhen; the SOW grid pill only
     // surfaces ONE "next step" at a time, so first-match wins picks
@@ -573,64 +563,38 @@
     }
 
     var pill;
-    if (step && step.info) {
-      // Informational status only — no button, no background, no arrow.
-      // Plain muted italic text so it reads as "here's where things
-      // stand", not "click here".
-      pill = document.createElement('span');
-      pill.className = 'scw-ops-status-msg';
-      pill.textContent = step.label;
-      if (note) pill.setAttribute('data-scw-tip', note);
-    } else if (step) {
-      // Active next-step → link to the proposal page.
-      // The visible label is fixed ("Preview Proposal for Next Steps")
-      // because every active state — request-alt-bid, mark-ready,
-      // publish-proposal — does the same thing here: navigate to the
-      // proposal page where the actual action lives. step.label is still
-      // used for the "Processing X…" pending message so reviewers can
-      // see what action ops-stepper kicked off.
-      pill = document.createElement('a');
-      pill.className = 'scw-ops-pill';
-      var href = getRowLink(tr);
-      if (href) pill.setAttribute('href', href);
-      pill.setAttribute('target', '_blank');
-      pill.setAttribute('rel', 'noopener');
+    // The Preview button is the universal "next-step" affordance — it
+    // navigates to the proposal page where every actual action lives.
+    // Always render it, regardless of whether a STEP matches: even
+    // when the SOW is in a waiting state ("ready, awaiting Sales") or
+    // a terminal state ("released to sales"), the reviewer should
+    // still be able to click through to the proposal page. STEP
+    // resolution is kept around purely so the pending pill can show
+    // "Processing X…" with the right label.
+    pill = document.createElement('a');
+    pill.className = 'scw-ops-pill';
+    var href = getRowLink(tr);
+    if (href) pill.setAttribute('href', href);
+    pill.setAttribute('target', '_blank');
+    pill.setAttribute('rel', 'noopener');
 
-      var labelSpan = document.createElement('span');
-      labelSpan.textContent = 'Preview Proposal for Next Steps';
-      pill.appendChild(labelSpan);
+    var labelSpan = document.createElement('span');
+    labelSpan.textContent = 'Preview Proposal for Next Steps';
+    pill.appendChild(labelSpan);
 
-      if (note) {
-        pill.setAttribute('data-scw-tip', note);
-        var info = document.createElement('span');
-        info.className = 'scw-ops-info';
-        info.setAttribute('data-scw-tip', note);
-        info.textContent = 'i';
-        pill.appendChild(info);
-      }
-
-      var arrow = document.createElement('span');
-      arrow.className = 'scw-ops-arrow';
-      arrow.textContent = '›';
-      pill.appendChild(arrow);
-    } else {
-      // Terminal state — no link, non-interactive.
-      pill = document.createElement('span');
-      pill.className = 'scw-ops-pill is-terminal';
-
-      var check = document.createElement('span');
-      check.textContent = '✓';
-      check.style.cssText = 'font-size:11px; line-height:1;';
-      pill.appendChild(check);
-
-      var t = document.createElement('span');
-      t.textContent = 'Released to Sales';
-      pill.appendChild(t);
-
-      if (note) {
-        pill.setAttribute('data-scw-tip', note);
-      }
+    if (note) {
+      pill.setAttribute('data-scw-tip', note);
+      var info = document.createElement('span');
+      info.className = 'scw-ops-info';
+      info.setAttribute('data-scw-tip', note);
+      info.textContent = 'i';
+      pill.appendChild(info);
     }
+
+    var arrow = document.createElement('span');
+    arrow.className = 'scw-ops-arrow';
+    arrow.textContent = '›';
+    pill.appendChild(arrow);
 
     hostTd.appendChild(pill);
 
