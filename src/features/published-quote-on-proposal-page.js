@@ -106,7 +106,9 @@
       expDate:  expDate,
       pdfUrl:   pdfUrl,
       pdfName:  pdfName || 'Download PDF',
-      viewLink: viewLink
+      viewLink: viewLink,
+      type:     (window.SCW && SCW.proposalTypeChip)
+                  ? SCW.proposalTypeChip.getType(attrs) : null
     };
   }
 
@@ -123,6 +125,23 @@
     }
     var pdfA  = cellAnchor(PDF_FIELD);
     var pageA = tr.querySelector('a.kn-link-page');
+
+    // Type chip — DOM fallback. The boolean fields probably aren't on
+    // view_3886's displayed columns, so this returns null unless the
+    // user adds them. Model path above is the primary source.
+    var typeFromDom = null;
+    if (window.SCW && SCW.proposalTypeChip) {
+      function flagFromCell(fk) {
+        var td = tr.querySelector('td.' + fk +
+                                  ', td[data-field-key="' + fk + '"]');
+        if (!td) return false;
+        return /yes/i.test((td.textContent || '').trim());
+      }
+      if (flagFromCell(SCW.proposalTypeChip.GFE_FIELD))        typeFromDom = 'gfe';
+      else if (flagFromCell(SCW.proposalTypeChip.FINAL_FIELD)) typeFromDom = 'final';
+      else if (flagFromCell(SCW.proposalTypeChip.EQUIP_ONLY_FIELD)) typeFromDom = 'equipment-only';
+    }
+
     return {
       recordId: tr.id || '',
       name:     cellText(NAME_FIELD),
@@ -130,7 +149,8 @@
       pdfUrl:   pdfA  ? (pdfA.getAttribute('href') || '') : '',
       pdfName:  pdfA  ? ((pdfA.textContent || '').trim() || 'Download PDF')
                       : 'Download PDF',
-      viewLink: pageA ? (pageA.getAttribute('href') || '') : ''
+      viewLink: pageA ? (pageA.getAttribute('href') || '') : '',
+      type:     typeFromDom
     };
   }
 
@@ -181,6 +201,13 @@
       block.textContent = 'No published quotes';
       host.appendChild(block);
       return;
+    }
+
+    // Type chip — GFE / Final / Equipment Only. First thing in the
+    // block so the disclaimer category is visible at a glance.
+    if (proposal.type && window.SCW && SCW.proposalTypeChip) {
+      var chip = SCW.proposalTypeChip.buildChip(proposal.type);
+      if (chip) block.appendChild(chip);
     }
 
     if (proposal.name) {

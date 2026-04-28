@@ -552,7 +552,13 @@
       expDate:  expDate,
       pdfUrl:   pdfUrl,
       pdfName:  pdfName || 'Download PDF',
-      viewLink: viewLink
+      viewLink: viewLink,
+      // Type chip (GFE / Final / Equipment Only) — one of the three
+      // booleans on the published-proposal record drives it. Reading
+      // attrs directly works whether or not the field is on the view's
+      // displayed columns (Knack model carries the full record).
+      type:     (window.SCW && SCW.proposalTypeChip)
+                  ? SCW.proposalTypeChip.getType(attrs) : null
     };
   }
 
@@ -574,13 +580,31 @@
     var pdfA = cellAnchor(PROPOSAL_PDF);
     var pageA = tr.querySelector('a.kn-link-page');
 
+    // Type chip — DOM fallback path. The boolean fields (field_2746/47/48)
+    // probably aren't on view_3325's displayed columns, so this returns
+    // null in the DOM-only path. The model path above is the primary
+    // source for type.
+    var typeFromDom = null;
+    if (window.SCW && SCW.proposalTypeChip) {
+      function flagFromCell(fk) {
+        var td = tr.querySelector('td.' + fk +
+                                  ', td[data-field-key="' + fk + '"]');
+        if (!td) return false;
+        return /yes/i.test((td.textContent || '').trim());
+      }
+      if (flagFromCell(SCW.proposalTypeChip.GFE_FIELD))        typeFromDom = 'gfe';
+      else if (flagFromCell(SCW.proposalTypeChip.FINAL_FIELD)) typeFromDom = 'final';
+      else if (flagFromCell(SCW.proposalTypeChip.EQUIP_ONLY_FIELD)) typeFromDom = 'equipment-only';
+    }
+
     return {
       recordId: tr.id || '',
       name:     cellText(PROPOSAL_NAME),
       expDate:  cellText(PROPOSAL_EXP),
       pdfUrl:   pdfA ? (pdfA.getAttribute('href') || '') : '',
       pdfName:  pdfA ? ((pdfA.textContent || '').trim() || 'Download PDF') : 'Download PDF',
-      viewLink: pageA ? (pageA.getAttribute('href') || '') : ''
+      viewLink: pageA ? (pageA.getAttribute('href') || '') : '',
+      type:     typeFromDom
     };
   }
 
@@ -588,6 +612,14 @@
     if (!proposal) return;
     var wrap = document.createElement('div');
     wrap.className = 'scw-ops-proposal-info';
+
+    // Type chip — GFE / Final / Equipment Only. Sits at the top so the
+    // disclaimer category is the first thing the reader sees alongside
+    // the proposal name and PDF link.
+    if (proposal.type && window.SCW && SCW.proposalTypeChip) {
+      var chip = SCW.proposalTypeChip.buildChip(proposal.type);
+      if (chip) wrap.appendChild(chip);
+    }
 
     if (proposal.name) {
       var nameRow = document.createElement('div');
