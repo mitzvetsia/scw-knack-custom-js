@@ -811,15 +811,18 @@
             // L2 footer hides the qty roll-up (per the on-page grid).
             // The roll-up isn't meaningful across mixed product types
             // in a bucket, and the per-product L3 rows already show
-            // their own qty. The label cell expands across the qty
-            // column via colspan; cost stays in its own column so it
-            // aligns with the L3 cost values above. When the entire
-            // bucket hides cost too (assumption-style), the label
-            // cell takes the whole footer row.
+            // their own qty. Render an empty qty cell rather than
+            // collapsing it via colspan — keeping the same 3-cell
+            // shape as the body rows guarantees the cost cell lands
+            // under the COST column even in email/PDF renderers that
+            // ignore <th> widths or don't honor colspan precisely.
+            // When the entire bucket hides cost too (assumption-style),
+            // the label cell takes the whole footer row.
             if (bucketHideCost) {
               html.push('<td colspan="3">' + esc(bucket.footer.label) + '</td>');
             } else {
-              html.push('<td colspan="2">' + esc(bucket.footer.label) + '</td>');
+              html.push('<td>' + esc(bucket.footer.label) + '</td>');
+              html.push('<td class="col-qty"></td>');
               html.push('<td class="col-cost">' + esc(bucket.footer.cost) + '</td>');
             }
             html.push('</tr>');
