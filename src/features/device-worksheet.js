@@ -1338,6 +1338,19 @@ td.${P}-sum-move {
 .${P}-cabling-chit::after {
   content: attr(data-chit-label);
 }
+/* Visually hidden but readable by innerText / textContent / jQuery
+   .text() — the original Yes/No span. KTL bulk-edit uses innerText
+   to read the source cell, which skips display:none and visibility:
+   hidden content; off-screen-positioned elements stay readable. */
+.${P}-chit-value {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0,0,0,0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 .${P}-cabling-chit.is-yes {
   background: #059669;
   color: #ffffff;
@@ -3389,8 +3402,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (txt == null) return;
         var chitTds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
         for (var chi = 0; chi < chitTds.length; chi++) {
-          var chitSpan = chitTds[chi].querySelector('span[style*="display"]');
+          var chitTd = chitTds[chi];
+          // Hidden Yes/No span — was located via [style*="display"]
+          // when we used display:none, now lives at .scw-ws-chit-value.
+          var chitSpan = chitTd.querySelector('.' + P + '-chit-value')
+                      || chitTd.querySelector('span[style*="display"]');
           if (chitSpan) chitSpan.textContent = txt;
+          // Mirror onto the td's data-value too (defensive, see render).
+          chitTd.setAttribute('data-value', txt);
         }
         patched++;
         return;
@@ -4050,8 +4069,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var srcTd = chit.closest('td[data-scw-cabling-src]')
              || chit.parentNode.querySelector('td[data-scw-cabling-src]');
     if (srcTd) {
-      var hiddenSpan = srcTd.querySelector('span[style*="display"]');
+      var hiddenSpan = srcTd.querySelector('.' + P + '-chit-value')
+                    || srcTd.querySelector('span[style*="display"]');
       if (hiddenSpan) hiddenSpan.textContent = newBool;
+      srcTd.setAttribute('data-value', newBool);
     }
 
     // Save
@@ -4363,10 +4384,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         // innerHTML empty means td.textContent stays the bare "Yes"
         // or "No" that KTL bulk-edit reads from the source cell.
         chit.setAttribute('data-chit-label', desc.chitLabel || 'Existing Cabling');
-        // Hide the original Yes/No text but keep it in the DOM so
-        // textContent still returns the Knack-stored value cleanly.
+        // Visually hide the original Yes/No span via off-screen
+        // positioning rather than display:none — KTL's bulk-edit
+        // source reader uses innerText (which skips display:none and
+        // visibility:hidden content), so display:none made the
+        // source-cell value read as empty and downstream rows got
+        // defaulted to No. Off-screen-but-rendered keeps the value
+        // readable to innerText, textContent, and jQuery .text().
         var chitSpan = td.querySelector('span');
-        if (chitSpan) chitSpan.style.display = 'none';
+        if (chitSpan) {
+          chitSpan.classList.add(P + '-chit-value');
+          chitSpan.setAttribute('aria-hidden', 'true');
+        }
+        // Mirror the Yes/No on the td as a data attribute too so any
+        // KTL path that reads via [data-value] also lines up.
+        td.setAttribute('data-value', isChitYes ? 'Yes' : 'No');
         td.appendChild(chit);
         td.classList.add(P + '-sum-chip-host');
         td.setAttribute('data-scw-cabling-src', '1');
