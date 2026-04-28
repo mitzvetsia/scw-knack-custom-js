@@ -318,11 +318,22 @@
 
     function flush(_l1, _list) {
       if (!_l1 || !_list.length) return;
+      // Skip synthetic L1 groups ("Project Wide Services" /
+      // "Project Wide Assumptions") — those rows aren't part of an
+      // MDF/IDF, so the summary doesn't make sense for them.
+      if (_l1.classList.contains('scw-synthetic-group')) return;
       var data = aggregate(_list);
       var html = buildPanelHtml(data);
       if (!html) return;
       var summaryRow = document.createElement('tr');
       summaryRow.className = ROW_CLASS;
+      // Mirror the L1 header's current collapse state. group-collapse
+      // applies/removes display:none on toggle, so this is just the
+      // initial-state alignment for rows that were collapsed before
+      // the summary was injected.
+      if (_l1.classList.contains('scw-collapsed')) {
+        summaryRow.style.display = 'none';
+      }
       var td = document.createElement('td');
       td.colSpan = colCount;
       td.innerHTML = html;
