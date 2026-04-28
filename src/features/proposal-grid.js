@@ -489,6 +489,14 @@ tr.scw-hide-level4-header { display: none !important; }
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY},
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
+/* ✅ Hide the qty sum on EVERY L2 subtotal row (not just hideQtyCost
+   buckets). Cost stays. The qty roll-up across mixed product types in
+   a bucket isn't meaningful (e.g. 2 cameras + 2 brackets ≠ 4 of
+   anything useful), and the per-product L3 rows already show qty.
+   visibility:hidden so the column structure stays aligned with the
+   thead and the cost column lines up. */
+tr.scw-subtotal--level-2 td.${QTY_FIELD_KEY} { visibility: hidden !important; }
+
 /* ============================================================
    ✅ L1 footer layout (true rows)
    ============================================================ */
