@@ -62,8 +62,9 @@
   // see it alongside the next-step affordance for that SOW.
   var MARGIN_FIELD       = 'field_2749';   // SOW margin %
   var MARGIN_THRESHOLD   = 10;             // % — anything below trips the warning
-  var MARGIN_WARNING_MSG = 'Margin is low — consider adding base ' +
-    'project management & small project mobilization costs service item.';
+  var MARGIN_WARNING_MSG = 'Margin is low; consider adding base ' +
+    'project management & small project mobilization costs service item ' +
+    'or increases project overall margin.';
 
   // ── Pending-step flags ──────────────────────────────────
   // ops-stepper.js (on the Ops proposal tab) writes
