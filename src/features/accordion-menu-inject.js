@@ -63,11 +63,49 @@
     '<line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
   // ── CSS injection ───────────────────────────────────
+  // Build pre-hide rules for every menu view in MENU_MAP. KTL renders
+  // the menu's native buttons in their own view container before this
+  // module gets a chance to absorb them — without these rules the user
+  // sees the unstyled buttons flash for several hundred ms before they
+  // disappear. A safety timer (revealUnabsorbed) clears the pre-hide
+  // class if absorption hasn't completed within 5s, so a config error
+  // can't strand the buttons offscreen.
+  var PREHIDE_CLASS = 'scw-acc-menu-prehide';
+  var PREHIDE_MS    = 5000;
+  function getConfiguredMenuIds() {
+    var ids = [];
+    for (var innerKey in MENU_MAP) {
+      if (!MENU_MAP.hasOwnProperty(innerKey)) continue;
+      var raw = MENU_MAP[innerKey];
+      if (!raw) continue;
+      var parts = String(raw).split(',');
+      for (var p = 0; p < parts.length; p++) {
+        var id = parts[p].trim();
+        if (id && ids.indexOf(id) === -1) ids.push(id);
+      }
+    }
+    return ids;
+  }
+  function applyPreHideAttrs() {
+    var ids = getConfiguredMenuIds();
+    for (var i = 0; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (el && !el.classList.contains(HIDDEN_CLASS)) {
+        el.classList.add(PREHIDE_CLASS);
+      }
+    }
+  }
+  function revealUnabsorbed() {
+    var els = document.querySelectorAll('.' + PREHIDE_CLASS);
+    for (var i = 0; i < els.length; i++) els[i].classList.remove(PREHIDE_CLASS);
+  }
+
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
 
     var css = [
       '.' + HIDDEN_CLASS + ' { display: none !important; }',
+      '.' + PREHIDE_CLASS + ' { display: none !important; }',
 
       '.scw-acc-actions {',
       '  flex: 0 0 auto;',
@@ -583,6 +621,11 @@
 
   injectStyles();
 
+  // Per-scene pre-hide safety timer. Cleared on each scene render so
+  // an accordion that legitimately took longer than usual to render
+  // doesn't get reveal-then-re-hide flicker.
+  var _preHideSafety = null;
+
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function (event, scene) {
@@ -594,6 +637,12 @@
       var root = document.getElementById('kn-' + sceneId) || document.body;
       startAccordionObserver(root);
 
+      // Pre-hide configured menu views as soon as they exist in the
+      // DOM so KTL's native buttons never paint before we absorb them.
+      applyPreHideAttrs();
+      if (_preHideSafety) clearTimeout(_preHideSafety);
+      _preHideSafety = setTimeout(revealUnabsorbed, PREHIDE_MS);
+
       // First pass + safety-net fallback
       scheduleEnhance(200);
       setTimeout(enhance, 3000);
@@ -601,13 +650,20 @@
 
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
-    .on('knack-view-render.any' + EVENT_NS, function () {
+    .on('knack-view-render.any' + EVENT_NS, function (event, view) {
+      // Re-apply pre-hide every render — covers the case where the
+      // menu view renders later than scene-render fired (e.g. its
+      // data fetch was slow) and wasn't in the DOM at scene-render time.
+      applyPreHideAttrs();
       scheduleEnhance(200);
     });
 
   $(document).ready(function () {
     SCW.debug(LOG, 'document.ready — initial enhance');
     startAccordionObserver(document.body);
+    applyPreHideAttrs();
+    if (_preHideSafety) clearTimeout(_preHideSafety);
+    _preHideSafety = setTimeout(revealUnabsorbed, PREHIDE_MS);
     scheduleEnhance(500);
     setTimeout(enhance, 3000);
   });
