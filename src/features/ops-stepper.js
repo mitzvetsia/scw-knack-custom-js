@@ -67,10 +67,28 @@
   var BLOCK_CLS  = 'scw-ops-stepper';
   var STYLE_ID   = 'scw-ops-stepper-css';
 
-  // Shared ClickUp status radio config — same prompt + options on all three
-  // publish steps. Make's scenario reads payload.clickupStatus and updates
-  // the matching CU task field.
-  var CLICKUP_STATUS_RADIO = {
+  // Per-step ClickUp status radio configs. Each publish button only
+  // surfaces the status that semantically matches its purpose, so Ops
+  // can't accidentally flip "Final Bid Submitted" from the GFE button.
+  // Make's scenario reads payload.clickupStatus and updates the matching
+  // CU task field.
+  var CLICKUP_STATUS_RADIO_GFE = {
+    question:  'Update ClickUp Status?',
+    noneLabel: 'No status change',
+    options: [
+      { value: 'gfe-submitted', label: 'GFE Submitted' }
+    ]
+  };
+  var CLICKUP_STATUS_RADIO_FINAL = {
+    question:  'Update ClickUp Status?',
+    noneLabel: 'No status change',
+    options: [
+      { value: 'final-bid-submitted', label: 'Final Bid Submitted' }
+    ]
+  };
+  // SOW-only / TBD Labor still surfaces both options — Ops may publish a
+  // SOW skeleton mid-flow toward either end-state, so keep both reachable.
+  var CLICKUP_STATUS_RADIO_BOTH = {
     question:  'Update ClickUp Status?',
     noneLabel: 'No status change',
     options: [
@@ -205,7 +223,7 @@
       // Optional ClickUp status update — second radio group rendered below
       // submission. Selected value rides on payload.clickupStatus so Make
       // can flip the project task without us caring which CU list/field.
-      clickupStatus: CLICKUP_STATUS_RADIO,
+      clickupStatus: CLICKUP_STATUS_RADIO_BOTH,
       modal: {
         title:       'Publish as SOW only (TBD Labor)',
         intro:       'Publishing the SOW with placeholder labor figures.',
@@ -234,7 +252,7 @@
           { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
         ]
       },
-      clickupStatus: CLICKUP_STATUS_RADIO,
+      clickupStatus: CLICKUP_STATUS_RADIO_GFE,
       modal: {
         title:       'Publish Quote as GFE',
         intro:       'Publishing as a Good-Faith Estimate (labor included).',
@@ -263,7 +281,7 @@
           { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
         ]
       },
-      clickupStatus: CLICKUP_STATUS_RADIO,
+      clickupStatus: CLICKUP_STATUS_RADIO_FINAL,
       modal: {
         title:       'Publish Quote as Final',
         intro:       'Publishing the final, fully-priced quote.',
