@@ -84,12 +84,26 @@
 
   // ── Step definitions (priority order) ───────────────────
   // First matching step wins. Mirror these with the Ops stepper
-  // (ops-stepper.js) so grid and page agree on "next action".
+  // (ops-stepper.js) so grid and page agree on "next action". The
+  // `label` here is what the "Processing X…" pending pill renders
+  // while Make is in flight, so each id present in ops-stepper needs
+  // a corresponding entry here even though the visible *active* pill
+  // text is hardcoded to "Preview Proposal for Next Steps" in
+  // renderCell().
   var STEPS = [
     {
       id:       'request-alt-bid',
       label:    'Request Alternative Bid',
       showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
+    },
+    {
+      // Mirror image of request-alt-bid — once Sales has actually
+      // requested the survey (field_2706 = Yes) the matching bid
+      // exists, so an "update" path makes sense. Same pending label
+      // shape as the alt-bid path.
+      id:       'update-matching-bid',
+      label:    'Update Matching Bid',
+      showWhen: function (f) { return f.survey === 'yes' && toNum(f.crCount) > 0; }
     },
     {
       // Ops still needs to mark the SOW ready. Keyed on field_2723
@@ -112,10 +126,26 @@
         return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
       }
     },
+    // ── Publish variants ─────────────────────────────────
+    // All three share the same showWhen; the SOW grid pill only
+    // surfaces ONE "next step" at a time, so first-match wins picks
+    // publish-sow-tbd by default. Pending detection is keyed on the
+    // exact step.id ops-stepper kicked off, so all three need entries
+    // here for the "Processing X…" message to be accurate.
     {
-      id:       'publish-proposal',
-      label:    'Publish & Submit Proposal',
+      id:       'publish-sow-tbd',
+      label:    'Publish Quote as SOW only (TBD Labor)',
       showWhen: function (f) { return f.validated !== 'yes'; }
+    },
+    {
+      id:       'publish-gfe',
+      label:    'Publish Quote as GFE',
+      showWhen: function () { return false; }   // pending-only entry
+    },
+    {
+      id:       'publish-final',
+      label:    'Publish Quote as Final',
+      showWhen: function () { return false; }   // pending-only entry
     }
   ];
 

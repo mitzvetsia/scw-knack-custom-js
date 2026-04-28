@@ -1,33 +1,51 @@
 /*** FEATURE: Ops-side stepper (view_3345 rich-text host) ***/
 /**
- * Three button-actions rendered into the role-gated rich-text host
- * view_3345 on the Ops proposal page. Each button opens a notes-prompt
- * modal and fires a Make webhook with the SOW context + payload fields
- * so Make can update the CU project task, post to Slack, and (for
- * step 2 / 3) create the supporting records.
+ * Button actions rendered into the role-gated rich-text host view_3345
+ * on the Ops proposal page. Each button opens a notes-prompt modal and
+ * fires a Make webhook with the SOW context + payload fields so Make
+ * can update the CU project task, post to Slack, and (where relevant)
+ * create the supporting records / publish a quote.
  *
  * Steps
  *   1. Mark Ready for Survey
- *        showWhen: field_2706 = No
+ *        showWhen: field_2723 = No AND NOT field_2728 > 0
  *        webhook : MAKE_OPS_MARK_READY_WEBHOOK
  *        server  : flips field_2723 = Yes, updates CU task, Slack
  *
  *   2. Request Alternative Bid from Subcontractor
- *        showWhen: field_2706 = No AND field_2728 > 0
+ *        showWhen: field_2706 = No  AND field_2728 > 0
+ *        hideWhen: field_2706 = Yes — once survey is requested we offer
+ *                  Update Matching Bid instead.
  *        webhook : MAKE_OPS_REQUEST_ALT_BID_WEBHOOK
  *        server  : creates missing Survey Item records + alt-bid package,
  *                  updates CU task, posts to Slack
  *
- *   3. Publish and Submit Completed Proposal to Sales
- *        showWhen: field_2725 (FLAG_released to sales) = No
- *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
- *        server  : flips field_2725 = Yes (i.e. releases to Sales),
- *                  updates CU task, Slack
+ *   3. Update Matching Bid from Subcontractor
+ *        showWhen: field_2706 = Yes
+ *        webhook : MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK
+ *        server  : updates the matching bid record(s) for the chosen
+ *                  survey(s); same payload shape as Request Alt Bid.
  *
- * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
+ *   4. Publish Quote as SOW only (TBD Labor)
+ *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        webhook : MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK
+ *
+ *   5. Publish Quote as GFE
+ *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        webhook : MAKE_OPS_PUBLISH_GFE_WEBHOOK
+ *
+ *   6. Publish Quote as Final
+ *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        webhook : MAKE_OPS_PUBLISH_FINAL_WEBHOOK
+ *
+ * Payload for every step includes every field from SOURCE_VIEW
  * (view_3861) plus field_2126, line-item record ids from view_3341,
- * and license record ids from LICENSE_VIEW (empty placeholder until
- * the view is supplied).
+ * and license record ids from LICENSE_VIEW. The publish steps and the
+ * mark-ready / request-alt-bid / update-matching-bid steps additionally
+ * merge in the standalone publish payload from proposal-pdf-export
+ * (html / json / totals / etc.) so every code path that publishes (or
+ * snapshots) a quote looks identical on Make's side. The step.id field
+ * on the body is what tells Make which scenario branch to run.
  */
 (function () {
   'use strict';
@@ -97,10 +115,16 @@
       id: 'request-alt-bid',
       label: 'Request Alternative Bid from Subcontractor',
       tone: 'amber',
-      // Hide entirely when there are no change requests — the whole
-      // premise of an alt bid is to respond to CRs, so without any
-      // there's nothing to show.
-      hideWhen: { not: { field: 'field_2728', gt: 0 } },
+      // Hide entirely in either of:
+      //   - no change requests yet — nothing to alt-bid against
+      //   - survey already requested (field_2706 = Yes) — at that point
+      //     the bid record exists and Update Matching Bid takes over
+      hideWhen: {
+        any: [
+          { not: { field: 'field_2728', gt: 0 } },
+          { field: 'field_2706', value: 'Yes' }
+        ]
+      },
       showWhen: {
         all: [
           { field: 'field_2706', value: 'No' },
@@ -122,26 +146,84 @@
       includeFullPayload: true
     },
     {
-      id: 'publish-proposal',
-      label: 'Submit Final Proposal to Sales',
+      id: 'update-matching-bid',
+      label: 'Update Matching Bid from Subcontractor',
+      tone: 'amber',
+      // Mirror image of request-alt-bid — only available once the
+      // survey has been requested (field_2706 = Yes). Same payload, same
+      // picker UX; Make routes to a different scenario that updates the
+      // existing bid record(s) instead of creating a new alt-bid package.
+      showWhen: { field: 'field_2706', value: 'Yes' },
+      hideWhen: { field: 'field_2706', value: 'No' },
+      webhookKey: 'MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK',
+      pickSurveys: true,
+      modal: {
+        title:       'Update Matching Bid',
+        intro:       'Note for the subcontractor (Sales will also be notified that the matching bid was updated).',
+        placeholder: 'e.g. Updated cabling assumptions per latest survey notes',
+        submitLabel: 'Send Update'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-sow-tbd',
+      label: 'Publish Quote as SOW only (TBD Labor)',
       tone: 'success',
-      // Unlocked once EITHER:
-      //   - the SOW has at least one change request (field_2728 > 0), OR
-      //   - Ops has marked the SOW ready for survey (field_2723 = Yes).
-      // Either signal means there's something worth publishing — a CR
-      // queue to surface, or an Ops-validated SOW headed to survey.
+      // Same gate as the legacy publish-proposal: at least one CR queued
+      // OR Ops has marked the SOW ready. Either signal means there's
+      // something worth publishing.
       showWhen: {
         any: [
           { field: 'field_2728', gt: 0 },
           { field: 'field_2723', value: 'Yes' }
         ]
       },
-      webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
+      webhookKey: 'MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK',
       modal: {
-        title:       'Submit Final Proposal to Sales',
-        intro:       'Anything to include in the update to Sales?',
+        title:       'Publish Quote as SOW only (TBD Labor)',
+        intro:       'Publishing the SOW with placeholder labor figures. Anything to include in the update to Sales?',
+        placeholder: 'e.g. SOW finalized, labor pending sub bids',
+        submitLabel: 'Publish',
+        primaryMode: 'publish-and-notify'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-gfe',
+      label: 'Publish Quote as GFE',
+      tone: 'success',
+      showWhen: {
+        any: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      },
+      webhookKey: 'MAKE_OPS_PUBLISH_GFE_WEBHOOK',
+      modal: {
+        title:       'Publish Quote as GFE',
+        intro:       'Publishing as a Good-Faith Estimate (labor included).',
+        placeholder: 'e.g. GFE bundle for client review — final on bid validation',
+        submitLabel: 'Publish',
+        primaryMode: 'publish-and-notify'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-final',
+      label: 'Publish Quote as Final',
+      tone: 'success',
+      showWhen: {
+        any: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2723', value: 'Yes' }
+        ]
+      },
+      webhookKey: 'MAKE_OPS_PUBLISH_FINAL_WEBHOOK',
+      modal: {
+        title:       'Publish Quote as Final',
+        intro:       'Publishing the final, fully-priced quote.',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
-        submitLabel: 'Submit',
+        submitLabel: 'Publish',
         primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
@@ -453,9 +535,19 @@
     // html / json / sowId / totals / expirationDate / etc. — so every
     // code path that publishes (or snapshots) a quote looks identical
     // on Make's side.
-    if (step.id === 'publish-proposal' ||
-        step.id === 'mark-ready' ||
-        step.id === 'request-alt-bid') {
+    // Steps that need the standalone publish payload merged in
+    // (html / json / totals / etc.). The three publish-* variants all
+    // need it (Make formats labor differently per step.id but the rest
+    // of the body is identical), and so do mark-ready / request-alt-bid /
+    // update-matching-bid because their Make scenarios also produce
+    // snapshot quotes alongside the primary action.
+    if (step.id === 'mark-ready' ||
+        step.id === 'request-alt-bid' ||
+        step.id === 'update-matching-bid' ||
+        step.id === 'publish-sow-tbd' ||
+        step.id === 'publish-gfe' ||
+        step.id === 'publish-final' ||
+        step.id === 'publish-proposal') {
       payload.publishAsTbd = shouldPublishAsTbd();
       try {
         // Pass the proposal scene explicitly — more reliable than
