@@ -592,11 +592,14 @@
     if (proposal.name) {
       var nameRow = document.createElement('div');
       nameRow.className = 'scw-ops-proposal-name';
-      // Proposal name links to the same proposal page the Mark Ready
-      // pill navigates to (hash-route for this SOW), not the raw
-      // Knack detail page for the published-proposal record. Matching
-      // the pill's target="_blank" keeps behavior consistent.
-      var nameHref = tr ? getRowLink(tr) : '';
+      // Proposal name links to the published-proposals detail page
+      // for THIS proposal record (not the SOW's proposal-page route
+      // the pill itself navigates to). The published-proposals route
+      // is the canonical "view the published quote" destination —
+      // distinct from the Ops/Sales preview view.
+      var nameHref = proposal.recordId
+        ? '#published-proposals/sow-published-proposal-details/' + proposal.recordId
+        : '';
       if (nameHref) {
         var a = document.createElement('a');
         a.setAttribute('href', nameHref);
