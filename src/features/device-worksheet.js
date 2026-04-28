@@ -156,7 +156,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             rowClass: 'scw-row--services',
@@ -331,7 +331,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             hideDetailFields: ['field_1958'],
@@ -452,7 +452,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949', 'field_1953'],
-            label: 'SERVICE',
+            label: '+fee',
             summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
             summarySwapReadOnly: true,
             hideDetail: true,                     // suppress detail sections, keep photos only
@@ -584,7 +584,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949', 'field_1957'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             hideDetail: true,
@@ -665,7 +665,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_2379', 'field_2463', 'field_2370', 'field_2372', 'field_2371'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             hideDetail: true,
@@ -733,7 +733,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             descLabelWhenSynthetic: '\u00a0',
             hideProduct: true,
