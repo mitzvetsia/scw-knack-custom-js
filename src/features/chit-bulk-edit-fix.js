@@ -37,7 +37,7 @@
   };
 
   function coerceBody(body) {
-    if (typeof body !== 'string' || !body) return body;
+    if (typeof body !== 'string' || !body) return { body: body, hadChit: false };
     // Quick string-level guard before parsing JSON.
     var hit = false;
     for (var k in CHIT_FIELDS) {
@@ -45,11 +45,11 @@
         hit = true; break;
       }
     }
-    if (!hit) return body;
+    if (!hit) return { body: body, hadChit: false };
 
     var parsed;
-    try { parsed = JSON.parse(body); } catch (e) { return body; }
-    if (!parsed || typeof parsed !== 'object') return body;
+    try { parsed = JSON.parse(body); } catch (e) { return { body: body, hadChit: false }; }
+    if (!parsed || typeof parsed !== 'object') return { body: body, hadChit: false };
 
     var changed = false;
     for (var key in parsed) {
@@ -61,14 +61,25 @@
         changed = true;
       }
     }
-    if (!changed) return body;
+    if (!changed) return { body: body, hadChit: true };
     try {
       var out = JSON.stringify(parsed);
       if (window.SCW && SCW.debug) {
         SCW.debug('[scw-chit-bulk-edit] coerced boolean → Yes/No', parsed);
       }
-      return out;
-    } catch (e) { return body; }
+      return { body: out, hadChit: true };
+    } catch (e) { return { body: body, hadChit: true }; }
+  }
+
+  // Fire scw-record-saved (debounced via the listeners themselves) so
+  // downstream features that recompute on save — mdf-summary-panel,
+  // proposal-grid totals, etc. — refresh after a chit-field PUT.
+  // KTL's bulk-edit doesn't fire our scw-record-saved itself, so this
+  // is the bridge.
+  function notifySaved() {
+    try {
+      if (typeof $ !== 'undefined') $(document).trigger('scw-record-saved');
+    } catch (e) { /* ignore */ }
   }
 
   function isKnackRecordUrl(url) {
@@ -86,11 +97,14 @@
 
   // ── 1. jQuery prefilter (covers $.ajax / $.put / $.post) ────
   if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
-    $.ajaxPrefilter(function (options) {
+    $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
       if (!options || !isWriteMethod(options.type)) return;
       if (!isKnackRecordUrl(options.url || '')) return;
-      var coerced = coerceBody(options.data);
-      if (coerced !== options.data) options.data = coerced;
+      var result = coerceBody(options.data);
+      if (result.body !== options.data) options.data = result.body;
+      if (result.hadChit && jqXHR && typeof jqXHR.done === 'function') {
+        jqXHR.done(function () { setTimeout(notifySaved, 250); });
+      }
     });
   }
 
@@ -113,12 +127,19 @@
             this.__scwChitMethod, this.__scwChitUrl,
             'body:', body);
         } catch (e) {}
-        var coerced = coerceBody(body);
-        if (coerced !== body) {
+        var result = coerceBody(body);
+        if (result.body !== body) {
           try {
-            console.log('[scw-chit-fix] XHR rewrote body →', coerced);
+            console.log('[scw-chit-fix] XHR rewrote body →', result.body);
           } catch (e) {}
-          body = coerced;
+          body = result.body;
+        }
+        if (result.hadChit) {
+          this.addEventListener('load', function () {
+            if (this.status >= 200 && this.status < 300) {
+              setTimeout(notifySaved, 250);
+            }
+          });
         }
       }
       return origSend.call(this, body);
@@ -130,6 +151,7 @@
   if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     var origFetch = window.fetch;
     window.fetch = function (input, init) {
+      var hadChit = false;
       try {
         var url    = typeof input === 'string' ? input : (input && input.url) || '';
         var method = (init && init.method)
@@ -141,12 +163,13 @@
               'body:', init && init.body);
           } catch (e) {}
           if (init && typeof init.body === 'string') {
-            var coerced = coerceBody(init.body);
-            if (coerced !== init.body) {
+            var result = coerceBody(init.body);
+            hadChit = result.hadChit;
+            if (result.body !== init.body) {
               try {
-                console.log('[scw-chit-fix] fetch rewrote body →', coerced);
+                console.log('[scw-chit-fix] fetch rewrote body →', result.body);
               } catch (e) {}
-              init = Object.assign({}, init, { body: coerced });
+              init = Object.assign({}, init, { body: result.body });
             }
           }
         }
@@ -155,7 +178,13 @@
       // origFetch.apply(this, arguments) here would ship the original
       // arguments[1] reference instead of our rewrite, which is the
       // bug that let the boolean body through previously.
-      return origFetch.call(this, input, init);
+      var promise = origFetch.call(this, input, init);
+      if (hadChit && promise && typeof promise.then === 'function') {
+        promise.then(function (resp) {
+          if (resp && resp.ok) setTimeout(notifySaved, 250);
+        }).catch(function () { /* ignore */ });
+      }
+      return promise;
     };
     try { window.fetch.__scwChitWrapped = true; } catch (e) {}
   }
