@@ -489,13 +489,11 @@ tr.scw-hide-level4-header { display: none !important; }
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${QTY_FIELD_KEY},
 tr.scw-hide-qty-cost:not(.scw-subtotal--level-1) td.${COST_FIELD_KEY} { visibility: hidden !important; }
 
-/* ✅ Hide the qty sum on EVERY L2 subtotal row (not just hideQtyCost
-   buckets). Cost stays. The qty roll-up across mixed product types in
-   a bucket isn't meaningful (e.g. 2 cameras + 2 brackets ≠ 4 of
-   anything useful), and the per-product L3 rows already show qty.
-   visibility:hidden so the column structure stays aligned with the
-   thead and the cost column lines up. */
-tr.scw-subtotal--level-2 td.${QTY_FIELD_KEY} { visibility: hidden !important; }
+/* The qty sum on L2 subtotal rows is suppressed by emptying the cell
+   in JS (buildSubtotalRow) — keeping the td intact preserves the
+   aliceblue background between the (now-extended) label cell and the
+   cost cell. No visibility:hidden rule here on purpose: that would
+   hide the cell's background too, leaving a white gap. */
 
 /* ============================================================
    ✅ L1 footer layout (true rows)
@@ -1830,11 +1828,35 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     $row.append($cellsTemplate.clone());
 
+    // Right-align the bucket label by extending it via colspan across
+    // every empty cell up to (but not including) the qty cell. Without
+    // this the label sits on the far left of the row inside a narrow
+    // first td — text-align: right alone has nothing to align against.
+    // The intermediate cells are removed because the label's colspan
+    // now occupies their column slots; column-width alignment with
+    // other rows comes from those rows still having all their cells.
+    const $labelTd = $row.find('td.scw-level-total-label');
+    const $qtyTd   = $row.find(`td.${qtyKey}`);
+    if ($labelTd.length && $qtyTd.length) {
+      const $allTds = $row.find('td');
+      const labelIdx = $allTds.index($labelTd[0]);
+      const qtyIdx   = $allTds.index($qtyTd[0]);
+      if (qtyIdx > labelIdx + 1) {
+        $labelTd.attr('colspan', qtyIdx - labelIdx);
+        $allTds.slice(labelIdx + 1, qtyIdx).remove();
+      }
+    }
+
     const hardware = sumField(caches, $rowsToSum, hardwareKey);
     const labor = sumField(caches, $rowsToSum, laborKey);
     const subtotalL2 = hardware + labor;
 
-    $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+    // Empty the qty cell (no qty roll-up across mixed product types in
+    // the bucket — see CSS comment above). Using empty() keeps the
+    // <td> in place so its aliceblue background still paints between
+    // the label and cost cells; visibility:hidden would have hidden
+    // the cell box and left a white gap.
+    $row.find(`td.${qtyKey}`).empty();
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(subtotalL2))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 
