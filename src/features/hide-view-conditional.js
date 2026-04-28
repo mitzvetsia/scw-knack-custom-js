@@ -19,19 +19,10 @@
   var EVENT_NS = '.scwHideViewCond';
 
   var CONFIG = [
-    // Published-proposal details page (scene_1279): show view_3858's
-    // button only when the proposal is a GFE (field_2746 = Yes) or a
-    // SOW-only / Equipment-Only quote (field_2748 = Yes). Anything else
-    // (Final, draft, etc.) hides the button.
-    {
-      viewId: 'view_3858',
-      hideWhen: {
-        all: [
-          { field: 'field_2746', notValue: 'Yes' },
-          { field: 'field_2748', notValue: 'Yes' }
-        ]
-      }
-    }
+    // (view_3858 gating moved into published-proposal-render.js — the
+    // CTA is now injected inside the iframe content rather than left
+    // visible on the parent page, so its show/hide logic and the
+    // injection live together.)
   ];
 
   // ── Read a field's text value from any Knack view model on the page ──

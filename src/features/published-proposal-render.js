@@ -20,6 +20,10 @@
     style.textContent = [
       '/* Hide the entire detail view */',
       '#' + VIEW_ID + ' { display: none !important; }',
+      // Always hide the source CTA view on the parent page — its
+      // links/buttons are read out and re-injected inside the iframe
+      // by the renderer, so showing it here would just duplicate.
+      '#' + ACTION_VIEW_ID + ' { display: none !important; }',
       '/* Hide breadcrumb trail + view_3874 when this scene is active */',
       'body.scw-hide-crumbtrail .kn-crumbtrail,',
       'body.scw-hide-crumbtrail #view_3874 { display: none !important; }',
@@ -35,36 +39,6 @@
       '  cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.25);',
       '}',
       '#' + BTN_ID + ':hover { opacity: 0.9; }',
-      '',
-      // ── view_3858 banner styling (call-to-action) ──
-      // Repositioned above the iframe by JS so it sits at the top of
-      // the published-proposal page when visible. The banner padding +
-      // background frames whatever buttons / links Knack rendered into
-      // the view, scaling the bare KTL buttons into a prominent CTA.
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner {',
-      '  display: block;',
-      '  margin: 0 0 18px 0;',
-      '  padding: 16px 20px;',
-      '  background: #f0f7ff; border: 2px solid #07467c;',
-      '  border-radius: 8px;',
-      '}',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner .view-header,',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-records-nav { display: none !important; }',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-submit,',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-button,',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner a.kn-link,',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner button {',
-      '  font-size: 15px !important; font-weight: 700 !important;',
-      '  padding: 10px 22px !important; border-radius: 6px !important;',
-      '  background: #07467c !important; color: #fff !important;',
-      '  border: none !important; box-shadow: 0 1px 3px rgba(0,0,0,.18) !important;',
-      '  cursor: pointer; text-decoration: none !important;',
-      '}',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner .kn-button:hover,',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner a.kn-link:hover,',
-      '#' + ACTION_VIEW_ID + '.scw-cta-banner button:hover {',
-      '  opacity: 0.92;',
-      '}',
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -178,16 +152,6 @@
     // Insert iframe after the hidden view element
     viewEl.parentNode.insertBefore(iframe, viewEl.nextSibling);
 
-    // Reposition the call-to-action view (view_3858) above the iframe
-    // so the button is the first thing on the page when visible. The
-    // hide/show gate is handled by hide-view-conditional.js — we just
-    // move it. Also stamps a class for the banner styling above.
-    var ctaEl = document.getElementById(ACTION_VIEW_ID);
-    if (ctaEl) {
-      ctaEl.classList.add('scw-cta-banner');
-      iframe.parentNode.insertBefore(ctaEl, iframe);
-    }
-
     // Write HTML into iframe
     var doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open();
@@ -210,7 +174,105 @@
     setTimeout(resizeIframe, 1000);
     setTimeout(resizeIframe, 3000);
 
+    // Inject the CTA bar (read from view_3858 on the parent page)
+    // inside the iframe, just above the first .view-title — typically
+    // "Proposed Solution" — so it sits between the project-address
+    // detail row and the line-items table. Idempotent re-runs are
+    // guarded by .scw-cta-bar presence in the iframe body. Also
+    // resize after the bar is laid out so the iframe height includes
+    // it.
+    setTimeout(function () { injectCtaIntoIframe(iframe, resizeIframe); }, 250);
+    setTimeout(function () { injectCtaIntoIframe(iframe, resizeIframe); }, 1200);
+
     return fullHtml;
+  }
+
+  // ── CTA bar (view_3858 → iframe) ─────────────────────────────
+  //
+  // Gated on the published-proposal record's GFE / Equipment-Only
+  // flags (read from view_3813's model). When eligible, mirrors
+  // every action link in view_3858 as a styled <a> inside the iframe
+  // and inserts the bar just above the first .view-title. target=_top
+  // so the link navigates the parent window, not the iframe.
+
+  function isYesValue(v) {
+    if (v === true) return true;
+    if (typeof v === 'string') return /^yes$/i.test(v.trim());
+    return false;
+  }
+
+  function readPublishedProposalAttrs() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
+      var attrs = v && v.model && (v.model.attributes
+                  || (v.model.data && v.model.data.attributes));
+      return attrs || null;
+    } catch (e) { return null; }
+  }
+
+  function shouldShowCta() {
+    var a = readPublishedProposalAttrs();
+    if (!a) return false;
+    return isYesValue(a.field_2746)     || isYesValue(a.field_2746_raw)
+        || isYesValue(a.field_2748)     || isYesValue(a.field_2748_raw);
+  }
+
+  function readCtaLinks() {
+    var src = document.getElementById(ACTION_VIEW_ID);
+    if (!src) return [];
+    var anchors = src.querySelectorAll('a.kn-link, a.kn-link-page, a.kn-button, button.kn-button');
+    var out = [];
+    for (var i = 0; i < anchors.length; i++) {
+      var el = anchors[i];
+      var label = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!label) continue;
+      var href = el.getAttribute && el.getAttribute('href');
+      out.push({ label: label, href: href || '' });
+    }
+    return out;
+  }
+
+  function injectCtaIntoIframe(iframe, onAfter) {
+    if (!iframe) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-cta-bar')) return;     // already injected
+    if (!shouldShowCta()) return;
+
+    var links = readCtaLinks();
+    if (!links.length) return;
+
+    var firstTitle = doc.body.querySelector('.view-title');
+    if (!firstTitle) return;     // no anchor to insert before
+
+    var bar = doc.createElement('div');
+    bar.className = 'scw-cta-bar';
+    bar.style.cssText =
+      'margin: 16px 0 24px 0; padding: 14px 18px;' +
+      'background: #f0f7ff; border: 2px solid #07467c;' +
+      'border-radius: 8px; display: flex; gap: 10px;' +
+      'flex-wrap: wrap; align-items: center; justify-content: center;';
+
+    for (var i = 0; i < links.length; i++) {
+      var btn = doc.createElement('a');
+      btn.textContent = links[i].label;
+      if (links[i].href) btn.setAttribute('href', links[i].href);
+      // target=_top so the link navigates the parent window — keeping
+      // it _self would scope the navigation to the iframe and break
+      // Knack routing.
+      btn.setAttribute('target', '_top');
+      btn.style.cssText =
+        'display: inline-flex; align-items: center;' +
+        'padding: 10px 22px; font-size: 15px; font-weight: 700;' +
+        'background: #07467c; color: #fff; text-decoration: none;' +
+        'border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.18);';
+      bar.appendChild(btn);
+    }
+
+    firstTitle.parentNode.insertBefore(bar, firstTitle);
+    if (typeof onAfter === 'function') onAfter();
   }
 
   // ── Print button ─────────────────────────────────────────────
@@ -248,15 +310,10 @@
   });
 
   // If view_3858 renders later than the iframe is built (Knack doesn't
-  // guarantee view-render order), do the reposition then. The hide
-  // gating in hide-view-conditional.js still controls whether it shows.
+  // guarantee view-render order), retry the iframe injection then.
   $(document).on('knack-view-render.' + ACTION_VIEW_ID + NS, function () {
     var iframe = document.getElementById(IFRAME_ID);
-    var ctaEl  = document.getElementById(ACTION_VIEW_ID);
-    if (iframe && ctaEl && ctaEl.previousElementSibling !== iframe.previousElementSibling) {
-      ctaEl.classList.add('scw-cta-banner');
-      iframe.parentNode.insertBefore(ctaEl, iframe);
-    }
+    if (iframe) injectCtaIntoIframe(iframe);
   });
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
