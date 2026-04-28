@@ -31,11 +31,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_OPS_MARK_READY_WEBHOOK:           "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:      "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
-  // Update Subcontractor Bid Request: same payload shape as Request Alt Bid (incl.
-  // selectedSurveyIds[]) but routed to a different scenario that updates
-  // an existing bid record instead of creating a new alt-bid package.
+  // Update Subcontractor Bid Request: same payload shape as Request Alt
+  // Bid (incl. selectedSurveyIds[]) AND the same Make webhook URL.
+  // Make branches on payload.stepId — 'request-alt-bid' creates a new
+  // alt-bid package, 'update-matching-bid' updates the existing bid
+  // record(s) for the chosen survey(s). Kept as a separate key so it
+  // can be split off to its own scenario later without touching code.
   // Shown only when field_2706 = "Yes" (survey already requested).
-  MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK:  "https://hook.us1.make.com/PLACEHOLDER_UPDATE_MATCHING_BID",
+  MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK:  "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
   // Three publish variants. Each fires the same publish payload as the
   // legacy MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK; Make differentiates by the
   // step.id field on the body so the scenario can format the published

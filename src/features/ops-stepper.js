@@ -570,9 +570,18 @@
   }
 
   function buildPayload(step, notes, mode) {
+    // stepId is the canonical machine-readable discriminator (Make
+    // scenarios should branch on this). actionLabel mirrors the
+    // visible button text so scenarios don't have to maintain their
+    // own id→label map for Slack messages, CU-task descriptions, etc.
+    // Both matter when two buttons share a webhook URL — e.g.
+    // 'request-alt-bid' and 'update-matching-bid' both fire to
+    // MAKE_OPS_REQUEST_ALT_BID_WEBHOOK and the scenario splits on
+    // payload.stepId.
     var payload = {
       sourceRecordId: getSourceRecordId(),
       stepId:         step.id,
+      actionLabel:    step.label || '',
       notes:          notes || '',
       mode:           mode || null,
       triggeredBy:    getTriggeredBy()
