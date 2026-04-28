@@ -27,11 +27,11 @@
  *                  survey(s); same payload shape as Request Alt Bid.
  *
  *   4. Publish as SOW only (TBD Labor)
- *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        showWhen: always (no gate)
  *        webhook : MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK
  *
  *   5. Publish Quote as GFE
- *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        showWhen: always (no gate)
  *        webhook : MAKE_OPS_PUBLISH_GFE_WEBHOOK
  *
  *   6. Publish Quote as Final
@@ -199,15 +199,9 @@
       id: 'publish-sow-tbd',
       label: 'Publish as SOW only (TBD Labor)',
       tone: 'success',
-      // Same gate as the legacy publish-proposal: at least one CR queued
-      // OR Ops has marked the SOW ready. Either signal means there's
-      // something worth publishing.
-      showWhen: {
-        any: [
-          { field: 'field_2728', gt: 0 },
-          { field: 'field_2723', value: 'Yes' }
-        ]
-      },
+      // Always available — SOW-only / TBD-labor publishing should be
+      // reachable at any point in the workflow, including before Ops
+      // has marked the SOW ready or any CRs have queued.
       webhookKey: 'MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK',
       // Submission options — surfaced as a radio group inside the notes
       // modal. Selected value rides on payload.submission so Make can
@@ -237,12 +231,9 @@
       id: 'publish-gfe',
       label: 'Publish Quote as GFE',
       tone: 'success',
-      showWhen: {
-        any: [
-          { field: 'field_2728', gt: 0 },
-          { field: 'field_2723', value: 'Yes' }
-        ]
-      },
+      // Always available — GFEs are intentionally generatable at any
+      // workflow stage so Sales can stamp something to send out before
+      // SOW-ready / CR signals exist.
       webhookKey: 'MAKE_OPS_PUBLISH_GFE_WEBHOOK',
       submission: {
         question:   'After publishing, do you want to also submit?',
