@@ -692,11 +692,10 @@
   }
 
   // ── GFE callout ──────────────────────────────────────────
-  // Prepend a big, bold disclaimer panel to the published-quote html.
-  // Inserted right after <body> so it's visually first (above any
-  // header / cover / TOC content the proposal template renders).
-  // Inline-styled because the published html is consumed by external
-  // tools / PDF renderers that may strip or remap class names.
+  // Big bold disclaimer panel injected into the published-quote html
+  // BELOW the SCW logo (first <img> in the body) and ABOVE the project
+  // name heading. Inline-styled because the published html is consumed
+  // by external tools / PDF renderers that may strip or remap classes.
   function injectGfeCallout(html) {
     if (!html || typeof html !== 'string') return html;
     var calloutText = 'This is a Good Faith Estimate based on the ' +
@@ -705,13 +704,13 @@
       'conditions, access requirements, or changes to project scope.';
     var callout =
       '<div style="' +
-        'margin: 0 0 18px;' +
-        'padding: 16px 20px;' +
+        'margin: 28px 0;' +
+        'padding: 22px 24px;' +
         'background: #fef3c7;' +
         'border: 2px solid #d97706;' +
         'border-radius: 8px;' +
         'color: #78350f;' +
-        'font: 700 15px/1.4 system-ui, -apple-system, sans-serif;' +
+        'font: 700 15px/1.4 "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;' +
         'text-align: center;' +
       '">' +
         '<div style="' +
@@ -720,13 +719,29 @@
         '">Good Faith Estimate</div>' +
         calloutText +
       '</div>';
-    // Inject after <body ...> — handles both `<body>` and `<body class="…">`.
+    // Preferred anchor: drop the callout immediately after the closing
+    // </div> of the block that holds the first <img> (the SCW logo).
+    // That block is a Knack `.detail-label-none` wrapper rendered by
+    // proposal-pdf-export.js — closing it cleanly puts the callout
+    // between the logo row and the project-name heading without
+    // ever splitting an element.
+    var imgMatch = html.match(/<img\b[^>]*>/i);
+    if (imgMatch) {
+      var imgEnd = imgMatch.index + imgMatch[0].length;
+      var divCloseIdx = html.indexOf('</div>', imgEnd);
+      if (divCloseIdx >= 0) {
+        var insertAt = divCloseIdx + '</div>'.length;
+        return html.slice(0, insertAt) + callout + html.slice(insertAt);
+      }
+    }
+    // Fallback: inject immediately after <body ...> if no <img> anchor
+    // was found (no logo on this proposal — rare but possible).
     var bodyOpen = html.match(/<body\b[^>]*>/i);
     if (bodyOpen) {
       var idx = bodyOpen.index + bodyOpen[0].length;
       return html.slice(0, idx) + callout + html.slice(idx);
     }
-    // Fallback: if the html is a fragment with no <body>, just prepend.
+    // Final fallback: fragment with no <body>, just prepend.
     return callout + html;
   }
 

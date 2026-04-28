@@ -169,7 +169,12 @@
     var clone = h.cloneNode(true);
     var arrows = clone.querySelectorAll('.ktlArrow');
     for (var i = 0; i < arrows.length; i++) arrows[i].remove();
-    return norm(clone.textContent);
+    var text = norm(clone.textContent);
+    // Suppress generic "Proposal" header — it's redundant noise above the
+    // actual project title. Knack auto-titles the host detail view this
+    // way; nothing else identifies itself with the bare word.
+    if (text.toLowerCase() === 'proposal') return '';
+    return text;
   }
 
   function isKnackFilterOrButton(viewId) {
@@ -939,11 +944,17 @@
 
   function getPdfCss() {
     return [
+      // Inter via Google Fonts — embeds a known sans-serif so the PDF
+      // renderer doesn't fall back to the system serif (which on minimal
+      // Linux PDF environments produces oversized, wrong-face output).
+      // Helvetica/Arial stay in the stack for previewing in browsers
+      // that already have them; sans-serif is the last-ditch fallback.
+      '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");',
       '@page { size: letter; margin: 0.42in 0.53in; }',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
-      'body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
+      'body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
       '',
       '/* ── View Title ── */',
       '.view-title {',
