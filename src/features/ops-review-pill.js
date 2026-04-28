@@ -57,6 +57,15 @@
   var CELL_CLASS   = 'scw-ops-review-cell';
   var PROCESSED    = 'data-scw-ops-review';
 
+  // Per-row margin warning. Surfaced inside the Ops Review host cell
+  // (between the pill and the published-proposal block) so reviewers
+  // see it alongside the next-step affordance for that SOW.
+  var MARGIN_FIELD       = 'field_2749';   // SOW margin %
+  var MARGIN_THRESHOLD   = 10;             // % — anything below trips the warning
+  var MARGIN_WARNING_MSG = 'Margin is low; consider adding base ' +
+    'project management & small project mobilization costs ' +
+    'or increases project overall margin.';
+
   // ── Pending-step flags ──────────────────────────────────
   // ops-stepper.js (on the Ops proposal tab) writes
   //   scw-ops-stepper-pending:<sowId> = {"stepId":"...","timestamp":...}
@@ -84,12 +93,26 @@
 
   // ── Step definitions (priority order) ───────────────────
   // First matching step wins. Mirror these with the Ops stepper
-  // (ops-stepper.js) so grid and page agree on "next action".
+  // (ops-stepper.js) so grid and page agree on "next action". The
+  // `label` here is what the "Processing X…" pending pill renders
+  // while Make is in flight, so each id present in ops-stepper needs
+  // a corresponding entry here even though the visible *active* pill
+  // text is hardcoded to "Preview Proposal for Next Steps" in
+  // renderCell().
   var STEPS = [
     {
       id:       'request-alt-bid',
       label:    'Request Alternative Bid',
       showWhen: function (f) { return f.survey !== 'yes' && toNum(f.crCount) > 0; }
+    },
+    {
+      // Mirror image of request-alt-bid — once Sales has actually
+      // requested the survey (field_2706 = Yes) the matching bid
+      // exists, so an "update" path makes sense. Same pending label
+      // shape as the alt-bid path.
+      id:       'update-matching-bid',
+      label:    'Update Subcontractor Bid Request',
+      showWhen: function (f) { return f.survey === 'yes' && toNum(f.crCount) > 0; }
     },
     {
       // Ops still needs to mark the SOW ready. Keyed on field_2723
@@ -102,20 +125,26 @@
         return f.ready !== 'yes' && !(toNum(f.crCount) > 0);
       }
     },
+    // ── Publish variants ─────────────────────────────────
+    // All three share the same showWhen; the SOW grid pill only
+    // surfaces ONE "next step" at a time, so first-match wins picks
+    // publish-sow-tbd by default. Pending detection is keyed on the
+    // exact step.id ops-stepper kicked off, so all three need entries
+    // here for the "Processing X…" message to be accurate.
     {
-      // Ops has marked ready but Sales hasn't requested the survey
-      // yet — waiting state. Non-clickable status message.
-      id:       'ready-for-survey',
-      label:    'Ready for Survey!',
-      info:     true,
-      showWhen: function (f) {
-        return f.ready === 'yes' && f.survey !== 'yes' && !(toNum(f.crCount) > 0);
-      }
+      id:       'publish-sow-tbd',
+      label:    'Publish as SOW only (TBD Labor)',
+      showWhen: function (f) { return f.validated !== 'yes'; }
     },
     {
-      id:       'publish-proposal',
-      label:    'Publish & Submit Proposal',
-      showWhen: function (f) { return f.validated !== 'yes'; }
+      id:       'publish-gfe',
+      label:    'Publish Quote as GFE',
+      showWhen: function () { return false; }   // pending-only entry
+    },
+    {
+      id:       'publish-final',
+      label:    'Publish Quote as Final',
+      showWhen: function () { return false; }   // pending-only entry
     }
   ];
 
@@ -144,41 +173,24 @@
       '  text-align: center;' +
       '}' +
 
-      /* Per-row published-proposal info block — sits below the pill.
-         Styled compact + muted so the pill stays the primary element. */
-      '.scw-ops-proposal-info {' +
-      '  margin-top: 8px;' +
-      '  padding-top: 6px;' +
-      '  border-top: 1px solid #e5e7eb;' +
-      '  font: 400 11px/1.4 system-ui, sans-serif;' +
-      '  color: #64748b;' +
-      '  text-align: center;' +
+      // Per-row published-proposal block CSS lives in the shared
+      // published-quote-info.js (.scw-pq-info / --compact / etc.). This
+      // file only contains the SOW-grid-specific styles below.
+
+      /* Low-margin warning — sits between the pill and the published
+         proposal block. Amber chrome matches the existing card-header
+         warning vocabulary (#b45309). Compact line-height so the cell
+         doesn't grow too tall on long rows. */
+      '.scw-ops-margin-warning {' +
+      '  display: flex; align-items: flex-start; gap: 6px;' +
+      '  margin-top: 8px; padding: 6px 8px;' +
+      '  background: #fef3c7; border: 1px solid #d97706;' +
+      '  border-radius: 6px; color: #78350f;' +
+      '  font: 600 10.5px/1.35 system-ui, sans-serif;' +
+      '  text-align: left;' +
       '}' +
-      '.scw-ops-proposal-name {' +
-      '  font-weight: 500;' +
-      '  margin-bottom: 2px;' +
-      '}' +
-      '.scw-ops-proposal-name a,' +
-      '.scw-ops-proposal-name a:visited {' +
-      '  color: #2563eb; text-decoration: none;' +
-      '}' +
-      '.scw-ops-proposal-name a:hover { text-decoration: underline; }' +
-      '.scw-ops-proposal-exp {' +
-      '  font-size: 10.5px;' +
-      '  color: #64748b;' +
-      '}' +
-      '.scw-ops-proposal-pdf,' +
-      '.scw-ops-proposal-pdf:visited {' +
-      '  display: inline-flex; align-items: center;' +
-      '  margin-top: 3px; color: #2563eb;' +
-      '  text-decoration: none; font-size: 10.5px;' +
-      '}' +
-      '.scw-ops-proposal-pdf:hover { text-decoration: underline; }' +
-      /* Empty-state message when no matching published proposal
-         exists for a SOW. Same layout as the info block, but muted
-         and italicised so it reads as an absence rather than data. */
-      '.scw-ops-proposal-empty {' +
-      '  font-style: italic; color: #94a3b8;' +
+      '.scw-ops-margin-warning svg {' +
+      '  flex: 0 0 auto; margin-top: 1px; color: #b45309;' +
       '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
@@ -344,6 +356,39 @@
   }
   function readNote(tr) { return readText(tr, NOTE_FIELD); }
 
+  // Returns the margin as a percent (0-100). Knack percent fields can
+  // be stored as a fraction (0.095) or as a percent (9.5) depending on
+  // how the field was configured; normalize so the threshold check is
+  // always against a percent.
+  function readMarginPct(tr) {
+    var raw = readText(tr, MARGIN_FIELD);
+    if (raw === '' || raw == null) return NaN;
+    var n = toNum(raw);
+    if (!isFinite(n)) return NaN;
+    // Fraction-stored field → convert to percent. 1.5 cap leaves enough
+    // headroom that "100%" stored as 100 isn't accidentally interpreted
+    // as a fraction.
+    if (n > 0 && n <= 1.5) n = n * 100;
+    return n;
+  }
+
+  function buildMarginWarning() {
+    var box = document.createElement('div');
+    box.className = 'scw-ops-margin-warning';
+    box.setAttribute('role', 'alert');
+    box.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+      '<line x1="12" y1="9" x2="12" y2="13"/>' +
+      '<line x1="12" y1="17" x2="12.01" y2="17"/>' +
+      '</svg>' +
+      '<span></span>';
+    box.querySelector('span').textContent = MARGIN_WARNING_MSG;
+    return box;
+  }
+
   function resolveStep(tr) {
     var fields = {
       ready:     readBool(tr, READY_FIELD),
@@ -378,235 +423,33 @@
   }
 
   // ── Published-proposal index ────────────────────────────
-  // Keyed by the SOW id each proposal connects to (field_2666). Tries
-  // the Knack model first; falls back to DOM scraping of view_3885's
-  // table rows when the model isn't populated yet.
-  //
-  // Filters to status=Published (field_2658). view_3885 includes drafts
-  // and earlier revisions as well — without the filter we'd pick up
-  // whatever row happened to render first for a given SOW, not the
-  // currently-published one.
+  // Delegates to the shared SCW.publishedQuoteInfo helper. Field keys
+  // were defined at the top of this file as PROPOSAL_NAME / etc. and
+  // are passed through; the helper handles model-first / DOM-fallback
+  // and Published-status filtering.
   function buildProposalIndex() {
-    var idx = {};
-    var hits = 0;
-
-    // 1. Knack model (preferred — has _raw values for every field).
-    try {
-      var v = Knack && Knack.views && Knack.views[PROPOSAL_VIEW];
-      var models = v && v.model && v.model.data && v.model.data.models;
-      if (models && models.length) {
-        for (var i = 0; i < models.length; i++) {
-          var a = models[i].attributes;
-          if (!a) continue;
-          if (!isPublishedFromAttrs(a)) continue;
-          var sowId = readSowIdFromAttrs(a);
-          if (!sowId || idx[sowId]) continue;
-          idx[sowId] = extractProposalInfoFromAttrs(a);
-          hits++;
-        }
-      }
-    } catch (e) { /* fall through to DOM */ }
-
-    // 2. DOM fallback — when the model is unavailable, scrape directly
-    // from the rendered table. Works as long as field_2666 is one of
-    // the columns on view_3885 (connection cells carry the record id
-    // as the inner span's class attribute) and field_2658 (status) is
-    // either in the view or absent entirely. If the status column is
-    // absent from the DOM AND the model isn't ready, every row is
-    // kept — but that's a degenerate case you'd only hit during a
-    // race with initial render.
-    if (!hits) {
-      try {
-        var viewEl = document.getElementById(PROPOSAL_VIEW);
-        if (viewEl) {
-          var rows = viewEl.querySelectorAll('tbody tr[id]');
-          for (var r = 0; r < rows.length; r++) {
-            var tr = rows[r];
-            if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
-            if (!isPublishedFromDom(tr)) continue;
-            var sowIdDom = readSowIdFromDom(tr);
-            if (!sowIdDom || idx[sowIdDom]) continue;
-            idx[sowIdDom] = extractProposalInfoFromDom(tr);
-            hits++;
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    return idx;
+    if (!window.SCW || !SCW.publishedQuoteInfo) return {};
+    return SCW.publishedQuoteInfo.readById({
+      sourceView:  PROPOSAL_VIEW,
+      statusField: PROPOSAL_STATUS,
+      nameField:   PROPOSAL_NAME,
+      expField:    PROPOSAL_EXP,
+      pdfField:    PROPOSAL_PDF,
+      sowField:    PROPOSAL_SOW
+    });
   }
 
-  function isPublishedFromAttrs(attrs) {
-    var raw = attrs[PROPOSAL_STATUS + '_raw'];
-    if (typeof raw === 'string' && raw.trim()) {
-      return /published/i.test(raw);
-    }
-    var v = attrs[PROPOSAL_STATUS];
-    if (typeof v === 'string' && v.trim()) {
-      return /published/i.test(v.replace(/<[^>]*>/g, ''));
-    }
-    return false;
-  }
-
-  function isPublishedFromDom(tr) {
-    var cell = tr.querySelector('td.' + PROPOSAL_STATUS +
-                                ', td[data-field-key="' + PROPOSAL_STATUS + '"]');
-    if (!cell) {
-      // Status column isn't on the view — accept all rows rather than
-      // silently filtering everything out.
-      return true;
-    }
-    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
-    return /published/i.test(text);
-  }
-
-  function readSowIdFromAttrs(attrs) {
-    var raw = attrs[PROPOSAL_SOW + '_raw'];
-    if (Array.isArray(raw) && raw.length) {
-      var id = raw[0] && raw[0].id;
-      return (id && /^[a-f0-9]{24}$/i.test(id)) ? id : '';
-    }
-    if (typeof raw === 'string' && /^[a-f0-9]{24}$/i.test(raw)) return raw;
-    return '';
-  }
-
-  function readSowIdFromDom(tr) {
-    var cell = tr.querySelector('td.' + PROPOSAL_SOW +
-                                ', td[data-field-key="' + PROPOSAL_SOW + '"]');
-    if (!cell) return '';
-    var span = cell.querySelector('span[data-kn="connection-value"]');
-    if (!span) return '';
-    var cls = (span.className || '').trim();
-    return /^[a-f0-9]{24}$/i.test(cls) ? cls : '';
-  }
-
-  function extractProposalInfoFromAttrs(attrs) {
-    var id = attrs.id || '';
-    var name    = String(attrs[PROPOSAL_NAME] || '').replace(/<[^>]*>/g, '').trim();
-    var expDate = String(attrs[PROPOSAL_EXP]  || '').replace(/<[^>]*>/g, '').trim();
-
-    // File fields have two raw forms depending on Knack's version —
-    // try both, plus an HTML-anchor regex fallback.
-    var pdfUrl = '', pdfName = '';
-    var pdfRaw = attrs[PROPOSAL_PDF + '_raw'];
-    if (pdfRaw && typeof pdfRaw === 'object') {
-      pdfUrl  = pdfRaw.url || '';
-      pdfName = pdfRaw.filename || '';
-    }
-    if (!pdfUrl) {
-      var pdfHtml = String(attrs[PROPOSAL_PDF] || '');
-      var mHref = pdfHtml.match(/href="([^"]+)"/i);
-      if (mHref) pdfUrl = mHref[1];
-      var mName = pdfHtml.match(/>([^<]+\.pdf)</i);
-      if (mName) pdfName = mName[1];
-    }
-
-    // "View Published Proposal" link — the kn-link-page anchor Knack
-    // renders in the row. Scrape from the DOM since the href isn't
-    // in the model.
-    var viewLink = '';
-    if (id) {
-      var viewEl = document.getElementById(PROPOSAL_VIEW);
-      if (viewEl) {
-        var row = viewEl.querySelector('tr#' + id);
-        if (row) {
-          var a = row.querySelector('a.kn-link-page');
-          if (a) viewLink = a.getAttribute('href') || '';
-        }
-      }
-    }
-
-    return {
-      recordId: id,
-      name:     name,
-      expDate:  expDate,
-      pdfUrl:   pdfUrl,
-      pdfName:  pdfName || 'Download PDF',
-      viewLink: viewLink
-    };
-  }
-
-  function extractProposalInfoFromDom(tr) {
-    function cellText(fieldKey) {
-      var td = tr.querySelector('td.' + fieldKey +
-                                ', td[data-field-key="' + fieldKey + '"]');
-      if (!td) return '';
-      // Strip the outer col-N wrapper and return clean text.
-      return (td.textContent || '').replace(/\s+/g, ' ').trim();
-    }
-    function cellAnchor(fieldKey) {
-      var td = tr.querySelector('td.' + fieldKey +
-                                ', td[data-field-key="' + fieldKey + '"]');
-      if (!td) return null;
-      return td.querySelector('a');
-    }
-
-    var pdfA = cellAnchor(PROPOSAL_PDF);
-    var pageA = tr.querySelector('a.kn-link-page');
-
-    return {
-      recordId: tr.id || '',
-      name:     cellText(PROPOSAL_NAME),
-      expDate:  cellText(PROPOSAL_EXP),
-      pdfUrl:   pdfA ? (pdfA.getAttribute('href') || '') : '',
-      pdfName:  pdfA ? ((pdfA.textContent || '').trim() || 'Download PDF') : 'Download PDF',
-      viewLink: pageA ? (pageA.getAttribute('href') || '') : ''
-    };
-  }
-
-  function renderProposalBlock(hostTd, proposal, tr) {
-    if (!proposal) return;
-    var wrap = document.createElement('div');
-    wrap.className = 'scw-ops-proposal-info';
-
-    if (proposal.name) {
-      var nameRow = document.createElement('div');
-      nameRow.className = 'scw-ops-proposal-name';
-      // Proposal name links to the same proposal page the Mark Ready
-      // pill navigates to (hash-route for this SOW), not the raw
-      // Knack detail page for the published-proposal record. Matching
-      // the pill's target="_blank" keeps behavior consistent.
-      var nameHref = tr ? getRowLink(tr) : '';
-      if (nameHref) {
-        var a = document.createElement('a');
-        a.setAttribute('href', nameHref);
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener');
-        a.textContent = proposal.name;
-        nameRow.appendChild(a);
-      } else {
-        nameRow.textContent = proposal.name;
-      }
-      wrap.appendChild(nameRow);
-    }
-
-    if (proposal.expDate) {
-      var expRow = document.createElement('div');
-      expRow.className = 'scw-ops-proposal-exp';
-      expRow.textContent = 'Expires: ' + proposal.expDate;
-      wrap.appendChild(expRow);
-    }
-
-    if (proposal.pdfUrl) {
-      var pdfLink = document.createElement('a');
-      pdfLink.className = 'scw-ops-proposal-pdf';
-      pdfLink.setAttribute('href', proposal.pdfUrl);
-      // No target="_blank" here — PDFs should use the browser's
-      // native handling (in-page viewer / download) rather than
-      // opening in a new tab.
-      // Small paperclip glyph + filename — same vocabulary the sales
-      // totals panel uses so both pages read the same.
-      pdfLink.innerHTML =
-        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-        'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-        'stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;">' +
-        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-        '<polyline points="14 2 14 8 20 8"/></svg>';
-      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
-      wrap.appendChild(pdfLink);
-    }
-
-    hostTd.appendChild(wrap);
+  function renderProposalBlock(hostTd, proposal /*, tr */) {
+    if (!proposal || !window.SCW || !SCW.publishedQuoteInfo) return;
+    var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
+      variant: 'compact'
+      // Default linkBuilder targets
+      //   #published-proposals/sow-published-proposal-details/<recordId>
+      // — the canonical "view the published quote" destination. The pill
+      // itself navigates to the SOW proposal page; this link is for the
+      // proposal record specifically.
+    });
+    if (block) hostTd.appendChild(block);
   }
 
   function findStepById(stepId) {
@@ -720,60 +563,48 @@
     }
 
     var pill;
-    if (step && step.info) {
-      // Informational status only — no button, no background, no arrow.
-      // Plain muted italic text so it reads as "here's where things
-      // stand", not "click here".
-      pill = document.createElement('span');
-      pill.className = 'scw-ops-status-msg';
-      pill.textContent = step.label;
-      if (note) pill.setAttribute('data-scw-tip', note);
-    } else if (step) {
-      // Active next-step → link to the proposal page.
-      pill = document.createElement('a');
-      pill.className = 'scw-ops-pill';
-      var href = getRowLink(tr);
-      if (href) pill.setAttribute('href', href);
-      pill.setAttribute('target', '_blank');
-      pill.setAttribute('rel', 'noopener');
+    // The Preview button is the universal "next-step" affordance — it
+    // navigates to the proposal page where every actual action lives.
+    // Always render it, regardless of whether a STEP matches: even
+    // when the SOW is in a waiting state ("ready, awaiting Sales") or
+    // a terminal state ("released to sales"), the reviewer should
+    // still be able to click through to the proposal page. STEP
+    // resolution is kept around purely so the pending pill can show
+    // "Processing X…" with the right label.
+    pill = document.createElement('a');
+    pill.className = 'scw-ops-pill';
+    var href = getRowLink(tr);
+    if (href) pill.setAttribute('href', href);
+    pill.setAttribute('target', '_blank');
+    pill.setAttribute('rel', 'noopener');
 
-      var labelSpan = document.createElement('span');
-      labelSpan.textContent = step.label;
-      pill.appendChild(labelSpan);
+    var labelSpan = document.createElement('span');
+    labelSpan.textContent = 'Preview Proposal for Next Steps';
+    pill.appendChild(labelSpan);
 
-      if (note) {
-        pill.setAttribute('data-scw-tip', note);
-        var info = document.createElement('span');
-        info.className = 'scw-ops-info';
-        info.setAttribute('data-scw-tip', note);
-        info.textContent = 'i';
-        pill.appendChild(info);
-      }
-
-      var arrow = document.createElement('span');
-      arrow.className = 'scw-ops-arrow';
-      arrow.textContent = '›';
-      pill.appendChild(arrow);
-    } else {
-      // Terminal state — no link, non-interactive.
-      pill = document.createElement('span');
-      pill.className = 'scw-ops-pill is-terminal';
-
-      var check = document.createElement('span');
-      check.textContent = '✓';
-      check.style.cssText = 'font-size:11px; line-height:1;';
-      pill.appendChild(check);
-
-      var t = document.createElement('span');
-      t.textContent = 'Released to Sales';
-      pill.appendChild(t);
-
-      if (note) {
-        pill.setAttribute('data-scw-tip', note);
-      }
+    if (note) {
+      pill.setAttribute('data-scw-tip', note);
+      var info = document.createElement('span');
+      info.className = 'scw-ops-info';
+      info.setAttribute('data-scw-tip', note);
+      info.textContent = 'i';
+      pill.appendChild(info);
     }
 
+    var arrow = document.createElement('span');
+    arrow.className = 'scw-ops-arrow';
+    arrow.textContent = '›';
+    pill.appendChild(arrow);
+
     hostTd.appendChild(pill);
+
+    // Margin warning — fires whenever field_2749 < 10%. Sits between
+    // the pill and the proposal block so reviewers see it next to the
+    // next-step affordance for that SOW.
+    var marginPct = readMarginPct(tr);
+    if (isFinite(marginPct) && marginPct < MARGIN_THRESHOLD) {
+      hostTd.appendChild(buildMarginWarning());
+    }
 
     // Per-row published-proposal info (view_3885 → matched via field_2666).
     // Rendered regardless of step state so a published proposal shows
@@ -789,10 +620,12 @@
   }
 
   function renderNoProposalMessage(hostTd) {
-    var wrap = document.createElement('div');
-    wrap.className = 'scw-ops-proposal-info scw-ops-proposal-empty';
-    wrap.textContent = 'No published quotes';
-    hostTd.appendChild(wrap);
+    if (!window.SCW || !SCW.publishedQuoteInfo) return;
+    var block = SCW.publishedQuoteInfo.buildBlock(null, {
+      variant: 'compact',
+      emptyText: 'No published quotes'
+    });
+    if (block) hostTd.appendChild(block);
   }
 
   // ── Scan view, transform each data row ──────────────────
@@ -837,14 +670,14 @@
   document.addEventListener('mousedown', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-pq-info')) {
       e.stopPropagation();
     }
   }, true);
   document.addEventListener('click', function (e) {
     var td = e.target.closest('td[' + PROCESSED + ']');
     if (!td) return;
-    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-ops-proposal-info')) {
+    if (e.target.closest('.scw-ops-pill, .scw-ops-info, .scw-pq-info')) {
       e.stopPropagation();
     }
   }, true);

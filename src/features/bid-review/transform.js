@@ -627,6 +627,12 @@
       var surveyId = connectionId(rec, FK.bidSurvey);
       if (surveyId) info.surveyId = surveyId;
 
+      // SOW connection (field_2387) — used to gate bid columns to the
+      // matching SOW grid. Empty when the bid isn't associated with a
+      // specific SOW yet (those should appear on every SOW grid).
+      var bidSowId = connectionId(rec, FK.bidSow);
+      if (bidSowId) info.bidSowId = bidSowId;
+
       // Bid status (field_2550) — try multiple strategies
       var bidStatus = '';
       var bsRaw = rec[FK.bidStatus + '_raw'];
@@ -679,7 +685,7 @@
     var pkgInfoMap = buildPkgInfoMap(bidPackages || []);
     var crMap      = scrapeCrView();
 
-    // Attach PDF, survey, status, and CR info to each package
+    // Attach PDF, survey, status, SOW, and CR info to each package
     for (var pi = 0; pi < allPkgs.length; pi++) {
       var crInfo = crMap[allPkgs[pi].id];
       if (crInfo) {
@@ -691,6 +697,7 @@
         if (info.url) { allPkgs[pi].pdfUrl = info.url; allPkgs[pi].pdfFilename = info.filename; }
         if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
         if (info.bidStatus) allPkgs[pi].bidStatus = info.bidStatus;
+        if (info.bidSowId) allPkgs[pi].bidSowId = info.bidSowId;
       }
     }
 
@@ -834,7 +841,7 @@
       }
 
       var pkgs    = extractPackages(recs);
-      // Attach PDF, survey, status, and CR info to per-SOW packages
+      // Attach PDF, survey, status, SOW, and CR info to per-SOW packages
       for (var ppi = 0; ppi < pkgs.length; ppi++) {
         var pCr = crMap[pkgs[ppi].id];
         if (pCr) {
@@ -846,8 +853,23 @@
           if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
           if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
           if (pInfo.bidStatus) pkgs[ppi].bidStatus = pInfo.bidStatus;
+          if (pInfo.bidSowId) pkgs[ppi].bidSowId = pInfo.bidSowId;
         }
       }
+
+      // Gate columns: a bid only renders as a column on this SOW's grid
+      // when its field_2387 (bidSowId) is empty (unassigned) or matches
+      // the current SOW id. Bids tied to a sibling SOW are excluded —
+      // even if their survey items are shared with this SOW — so each
+      // grid is scoped to bids actually meant for this SOW.
+      pkgs = pkgs.filter(function (pkg) {
+        return !pkg.bidSowId || pkg.bidSowId === sow.id;
+      });
+      if (CFG.debug) {
+        SCW.debug('[BidReview] SOW', sow.id, 'pkgs after bidSow filter:',
+                  pkgs.map(function (p) { return p.name + (p.bidSowId ? '' : ' (unassigned)'); }));
+      }
+
       var groups  = groupRows(rows);
       var elig    = computeEligibility(rows, pkgs);
 

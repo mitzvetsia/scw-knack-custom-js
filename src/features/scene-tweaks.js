@@ -321,116 +321,18 @@
     injectProposalInfo(layout);
   }
 
-  function getProposalFromModel() {
-    var view = Knack.views.view_3814;
-    if (!view || !view.model) return null;
-    var data = view.model.data;
-    if (!data) return null;
-
-    // Backbone Collection → .models array
-    var records = data.models || data;
-    // model.toJSON() fallback
-    if (typeof data.toJSON === 'function' && (!records || !records.length)) {
-      records = data.toJSON();
-    }
-    if (!records || !records.length) return null;
-
-    for (var i = 0; i < records.length; i++) {
-      var attrs = records[i].attributes || records[i];
-      var status = (attrs.field_2658 || '').replace(/<[^>]*>/g, '').trim();
-      if (/published/i.test(status)) return attrs;
-    }
-    return null;
-  }
-
-  function getProposalFromDOM() {
-    var viewEl = document.getElementById('view_3814');
-    if (!viewEl) return null;
-    var rows = viewEl.querySelectorAll('tbody tr');
-    if (!rows.length) return null;
-
-    for (var i = 0; i < rows.length; i++) {
-      var statusCell = rows[i].querySelector('td.field_2658');
-      if (!statusCell) continue;
-      var statusText = (statusCell.textContent || '').trim();
-      if (!/published/i.test(statusText)) continue;
-
-      var nameCell = rows[i].querySelector('td.field_2665');
-      var expCell = rows[i].querySelector('td.field_2659');
-      var pdfCell = rows[i].querySelector('td.field_2681');
-      var linkEl = rows[i].querySelector('a.kn-link-page');
-
-      var pdfUrl = '';
-      var pdfName = '';
-      if (pdfCell) {
-        var pdfLink = pdfCell.querySelector('a');
-        if (pdfLink) {
-          pdfUrl = pdfLink.getAttribute('href') || '';
-          pdfName = (pdfLink.textContent || '').trim();
-        }
-      }
-
-      return {
-        proposalName: nameCell ? (nameCell.textContent || '').trim() : '',
-        expDate: expCell ? (expCell.textContent || '').trim() : '',
-        pdfUrl: pdfUrl,
-        pdfName: pdfName,
-        viewLink: linkEl ? (linkEl.getAttribute('href') || '') : '',
-        id: rows[i].id || ''
-      };
-    }
-    return null;
-  }
-
   function injectProposalInfo(container) {
     var old = container.querySelector('.scw-totals-proposal');
     if (old) old.remove();
 
     try {
-      var proposalName, expDate, pdfUrl, pdfName, viewLink;
-
-      // DOM scrape first — most reliable since we can see the rendered table
-      var domData = getProposalFromDOM();
-      if (domData) {
-        proposalName = domData.proposalName;
-        expDate = domData.expDate;
-        pdfUrl = domData.pdfUrl;
-        pdfName = domData.pdfName;
-        viewLink = domData.viewLink;
-      }
-
-      // Fall back to Knack model if DOM didn't yield results
-      if (!proposalName && !pdfUrl) {
-        var pub = getProposalFromModel();
-        if (pub) {
-          proposalName = (pub.field_2665 || '').replace(/<[^>]*>/g, '').trim();
-          expDate = (pub.field_2659 || '').replace(/<[^>]*>/g, '').trim();
-          pdfUrl = '';
-          pdfName = '';
-          var pdfRaw = pub.field_2681 || '';
-          if (typeof pdfRaw === 'string') {
-            var m = pdfRaw.match(/href="([^"]+)"/);
-            if (m) pdfUrl = m[1];
-            var m2 = pdfRaw.match(/>([^<]+\.pdf)</i);
-            if (m2) pdfName = m2[1];
-          }
-          if (!pdfUrl && pub.field_2681_raw && pub.field_2681_raw.url) {
-            pdfUrl = pub.field_2681_raw.url;
-            pdfName = pub.field_2681_raw.filename || 'Download PDF';
-          }
-          viewLink = '';
-          var viewEl = document.getElementById('view_3814');
-          if (viewEl && pub.id) {
-            var row = viewEl.querySelector('tr#' + pub.id);
-            if (row) {
-              var link = row.querySelector('a.kn-link-page');
-              if (link) viewLink = link.getAttribute('href') || '';
-            }
-          }
-        }
-      }
-
-      var hasPublished = !!(proposalName || pdfUrl);
+      // Read the published proposal via the shared helper (model-first
+      // with DOM fallback, status-filtered). Same data shape that
+      // ops-review-pill and the proposal page consume.
+      var proposal = (window.SCW && SCW.publishedQuoteInfo)
+        ? SCW.publishedQuoteInfo.read({ sourceView: 'view_3814' })
+        : null;
+      var hasPublished = !!proposal;
 
       // Build the Preview Draft Proposal href directly from the SOW
       // record id. Same construction as preview-proposal-btn.js — the
@@ -445,46 +347,32 @@
       // Nothing to render in either column — bail.
       if (!hasPublished && !previewHref) return;
 
+      // Outer wrap — ".scw-totals-proposal" stays the find/remove anchor
+      // for previous renders, and provides the right-aligned panel chrome
+      // shared by the published-proposal block AND the preview-draft link
+      // below. Using 'regular' variant inside (no panel chrome of its
+      // own) so the wrap is the single source of border / margin /
+      // alignment, regardless of which children are present.
       var wrap = document.createElement('div');
       wrap.className = 'scw-totals-proposal';
-      wrap.style.cssText = 'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;text-align:right;padding-right:10px;';
+      wrap.style.cssText =
+        'border-top:1px solid #e5e7eb;margin-top:12px;padding-top:10px;' +
+        'padding-right:10px;text-align:right;';
 
-      if (hasPublished) {
-        var hdr = document.createElement('div');
-        hdr.style.cssText = 'font-size:12px;font-weight:700;color:#163C6E;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;';
-        hdr.textContent = 'Published Proposal';
-        wrap.appendChild(hdr);
-
-        if (proposalName) {
-          var nameRow = document.createElement('div');
-          nameRow.style.cssText = 'font-size:13px;color:#1e293b;margin-bottom:4px;';
-          if (viewLink) {
-            var nameLink = document.createElement('a');
-            nameLink.href = viewLink;
-            nameLink.textContent = proposalName;
-            nameLink.style.cssText = 'color:#2563eb;text-decoration:none;font-weight:500;';
-            nameRow.appendChild(nameLink);
-          } else {
-            nameRow.textContent = proposalName;
-          }
-          wrap.appendChild(nameRow);
-        }
-
-        if (expDate) {
-          var expRow = document.createElement('div');
-          expRow.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:4px;';
-          expRow.textContent = 'Expires: ' + expDate;
-          wrap.appendChild(expRow);
-        }
-
-        if (pdfUrl) {
-          var pdfRow = document.createElement('a');
-          pdfRow.href = pdfUrl;
-          pdfRow.target = '_blank';
-          pdfRow.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#2563eb;text-decoration:none;font-weight:500;';
-          pdfRow.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
-          pdfRow.appendChild(document.createTextNode(pdfName || 'Download PDF'));
-          wrap.appendChild(pdfRow);
+      if (hasPublished && window.SCW && SCW.publishedQuoteInfo) {
+        var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
+          variant: 'regular',
+          header:  'Published Proposal',
+          // Sales totals link uses the in-row "View Published Proposal"
+          // anchor href (the canonical Knack details page). Falls back
+          // to the published-proposals hash route if not present.
+          linkBuilder: function (p) { return p.viewLink || ''; }
+        });
+        if (block) {
+          // The base .scw-pq-info rule centers text; the panel here is
+          // right-aligned via the wrap, so override on this child only.
+          block.style.textAlign = 'right';
+          wrap.appendChild(block);
         }
       }
 

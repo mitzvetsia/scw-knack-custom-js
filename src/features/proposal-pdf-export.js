@@ -28,6 +28,11 @@
         view_3345: true,
         view_3883: true,
         view_3886: true,
+        // CTA button surfaced on the published-proposal page
+        // (scene_1279) by published-proposal-render.js. Belongs around
+        // the iframe, not inside the scraped quote html.
+        view_3858: true,
+        view_3902: true,
         // Hidden data-only grid: a richer Survey Line Item / SOW Line
         // Item projection added solely so the publish JSON payload
         // includes every field downstream Make pipelines need (e.g.
@@ -35,7 +40,12 @@
         // Lives in the Builder, hidden from users via global-styles.js.
         // Dropped from the rendered proposal (skipViews) but is the
         // sole grid in the JSON payload via jsonIncludeViews below.
-        view_3896: true
+        view_3896: true,
+        // Survey-picker grid the Ops stepper modal reads from
+        // ("SITE SURVEY_requests"). Internal-only — it's the data
+        // source for the alt-bid / update-bid survey picker, not
+        // part of the customer-facing proposal.
+        view_3897: true
       },
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
@@ -50,6 +60,10 @@
       saveHtml: true,
       pollViewOnReturn: 'view_3814',
       pollField: 'field_2681',
+      // Field rendered just below the "Proposed Solution" view title
+      // (matches the layout on the in-app preview page). Scraped from
+      // wherever it appears on scene_1096 — typically a detail view.
+      proposedSolutionField: 'field_2128',
     },
     {
       sceneId: 'scene_1149',
@@ -62,7 +76,11 @@
       pollField: 'field_2626',
       extraFields: [
         { field: 'field_2386', name: 'surveyRequestId' },
-        { name: 'bidId', source: 'url' },
+        // bidId comes from the resolved record id — same source the
+        // form's hidden `id` input feeds extra.recordId from. URL-based
+        // extraction missed it when the bid-submit URL didn't end in a
+        // 24-hex segment.
+        { name: 'bidId', source: 'recordId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
         { field: 'field_2633', name: 'field_2633' },
@@ -78,6 +96,21 @@
   function getPageRecordId() {
     var match = (window.location.hash || '').split('?')[0].match(/\/([a-f0-9]{24})\/?$/);
     return match ? match[1] : '';
+  }
+
+  // Identity of the user who clicked / submitted — included on every
+  // webhook payload so Make scenarios can attribute the action in
+  // Slack messages, audit trails, CU task descriptions, etc.
+  function getTriggeredBy() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes)
+        ? Knack.getUserAttributes()
+        : null;
+      if (u && typeof u === 'object') {
+        return { id: u.id || '', name: u.name || '', email: u.email || '' };
+      }
+    } catch (e) { /* ignore */ }
+    return null;
   }
 
   function norm(s) {
@@ -99,10 +132,32 @@
   function groupLabelText(tr) {
     var td = tr.querySelector('td:first-child');
     if (!td) return '';
-    // Clone and strip injected spans so label doesn't include connected-devices or field_2019 text
+    // Clone and strip injected spans so label doesn't include
+    // connected-devices or field_2019 text.
     var clone = td.cloneNode(true);
-    var injected = clone.querySelectorAll('.scw-l3-connected-devices, br.scw-l3-connected-br, .scw-l4-2019, br.scw-l4-2019-br, .scw-concat-cameras');
+    var injected = clone.querySelectorAll(
+      '.scw-l3-connected-devices, br.scw-l3-connected-br, ' +
+      '.scw-l4-2019, br.scw-l4-2019-br'
+    );
     for (var ci = 0; ci < injected.length; ci++) injected[ci].remove();
+    // .scw-concat-cameras is special: on most L3 rows it contains
+    // ONLY the camera-list pill (e.g. "(RA-E-70, RA-E-71)"), but on
+    // Mounting Hardware L3 rows it WRAPS the product label too. So
+    // we can't just strip the whole div — we'd lose the label and
+    // the L3 row would never render. Instead, strip only the <b>
+    // children whose text matches the parenthesized camera-list
+    // pattern, plus their preceding <br>s.
+    var concatBlocks = clone.querySelectorAll('.scw-concat-cameras');
+    for (var cb = 0; cb < concatBlocks.length; cb++) {
+      var bs = concatBlocks[cb].querySelectorAll('b');
+      for (var bi = 0; bi < bs.length; bi++) {
+        if (/^\(.*\)$/.test(norm(bs[bi].textContent))) {
+          var prev = bs[bi].previousSibling;
+          if (prev && prev.nodeType === 1 && prev.tagName === 'BR') prev.remove();
+          bs[bi].remove();
+        }
+      }
+    }
     return norm(clone.textContent);
   }
 
@@ -115,11 +170,20 @@
   function getViewTitle(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return '';
-    var h2 = root.querySelector('.view-header h2');
-    if (h2) return norm(h2.textContent);
-    var h1 = root.querySelector('.view-header h1');
-    if (h1) return norm(h1.textContent);
-    return '';
+    var h = root.querySelector('.view-header h2') || root.querySelector('.view-header h1');
+    if (!h) return '';
+    // Clone so we can strip the KTL hide/show accordion arrow span
+    // (".ktlArrow", text "◀" / "▶") without mutating the live DOM.
+    // Without this the published title leaks the chevron character.
+    var clone = h.cloneNode(true);
+    var arrows = clone.querySelectorAll('.ktlArrow');
+    for (var i = 0; i < arrows.length; i++) arrows[i].remove();
+    var text = norm(clone.textContent);
+    // Suppress generic "Proposal" header — it's redundant noise above the
+    // actual project title. Knack auto-titles the host detail view this
+    // way; nothing else identifies itself with the bare word.
+    if (text.toLowerCase() === 'proposal') return '';
+    return text;
   }
 
   function isKnackFilterOrButton(viewId) {
@@ -305,8 +369,15 @@
         if (!isVisibleRow(tr)) continue;
 
         var l3Label = groupLabelText(tr);
-        var hideCost = tr.classList.contains('scw-hide-cost');
+        // Either flag suppresses qty + cost in the published HTML.
+        // - scw-hide-cost — legacy cost-only suppressor (rarely used)
+        // - scw-hide-qty-cost — what proposal-grid.js actually adds for
+        //   buckets configured with hideQtyCostColumns=true (e.g. the
+        //   Assumptions bucket, recordId 697b7a023a31502ec68b3303). The
+        //   bucket flag was being set but never made it through to the
+        //   published HTML because we only checked the legacy class.
         var hideQtyCost = tr.classList.contains('scw-hide-qty-cost');
+        var hideCost = hideQtyCost || tr.classList.contains('scw-hide-cost');
         var l3Qty = hideQtyCost ? 0 : parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l3Cost = hideCost ? '' : norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
 
@@ -330,6 +401,12 @@
 
       if (tr.classList.contains('kn-group-level-4')) {
         if (!isVisibleRow(tr)) continue;
+
+        // proposal-grid tags assumption-bucket L4 rows with
+        // scw-hide-qty-cost (the parent L3 was already hidden via
+        // scw-hide-level3-header so the L4 carries the flag instead).
+        // We need this when auto-creating a synthetic L3 below.
+        var l4HideQtyCost = tr.classList.contains('scw-hide-qty-cost');
 
         var labelCell = tr.querySelector('td:first-child');
         var l4Label = labelCell ? norm(labelCell.textContent) : '';
@@ -374,11 +451,22 @@
         };
 
         if (!currentL3 && currentL2) {
+          // Auto-create a synthetic L3 to host this orphan L4 (the real
+          // L3 was hidden, e.g. assumption rows). Propagate the L4's
+          // hide-qty-cost flag so the renderer suppresses the qty/cost
+          // columns for the whole synthetic product — matches what
+          // proposal-grid does on the live grid.
           currentL3 = {
             level: 3, label: '', qty: l4Qty, cost: l4Cost,
+            hideCost: l4HideQtyCost,
             connectedDevices: [], isMountingHardware: false, lineItems: [],
           };
           currentL2.products.push(currentL3);
+        } else if (currentL3 && l4HideQtyCost && !currentL3.hideCost) {
+          // Existing synthetic L3 picked up another hide-qty-cost L4 —
+          // promote the whole product to hideCost so the renderer
+          // suppresses qty/cost across all of its line items.
+          currentL3.hideCost = true;
         }
         if (currentL3) currentL3.lineItems.push(lineItem);
         continue;
@@ -533,7 +621,8 @@
   // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
-  function scrapeAllViews(cfg) {
+  function scrapeAllViews(cfg, opts) {
+    opts = opts || {};
     var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
 
     var sceneEl = document.getElementById('kn-' + cfg.sceneId);
@@ -581,11 +670,68 @@
       }
     }
 
+    // Stash the optional "Proposed Solution" narrative field on the
+    // matching grid view. Pulled from the live DOM rather than from
+    // an already-scraped detail view so callers don't have to know
+    // which detail view it lives on; renderGridSections then renders
+    // it just below the view title to mirror the preview-page layout.
+    if (cfg.proposedSolutionField) {
+      var narrativeEl = sceneEl &&
+        sceneEl.querySelector('.kn-detail.' + cfg.proposedSolutionField + ' .kn-detail-body');
+      var narrativeHtml = narrativeEl ? (narrativeEl.innerHTML || '').trim() : '';
+      if (narrativeHtml) {
+        for (var pv = 0; pv < result.views.length; pv++) {
+          var rv = result.views[pv];
+          if (rv.type === 'grid' && /proposed\s+solution/i.test(rv.title || '')) {
+            rv.narrativeHtml = narrativeHtml;
+            break;
+          }
+        }
+      }
+    }
+
     // Stamp TBD into every install-labor surface if the bid hasn't
     // been validated (field_2725 != Yes). Only applies to proposal
     // payloads — subcontractor bids have different semantics.
-    if (cfg.payloadType === 'proposal' && shouldPublishAsTbd()) {
+    //
+    // opts.tbdMode lets the caller override the field_2725 default:
+    //   true  → force TBD (e.g. publish-sow-tbd from ops-stepper)
+    //   false → force NO TBD (e.g. publish-gfe / publish-final)
+    //   undefined → fall back to shouldPublishAsTbd() (field_2725 read)
+    var tbdActive = (opts.tbdMode === true)  ? true
+                  : (opts.tbdMode === false) ? false
+                  : shouldPublishAsTbd();
+    if (cfg.payloadType === 'proposal' && tbdActive) {
       applyTbdToPublishPayload(result);
+    }
+
+    // Inject "Proposal ID" detail row right above SOW ID. Mirrors the
+    // existing SOW ID row visually — same label/value cells in the
+    // detail-table — and lets Make's Replace step swap the token in
+    // post-create. Only fires on proposal payloads since subcontractor
+    // bids don't carry a published-proposal record at all.
+    if (cfg.payloadType === 'proposal') {
+      for (var pi = 0; pi < result.views.length; pi++) {
+        var dv = result.views[pi];
+        if (dv.type !== 'detail' || !dv.fields || !dv.fields.length) continue;
+        var sowIdx = -1;
+        for (var fi = 0; fi < dv.fields.length; fi++) {
+          if (/sow\s*id/i.test(dv.fields[fi].label || '')) { sowIdx = fi; break; }
+        }
+        if (sowIdx === -1) continue;
+        // Don't double-insert if a previous run already added the row.
+        var alreadyHas = false;
+        for (var ai = 0; ai < dv.fields.length; ai++) {
+          if (/proposal\s*id/i.test(dv.fields[ai].label || '')) { alreadyHas = true; break; }
+        }
+        if (alreadyHas) break;
+        dv.fields.splice(sowIdx, 0, {
+          label: 'Proposal ID',
+          value: tok('Proposal_ID'),
+          valueHtml: tok('Proposal_ID')
+        });
+        break;
+      }
     }
 
     return result;
@@ -612,7 +758,12 @@
           }
           html.push('<tr>');
           html.push('<td class="detail-label">' + esc(f.label) + '</td>');
-          html.push('<td class="detail-value">' + esc(f.value) + '</td>');
+          // Prefer valueHtml so structural markup like <br> survives —
+          // Knack stores the project address with a real line break
+          // between street and city/state, and esc(f.value) was
+          // collapsing it to a single line.
+          var detailValue = f.valueHtml || esc(f.value);
+          html.push('<td class="detail-value">' + detailValue + '</td>');
           html.push('</tr>');
         }
       }
@@ -642,6 +793,17 @@
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
+    // Optional narrative block right below the title — used by
+    // scene_1096 to drop field_2128 ("Proposed Solution" intro text)
+    // beneath the heading, matching the in-app preview layout.
+    if (view.narrativeHtml) {
+      html.push(
+        '<div class="view-narrative" style="' +
+          'margin: 4px 0 12px 0; line-height: 1.5; color: #333;' +
+          'font-size: 11px;' +
+        '">' + view.narrativeHtml + '</div>'
+      );
+    }
 
     for (var s = 0; s < view.sections.length; s++) {
       var section = view.sections[s];
@@ -664,8 +826,18 @@
         }
 
         if (bucket.products.length) {
+          // When EVERY product in a bucket hides cost (Assumptions
+          // bucket, recordId 697b7a023a31502ec68b3303), skip the
+          // Qty/Cost column headers entirely — otherwise the thead
+          // shows "Qty Cost" labels above colspan-3 rows with no
+          // values, which reads as a broken table.
+          var bucketHideCost = bucket.products.every(function (p) { return p.hideCost; });
           html.push('<table class="product-table">');
-          html.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
+          if (bucketHideCost) {
+            html.push('<thead><tr><th class="col-desc"></th></tr></thead>');
+          } else {
+            html.push('<thead><tr><th class="col-desc"></th><th class="col-qty">Qty</th><th class="col-cost">Cost</th></tr></thead>');
+          }
           html.push('<tbody>');
 
           for (var p = 0; p < bucket.products.length; p++) {
@@ -715,9 +887,23 @@
           if (bucket.footer) {
             html.push('<tfoot>');
             html.push('<tr class="l2-footer">');
-            html.push('<td>' + esc(bucket.footer.label) + '</td>');
-            html.push('<td class="col-qty">' + bucket.footer.qty + '</td>');
-            html.push('<td class="col-cost">' + esc(bucket.footer.cost) + '</td>');
+            // L2 footer hides the qty roll-up (per the on-page grid).
+            // The roll-up isn't meaningful across mixed product types
+            // in a bucket, and the per-product L3 rows already show
+            // their own qty. Render an empty qty cell rather than
+            // collapsing it via colspan — keeping the same 3-cell
+            // shape as the body rows guarantees the cost cell lands
+            // under the COST column even in email/PDF renderers that
+            // ignore <th> widths or don't honor colspan precisely.
+            // When the entire bucket hides cost too (assumption-style),
+            // the label cell takes the whole footer row.
+            if (bucketHideCost) {
+              html.push('<td colspan="3">' + esc(bucket.footer.label) + '</td>');
+            } else {
+              html.push('<td>' + esc(bucket.footer.label) + '</td>');
+              html.push('<td class="col-qty"></td>');
+              html.push('<td class="col-cost">' + esc(bucket.footer.cost) + '</td>');
+            }
             html.push('</tr>');
             html.push('</tfoot>');
           }
@@ -743,6 +929,37 @@
     }
   }
 
+  // ── Proposal token contract ──────────────────────────────────
+  // Tokens that don't exist when this client builds the HTML (the
+  // published-proposal record hasn't been minted yet) but DO exist by
+  // the time Make's PDF generator runs. Keep this list in sync with
+  // the "Tools → Replace" / Iterator step in the Make scenario.
+  //
+  // Single-underscore wrap (_Foo_) — the {{...}} form was getting
+  // resolved as Make module references, [...] hit Make's replace-
+  // regex character-class issue, and __Foo__ (double underscore)
+  // also failed to substitute. Single underscores keep the token
+  // visually distinct without colliding with regex / Make syntax.
+  //
+  //   _Proposal_ID_       public-facing identifier (e.g. "20260427-10055_v30")
+  //                       — the human-readable proposal name, NOT the
+  //                       24-hex Knack record id (Make has that in
+  //                       its own context already).
+  //   _Proposal_URL_      canonical published-proposals details link
+  //   _Expiration_Date_   formatted MM/DD/YYYY
+  //   _Version_           proposal version number
+  var PROPOSAL_TOKENS = [
+    'Proposal_ID',
+    'Proposal_URL',
+    'Expiration_Date',
+    'Version'
+  ];
+  function tok(name) { return '_' + name + '_'; }
+
+  // (The previous floating "Proposal __Proposal_ID__" letterhead tag
+  // has been removed in favor of a detail-table row above SOW ID, so
+  // the buildHtml flow no longer needs a post-process injector for it.)
+
   function buildPdfHtml(payload) {
     if (!payload.views.length) return '';
 
@@ -750,7 +967,10 @@
 
     html.push('<!DOCTYPE html>');
     html.push('<html><head><meta charset="utf-8">');
-    html.push('<title>Proposal</title>');
+    // Document title carries the proposal id token so Make gets a nice
+    // tab/file name (e.g. "20260427-10055_v30") after the record is
+    // created.
+    html.push('<title>' + tok('Proposal_ID') + '</title>');
     html.push('<style>');
     html.push(getPdfCss());
     html.push('</style>');
@@ -832,11 +1052,17 @@
 
   function getPdfCss() {
     return [
+      // Inter via Google Fonts — embeds a known sans-serif so the PDF
+      // renderer doesn't fall back to the system serif (which on minimal
+      // Linux PDF environments produces oversized, wrong-face output).
+      // Helvetica/Arial stay in the stack for previewing in browsers
+      // that already have them; sans-serif is the last-ditch fallback.
+      '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");',
       '@page { size: letter; margin: 0.42in 0.53in; }',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
       '',
       '*, *::before, *::after { box-sizing: border-box; }',
-      'body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
+      'body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
       '',
       '/* ── View Title ── */',
       '.view-title {',
@@ -1400,6 +1626,12 @@
           extra.recordId = getPageRecordId();
         }
 
+        // Stamp the user who clicked Submit. Read from Knack.getUserAttributes
+        // — works for any logged-in user. null if Knack isn't ready (form
+        // submits without auth shouldn't happen, but guard anyway).
+        var triggeredBy = getTriggeredBy();
+        if (triggeredBy) extra.triggeredBy = triggeredBy;
+
         // Extract additional field values from the scene DOM
         if (cfg.extraFields) {
           var _fNum;
@@ -1408,6 +1640,13 @@
             if (spec.source === 'url') {
               var urlVal = getPageRecordId();
               if (urlVal) extra[spec.name] = urlVal;
+              continue;
+            }
+            // Echo the resolved recordId under a different key — useful
+            // when the receiving Make scenario expects a domain-specific
+            // name like "bidId" alongside the generic "recordId".
+            if (spec.source === 'recordId') {
+              if (extra.recordId) extra[spec.name] = extra.recordId;
               continue;
             }
             _fNum = spec.field.replace('field_', '');
@@ -1703,13 +1942,16 @@
     return null;
   }
 
-  function buildPublishPayload(sceneId) {
+  function buildPublishPayload(sceneId, opts) {
+    opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
     if (!cfg) {
       console.warn('[SCW pdfExport] buildPublishPayload: no matching SCENES entry for sceneId=' + sceneId + ' (auto-detect also failed).');
       return null;
     }
-    var payload = scrapeAllViews(cfg);
+    // opts.tbdMode (true | false | undefined) overrides the
+    // field_2725-based default inside scrapeAllViews.
+    var payload = scrapeAllViews(cfg, opts);
     if (!payload.views.length) {
       console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
       return null;
@@ -1728,7 +1970,13 @@
       grandTotal:        summary.grandTotal,
       expirationDate:    summary.expirationDate,
       html:              htmlStr,
-      json:              jsonSnapshot
+      json:              jsonSnapshot,
+      // Token contract — Make's "Tools → Replace" step should run
+      // through this list and substitute each {{TOKEN}} occurrence in
+      // .html with the post-create record's matching field. Listed on
+      // the payload so the Make scenario doesn't have to keep its own
+      // hard-coded copy.
+      tokens:            PROPOSAL_TOKENS
     };
   }
 
@@ -1746,7 +1994,11 @@
       return payload;
     },
     getCss: getPdfCss,
-    buildPublishPayload: buildPublishPayload
+    buildPublishPayload: buildPublishPayload,
+    // Exposed so consumers (or a future Make-replacement helper that
+    // also runs client-side, e.g. for previewing) can introspect the
+    // token list without poking at internals.
+    PROPOSAL_TOKENS: PROPOSAL_TOKENS
   };
 
   // ══════════════════════════════════════════════════════════════

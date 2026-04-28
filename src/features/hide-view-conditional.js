@@ -19,19 +19,10 @@
   var EVENT_NS = '.scwHideViewCond';
 
   var CONFIG = [
-    // Published-proposal details page: hide view_3858 when the SOW is
-    // neither ready for survey (field_2723 != Yes) AND the survey has
-    // already been requested (field_2706 != No). Equivalently, show
-    // it when either field_2723 = Yes OR field_2706 = No.
-    {
-      viewId: 'view_3858',
-      hideWhen: {
-        all: [
-          { field: 'field_2723', notValue: 'Yes' },
-          { field: 'field_2706', notValue: 'No' }
-        ]
-      }
-    }
+    // (view_3858 gating moved into published-proposal-render.js — the
+    // CTA is now injected inside the iframe content rather than left
+    // visible on the parent page, so its show/hide logic and the
+    // injection live together.)
   ];
 
   // ── Read a field's text value from any Knack view model on the page ──

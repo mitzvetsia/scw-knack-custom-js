@@ -1,33 +1,51 @@
 /*** FEATURE: Ops-side stepper (view_3345 rich-text host) ***/
 /**
- * Three button-actions rendered into the role-gated rich-text host
- * view_3345 on the Ops proposal page. Each button opens a notes-prompt
- * modal and fires a Make webhook with the SOW context + payload fields
- * so Make can update the CU project task, post to Slack, and (for
- * step 2 / 3) create the supporting records.
+ * Button actions rendered into the role-gated rich-text host view_3345
+ * on the Ops proposal page. Each button opens a notes-prompt modal and
+ * fires a Make webhook with the SOW context + payload fields so Make
+ * can update the CU project task, post to Slack, and (where relevant)
+ * create the supporting records / publish a quote.
  *
  * Steps
  *   1. Mark Ready for Survey
- *        showWhen: field_2706 = No
+ *        showWhen: field_2723 = No AND NOT field_2728 > 0
  *        webhook : MAKE_OPS_MARK_READY_WEBHOOK
  *        server  : flips field_2723 = Yes, updates CU task, Slack
  *
  *   2. Request Alternative Bid from Subcontractor
- *        showWhen: field_2706 = No AND field_2728 > 0
+ *        showWhen: field_2706 = No  AND field_2728 > 0
+ *        hideWhen: field_2706 = Yes — once survey is requested we offer
+ *                  Update Subcontractor Bid Request instead.
  *        webhook : MAKE_OPS_REQUEST_ALT_BID_WEBHOOK
  *        server  : creates missing Survey Item records + alt-bid package,
  *                  updates CU task, posts to Slack
  *
- *   3. Publish and Submit Completed Proposal to Sales
- *        showWhen: field_2725 (FLAG_released to sales) = No
- *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK
- *        server  : flips field_2725 = Yes (i.e. releases to Sales),
- *                  updates CU task, Slack
+ *   3. Update Subcontractor Bid Request
+ *        showWhen: field_2706 = Yes
+ *        webhook : MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK
+ *        server  : updates the matching bid record(s) for the chosen
+ *                  survey(s); same payload shape as Request Alt Bid.
  *
- * Payload for steps 2 and 3 includes every field from SOURCE_VIEW
+ *   4. Publish as SOW only (TBD Labor)
+ *        showWhen: always (no gate)
+ *        webhook : MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK
+ *
+ *   5. Publish Quote as GFE
+ *        showWhen: always (no gate)
+ *        webhook : MAKE_OPS_PUBLISH_GFE_WEBHOOK
+ *
+ *   6. Publish Quote as Final
+ *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        webhook : MAKE_OPS_PUBLISH_FINAL_WEBHOOK
+ *
+ * Payload for every step includes every field from SOURCE_VIEW
  * (view_3861) plus field_2126, line-item record ids from view_3341,
- * and license record ids from LICENSE_VIEW (empty placeholder until
- * the view is supplied).
+ * and license record ids from LICENSE_VIEW. The publish steps and the
+ * mark-ready / request-alt-bid / update-matching-bid steps additionally
+ * merge in the standalone publish payload from proposal-pdf-export
+ * (html / json / totals / etc.) so every code path that publishes (or
+ * snapshots) a quote looks identical on Make's side. The step.id field
+ * on the body is what tells Make which scenario branch to run.
  */
 (function () {
   'use strict';
@@ -48,6 +66,36 @@
   var NS         = '.scwOpsStepper';
   var BLOCK_CLS  = 'scw-ops-stepper';
   var STYLE_ID   = 'scw-ops-stepper-css';
+
+  // Per-step ClickUp status radio configs. Each publish button only
+  // surfaces the status that semantically matches its purpose, so Ops
+  // can't accidentally flip "Final Bid Submitted" from the GFE button.
+  // Make's scenario reads payload.clickupStatus and updates the matching
+  // CU task field.
+  var CLICKUP_STATUS_RADIO_GFE = {
+    question:  'Update ClickUp Status?',
+    noneLabel: 'No status change',
+    options: [
+      { value: 'gfe-submitted', label: 'GFE Submitted' }
+    ]
+  };
+  var CLICKUP_STATUS_RADIO_FINAL = {
+    question:  'Update ClickUp Status?',
+    noneLabel: 'No status change',
+    options: [
+      { value: 'final-bid-submitted', label: 'Final Bid Submitted' }
+    ]
+  };
+  // SOW-only / TBD Labor still surfaces both options — Ops may publish a
+  // SOW skeleton mid-flow toward either end-state, so keep both reachable.
+  var CLICKUP_STATUS_RADIO_BOTH = {
+    question:  'Update ClickUp Status?',
+    noneLabel: 'No status change',
+    options: [
+      { value: 'gfe-submitted',       label: 'GFE Submitted' },
+      { value: 'final-bid-submitted', label: 'Final Bid Submitted' }
+    ]
+  };
 
   var STEPS = [
     {
@@ -97,10 +145,16 @@
       id: 'request-alt-bid',
       label: 'Request Alternative Bid from Subcontractor',
       tone: 'amber',
-      // Hide entirely when there are no change requests — the whole
-      // premise of an alt bid is to respond to CRs, so without any
-      // there's nothing to show.
-      hideWhen: { not: { field: 'field_2728', gt: 0 } },
+      // Hide entirely in either of:
+      //   - no change requests yet — nothing to alt-bid against
+      //   - survey already requested (field_2706 = Yes) — at that point
+      //     the bid record exists and Update Subcontractor Bid Request takes over
+      hideWhen: {
+        any: [
+          { not: { field: 'field_2728', gt: 0 } },
+          { field: 'field_2706', value: 'Yes' }
+        ]
+      },
       showWhen: {
         all: [
           { field: 'field_2706', value: 'No' },
@@ -122,26 +176,108 @@
       includeFullPayload: true
     },
     {
-      id: 'publish-proposal',
-      label: 'Submit Final Proposal to Sales',
+      id: 'update-matching-bid',
+      label: 'Update Subcontractor Bid Request',
+      tone: 'amber',
+      // Mirror image of request-alt-bid — only available once the
+      // survey has been requested (field_2706 = Yes). Same payload, same
+      // picker UX; Make routes to a different scenario that updates the
+      // existing bid record(s) instead of creating a new alt-bid package.
+      showWhen: { field: 'field_2706', value: 'Yes' },
+      hideWhen: { field: 'field_2706', value: 'No' },
+      webhookKey: 'MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK',
+      pickSurveys: true,
+      modal: {
+        title:       'Update Subcontractor Bid Request',
+        intro:       'Note for the subcontractor (Sales will also be notified that the matching bid was updated).',
+        placeholder: 'e.g. Updated cabling assumptions per latest survey notes',
+        submitLabel: 'Send Update'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-sow-tbd',
+      label: 'Publish as SOW only (TBD Labor)',
       tone: 'success',
-      // Unlocked once EITHER:
-      //   - the SOW has at least one change request (field_2728 > 0), OR
-      //   - Ops has marked the SOW ready for survey (field_2723 = Yes).
-      // Either signal means there's something worth publishing — a CR
-      // queue to surface, or an Ops-validated SOW headed to survey.
+      // Always available — SOW-only / TBD-labor publishing should be
+      // reachable at any point in the workflow, including before Ops
+      // has marked the SOW ready or any CRs have queued.
+      webhookKey: 'MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK',
+      // Submission options — surfaced as a radio group inside the notes
+      // modal. Selected value rides on payload.submission so Make can
+      // branch on it. SOW-TBD only offers the Sales submission; the
+      // second-set-of-eyes path is GFE / Final only.
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'sales', label: 'Also submit to Sales' }
+        ]
+      },
+      // Optional ClickUp status update — second radio group rendered below
+      // submission. Selected value rides on payload.clickupStatus so Make
+      // can flip the project task without us caring which CU list/field.
+      clickupStatus: CLICKUP_STATUS_RADIO_BOTH,
+      modal: {
+        title:       'Publish as SOW only (TBD Labor)',
+        intro:       'Publishing the SOW with placeholder labor figures.',
+        placeholder: 'e.g. SOW finalized, labor pending sub bids',
+        submitLabel: 'Publish',
+        primaryMode: 'publish-and-notify'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-gfe',
+      label: 'Publish Quote as GFE',
+      tone: 'success',
+      // Always available — GFEs are intentionally generatable at any
+      // workflow stage so Sales can stamp something to send out before
+      // SOW-ready / CR signals exist.
+      webhookKey: 'MAKE_OPS_PUBLISH_GFE_WEBHOOK',
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'sales',      label: 'Also submit to Sales' },
+          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
+        ]
+      },
+      clickupStatus: CLICKUP_STATUS_RADIO_GFE,
+      modal: {
+        title:       'Publish Quote as GFE',
+        intro:       'Publishing as a Good-Faith Estimate (labor included).',
+        placeholder: 'e.g. GFE bundle for client review — final on bid validation',
+        submitLabel: 'Publish',
+        primaryMode: 'publish-and-notify'
+      },
+      includeFullPayload: true
+    },
+    {
+      id: 'publish-final',
+      label: 'Publish Quote as Final',
+      tone: 'success',
       showWhen: {
         any: [
           { field: 'field_2728', gt: 0 },
           { field: 'field_2723', value: 'Yes' }
         ]
       },
-      webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
+      webhookKey: 'MAKE_OPS_PUBLISH_FINAL_WEBHOOK',
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'sales',      label: 'Also submit to Sales' },
+          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
+        ]
+      },
+      clickupStatus: CLICKUP_STATUS_RADIO_FINAL,
       modal: {
-        title:       'Submit Final Proposal to Sales',
-        intro:       'Anything to include in the update to Sales?',
+        title:       'Publish Quote as Final',
+        intro:       'Publishing the final, fully-priced quote.',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
-        submitLabel: 'Submit',
+        submitLabel: 'Publish',
         primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
@@ -149,12 +285,23 @@
   ];
 
   // ── Icons ────────────────────────────────────────────────
-  // Same shapes as workflow-stepper.js so the Ops actions render visually
-  // identical to the sales build stepper rows (CIRCLE for available, LOCK
-  // for disabled, SPINNER while a webhook is in flight).
-  var CIRCLE_SVG =
+  // Ops stepper icons. These intentionally diverge from
+  // workflow-stepper.js's CIRCLE / CHECK shapes — workflow-stepper
+  // represents a sequential build checklist where each step gets ticked
+  // off in order. The Ops stepper is six discrete actions Ops can fire
+  // independently and sometimes repeatedly (re-publish a quote in a
+  // different format, update a matching bid, etc.), so a "step you
+  // haven't finished yet" affordance reads wrong here.
+  //
+  //   ZAP_SVG    — available action (lightning-bolt: "fire this")
+  //   CHECK_CIRCLE_SVG — only used by mark-ready, which IS a one-time
+  //                      gate (field_2723 flips Yes once and stays)
+  //   LOCK_SVG   — locked / unavailable
+  //   SPINNER_SVG — webhook in flight
+  var ZAP_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
-    'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
   var CHECK_CIRCLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -266,6 +413,31 @@
       '.scw-ops-modal-error {' +
       '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
       '}' +
+
+      // Submission options (radio group rendered between the textarea
+      // and the action buttons for Publish steps).
+      '.scw-ops-modal-submission {' +
+      '  margin-top: 12px;' +
+      '  padding: 10px 12px;' +
+      '  background: #f9fafb;' +
+      '  border: 1px solid #e5e7eb;' +
+      '  border-radius: 6px;' +
+      '}' +
+      '.scw-ops-modal-submission__q {' +
+      '  font-size: 12px; font-weight: 700; color: #374151;' +
+      '  letter-spacing: 0.02em;' +
+      '  margin-bottom: 8px;' +
+      '}' +
+      '.scw-ops-modal-submission__opt {' +
+      '  display: flex; align-items: center; gap: 8px;' +
+      '  padding: 5px 6px; border-radius: 4px;' +
+      '  cursor: pointer; font-size: 13px; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-submission__opt:hover { background: #eef2f6; }' +
+      '.scw-ops-modal-submission__opt input[type="radio"] {' +
+      '  flex-shrink: 0; cursor: pointer; margin: 0;' +
+      '}' +
+
       '.scw-ops-modal-actions {' +
       '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;' +
       '}' +
@@ -425,9 +597,18 @@
   }
 
   function buildPayload(step, notes, mode) {
+    // stepId is the canonical machine-readable discriminator (Make
+    // scenarios should branch on this). actionLabel mirrors the
+    // visible button text so scenarios don't have to maintain their
+    // own id→label map for Slack messages, CU-task descriptions, etc.
+    // Both matter when two buttons share a webhook URL — e.g.
+    // 'request-alt-bid' and 'update-matching-bid' both fire to
+    // MAKE_OPS_REQUEST_ALT_BID_WEBHOOK and the scenario splits on
+    // payload.stepId.
     var payload = {
       sourceRecordId: getSourceRecordId(),
       stepId:         step.id,
+      actionLabel:    step.label || '',
       notes:          notes || '',
       mode:           mode || null,
       triggeredBy:    getTriggeredBy()
@@ -453,15 +634,39 @@
     // html / json / sowId / totals / expirationDate / etc. — so every
     // code path that publishes (or snapshots) a quote looks identical
     // on Make's side.
-    if (step.id === 'publish-proposal' ||
-        step.id === 'mark-ready' ||
-        step.id === 'request-alt-bid') {
-      payload.publishAsTbd = shouldPublishAsTbd();
+    // Steps that need the standalone publish payload merged in
+    // (html / json / totals / etc.). The three publish-* variants all
+    // need it (Make formats labor differently per step.id but the rest
+    // of the body is identical), and so do mark-ready / request-alt-bid /
+    // update-matching-bid because their Make scenarios also produce
+    // snapshot quotes alongside the primary action.
+    if (step.id === 'mark-ready' ||
+        step.id === 'request-alt-bid' ||
+        step.id === 'update-matching-bid' ||
+        step.id === 'publish-sow-tbd' ||
+        step.id === 'publish-gfe' ||
+        step.id === 'publish-final' ||
+        step.id === 'publish-proposal') {
+
+      // Per-step TBD treatment for the publish html. The three publish
+      // variants force their own behavior; everyone else falls back to
+      // the field_2725-based default that lives inside proposal-pdf-export.
+      //   publish-sow-tbd → ALWAYS TBD (SOW-only quote, labor pending)
+      //   publish-gfe     → NEVER TBD  (Good-Faith Estimate, labor shown)
+      //   publish-final   → NEVER TBD  (Final, labor shown)
+      var tbdMode;
+      if (step.id === 'publish-sow-tbd') tbdMode = true;
+      else if (step.id === 'publish-gfe' || step.id === 'publish-final') tbdMode = false;
+      else tbdMode = undefined;   // default — read field_2725
+
+      payload.publishAsTbd = (tbdMode === true)
+        || (tbdMode === undefined && shouldPublishAsTbd());
+
       try {
         // Pass the proposal scene explicitly — more reliable than
         // auto-detect, and the Ops stepper is only active on scene_1096.
         var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
-          ? SCW.pdfExport.buildPublishPayload('scene_1096')
+          ? SCW.pdfExport.buildPublishPayload('scene_1096', { tbdMode: tbdMode })
           : null;
         if (pub) {
           // Flatten publish fields onto the top-level payload. Don't
@@ -475,6 +680,14 @@
             var pk = PUBLISH_KEYS[pi];
             if (pub[pk] !== undefined) payload[pk] = pub[pk];
           }
+          // GFE callout — big bold panel injected at the top of <body>
+          // so it's the first thing the reader sees on the published
+          // quote. publishAsGfe is set on the payload so Make can also
+          // gate scenario branches on it without parsing the html.
+          if (step.id === 'publish-gfe' && typeof payload.html === 'string') {
+            payload.publishAsGfe = true;
+            payload.html = injectGfeCallout(payload.html);
+          }
         } else {
           console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
             'SCW.pdfExport not ready or scene not configured. html/json ' +
@@ -485,6 +698,101 @@
       }
     }
     return payload;
+  }
+
+  // ── GFE callout ──────────────────────────────────────────
+  // Big bold disclaimer panel injected into the published-quote html
+  // in two places: BELOW the SCW logo (first <img> in the body) so it's
+  // the first thing the reader sees, and AGAIN below the project-totals
+  // block so it stays in view alongside the bottom-line numbers without
+  // the reader having to scroll back up. Inline-styled because the
+  // published html is consumed by external tools / PDF renderers that
+  // may strip or remap classes.
+  function injectGfeCallout(html) {
+    if (!html || typeof html !== 'string') return html;
+    var calloutText = 'This is a Good Faith Estimate based on the ' +
+      'information provided. Final pricing may change following a Site ' +
+      'Survey, including but not limited to adjustments for site ' +
+      'conditions, access requirements, or changes to project scope.';
+    var callout =
+      '<div style="' +
+        'margin: 28px 0;' +
+        'padding: 22px 24px;' +
+        'background: #fef3c7;' +
+        'border: 2px solid #d97706;' +
+        'border-radius: 8px;' +
+        'color: #78350f;' +
+        'font: 700 15px/1.4 "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;' +
+        'text-align: center;' +
+      '">' +
+        '<div style="' +
+          'font-size: 12px; font-weight: 800; letter-spacing: 0.08em;' +
+          'text-transform: uppercase; margin-bottom: 6px; opacity: 0.85;' +
+        '">Good Faith Estimate</div>' +
+        calloutText +
+      '</div>';
+
+    // ── Top placement: after the SCW logo ──
+    // Anchor to the closing </div> of the block that holds the first
+    // <img> (the Knack `.detail-label-none` wrapper that proposal-pdf-
+    // export.js renders the logo into). Closing it cleanly puts the
+    // callout between the logo row and the project-name heading without
+    // ever splitting an element.
+    var inserted = false;
+    var imgMatch = html.match(/<img\b[^>]*>/i);
+    if (imgMatch) {
+      var imgEnd = imgMatch.index + imgMatch[0].length;
+      var divCloseIdx = html.indexOf('</div>', imgEnd);
+      if (divCloseIdx >= 0) {
+        var insertAt = divCloseIdx + '</div>'.length;
+        html = html.slice(0, insertAt) + callout + html.slice(insertAt);
+        inserted = true;
+      }
+    }
+    // Fallback for the top placement: inject immediately after <body…>
+    // if no <img> anchor was found (no logo on this proposal — rare).
+    if (!inserted) {
+      var bodyOpen = html.match(/<body\b[^>]*>/i);
+      if (bodyOpen) {
+        var bIdx = bodyOpen.index + bodyOpen[0].length;
+        html = html.slice(0, bIdx) + callout + html.slice(bIdx);
+      } else {
+        // Final fallback: fragment with no <body>, just prepend.
+        html = callout + html;
+      }
+    }
+
+    // ── Bottom placement: under the project-totals block ──
+    // proposal-pdf-export.js wraps the totals in
+    // `<div class="project-totals">…</div>`. Find that opening tag and
+    // walk forward to its matching closing tag (the next `</div>` after
+    // the opener — the totals body uses `<div class="pt-line">` children
+    // but those each close their own div before the wrapper's close).
+    // To be safe against nested children, count opens vs. closes.
+    var totalsOpen = html.match(/<div\b[^>]*class="[^"]*\bproject-totals\b[^"]*"[^>]*>/i);
+    if (totalsOpen) {
+      var scanFrom = totalsOpen.index + totalsOpen[0].length;
+      var depth = 1;
+      var i = scanFrom;
+      while (i < html.length && depth > 0) {
+        var nextOpen  = html.indexOf('<div', i);
+        var nextClose = html.indexOf('</div>', i);
+        if (nextClose === -1) break;
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          depth++;
+          i = nextOpen + 4;
+        } else {
+          depth--;
+          i = nextClose + '</div>'.length;
+          if (depth === 0) {
+            html = html.slice(0, i) + callout + html.slice(i);
+            break;
+          }
+        }
+      }
+    }
+
+    return html;
   }
 
   // ── Notes prompt modal ───────────────────────────────────
@@ -694,6 +1002,59 @@
     err.style.display = 'none';
     card.appendChild(err);
 
+    // Build a single radio-group section (question + "no" default +
+    // one entry per option). Returns { element, getValue } or null when
+    // the config is missing/empty so we can no-op cheaply.
+    function buildRadioGroup(config) {
+      if (!config || !Array.isArray(config.options) || !config.options.length) return null;
+      var groupName = 'scw-ops-radio-' + Math.random().toString(36).slice(2, 9);
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = config.question || '';
+      wrap.appendChild(q);
+
+      function addOption(value, label, isDefault) {
+        var optLbl = document.createElement('label');
+        optLbl.className = 'scw-ops-modal-submission__opt';
+        var radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = groupName;
+        radio.value = value;
+        if (isDefault) radio.checked = true;
+        var span = document.createElement('span');
+        span.textContent = label;
+        optLbl.appendChild(radio);
+        optLbl.appendChild(span);
+        wrap.appendChild(optLbl);
+      }
+      addOption('', config.noneLabel || 'No', true);
+      config.options.forEach(function (o) { addOption(o.value, o.label, false); });
+
+      var radios = wrap.querySelectorAll('input[type="radio"]');
+      return {
+        element: wrap,
+        getValue: function () {
+          for (var i = 0; i < radios.length; i++) {
+            if (radios[i].checked) return radios[i].value || null;
+          }
+          return null;
+        }
+      };
+    }
+
+    // Submission options — also-submit-to-Sales / Second Set / no.
+    var submissionGroup = buildRadioGroup(opts.submission);
+    if (submissionGroup) card.appendChild(submissionGroup.element);
+
+    // ClickUp status — independent radio group, rendered beneath
+    // submission. Selected value rides on ctx.clickupStatus.
+    var clickupGroup = buildRadioGroup(opts.clickupStatus);
+    if (clickupGroup) card.appendChild(clickupGroup.element);
+
     var actions = document.createElement('div');
     actions.className = 'scw-ops-modal-actions';
 
@@ -748,7 +1109,9 @@
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
-        mode: opts.primaryMode || null
+        mode: opts.primaryMode || null,
+        submission:    submissionGroup ? submissionGroup.getValue() : null,
+        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
       });
     });
     if (secondaryBtn) {
@@ -757,7 +1120,9 @@
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
-          mode: opts.secondaryMode || null
+          mode: opts.secondaryMode || null,
+          submission:    submissionGroup ? submissionGroup.getValue() : null,
+          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
         });
       });
     }
@@ -893,10 +1258,33 @@
   }
 
   function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions) {
-    openNotesPromptModal(step.modal, function (notes, ctx) {
+    // Merge step-level submission options onto the modal opts so the
+    // notes-prompt modal can render the radio group when present. Keeps
+    // the data on the step (where the rest of the step config lives)
+    // instead of cluttering step.modal.
+    var modalOpts = $.extend({}, step.modal, {
+      submission:    step.submission    || null,
+      clickupStatus: step.clickupStatus || null
+    });
+    openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
-      var payload = buildPayload(step, notes, ctx.mode);
+      // mode is meaningful only when the user actually opted into a
+      // submission. The publish-* steps set primaryMode='publish-and-notify'
+      // on their modal so the Submit button has a default action, but if
+      // the user picks "No — just publish" on the radio, ctx.submission
+      // is null and 'publish-and-notify' would be misleading on the
+      // payload. Null it out in that case so Make's scenario can read
+      // payload.mode as the source of truth alongside payload.submission.
+      var effectiveMode = (step.submission && !ctx.submission) ? null : ctx.mode;
+      var payload = buildPayload(step, notes, effectiveMode);
+      // Selected submission option ('sales' / 'second-set' / null).
+      // Make's scenario branches on this — it's orthogonal to step.id
+      // (which webhook to fire) and to mode (publish-and-notify, etc.).
+      if (ctx.submission)    payload.submission    = ctx.submission;
+      // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
+      // null). Independent of submission — the user can pick any combo.
+      if (ctx.clickupStatus) payload.clickupStatus = ctx.clickupStatus;
       if (selectedSurveyIds && selectedSurveyIds.length) {
         payload.selectedSurveyIds = selectedSurveyIds;
         // Echo the labels Ops actually saw in the picker so Make
@@ -956,7 +1344,7 @@
       if (icon) icon.innerHTML = SPINNER_SVG;
     } else {
       btn.classList.remove('is-loading');
-      if (icon) icon.innerHTML = CIRCLE_SVG;
+      if (icon) icon.innerHTML = ZAP_SVG;
     }
   }
 
@@ -999,7 +1387,7 @@
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';
       icon.innerHTML = completed ? CHECK_CIRCLE_SVG
-                     : available ? CIRCLE_SVG
+                     : available ? ZAP_SVG
                                  : LOCK_SVG;
       el.appendChild(icon);
 

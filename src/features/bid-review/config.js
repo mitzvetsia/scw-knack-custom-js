@@ -67,6 +67,11 @@
       bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
       bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
       bidStatus:       'field_2550',   // Bid status (text field on bid package, view_3573)
+      bidSow:          'field_2387',   // REL_SOW (connection on bid package, view_3573).
+                                       // Used to gate which bid columns appear in each
+                                       // SOW grid: a bid only shows on a SOW grid when
+                                       // bidSow is empty OR matches the current SOW id —
+                                       // bids tied to a sibling SOW are excluded.
 
       // SOW detail fields (shown in SOW detail column)
       sowQty:          'field_1964',   // quantity on SOW line item

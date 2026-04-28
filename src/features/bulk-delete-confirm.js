@@ -2,21 +2,20 @@
  *
  * Two related tweaks for KTL's bulkOpsControlsDiv:
  *
- *  1. Move #bulkOpsControlsDiv-view_3610's button cluster to the far
- *     right of its container (KTL renders it left-aligned by default).
+ *  1. Move #bulkOpsControlsDiv-view_3610 / -view_3586's button cluster
+ *     to the far right of its container (KTL renders it left-aligned
+ *     by default). Scoped to those two views — other grids keep the
+ *     KTL default placement.
  *
  *  2. Add a confirm-before-delete prompt to the "Delete Selected: N"
- *     button. Per-record deletes elsewhere in the app (connected-records
- *     trash icon) are intentionally one-click; bulk delete is much more
- *     destructive, so an extra "are you sure?" is warranted.
- *
- * Adds the same protection to view_3586's bulk-delete button if it
- * shows up — same control shape, same risk.
+ *     button on EVERY view that exposes one. Per-record deletes
+ *     elsewhere in the app (connected-records trash icon) are
+ *     intentionally one-click; bulk delete is much more destructive
+ *     and warrants an "are you sure?" everywhere it shows up.
  ******************************************************************************/
 (function () {
   'use strict';
 
-  var CONFIRM_VIEWS = ['view_3610', 'view_3586'];
   var STYLE_ID      = 'scw-bulk-delete-confirm-css';
   var EVENT_NS      = '.scwBulkDeleteConfirm';
 
@@ -136,10 +135,10 @@
     if (!btn) return;
     if (btn.disabled) return;
 
-    // One of the views we're protecting?
-    var viewMatch = btn.id.match(/ktl-bulk-delete-selected-(view_\d+)$/);
-    if (!viewMatch) return;
-    if (CONFIRM_VIEWS.indexOf(viewMatch[1]) === -1) return;
+    // Sanity check: only intercept real KTL bulk-delete buttons. The
+    // id-prefix already filtered above; this just guards against stray
+    // matches that don't carry the view-key suffix KTL always appends.
+    if (!/ktl-bulk-delete-selected-view_\d+$/.test(btn.id)) return;
 
     // Already confirmed → let this click flow through to KTL.
     if (btn._scwBdcConfirmed) {

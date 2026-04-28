@@ -1284,14 +1284,22 @@
       SCW.debug('[scw-workflow-stepper] storage event:', e.key, '=', e.newValue);
       var prefix = 'scw-ops-stepper-completed:';
       if (!e.key || e.key.indexOf(prefix) !== 0) return;
-      // Reload on any ops-stepper completion signal, regardless of
-      // which SOW was affected. The previous SOW-id match bailed in
-      // two common cases: (a) the user was looking at the SOW list
-      // (view_3325) on a parent page that doesn't render view_3827,
-      // so getSourceSowId() returned empty; (b) the build page
-      // happened to have a sibling SOW loaded rather than the one
-      // just mark-readied. A blanket reload keeps view_3325's pills
-      // and view_3885's published-proposal rows fresh.
+
+      // Only reload tabs that actually display ops-stepper-affected
+      // data. view_3325 hosts the Ops Review pills; view_3885 hosts
+      // the published-proposal rows. Tabs on unrelated scenes (Project
+      // Calendar, Bid Review for a different project, Photos, etc.)
+      // get this storage event too because localStorage broadcasts
+      // same-origin — but reloading them throws away whatever the user
+      // was doing for no benefit.
+      // The originating tab handles its own local reload, so we don't
+      // need to match SOW ids here — presence of either view is enough.
+      if (!document.getElementById('view_3325') &&
+          !document.getElementById('view_3885')) {
+        SCW.debug('[scw-workflow-stepper] ops-stepper signal — no affected views on this tab, ignoring');
+        return;
+      }
+
       SCW.debug('[scw-workflow-stepper] ops-stepper signal matched — reloading');
       showStaleDataBanner();
       // ~1.2s gives Knack/Make a beat to commit and the user time

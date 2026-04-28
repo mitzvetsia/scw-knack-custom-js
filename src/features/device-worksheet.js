@@ -156,7 +156,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             rowClass: 'scw-row--services',
@@ -331,7 +331,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             hideDetailFields: ['field_1958'],
@@ -342,8 +342,14 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
-            hideDetailFields: ['field_1958'],
-            showProductInDetail: true,
+            // Hide the entire left-column block for assumption rows:
+            // mountingHardware (field_1958) and connectedDevice (field_1957)
+            // are device-specific concepts that don't apply to project-wide
+            // assumption text. Once both are hidden the left column has no
+            // content, so singleColumnDetail collapses the layout into one
+            // column (right-hand fields move into the left section).
+            hideDetailFields: ['field_1958', 'field_1957'],
+            singleColumnDetail: true,
             rowClass: 'scw-row--assumptions',
           },
         },
@@ -446,7 +452,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949', 'field_1953'],
-            label: 'SERVICE',
+            label: '+fee',
             summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
             summarySwapReadOnly: true,
             hideDetail: true,                     // suppress detail sections, keep photos only
@@ -578,7 +584,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949', 'field_1957'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             hideDetail: true,
@@ -659,7 +665,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_2379', 'field_2463', 'field_2370', 'field_2372', 'field_2371'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             hideDetail: true,
@@ -727,7 +733,7 @@
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
             hideFields: ['field_1949'],
-            label: 'SERVICE',
+            label: '+fee',
             descLabel: 'Service',
             descLabelWhenSynthetic: '\u00a0',
             hideProduct: true,
@@ -1324,6 +1330,26 @@ td.${P}-sum-move {
   height: 100%;
   box-sizing: border-box;
   vertical-align: middle;
+}
+/* Label is rendered via ::after off the data-chit-label attribute so
+   the chit element itself has no textContent — that keeps the host
+   td.textContent reading as the bare "Yes" / "No" Knack stored,
+   which KTL's bulk-edit reads from the source cell. */
+.${P}-cabling-chit::after {
+  content: attr(data-chit-label);
+}
+/* Visually hidden but readable by innerText / textContent / jQuery
+   .text() — the original Yes/No span. KTL bulk-edit uses innerText
+   to read the source cell, which skips display:none and visibility:
+   hidden content; off-screen-positioned elements stay readable. */
+.${P}-chit-value {
+  position: absolute !important;
+  width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0,0,0,0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 .${P}-cabling-chit.is-yes {
   background: #059669;
@@ -2622,6 +2648,29 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
     }
+
+    // ── Single-column detail (e.g. Assumptions on view_3610) ──
+    // Move every .scw-ws-field from later sections into the first
+    // section, then remove the now-empty later sections. Run after
+    // hideDetailFields so genuinely-hidden fields stay hidden when
+    // they migrate into the left column.
+    if (rule.singleColumnDetail) {
+      var sectionsEl = card.querySelector('.' + P + '-sections');
+      if (sectionsEl) {
+        var allSections = sectionsEl.querySelectorAll(':scope > .' + P + '-section');
+        if (allSections.length > 1) {
+          var firstSection = allSections[0];
+          for (var sx = 1; sx < allSections.length; sx++) {
+            var src = allSections[sx];
+            var fields = src.querySelectorAll(':scope > .' + P + '-field');
+            for (var fx = 0; fx < fields.length; fx++) {
+              firstSection.appendChild(fields[fx]);
+            }
+            src.parentNode.removeChild(src);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -2938,6 +2987,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
   }
 
+  // Field keys whose stored value is meaningful HTML (not plain text).
+  // Any directEdit / textarea on these fields must seed itself from
+  // innerHTML, not textContent, otherwise opening the input strips
+  // the formatting and a no-change save round-trips the field as
+  // plain text. Currently:
+  //   field_2020 \u2014 Labor Description (per-line-item)
+  //   field_2409 \u2014 Labor Description (DTO scope)
+  var HTML_PRESERVE_FIELDS = { field_2020: true, field_2409: true };
+
+  /** Read a field's editable value, preserving HTML for known rich-
+   *  text fields. Strips Knack's outer <span class="col-N"> wrapper
+   *  so the textarea doesn't see that scaffolding. */
+  function readFieldValue(td, fieldKey) {
+    if (!td) return '';
+    if (!fieldKey || !HTML_PRESERVE_FIELDS[fieldKey]) {
+      return readFieldText(td);
+    }
+    var inner = td.querySelector('span[class^="col-"]');
+    var src = inner || td;
+    return (src.innerHTML || '').replace(/^\s+|\s+$/g, '');
+  }
+
   /** Build an editable field row with a native input or textarea. */
   function buildEditableFieldRow(label, td, fieldKey, opts) {
     opts = opts || {};
@@ -2958,7 +3029,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     valueWrapper.style.padding = '0';
     valueWrapper.style.background = 'transparent';
 
-    var currentVal = readFieldText(td);
+    var currentVal = readFieldValue(td, fieldKey);
     var input;
 
     if (opts.notes) {
@@ -3250,18 +3321,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Helper: extract raw/editable text from a response value.
     // For directEdit inputs the raw value is often more appropriate.
+    // HTML_PRESERVE_FIELDS skip the html-strip so labor descriptions
+    // round-trip through Knack with their formatting intact.
     function editableText(fk) {
       var raw = resp[fk + '_raw'];
       var display = resp[fk];
       var val = raw != null ? raw : display;
       if (val == null) return null;
+      var preserve = !!HTML_PRESERVE_FIELDS[fk];
       if (typeof val === 'object') {
         if (Array.isArray(val)) {
           return val.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
         }
-        return (val && val.identifier) ? val.identifier : (display != null ? String(display).replace(/<[^>]*>/g, '').trim() : null);
+        if (val && val.identifier) return val.identifier;
+        if (display == null) return null;
+        return preserve
+          ? String(display).trim()
+          : String(display).replace(/<[^>]*>/g, '').trim();
       }
-      return String(val).replace(/<[^>]*>/g, '').trim();
+      return preserve
+        ? String(val).trim()
+        : String(val).replace(/<[^>]*>/g, '').trim();
     }
 
     var f = cfg.fields;
@@ -3322,8 +3402,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (txt == null) return;
         var chitTds = card.querySelectorAll('td.' + fk + ', td[data-field-key="' + fk + '"]');
         for (var chi = 0; chi < chitTds.length; chi++) {
-          var chitSpan = chitTds[chi].querySelector('span[style*="display"]');
+          var chitTd = chitTds[chi];
+          // Hidden Yes/No span — was located via [style*="display"]
+          // when we used display:none, now lives at .scw-ws-chit-value.
+          var chitSpan = chitTd.querySelector('.' + P + '-chit-value')
+                      || chitTd.querySelector('span[style*="display"]');
           if (chitSpan) chitSpan.textContent = txt;
+          // Mirror onto the td's data-value too (defensive, see render).
+          chitTd.setAttribute('data-value', txt);
         }
         patched++;
         return;
@@ -3947,9 +4033,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var chit = e.target.closest(CABLING_CHIT_SEL);
     if (!chit) return;
 
-    // Let KTL bulk-edit handle the click when active
+    // Let KTL bulk-edit handle the click when active. .bulkEditSelectSrc
+    // marks the source cell; .bulkEditSelectedRow is on tds in a row that
+    // got picked for bulk ops. Either signal means our toggle would
+    // fight KTL's source-select / apply flow, so bail.
+    //
+    // (Earlier revisions also bailed on .bulkEditTh anywhere in the view,
+    //  but that class is statically present on every column header label
+    //  span and would suppress every click. The two td-level signals
+    //  above are dynamic and reliable.)
     var chitTd = chit.closest('td');
-    if (chitTd && chitTd.classList.contains('bulkEditSelectSrc')) return;
+    if (chitTd && (
+      chitTd.classList.contains('bulkEditSelectSrc') ||
+      chitTd.classList.contains('bulkEditSelectedRow')
+    )) return;
 
     // Block clicks on locked chits (record lock)
     if (chitTd && chitTd.classList.contains(P + '-chit-locked')) return;
@@ -3970,8 +4067,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var srcTd = chit.closest('td[data-scw-cabling-src]')
              || chit.parentNode.querySelector('td[data-scw-cabling-src]');
     if (srcTd) {
-      var hiddenSpan = srcTd.querySelector('span[style*="display"]');
+      var hiddenSpan = srcTd.querySelector('.' + P + '-chit-value')
+                    || srcTd.querySelector('span[style*="display"]');
       if (hiddenSpan) hiddenSpan.textContent = newBool;
+      srcTd.setAttribute('data-value', newBool);
     }
 
     // Save
@@ -4006,7 +4105,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     opts = opts || {};
     // Guard against duplicate injection
     if (td.querySelector('[' + DIRECT_EDIT_ATTR + ']')) return;
-    var currentVal = readFieldText(td);
+    // readFieldValue preserves HTML for HTML_PRESERVE_FIELDS so opening
+    // the input on a rich-text field (e.g. labor description) doesn't
+    // round-trip through textContent and lose formatting.
+    var currentVal = readFieldValue(td, fieldKey);
     td.classList.add(P + '-sum-direct-edit');
 
     // Compute conditional background color from the field value
@@ -4275,11 +4377,26 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!desc.feeTrigger) chitCls += ' is-readonly';
         chit.className = chitCls;
         chit.setAttribute('data-field', desc.key);
-        chit.innerHTML = desc.chitLabel || 'Existing Cabling';
+        // Label rendered via CSS ::after (.scw-ws-cabling-chit::after
+        // pulls content from data-chit-label) — keeping the chit's
+        // innerHTML empty means td.textContent stays the bare "Yes"
+        // or "No" that KTL bulk-edit reads from the source cell.
+        chit.setAttribute('data-chit-label', desc.chitLabel || 'Existing Cabling');
+        // Visually hide the original Yes/No span via off-screen
+        // positioning rather than display:none — KTL's bulk-edit
+        // source reader uses innerText (which skips display:none and
+        // visibility:hidden content), so display:none made the
+        // source-cell value read as empty and downstream rows got
+        // defaulted to No. Off-screen-but-rendered keeps the value
+        // readable to innerText, textContent, and jQuery .text().
         var chitSpan = td.querySelector('span');
-        if (chitSpan) { chitSpan.style.display = 'none'; }
-        td.textContent = '';
-        if (chitSpan) td.appendChild(chitSpan);
+        if (chitSpan) {
+          chitSpan.classList.add(P + '-chit-value');
+          chitSpan.setAttribute('aria-hidden', 'true');
+        }
+        // Mirror the Yes/No on the td as a data attribute too so any
+        // KTL path that reads via [data-value] also lines up.
+        td.setAttribute('data-value', isChitYes ? 'Yes' : 'No');
         td.appendChild(chit);
         td.classList.add(P + '-sum-chip-host');
         td.setAttribute('data-scw-cabling-src', '1');

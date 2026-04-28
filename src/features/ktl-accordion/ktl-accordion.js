@@ -376,28 +376,35 @@
     var viewEl = document.getElementById(viewKey);
     if (!viewEl) return null;
 
+    // Knack model — preferred. Returns the true record count for the
+    // view regardless of which accordion groups happen to be open. The
+    // DOM walks below were undercounting on view_3610 / view_3586
+    // because group-collapse hides closed L1/L2 groups via display:none
+    // and the worksheet-row filter excluded them.
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var data = v && v.model && v.model.data;
+      var models = data && data.models;
+      if (models && typeof models.length === 'number' && models.length > 0) {
+        return models.length;
+      }
+    } catch (e) { /* fall through to DOM */ }
+
     var tbody = viewEl.querySelector('table.kn-table tbody');
     if (tbody) {
-      // If device-worksheet has transformed this view, count only the
-      // worksheet rows (scw-ws-row) — otherwise we'd double-count
-      // because the original Knack <tr> rows are hidden but still present.
-      // Skip rows hidden via inline display:none (e.g. hide-self-row).
+      // If device-worksheet has transformed this view, count worksheet
+      // rows. Don't filter on display:none here — group-collapse
+      // intentionally hides closed-group rows but they still count
+      // toward the view's record total.
       var wsRows = tbody.querySelectorAll('tr.scw-ws-row');
-      if (wsRows.length) {
-        var wsReal = 0;
-        for (var w = 0; w < wsRows.length; w++) {
-          if (wsRows[w].style.display !== 'none') wsReal++;
-        }
-        return wsReal;
-      }
+      if (wsRows.length) return wsRows.length;
 
       var rows = tbody.querySelectorAll('tr');
       var real = 0;
       for (var i = 0; i < rows.length; i++) {
         if (!rows[i].classList.contains('kn-tr-nodata') &&
             !rows[i].classList.contains('kn-table-group') &&
-            !rows[i].classList.contains('kn-table-totals') &&
-            rows[i].style.display !== 'none') {
+            !rows[i].classList.contains('kn-table-totals')) {
           real++;
         }
       }
