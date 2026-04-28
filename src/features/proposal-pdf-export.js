@@ -35,7 +35,12 @@
         // Lives in the Builder, hidden from users via global-styles.js.
         // Dropped from the rendered proposal (skipViews) but is the
         // sole grid in the JSON payload via jsonIncludeViews below.
-        view_3896: true
+        view_3896: true,
+        // Survey-picker grid the Ops stepper modal reads from
+        // ("SITE SURVEY_requests"). Internal-only — it's the data
+        // source for the alt-bid / update-bid survey picker, not
+        // part of the customer-facing proposal.
+        view_3897: true
       },
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
@@ -115,11 +120,15 @@
   function getViewTitle(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return '';
-    var h2 = root.querySelector('.view-header h2');
-    if (h2) return norm(h2.textContent);
-    var h1 = root.querySelector('.view-header h1');
-    if (h1) return norm(h1.textContent);
-    return '';
+    var h = root.querySelector('.view-header h2') || root.querySelector('.view-header h1');
+    if (!h) return '';
+    // Clone so we can strip the KTL hide/show accordion arrow span
+    // (".ktlArrow", text "◀" / "▶") without mutating the live DOM.
+    // Without this the published title leaks the chevron character.
+    var clone = h.cloneNode(true);
+    var arrows = clone.querySelectorAll('.ktlArrow');
+    for (var i = 0; i < arrows.length; i++) arrows[i].remove();
+    return norm(clone.textContent);
   }
 
   function isKnackFilterOrButton(viewId) {
