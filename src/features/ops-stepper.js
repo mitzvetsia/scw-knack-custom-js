@@ -179,9 +179,20 @@
         ]
       },
       webhookKey: 'MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK',
+      // Submission options — surfaced as a radio group inside the notes
+      // modal. Selected value rides on payload.submission so Make can
+      // branch on it. SOW-TBD only offers the Sales submission; the
+      // second-set-of-eyes path is GFE / Final only.
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'sales', label: 'Also submit to Sales' }
+        ]
+      },
       modal: {
         title:       'Publish Quote as SOW only (TBD Labor)',
-        intro:       'Publishing the SOW with placeholder labor figures. Anything to include in the update to Sales?',
+        intro:       'Publishing the SOW with placeholder labor figures.',
         placeholder: 'e.g. SOW finalized, labor pending sub bids',
         submitLabel: 'Publish',
         primaryMode: 'publish-and-notify'
@@ -199,6 +210,14 @@
         ]
       },
       webhookKey: 'MAKE_OPS_PUBLISH_GFE_WEBHOOK',
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'sales',      label: 'Also submit to Sales' },
+          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
+        ]
+      },
       modal: {
         title:       'Publish Quote as GFE',
         intro:       'Publishing as a Good-Faith Estimate (labor included).',
@@ -219,6 +238,14 @@
         ]
       },
       webhookKey: 'MAKE_OPS_PUBLISH_FINAL_WEBHOOK',
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'sales',      label: 'Also submit to Sales' },
+          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
+        ]
+      },
       modal: {
         title:       'Publish Quote as Final',
         intro:       'Publishing the final, fully-priced quote.',
@@ -348,6 +375,31 @@
       '.scw-ops-modal-error {' +
       '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
       '}' +
+
+      // Submission options (radio group rendered between the textarea
+      // and the action buttons for Publish steps).
+      '.scw-ops-modal-submission {' +
+      '  margin-top: 12px;' +
+      '  padding: 10px 12px;' +
+      '  background: #f9fafb;' +
+      '  border: 1px solid #e5e7eb;' +
+      '  border-radius: 6px;' +
+      '}' +
+      '.scw-ops-modal-submission__q {' +
+      '  font-size: 12px; font-weight: 700; color: #374151;' +
+      '  letter-spacing: 0.02em;' +
+      '  margin-bottom: 8px;' +
+      '}' +
+      '.scw-ops-modal-submission__opt {' +
+      '  display: flex; align-items: center; gap: 8px;' +
+      '  padding: 5px 6px; border-radius: 4px;' +
+      '  cursor: pointer; font-size: 13px; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-submission__opt:hover { background: #eef2f6; }' +
+      '.scw-ops-modal-submission__opt input[type="radio"] {' +
+      '  flex-shrink: 0; cursor: pointer; margin: 0;' +
+      '}' +
+
       '.scw-ops-modal-actions {' +
       '  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;' +
       '}' +
@@ -786,6 +838,55 @@
     err.style.display = 'none';
     card.appendChild(err);
 
+    // Submission options — only rendered when the step config supplies
+    // them. Radio group with a "no submission" default plus one entry
+    // per option. Selected value rides on ctx.submission so Make can
+    // branch on it.
+    var submissionRadios = null;
+    var submissionGroupName = '';
+    if (opts.submission && Array.isArray(opts.submission.options) && opts.submission.options.length) {
+      var sub = opts.submission;
+      submissionGroupName = 'scw-ops-submission-' + Math.random().toString(36).slice(2, 9);
+
+      var subWrap = document.createElement('div');
+      subWrap.className = 'scw-ops-modal-submission';
+
+      var subQ = document.createElement('div');
+      subQ.className = 'scw-ops-modal-submission__q';
+      subQ.textContent = sub.question || 'Also submit?';
+      subWrap.appendChild(subQ);
+
+      function addOption(value, label, isDefault) {
+        var optLbl = document.createElement('label');
+        optLbl.className = 'scw-ops-modal-submission__opt';
+        var radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = submissionGroupName;
+        radio.value = value;
+        if (isDefault) radio.checked = true;
+        var span = document.createElement('span');
+        span.textContent = label;
+        optLbl.appendChild(radio);
+        optLbl.appendChild(span);
+        subWrap.appendChild(optLbl);
+      }
+      addOption('', sub.noneLabel || 'No', true);
+      sub.options.forEach(function (o) { addOption(o.value, o.label, false); });
+
+      card.appendChild(subWrap);
+      submissionRadios = subWrap.querySelectorAll('input[type="radio"]');
+    }
+
+    function getSelectedSubmission() {
+      if (!submissionRadios) return null;
+      for (var i = 0; i < submissionRadios.length; i++) {
+        if (submissionRadios[i].checked) {
+          return submissionRadios[i].value || null;
+        }
+      }
+      return null;
+    }
+
     var actions = document.createElement('div');
     actions.className = 'scw-ops-modal-actions';
 
@@ -840,7 +941,8 @@
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
-        mode: opts.primaryMode || null
+        mode: opts.primaryMode || null,
+        submission: getSelectedSubmission()
       });
     });
     if (secondaryBtn) {
@@ -849,7 +951,8 @@
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
-          mode: opts.secondaryMode || null
+          mode: opts.secondaryMode || null,
+          submission: getSelectedSubmission()
         });
       });
     }
@@ -985,10 +1088,21 @@
   }
 
   function runNotesPromptAndFire(step, btn, url, selectedSurveyIds, surveyOptions) {
-    openNotesPromptModal(step.modal, function (notes, ctx) {
+    // Merge step-level submission options onto the modal opts so the
+    // notes-prompt modal can render the radio group when present. Keeps
+    // the data on the step (where the rest of the step config lives)
+    // instead of cluttering step.modal.
+    var modalOpts = $.extend({}, step.modal, {
+      submission: step.submission || null
+    });
+    openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
       setBtnLoading(btn, true);
       var payload = buildPayload(step, notes, ctx.mode);
+      // Selected submission option ('sales' / 'second-set' / null).
+      // Make's scenario branches on this — it's orthogonal to step.id
+      // (which webhook to fire) and to mode (publish-and-notify, etc.).
+      if (ctx.submission) payload.submission = ctx.submission;
       if (selectedSurveyIds && selectedSurveyIds.length) {
         payload.selectedSurveyIds = selectedSurveyIds;
         // Echo the labels Ops actually saw in the picker so Make
