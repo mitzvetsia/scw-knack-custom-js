@@ -930,27 +930,26 @@
   // the time Make's PDF generator runs. Keep this list in sync with
   // the "Tools → Replace" / Iterator step in the Make scenario.
   //
-  // Square-bracket syntax — switched back from __Foo__ at the user's
-  // request after they hit issues with both {{Foo}} (Make resolves it
-  // as a module reference) and __Foo__ (still wasn't substituting).
-  // Note: Make's replace() may treat [...] as a regex character class
-  // depending on the function variant — if a literal replace fails,
-  // try escaping the brackets in the pattern string.
+  // Single-underscore wrap (_Foo_) — the {{...}} form was getting
+  // resolved as Make module references, [...] hit Make's replace-
+  // regex character-class issue, and __Foo__ (double underscore)
+  // also failed to substitute. Single underscores keep the token
+  // visually distinct without colliding with regex / Make syntax.
   //
-  //   [Proposal_ID]       public-facing identifier (e.g. "20260427-10055_v30")
+  //   _Proposal_ID_       public-facing identifier (e.g. "20260427-10055_v30")
   //                       — the human-readable proposal name, NOT the
   //                       24-hex Knack record id (Make has that in
   //                       its own context already).
-  //   [Proposal_URL]      canonical published-proposals details link
-  //   [Expiration_Date]   formatted MM/DD/YYYY
-  //   [Version]           proposal version number
+  //   _Proposal_URL_      canonical published-proposals details link
+  //   _Expiration_Date_   formatted MM/DD/YYYY
+  //   _Version_           proposal version number
   var PROPOSAL_TOKENS = [
     'Proposal_ID',
     'Proposal_URL',
     'Expiration_Date',
     'Version'
   ];
-  function tok(name) { return '[' + name + ']'; }
+  function tok(name) { return '_' + name + '_'; }
 
   // (The previous floating "Proposal __Proposal_ID__" letterhead tag
   // has been removed in favor of a detail-table row above SOW ID, so
