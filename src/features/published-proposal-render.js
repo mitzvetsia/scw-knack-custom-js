@@ -210,7 +210,29 @@
     } catch (e) { return null; }
   }
 
+  // Read field_2728 (count of pending change requests) off the SOW
+  // detail view that's also on this scene (view_3874). Returns 0 if
+  // the view or the field isn't populated yet.
+  var SOW_DETAIL_VIEW = 'view_3874';
+  var CR_COUNT_FIELD  = 'field_2728';
+  function readCrCount() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
+      var attrs = v && v.model && (v.model.attributes
+                  || (v.model.data && v.model.data.attributes));
+      if (!attrs) return 0;
+      var raw = attrs[CR_COUNT_FIELD + '_raw'];
+      var val = (raw != null) ? raw : attrs[CR_COUNT_FIELD];
+      var n = Number(String(val == null ? '' : val).replace(/[^0-9.\-]/g, ''));
+      return isNaN(n) ? 0 : n;
+    } catch (e) { return 0; }
+  }
+
   function shouldShowCta() {
+    // Suppress if the SOW already has change requests queued — the
+    // workflow has moved past the "ask for a survey" stage at that
+    // point, so re-offering the button would just confuse Sales.
+    if (readCrCount() > 0) return false;
     var a = readPublishedProposalAttrs();
     if (!a) return false;
     return isYesValue(a.field_2746)     || isYesValue(a.field_2746_raw)
