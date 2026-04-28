@@ -238,10 +238,11 @@
 
   // When a bulk op affects more than this many rows, dispatch the
   // per-row change events in chunks via requestAnimationFrame so the
-  // page stays responsive. Below this threshold we stay fully
-  // synchronous (cheap + no async flicker).
-  var BULK_SYNC_THRESHOLD = 50;
-  var BULK_CHUNK_SIZE     = 25;
+  // page stays responsive. Set deliberately low — KTL's own change
+  // handlers do O(N) DOM work per event, so even a 30-row group can
+  // produce multi-second INP if dispatched synchronously.
+  var BULK_SYNC_THRESHOLD = 4;
+  var BULK_CHUNK_SIZE     = 8;
 
   // Fire 'change' on each target checkbox (so KTL's internal bulk-edit
   // state updates). `_bulkOp` stays true for the entire run so our own
@@ -303,6 +304,10 @@
 
       // Override native master click with fast bulk-set.
       // e.stopImmediatePropagation() prevents KTL's slow per-row handler.
+      // Heavy work (syncKtlBulkState + KTL change events) is deferred
+      // to the next frame so the click finishes painting first — that's
+      // what bounds INP. The .checked = … assignment is the only thing
+      // the user actually needs to see paint synchronously.
       (function (master, vKey) {
         $(master).off('click.scwSaMaster').on('click.scwSaMaster', function (e) {
           e.stopImmediatePropagation();
@@ -317,12 +322,14 @@
             cbs[k].checked = shouldCheck;
           }
           master.indeterminate = false;
-          syncKtlBulkState(el);
 
-          // Notify KTL — chunked above the threshold so the page stays
-          // responsive on large views. `_bulkOp` is cleared inside
-          // dispatchChangeEvents when the last chunk finishes.
-          dispatchChangeEvents(cbs);
+          requestAnimationFrame(function () {
+            syncKtlBulkState(el);
+            // Notify KTL — chunked above the threshold so the page stays
+            // responsive on large views. `_bulkOp` is cleared inside
+            // dispatchChangeEvents when the last chunk finishes.
+            dispatchChangeEvents(cbs);
+          });
         });
 
         // Sync master state + header checkbox visibility on any row checkbox change
@@ -419,16 +426,22 @@
           }
           checkbox.indeterminate = false;
 
-          var vEl = headerRow.closest('[id^="view_"]');
-          if (vEl) {
-            syncKtlBulkState(vEl);
-            var nativeMaster = vEl.querySelector('thead input.masterSelector');
-            if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
-          }
-
-          // Notify KTL — chunked above threshold so large groups don't
-          // lock the page. `_bulkOp` is cleared when the last chunk fires.
-          dispatchChangeEvents(targets);
+          // Defer everything else past the next paint. The synchronous
+          // .checked = … assignment above gives the user immediate
+          // visual feedback; syncKtlBulkState + KTL change-event
+          // dispatch are O(N × tds) and were responsible for the
+          // multi-second INP measured on MDF groups.
+          requestAnimationFrame(function () {
+            var vEl = headerRow.closest('[id^="view_"]');
+            if (vEl) {
+              syncKtlBulkState(vEl);
+              var nativeMaster = vEl.querySelector('thead input.masterSelector');
+              if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
+            }
+            // Notify KTL — chunked above threshold so large groups don't
+            // lock the page. `_bulkOp` is cleared when the last chunk fires.
+            dispatchChangeEvents(targets);
+          });
         });
 
         var parentTable = headerRow.closest('table');
