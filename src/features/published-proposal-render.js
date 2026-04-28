@@ -19,8 +19,9 @@
     style.textContent = [
       '/* Hide the entire detail view */',
       '#' + VIEW_ID + ' { display: none !important; }',
-      '/* Hide breadcrumb trail when this scene is active */',
-      'body.scw-hide-crumbtrail .kn-crumbtrail { display: none !important; }',
+      '/* Hide breadcrumb trail + view_3874 when this scene is active */',
+      'body.scw-hide-crumbtrail .kn-crumbtrail,',
+      'body.scw-hide-crumbtrail #view_3874 { display: none !important; }',
       '',
       '#' + IFRAME_ID + ' {',
       '  width: 100%; border: none;',
