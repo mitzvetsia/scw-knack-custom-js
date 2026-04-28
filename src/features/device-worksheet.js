@@ -1331,6 +1331,13 @@ td.${P}-sum-move {
   box-sizing: border-box;
   vertical-align: middle;
 }
+/* Label is rendered via ::after off the data-chit-label attribute so
+   the chit element itself has no textContent — that keeps the host
+   td.textContent reading as the bare "Yes" / "No" Knack stored,
+   which KTL's bulk-edit reads from the source cell. */
+.${P}-cabling-chit::after {
+  content: attr(data-chit-label);
+}
 .${P}-cabling-chit.is-yes {
   background: #059669;
   color: #ffffff;
@@ -4338,11 +4345,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (!desc.feeTrigger) chitCls += ' is-readonly';
         chit.className = chitCls;
         chit.setAttribute('data-field', desc.key);
-        chit.innerHTML = desc.chitLabel || 'Existing Cabling';
+        // Label rendered via CSS ::after (.scw-ws-cabling-chit::after
+        // pulls content from data-chit-label) — keeping the chit's
+        // innerHTML empty means td.textContent stays the bare "Yes"
+        // or "No" that KTL bulk-edit reads from the source cell.
+        chit.setAttribute('data-chit-label', desc.chitLabel || 'Existing Cabling');
+        // Hide the original Yes/No text but keep it in the DOM so
+        // textContent still returns the Knack-stored value cleanly.
         var chitSpan = td.querySelector('span');
-        if (chitSpan) { chitSpan.style.display = 'none'; }
-        td.textContent = '';
-        if (chitSpan) td.appendChild(chitSpan);
+        if (chitSpan) chitSpan.style.display = 'none';
         td.appendChild(chit);
         td.classList.add(P + '-sum-chip-host');
         td.setAttribute('data-scw-cabling-src', '1');
