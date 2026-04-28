@@ -66,7 +66,7 @@
       '  border-bottom: 1px solid #e2e8f0;' +
       '}' +
       '.scw-mdf-summary-table {' +
-      '  width: 100%; max-width: 920px;' +
+      '  width: 100%;' +
       '  border-collapse: collapse;' +
       '  font: 400 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: #1e293b;' +
