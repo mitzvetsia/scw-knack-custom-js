@@ -151,7 +151,11 @@
           }
         }
       } catch (e) { /* fall through to original fetch */ }
-      return origFetch.apply(this, arguments);
+      // Pass the (possibly-rewritten) init explicitly. Using
+      // origFetch.apply(this, arguments) here would ship the original
+      // arguments[1] reference instead of our rewrite, which is the
+      // bug that let the boolean body through previously.
+      return origFetch.call(this, input, init);
     };
     try { window.fetch.__scwChitWrapped = true; } catch (e) {}
   }
