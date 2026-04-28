@@ -206,6 +206,14 @@
     setTimeout(resizeIframe, 1000);
     setTimeout(resizeIframe, 3000);
 
+    // Patch the expiration-date cell from the live record (field_2659)
+    // — the HTML stored in field_2680 is a snapshot from the moment of
+    // publish, but the published-proposal record's expiration date can
+    // be edited after the fact. Show the current value, not the
+    // snapshot.
+    setTimeout(function () { patchExpirationDate(iframe); }, 250);
+    setTimeout(function () { patchExpirationDate(iframe); }, 1200);
+
     // Inject the CTA bar inside the iframe, just above the first
     // .view-title — typically "Proposed Solution" — so it sits between
     // the project-address detail row and the line-items table.
@@ -229,6 +237,58 @@
     if (v === true) return true;
     if (typeof v === 'string') return /^(yes|true)$/i.test(v.trim());
     return false;
+  }
+
+  // ── Live expiration date (field_2659) ──────────────────────
+  // The published HTML in field_2680 is a snapshot from publish-time
+  // and bakes in whatever expiration date was on the SOW then. After
+  // publish, the proposal record's expiration (field_2659) can be
+  // edited — those edits should reflect on the page without
+  // re-publishing the whole quote. Find the "Expiration Date" row in
+  // the iframe's detail-table and overwrite its value cell with the
+  // record's current field_2659 value.
+  var EXPIRATION_FIELD = 'field_2659';
+
+  function readLiveExpirationDate() {
+    var attrs = readPublishedProposalAttrs();
+    if (!attrs) return '';
+    var raw = attrs[EXPIRATION_FIELD + '_raw'];
+    if (raw && typeof raw === 'object') {
+      // Knack date fields can come back as { date, date_formatted, … }
+      if (raw.date_formatted) return String(raw.date_formatted).trim();
+      if (raw.date)            return String(raw.date).trim();
+    }
+    var v = attrs[EXPIRATION_FIELD];
+    if (v == null) return '';
+    return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function patchExpirationDate(iframe) {
+    if (!iframe) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+
+    var live = readLiveExpirationDate();
+    if (!live) return;
+
+    // Already patched? Skip — re-runs are idempotent.
+    if (doc.body.querySelector('.detail-value[data-scw-live-exp]')) return;
+
+    var labels = doc.body.querySelectorAll('td.detail-label');
+    for (var i = 0; i < labels.length; i++) {
+      var labelText = (labels[i].textContent || '').trim().toLowerCase();
+      // Match "Expiration Date" / "Expires" — anything that starts
+      // with "expir" is the expiration label.
+      if (!/^expir/.test(labelText)) continue;
+      var valueCell = labels[i].nextElementSibling;
+      if (valueCell && valueCell.classList && valueCell.classList.contains('detail-value')) {
+        valueCell.textContent = live;
+        valueCell.setAttribute('data-scw-live-exp', '1');
+      }
+      break;
+    }
   }
 
   function readPublishedProposalAttrs() {
