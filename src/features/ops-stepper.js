@@ -620,12 +620,26 @@
         step.id === 'publish-gfe' ||
         step.id === 'publish-final' ||
         step.id === 'publish-proposal') {
-      payload.publishAsTbd = shouldPublishAsTbd();
+
+      // Per-step TBD treatment for the publish html. The three publish
+      // variants force their own behavior; everyone else falls back to
+      // the field_2725-based default that lives inside proposal-pdf-export.
+      //   publish-sow-tbd → ALWAYS TBD (SOW-only quote, labor pending)
+      //   publish-gfe     → NEVER TBD  (Good-Faith Estimate, labor shown)
+      //   publish-final   → NEVER TBD  (Final, labor shown)
+      var tbdMode;
+      if (step.id === 'publish-sow-tbd') tbdMode = true;
+      else if (step.id === 'publish-gfe' || step.id === 'publish-final') tbdMode = false;
+      else tbdMode = undefined;   // default — read field_2725
+
+      payload.publishAsTbd = (tbdMode === true)
+        || (tbdMode === undefined && shouldPublishAsTbd());
+
       try {
         // Pass the proposal scene explicitly — more reliable than
         // auto-detect, and the Ops stepper is only active on scene_1096.
         var pub = window.SCW && SCW.pdfExport && SCW.pdfExport.buildPublishPayload
-          ? SCW.pdfExport.buildPublishPayload('scene_1096')
+          ? SCW.pdfExport.buildPublishPayload('scene_1096', { tbdMode: tbdMode })
           : null;
         if (pub) {
           // Flatten publish fields onto the top-level payload. Don't
@@ -639,6 +653,14 @@
             var pk = PUBLISH_KEYS[pi];
             if (pub[pk] !== undefined) payload[pk] = pub[pk];
           }
+          // GFE callout — big bold panel injected at the top of <body>
+          // so it's the first thing the reader sees on the published
+          // quote. publishAsGfe is set on the payload so Make can also
+          // gate scenario branches on it without parsing the html.
+          if (step.id === 'publish-gfe' && typeof payload.html === 'string') {
+            payload.publishAsGfe = true;
+            payload.html = injectGfeCallout(payload.html);
+          }
         } else {
           console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
             'SCW.pdfExport not ready or scene not configured. html/json ' +
@@ -649,6 +671,45 @@
       }
     }
     return payload;
+  }
+
+  // ── GFE callout ──────────────────────────────────────────
+  // Prepend a big, bold disclaimer panel to the published-quote html.
+  // Inserted right after <body> so it's visually first (above any
+  // header / cover / TOC content the proposal template renders).
+  // Inline-styled because the published html is consumed by external
+  // tools / PDF renderers that may strip or remap class names.
+  function injectGfeCallout(html) {
+    if (!html || typeof html !== 'string') return html;
+    var calloutText = 'This is a Good Faith Estimate based on the ' +
+      'information provided. Final pricing may change following a Site ' +
+      'Survey, including but not limited to adjustments for site ' +
+      'conditions, access requirements, or changes to project scope.';
+    var callout =
+      '<div style="' +
+        'margin: 0 0 18px;' +
+        'padding: 16px 20px;' +
+        'background: #fef3c7;' +
+        'border: 2px solid #d97706;' +
+        'border-radius: 8px;' +
+        'color: #78350f;' +
+        'font: 700 15px/1.4 system-ui, -apple-system, sans-serif;' +
+        'text-align: center;' +
+      '">' +
+        '<div style="' +
+          'font-size: 12px; font-weight: 800; letter-spacing: 0.08em;' +
+          'text-transform: uppercase; margin-bottom: 6px; opacity: 0.85;' +
+        '">Good Faith Estimate</div>' +
+        calloutText +
+      '</div>';
+    // Inject after <body ...> — handles both `<body>` and `<body class="…">`.
+    var bodyOpen = html.match(/<body\b[^>]*>/i);
+    if (bodyOpen) {
+      var idx = bodyOpen.index + bodyOpen[0].length;
+      return html.slice(0, idx) + callout + html.slice(idx);
+    }
+    // Fallback: if the html is a fragment with no <body>, just prepend.
+    return callout + html;
   }
 
   // ── Notes prompt modal ───────────────────────────────────

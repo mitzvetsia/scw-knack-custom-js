@@ -39,13 +39,18 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // can be split off to its own scenario later without touching code.
   // Shown only when field_2706 = "Yes" (survey already requested).
   MAKE_OPS_UPDATE_MATCHING_BID_WEBHOOK:  "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
-  // Three publish variants. Each fires the same publish payload as the
-  // legacy MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK; Make differentiates by the
-  // step.id field on the body so the scenario can format the published
-  // quote with TBD labor / GFE labor / final labor figures.
-  MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK:      "https://hook.us1.make.com/PLACEHOLDER_PUBLISH_SOW_TBD",
-  MAKE_OPS_PUBLISH_GFE_WEBHOOK:          "https://hook.us1.make.com/PLACEHOLDER_PUBLISH_GFE",
-  MAKE_OPS_PUBLISH_FINAL_WEBHOOK:        "https://hook.us1.make.com/PLACEHOLDER_PUBLISH_FINAL",
+  // Three publish variants — all hit the same Make scenario, which
+  // branches on payload.stepId. The client pre-formats the html field
+  // per variant before sending:
+  //   publish-sow-tbd → labor surfaces stamped "TBD"
+  //   publish-gfe     → big "Good Faith Estimate" callout prepended;
+  //                     labor figures shown
+  //   publish-final   → unchanged html; labor figures shown
+  // Kept as three distinct keys so any one can be split off to its
+  // own scenario later without touching the JS.
+  MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK:      "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
+  MAKE_OPS_PUBLISH_GFE_WEBHOOK:          "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
+  MAKE_OPS_PUBLISH_FINAL_WEBHOOK:        "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   // Legacy single-publish webhook — kept so any external integrations
   // linking to this URL keep working until they're migrated to one of
   // the three variants above. Not referenced by ops-stepper after the

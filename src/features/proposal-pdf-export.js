@@ -533,7 +533,8 @@
   // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
-  function scrapeAllViews(cfg) {
+  function scrapeAllViews(cfg, opts) {
+    opts = opts || {};
     var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
 
     var sceneEl = document.getElementById('kn-' + cfg.sceneId);
@@ -584,7 +585,15 @@
     // Stamp TBD into every install-labor surface if the bid hasn't
     // been validated (field_2725 != Yes). Only applies to proposal
     // payloads — subcontractor bids have different semantics.
-    if (cfg.payloadType === 'proposal' && shouldPublishAsTbd()) {
+    //
+    // opts.tbdMode lets the caller override the field_2725 default:
+    //   true  → force TBD (e.g. publish-sow-tbd from ops-stepper)
+    //   false → force NO TBD (e.g. publish-gfe / publish-final)
+    //   undefined → fall back to shouldPublishAsTbd() (field_2725 read)
+    var tbdActive = (opts.tbdMode === true)  ? true
+                  : (opts.tbdMode === false) ? false
+                  : shouldPublishAsTbd();
+    if (cfg.payloadType === 'proposal' && tbdActive) {
       applyTbdToPublishPayload(result);
     }
 
@@ -1703,13 +1712,16 @@
     return null;
   }
 
-  function buildPublishPayload(sceneId) {
+  function buildPublishPayload(sceneId, opts) {
+    opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
     if (!cfg) {
       console.warn('[SCW pdfExport] buildPublishPayload: no matching SCENES entry for sceneId=' + sceneId + ' (auto-detect also failed).');
       return null;
     }
-    var payload = scrapeAllViews(cfg);
+    // opts.tbdMode (true | false | undefined) overrides the
+    // field_2725-based default inside scrapeAllViews.
+    var payload = scrapeAllViews(cfg, opts);
     if (!payload.views.length) {
       console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
       return null;
