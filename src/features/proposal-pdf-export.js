@@ -855,6 +855,51 @@
     }
   }
 
+  // ── Proposal token contract ──────────────────────────────────
+  // Tokens that don't exist when this client builds the HTML (the
+  // published-proposal record hasn't been minted yet) but DO exist by
+  // the time Make's PDF generator runs. Keep this list in sync with
+  // the "Tools → Replace" / Iterator step in the Make scenario.
+  //
+  //   {{PROPOSAL_NAME}}     display name (e.g. "20260427-10055_v30")
+  //   {{PROPOSAL_ID}}       24-hex Knack record id
+  //   {{PROPOSAL_URL}}      canonical published-proposals details link
+  //   {{EXPIRATION_DATE}}   formatted MM/DD/YYYY
+  //   {{PUBLISHED_DATE}}    when Make ran (formatted)
+  //   {{VERSION}}           proposal version number
+  //
+  // Make's "Replace" step should match the token text literally — no
+  // regex needed. If a token is intentionally missing from the record
+  // (e.g. version number on a draft), Make should replace it with an
+  // empty string so the placeholder doesn't leak into the PDF.
+  var PROPOSAL_TOKENS = [
+    'PROPOSAL_NAME',
+    'PROPOSAL_ID',
+    'PROPOSAL_URL',
+    'EXPIRATION_DATE',
+    'PUBLISHED_DATE',
+    'VERSION'
+  ];
+
+  // Small right-aligned metadata block injected at the top of <body>.
+  // Sits in the same flow as the SCW logo + project title; tokens are
+  // replaced by Make after the proposal record is created. Inline-
+  // styled so external PDF renderers don't need any of our class CSS.
+  function buildProposalMetaHtml() {
+    return (
+      '<div class="proposal-meta" style="' +
+        'text-align:right; font-size:11px; color:#475569;' +
+        'margin:0 0 6px 0; padding:0;' +
+      '">' +
+        '<div style="font-weight:700; color:#163C6E;">' +
+          'Proposal {{PROPOSAL_NAME}}' +
+        '</div>' +
+        '<div>Expires: {{EXPIRATION_DATE}}</div>' +
+        '<div>Generated: {{PUBLISHED_DATE}}</div>' +
+      '</div>'
+    );
+  }
+
   function buildPdfHtml(payload) {
     if (!payload.views.length) return '';
 
@@ -862,11 +907,16 @@
 
     html.push('<!DOCTYPE html>');
     html.push('<html><head><meta charset="utf-8">');
-    html.push('<title>Proposal</title>');
+    // Document title carries the proposal display name token so Make
+    // gets a nice tab/file name (e.g. "20260427-10055_v30") after the
+    // record is created.
+    html.push('<title>{{PROPOSAL_NAME}}</title>');
     html.push('<style>');
     html.push(getPdfCss());
     html.push('</style>');
     html.push('</head><body>');
+    // Proposal metadata header — tokens, replaced by Make.
+    html.push(buildProposalMetaHtml());
 
     // Split views into project vs. recurring vs. report
     var projectViews = [];
@@ -1862,7 +1912,13 @@
       grandTotal:        summary.grandTotal,
       expirationDate:    summary.expirationDate,
       html:              htmlStr,
-      json:              jsonSnapshot
+      json:              jsonSnapshot,
+      // Token contract — Make's "Tools → Replace" step should run
+      // through this list and substitute each {{TOKEN}} occurrence in
+      // .html with the post-create record's matching field. Listed on
+      // the payload so the Make scenario doesn't have to keep its own
+      // hard-coded copy.
+      tokens:            PROPOSAL_TOKENS
     };
   }
 
@@ -1880,7 +1936,11 @@
       return payload;
     },
     getCss: getPdfCss,
-    buildPublishPayload: buildPublishPayload
+    buildPublishPayload: buildPublishPayload,
+    // Exposed so consumers (or a future Make-replacement helper that
+    // also runs client-side, e.g. for previewing) can introspect the
+    // token list without poking at internals.
+    PROPOSAL_TOKENS: PROPOSAL_TOKENS
   };
 
   // ══════════════════════════════════════════════════════════════
