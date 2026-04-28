@@ -105,12 +105,25 @@
       return origOpen.apply(this, arguments);
     };
     XMLHttpRequest.prototype.send = function (body) {
-      if (isWriteMethod(this.__scwChitMethod) && isKnackRecordUrl(this.__scwChitUrl)) {
+      var write = isWriteMethod(this.__scwChitMethod);
+      var rec   = isKnackRecordUrl(this.__scwChitUrl);
+      if (write && rec) {
+        try {
+          console.log('[scw-chit-fix] XHR catch',
+            this.__scwChitMethod, this.__scwChitUrl,
+            'body:', body);
+        } catch (e) {}
         var coerced = coerceBody(body);
-        if (coerced !== body) body = coerced;
+        if (coerced !== body) {
+          try {
+            console.log('[scw-chit-fix] XHR rewrote body →', coerced);
+          } catch (e) {}
+          body = coerced;
+        }
       }
       return origSend.call(this, body);
     };
+    try { XMLHttpRequest.prototype.send.__scwChitWrapped = true; } catch (e) {}
   }
 
   // ── 3. window.fetch (covers fetch-based callers) ────────────
@@ -123,9 +136,16 @@
                   || (input && input.method)
                   || 'GET';
         if (isWriteMethod(method) && isKnackRecordUrl(url)) {
+          try {
+            console.log('[scw-chit-fix] fetch catch', method, url,
+              'body:', init && init.body);
+          } catch (e) {}
           if (init && typeof init.body === 'string') {
             var coerced = coerceBody(init.body);
             if (coerced !== init.body) {
+              try {
+                console.log('[scw-chit-fix] fetch rewrote body →', coerced);
+              } catch (e) {}
               init = Object.assign({}, init, { body: coerced });
             }
           }
@@ -133,5 +153,6 @@
       } catch (e) { /* fall through to original fetch */ }
       return origFetch.apply(this, arguments);
     };
+    try { window.fetch.__scwChitWrapped = true; } catch (e) {}
   }
 })();
