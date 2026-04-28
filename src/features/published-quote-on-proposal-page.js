@@ -24,11 +24,15 @@
     SCW.publishedQuoteInfo.renderInto(host, proposal, {
       variant:   'regular',
       emptyText: 'No published quotes',
-      // Use the in-row "View Published Proposal" link when available
-      // (the kn-link-page anchor) — Sales' page wants the canonical
-      // Knack-routed details view, not the modular hash route the
-      // SOW grid uses.
-      linkBuilder: function (p) { return p.viewLink || ''; }
+      // Prefer the in-row "View Published Proposal" link (canonical
+      // Knack-routed details page) when present, but always fall back
+      // to the published-proposals hash route built from recordId so
+      // the name is never a dead string.
+      linkBuilder: function (p) {
+        if (p.viewLink) return p.viewLink;
+        if (p.recordId) return '#published-proposals/sow-published-proposal-details/' + p.recordId;
+        return '';
+      }
     });
   }
 
