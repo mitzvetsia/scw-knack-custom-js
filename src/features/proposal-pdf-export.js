@@ -700,6 +700,35 @@
       applyTbdToPublishPayload(result);
     }
 
+    // Inject "Proposal ID" detail row right above SOW ID. Mirrors the
+    // existing SOW ID row visually — same label/value cells in the
+    // detail-table — and lets Make's Replace step swap the token in
+    // post-create. Only fires on proposal payloads since subcontractor
+    // bids don't carry a published-proposal record at all.
+    if (cfg.payloadType === 'proposal') {
+      for (var pi = 0; pi < result.views.length; pi++) {
+        var dv = result.views[pi];
+        if (dv.type !== 'detail' || !dv.fields || !dv.fields.length) continue;
+        var sowIdx = -1;
+        for (var fi = 0; fi < dv.fields.length; fi++) {
+          if (/sow\s*id/i.test(dv.fields[fi].label || '')) { sowIdx = fi; break; }
+        }
+        if (sowIdx === -1) continue;
+        // Don't double-insert if a previous run already added the row.
+        var alreadyHas = false;
+        for (var ai = 0; ai < dv.fields.length; ai++) {
+          if (/proposal\s*id/i.test(dv.fields[ai].label || '')) { alreadyHas = true; break; }
+        }
+        if (alreadyHas) break;
+        dv.fields.splice(sowIdx, 0, {
+          label: 'Proposal ID',
+          value: tok('Proposal_ID'),
+          valueHtml: tok('Proposal_ID')
+        });
+        break;
+      }
+    }
+
     return result;
   }
 
@@ -724,7 +753,12 @@
           }
           html.push('<tr>');
           html.push('<td class="detail-label">' + esc(f.label) + '</td>');
-          html.push('<td class="detail-value">' + esc(f.value) + '</td>');
+          // Prefer valueHtml so structural markup like <br> survives —
+          // Knack stores the project address with a real line break
+          // between street and city/state, and esc(f.value) was
+          // collapsing it to a single line.
+          var detailValue = f.valueHtml || esc(f.value);
+          html.push('<td class="detail-value">' + detailValue + '</td>');
           html.push('</tr>');
         }
       }
@@ -896,17 +930,19 @@
   // the time Make's PDF generator runs. Keep this list in sync with
   // the "Tools → Replace" / Iterator step in the Make scenario.
   //
-  // Square-bracket syntax (NOT double-curly) — Make's UI auto-resolves
-  // {{...}} as references to other modules' output, which made the
-  // {{TOKEN}} form unworkable inside a static HTML string.
+  // Double-underscore syntax (NOT {{...}} or [...]) — Make's UI
+  // auto-resolves {{...}} as references to other modules' output, and
+  // its replace() treats [...] as a regex character class. Underscores
+  // are never special in regex, HTML, or Make formulas, so the literal
+  // matches whatever Make sends to the replace step.
   //
-  //   [Proposal_ID]       public-facing identifier (e.g. "20260427-10055_v30")
-  //                       — this is the human-readable proposal name,
-  //                       NOT the 24-hex Knack record id (Make has that
-  //                       in its own context already).
-  //   [Proposal_URL]      canonical published-proposals details link
-  //   [Expiration_Date]   formatted MM/DD/YYYY
-  //   [Version]           proposal version number
+  //   __Proposal_ID__       public-facing identifier (e.g. "20260427-10055_v30")
+  //                         — the human-readable proposal name, NOT
+  //                         the 24-hex Knack record id (Make has that
+  //                         in its own context already).
+  //   __Proposal_URL__      canonical published-proposals details link
+  //   __Expiration_Date__   formatted MM/DD/YYYY
+  //   __Version__           proposal version number
   //
   // Make's "Replace" step should match the token text literally — no
   // regex needed. If a token is intentionally missing from the record
@@ -918,43 +954,11 @@
     'Expiration_Date',
     'Version'
   ];
+  function tok(name) { return '__' + name + '__'; }
 
-  // Inline "Proposal <id>" tag — anchored next to the SCW logo so the
-  // proposal identifier reads as part of the document letterhead.
-  // Tokens are replaced by Make after the proposal record is created.
-  function buildProposalMetaHtml() {
-    return (
-      '<div class="proposal-meta" style="' +
-        'text-align:right; font-size:12px; font-weight:700;' +
-        'color:#163C6E; margin:4px 0 6px 0; padding:0;' +
-      '">Proposal [Proposal_ID]</div>'
-    );
-  }
-
-  // Anchor the meta tag to the first <img> in the document — that's
-  // the SCW logo rendered by the first detail view. Inserting after
-  // its closing </div> drops the meta tag right beneath the logo
-  // (and above the project-name heading) without splitting an
-  // element. Falls back to the body-open if no <img> is present.
-  function injectProposalMeta(html) {
-    if (!html || typeof html !== 'string') return html;
-    var meta = buildProposalMetaHtml();
-    var imgMatch = html.match(/<img\b[^>]*>/i);
-    if (imgMatch) {
-      var imgEnd = imgMatch.index + imgMatch[0].length;
-      var divCloseIdx = html.indexOf('</div>', imgEnd);
-      if (divCloseIdx >= 0) {
-        var insertAt = divCloseIdx + '</div>'.length;
-        return html.slice(0, insertAt) + meta + html.slice(insertAt);
-      }
-    }
-    var bodyOpen = html.match(/<body\b[^>]*>/i);
-    if (bodyOpen) {
-      var bIdx = bodyOpen.index + bodyOpen[0].length;
-      return html.slice(0, bIdx) + meta + html.slice(bIdx);
-    }
-    return meta + html;
-  }
+  // (The previous floating "Proposal __Proposal_ID__" letterhead tag
+  // has been removed in favor of a detail-table row above SOW ID, so
+  // the buildHtml flow no longer needs a post-process injector for it.)
 
   function buildPdfHtml(payload) {
     if (!payload.views.length) return '';
@@ -966,7 +970,7 @@
     // Document title carries the proposal id token so Make gets a nice
     // tab/file name (e.g. "20260427-10055_v30") after the record is
     // created.
-    html.push('<title>[Proposal_ID]</title>');
+    html.push('<title>' + tok('Proposal_ID') + '</title>');
     html.push('<style>');
     html.push(getPdfCss());
     html.push('</style>');
@@ -1036,10 +1040,7 @@
     }
 
     html.push('</body></html>');
-    // Anchor the proposal-id tag next to the logo (first <img>) so it
-    // reads as part of the letterhead rather than a floating header
-    // block above the GFE callout.
-    return injectProposalMeta(html.join('\n'));
+    return html.join('\n');
   }
 
   function hasSectionContent(section) {
