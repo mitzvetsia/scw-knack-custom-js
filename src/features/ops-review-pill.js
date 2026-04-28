@@ -57,6 +57,14 @@
   var CELL_CLASS   = 'scw-ops-review-cell';
   var PROCESSED    = 'data-scw-ops-review';
 
+  // Per-row margin warning. Surfaced inside the Ops Review host cell
+  // (between the pill and the published-proposal block) so reviewers
+  // see it alongside the next-step affordance for that SOW.
+  var MARGIN_FIELD       = 'field_2749';   // SOW margin %
+  var MARGIN_THRESHOLD   = 10;             // % — anything below trips the warning
+  var MARGIN_WARNING_MSG = 'Margin is low — consider adding base ' +
+    'project management & small project mobilization costs service item.';
+
   // ── Pending-step flags ──────────────────────────────────
   // ops-stepper.js (on the Ops proposal tab) writes
   //   scw-ops-stepper-pending:<sowId> = {"stepId":"...","timestamp":...}
@@ -177,6 +185,22 @@
       // Per-row published-proposal block CSS lives in the shared
       // published-quote-info.js (.scw-pq-info / --compact / etc.). This
       // file only contains the SOW-grid-specific styles below.
+
+      /* Low-margin warning — sits between the pill and the published
+         proposal block. Amber chrome matches the existing card-header
+         warning vocabulary (#b45309). Compact line-height so the cell
+         doesn't grow too tall on long rows. */
+      '.scw-ops-margin-warning {' +
+      '  display: flex; align-items: flex-start; gap: 6px;' +
+      '  margin-top: 8px; padding: 6px 8px;' +
+      '  background: #fef3c7; border: 1px solid #d97706;' +
+      '  border-radius: 6px; color: #78350f;' +
+      '  font: 600 10.5px/1.35 system-ui, sans-serif;' +
+      '  text-align: left;' +
+      '}' +
+      '.scw-ops-margin-warning svg {' +
+      '  flex: 0 0 auto; margin-top: 1px; color: #b45309;' +
+      '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -340,6 +364,39 @@
     return isNaN(n) ? 0 : n;
   }
   function readNote(tr) { return readText(tr, NOTE_FIELD); }
+
+  // Returns the margin as a percent (0-100). Knack percent fields can
+  // be stored as a fraction (0.095) or as a percent (9.5) depending on
+  // how the field was configured; normalize so the threshold check is
+  // always against a percent.
+  function readMarginPct(tr) {
+    var raw = readText(tr, MARGIN_FIELD);
+    if (raw === '' || raw == null) return NaN;
+    var n = toNum(raw);
+    if (!isFinite(n)) return NaN;
+    // Fraction-stored field → convert to percent. 1.5 cap leaves enough
+    // headroom that "100%" stored as 100 isn't accidentally interpreted
+    // as a fraction.
+    if (n > 0 && n <= 1.5) n = n * 100;
+    return n;
+  }
+
+  function buildMarginWarning() {
+    var box = document.createElement('div');
+    box.className = 'scw-ops-margin-warning';
+    box.setAttribute('role', 'alert');
+    box.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+      '<line x1="12" y1="9" x2="12" y2="13"/>' +
+      '<line x1="12" y1="17" x2="12.01" y2="17"/>' +
+      '</svg>' +
+      '<span></span>';
+    box.querySelector('span').textContent = MARGIN_WARNING_MSG;
+    return box;
+  }
 
   function resolveStep(tr) {
     var fields = {
@@ -575,6 +632,14 @@
     }
 
     hostTd.appendChild(pill);
+
+    // Margin warning — fires whenever field_2749 < 10%. Sits between
+    // the pill and the proposal block so reviewers see it next to the
+    // next-step affordance for that SOW.
+    var marginPct = readMarginPct(tr);
+    if (isFinite(marginPct) && marginPct < MARGIN_THRESHOLD) {
+      hostTd.appendChild(buildMarginWarning());
+    }
 
     // Per-row published-proposal info (view_3885 → matched via field_2666).
     // Rendered regardless of step state so a published proposal shows
