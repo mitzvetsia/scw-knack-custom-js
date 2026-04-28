@@ -2967,6 +2967,28 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return (td.textContent || '').replace(/[\u00a0]/g, ' ').trim();
   }
 
+  // Field keys whose stored value is meaningful HTML (not plain text).
+  // Any directEdit / textarea on these fields must seed itself from
+  // innerHTML, not textContent, otherwise opening the input strips
+  // the formatting and a no-change save round-trips the field as
+  // plain text. Currently:
+  //   field_2020 \u2014 Labor Description (per-line-item)
+  //   field_2409 \u2014 Labor Description (DTO scope)
+  var HTML_PRESERVE_FIELDS = { field_2020: true, field_2409: true };
+
+  /** Read a field's editable value, preserving HTML for known rich-
+   *  text fields. Strips Knack's outer <span class="col-N"> wrapper
+   *  so the textarea doesn't see that scaffolding. */
+  function readFieldValue(td, fieldKey) {
+    if (!td) return '';
+    if (!fieldKey || !HTML_PRESERVE_FIELDS[fieldKey]) {
+      return readFieldText(td);
+    }
+    var inner = td.querySelector('span[class^="col-"]');
+    var src = inner || td;
+    return (src.innerHTML || '').replace(/^\s+|\s+$/g, '');
+  }
+
   /** Build an editable field row with a native input or textarea. */
   function buildEditableFieldRow(label, td, fieldKey, opts) {
     opts = opts || {};
@@ -2987,7 +3009,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     valueWrapper.style.padding = '0';
     valueWrapper.style.background = 'transparent';
 
-    var currentVal = readFieldText(td);
+    var currentVal = readFieldValue(td, fieldKey);
     var input;
 
     if (opts.notes) {
@@ -3279,18 +3301,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
     // Helper: extract raw/editable text from a response value.
     // For directEdit inputs the raw value is often more appropriate.
+    // HTML_PRESERVE_FIELDS skip the html-strip so labor descriptions
+    // round-trip through Knack with their formatting intact.
     function editableText(fk) {
       var raw = resp[fk + '_raw'];
       var display = resp[fk];
       var val = raw != null ? raw : display;
       if (val == null) return null;
+      var preserve = !!HTML_PRESERVE_FIELDS[fk];
       if (typeof val === 'object') {
         if (Array.isArray(val)) {
           return val.map(function (r) { return (r && r.identifier) || ''; }).filter(Boolean).join(', ');
         }
-        return (val && val.identifier) ? val.identifier : (display != null ? String(display).replace(/<[^>]*>/g, '').trim() : null);
+        if (val && val.identifier) return val.identifier;
+        if (display == null) return null;
+        return preserve
+          ? String(display).trim()
+          : String(display).replace(/<[^>]*>/g, '').trim();
       }
-      return String(val).replace(/<[^>]*>/g, '').trim();
+      return preserve
+        ? String(val).trim()
+        : String(val).replace(/<[^>]*>/g, '').trim();
     }
 
     var f = cfg.fields;
@@ -4035,7 +4066,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     opts = opts || {};
     // Guard against duplicate injection
     if (td.querySelector('[' + DIRECT_EDIT_ATTR + ']')) return;
-    var currentVal = readFieldText(td);
+    // readFieldValue preserves HTML for HTML_PRESERVE_FIELDS so opening
+    // the input on a rich-text field (e.g. labor description) doesn't
+    // round-trip through textContent and lose formatting.
+    var currentVal = readFieldValue(td, fieldKey);
     td.classList.add(P + '-sum-direct-edit');
 
     // Compute conditional background color from the field value
