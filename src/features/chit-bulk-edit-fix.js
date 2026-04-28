@@ -10,19 +10,24 @@
  * the bulk-edit looking like it ran but without the cell value
  * actually flipping in the UI / future loads.
  *
- * jQuery ajaxPrefilter intercepts every request before it ships,
- * which lets us normalize the body without touching KTL's source.
+ * Intercepts at three layers:
+ *   - jQuery ajaxPrefilter  (catches jQuery $.ajax / $.put / $.post)
+ *   - XMLHttpRequest.send   (catches native XHRs)
+ *   - window.fetch          (catches fetch())
+ *
+ * KTL uses native XHR, not jQuery, so the prefilter alone wasn't
+ * enough — the lower-level patches normalize whichever transport
+ * KTL ends up using on a given Knack version.
+ *
  * Scoped to known chit field keys so we don't accidentally reshape
  * legitimate boolean payloads on other fields.
  */
 (function () {
   'use strict';
 
-  if (typeof $ === 'undefined' || !$.ajaxPrefilter) return;
-
   // Known Yes/No chit fields used by device-worksheet's toggleChit
   // type. Boolean values for these get coerced into "Yes" / "No"
-  // strings before the PUT goes out.
+  // strings before the request ships.
   var CHIT_FIELDS = {
     field_2370: true,   // Existing cabling (view_3559 / view_3577)
     field_2461: true,   // Existing cabling (view_3505 / view_3313 / view_3610 / etc.)
@@ -31,43 +36,20 @@
     field_2634: true    // Lock Record
   };
 
-  function coerce(value) {
-    if (value === true)  return 'Yes';
-    if (value === false) return 'No';
-    return value;
-  }
-
-  $.ajaxPrefilter(function (options /*, originalOptions, jqXHR */) {
-    if (!options || !options.type) return;
-    var method = String(options.type).toUpperCase();
-    if (method !== 'PUT' && method !== 'POST') return;
-
-    // Knack record endpoints look like
-    //   /v1/scenes/<scene>/views/<view>/records/<id>
-    //   /v1/objects/<obj>/records/<id>
-    // — anything that's clearly a Knack record write.
-    var url = options.url || '';
-    if (url.indexOf('/records/') === -1 && url.indexOf('/records?') === -1 &&
-        !/\/records$/.test(url)) {
-      return;
-    }
-
-    var body = options.data;
-    if (typeof body !== 'string' || !body) return;
-
-    // Quick string-level guard so we only parse JSON when there's a
-    // chance of a hit.
-    var hasChitKey = false;
+  function coerceBody(body) {
+    if (typeof body !== 'string' || !body) return body;
+    // Quick string-level guard before parsing JSON.
+    var hit = false;
     for (var k in CHIT_FIELDS) {
       if (CHIT_FIELDS.hasOwnProperty(k) && body.indexOf(k) !== -1) {
-        hasChitKey = true; break;
+        hit = true; break;
       }
     }
-    if (!hasChitKey) return;
+    if (!hit) return body;
 
     var parsed;
-    try { parsed = JSON.parse(body); } catch (e) { return; }
-    if (!parsed || typeof parsed !== 'object') return;
+    try { parsed = JSON.parse(body); } catch (e) { return body; }
+    if (!parsed || typeof parsed !== 'object') return body;
 
     var changed = false;
     for (var key in parsed) {
@@ -75,13 +57,81 @@
       if (!CHIT_FIELDS[key]) continue;
       var v = parsed[key];
       if (typeof v === 'boolean') {
-        parsed[key] = coerce(v);
+        parsed[key] = v ? 'Yes' : 'No';
         changed = true;
       }
     }
-    if (changed) {
-      options.data = JSON.stringify(parsed);
-      SCW.debug && SCW.debug('[scw-chit-bulk-edit] coerced boolean → Yes/No', parsed);
-    }
-  });
+    if (!changed) return body;
+    try {
+      var out = JSON.stringify(parsed);
+      if (window.SCW && SCW.debug) {
+        SCW.debug('[scw-chit-bulk-edit] coerced boolean → Yes/No', parsed);
+      }
+      return out;
+    } catch (e) { return body; }
+  }
+
+  function isKnackRecordUrl(url) {
+    if (!url) return false;
+    return url.indexOf('/records/') !== -1
+        || url.indexOf('/records?') !== -1
+        || /\/records$/.test(url);
+  }
+
+  function isWriteMethod(method) {
+    if (!method) return false;
+    var m = String(method).toUpperCase();
+    return m === 'PUT' || m === 'POST';
+  }
+
+  // ── 1. jQuery prefilter (covers $.ajax / $.put / $.post) ────
+  if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
+    $.ajaxPrefilter(function (options) {
+      if (!options || !isWriteMethod(options.type)) return;
+      if (!isKnackRecordUrl(options.url || '')) return;
+      var coerced = coerceBody(options.data);
+      if (coerced !== options.data) options.data = coerced;
+    });
+  }
+
+  // ── 2. XMLHttpRequest.send (covers KTL's native XHR) ────────
+  // Save method + url at .open() time, then rewrite body in .send().
+  if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__scwChitMethod = method;
+      this.__scwChitUrl    = url;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      if (isWriteMethod(this.__scwChitMethod) && isKnackRecordUrl(this.__scwChitUrl)) {
+        var coerced = coerceBody(body);
+        if (coerced !== body) body = coerced;
+      }
+      return origSend.call(this, body);
+    };
+  }
+
+  // ── 3. window.fetch (covers fetch-based callers) ────────────
+  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+    var origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      try {
+        var url    = typeof input === 'string' ? input : (input && input.url) || '';
+        var method = (init && init.method)
+                  || (input && input.method)
+                  || 'GET';
+        if (isWriteMethod(method) && isKnackRecordUrl(url)) {
+          if (init && typeof init.body === 'string') {
+            var coerced = coerceBody(init.body);
+            if (coerced !== init.body) {
+              init = Object.assign({}, init, { body: coerced });
+            }
+          }
+        }
+      } catch (e) { /* fall through to original fetch */ }
+      return origFetch.apply(this, arguments);
+    };
+  }
 })();
