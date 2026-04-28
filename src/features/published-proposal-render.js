@@ -4,26 +4,58 @@
 
   var SCENE_ID    = 'scene_1279';
   var VIEW_ID     = 'view_3813';
-  var ACTION_VIEW_ID = 'view_3858';   // call-to-action banner (gated by hide-view-conditional)
   var HTML_FIELD  = 'field_2680';
   var STYLE_ID    = 'scw-published-proposal-css';
   var IFRAME_ID   = 'scw-published-proposal-frame';
   var BTN_ID      = 'scw-published-proposal-print-btn';
   var NS          = '.scwPublishedProposal';
 
+  // CTA buttons surfaced inside the iframe — one entry per source view
+  // on the scene. Each entry's gate is evaluated against the published-
+  // proposal record's attrs; if true, every action link inside that
+  // view is mirrored as a button in the CTA bar (above the first
+  // .view-title in the iframe).
+  //
+  //   view_3858 — "I'm Ready for a Site Survey" link, shown for GFE
+  //               and Equipment-Only proposals (and only while no
+  //               change requests have queued yet — once they have,
+  //               the workflow is past the survey stage).
+  //   view_3902 — Final-bid CTA, shown only when field_2747 = Yes.
+  var CTA_CONFIGS = [
+    {
+      viewId: 'view_3858',
+      gate: function (attrs) {
+        if (readCrCount() > 0) return false;
+        return isYesValue(attrs.field_2746) || isYesValue(attrs.field_2746_raw)
+            || isYesValue(attrs.field_2748) || isYesValue(attrs.field_2748_raw);
+      }
+    },
+    {
+      viewId: 'view_3902',
+      gate: function (attrs) {
+        return isYesValue(attrs.field_2747) || isYesValue(attrs.field_2747_raw);
+      }
+    }
+  ];
+
   // ── CSS ──────────────────────────────────────────────────────
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
+
+    // Hide every configured CTA source view on the parent page — its
+    // links/buttons are read out and re-injected inside the iframe by
+    // the renderer. Showing it here would just duplicate.
+    var hideRules = CTA_CONFIGS.map(function (c) {
+      return '#' + c.viewId + ' { display: none !important; }';
+    }).join('\n');
+
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = [
       '/* Hide the entire detail view */',
       '#' + VIEW_ID + ' { display: none !important; }',
-      // Always hide the source CTA view on the parent page — its
-      // links/buttons are read out and re-injected inside the iframe
-      // by the renderer, so showing it here would just duplicate.
-      '#' + ACTION_VIEW_ID + ' { display: none !important; }',
+      hideRules,
       '/* Hide breadcrumb trail + view_3874 when this scene is active */',
       'body.scw-hide-crumbtrail .kn-crumbtrail,',
       'body.scw-hide-crumbtrail #view_3874 { display: none !important; }',
@@ -174,30 +206,28 @@
     setTimeout(resizeIframe, 1000);
     setTimeout(resizeIframe, 3000);
 
-    // Inject the CTA bar (read from view_3858 on the parent page)
-    // inside the iframe, just above the first .view-title — typically
-    // "Proposed Solution" — so it sits between the project-address
-    // detail row and the line-items table. Idempotent re-runs are
-    // guarded by .scw-cta-bar presence in the iframe body. Also
-    // resize after the bar is laid out so the iframe height includes
-    // it.
+    // Inject the CTA bar inside the iframe, just above the first
+    // .view-title — typically "Proposed Solution" — so it sits between
+    // the project-address detail row and the line-items table.
+    // Idempotent re-runs are guarded by .scw-cta-bar presence in the
+    // iframe body. Resize after the bar lays out so the iframe height
+    // includes it.
     setTimeout(function () { injectCtaIntoIframe(iframe, resizeIframe); }, 250);
     setTimeout(function () { injectCtaIntoIframe(iframe, resizeIframe); }, 1200);
 
     return fullHtml;
   }
 
-  // ── CTA bar (view_3858 → iframe) ─────────────────────────────
+  // ── CTA bar (CTA_CONFIGS → iframe) ───────────────────────────
   //
-  // Gated on the published-proposal record's GFE / Equipment-Only
-  // flags (read from view_3813's model). When eligible, mirrors
-  // every action link in view_3858 as a styled <a> inside the iframe
-  // and inserts the bar just above the first .view-title. target=_top
-  // so the link navigates the parent window, not the iframe.
+  // Each CTA_CONFIGS entry's gate is evaluated against the published-
+  // proposal record's attrs; matching entries' action links get mirrored
+  // as styled <a target=_top> buttons inside the iframe, inserted just
+  // above the first .view-title.
 
   function isYesValue(v) {
     if (v === true) return true;
-    if (typeof v === 'string') return /^yes$/i.test(v.trim());
+    if (typeof v === 'string') return /^(yes|true)$/i.test(v.trim());
     return false;
   }
 
@@ -228,19 +258,8 @@
     } catch (e) { return 0; }
   }
 
-  function shouldShowCta() {
-    // Suppress if the SOW already has change requests queued — the
-    // workflow has moved past the "ask for a survey" stage at that
-    // point, so re-offering the button would just confuse Sales.
-    if (readCrCount() > 0) return false;
-    var a = readPublishedProposalAttrs();
-    if (!a) return false;
-    return isYesValue(a.field_2746)     || isYesValue(a.field_2746_raw)
-        || isYesValue(a.field_2748)     || isYesValue(a.field_2748_raw);
-  }
-
-  function readCtaLinks() {
-    var src = document.getElementById(ACTION_VIEW_ID);
+  function readLinksFromView(viewId) {
+    var src = document.getElementById(viewId);
     if (!src) return [];
     var anchors = src.querySelectorAll('a.kn-link, a.kn-link-page, a.kn-button, button.kn-button');
     var out = [];
@@ -254,6 +273,21 @@
     return out;
   }
 
+  function gatherCtaLinks() {
+    var attrs = readPublishedProposalAttrs();
+    if (!attrs) return [];
+    var all = [];
+    for (var i = 0; i < CTA_CONFIGS.length; i++) {
+      var cfg = CTA_CONFIGS[i];
+      try {
+        if (!cfg.gate(attrs)) continue;
+      } catch (e) { continue; }
+      var links = readLinksFromView(cfg.viewId);
+      for (var j = 0; j < links.length; j++) all.push(links[j]);
+    }
+    return all;
+  }
+
   function injectCtaIntoIframe(iframe, onAfter) {
     if (!iframe) return;
     var doc;
@@ -261,9 +295,8 @@
     catch (e) { return; }
     if (!doc || !doc.body) return;
     if (doc.body.querySelector('.scw-cta-bar')) return;     // already injected
-    if (!shouldShowCta()) return;
 
-    var links = readCtaLinks();
+    var links = gatherCtaLinks();
     if (!links.length) return;
 
     var firstTitle = doc.body.querySelector('.view-title');
@@ -332,12 +365,17 @@
     }
   });
 
-  // If view_3858 renders later than the iframe is built (Knack doesn't
-  // guarantee view-render order), retry the iframe injection then.
-  $(document).on('knack-view-render.' + ACTION_VIEW_ID + NS, function () {
-    var iframe = document.getElementById(IFRAME_ID);
-    if (iframe) injectCtaIntoIframe(iframe);
-  });
+  // If any CTA source view renders later than the iframe is built
+  // (Knack doesn't guarantee view-render order), retry the iframe
+  // injection then.
+  for (var ci = 0; ci < CTA_CONFIGS.length; ci++) {
+    (function (vid) {
+      $(document).on('knack-view-render.' + vid + NS, function () {
+        var iframe = document.getElementById(IFRAME_ID);
+        if (iframe) injectCtaIntoIframe(iframe);
+      });
+    })(CTA_CONFIGS[ci].viewId);
+  }
 
   $(document).on('knack-scene-render.' + SCENE_ID + NS, function () {
     document.body.classList.add('scw-hide-crumbtrail');

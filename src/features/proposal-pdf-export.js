@@ -32,6 +32,7 @@
         // (scene_1279) by published-proposal-render.js. Belongs around
         // the iframe, not inside the scraped quote html.
         view_3858: true,
+        view_3902: true,
         // Hidden data-only grid: a richer Survey Line Item / SOW Line
         // Item projection added solely so the publish JSON payload
         // includes every field downstream Make pipelines need (e.g.
