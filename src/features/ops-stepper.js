@@ -258,12 +258,23 @@
   ];
 
   // ── Icons ────────────────────────────────────────────────
-  // Same shapes as workflow-stepper.js so the Ops actions render visually
-  // identical to the sales build stepper rows (CIRCLE for available, LOCK
-  // for disabled, SPINNER while a webhook is in flight).
-  var CIRCLE_SVG =
+  // Ops stepper icons. These intentionally diverge from
+  // workflow-stepper.js's CIRCLE / CHECK shapes — workflow-stepper
+  // represents a sequential build checklist where each step gets ticked
+  // off in order. The Ops stepper is six discrete actions Ops can fire
+  // independently and sometimes repeatedly (re-publish a quote in a
+  // different format, update a matching bid, etc.), so a "step you
+  // haven't finished yet" affordance reads wrong here.
+  //
+  //   ZAP_SVG    — available action (lightning-bolt: "fire this")
+  //   CHECK_CIRCLE_SVG — only used by mark-ready, which IS a one-time
+  //                      gate (field_2723 flips Yes once and stays)
+  //   LOCK_SVG   — locked / unavailable
+  //   SPINNER_SVG — webhook in flight
+  var ZAP_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
-    'fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
   var CHECK_CIRCLE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -1162,7 +1173,7 @@
       if (icon) icon.innerHTML = SPINNER_SVG;
     } else {
       btn.classList.remove('is-loading');
-      if (icon) icon.innerHTML = CIRCLE_SVG;
+      if (icon) icon.innerHTML = ZAP_SVG;
     }
   }
 
@@ -1205,7 +1216,7 @@
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';
       icon.innerHTML = completed ? CHECK_CIRCLE_SVG
-                     : available ? CIRCLE_SVG
+                     : available ? ZAP_SVG
                                  : LOCK_SVG;
       el.appendChild(icon);
 
