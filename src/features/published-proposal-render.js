@@ -20,7 +20,7 @@
   //               and Equipment-Only proposals (and only while no
   //               change requests have queued yet — once they have,
   //               the workflow is past the survey stage).
-  //   view_3902 — Final-bid CTA, shown only when field_2747 = Yes.
+  //   view_3908 — "Accept Proposal" CTA, shown only when field_2747 = Yes.
   var CTA_CONFIGS = [
     {
       viewId: 'view_3858',
@@ -31,7 +31,7 @@
       }
     },
     {
-      viewId: 'view_3902',
+      viewId: 'view_3908',
       gate: function (attrs) {
         return isYesValue(attrs.field_2747) || isYesValue(attrs.field_2747_raw);
       }
