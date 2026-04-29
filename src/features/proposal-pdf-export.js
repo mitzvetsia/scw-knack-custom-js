@@ -2222,10 +2222,17 @@
       for (var d = 0; d < projectTotals.lines.length; d++) {
         var line = projectTotals.lines[d];
         if (!line || line.type !== 'disc') continue;
-        // Strip everything except digits, dot, minus. Discount values
-        // render as "–$100.00" (en-dash). The math symbol ‒ / – / − are
-        // not parsed by parseFloat, so we replace any non-numeric chars
-        // and take the absolute value as the discount magnitude.
+        // Project totals can include MULTIPLE disc lines:
+        //   "Line Item Discounts" — already baked into each row's
+        //     field_2269_raw (post-discount equipment); summing it
+        //     into labor would double-count.
+        //   "Proposal Discount"  — flat across-the-board discount,
+        //     this is the one we subtract from labor.
+        // Match on the label so other future disc lines don't sneak in.
+        if (!/^proposal\s+discount\b/i.test(line.label || '')) continue;
+        // Strip everything except digits and dot. Discount values render
+        // as "–$100.00" (en-dash + $); parseFloat needs the chars
+        // stripped because the math-style minus isn't ASCII.
         var raw = (line.value || '').replace(/[^0-9.]/g, '');
         var amt = parseFloat(raw);
         if (!isNaN(amt) && amt > 0) proposalDiscount = round2(proposalDiscount + amt);
