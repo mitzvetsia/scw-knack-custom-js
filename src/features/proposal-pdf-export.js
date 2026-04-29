@@ -2133,9 +2133,11 @@
   //   field_2219_raw[0].identifier  bucket name
   //   field_1963_raw                SKU
   //   field_1958_raw                product display name
-  //   field_1960_raw                list price per unit
-  //   field_2269_raw                equipment value for this row, after
-  //                                 per-line discounts (locked-down field)
+  //   field_2268_raw                equipment unit price AND per-row
+  //                                 amount, after per-line discounts
+  //                                 (locked-down field — keep these
+  //                                 in sync so qty × unitPrice = lineTotal
+  //                                 on the Xero invoice line)
   //   field_2028_raw                labor value for this row (locked-down field)
   //
   // Proposal-level discount: a separate "Proposal Discount" line appears
@@ -2176,8 +2178,13 @@
       var bucket = (bucketArr && bucketArr[0] && bucketArr[0].identifier) || '';
       var sku = (row.field_1963_raw || '').toString().trim();
       var name = (row.field_1958_raw || '').toString().trim();
-      var listPrice = num(row.field_1960_raw);
-      var equipmentVal = num(row.field_2269_raw);
+      // Pull both unit price and per-row amount from field_2268_raw so
+      // qty × unitPrice = lineTotal in the aggregated invoice item.
+      // field_1960_raw is the LIST price (pre-discount) — using it as
+      // unitPrice while summing post-discount amounts produced
+      // mismatched invoice math.
+      var unitAmount = num(row.field_2268_raw);
+      var equipmentVal = unitAmount;
       var laborVal = num(row.field_2028_raw);
 
       if (/^license\b/i.test(bucket)) {
@@ -2185,7 +2192,7 @@
           if (!recurringBySku[sku]) {
             recurringBySku[sku] = {
               sku: sku, description: name,
-              qty: 0, unitPrice: listPrice, lineTotal: 0
+              qty: 0, unitPrice: unitAmount, lineTotal: 0
             };
           }
           recurringBySku[sku].qty += 1;
@@ -2202,7 +2209,7 @@
         if (!equipmentBySku[sku]) {
           equipmentBySku[sku] = {
             sku: sku, description: name,
-            qty: 0, unitPrice: listPrice, lineTotal: 0
+            qty: 0, unitPrice: unitAmount, lineTotal: 0
           };
         }
         equipmentBySku[sku].qty += 1;
