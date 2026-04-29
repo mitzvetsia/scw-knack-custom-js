@@ -15,6 +15,7 @@ cat \
   src/config.js \
   src/util.js \
   src/features/preserve-scroll-on-refresh.js \
+  src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
