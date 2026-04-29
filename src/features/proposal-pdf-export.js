@@ -2212,20 +2212,50 @@
       laborTotal = round2(laborTotal + laborVal);
     }
 
-    // The per-row sum is a fallback only — the JSON snapshot view (e.g.
-    // view_3896) doesn't always project field_2028_raw for every row,
-    // so summing it can under-report the labor total. The proposal
-    // already computes the authoritative Installation Total in
-    // payload.projectTotals.lines, which is what shows in the proposal
-    // HTML. Prefer that value when present.
-    if (projectTotals && Array.isArray(projectTotals.lines)) {
+    // The per-row sum across the JSON snapshot (e.g. view_3896) is a
+    // last-resort fallback only. Two reasons it under-reports:
+    //   1. The snapshot view doesn't always project field_2028_raw for
+    //      every row.
+    //   2. In TBD-publish mode the projectTotals "Installation Total"
+    //      line literally renders as "TBD" — strip-numeric leaves an
+    //      empty string, parseFloat → NaN, no override happens.
+    //
+    // The authoritative source for labor on an invoice is field_2028
+    // summed directly from the proposal grid view's loaded Knack model
+    // (view_3341 for scene_1096). Those rows have ALL data loaded and
+    // the underlying field_2028_raw values are real numbers regardless
+    // of TBD-mode display masking.
+    var modelLaborTotal = (function () {
+      try {
+        var candidateViews = ['view_3341', 'view_3450', 'view_3451'];
+        if (typeof Knack === 'undefined' || !Knack.views) return null;
+        for (var vi = 0; vi < candidateViews.length; vi++) {
+          var v = Knack.views[candidateViews[vi]];
+          var models = v && v.model && v.model.data && v.model.data.models;
+          if (!models || !models.length) continue;
+          var sum = 0;
+          for (var mi = 0; mi < models.length; mi++) {
+            var attrs = models[mi].attributes || {};
+            var n = parseFloat(attrs.field_2028_raw);
+            if (!isNaN(n)) sum += n;
+          }
+          return round2(sum);
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    })();
+    if (modelLaborTotal !== null && modelLaborTotal > 0) {
+      laborTotal = modelLaborTotal;
+    } else if (projectTotals && Array.isArray(projectTotals.lines)) {
+      // Secondary fallback: projectTotals "Installation Total" line.
+      // Only useful when the value is a real number (not "TBD").
       for (var li = 0; li < projectTotals.lines.length; li++) {
         var ptLine = projectTotals.lines[li];
         if (!ptLine) continue;
         if (!/^installation\s+total\b/i.test(ptLine.label || '')) continue;
         var instRaw = (ptLine.value || '').replace(/[^0-9.]/g, '');
         var instAmt = parseFloat(instRaw);
-        if (!isNaN(instAmt) && instAmt >= 0) laborTotal = round2(instAmt);
+        if (!isNaN(instAmt) && instAmt > 0) laborTotal = round2(instAmt);
         break;
       }
     }
