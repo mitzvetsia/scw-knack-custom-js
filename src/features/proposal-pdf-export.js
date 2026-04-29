@@ -1559,6 +1559,7 @@
               grandTotal: summary.grandTotal,
               expirationDate: summary.expirationDate,
               html: htmlStr,
+              plaintext: htmlToPlaintext(htmlStr),
               json: jsonSnapshot
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
@@ -1942,6 +1943,121 @@
     return null;
   }
 
+  // Convert the rendered proposal HTML to a structured plain-text version
+  // suitable for tools that don't accept HTML (e.g. esignatures.com
+  // installation agreements). DOM-based walk so we don't have to write a
+  // hand-rolled HTML parser; preserves table structure as tab-separated
+  // rows, headings as UPPERCASE blocks, and block elements as paragraph
+  // breaks. Stays in the bundle (not Make) because the inputs (HTML +
+  // structure) are already here, and round-tripping HTML through Make's
+  // stripHTML mangles tables.
+  function htmlToPlaintext(html) {
+    if (!html || typeof html !== 'string') return '';
+
+    var doc;
+    try {
+      doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (e) {
+      return '';
+    }
+    if (!doc || !doc.body) return '';
+
+    // Strip non-content nodes that would otherwise produce noise.
+    var dropEls = doc.querySelectorAll('script, style, head, link, meta, noscript');
+    for (var di = 0; di < dropEls.length; di++) dropEls[di].parentNode && dropEls[di].parentNode.removeChild(dropEls[di]);
+
+    var BLOCK_TAGS = {
+      p: 1, div: 1, section: 1, article: 1, header: 1, footer: 1, nav: 1,
+      h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1,
+      ul: 1, ol: 1, li: 1, dl: 1, dt: 1, dd: 1,
+      table: 1, thead: 1, tbody: 1, tfoot: 1, tr: 1,
+      blockquote: 1, pre: 1, hr: 1, figure: 1, figcaption: 1
+    };
+
+    var out = [];
+
+    function emit(s) { if (s) out.push(s); }
+
+    function walk(node) {
+      if (node.nodeType === 3) {
+        // Text node — collapse whitespace, leave content intact.
+        var t = node.nodeValue.replace(/\s+/g, ' ');
+        if (t) emit(t);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+
+      var tag = node.tagName.toLowerCase();
+
+      if (tag === 'br') { emit('\n'); return; }
+      if (tag === 'hr') { emit('\n----------\n'); return; }
+      if (tag === 'img') { return; } // images skipped — esignatures-friendly
+
+      // Headings: blank line before + UPPERCASE the text content + blank line after.
+      if (/^h[1-6]$/.test(tag)) {
+        emit('\n\n');
+        var headStart = out.length;
+        for (var hi = 0; hi < node.childNodes.length; hi++) walk(node.childNodes[hi]);
+        for (var hj = headStart; hj < out.length; hj++) {
+          if (typeof out[hj] === 'string') out[hj] = out[hj].toUpperCase();
+        }
+        emit('\n\n');
+        return;
+      }
+
+      // Table cells: tab-separated. We emit a leading tab BEFORE every
+      // cell except the first in its row; tracked by walking parent's
+      // children to find position.
+      if (tag === 'td' || tag === 'th') {
+        var parent = node.parentNode;
+        var firstCell = true;
+        if (parent) {
+          for (var pi = 0; pi < parent.children.length; pi++) {
+            var sib = parent.children[pi];
+            var sibTag = sib.tagName && sib.tagName.toLowerCase();
+            if (sibTag === 'td' || sibTag === 'th') {
+              if (sib === node) break;
+              firstCell = false;
+              break;
+            }
+          }
+        }
+        if (!firstCell) emit('\t');
+        for (var ci = 0; ci < node.childNodes.length; ci++) walk(node.childNodes[ci]);
+        return;
+      }
+
+      // List items: bullet prefix per line.
+      if (tag === 'li') {
+        emit('\n  - ');
+        for (var li = 0; li < node.childNodes.length; li++) walk(node.childNodes[li]);
+        return;
+      }
+
+      var isBlock = BLOCK_TAGS[tag];
+      if (isBlock) emit('\n');
+      for (var ki = 0; ki < node.childNodes.length; ki++) walk(node.childNodes[ki]);
+      if (isBlock) emit('\n');
+    }
+
+    walk(doc.body);
+
+    var text = out.join('');
+
+    // Cleanup pass:
+    //   - Tabs at line start are noise (orphan cell separators).
+    //   - 3+ consecutive newlines collapse to a paragraph break (2).
+    //   - Trailing whitespace per line stripped.
+    //   - Leading/trailing whitespace on the whole doc stripped.
+    text = text.replace(/\n[\t ]+/g, '\n');
+    text = text.replace(/[\t ]+\n/g, '\n');
+    text = text.replace(/\n{3,}/g, '\n\n');
+    text = text.replace(/ /g, ' '); // non-breaking spaces → regular
+    text = text.replace(/[ \t]{2,}/g, ' ');
+
+    return text.trim();
+  }
+
   function buildPublishPayload(sceneId, opts) {
     opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
@@ -1970,6 +2086,7 @@
       grandTotal:        summary.grandTotal,
       expirationDate:    summary.expirationDate,
       html:              htmlStr,
+      plaintext:         htmlToPlaintext(htmlStr),
       json:              jsonSnapshot,
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
