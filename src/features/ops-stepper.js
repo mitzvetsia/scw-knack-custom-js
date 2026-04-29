@@ -35,7 +35,7 @@
  *        webhook : MAKE_OPS_PUBLISH_GFE_WEBHOOK
  *
  *   6. Publish Quote as Final
- *        showWhen: any of field_2728 > 0 / field_2723 = Yes
+ *        showWhen: always (no gate)  [previously: any of field_2728 > 0 / field_2723 = Yes]
  *        webhook : MAKE_OPS_PUBLISH_FINAL_WEBHOOK
  *
  * Payload for every step includes every field from SOURCE_VIEW
@@ -257,12 +257,10 @@
       id: 'publish-final',
       label: 'Publish Quote as Final',
       tone: 'success',
-      showWhen: {
-        any: [
-          { field: 'field_2728', gt: 0 },
-          { field: 'field_2723', value: 'Yes' }
-        ]
-      },
+      // Gate disabled — always show Publish as Final. Was previously
+      // gated on (field_2728 > 0) OR (field_2723 = 'Yes') so the button
+      // only unlocked once a sub-bid had returned or Ops had marked the
+      // SOW ready. Restore the showWhen block to re-enable the gate.
       webhookKey: 'MAKE_OPS_PUBLISH_FINAL_WEBHOOK',
       submission: {
         question:   'After publishing, do you want to also submit?',
