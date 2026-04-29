@@ -18,6 +18,9 @@
   };
 
   var NS = '.scwCloneSowToProject';
+  var TAG = '[scw-clone-sow-to-project]';
+
+  console.log(TAG, 'module loaded — binding to', CONFIG.FORM_VIEW);
 
   function getTriggeredBy() {
     try {
@@ -42,10 +45,45 @@
     return '';
   }
 
+  // Fallback: read the picked Project id directly from the DOM. The
+  // hidden <input class="connection" name="field_2753"> holds a JSON
+  // (URL-encoded) array like %5B%22<recordId>%22%5D after a pick.
+  function readTargetProjectIdFromDom() {
+    try {
+      var $form = $('#' + CONFIG.FORM_VIEW + ' form');
+      var $hidden = $form.find('input.connection[name="' + CONFIG.TARGET_PROJECT_FIELD + '"]');
+      if (!$hidden.length) return '';
+      var raw = $hidden.val() || '';
+      var decoded = decodeURIComponent(raw);
+      if (!decoded || decoded === '[]') return '';
+      var parsed = null;
+      try { parsed = JSON.parse(decoded); } catch (e) { /* not JSON */ }
+      if (Array.isArray(parsed) && parsed.length) {
+        var first = parsed[0];
+        if (typeof first === 'string' && /^[a-f0-9]{24}$/.test(first)) return first;
+        if (first && typeof first === 'object' && first.id) return first.id;
+      }
+      // Last resort: the visible <select>'s current value.
+      var $select = $('#' + CONFIG.FORM_VIEW + '-' + CONFIG.TARGET_PROJECT_FIELD);
+      var sel = $select.val();
+      if (typeof sel === 'string' && /^[a-f0-9]{24}$/.test(sel)) return sel;
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function readSourceSowIdFromDom() {
+    try {
+      var $form = $('#' + CONFIG.FORM_VIEW + ' form');
+      var v = $form.find('input[name="id"]').val();
+      if (typeof v === 'string' && /^[a-f0-9]{24}$/.test(v)) return v;
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
   function fireWebhook(sourceRecordId, targetProjectId) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
-      SCW.debug && SCW.debug('[scw-clone-sow-to-project] webhook URL not configured');
+      console.warn(TAG, 'webhook URL not configured');
       return;
     }
 
@@ -55,33 +93,62 @@
       triggeredBy:     getTriggeredBy()
     };
 
-    SCW.debug && SCW.debug('[scw-clone-sow-to-project] firing webhook', payload);
+    console.log(TAG, 'firing webhook', payload);
 
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     }).then(function (resp) {
-      SCW.debug && SCW.debug('[scw-clone-sow-to-project] webhook status=' + resp.status);
+      console.log(TAG, 'webhook status=' + resp.status);
     }).catch(function (err) {
-      SCW.debug && SCW.debug('[scw-clone-sow-to-project] webhook error', err);
+      console.warn(TAG, 'webhook error', err);
     });
+  }
+
+  // Single dispatch: works whether the event delivered the record arg
+  // (knack-record-update) or not (knack-form-submit). De-duped via a
+  // short cooldown so we don't fire twice when both events fire on the
+  // same submit.
+  var lastFiredAt = 0;
+  function handleSubmit(eventName, recordArg) {
+    var now = Date.now();
+    if (now - lastFiredAt < 1500) {
+      console.log(TAG, eventName + ' fired but within cooldown — skipping');
+      return;
+    }
+
+    var targetProjectId = readTargetProjectId(recordArg) || readTargetProjectIdFromDom();
+    var sourceRecordId  = (recordArg && recordArg.id) || readSourceSowIdFromDom();
+
+    console.log(TAG, eventName + ' fired', {
+      sourceRecordId: sourceRecordId,
+      targetProjectId: targetProjectId,
+      recordArg: recordArg
+    });
+
+    if (!targetProjectId) {
+      console.log(TAG, 'field_2753 empty — skipping webhook');
+      return;
+    }
+    if (!sourceRecordId) {
+      console.warn(TAG, 'no SOW record id — skipping webhook');
+      return;
+    }
+
+    lastFiredAt = now;
+    fireWebhook(sourceRecordId, targetProjectId);
   }
 
   function bind() {
     $(document).off('knack-record-update.' + CONFIG.FORM_VIEW + NS)
                .on('knack-record-update.' + CONFIG.FORM_VIEW + NS, function (event, view, record) {
-      var targetProjectId = readTargetProjectId(record);
-      if (!targetProjectId) {
-        SCW.debug && SCW.debug('[scw-clone-sow-to-project] field_2753 empty — skipping webhook');
-        return;
-      }
-      var sourceRecordId = (record && record.id) || '';
-      if (!sourceRecordId) {
-        SCW.debug && SCW.debug('[scw-clone-sow-to-project] no record id on update event — skipping');
-        return;
-      }
-      fireWebhook(sourceRecordId, targetProjectId);
+      handleSubmit('knack-record-update', record);
+    });
+
+    $(document).off('knack-form-submit.' + CONFIG.FORM_VIEW + NS)
+               .on('knack-form-submit.' + CONFIG.FORM_VIEW + NS, function (event, view, record) {
+      handleSubmit('knack-form-submit', record);
     });
   }
 
