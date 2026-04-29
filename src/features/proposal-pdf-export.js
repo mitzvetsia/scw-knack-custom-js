@@ -2299,6 +2299,17 @@
         var child = parent.children[i];
         var classes = child.classList;
 
+        // BOM / report views are skipped entirely in the agreement —
+        // esignatures' renderer wraps mid-character in narrow currency
+        // cells and the BOM doesn't belong in a signed contract anyway
+        // (it's an internal accounting artifact). Customer-facing
+        // equipment list lives in the L1 sections above.
+        if (classes && (classes.contains('report-table-wrap') ||
+                        classes.contains('report-section') ||
+                        classes.contains('bom-section'))) {
+          continue;
+        }
+
         if (classes && classes.contains('detail-label-none')) { emitDetailLabelNone(child); continue; }
         if (child.tagName.toLowerCase() === 'table' && classes && classes.contains('detail-table')) {
           emitDetailTable(child); continue;
@@ -2314,7 +2325,7 @@
         }
         if (classes && classes.contains('l1-section')) { emitL1Section(child); continue; }
         if (classes && classes.contains('project-totals')) { emitProjectTotals(child); continue; }
-        if (classes && (classes.contains('recurring-section') || classes.contains('report-section') || classes.contains('bom-section'))) {
+        if (classes && classes.contains('recurring-section')) {
           walkChildren(child);
           continue;
         }
