@@ -1561,6 +1561,7 @@
               html: htmlStr,
               plaintext: htmlToPlaintext(htmlStr),
               plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
+              scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
               json: jsonSnapshot
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
@@ -2070,6 +2071,166 @@
     return encoded.slice(1, -1);
   }
 
+  // Walk the rendered proposal HTML and emit an array of esignatures.com
+  // document_elements. The output is the structured equivalent of
+  // htmlToPlaintext but suitable for `placeholder_fields[*].document_elements`,
+  // so the agreement renders a proper SOW with headings, tables, totals
+  // instead of a wall of plaintext.
+  //
+  // Element types emitted (per esignatures docs):
+  //   text_header_one / _two / _three  ← <h1>/<h2>/<h3>
+  //   text_normal                      ← <p>, content-bearing <div>
+  //   table                            ← <table> (rows×cells, bold from <th>/<strong>/<b>, italic from <i>/<em>)
+  //
+  // Skips <script>/<style>/<head>/<img> entirely. Other element types
+  // (lists, signer fields, images) aren't emitted — the SOW HTML doesn't
+  // produce content that maps to them.
+  function buildSowDocumentElements(html) {
+    if (!html || typeof html !== 'string') return [];
+
+    var doc;
+    try {
+      doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (e) {
+      return [];
+    }
+    if (!doc || !doc.body) return [];
+
+    var dropEls = doc.querySelectorAll('script, style, head, link, meta, noscript, img');
+    for (var di = 0; di < dropEls.length; di++) {
+      if (dropEls[di].parentNode) dropEls[di].parentNode.removeChild(dropEls[di]);
+    }
+
+    var elements = [];
+
+    function cleanText(s) {
+      return (s || '').replace(/\s+/g, ' ').replace(/ /g, ' ').trim();
+    }
+
+    function cellStyles(cellEl) {
+      var styles = [];
+      var tag = cellEl.tagName.toLowerCase();
+      if (tag === 'th' || cellEl.querySelector('strong, b')) styles.push('bold');
+      if (cellEl.querySelector('em, i')) styles.push('italic');
+      return styles;
+    }
+
+    function emitTable(tableEl) {
+      var rowEls = tableEl.querySelectorAll('tr');
+      var tableCells = [];
+      for (var r = 0; r < rowEls.length; r++) {
+        var cellEls = rowEls[r].querySelectorAll('td, th');
+        if (!cellEls.length) continue;
+        var rowCells = [];
+        for (var c = 0; c < cellEls.length; c++) {
+          var cellText = cleanText(cellEls[c].textContent);
+          var cell = { text: cellText };
+          var styles = cellStyles(cellEls[c]);
+          if (styles.length) cell.styles = styles;
+          // Right-align cells that are purely numeric / currency / qty —
+          // they read much better aligned right in a SOW table.
+          if (/^[\$\(]?-?[\d,]+(?:\.\d+)?[\)\%]?$/.test(cellText)) {
+            cell.alignment = 'right';
+          }
+          rowCells.push(cell);
+        }
+        tableCells.push(rowCells);
+      }
+      if (tableCells.length) {
+        elements.push({ type: 'table', table_cells: tableCells });
+      }
+    }
+
+    function emitProjectTotals(rootEl) {
+      // The rendered html wraps totals in <div class="project-totals">
+      // with <div class="pt-title"> + <div class="pt-line"><span class="pt-label">x</span><span class="pt-value">$y</span></div>.
+      // Emit as text_header_two + a 2-column table for the lines.
+      var title = rootEl.querySelector('.pt-title');
+      if (title) {
+        var t = cleanText(title.textContent);
+        if (t) elements.push({ type: 'text_header_two', text: t });
+      }
+      var lines = rootEl.querySelectorAll('.pt-line');
+      var tableCells = [];
+      for (var i = 0; i < lines.length; i++) {
+        var labelEl = lines[i].querySelector('.pt-label');
+        var valueEl = lines[i].querySelector('.pt-value');
+        if (!labelEl || !valueEl) continue;
+        var label = cleanText(labelEl.textContent);
+        var value = cleanText(valueEl.textContent);
+        var isGrand = lines[i].className.indexOf('pt-line--grand') >= 0
+                   || lines[i].className.indexOf('pt-line--total') >= 0
+                   || /grand|total/i.test(label);
+        var labelCell = { text: label };
+        var valueCell = { text: value, alignment: 'right' };
+        if (isGrand) {
+          labelCell.styles = ['bold'];
+          valueCell.styles = ['bold'];
+        }
+        tableCells.push([labelCell, valueCell]);
+      }
+      if (tableCells.length) {
+        elements.push({ type: 'table', table_cells: tableCells });
+      }
+    }
+
+    function walk(node) {
+      if (!node) return;
+      if (node.nodeType !== 1) return;
+
+      var tag = node.tagName.toLowerCase();
+
+      if (tag === 'br' || tag === 'hr') return;
+
+      if (/^h([1-6])$/.test(tag)) {
+        var level = parseInt(tag.charAt(1), 10);
+        var typeMap = { 1: 'text_header_one', 2: 'text_header_two', 3: 'text_header_three' };
+        var headerType = typeMap[level] || 'text_header_three';
+        var t = cleanText(node.textContent);
+        if (t) elements.push({ type: headerType, text: t });
+        return;
+      }
+
+      if (tag === 'table') {
+        emitTable(node);
+        return;
+      }
+
+      // Special-case the rendered project-totals block.
+      if (node.classList && node.classList.contains('project-totals')) {
+        emitProjectTotals(node);
+        return;
+      }
+
+      if (tag === 'p') {
+        var pt = cleanText(node.textContent);
+        if (pt) elements.push({ type: 'text_normal', text: pt });
+        return;
+      }
+
+      // For container elements (div, section, etc.) recurse so we hit
+      // headings/tables/paragraphs in the right order.
+      var hasBlockChild = false;
+      for (var i = 0; i < node.children.length; i++) {
+        var ct = node.children[i].tagName.toLowerCase();
+        if (/^(h[1-6]|table|p|div|section|article|header|footer|ul|ol)$/.test(ct)) {
+          hasBlockChild = true;
+          break;
+        }
+      }
+      if (hasBlockChild) {
+        for (var k = 0; k < node.childNodes.length; k++) walk(node.childNodes[k]);
+      } else {
+        // Leaf-ish container with only text/inline content — emit as a paragraph.
+        var leafText = cleanText(node.textContent);
+        if (leafText) elements.push({ type: 'text_normal', text: leafText });
+      }
+    }
+
+    walk(doc.body);
+    return elements;
+  }
+
   function buildPublishPayload(sceneId, opts) {
     opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
@@ -2106,6 +2267,13 @@
       // body template). JSON-encodes \, ", \n, \r, \t, and other control
       // chars; trims surrounding quotes so callers can do `"value": "{{x}}"`.
       plaintextJsonEscaped:  jsonStringEscape(plaintextStr),
+      // Structured form of the SOW for esignatures.com "advanced
+      // placeholder fields" (document_elements). Drop directly into a
+      // placeholder_fields entry as `"document_elements": {{...}}`
+      // INSTEAD of `"value": "..."` to render headings + tables natively
+      // in the agreement. Bypasses JSON-string-escape entirely because
+      // the value is a structured array, not a string.
+      scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
       json:                  jsonSnapshot,
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
