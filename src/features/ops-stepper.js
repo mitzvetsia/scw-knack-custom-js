@@ -672,7 +672,8 @@
           var PUBLISH_KEYS = [
             'recordId', 'hash', 'sceneId', 'type',
             'sowId', 'equipmentTotal', 'installationTotal',
-            'grandTotal', 'expirationDate', 'html', 'plaintext', 'json'
+            'grandTotal', 'expirationDate',
+            'html', 'plaintext', 'plaintextJsonEscaped', 'json'
           ];
           for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
             var pk = PUBLISH_KEYS[pi];

@@ -1560,6 +1560,7 @@
               expirationDate: summary.expirationDate,
               html: htmlStr,
               plaintext: htmlToPlaintext(htmlStr),
+              plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
               json: jsonSnapshot
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
@@ -2058,6 +2059,17 @@
     return text.trim();
   }
 
+  // JSON-escape a string for safe interpolation between double quotes
+  // in a hand-written JSON body template. JSON.stringify produces a full
+  // JSON string literal (with surrounding quotes); we slice them off so
+  // the caller writes `"value": "{{escaped}}"` and gets valid JSON.
+  // Also handles the rare cases where the input is null/undefined.
+  function jsonStringEscape(s) {
+    if (s == null) return '';
+    var encoded = JSON.stringify(String(s));
+    return encoded.slice(1, -1);
+  }
+
   function buildPublishPayload(sceneId, opts) {
     opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
@@ -2072,28 +2084,35 @@
       console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
       return null;
     }
-    var htmlStr      = buildPdfHtml(payload);
-    var summary      = extractSummaryFields(payload);
-    var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+    var htmlStr       = buildPdfHtml(payload);
+    var summary       = extractSummaryFields(payload);
+    var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
+    var plaintextStr  = htmlToPlaintext(htmlStr);
     return {
-      recordId:          getPageRecordId() || '',
-      hash:              window.location.hash || '',
-      sceneId:           cfg.sceneId,
-      type:              cfg.payloadType,
-      sowId:             summary.sowId,
-      equipmentTotal:    summary.equipmentTotal,
-      installationTotal: summary.installationTotal,
-      grandTotal:        summary.grandTotal,
-      expirationDate:    summary.expirationDate,
-      html:              htmlStr,
-      plaintext:         htmlToPlaintext(htmlStr),
-      json:              jsonSnapshot,
+      recordId:              getPageRecordId() || '',
+      hash:                  window.location.hash || '',
+      sceneId:               cfg.sceneId,
+      type:                  cfg.payloadType,
+      sowId:                 summary.sowId,
+      equipmentTotal:        summary.equipmentTotal,
+      installationTotal:     summary.installationTotal,
+      grandTotal:            summary.grandTotal,
+      expirationDate:        summary.expirationDate,
+      html:                  htmlStr,
+      plaintext:             plaintextStr,
+      // Pre-escaped variant of `plaintext`, safe to drop directly between
+      // double quotes in a JSON string template (e.g. an esignatures.com
+      // request body that maps {{...}} placeholders into a hand-written
+      // body template). JSON-encodes \, ", \n, \r, \t, and other control
+      // chars; trims surrounding quotes so callers can do `"value": "{{x}}"`.
+      plaintextJsonEscaped:  jsonStringEscape(plaintextStr),
+      json:                  jsonSnapshot,
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
       // the payload so the Make scenario doesn't have to keep its own
       // hard-coded copy.
-      tokens:            PROPOSAL_TOKENS
+      tokens:                PROPOSAL_TOKENS
     };
   }
 
