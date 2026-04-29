@@ -2212,6 +2212,24 @@
       laborTotal = round2(laborTotal + laborVal);
     }
 
+    // The per-row sum is a fallback only — the JSON snapshot view (e.g.
+    // view_3896) doesn't always project field_2028_raw for every row,
+    // so summing it can under-report the labor total. The proposal
+    // already computes the authoritative Installation Total in
+    // payload.projectTotals.lines, which is what shows in the proposal
+    // HTML. Prefer that value when present.
+    if (projectTotals && Array.isArray(projectTotals.lines)) {
+      for (var li = 0; li < projectTotals.lines.length; li++) {
+        var ptLine = projectTotals.lines[li];
+        if (!ptLine) continue;
+        if (!/^installation\s+total\b/i.test(ptLine.label || '')) continue;
+        var instRaw = (ptLine.value || '').replace(/[^0-9.]/g, '');
+        var instAmt = parseFloat(instRaw);
+        if (!isNaN(instAmt) && instAmt >= 0) laborTotal = round2(instAmt);
+        break;
+      }
+    }
+
     // Subtract proposal-level discount (the "Proposal Discount" line in
     // project totals) from the labor lump. Per-line discounts already
     // landed in field_2269_raw (equipment) for each row. The "Proposal
