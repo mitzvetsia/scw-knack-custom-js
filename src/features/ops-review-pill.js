@@ -402,31 +402,18 @@
     return null; // terminal
   }
 
-  // Pull the per-row proposal/detail URL. Prefers a kn-link-page anchor
-  // in the row whose href actually points at the proposal page (matched
-  // by `/proposal/<24-hex>` in the route). Other kn-link-page columns
-  // (e.g. a "Clone SOW" page link the user adds to the table) must NOT
-  // be picked up here — historically getRowLink grabbed any kn-link-page
-  // and that broke the moment a second action-page column appeared.
-  // When no proposal-link is present, fall back to constructing the URL
-  // from the current page's hash plus the row's record id —
-  //   <current-hash>/proposal/<sowRecordId>
-  // matches the route pattern Knack uses for the proposal page.
+  // Per-row proposal URL. Hardcoded slug — the proposal page lives at
+  // #proposals/proposal/<sowRecordId>/ regardless of where the user
+  // navigates from. Scraping the row's anchors (or building from the
+  // current hash) was fragile: the moment another action-page column
+  // got added to the table, querySelector picked up the wrong link;
+  // and current-hash construction depended on which child page the
+  // user was viewing. The slug is the contract — pin to it.
+  var PROPOSAL_SLUG = '#proposals/proposal/';
   function getRowLink(tr) {
-    var anchors = tr.querySelectorAll('a.kn-link-page[href]');
-    for (var i = 0; i < anchors.length; i++) {
-      var href = anchors[i].getAttribute('href') || '';
-      if (/\/proposal\/[a-f0-9]{24}/i.test(href)) return href;
-    }
     var m = (tr.id || '').match(/[a-f0-9]{24}/i);
     if (!m) return '';
-
-    var hash  = window.location.hash || '';
-    var qIdx  = hash.indexOf('?');
-    var path  = qIdx >= 0 ? hash.substring(0, qIdx) : hash;
-    var query = qIdx >= 0 ? hash.substring(qIdx)    : '';
-    if (path.charAt(path.length - 1) === '/') path = path.slice(0, -1);
-    return path + '/proposal/' + m[0] + query;
+    return PROPOSAL_SLUG + m[0] + '/';
   }
 
   // ── Published-proposal index ────────────────────────────
