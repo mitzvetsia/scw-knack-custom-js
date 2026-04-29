@@ -1562,6 +1562,7 @@
               plaintext: htmlToPlaintext(htmlStr),
               plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
               scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
+              scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
               json: jsonSnapshot,
               jsonString: (function () { try { return JSON.stringify(jsonSnapshot); } catch (e) { return ''; } })()
             };
@@ -2394,6 +2395,14 @@
       // in the agreement. Bypasses JSON-string-escape entirely because
       // the value is a structured array, not a string.
       scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
+      // Pre-stringified scopeOfWorkDocumentElements for the same reason
+      // jsonString exists below: when Make maps an array value into a
+      // plain-text/paragraph Knack field, it iterates the array and
+      // joins inner items with ", " — losing the wrapping `[` and `]`.
+      // The user then has to wrap-in-brackets at read time. Ship the
+      // proper JSON.stringify of the array so it can be stored verbatim
+      // and parseJSON'd back to a structured array on the read side.
+      scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
       json:                  jsonSnapshot,
       // Pre-stringified JSON snapshot — store this string verbatim in a
       // Knack plain-text/paragraph field (no Make-side stringify, no

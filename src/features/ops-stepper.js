@@ -674,7 +674,7 @@
             'sowId', 'equipmentTotal', 'installationTotal',
             'grandTotal', 'expirationDate',
             'html', 'plaintext', 'plaintextJsonEscaped',
-            'scopeOfWorkDocumentElements',
+            'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
             'json', 'jsonString'
           ];
           for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
