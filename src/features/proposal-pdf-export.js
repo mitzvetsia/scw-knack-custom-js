@@ -2133,12 +2133,13 @@
       elements.push({ type: 'text_normal', text: text });
     }
 
-    // .detail-label-none holds the rendered project name + quote name as
-    // <h1>/<h2>/<span>. Emit each direct heading as text_header_two so
-    // both names show as section-level headings in the agreement.
+    // .detail-label-none holds the rendered project name + quote name
+    // as <h1>/<h2>. Skip the <h1> (project name) — Make injects it
+    // dynamically at the top of the agreement instead. Keep the <h2>
+    // (quote name) as text_header_two.
     function emitDetailLabelNone(el) {
       var seen = {};
-      var headings = el.querySelectorAll('h1, h2, h3, h4');
+      var headings = el.querySelectorAll('h2, h3, h4');
       for (var i = 0; i < headings.length; i++) {
         var t = cleanText(headings[i].textContent);
         if (t && !seen[t]) {
@@ -2149,8 +2150,9 @@
     }
 
     // .detail-table is a 2-column key/value table of header attrs (SOW
-    // ID, Project Address, Expiration Date, etc.). Emit as a 2-col table
-    // with the expiration-date row dropped per request.
+    // ID, Project Address, Expiration Date, Proposal ID, etc.). Drop
+    // the Proposal ID row (Make injects the live value at the top of
+    // the agreement) and the Expiration Date row.
     function emitDetailTable(table) {
       var rows = table.querySelectorAll('tr');
       var cells = [];
@@ -2160,6 +2162,7 @@
         if (!labelEl) continue;
         var label = cleanText(labelEl.textContent);
         if (/^expiration\s+date/i.test(label)) continue;
+        if (/^proposal\s+id/i.test(label)) continue;
         var value = cleanText(valueEl ? valueEl.textContent : '');
         cells.push([
           { text: label, styles: ['bold'] },
