@@ -1564,7 +1564,7 @@
               scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
               scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
               json: jsonSnapshot,
-              jsonString: (function () { try { return JSON.stringify(jsonSnapshot); } catch (e) { return ''; } })()
+              jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })()
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
@@ -2073,6 +2073,40 @@
     return encoded.slice(1, -1);
   }
 
+  // Recursively walk a Knack snapshot and drop every `field_xxx` key
+  // that has a `field_xxx_raw` counterpart on the same object. Knack
+  // returns connection / rich-text / file fields with a rendered-HTML
+  // value at `field_xxx` (e.g. `<span class="abc">label</span>`) and
+  // a clean structured value at `field_xxx_raw` (e.g.
+  // `[{id, identifier}]`). The HTML version is purely for display —
+  // for downstream consumers (Make, esignatures, anyone who needs to
+  // round-trip the JSON through a string field) it's pure liability:
+  // every quote inside the HTML is a JSON-escape footgun. Strip them.
+  // Keep `id`, `headerId`, `sowRecordId`, and any field_xxx that has
+  // no _raw twin.
+  function stripNonRawFields(node) {
+    if (Array.isArray(node)) {
+      var arr = [];
+      for (var i = 0; i < node.length; i++) arr.push(stripNonRawFields(node[i]));
+      return arr;
+    }
+    if (node && typeof node === 'object') {
+      var out = {};
+      var keys = Object.keys(node);
+      var hasRawTwin = {};
+      for (var k = 0; k < keys.length; k++) {
+        if (/_raw$/.test(keys[k])) hasRawTwin[keys[k].replace(/_raw$/, '')] = true;
+      }
+      for (var ki = 0; ki < keys.length; ki++) {
+        var key = keys[ki];
+        if (/^field_\d+$/.test(key) && hasRawTwin[key]) continue;
+        out[key] = stripNonRawFields(node[key]);
+      }
+      return out;
+    }
+    return node;
+  }
+
   // Walk the rendered proposal HTML and emit an array of esignatures.com
   // document_elements. Output goes into a placeholder_fields entry as
   // `document_elements: [...]` so the agreement renders headings + tables
@@ -2410,12 +2444,14 @@
       // the object exactly. Avoids the round-trip-corruption hazard
       // when Make's HTTP/Knack modules re-serialize an already-parsed
       // .json object — every step that re-encodes risks half-escaping
-      // the HTML quotes inside connection-field values like
-      // <span class="69dd...">label</span>, producing the
-      // `<span class="\">label</span>` malformed output seen in field
-      // 2172/etc. With jsonString the bundle owns the only JSON.stringify
-      // call; downstream is pure string passthrough.
-      jsonString:            (function () { try { return JSON.stringify(jsonSnapshot); } catch (e) { return ''; } })(),
+      // the HTML quotes inside connection-field values.
+      //
+      // Also pre-strips every `field_xxx` key that has a `field_xxx_raw`
+      // twin: the rendered-HTML version is purely display noise for
+      // downstream consumers, and was the source of every HTML-quote
+      // round-trip corruption we've seen. The _raw versions are clean
+      // structured data ([{id, identifier}], numbers, booleans, etc.).
+      jsonString:            (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
