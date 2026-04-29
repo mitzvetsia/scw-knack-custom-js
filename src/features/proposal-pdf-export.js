@@ -2072,19 +2072,34 @@
   }
 
   // Walk the rendered proposal HTML and emit an array of esignatures.com
-  // document_elements. The output is the structured equivalent of
-  // htmlToPlaintext but suitable for `placeholder_fields[*].document_elements`,
-  // so the agreement renders a proper SOW with headings, tables, totals
-  // instead of a wall of plaintext.
+  // document_elements. Output goes into a placeholder_fields entry as
+  // `document_elements: [...]` so the agreement renders headings + tables
+  // natively (instead of a plaintext blob).
   //
-  // Element types emitted (per esignatures docs):
-  //   text_header_one / _two / _three  ← <h1>/<h2>/<h3>
-  //   text_normal                      ← <p>, content-bearing <div>
-  //   table                            ← <table> (rows×cells, bold from <th>/<strong>/<b>, italic from <i>/<em>)
+  // The walker is STRUCTURE-AWARE — it knows the exact class names this
+  // file's renderer produces (.l1-section, .l1-header, .l2-header,
+  // .product-table, .l1-footer, .project-totals, .detail-label-none,
+  // .detail-table) and emits a curated, agreement-friendly subset:
   //
-  // Skips <script>/<style>/<head>/<img> entirely. Other element types
-  // (lists, signer fields, images) aren't emitted — the SOW HTML doesn't
-  // produce content that maps to them.
+  //   Project / Quote names (.detail-label-none)        -> text_header_two
+  //   Header detail rows (.detail-table)                -> 2-col table
+  //                                                        (the
+  //                                                        "Expiration
+  //                                                        Date" row is
+  //                                                        skipped)
+  //   View titles (.view-title, e.g. "Proposed Solution")
+  //                                                     -> text_header_two
+  //   Each L1 section (.l1-section):
+  //       .l1-header                                    -> text_header_three
+  //       all .product-table bodies merged into ONE
+  //         table (L2 headers and L2 footers skipped,
+  //         header row deduped, Qty/Cost cells centered)
+  //       .l1-footer lines                              -> text_header_three
+  //   Project totals (.project-totals)                  -> text_header_two
+  //                                                        + 2-col table
+  //   BOM / report tables                               -> table (numeric
+  //                                                        columns
+  //                                                        centered)
   function buildSowDocumentElements(html) {
     if (!html || typeof html !== 'string') return [];
 
@@ -2107,49 +2122,127 @@
       return (s || '').replace(/\s+/g, ' ').replace(/ /g, ' ').trim();
     }
 
-    function cellStyles(cellEl) {
-      var styles = [];
-      var tag = cellEl.tagName.toLowerCase();
-      if (tag === 'th' || cellEl.querySelector('strong, b')) styles.push('bold');
-      if (cellEl.querySelector('em, i')) styles.push('italic');
-      return styles;
+    function pushHeader(level, text) {
+      if (!text) return;
+      var typeMap = { 1: 'text_header_one', 2: 'text_header_two', 3: 'text_header_three' };
+      elements.push({ type: typeMap[level] || 'text_header_three', text: text });
     }
 
-    function emitTable(tableEl) {
-      var rowEls = tableEl.querySelectorAll('tr');
-      var tableCells = [];
-      for (var r = 0; r < rowEls.length; r++) {
-        var cellEls = rowEls[r].querySelectorAll('td, th');
-        if (!cellEls.length) continue;
-        var rowCells = [];
-        for (var c = 0; c < cellEls.length; c++) {
-          var cellText = cleanText(cellEls[c].textContent);
-          var cell = { text: cellText };
-          var styles = cellStyles(cellEls[c]);
-          if (styles.length) cell.styles = styles;
-          // Right-align cells that are purely numeric / currency / qty —
-          // they read much better aligned right in a SOW table.
-          if (/^[\$\(]?-?[\d,]+(?:\.\d+)?[\)\%]?$/.test(cellText)) {
-            cell.alignment = 'right';
-          }
-          rowCells.push(cell);
+    function pushNormal(text) {
+      if (!text) return;
+      elements.push({ type: 'text_normal', text: text });
+    }
+
+    // .detail-label-none holds the rendered project name + quote name as
+    // <h1>/<h2>/<span>. Emit each direct heading as text_header_two so
+    // both names show as section-level headings in the agreement.
+    function emitDetailLabelNone(el) {
+      var seen = {};
+      var headings = el.querySelectorAll('h1, h2, h3, h4');
+      for (var i = 0; i < headings.length; i++) {
+        var t = cleanText(headings[i].textContent);
+        if (t && !seen[t]) {
+          pushHeader(2, t);
+          seen[t] = true;
         }
-        tableCells.push(rowCells);
       }
-      if (tableCells.length) {
-        elements.push({ type: 'table', table_cells: tableCells });
+    }
+
+    // .detail-table is a 2-column key/value table of header attrs (SOW
+    // ID, Project Address, Expiration Date, etc.). Emit as a 2-col table
+    // with the expiration-date row dropped per request.
+    function emitDetailTable(table) {
+      var rows = table.querySelectorAll('tr');
+      var cells = [];
+      for (var i = 0; i < rows.length; i++) {
+        var labelEl = rows[i].querySelector('.detail-label');
+        var valueEl = rows[i].querySelector('.detail-value');
+        if (!labelEl) continue;
+        var label = cleanText(labelEl.textContent);
+        if (/^expiration\s+date/i.test(label)) continue;
+        var value = cleanText(valueEl ? valueEl.textContent : '');
+        cells.push([
+          { text: label, styles: ['bold'] },
+          { text: value }
+        ]);
+      }
+      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+    }
+
+    // .col-qty / .col-cost cells get center alignment per request.
+    function cellAlignmentForClass(el) {
+      if (!el || !el.classList) return null;
+      if (el.classList.contains('col-qty') || el.classList.contains('col-cost')) return 'center';
+      return null;
+    }
+
+    // .l1-section wraps an MDF/IDF/Headend group. Emit the L1 header as
+    // H3, MERGE every .product-table inside the section into ONE
+    // combined table (skipping L2 headers and L2 footers), then emit
+    // each .l1-footer line as its own H3.
+    function emitL1Section(section) {
+      var headerEl = section.querySelector('.l1-header');
+      if (headerEl) pushHeader(3, cleanText(headerEl.textContent));
+
+      var combinedCells = [];
+      var emittedHeaderRow = false;
+      var tables = section.querySelectorAll('table.product-table');
+      for (var t = 0; t < tables.length; t++) {
+        if (!emittedHeaderRow) {
+          var headRows = tables[t].querySelectorAll('thead tr');
+          for (var hr = 0; hr < headRows.length; hr++) {
+            var thCells = headRows[hr].querySelectorAll('th');
+            if (!thCells.length) continue;
+            var headerCells = [];
+            for (var c = 0; c < thCells.length; c++) {
+              var th = thCells[c];
+              var cell = { text: cleanText(th.textContent), styles: ['bold'] };
+              var align = cellAlignmentForClass(th);
+              if (align) cell.alignment = align;
+              headerCells.push(cell);
+            }
+            combinedCells.push(headerCells);
+            emittedHeaderRow = true;
+            break;
+          }
+        }
+        var bodyRows = tables[t].querySelectorAll('tbody tr');
+        for (var br = 0; br < bodyRows.length; br++) {
+          var tdCells = bodyRows[br].querySelectorAll('td');
+          if (!tdCells.length) continue;
+          var rowCells = [];
+          for (var cb = 0; cb < tdCells.length; cb++) {
+            var td = tdCells[cb];
+            var rcell = { text: cleanText(td.textContent) };
+            var alignB = cellAlignmentForClass(td);
+            if (alignB) rcell.alignment = alignB;
+            rowCells.push(rcell);
+          }
+          combinedCells.push(rowCells);
+        }
+        // <tfoot> (.l2-footer) rows skipped intentionally.
+      }
+      if (combinedCells.length) {
+        elements.push({ type: 'table', table_cells: combinedCells });
+      }
+
+      var footer = section.querySelector('.l1-footer');
+      if (footer) {
+        var fLines = footer.querySelectorAll('.l1-footer-line');
+        for (var fi = 0; fi < fLines.length; fi++) {
+          var lblEl = fLines[fi].querySelector('.l1-footer-label');
+          var valEl = fLines[fi].querySelector('.l1-footer-value');
+          var lbl = cleanText(lblEl ? lblEl.textContent : '');
+          var val = cleanText(valEl ? valEl.textContent : '');
+          var combined = (lbl && val) ? (lbl + '   ' + val) : (lbl || val);
+          if (combined) pushHeader(3, combined);
+        }
       }
     }
 
     function emitProjectTotals(rootEl) {
-      // The rendered html wraps totals in <div class="project-totals">
-      // with <div class="pt-title"> + <div class="pt-line"><span class="pt-label">x</span><span class="pt-value">$y</span></div>.
-      // Emit as text_header_two + a 2-column table for the lines.
       var title = rootEl.querySelector('.pt-title');
-      if (title) {
-        var t = cleanText(title.textContent);
-        if (t) elements.push({ type: 'text_header_two', text: t });
-      }
+      if (title) pushHeader(2, cleanText(title.textContent));
       var lines = rootEl.querySelectorAll('.pt-line');
       var tableCells = [];
       for (var i = 0; i < lines.length; i++) {
@@ -2159,7 +2252,7 @@
         var label = cleanText(labelEl.textContent);
         var value = cleanText(valueEl.textContent);
         var isGrand = lines[i].className.indexOf('pt-line--grand') >= 0
-                   || lines[i].className.indexOf('pt-line--total') >= 0
+                   || lines[i].className.indexOf('pt-line--final') >= 0
                    || /grand|total/i.test(label);
         var labelCell = { text: label };
         var valueCell = { text: value, alignment: 'right' };
@@ -2174,60 +2267,72 @@
       }
     }
 
-    function walk(node) {
-      if (!node) return;
-      if (node.nodeType !== 1) return;
-
-      var tag = node.tagName.toLowerCase();
-
-      if (tag === 'br' || tag === 'hr') return;
-
-      if (/^h([1-6])$/.test(tag)) {
-        var level = parseInt(tag.charAt(1), 10);
-        var typeMap = { 1: 'text_header_one', 2: 'text_header_two', 3: 'text_header_three' };
-        var headerType = typeMap[level] || 'text_header_three';
-        var t = cleanText(node.textContent);
-        if (t) elements.push({ type: headerType, text: t });
-        return;
-      }
-
-      if (tag === 'table') {
-        emitTable(node);
-        return;
-      }
-
-      // Special-case the rendered project-totals block.
-      if (node.classList && node.classList.contains('project-totals')) {
-        emitProjectTotals(node);
-        return;
-      }
-
-      if (tag === 'p') {
-        var pt = cleanText(node.textContent);
-        if (pt) elements.push({ type: 'text_normal', text: pt });
-        return;
-      }
-
-      // For container elements (div, section, etc.) recurse so we hit
-      // headings/tables/paragraphs in the right order.
-      var hasBlockChild = false;
-      for (var i = 0; i < node.children.length; i++) {
-        var ct = node.children[i].tagName.toLowerCase();
-        if (/^(h[1-6]|table|p|div|section|article|header|footer|ul|ol)$/.test(ct)) {
-          hasBlockChild = true;
-          break;
+    // Generic table fallback (BOM, etc.). Center-aligns numeric cells.
+    function emitGenericTable(table) {
+      var rowEls = table.querySelectorAll('tr');
+      var cells = [];
+      for (var r = 0; r < rowEls.length; r++) {
+        var rowCellEls = rowEls[r].querySelectorAll('td, th');
+        if (!rowCellEls.length) continue;
+        var rowCells = [];
+        for (var c = 0; c < rowCellEls.length; c++) {
+          var el = rowCellEls[c];
+          var text = cleanText(el.textContent);
+          var entry = { text: text };
+          var styles = [];
+          if (el.tagName.toLowerCase() === 'th' || el.querySelector('strong, b')) styles.push('bold');
+          if (el.querySelector('em, i')) styles.push('italic');
+          if (styles.length) entry.styles = styles;
+          if (/^[\$\(]?-?[\d,]+(?:\.\d+)?[\)\%]?$/.test(text)) entry.alignment = 'center';
+          rowCells.push(entry);
         }
+        cells.push(rowCells);
       }
-      if (hasBlockChild) {
-        for (var k = 0; k < node.childNodes.length; k++) walk(node.childNodes[k]);
-      } else {
-        // Leaf-ish container with only text/inline content — emit as a paragraph.
-        var leafText = cleanText(node.textContent);
-        if (leafText) elements.push({ type: 'text_normal', text: leafText });
+      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+    }
+
+    function walkChildren(parent) {
+      for (var i = 0; i < parent.children.length; i++) {
+        var child = parent.children[i];
+        var classes = child.classList;
+
+        if (classes && classes.contains('detail-label-none')) { emitDetailLabelNone(child); continue; }
+        if (child.tagName.toLowerCase() === 'table' && classes && classes.contains('detail-table')) {
+          emitDetailTable(child); continue;
+        }
+        if (classes && classes.contains('view-title')) {
+          pushHeader(2, cleanText(child.textContent));
+          continue;
+        }
+        if (classes && classes.contains('view-narrative')) {
+          var nt = cleanText(child.textContent);
+          if (nt) pushNormal(nt);
+          continue;
+        }
+        if (classes && classes.contains('l1-section')) { emitL1Section(child); continue; }
+        if (classes && classes.contains('project-totals')) { emitProjectTotals(child); continue; }
+        if (classes && (classes.contains('recurring-section') || classes.contains('report-section') || classes.contains('bom-section'))) {
+          walkChildren(child);
+          continue;
+        }
+        if (child.tagName.toLowerCase() === 'table') { emitGenericTable(child); continue; }
+
+        if (/^h([1-6])$/i.test(child.tagName)) {
+          var level = parseInt(child.tagName.charAt(1), 10);
+          pushHeader(Math.min(level, 3), cleanText(child.textContent));
+          continue;
+        }
+
+        if (child.children.length) {
+          walkChildren(child);
+        } else {
+          var t = cleanText(child.textContent);
+          if (t) pushNormal(t);
+        }
       }
     }
 
-    walk(doc.body);
+    walkChildren(doc.body);
     return elements;
   }
 
