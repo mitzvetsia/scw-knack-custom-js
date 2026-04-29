@@ -402,15 +402,22 @@
     return null; // terminal
   }
 
-  // Pull the per-row proposal/detail URL. Prefers an existing kn-link-page
-  // anchor in the row (the "Proposal" column when it exists). When the
-  // view doesn't include that column, fall back to constructing the URL
+  // Pull the per-row proposal/detail URL. Prefers a kn-link-page anchor
+  // in the row whose href actually points at the proposal page (matched
+  // by `/proposal/<24-hex>` in the route). Other kn-link-page columns
+  // (e.g. a "Clone SOW" page link the user adds to the table) must NOT
+  // be picked up here — historically getRowLink grabbed any kn-link-page
+  // and that broke the moment a second action-page column appeared.
+  // When no proposal-link is present, fall back to constructing the URL
   // from the current page's hash plus the row's record id —
   //   <current-hash>/proposal/<sowRecordId>
   // matches the route pattern Knack uses for the proposal page.
   function getRowLink(tr) {
-    var a = tr.querySelector('a.kn-link-page[href]');
-    if (a && a.getAttribute('href')) return a.getAttribute('href');
+    var anchors = tr.querySelectorAll('a.kn-link-page[href]');
+    for (var i = 0; i < anchors.length; i++) {
+      var href = anchors[i].getAttribute('href') || '';
+      if (/\/proposal\/[a-f0-9]{24}/i.test(href)) return href;
+    }
     var m = (tr.id || '').match(/[a-f0-9]{24}/i);
     if (!m) return '';
 
