@@ -1564,7 +1564,9 @@
               scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
               scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
               json: jsonSnapshot,
-              jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })()
+              jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
+              invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId),
+              invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId) || {}); } catch (e) { return '{}'; } })()
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
@@ -2107,6 +2109,127 @@
     return node;
   }
 
+  // Build invoice-ready line items from the JSON snapshot. Domain-aware
+  // categorization (SKU vs labor vs license) lives here in the bundle;
+  // Xero / TaxJar / external billing shape lives in Make. The output is
+  // billing-system-agnostic — Make injects the tax codes and final API
+  // shape at the integration layer.
+  //
+  // Rules:
+  //   bucket "License"            -> invoiceItems.recurring (per-SKU,
+  //                                  aggregated by qty)
+  //   bucket "Assumptions"        -> skipped entirely (no equipment, no
+  //                                  labor — assumptions don't bill)
+  //   bucket "Other Services"     -> labor lump only (no SKU, no
+  //                                  equipment — it's all services)
+  //   anything else with SKU and
+  //     equipment value > 0       -> invoiceItems.equipment (per-SKU,
+  //                                  aggregated by qty)
+  //   any row's labor portion
+  //     (except License/Assumptions) -> contributes to invoiceItems.labor
+  //                                     lump
+  //
+  // Field map (per the line-item view's _raw values):
+  //   field_2219_raw[0].identifier  bucket name
+  //   field_1963_raw                SKU (per request — confirmed)
+  //   field_1958_raw                product display name
+  //   field_1960_raw                list price per unit
+  //   field_2201_raw                equipment value for this row
+  //   field_2028_raw                labor value for this row
+  function buildInvoiceItems(jsonSnapshot, sowId) {
+    if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
+
+    // Find any line-items array in the snapshot. Heuristic: an array
+    // whose first member has `field_2219_raw` (the bucket connection).
+    // Works for the slim snapshot shape (cfg.jsonIncludeViews) and the
+    // full shape, regardless of which view_id the line items live in.
+    var lineItems = [];
+    var keys = Object.keys(jsonSnapshot);
+    for (var ki = 0; ki < keys.length; ki++) {
+      var v = jsonSnapshot[keys[ki]];
+      if (Array.isArray(v) && v.length && v[0] && v[0].field_2219_raw !== undefined) {
+        lineItems = lineItems.concat(v);
+      }
+    }
+    if (!lineItems.length) return null;
+
+    function num(x) {
+      var n = parseFloat(x);
+      return isNaN(n) ? 0 : n;
+    }
+    function round2(n) { return Math.round(n * 100) / 100; }
+
+    var equipmentBySku = {};
+    var recurringBySku = {};
+    var laborTotal = 0;
+
+    for (var i = 0; i < lineItems.length; i++) {
+      var row = lineItems[i] || {};
+      var bucketArr = row.field_2219_raw;
+      var bucket = (bucketArr && bucketArr[0] && bucketArr[0].identifier) || '';
+      var sku = (row.field_1963_raw || '').toString().trim();
+      var name = (row.field_1958_raw || '').toString().trim();
+      var listPrice = num(row.field_1960_raw);
+      var equipmentVal = num(row.field_2201_raw);
+      var laborVal = num(row.field_2028_raw);
+
+      if (/^license\b/i.test(bucket)) {
+        if (sku && equipmentVal > 0) {
+          if (!recurringBySku[sku]) {
+            recurringBySku[sku] = {
+              sku: sku, description: name,
+              qty: 0, unitPrice: listPrice, lineTotal: 0
+            };
+          }
+          recurringBySku[sku].qty += 1;
+          recurringBySku[sku].lineTotal = round2(recurringBySku[sku].lineTotal + equipmentVal);
+        }
+        continue;
+      }
+
+      if (/^assumption/i.test(bucket)) {
+        continue;
+      }
+
+      if (sku && equipmentVal > 0) {
+        if (!equipmentBySku[sku]) {
+          equipmentBySku[sku] = {
+            sku: sku, description: name,
+            qty: 0, unitPrice: listPrice, lineTotal: 0
+          };
+        }
+        equipmentBySku[sku].qty += 1;
+        equipmentBySku[sku].lineTotal = round2(equipmentBySku[sku].lineTotal + equipmentVal);
+      }
+
+      laborTotal = round2(laborTotal + laborVal);
+    }
+
+    function flatten(map) {
+      var out = [];
+      var skuKeys = Object.keys(map);
+      for (var i = 0; i < skuKeys.length; i++) {
+        var item = map[skuKeys[i]];
+        if (item.qty > 0 && item.lineTotal === 0 && item.unitPrice > 0) {
+          item.lineTotal = round2(item.qty * item.unitPrice);
+        }
+        out.push(item);
+      }
+      return out;
+    }
+
+    return {
+      equipment: flatten(equipmentBySku),
+      labor: laborTotal > 0 ? {
+        description: 'Installation services per SOW ' + (sowId || ''),
+        qty: 1,
+        unitPrice: laborTotal,
+        lineTotal: laborTotal
+      } : null,
+      recurring: flatten(recurringBySku)
+    };
+  }
+
   // Walk the rendered proposal HTML and emit an array of esignatures.com
   // document_elements. Output goes into a placeholder_fields entry as
   // `document_elements: [...]` so the agreement renders headings + tables
@@ -2452,6 +2575,15 @@
       // round-trip corruption we've seen. The _raw versions are clean
       // structured data ([{id, identifier}], numbers, booleans, etc.).
       jsonString:            (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
+      // Pre-categorized, billing-system-agnostic invoice line items.
+      // Bundle owns the SKU vs labor vs license classification; Make
+      // injects Xero / TaxJar product_tax_code values at integration
+      // time. Shape:
+      //   { equipment: [ { sku, description, qty, unitPrice, lineTotal } ],
+      //     labor:    { description, qty, unitPrice, lineTotal } | null,
+      //     recurring: [ { sku, description, qty, unitPrice, lineTotal } ] }
+      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId),
+      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId) || {}); } catch (e) { return '{}'; } })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
