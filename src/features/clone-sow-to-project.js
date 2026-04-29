@@ -13,8 +13,7 @@
   'use strict';
 
   var CONFIG = {
-    // TODO: replace with the real SOW Header update-form view id.
-    FORM_VIEW: 'view_PLACEHOLDER',
+    FORM_VIEW: 'view_3907',
     TARGET_PROJECT_FIELD: 'field_2753'
   };
 
