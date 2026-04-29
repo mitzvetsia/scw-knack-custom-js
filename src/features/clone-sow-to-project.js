@@ -106,6 +106,33 @@
     });
   }
 
+  // Knack clears the form's connection input as part of its save flow,
+  // so by the time knack-record-update / knack-form-submit fires, the
+  // hidden input.connection is back to "[]" and the record arg has no
+  // field_2753. Workaround: capture the picked Project id at submit-
+  // button-click time (capture phase, before Knack's own click handler
+  // tears down the form), then use the captured value when the post-
+  // save event fires.
+  var pendingTargetProjectId = '';
+  var pendingSourceRecordId  = '';
+  var pendingCapturedAt      = 0;
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('button[type="submit"]');
+    if (!btn) return;
+    var form = btn.closest('form');
+    if (!form) return;
+    if (!form.closest('#' + CONFIG.FORM_VIEW)) return;
+
+    pendingTargetProjectId = readTargetProjectIdFromDom();
+    pendingSourceRecordId  = readSourceSowIdFromDom();
+    pendingCapturedAt      = Date.now();
+    console.log(TAG, 'submit click captured', {
+      sourceRecordId:  pendingSourceRecordId,
+      targetProjectId: pendingTargetProjectId
+    });
+  }, true); // capture phase — runs before Knack's own click handler
+
   // Single dispatch: works whether the event delivered the record arg
   // (knack-record-update) or not (knack-form-submit). De-duped via a
   // short cooldown so we don't fire twice when both events fire on the
@@ -118,13 +145,22 @@
       return;
     }
 
-    var targetProjectId = readTargetProjectId(recordArg) || readTargetProjectIdFromDom();
-    var sourceRecordId  = (recordArg && recordArg.id) || readSourceSowIdFromDom();
+    // Prefer the captured-on-click value (Knack clears the form by the
+    // time the post-save event fires). Fall back to record / DOM in case
+    // the click capture didn't run (e.g. Enter key submit on some flows).
+    var capturedFresh = (now - pendingCapturedAt) < 30000;
+    var targetProjectId = (capturedFresh && pendingTargetProjectId) ||
+                          readTargetProjectId(recordArg) ||
+                          readTargetProjectIdFromDom();
+    var sourceRecordId  = (recordArg && recordArg.id) ||
+                          (capturedFresh && pendingSourceRecordId) ||
+                          readSourceSowIdFromDom();
 
     console.log(TAG, eventName + ' fired', {
-      sourceRecordId: sourceRecordId,
+      sourceRecordId:  sourceRecordId,
       targetProjectId: targetProjectId,
-      recordArg: recordArg
+      capturedFresh:   capturedFresh,
+      recordArg:       recordArg
     });
 
     if (!targetProjectId) {
@@ -137,6 +173,8 @@
     }
 
     lastFiredAt = now;
+    pendingTargetProjectId = '';
+    pendingSourceRecordId  = '';
     fireWebhook(sourceRecordId, targetProjectId);
   }
 
