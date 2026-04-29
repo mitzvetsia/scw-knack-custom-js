@@ -675,7 +675,7 @@
             'grandTotal', 'expirationDate',
             'html', 'plaintext', 'plaintextJsonEscaped',
             'scopeOfWorkDocumentElements',
-            'json'
+            'json', 'jsonString'
           ];
           for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
             var pk = PUBLISH_KEYS[pi];

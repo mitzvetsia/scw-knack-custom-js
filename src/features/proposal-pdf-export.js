@@ -1562,7 +1562,8 @@
               plaintext: htmlToPlaintext(htmlStr),
               plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
               scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
-              json: jsonSnapshot
+              json: jsonSnapshot,
+              jsonString: (function () { try { return JSON.stringify(jsonSnapshot); } catch (e) { return ''; } })()
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
@@ -2394,6 +2395,18 @@
       // the value is a structured array, not a string.
       scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
       json:                  jsonSnapshot,
+      // Pre-stringified JSON snapshot — store this string verbatim in a
+      // Knack plain-text/paragraph field (no Make-side stringify, no
+      // re-encode). At read time, parseJSON(field_value) reconstitutes
+      // the object exactly. Avoids the round-trip-corruption hazard
+      // when Make's HTTP/Knack modules re-serialize an already-parsed
+      // .json object — every step that re-encodes risks half-escaping
+      // the HTML quotes inside connection-field values like
+      // <span class="69dd...">label</span>, producing the
+      // `<span class="\">label</span>` malformed output seen in field
+      // 2172/etc. With jsonString the bundle owns the only JSON.stringify
+      // call; downstream is pure string passthrough.
+      jsonString:            (function () { try { return JSON.stringify(jsonSnapshot); } catch (e) { return ''; } })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
