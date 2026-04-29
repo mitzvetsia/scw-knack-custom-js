@@ -2135,7 +2135,12 @@
   //   field_1958_raw                product display name
   //   field_1960_raw                list price per unit
   //   field_2201_raw                equipment value for this row
-  //   field_2028_raw                labor value for this row
+  //   field_2203_raw                total value for this row (equipment + labor).
+  //                                 Labor is derived as (field_2203_raw -
+  //                                 field_2201_raw) so it works whether the row
+  //                                 is a mixed equipment+install row (camera
+  //                                 with bundled install) or a labor-only
+  //                                 row (separate install line item).
   function buildInvoiceItems(jsonSnapshot, sowId) {
     if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
 
@@ -2171,7 +2176,14 @@
       var name = (row.field_1958_raw || '').toString().trim();
       var listPrice = num(row.field_1960_raw);
       var equipmentVal = num(row.field_2201_raw);
-      var laborVal = num(row.field_2028_raw);
+      var rowTotal = num(row.field_2203_raw);
+      // Labor = total minus equipment, never negative. This formula
+      // captures labor on both schemas:
+      //   - mixed row: equipment $375 + bundled install $796 → labor $796
+      //   - install-only row: equipment $0 + install $143 → labor $143
+      //   - equipment-only row: equipment $300 + install $0 → labor $0
+      var laborVal = rowTotal - equipmentVal;
+      if (laborVal < 0) laborVal = 0;
 
       if (/^license\b/i.test(bucket)) {
         if (sku && equipmentVal > 0) {
