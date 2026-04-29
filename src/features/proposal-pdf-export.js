@@ -1565,8 +1565,8 @@
               scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
               json: jsonSnapshot,
               jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
-              invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId),
-              invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId) || {}); } catch (e) { return '{}'; } })()
+              invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
+              invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })()
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
@@ -2131,17 +2131,19 @@
   //
   // Field map (per the line-item view's _raw values):
   //   field_2219_raw[0].identifier  bucket name
-  //   field_1963_raw                SKU (per request — confirmed)
+  //   field_1963_raw                SKU
   //   field_1958_raw                product display name
   //   field_1960_raw                list price per unit
-  //   field_2201_raw                equipment value for this row
-  //   field_2203_raw                total value for this row (equipment + labor).
-  //                                 Labor is derived as (field_2203_raw -
-  //                                 field_2201_raw) so it works whether the row
-  //                                 is a mixed equipment+install row (camera
-  //                                 with bundled install) or a labor-only
-  //                                 row (separate install line item).
-  function buildInvoiceItems(jsonSnapshot, sowId) {
+  //   field_2269_raw                equipment value for this row, after
+  //                                 per-line discounts (locked-down field)
+  //   field_2028_raw                labor value for this row (locked-down field)
+  //
+  // Proposal-level discount: a separate "Proposal Discount" line appears
+  // in payload.projectTotals (rendered as `scw-l1-line--disc`). Per
+  // request, the proposal discount is subtracted from the LABOR lump,
+  // not from equipment lines (which already reflect their per-line
+  // discounts via field_2269).
+  function buildInvoiceItems(jsonSnapshot, sowId, projectTotals) {
     if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
 
     // Find any line-items array in the snapshot. Heuristic: an array
@@ -2175,15 +2177,8 @@
       var sku = (row.field_1963_raw || '').toString().trim();
       var name = (row.field_1958_raw || '').toString().trim();
       var listPrice = num(row.field_1960_raw);
-      var equipmentVal = num(row.field_2201_raw);
-      var rowTotal = num(row.field_2203_raw);
-      // Labor = total minus equipment, never negative. This formula
-      // captures labor on both schemas:
-      //   - mixed row: equipment $375 + bundled install $796 → labor $796
-      //   - install-only row: equipment $0 + install $143 → labor $143
-      //   - equipment-only row: equipment $300 + install $0 → labor $0
-      var laborVal = rowTotal - equipmentVal;
-      if (laborVal < 0) laborVal = 0;
+      var equipmentVal = num(row.field_2269_raw);
+      var laborVal = num(row.field_2028_raw);
 
       if (/^license\b/i.test(bucket)) {
         if (sku && equipmentVal > 0) {
@@ -2217,6 +2212,28 @@
       laborTotal = round2(laborTotal + laborVal);
     }
 
+    // Subtract proposal-level discount (the "Proposal Discount" line in
+    // project totals) from the labor lump. Per-line discounts already
+    // landed in field_2269_raw (equipment) for each row. The "Proposal
+    // Discount" is a flat across-the-board discount that's accounted
+    // for client-side against labor.
+    var proposalDiscount = 0;
+    if (projectTotals && Array.isArray(projectTotals.lines)) {
+      for (var d = 0; d < projectTotals.lines.length; d++) {
+        var line = projectTotals.lines[d];
+        if (!line || line.type !== 'disc') continue;
+        // Strip everything except digits, dot, minus. Discount values
+        // render as "–$100.00" (en-dash). The math symbol ‒ / – / − are
+        // not parsed by parseFloat, so we replace any non-numeric chars
+        // and take the absolute value as the discount magnitude.
+        var raw = (line.value || '').replace(/[^0-9.]/g, '');
+        var amt = parseFloat(raw);
+        if (!isNaN(amt) && amt > 0) proposalDiscount = round2(proposalDiscount + amt);
+      }
+    }
+    var laborAfterDiscount = round2(laborTotal - proposalDiscount);
+    if (laborAfterDiscount < 0) laborAfterDiscount = 0;
+
     function flatten(map) {
       var out = [];
       var skuKeys = Object.keys(map);
@@ -2232,11 +2249,16 @@
 
     return {
       equipment: flatten(equipmentBySku),
-      labor: laborTotal > 0 ? {
+      labor: laborAfterDiscount > 0 ? {
         description: 'Installation services per SOW ' + (sowId || ''),
         qty: 1,
-        unitPrice: laborTotal,
-        lineTotal: laborTotal
+        unitPrice: laborAfterDiscount,
+        lineTotal: laborAfterDiscount,
+        // Surface the pre-discount and discount values too so Make can
+        // render either ("Labor $X less proposal discount $Y = $Z") or
+        // just ship the net.
+        laborSubtotal: laborTotal,
+        proposalDiscount: proposalDiscount
       } : null,
       recurring: flatten(recurringBySku)
     };
@@ -2594,8 +2616,8 @@
       //   { equipment: [ { sku, description, qty, unitPrice, lineTotal } ],
       //     labor:    { description, qty, unitPrice, lineTotal } | null,
       //     recurring: [ { sku, description, qty, unitPrice, lineTotal } ] }
-      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId),
-      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId) || {}); } catch (e) { return '{}'; } })(),
+      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
+      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
