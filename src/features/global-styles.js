@@ -161,8 +161,7 @@
        server-side). Listed in proposal-pdf-export.js cfg.skipViews
        so the rendered proposal doesn't include it. */
     #view_3770,
-    #view_3887,
-    #view_3896 {
+    #view_3887 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;
@@ -173,6 +172,8 @@
       padding: 0 !important;
       margin: -1px !important;
     }
+    /* TEMP: view_3896 left visible for invoiceItems debugging.
+       Re-add to the hidden block above when done. */
 
     /* ─── Instructions & description callout ─── */
     .kn-instructions,
