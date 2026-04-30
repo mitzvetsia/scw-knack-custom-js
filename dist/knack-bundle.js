@@ -645,6 +645,23 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
   border-bottom: 60px solid #fff !important;
 }
 
+/* Tight spacing inside the per-L1 footer cluster (Subtotal \u2192 Discount
+   \u2192 Total), matching the project-totals Equipment Subtotal cluster.
+   Excludes the project-totals block via :not(.scw-project-totals)
+   since those rows have their own spacing rules above. */
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--sub:not(.scw-project-totals) td,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc:not(.scw-project-totals) td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--sub:not(.scw-project-totals)
+  + tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row:not(.scw-project-totals) td,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc:not(.scw-project-totals)
+  + tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row:not(.scw-project-totals) td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
   display: inline-block;
   min-width: 120px;
