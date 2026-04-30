@@ -601,6 +601,24 @@ tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand .scw-l1-valu
   font-size: 23px !important;
 }
 
+/* Extra breathing room below Equipment Total and Installation Total. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-total td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--installation-total td {
+  border-bottom: 14px solid transparent !important;
+}
+
+/* Tight spacing between Proposal Discount and Grand Total —
+   Proposal Discount drops directly into the Grand Total visually. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount
+  + tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
 
 /* ============================================================
    YOUR PROVIDED CSS — APPLIED TO ALL CONFIG.views
@@ -1737,6 +1755,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       value: formatMoney(equipmentTotal),
       rowType: 'final',
       isLast: false,
+      extraClass: 'scw-project-totals--equipment-total',
     }));
 
     rows.push(makeLineRow({
@@ -1744,6 +1763,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       value: formatMoney(installationTotal),
       rowType: 'final',
       isLast: false,
+      extraClass: 'scw-project-totals--installation-total',
     }));
 
     // Proposal Discount sits BETWEEN Installation Total and Grand Total
@@ -1755,6 +1775,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         value: '\u2013' + formatMoneyAbs(proposalDiscount),
         rowType: 'disc',
         isLast: false,
+        extraClass: 'scw-project-totals--proposal-discount',
       }));
     }
 
