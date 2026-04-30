@@ -2206,8 +2206,10 @@
       // Bucket sort order from field_2218 if projected on the line-item
       // record; otherwise fall back to bucket name (so the output is at
       // least deterministic). Add field_2218 to view_3896 to get the
-      // exact proposal-bucket sort order.
-      var bucketSortRaw = row.field_2218_raw;
+      // exact proposal-bucket sort order. NOTE: field_2218 here is a
+      // plain numeric column (not a connection field), so we read the
+      // formatted value (`field_2218`), not `_raw`.
+      var bucketSortRaw = row.field_2218;
       var bucketSort;
       if (bucketSortRaw === undefined || bucketSortRaw === null || bucketSortRaw === '') {
         bucketSort = Number.POSITIVE_INFINITY;
