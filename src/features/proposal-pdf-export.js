@@ -1559,7 +1559,14 @@
               grandTotal: summary.grandTotal,
               expirationDate: summary.expirationDate,
               html: htmlStr,
-              json: jsonSnapshot
+              plaintext: htmlToPlaintext(htmlStr),
+              plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
+              scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
+              scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
+              json: jsonSnapshot,
+              jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
+              invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
+              invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })()
             };
             SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
             showPublishToast('Submitting…', false, true);
@@ -1942,6 +1949,670 @@
     return null;
   }
 
+  // Convert the rendered proposal HTML to a structured plain-text version
+  // suitable for tools that don't accept HTML (e.g. esignatures.com
+  // installation agreements). DOM-based walk so we don't have to write a
+  // hand-rolled HTML parser; preserves table structure as tab-separated
+  // rows, headings as UPPERCASE blocks, and block elements as paragraph
+  // breaks. Stays in the bundle (not Make) because the inputs (HTML +
+  // structure) are already here, and round-tripping HTML through Make's
+  // stripHTML mangles tables.
+  function htmlToPlaintext(html) {
+    if (!html || typeof html !== 'string') return '';
+
+    var doc;
+    try {
+      doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (e) {
+      return '';
+    }
+    if (!doc || !doc.body) return '';
+
+    // Strip non-content nodes that would otherwise produce noise.
+    var dropEls = doc.querySelectorAll('script, style, head, link, meta, noscript');
+    for (var di = 0; di < dropEls.length; di++) dropEls[di].parentNode && dropEls[di].parentNode.removeChild(dropEls[di]);
+
+    var BLOCK_TAGS = {
+      p: 1, div: 1, section: 1, article: 1, header: 1, footer: 1, nav: 1,
+      h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1,
+      ul: 1, ol: 1, li: 1, dl: 1, dt: 1, dd: 1,
+      table: 1, thead: 1, tbody: 1, tfoot: 1, tr: 1,
+      blockquote: 1, pre: 1, hr: 1, figure: 1, figcaption: 1
+    };
+
+    var out = [];
+
+    function emit(s) { if (s) out.push(s); }
+
+    function walk(node) {
+      if (node.nodeType === 3) {
+        // Text node — collapse whitespace, leave content intact.
+        var t = node.nodeValue.replace(/\s+/g, ' ');
+        if (t) emit(t);
+        return;
+      }
+      if (node.nodeType !== 1) return;
+
+      var tag = node.tagName.toLowerCase();
+
+      if (tag === 'br') { emit('\n'); return; }
+      if (tag === 'hr') { emit('\n----------\n'); return; }
+      if (tag === 'img') { return; } // images skipped — esignatures-friendly
+
+      // Headings: blank line before + UPPERCASE the text content + blank line after.
+      if (/^h[1-6]$/.test(tag)) {
+        emit('\n\n');
+        var headStart = out.length;
+        for (var hi = 0; hi < node.childNodes.length; hi++) walk(node.childNodes[hi]);
+        for (var hj = headStart; hj < out.length; hj++) {
+          if (typeof out[hj] === 'string') out[hj] = out[hj].toUpperCase();
+        }
+        emit('\n\n');
+        return;
+      }
+
+      // Table cells: tab-separated. We emit a leading tab BEFORE every
+      // cell except the first in its row; tracked by walking parent's
+      // children to find position.
+      if (tag === 'td' || tag === 'th') {
+        var parent = node.parentNode;
+        var firstCell = true;
+        if (parent) {
+          for (var pi = 0; pi < parent.children.length; pi++) {
+            var sib = parent.children[pi];
+            var sibTag = sib.tagName && sib.tagName.toLowerCase();
+            if (sibTag === 'td' || sibTag === 'th') {
+              if (sib === node) break;
+              firstCell = false;
+              break;
+            }
+          }
+        }
+        if (!firstCell) emit('\t');
+        for (var ci = 0; ci < node.childNodes.length; ci++) walk(node.childNodes[ci]);
+        return;
+      }
+
+      // List items: bullet prefix per line.
+      if (tag === 'li') {
+        emit('\n  - ');
+        for (var li = 0; li < node.childNodes.length; li++) walk(node.childNodes[li]);
+        return;
+      }
+
+      var isBlock = BLOCK_TAGS[tag];
+      if (isBlock) emit('\n');
+      for (var ki = 0; ki < node.childNodes.length; ki++) walk(node.childNodes[ki]);
+      if (isBlock) emit('\n');
+    }
+
+    walk(doc.body);
+
+    var text = out.join('');
+
+    // Cleanup pass:
+    //   - Tabs at line start are noise (orphan cell separators).
+    //   - 3+ consecutive newlines collapse to a paragraph break (2).
+    //   - Trailing whitespace per line stripped.
+    //   - Leading/trailing whitespace on the whole doc stripped.
+    text = text.replace(/\n[\t ]+/g, '\n');
+    text = text.replace(/[\t ]+\n/g, '\n');
+    text = text.replace(/\n{3,}/g, '\n\n');
+    text = text.replace(/ /g, ' '); // non-breaking spaces → regular
+    text = text.replace(/[ \t]{2,}/g, ' ');
+
+    return text.trim();
+  }
+
+  // JSON-escape a string for safe interpolation between double quotes
+  // in a hand-written JSON body template. JSON.stringify produces a full
+  // JSON string literal (with surrounding quotes); we slice them off so
+  // the caller writes `"value": "{{escaped}}"` and gets valid JSON.
+  // Also handles the rare cases where the input is null/undefined.
+  function jsonStringEscape(s) {
+    if (s == null) return '';
+    var encoded = JSON.stringify(String(s));
+    return encoded.slice(1, -1);
+  }
+
+  // Recursively walk a Knack snapshot and drop every `field_xxx` key
+  // that has a `field_xxx_raw` counterpart on the same object. Knack
+  // returns connection / rich-text / file fields with a rendered-HTML
+  // value at `field_xxx` (e.g. `<span class="abc">label</span>`) and
+  // a clean structured value at `field_xxx_raw` (e.g.
+  // `[{id, identifier}]`). The HTML version is purely for display —
+  // for downstream consumers (Make, esignatures, anyone who needs to
+  // round-trip the JSON through a string field) it's pure liability:
+  // every quote inside the HTML is a JSON-escape footgun. Strip them.
+  // Keep `id`, `headerId`, `sowRecordId`, and any field_xxx that has
+  // no _raw twin.
+  function stripNonRawFields(node) {
+    if (Array.isArray(node)) {
+      var arr = [];
+      for (var i = 0; i < node.length; i++) arr.push(stripNonRawFields(node[i]));
+      return arr;
+    }
+    if (node && typeof node === 'object') {
+      var out = {};
+      var keys = Object.keys(node);
+      var hasRawTwin = {};
+      for (var k = 0; k < keys.length; k++) {
+        if (/_raw$/.test(keys[k])) hasRawTwin[keys[k].replace(/_raw$/, '')] = true;
+      }
+      for (var ki = 0; ki < keys.length; ki++) {
+        var key = keys[ki];
+        if (/^field_\d+$/.test(key) && hasRawTwin[key]) continue;
+        out[key] = stripNonRawFields(node[key]);
+      }
+      return out;
+    }
+    return node;
+  }
+
+  // Build invoice-ready line items from the JSON snapshot. Domain-aware
+  // categorization (SKU vs labor vs license) lives here in the bundle;
+  // Xero / TaxJar / external billing shape lives in Make. The output is
+  // billing-system-agnostic — Make injects the tax codes and final API
+  // shape at the integration layer.
+  //
+  // Rules:
+  //   bucket "License"            -> invoiceItems.recurring (per-SKU,
+  //                                  aggregated by qty)
+  //   bucket "Assumptions"        -> skipped entirely (no equipment, no
+  //                                  labor — assumptions don't bill)
+  //   bucket "Other Services"     -> labor lump only (no SKU, no
+  //                                  equipment — it's all services)
+  //   anything else with SKU and
+  //     equipment value > 0       -> invoiceItems.equipment (per-SKU,
+  //                                  aggregated by qty)
+  //   any row's labor portion
+  //     (except License/Assumptions) -> contributes to invoiceItems.labor
+  //                                     lump
+  //
+  // Field map (per the line-item view's _raw values):
+  //   field_2219_raw[0].identifier  bucket name
+  //   field_1963_raw                SKU
+  //   field_1958_raw                product display name
+  //   field_2268_raw                equipment unit price AND per-row
+  //                                 amount, after per-line discounts
+  //                                 (locked-down field — keep these
+  //                                 in sync so qty × unitPrice = lineTotal
+  //                                 on the Xero invoice line)
+  //   field_2028_raw                labor value for this row (locked-down field)
+  //
+  // Proposal-level discount: a separate "Proposal Discount" line appears
+  // in payload.projectTotals (rendered as `scw-l1-line--disc`). Per
+  // request, the proposal discount is subtracted from the LABOR lump,
+  // not from equipment lines (which already reflect their per-line
+  // discounts via field_2269).
+  function buildInvoiceItems(jsonSnapshot, sowId, projectTotals) {
+    if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
+
+    // Find any line-items array in the snapshot. Heuristic: an array
+    // whose first member has `field_2219_raw` (the bucket connection).
+    // Works for the slim snapshot shape (cfg.jsonIncludeViews) and the
+    // full shape, regardless of which view_id the line items live in.
+    var lineItems = [];
+    var keys = Object.keys(jsonSnapshot);
+    for (var ki = 0; ki < keys.length; ki++) {
+      var v = jsonSnapshot[keys[ki]];
+      if (Array.isArray(v) && v.length && v[0] && v[0].field_2219_raw !== undefined) {
+        lineItems = lineItems.concat(v);
+      }
+    }
+    if (!lineItems.length) return null;
+
+    function num(x) {
+      var n = parseFloat(x);
+      return isNaN(n) ? 0 : n;
+    }
+    function round2(n) { return Math.round(n * 100) / 100; }
+
+    var equipmentBySku = {};
+    var recurringBySku = {};
+    var laborTotal = 0;
+
+    for (var i = 0; i < lineItems.length; i++) {
+      var row = lineItems[i] || {};
+      var bucketArr = row.field_2219_raw;
+      var bucket = (bucketArr && bucketArr[0] && bucketArr[0].identifier) || '';
+      var sku = (row.field_1963_raw || '').toString().trim();
+      var name = (row.field_1958_raw || '').toString().trim();
+      // Pull both unit price and per-row amount from field_2268_raw so
+      // qty × unitPrice = lineTotal in the aggregated invoice item.
+      // field_1960_raw is the LIST price (pre-discount) — using it as
+      // unitPrice while summing post-discount amounts produced
+      // mismatched invoice math.
+      var unitAmount = num(row.field_2268_raw);
+      var equipmentVal = unitAmount;
+      var laborVal = num(row.field_2028_raw);
+
+      if (/^license\b/i.test(bucket)) {
+        if (sku && equipmentVal > 0) {
+          // Aggregation key is sku + name, not sku alone — different
+          // products that share the same SKU value in Knack (data
+          // entry oversight) would otherwise merge into one invoice
+          // line with a unitPrice that doesn't match the lineTotal.
+          // Keep them separate; the consumer can decide whether to
+          // present them merged.
+          var recurringKey = sku + '␟' + name;
+          if (!recurringBySku[recurringKey]) {
+            recurringBySku[recurringKey] = {
+              sku: sku, description: name,
+              qty: 0, unitPrice: unitAmount, lineTotal: 0
+            };
+          }
+          recurringBySku[recurringKey].qty += 1;
+          recurringBySku[recurringKey].lineTotal = round2(recurringBySku[recurringKey].lineTotal + equipmentVal);
+        }
+        continue;
+      }
+
+      if (/^assumption/i.test(bucket)) {
+        continue;
+      }
+
+      if (sku && equipmentVal > 0) {
+        var equipmentKey = sku + '␟' + name;
+        if (!equipmentBySku[equipmentKey]) {
+          equipmentBySku[equipmentKey] = {
+            sku: sku, description: name,
+            qty: 0, unitPrice: unitAmount, lineTotal: 0
+          };
+        }
+        equipmentBySku[equipmentKey].qty += 1;
+        equipmentBySku[equipmentKey].lineTotal = round2(equipmentBySku[equipmentKey].lineTotal + equipmentVal);
+      }
+
+      laborTotal = round2(laborTotal + laborVal);
+    }
+
+    // The per-row sum across the JSON snapshot (e.g. view_3896) is a
+    // last-resort fallback only. Two reasons it under-reports:
+    //   1. The snapshot view doesn't always project field_2028_raw for
+    //      every row.
+    //   2. In TBD-publish mode the projectTotals "Installation Total"
+    //      line literally renders as "TBD" — strip-numeric leaves an
+    //      empty string, parseFloat → NaN, no override happens.
+    //
+    // The authoritative source for labor on an invoice is field_2028
+    // summed directly from the proposal grid view's loaded Knack model
+    // (view_3341 for scene_1096). Those rows have ALL data loaded and
+    // the underlying field_2028_raw values are real numbers regardless
+    // of TBD-mode display masking.
+    var modelLaborTotal = (function () {
+      try {
+        var candidateViews = ['view_3341', 'view_3450', 'view_3451'];
+        if (typeof Knack === 'undefined' || !Knack.views) return null;
+        for (var vi = 0; vi < candidateViews.length; vi++) {
+          var v = Knack.views[candidateViews[vi]];
+          var models = v && v.model && v.model.data && v.model.data.models;
+          if (!models || !models.length) continue;
+          var sum = 0;
+          for (var mi = 0; mi < models.length; mi++) {
+            var attrs = models[mi].attributes || {};
+            var n = parseFloat(attrs.field_2028_raw);
+            if (!isNaN(n)) sum += n;
+          }
+          return round2(sum);
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    })();
+    if (modelLaborTotal !== null && modelLaborTotal > 0) {
+      laborTotal = modelLaborTotal;
+    } else if (projectTotals && Array.isArray(projectTotals.lines)) {
+      // Secondary fallback: projectTotals "Installation Total" line.
+      // Only useful when the value is a real number (not "TBD").
+      for (var li = 0; li < projectTotals.lines.length; li++) {
+        var ptLine = projectTotals.lines[li];
+        if (!ptLine) continue;
+        if (!/^installation\s+total\b/i.test(ptLine.label || '')) continue;
+        var instRaw = (ptLine.value || '').replace(/[^0-9.]/g, '');
+        var instAmt = parseFloat(instRaw);
+        if (!isNaN(instAmt) && instAmt > 0) laborTotal = round2(instAmt);
+        break;
+      }
+    }
+
+    // Subtract proposal-level discount (the "Proposal Discount" line in
+    // project totals) from the labor lump. Per-line discounts already
+    // landed in field_2269_raw (equipment) for each row. The "Proposal
+    // Discount" is a flat across-the-board discount that's accounted
+    // for client-side against labor.
+    var proposalDiscount = 0;
+    if (projectTotals && Array.isArray(projectTotals.lines)) {
+      for (var d = 0; d < projectTotals.lines.length; d++) {
+        var line = projectTotals.lines[d];
+        if (!line || line.type !== 'disc') continue;
+        // Project totals can include MULTIPLE disc lines:
+        //   "Line Item Discounts" — already baked into each row's
+        //     field_2269_raw (post-discount equipment); summing it
+        //     into labor would double-count.
+        //   "Proposal Discount"  — flat across-the-board discount,
+        //     this is the one we subtract from labor.
+        // Match on the label so other future disc lines don't sneak in.
+        if (!/^proposal\s+discount\b/i.test(line.label || '')) continue;
+        // Strip everything except digits and dot. Discount values render
+        // as "–$100.00" (en-dash + $); parseFloat needs the chars
+        // stripped because the math-style minus isn't ASCII.
+        var raw = (line.value || '').replace(/[^0-9.]/g, '');
+        var amt = parseFloat(raw);
+        if (!isNaN(amt) && amt > 0) proposalDiscount = round2(proposalDiscount + amt);
+      }
+    }
+    var laborAfterDiscount = round2(laborTotal - proposalDiscount);
+    if (laborAfterDiscount < 0) laborAfterDiscount = 0;
+
+    function flatten(map) {
+      var out = [];
+      var skuKeys = Object.keys(map);
+      for (var i = 0; i < skuKeys.length; i++) {
+        var item = map[skuKeys[i]];
+        if (item.qty > 0 && item.lineTotal === 0 && item.unitPrice > 0) {
+          item.lineTotal = round2(item.qty * item.unitPrice);
+        }
+        out.push(item);
+      }
+      return out;
+    }
+
+    return {
+      equipment: flatten(equipmentBySku),
+      labor: laborAfterDiscount > 0 ? {
+        description: 'Installation services per SOW ' + (sowId || ''),
+        qty: 1,
+        unitPrice: laborAfterDiscount,
+        lineTotal: laborAfterDiscount,
+        // Surface the pre-discount and discount values too so Make can
+        // render either ("Labor $X less proposal discount $Y = $Z") or
+        // just ship the net.
+        laborSubtotal: laborTotal,
+        proposalDiscount: proposalDiscount
+      } : null,
+      recurring: flatten(recurringBySku)
+    };
+  }
+
+  // Walk the rendered proposal HTML and emit an array of esignatures.com
+  // document_elements. Output goes into a placeholder_fields entry as
+  // `document_elements: [...]` so the agreement renders headings + tables
+  // natively (instead of a plaintext blob).
+  //
+  // The walker is STRUCTURE-AWARE — it knows the exact class names this
+  // file's renderer produces (.l1-section, .l1-header, .l2-header,
+  // .product-table, .l1-footer, .project-totals, .detail-label-none,
+  // .detail-table) and emits a curated, agreement-friendly subset:
+  //
+  //   Project / Quote names (.detail-label-none)        -> text_header_two
+  //   Header detail rows (.detail-table)                -> 2-col table
+  //                                                        (the
+  //                                                        "Expiration
+  //                                                        Date" row is
+  //                                                        skipped)
+  //   View titles (.view-title, e.g. "Proposed Solution")
+  //                                                     -> text_header_two
+  //   Each L1 section (.l1-section):
+  //       .l1-header                                    -> text_header_three
+  //       all .product-table bodies merged into ONE
+  //         table (L2 headers and L2 footers skipped,
+  //         header row deduped, Qty/Cost cells centered)
+  //       .l1-footer lines                              -> text_header_three
+  //   Project totals (.project-totals)                  -> text_header_two
+  //                                                        + 2-col table
+  //   BOM / report tables                               -> table (numeric
+  //                                                        columns
+  //                                                        centered)
+  function buildSowDocumentElements(html) {
+    if (!html || typeof html !== 'string') return [];
+
+    var doc;
+    try {
+      doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (e) {
+      return [];
+    }
+    if (!doc || !doc.body) return [];
+
+    var dropEls = doc.querySelectorAll('script, style, head, link, meta, noscript, img');
+    for (var di = 0; di < dropEls.length; di++) {
+      if (dropEls[di].parentNode) dropEls[di].parentNode.removeChild(dropEls[di]);
+    }
+
+    var elements = [];
+
+    function cleanText(s) {
+      return (s || '').replace(/\s+/g, ' ').replace(/ /g, ' ').trim();
+    }
+
+    function pushHeader(level, text) {
+      if (!text) return;
+      var typeMap = { 1: 'text_header_one', 2: 'text_header_two', 3: 'text_header_three' };
+      elements.push({ type: typeMap[level] || 'text_header_three', text: text });
+    }
+
+    function pushNormal(text) {
+      if (!text) return;
+      elements.push({ type: 'text_normal', text: text });
+    }
+
+    // .detail-label-none holds the rendered project name + quote name
+    // as <h1>/<h2>. Skip the <h1> (project name) — Make injects it
+    // dynamically at the top of the agreement instead. Keep the <h2>
+    // (quote name) as text_header_two.
+    function emitDetailLabelNone(el) {
+      var seen = {};
+      var headings = el.querySelectorAll('h2, h3, h4');
+      for (var i = 0; i < headings.length; i++) {
+        var t = cleanText(headings[i].textContent);
+        if (t && !seen[t]) {
+          pushHeader(2, t);
+          seen[t] = true;
+        }
+      }
+    }
+
+    // .detail-table is a 2-column key/value table of header attrs (SOW
+    // ID, Project Address, Expiration Date, Proposal ID, etc.). Drop
+    // the Proposal ID row (Make injects the live value at the top of
+    // the agreement) and the Expiration Date row.
+    function emitDetailTable(table) {
+      var rows = table.querySelectorAll('tr');
+      var cells = [];
+      for (var i = 0; i < rows.length; i++) {
+        var labelEl = rows[i].querySelector('.detail-label');
+        var valueEl = rows[i].querySelector('.detail-value');
+        if (!labelEl) continue;
+        var label = cleanText(labelEl.textContent);
+        if (/^expiration\s+date/i.test(label)) continue;
+        if (/^proposal\s+id/i.test(label)) continue;
+        var value = cleanText(valueEl ? valueEl.textContent : '');
+        cells.push([
+          { text: label, styles: ['bold'] },
+          { text: value }
+        ]);
+      }
+      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+    }
+
+    // .col-qty / .col-cost cells get center alignment per request.
+    function cellAlignmentForClass(el) {
+      if (!el || !el.classList) return null;
+      if (el.classList.contains('col-qty') || el.classList.contains('col-cost')) return 'center';
+      return null;
+    }
+
+    // .l1-section wraps an MDF/IDF/Headend group. Emit the L1 header as
+    // H3, MERGE every .product-table inside the section into ONE
+    // combined table (skipping L2 headers and L2 footers), then emit
+    // each .l1-footer line as its own H3.
+    function emitL1Section(section) {
+      var headerEl = section.querySelector('.l1-header');
+      if (headerEl) pushHeader(3, cleanText(headerEl.textContent));
+
+      var combinedCells = [];
+      var emittedHeaderRow = false;
+      var tables = section.querySelectorAll('table.product-table');
+      for (var t = 0; t < tables.length; t++) {
+        if (!emittedHeaderRow) {
+          var headRows = tables[t].querySelectorAll('thead tr');
+          for (var hr = 0; hr < headRows.length; hr++) {
+            var thCells = headRows[hr].querySelectorAll('th');
+            if (!thCells.length) continue;
+            var headerCells = [];
+            for (var c = 0; c < thCells.length; c++) {
+              var th = thCells[c];
+              var cell = { text: cleanText(th.textContent), styles: ['bold'] };
+              var align = cellAlignmentForClass(th);
+              if (align) cell.alignment = align;
+              headerCells.push(cell);
+            }
+            combinedCells.push(headerCells);
+            emittedHeaderRow = true;
+            break;
+          }
+        }
+        var bodyRows = tables[t].querySelectorAll('tbody tr');
+        for (var br = 0; br < bodyRows.length; br++) {
+          var tdCells = bodyRows[br].querySelectorAll('td');
+          if (!tdCells.length) continue;
+          var rowCells = [];
+          for (var cb = 0; cb < tdCells.length; cb++) {
+            var td = tdCells[cb];
+            var rcell = { text: cleanText(td.textContent) };
+            var alignB = cellAlignmentForClass(td);
+            if (alignB) rcell.alignment = alignB;
+            rowCells.push(rcell);
+          }
+          combinedCells.push(rowCells);
+        }
+        // <tfoot> (.l2-footer) rows skipped intentionally.
+      }
+      if (combinedCells.length) {
+        elements.push({ type: 'table', table_cells: combinedCells });
+      }
+
+      var footer = section.querySelector('.l1-footer');
+      if (footer) {
+        var fLines = footer.querySelectorAll('.l1-footer-line');
+        for (var fi = 0; fi < fLines.length; fi++) {
+          var lblEl = fLines[fi].querySelector('.l1-footer-label');
+          var valEl = fLines[fi].querySelector('.l1-footer-value');
+          var lbl = cleanText(lblEl ? lblEl.textContent : '');
+          var val = cleanText(valEl ? valEl.textContent : '');
+          var combined = (lbl && val) ? (lbl + '   ' + val) : (lbl || val);
+          if (combined) pushHeader(3, combined);
+        }
+      }
+    }
+
+    function emitProjectTotals(rootEl) {
+      var title = rootEl.querySelector('.pt-title');
+      if (title) pushHeader(2, cleanText(title.textContent));
+      var lines = rootEl.querySelectorAll('.pt-line');
+      var tableCells = [];
+      for (var i = 0; i < lines.length; i++) {
+        var labelEl = lines[i].querySelector('.pt-label');
+        var valueEl = lines[i].querySelector('.pt-value');
+        if (!labelEl || !valueEl) continue;
+        var label = cleanText(labelEl.textContent);
+        var value = cleanText(valueEl.textContent);
+        var isGrand = lines[i].className.indexOf('pt-line--grand') >= 0
+                   || lines[i].className.indexOf('pt-line--final') >= 0
+                   || /grand|total/i.test(label);
+        var labelCell = { text: label };
+        var valueCell = { text: value, alignment: 'right' };
+        if (isGrand) {
+          labelCell.styles = ['bold'];
+          valueCell.styles = ['bold'];
+        }
+        tableCells.push([labelCell, valueCell]);
+      }
+      if (tableCells.length) {
+        elements.push({ type: 'table', table_cells: tableCells });
+      }
+    }
+
+    // Generic table fallback (BOM, etc.). Center-aligns numeric cells.
+    function emitGenericTable(table) {
+      var rowEls = table.querySelectorAll('tr');
+      var cells = [];
+      for (var r = 0; r < rowEls.length; r++) {
+        var rowCellEls = rowEls[r].querySelectorAll('td, th');
+        if (!rowCellEls.length) continue;
+        var rowCells = [];
+        for (var c = 0; c < rowCellEls.length; c++) {
+          var el = rowCellEls[c];
+          var text = cleanText(el.textContent);
+          var entry = { text: text };
+          var styles = [];
+          if (el.tagName.toLowerCase() === 'th' || el.querySelector('strong, b')) styles.push('bold');
+          if (el.querySelector('em, i')) styles.push('italic');
+          if (styles.length) entry.styles = styles;
+          if (/^[\$\(]?-?[\d,]+(?:\.\d+)?[\)\%]?$/.test(text)) entry.alignment = 'center';
+          rowCells.push(entry);
+        }
+        cells.push(rowCells);
+      }
+      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+    }
+
+    function walkChildren(parent) {
+      for (var i = 0; i < parent.children.length; i++) {
+        var child = parent.children[i];
+        var classes = child.classList;
+
+        // BOM / report views are skipped entirely in the agreement —
+        // esignatures' renderer wraps mid-character in narrow currency
+        // cells and the BOM doesn't belong in a signed contract anyway
+        // (it's an internal accounting artifact). Customer-facing
+        // equipment list lives in the L1 sections above.
+        if (classes && (classes.contains('report-table-wrap') ||
+                        classes.contains('report-section') ||
+                        classes.contains('bom-section'))) {
+          continue;
+        }
+
+        if (classes && classes.contains('detail-label-none')) { emitDetailLabelNone(child); continue; }
+        if (child.tagName.toLowerCase() === 'table' && classes && classes.contains('detail-table')) {
+          emitDetailTable(child); continue;
+        }
+        if (classes && classes.contains('view-title')) {
+          pushHeader(2, cleanText(child.textContent));
+          continue;
+        }
+        if (classes && classes.contains('view-narrative')) {
+          var nt = cleanText(child.textContent);
+          if (nt) pushNormal(nt);
+          continue;
+        }
+        if (classes && classes.contains('l1-section')) { emitL1Section(child); continue; }
+        if (classes && classes.contains('project-totals')) { emitProjectTotals(child); continue; }
+        if (classes && classes.contains('recurring-section')) {
+          walkChildren(child);
+          continue;
+        }
+        if (child.tagName.toLowerCase() === 'table') { emitGenericTable(child); continue; }
+
+        if (/^h([1-6])$/i.test(child.tagName)) {
+          var level = parseInt(child.tagName.charAt(1), 10);
+          pushHeader(Math.min(level, 3), cleanText(child.textContent));
+          continue;
+        }
+
+        if (child.children.length) {
+          walkChildren(child);
+        } else {
+          var t = cleanText(child.textContent);
+          if (t) pushNormal(t);
+        }
+      }
+    }
+
+    walkChildren(doc.body);
+    return elements;
+  }
+
   function buildPublishPayload(sceneId, opts) {
     opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
@@ -1956,27 +2627,73 @@
       console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
       return null;
     }
-    var htmlStr      = buildPdfHtml(payload);
-    var summary      = extractSummaryFields(payload);
-    var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
+    var htmlStr       = buildPdfHtml(payload);
+    var summary       = extractSummaryFields(payload);
+    var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
+    var plaintextStr  = htmlToPlaintext(htmlStr);
     return {
-      recordId:          getPageRecordId() || '',
-      hash:              window.location.hash || '',
-      sceneId:           cfg.sceneId,
-      type:              cfg.payloadType,
-      sowId:             summary.sowId,
-      equipmentTotal:    summary.equipmentTotal,
-      installationTotal: summary.installationTotal,
-      grandTotal:        summary.grandTotal,
-      expirationDate:    summary.expirationDate,
-      html:              htmlStr,
-      json:              jsonSnapshot,
+      recordId:              getPageRecordId() || '',
+      hash:                  window.location.hash || '',
+      sceneId:               cfg.sceneId,
+      type:                  cfg.payloadType,
+      sowId:                 summary.sowId,
+      equipmentTotal:        summary.equipmentTotal,
+      installationTotal:     summary.installationTotal,
+      grandTotal:            summary.grandTotal,
+      expirationDate:        summary.expirationDate,
+      html:                  htmlStr,
+      plaintext:             plaintextStr,
+      // Pre-escaped variant of `plaintext`, safe to drop directly between
+      // double quotes in a JSON string template (e.g. an esignatures.com
+      // request body that maps {{...}} placeholders into a hand-written
+      // body template). JSON-encodes \, ", \n, \r, \t, and other control
+      // chars; trims surrounding quotes so callers can do `"value": "{{x}}"`.
+      plaintextJsonEscaped:  jsonStringEscape(plaintextStr),
+      // Structured form of the SOW for esignatures.com "advanced
+      // placeholder fields" (document_elements). Drop directly into a
+      // placeholder_fields entry as `"document_elements": {{...}}`
+      // INSTEAD of `"value": "..."` to render headings + tables natively
+      // in the agreement. Bypasses JSON-string-escape entirely because
+      // the value is a structured array, not a string.
+      scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
+      // Pre-stringified scopeOfWorkDocumentElements for the same reason
+      // jsonString exists below: when Make maps an array value into a
+      // plain-text/paragraph Knack field, it iterates the array and
+      // joins inner items with ", " — losing the wrapping `[` and `]`.
+      // The user then has to wrap-in-brackets at read time. Ship the
+      // proper JSON.stringify of the array so it can be stored verbatim
+      // and parseJSON'd back to a structured array on the read side.
+      scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
+      json:                  jsonSnapshot,
+      // Pre-stringified JSON snapshot — store this string verbatim in a
+      // Knack plain-text/paragraph field (no Make-side stringify, no
+      // re-encode). At read time, parseJSON(field_value) reconstitutes
+      // the object exactly. Avoids the round-trip-corruption hazard
+      // when Make's HTTP/Knack modules re-serialize an already-parsed
+      // .json object — every step that re-encodes risks half-escaping
+      // the HTML quotes inside connection-field values.
+      //
+      // Also pre-strips every `field_xxx` key that has a `field_xxx_raw`
+      // twin: the rendered-HTML version is purely display noise for
+      // downstream consumers, and was the source of every HTML-quote
+      // round-trip corruption we've seen. The _raw versions are clean
+      // structured data ([{id, identifier}], numbers, booleans, etc.).
+      jsonString:            (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
+      // Pre-categorized, billing-system-agnostic invoice line items.
+      // Bundle owns the SKU vs labor vs license classification; Make
+      // injects Xero / TaxJar product_tax_code values at integration
+      // time. Shape:
+      //   { equipment: [ { sku, description, qty, unitPrice, lineTotal } ],
+      //     labor:    { description, qty, unitPrice, lineTotal } | null,
+      //     recurring: [ { sku, description, qty, unitPrice, lineTotal } ] }
+      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
+      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
       // the payload so the Make scenario doesn't have to keep its own
       // hard-coded copy.
-      tokens:            PROPOSAL_TOKENS
+      tokens:                PROPOSAL_TOKENS
     };
   }
 

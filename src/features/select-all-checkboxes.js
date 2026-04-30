@@ -152,6 +152,37 @@
     return container.querySelectorAll(CB_SELECTOR);
   }
 
+  // A row is "selectable" for bulk operations only if it has at least
+  // one inline-editable cell. Rows that are entirely read-only (no
+  // td.cell-edit anywhere — either because the columns are display-only,
+  // or because conditional-grayout has stripped cell-edit on this row's
+  // cells) get skipped by select-all and by group-level select.
+  //
+  // The signal `td.cell-edit` is universal in this codebase:
+  //   - Knack adds it on render for inline-edit columns.
+  //   - SOW_lineitem_conditional-field-grayout.js + the survey variant
+  //     remove it on per-row locked cells (see line ~267 of that file).
+  //   - Read-only fields (formulas, view-only role config, etc.) never
+  //     get it in the first place.
+  function rowIsEditable(tr) {
+    if (!tr) return false;
+    return !!tr.querySelector('td.cell-edit');
+  }
+
+  // Filter a NodeList/Array of row checkboxes down to the ones whose row
+  // has at least one editable cell. Used everywhere we previously used
+  // findCheckboxes() for the purpose of acting on a selection.
+  function selectableCheckboxes(container) {
+    var raw = findCheckboxes(container);
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      var cb = raw[i];
+      var tr = cb.closest && cb.closest('tr');
+      if (rowIsEditable(tr)) out.push(cb);
+    }
+    return out;
+  }
+
   function syncCheckbox(cb, targets) {
     if (!targets.length) return;
     var allChecked = true;
@@ -313,7 +344,10 @@
           e.stopImmediatePropagation();
           var el = document.getElementById(vKey);
           if (!el) return;
-          var cbs = findCheckboxes(el);
+          // Only act on rows that have at least one editable cell —
+          // entirely read-only rows are skipped (their checkbox stays
+          // in whatever state it was, which is "unchecked" by default).
+          var cbs = selectableCheckboxes(el);
           if (!cbs.length) return;
 
           _bulkOp = true;
@@ -337,12 +371,15 @@
           if (_bulkOp) return;
           var el = document.getElementById(vKey);
           if (!el) return;
-          syncCheckbox(master, findCheckboxes(el));
+          // Sync against the SELECTABLE set so the master shows
+          // "all checked" once every editable row is checked, even if
+          // some read-only rows are unchecked (they always will be).
+          syncCheckbox(master, selectableCheckboxes(el));
           var any = el.querySelectorAll(CB_SELECTOR + ':checked').length > 0;
           syncHeaderCboxVisibility(el, any);
         });
 
-        syncCheckbox(master, findCheckboxes(viewEl));
+        syncCheckbox(master, selectableCheckboxes(viewEl));
       })(nativeMaster, viewKey);
     }
   }
@@ -381,11 +418,16 @@
       }
 
       var rows = rowsInGroup(tr);
-      var hasCheckboxes = false;
+      var hasSelectable = false;
       for (var r = 0; r < rows.length; r++) {
-        if (rows[r].querySelector(CB_SELECTOR)) { hasCheckboxes = true; break; }
+        if (rowIsEditable(rows[r]) && rows[r].querySelector(CB_SELECTOR)) {
+          hasSelectable = true;
+          break;
+        }
       }
-      if (!hasCheckboxes) continue;
+      // Don't inject the group checkbox if the group has no editable rows —
+      // clicking it would be a no-op.
+      if (!hasSelectable) continue;
 
       tr.setAttribute(GROUP_ATTR, '1');
 
@@ -406,17 +448,26 @@
       var target = inner || td;
       target.insertBefore(checkWrap, target.firstChild);
 
+      // Collect editable-row checkboxes inside this group. Used by
+      // both the click handler (to act on) and the change-sync handler
+      // (so the group master reflects "all editable rows checked").
+      function collectGroupSelectable(headerRow) {
+        var groupRows = rowsInGroup(headerRow);
+        var targets = [];
+        for (var g = 0; g < groupRows.length; g++) {
+          if (!rowIsEditable(groupRows[g])) continue;
+          var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
+          for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
+        }
+        return targets;
+      }
+
       (function (checkbox, headerRow) {
         checkbox.addEventListener('click', function (e) {
           e.stopPropagation();
           e.stopImmediatePropagation();
 
-          var groupRows = rowsInGroup(headerRow);
-          var targets = [];
-          for (var g = 0; g < groupRows.length; g++) {
-            var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
-            for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
-          }
+          var targets = collectGroupSelectable(headerRow);
           if (!targets.length) return;
 
           _bulkOp = true;
@@ -436,7 +487,7 @@
             if (vEl) {
               syncKtlBulkState(vEl);
               var nativeMaster = vEl.querySelector('thead input.masterSelector');
-              if (nativeMaster) syncCheckbox(nativeMaster, findCheckboxes(vEl));
+              if (nativeMaster) syncCheckbox(nativeMaster, selectableCheckboxes(vEl));
             }
             // Notify KTL — chunked above threshold so large groups don't
             // lock the page. `_bulkOp` is cleared when the last chunk fires.
@@ -448,24 +499,12 @@
         if (parentTable) {
           $(parentTable).off('change.scwSaGrp' + i).on('change.scwSaGrp' + i, 'input[type="checkbox"]', function () {
             if (_bulkOp) return;
-            var groupRows = rowsInGroup(headerRow);
-            var targets = [];
-            for (var g = 0; g < groupRows.length; g++) {
-              var cbs = groupRows[g].querySelectorAll(CB_SELECTOR);
-              for (var c = 0; c < cbs.length; c++) targets.push(cbs[c]);
-            }
-            syncCheckbox(checkbox, targets);
+            syncCheckbox(checkbox, collectGroupSelectable(headerRow));
           });
         }
       })(cb, tr);
 
-      var initRows = rowsInGroup(tr);
-      var initTargets = [];
-      for (var ir = 0; ir < initRows.length; ir++) {
-        var initCbs = initRows[ir].querySelectorAll(CB_SELECTOR);
-        for (var ic = 0; ic < initCbs.length; ic++) initTargets.push(initCbs[ic]);
-      }
-      syncCheckbox(cb, initTargets);
+      syncCheckbox(cb, collectGroupSelectable(tr));
     }
   }
 

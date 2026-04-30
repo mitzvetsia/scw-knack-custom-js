@@ -402,24 +402,18 @@
     return null; // terminal
   }
 
-  // Pull the per-row proposal/detail URL. Prefers an existing kn-link-page
-  // anchor in the row (the "Proposal" column when it exists). When the
-  // view doesn't include that column, fall back to constructing the URL
-  // from the current page's hash plus the row's record id —
-  //   <current-hash>/proposal/<sowRecordId>
-  // matches the route pattern Knack uses for the proposal page.
+  // Per-row proposal URL. Hardcoded slug — the proposal page lives at
+  // #proposals/proposal/<sowRecordId>/ regardless of where the user
+  // navigates from. Scraping the row's anchors (or building from the
+  // current hash) was fragile: the moment another action-page column
+  // got added to the table, querySelector picked up the wrong link;
+  // and current-hash construction depended on which child page the
+  // user was viewing. The slug is the contract — pin to it.
+  var PROPOSAL_SLUG = '#proposals/proposal/';
   function getRowLink(tr) {
-    var a = tr.querySelector('a.kn-link-page[href]');
-    if (a && a.getAttribute('href')) return a.getAttribute('href');
     var m = (tr.id || '').match(/[a-f0-9]{24}/i);
     if (!m) return '';
-
-    var hash  = window.location.hash || '';
-    var qIdx  = hash.indexOf('?');
-    var path  = qIdx >= 0 ? hash.substring(0, qIdx) : hash;
-    var query = qIdx >= 0 ? hash.substring(qIdx)    : '';
-    if (path.charAt(path.length - 1) === '/') path = path.slice(0, -1);
-    return path + '/proposal/' + m[0] + query;
+    return PROPOSAL_SLUG + m[0] + '/';
   }
 
   // ── Published-proposal index ────────────────────────────

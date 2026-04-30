@@ -55,5 +55,15 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // linking to this URL keep working until they're migrated to one of
   // the three variants above. Not referenced by ops-stepper after the
   // three-button split.
-  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK:     "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b"
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK:     "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b",
+  // Fires after a successful submit on the SOW Header update form when
+  // field_2753 (target Project to clone into) is non-empty. Make handles
+  // the deep clone (SOW + MDFs + photos) into the target Project. Payload:
+  //   Request body:  {
+  //     sourceRecordId: <SOW Header record id>,
+  //     targetProjectId: <field_2753 value — Project record id>,
+  //     triggeredBy:    { id, name, email }
+  //   }
+  //   Response body: ignored (fire-and-forget).
+  MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u"
 };

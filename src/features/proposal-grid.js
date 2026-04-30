@@ -241,11 +241,13 @@
   }
 
   // ============================================================
-  // LIMITED HTML SANITIZE (Allow only <b> and <br>)
+  // LIMITED HTML SANITIZE
+  //   Allowed: <b>, <br>, <ul>, <ol>, <li>
+  //   Everything else is stripped. <strong> is rewritten to <b>.
   // ============================================================
 
   const sanitizeRegex = /<\/?strong\b[^>]*>/gi;
-  const removeTagsRegex = /<(?!\/?(br|b)\b)[^>]*>/gi;
+  const removeTagsRegex = /<(?!\/?(br|b|ul|ol|li)\b)[^>]*>/gi;
 
   function normalizeBrVariants(html) {
     if (!html) return '';
