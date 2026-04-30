@@ -2528,6 +2528,35 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
   Object.keys(CONFIG.views).forEach(bindForView);
 
+  // Catch-up pass: if the bundle finished loading AFTER Knack already
+  // emitted knack-records-render.view_XXXX (common on slow connections
+  // or large scenes), our handler missed the initial event entirely
+  // and the safety-nets inside it were never armed. For each configured
+  // view that's already rendered with data, trigger the event once so
+  // bindForView's handler runs.
+  Object.keys(CONFIG.views).forEach(function (viewId) {
+    var attempts = 0;
+    var maxAttempts = 20;          // ~6s total at 300ms cadence
+    var intervalMs = 300;
+    var iv = setInterval(function () {
+      attempts++;
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+      var rendered = view && view.model && view.model.data
+        && (Array.isArray(view.model.data) ? view.model.data.length
+                                            : (view.model.data.models && view.model.data.models.length));
+      var root = document.getElementById(viewId);
+      var hasDataRows = !!(root && root.querySelector('tbody tr[id]'));
+      var hasTotals = !!(root && root.querySelector('tbody tr.scw-level-total-row'));
+
+      if (rendered && hasDataRows && !hasTotals) {
+        $(document).trigger('knack-records-render.' + viewId, [view]);
+        clearInterval(iv);
+      } else if (hasTotals || attempts >= maxAttempts) {
+        clearInterval(iv);
+      }
+    }, intervalMs);
+  });
+
   // When view_3342 (detail view with field_2302) renders, refresh project totals
   $(document).on('knack-view-render.view_3342' + CONFIG.eventNs, function () {
     Object.keys(_lastPipelineState).forEach(function (viewId) {
