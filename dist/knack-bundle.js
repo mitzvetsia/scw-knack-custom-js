@@ -707,6 +707,21 @@ tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount
   padding-top: 0 !important;
 }
 
+/* Tight spacing inside the Equipment Subtotal \u2192 Line Item Discounts \u2192
+   Equipment Total cluster, mirroring Proposal Discount \u2192 Grand Total. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--line-item-discounts td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal
+  + tr.scw-level-total-row.scw-project-totals td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--line-item-discounts
+  + tr.scw-level-total-row.scw-project-totals td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
 
 /* ============================================================
    YOUR PROVIDED CSS \u2014 APPLIED TO ALL CONFIG.views
@@ -893,7 +908,7 @@ ${h} .kn-table-group.kn-group-level-4 td:first-child {padding-left:80px !importa
         <td class="${h.keys.cost} scw-l1-valuecell">
           <div class="scw-l1-value">${u(Be)}</div>
         </td>
-      `);const Ge=F-(Ue+1);return Ge>0&&ze.append(`<td colspan="${Ge}"></td>`),ze}const Oe=[];return Oe.push(Re("Project Totals")),S&&(Oe.push(fe({label:"Equipment Subtotal",value:J(ie),rowType:"sub",isLast:!1})),le!==0&&Oe.push(fe({label:"Line Item Discounts",value:"\u2013"+V(le),rowType:"disc",isLast:!1}))),Oe.push(fe({label:"Equipment Total",value:J(Se),rowType:"final",isLast:!1,extraClass:"scw-project-totals--equipment-total"})),Oe.push(fe({label:"Installation Total",value:J(Fe),rowType:"final",isLast:!1,extraClass:"scw-project-totals--installation-total"})),_e!==0&&Oe.push(fe({label:"Proposal Discount",value:"\u2013"+V(_e),rowType:"disc",isLast:!1,extraClass:"scw-project-totals--proposal-discount"})),Oe.push(fe({label:"Grand Total",value:J(d),rowType:"final",isLast:!0,extraClass:"scw-project-totals--grand"})),Oe}function p(h,q,{$cellsTemplate:z,$rowsToSum:re,labelOverride:k,level:g,contextKey:ee,groupLabel:ie,totals:le,hideQtyCost:_e}){var Me,Ke;const Se=k||ie||"",Fe=h.keys.qty,d=h.keys.cost,S=h.keys.labor,H=h.keys.hardware,F=(Me=le==null?void 0:le[Fe])!=null?Me:v(q,re,Fe),xe=(Ke=le==null?void 0:le[d])!=null?Ke:v(q,re,d);if(g===1){const Ue=v(q,re,H),He=v(q,re,S),ze=Ue+He;if(Math.abs(ze)<.01)return $();const Ge=Math.abs(v(q,re,"field_2303")),Je=Ge>.004,Ze=ze-Ge,Qe=oe(Se||"").replace(/\s+—\s*Subtotal\s*$/i,""),tt=de(h,{titleText:Qe,subtotalText:J(ze),discountText:"\u2013"+V(Ge),totalText:J(Je?Ze:ze),hasDiscount:Je,contextKey:ee,groupLabel:ie});return $(tt.map(Xe=>Xe[0]))}const we=!!_e,Re=$(`
+      `);const Ge=F-(Ue+1);return Ge>0&&ze.append(`<td colspan="${Ge}"></td>`),ze}const Oe=[];return Oe.push(Re("Project Totals")),S&&(Oe.push(fe({label:"Equipment Subtotal",value:J(ie),rowType:"sub",isLast:!1,extraClass:"scw-project-totals--equipment-subtotal"})),le!==0&&Oe.push(fe({label:"Line Item Discounts",value:"\u2013"+V(le),rowType:"disc",isLast:!1,extraClass:"scw-project-totals--line-item-discounts"}))),Oe.push(fe({label:"Equipment Total",value:J(Se),rowType:"final",isLast:!1,extraClass:"scw-project-totals--equipment-total"})),Oe.push(fe({label:"Installation Total",value:J(Fe),rowType:"final",isLast:!1,extraClass:"scw-project-totals--installation-total"})),_e!==0&&Oe.push(fe({label:"Proposal Discount",value:"\u2013"+V(_e),rowType:"disc",isLast:!1,extraClass:"scw-project-totals--proposal-discount"})),Oe.push(fe({label:"Grand Total",value:J(d),rowType:"final",isLast:!0,extraClass:"scw-project-totals--grand"})),Oe}function p(h,q,{$cellsTemplate:z,$rowsToSum:re,labelOverride:k,level:g,contextKey:ee,groupLabel:ie,totals:le,hideQtyCost:_e}){var Me,Ke;const Se=k||ie||"",Fe=h.keys.qty,d=h.keys.cost,S=h.keys.labor,H=h.keys.hardware,F=(Me=le==null?void 0:le[Fe])!=null?Me:v(q,re,Fe),xe=(Ke=le==null?void 0:le[d])!=null?Ke:v(q,re,d);if(g===1){const Ue=v(q,re,H),He=v(q,re,S),ze=Ue+He;if(Math.abs(ze)<.01)return $();const Ge=Math.abs(v(q,re,"field_2303")),Je=Ge>.004,Ze=ze-Ge,Qe=oe(Se||"").replace(/\s+—\s*Subtotal\s*$/i,""),tt=de(h,{titleText:Qe,subtotalText:J(ze),discountText:"\u2013"+V(Ge),totalText:J(Je?Ze:ze),hasDiscount:Je,contextKey:ee,groupLabel:ie});return $(tt.map(Xe=>Xe[0]))}const we=!!_e,Re=$(`
       <tr
         class="scw-level-total-row scw-subtotal scw-subtotal--level-${g} kn-table-totals${we?" scw-hide-qty-cost":""}"
         data-scw-subtotal-level="${g}"

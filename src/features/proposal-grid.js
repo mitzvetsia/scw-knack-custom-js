@@ -619,6 +619,21 @@ tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount
   padding-top: 0 !important;
 }
 
+/* Tight spacing inside the Equipment Subtotal → Line Item Discounts →
+   Equipment Total cluster, mirroring Proposal Discount → Grand Total. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--line-item-discounts td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal
+  + tr.scw-level-total-row.scw-project-totals td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--line-item-discounts
+  + tr.scw-level-total-row.scw-project-totals td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
 
 /* ============================================================
    YOUR PROVIDED CSS — APPLIED TO ALL CONFIG.views
@@ -1738,6 +1753,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         value: formatMoney(equipmentSubtotal),
         rowType: 'sub',
         isLast: false,
+        extraClass: 'scw-project-totals--equipment-subtotal',
       }));
 
       if (lineItemDiscounts !== 0) {
@@ -1746,6 +1762,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
           rowType: 'disc',
           isLast: false,
+          extraClass: 'scw-project-totals--line-item-discounts',
         }));
       }
     }
