@@ -185,6 +185,20 @@
    *   orphanBidRecords — bid records whose row has no matching SOW
    *                      line item. The new SOW needs net-new line
    *                      items built from these bid records.
+   *
+   * Source views:
+   *   view_3680 — bid review records (CFG.viewKey). Row.cellsByPackage[*]
+   *               and row._rawRecord carry the full record with every
+   *               field projected by that view.
+   *   view_3728 — unbid SOW line items (CFG.sowItemsViewKey). Used to
+   *               build "no bid" rows; row._rawRecord carries the full
+   *               record with every field projected by that view.
+   *
+   * Each entry in `matchedSowItems` includes a `sourceRecord` property
+   * holding the entire raw record (every field_NNNN + field_NNNN_raw)
+   * from whichever source view the row came from. Each entry in
+   * `bidRecords` (and in `orphanBidRecords`) includes a `bidRecord`
+   * property with the entire raw view_3680 record.
    */
   ns.buildCreateNewSowPayload = function buildCreateNewSowPayload(state) {
     var matchedSowItems  = [];
@@ -240,6 +254,8 @@
             limitQtyOne:    cell.limitQtyOne,
             proposalBucket: cell.proposalBucketId,
             mdfIdf:         cell.mdfIdfId,
+            // Every field on the bid record from view_3680
+            bidRecord:      cell._rawRecord || null,
           });
         }
 
@@ -265,6 +281,11 @@
             sowConnDevice:   row.sowConnDeviceIds,
             sowMapConn:      row.sowMapConn,
             sowMdfIdf:       row.sowMdfIdf,
+            // Every field on the source record (view_3680 bid record OR
+            // view_3728 unbid SOW item, depending on which view this row
+            // came from). Includes the field_NNNN and field_NNNN_raw
+            // pair for every column projected by the source view.
+            sourceRecord:    row._rawRecord || null,
             bidRecords:      bidCells,
           });
         } else if (!row.sowItem && bidCells.length) {

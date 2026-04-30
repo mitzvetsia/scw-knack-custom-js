@@ -288,6 +288,8 @@
           bidMdfIdfIds:    connectionIdsAll(rec, FK.mdfIdf),
           proposalBucketId: connectionId(rec, FK.proposalBucket),
           mdfIdfId:        connectionId(rec, FK.mdfIdf),
+          // Full raw view_3680 record (every field) for downstream payloads
+          _rawRecord:      rec,
         };
       }
     }
@@ -324,6 +326,8 @@
       bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
+      // Full raw view_3680 record (meta) for downstream payloads
+      _rawRecord:      meta,
     };
   }
 
@@ -544,6 +548,8 @@
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
+          // Full raw view_3728 record (every field) for downstream payloads
+          _rawRecord:      rec,
         });
       }
     }
