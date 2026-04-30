@@ -1013,6 +1013,18 @@
     }
   }
 
+  // ── grid toolbar (top of #bid-review-matrix) ────────────────
+
+  function buildToolbar() {
+    var bar = el('div', 'scw-bid-review__toolbar');
+    var createBtn = btn('+ Create New SOW', 'create-sow', {
+      'data-action': 'create_new_sow',
+      'title':       'Create a new SOW from matched SOW items + orphan bid records',
+    });
+    bar.appendChild(createBtn);
+    return bar;
+  }
+
   // ── public: renderMatrix ────────────────────────────────────
 
   ns.renderMatrix = function renderMatrix(state) {
@@ -1029,6 +1041,8 @@
         'No comparison data available.'));
       return mount;
     }
+
+    mount.appendChild(buildToolbar());
 
     for (var i = 0; i < state.sowGrids.length; i++) {
       mount.appendChild(buildSowSection(state.sowGrids[i]));

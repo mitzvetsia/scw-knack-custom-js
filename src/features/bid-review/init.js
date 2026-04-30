@@ -128,6 +128,8 @@
             ns.changeRequests.clear();
           }
         }
+      } else if (action === 'create_new_sow') {
+        handleCreateNewSow(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
@@ -284,6 +286,40 @@
       if (grid.packages[i].id === pkgId) return grid.packages[i].surveyId || '';
     }
     return '';
+  }
+
+  // ── create-new-sow handler (toolbar button) ─────────────────
+
+  function handleCreateNewSow(button) {
+    if (!_state) {
+      ns.renderToast('Comparison data not loaded yet', 'error');
+      return;
+    }
+
+    var payload = ns.buildCreateNewSowPayload(_state);
+    var matched = (payload.matchedSowItems || []).length;
+    var orphans = (payload.orphanBidRecords || []).length;
+
+    if (!matched && !orphans) {
+      ns.renderToast('No matched SOW items or orphan bid records to send', 'info');
+      return;
+    }
+
+    if (!window.confirm(
+      'Create a new SOW from ' + matched + ' matched SOW item' +
+      (matched === 1 ? '' : 's') + ' and ' + orphans + ' orphan bid record' +
+      (orphans === 1 ? '' : 's') + '?'
+    )) {
+      return;
+    }
+
+    button.classList.add('scw-bid-review__btn--busy');
+    button.disabled = true;
+
+    ns.submitAction(payload).always(function () {
+      button.classList.remove('scw-bid-review__btn--busy');
+      button.disabled = false;
+    });
   }
 
   function handlePackageAction(button, actionType) {
