@@ -1647,9 +1647,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
     const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
-    const equipmentTotal = equipmentSubtotal - lineItemDiscounts - proposalDiscount;
+    // Proposal Discount is rendered AFTER Installation Total and applied
+    // only at the Grand Total. It is NOT subtracted from Equipment Total
+    // — equipment-side math stays equipmentSubtotal − lineItemDiscounts.
+    const equipmentTotal = equipmentSubtotal - lineItemDiscounts;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
-    const grandTotal = equipmentTotal + installationTotal;
+    const grandTotal = equipmentTotal + installationTotal - proposalDiscount;
 
     const hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
@@ -1727,15 +1730,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           isLast: false,
         }));
       }
-
-      if (proposalDiscount !== 0) {
-        rows.push(makeLineRow({
-          label: 'Proposal Discount',
-          value: '\u2013' + formatMoneyAbs(proposalDiscount),
-          rowType: 'disc',
-          isLast: false,
-        }));
-      }
     }
 
     rows.push(makeLineRow({
@@ -1751,6 +1745,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       rowType: 'final',
       isLast: false,
     }));
+
+    // Proposal Discount sits BETWEEN Installation Total and Grand Total
+    // \u2014 it is a project-wide discount, not specifically a labor or
+    // equipment discount. Visually it reduces the Grand Total only.
+    if (proposalDiscount !== 0) {
+      rows.push(makeLineRow({
+        label: 'Proposal Discount',
+        value: '\u2013' + formatMoneyAbs(proposalDiscount),
+        rowType: 'disc',
+        isLast: false,
+      }));
+    }
 
     rows.push(makeLineRow({
       label: 'Grand Total',
