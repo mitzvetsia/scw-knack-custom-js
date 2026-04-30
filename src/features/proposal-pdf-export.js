@@ -2189,14 +2189,21 @@
 
       if (/^license\b/i.test(bucket)) {
         if (sku && equipmentVal > 0) {
-          if (!recurringBySku[sku]) {
-            recurringBySku[sku] = {
+          // Aggregation key is sku + name, not sku alone — different
+          // products that share the same SKU value in Knack (data
+          // entry oversight) would otherwise merge into one invoice
+          // line with a unitPrice that doesn't match the lineTotal.
+          // Keep them separate; the consumer can decide whether to
+          // present them merged.
+          var recurringKey = sku + '␟' + name;
+          if (!recurringBySku[recurringKey]) {
+            recurringBySku[recurringKey] = {
               sku: sku, description: name,
               qty: 0, unitPrice: unitAmount, lineTotal: 0
             };
           }
-          recurringBySku[sku].qty += 1;
-          recurringBySku[sku].lineTotal = round2(recurringBySku[sku].lineTotal + equipmentVal);
+          recurringBySku[recurringKey].qty += 1;
+          recurringBySku[recurringKey].lineTotal = round2(recurringBySku[recurringKey].lineTotal + equipmentVal);
         }
         continue;
       }
@@ -2206,14 +2213,15 @@
       }
 
       if (sku && equipmentVal > 0) {
-        if (!equipmentBySku[sku]) {
-          equipmentBySku[sku] = {
+        var equipmentKey = sku + '␟' + name;
+        if (!equipmentBySku[equipmentKey]) {
+          equipmentBySku[equipmentKey] = {
             sku: sku, description: name,
             qty: 0, unitPrice: unitAmount, lineTotal: 0
           };
         }
-        equipmentBySku[sku].qty += 1;
-        equipmentBySku[sku].lineTotal = round2(equipmentBySku[sku].lineTotal + equipmentVal);
+        equipmentBySku[equipmentKey].qty += 1;
+        equipmentBySku[equipmentKey].lineTotal = round2(equipmentBySku[equipmentKey].lineTotal + equipmentVal);
       }
 
       laborTotal = round2(laborTotal + laborVal);
