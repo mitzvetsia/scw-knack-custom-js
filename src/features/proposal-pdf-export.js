@@ -2148,16 +2148,42 @@
   function buildInvoiceItems(jsonSnapshot, sowId, projectTotals) {
     if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
 
-    // Find any line-items array in the snapshot. Heuristic: an array
-    // whose first member has `field_2219_raw` (the bucket connection).
-    // Works for the slim snapshot shape (cfg.jsonIncludeViews) and the
-    // full shape, regardless of which view_id the line items live in.
-    var lineItems = [];
-    var keys = Object.keys(jsonSnapshot);
-    for (var ki = 0; ki < keys.length; ki++) {
-      var v = jsonSnapshot[keys[ki]];
-      if (Array.isArray(v) && v.length && v[0] && v[0].field_2219_raw !== undefined) {
-        lineItems = lineItems.concat(v);
+    // Prefer the proposal-grid view's loaded Knack model (view_3341 on
+    // scene_1096, plus alternates) — that view is configured for
+    // 1000 rows/page via change-record-limit.js so it has ALL line
+    // items. The JSON snapshot's source view (e.g. view_3896) is a
+    // hidden data-only grid that uses Knack's default pagination
+    // (~25 rows) and silently under-reports on larger SOWs.
+    var lineItems = (function () {
+      try {
+        var candidateViews = ['view_3341', 'view_3450', 'view_3451'];
+        if (typeof Knack === 'undefined' || !Knack.views) return null;
+        for (var vi = 0; vi < candidateViews.length; vi++) {
+          var v = Knack.views[candidateViews[vi]];
+          var models = v && v.model && v.model.data && v.model.data.models;
+          if (models && models.length) {
+            return models.map(function (m) {
+              return (typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m));
+            });
+          }
+        }
+      } catch (e) { /* fall through */ }
+      return null;
+    })();
+
+    // Fallback: scan the JSON snapshot for any line-items array.
+    // Heuristic: an array whose first member has `field_2219_raw`
+    // (the bucket connection). Works for the slim snapshot shape
+    // (cfg.jsonIncludeViews) and the full shape regardless of which
+    // view_id the line items live in.
+    if (!lineItems || !lineItems.length) {
+      lineItems = [];
+      var keys = Object.keys(jsonSnapshot);
+      for (var ki = 0; ki < keys.length; ki++) {
+        var v = jsonSnapshot[keys[ki]];
+        if (Array.isArray(v) && v.length && v[0] && v[0].field_2219_raw !== undefined) {
+          lineItems = lineItems.concat(v);
+        }
       }
     }
     if (!lineItems.length) return null;
