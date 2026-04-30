@@ -28,16 +28,140 @@ window.SCW = window.SCW || {};
     return ns.startsWith('.') ? ns : `.${ns}`;
   }
 
+  // ── Hard-stop render error overlay ─────────────────────────────
+  // Any throw inside an onViewRender / onSceneRender handler is a
+  // potential data-correctness incident — a half-rendered proposal
+  // grid can yield bad totals which become bad PDFs which become
+  // bad invoices. Block the UI with a full-screen modal until the
+  // user reloads. They can dismiss explicitly if they understand
+  // the risk (e.g. they're SCW staff debugging).
+  var OVERLAY_ID = 'scw-render-error-overlay';
+  function showRenderErrorOverlay(detail) {
+    if (document.getElementById(OVERLAY_ID)) return;
+    var safe = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    }); };
+    var msg  = safe(detail.message || 'Unknown error');
+    var stk  = safe(detail.stack    || '');
+    var ctx  = safe(detail.context  || '');
+    var html = '' +
+      '<div style="position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.78);' +
+      'display:flex;align-items:center;justify-content:center;padding:24px;' +
+      'font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;">' +
+        '<div style="background:#fff;max-width:680px;width:100%;border-radius:10px;' +
+        'box-shadow:0 12px 48px rgba(0,0,0,.55);overflow:hidden;border-top:6px solid #b91c1c;">' +
+          '<div style="padding:20px 24px 12px;">' +
+            '<div style="font-weight:800;font-size:18px;color:#7f1d1d;margin-bottom:6px;">' +
+              'Page render error — do not publish or invoice from this view' +
+            '</div>' +
+            '<div style="color:#374151;margin-bottom:12px;">' +
+              'A feature on this page failed to render. Totals, line items, or other ' +
+              'figures may be wrong. Reload the page before continuing.' +
+            '</div>' +
+            '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;' +
+            'padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;' +
+            'color:#991b1b;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;">' +
+              '<div><strong>Where:</strong> ' + ctx + '</div>' +
+              '<div><strong>Error:</strong> ' + msg + '</div>' +
+              (stk ? '<div style="opacity:.75;margin-top:6px;">' + stk + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 24px 18px;' +
+          'background:#f9fafb;border-top:1px solid #e5e7eb;">' +
+            '<button id="scw-render-error-dismiss" type="button" ' +
+            'style="background:#fff;border:1px solid #d1d5db;color:#374151;' +
+            'padding:8px 14px;border-radius:6px;font-weight:600;cursor:pointer;">' +
+              'Dismiss (I understand the risk)' +
+            '</button>' +
+            '<button id="scw-render-error-reload" type="button" ' +
+            'style="background:#b91c1c;border:0;color:#fff;' +
+            'padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;">' +
+              'Reload page' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    var wrap = document.createElement('div');
+    wrap.id = OVERLAY_ID;
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+    document.getElementById('scw-render-error-reload').addEventListener('click', function () {
+      window.location.reload();
+    });
+    document.getElementById('scw-render-error-dismiss').addEventListener('click', function () {
+      wrap.remove();
+    });
+  }
+  namespace.showRenderError = showRenderErrorOverlay;
+
+  function safeHandler(handler, contextLabel) {
+    return function scwSafeHandler() {
+      try {
+        return handler.apply(this, arguments);
+      } catch (err) {
+        console.error('[SCW render error] ' + contextLabel, err);
+        showRenderErrorOverlay({
+          context: contextLabel,
+          message: (err && err.message) || String(err),
+          stack:   (err && err.stack)   || ''
+        });
+        // Re-throw so any upstream listener / debugger pause behaves
+        // normally too. The overlay is informational, not a swallow.
+        throw err;
+      }
+    };
+  }
+
+  // ── Catch-up: invoke handler if the view/scene already rendered ──
+  // The bundle is loaded async; on slow connections the IIFE for a
+  // feature can parse AFTER Knack has emitted its initial
+  // knack-view-render / knack-scene-render event. Without a catch-up
+  // pass the feature silently no-ops on first paint until the user
+  // navigates or refreshes. Poll briefly for the rendered DOM and
+  // fire the matching event once.
+  function scheduleCatchUp(eventName, viewOrSceneId, kind) {
+    var attempts = 0;
+    var maxAttempts = 20;          // ~6s at 300ms cadence
+    var iv = setInterval(function () {
+      attempts++;
+      var found = false;
+      try {
+        if (kind === 'view') {
+          var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewOrSceneId] : null;
+          var rootEl = document.getElementById(viewOrSceneId);
+          // Knack puts data on view.model.data (Backbone-ish). Either array
+          // or { models: [] } depending on view type.
+          var hasModel = !!(view && view.model);
+          if (rootEl && hasModel) {
+            $(document).trigger(eventName, [view]);
+            found = true;
+          }
+        } else if (kind === 'scene') {
+          var sceneEl = document.getElementById('kn-' + viewOrSceneId);
+          if (sceneEl) {
+            $(document).trigger(eventName);
+            found = true;
+          }
+        }
+      } catch (e) { /* keep polling */ }
+      if (found || attempts >= maxAttempts) clearInterval(iv);
+    }, 300);
+  }
+
   namespace.onViewRender = function onViewRender(viewId, handler, ns) {
     if (!viewId || typeof handler !== 'function') return;
-    const eventName = `knack-view-render.${viewId}${normalizeNamespace(ns)}`;
-    $(document).off(eventName).on(eventName, handler);
+    var eventName = 'knack-view-render.' + viewId + normalizeNamespace(ns);
+    var wrapped  = safeHandler(handler, 'onViewRender(' + viewId + ', ns=' + (ns || '.scw') + ')');
+    $(document).off(eventName).on(eventName, wrapped);
+    scheduleCatchUp(eventName, viewId, 'view');
   };
 
   namespace.onSceneRender = function onSceneRender(sceneId, handler, ns) {
     if (!sceneId || typeof handler !== 'function') return;
-    const eventName = `knack-scene-render.${sceneId}${normalizeNamespace(ns)}`;
-    $(document).off(eventName).on(eventName, handler);
+    var eventName = 'knack-scene-render.' + sceneId + normalizeNamespace(ns);
+    var wrapped  = safeHandler(handler, 'onSceneRender(' + sceneId + ', ns=' + (ns || '.scw') + ')');
+    $(document).off(eventName).on(eventName, wrapped);
+    scheduleCatchUp(eventName, sceneId, 'scene');
   };
 })(window.SCW);
 
