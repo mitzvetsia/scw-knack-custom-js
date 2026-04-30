@@ -129,6 +129,13 @@
     return div.innerHTML;
   }
 
+  function labelSlug(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
   function groupLabelText(tr) {
     var td = tr.querySelector('td:first-child');
     if (!td) return '';
@@ -917,7 +924,7 @@
         html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
         for (var fl = 0; fl < section.footer.lines.length; fl++) {
           var line = section.footer.lines[fl];
-          html.push('<div class="l1-footer-line l1-line--' + line.type + '">');
+          html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
           html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
           html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
           html.push('</div>');
@@ -1015,7 +1022,7 @@
       html.push('<div class="pt-title">' + esc(pt.title) + '</div>');
       for (var tl = 0; tl < pt.lines.length; tl++) {
         var tline = pt.lines[tl];
-        html.push('<div class="pt-line pt-line--' + tline.type + '">');
+        html.push('<div class="pt-line pt-line--' + tline.type + ' pt-line--' + labelSlug(tline.label) + '">');
         html.push('<span class="pt-label">' + esc(tline.label) + '</span>');
         html.push('<span class="pt-value">' + esc(tline.value) + '</span>');
         html.push('</div>');
@@ -1157,6 +1164,9 @@
       '.l1-line--disc .l1-footer-label, .l1-line--disc .l1-footer-value { color: orange; }',
       '.l1-line--final .l1-footer-label, .l1-line--final .l1-footer-value { color: #07467c; font-weight: 900; }',
       '.l1-line--final .l1-footer-value { font-size: 15px; }',
+      '/* Tight cluster: per-L1 Subtotal → Discount → Total */',
+      '.l1-line--sub, .l1-line--disc { padding-top: 0; padding-bottom: 0; }',
+      '.l1-line--sub + .l1-footer-line, .l1-line--disc + .l1-footer-line { padding-top: 0; }',
       '',
       '/* ── Project Totals ── */',
       '.project-totals {',
@@ -1178,6 +1188,14 @@
       '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
       '.pt-line--final:last-child .pt-label { font-size: 17px; }',
       '.pt-line--final:last-child .pt-value { font-size: 19px; }',
+      '/* Extra padding below Equipment Total and Installation Total */',
+      '.pt-line--equipment-total, .pt-line--installation-total { padding-bottom: 14px; }',
+      '/* Tight cluster: Equipment Subtotal → Line Item Discounts → Equipment Total */',
+      '.pt-line--equipment-subtotal, .pt-line--line-item-discounts { padding-top: 0; padding-bottom: 0; }',
+      '.pt-line--equipment-subtotal + .pt-line, .pt-line--line-item-discounts + .pt-line { padding-top: 0; }',
+      '/* Tight cluster: Proposal Discount → Grand Total */',
+      '.pt-line--proposal-discount { padding-bottom: 0; }',
+      '.pt-line--proposal-discount + .pt-line { padding-top: 0; }',
       '',
       '/* ── Recurring Services ── */',
       '.recurring-section { margin-top: 40px; }',
