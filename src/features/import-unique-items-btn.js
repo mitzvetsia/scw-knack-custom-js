@@ -77,9 +77,113 @@
       '  pointer-events: none; opacity: 0.5; cursor: default;' +
       '  background: #6b7280; border-color: #6b7280;' +
       '}' +
-      '@keyframes scw-import-unique-spin { to { transform: rotate(360deg); } }';
+      '@keyframes scw-import-unique-spin { to { transform: rotate(360deg); } }' +
+
+      // ── Confirm modal ──
+      '.scw-iui-overlay {' +
+      '  position: fixed; inset: 0; z-index: 100000;' +
+      '  background: rgba(15, 23, 42, 0.55);' +
+      '  display: flex; align-items: center; justify-content: center;' +
+      '  font: 13px/1.4 system-ui, -apple-system, sans-serif;' +
+      '}' +
+      '.scw-iui-card {' +
+      '  background: #fff; border-radius: 10px;' +
+      '  box-shadow: 0 18px 50px rgba(0,0,0,0.35);' +
+      '  padding: 22px 24px; min-width: 380px; max-width: 540px;' +
+      '  text-align: center;' +
+      '}' +
+      '.scw-iui-msg {' +
+      '  font-size: 15px; font-weight: 700; color: #111827;' +
+      '  margin-bottom: 8px;' +
+      '}' +
+      '.scw-iui-sub {' +
+      '  font-size: 13px; color: #4b5563; margin-bottom: 18px;' +
+      '}' +
+      '.scw-iui-sub strong { color: #111827; }' +
+      '.scw-iui-btns {' +
+      '  display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;' +
+      '}' +
+      '.scw-iui-btn {' +
+      '  appearance: none; cursor: pointer;' +
+      '  padding: 9px 18px; border-radius: 6px;' +
+      '  font: 600 13px system-ui, sans-serif;' +
+      '  border: 1px solid transparent;' +
+      '}' +
+      '.scw-iui-btn--cancel {' +
+      '  background: #fff; color: #1f2937; border-color: #d1d5db;' +
+      '}' +
+      '.scw-iui-btn--cancel:hover { background: #f3f4f6; }' +
+      '.scw-iui-btn--delete {' +
+      '  background: #b91c1c; color: #fff; border-color: #991b1b;' +
+      '}' +
+      '.scw-iui-btn--delete:hover { background: #991b1b; }' +
+      '.scw-iui-btn--primary {' +
+      '  background: #163C6E; color: #fff; border-color: #163C6E;' +
+      '}' +
+      '.scw-iui-btn--primary:hover { background: #0f2d55; border-color: #0f2d55; }';
     document.head.appendChild(s);
   })();
+
+  // Pull a human-readable label (e.g. "SW-1042") for a row in view_3869.
+  // Falls back to the record id when no label-bearing cell is found.
+  function getRowLabel(tr) {
+    if (!tr) return '';
+    var cells = tr.querySelectorAll('td:not(.' + COL_CLASS + ')');
+    for (var i = 0; i < cells.length; i++) {
+      var txt = (cells[i].textContent || '').trim();
+      if (txt && txt.length < 80) return txt;
+    }
+    return tr.id || '';
+  }
+
+  // Confirm modal. Resolves with {action: 'cancel'|'import'|'import-delete'}.
+  function showImportConfirm(opts) {
+    return new Promise(function (resolve) {
+      var count       = opts.count;
+      var sourceLabel = opts.sourceLabel || 'this SOW';
+      var overlay = document.createElement('div');
+      overlay.className = 'scw-iui-overlay';
+      overlay.innerHTML =
+        '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
+          '<div class="scw-iui-msg">Import ' + count +
+            ' unique item' + (count === 1 ? '' : 's') + '?</div>' +
+          '<div class="scw-iui-sub">' +
+            'Items will be copied from <strong>' + sourceLabel +
+            '</strong> into the current SOW.<br>' +
+            'Do you also want to <strong>delete ' + sourceLabel +
+            '</strong> after importing?' +
+          '</div>' +
+          '<div class="scw-iui-btns">' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--delete">Import &amp; Delete ' +
+              sourceLabel + '</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import only</button>' +
+          '</div>' +
+        '</div>';
+
+      function close(answer) {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        document.removeEventListener('keydown', onKey);
+        resolve({ action: answer });
+      }
+      function onKey(e) { if (e.key === 'Escape') close('cancel'); }
+
+      overlay.querySelector('.scw-iui-btn--cancel')
+        .addEventListener('click', function () { close('cancel'); });
+      overlay.querySelector('.scw-iui-btn--delete')
+        .addEventListener('click', function () { close('import-delete'); });
+      overlay.querySelector('.scw-iui-btn--primary')
+        .addEventListener('click', function () { close('import'); });
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close('cancel');
+      });
+      document.addEventListener('keydown', onKey);
+
+      document.body.appendChild(overlay);
+      var cancelBtn = overlay.querySelector('.scw-iui-btn--cancel');
+      if (cancelBtn) cancelBtn.focus();
+    });
+  }
 
   function getReceivingSowId() {
     try {
@@ -181,7 +285,7 @@
     }
   }
 
-  function fireWebhook(btn, sourceRecordId) {
+  function fireWebhook(btn, sourceRecordId, deleteSourceAfterImport) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('Import-unique-items webhook URL is not configured.');
@@ -207,9 +311,10 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        receivingRecordId: receivingRecordId,
-        sourceRecordId:    sourceRecordId,
-        triggeredBy:       getTriggeredBy()
+        receivingRecordId:        receivingRecordId,
+        sourceRecordId:           sourceRecordId,
+        deleteSourceAfterImport:  !!deleteSourceAfterImport,
+        triggeredBy:              getTriggeredBy()
       })
     }).then(function (resp) {
       return resp.json().catch(function () { return null; });
@@ -250,7 +355,15 @@
       e.stopPropagation();
       if (btn.classList.contains('is-loading')) return;
       if (btn.getAttribute('data-unique-count') === '0') return;
-      fireWebhook(btn, sourceRecordId);
+      var tr = btn.closest('tr[id]');
+      var count = parseInt(btn.getAttribute('data-unique-count') || '0', 10);
+      showImportConfirm({
+        count:       count,
+        sourceLabel: getRowLabel(tr)
+      }).then(function (res) {
+        if (res.action === 'cancel') return;
+        fireWebhook(btn, sourceRecordId, res.action === 'import-delete');
+      });
     });
 
     setBtnLabel(btn, sourceRecordId);
