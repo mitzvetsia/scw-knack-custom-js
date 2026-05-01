@@ -1,8 +1,14 @@
 /*** FEATURE: "Import Unique Items" button on each row of view_3869 ***/
 /**
  * For each row in view_3869 (alternative SOWs on the same project),
- * injects an "Import Unique Items" button. Click fires the Make
- * webhook at SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK with:
+ * injects an "Import Unique Items (N)" button. N = count of line items
+ * connected to that source SOW that are NOT already connected to the
+ * current (receiving) SOW. N is computed from view_3913 — a hidden grid
+ * of all SOW line items connected to the project, where field_2154 is
+ * the multi-connection back to SOW headers.
+ *
+ * Click fires the Make webhook at SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK
+ * with:
  *   {
  *     receivingRecordId: <current SOW id from view_3827>,
  *     sourceRecordId:    <tr.id of the row where the button lives>,
@@ -17,12 +23,17 @@
 (function () {
   'use strict';
 
-  var TARGET_VIEW  = 'view_3869';
-  var GATE_VIEW    = 'view_3827';          // SOW detail view on the same scene
-  var BTN_MARKER   = 'scw-import-unique-items-btn';
-  var BTN_LABEL    = 'Import Unique Items';
-  var EVENT_NS     = '.scwImportUniqueItems';
-  var COL_CLASS    = 'scw-import-unique-items-col';
+  var TARGET_VIEW    = 'view_3869';
+  var GATE_VIEW      = 'view_3827';   // SOW detail view on the same scene
+  var LINE_ITEM_VIEW = 'view_3913';   // Hidden grid of all SOW line items on this project
+  var SOW_CONN_FIELD = 'field_2154';  // SOW Header connection on a line item
+  var BTN_MARKER     = 'scw-import-unique-items-btn';
+  var BTN_LABEL      = 'Import Unique Items';
+  var EVENT_NS       = '.scwImportUniqueItems';
+  var COL_CLASS      = 'scw-import-unique-items-col';
+
+  // sowId → Set<lineItemId>
+  var sowToItems = null;
 
   var DOWNLOAD_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
@@ -62,6 +73,10 @@
       '.' + BTN_MARKER + '.is-loading svg {' +
       '  animation: scw-import-unique-spin 0.8s linear infinite;' +
       '}' +
+      '.' + BTN_MARKER + '[data-unique-count="0"] {' +
+      '  pointer-events: none; opacity: 0.5; cursor: default;' +
+      '  background: #6b7280; border-color: #6b7280;' +
+      '}' +
       '@keyframes scw-import-unique-spin { to { transform: rotate(360deg); } }';
     document.head.appendChild(s);
   })();
@@ -86,6 +101,43 @@
     return null;
   }
 
+  // Build sowId → Set<lineItemId> from view_3913's model.
+  function buildSowIndex() {
+    sowToItems = null;
+    try {
+      var v = Knack.views && Knack.views[LINE_ITEM_VIEW];
+      if (!v || !v.model || !v.model.data || !v.model.data.models) return;
+      var models = v.model.data.models;
+      var idx = {};
+      for (var i = 0; i < models.length; i++) {
+        var rec = models[i] && models[i].attributes;
+        if (!rec || !rec.id) continue;
+        var conns = rec[SOW_CONN_FIELD + '_raw'];
+        if (!conns || !conns.length) continue;
+        for (var j = 0; j < conns.length; j++) {
+          var sowId = conns[j] && conns[j].id;
+          if (!sowId) continue;
+          if (!idx[sowId]) idx[sowId] = {};
+          idx[sowId][rec.id] = 1;
+        }
+      }
+      sowToItems = idx;
+    } catch (e) { /* ignore */ }
+  }
+
+  // Count line items connected to sourceSowId that are NOT connected to receivingSowId.
+  function uniqueCountFor(sourceSowId, receivingSowId) {
+    if (!sowToItems) return null;
+    var src = sowToItems[sourceSowId];
+    if (!src) return 0;
+    var rcv = sowToItems[receivingSowId] || {};
+    var n = 0;
+    for (var itemId in src) {
+      if (Object.prototype.hasOwnProperty.call(src, itemId) && !rcv[itemId]) n++;
+    }
+    return n;
+  }
+
   function setBtnLoading(btn, loading) {
     if (!btn) return;
     var iconSpan = btn.querySelector('.scw-import-unique-items-icon');
@@ -95,6 +147,37 @@
     } else {
       btn.classList.remove('is-loading');
       if (iconSpan) iconSpan.innerHTML = DOWNLOAD_SVG;
+    }
+  }
+
+  function setBtnLabel(btn, sourceRecordId) {
+    var labelSpan = btn.querySelector('.scw-import-unique-items-label');
+    if (!labelSpan) return;
+    var rcv = getReceivingSowId();
+    var count = (rcv && sourceRecordId) ? uniqueCountFor(sourceRecordId, rcv) : null;
+    if (count === null) {
+      labelSpan.textContent = BTN_LABEL;
+      btn.removeAttribute('data-unique-count');
+      btn.title = 'Copy items from this SOW that are not already on the current SOW';
+    } else {
+      labelSpan.textContent = BTN_LABEL + ' (' + count + ')';
+      btn.setAttribute('data-unique-count', String(count));
+      btn.title = count === 0
+        ? 'No unique items on this SOW — nothing to import'
+        : 'Copy ' + count + ' item' + (count === 1 ? '' : 's') +
+          ' from this SOW not already on the current SOW';
+    }
+  }
+
+  function refreshAllBtnLabels() {
+    var viewEl = document.getElementById(TARGET_VIEW);
+    if (!viewEl) return;
+    var btns = viewEl.querySelectorAll('.' + BTN_MARKER);
+    for (var i = 0; i < btns.length; i++) {
+      var btn = btns[i];
+      var tr  = btn.closest('tr[id]');
+      if (!tr) continue;
+      setBtnLabel(btn, tr.id);
     }
   }
 
@@ -157,14 +240,20 @@
     iconSpan.innerHTML = DOWNLOAD_SVG;
     btn.appendChild(iconSpan);
 
-    btn.appendChild(document.createTextNode(BTN_LABEL));
+    var labelSpan = document.createElement('span');
+    labelSpan.className = 'scw-import-unique-items-label';
+    labelSpan.textContent = BTN_LABEL;
+    btn.appendChild(labelSpan);
 
     btn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
       if (btn.classList.contains('is-loading')) return;
+      if (btn.getAttribute('data-unique-count') === '0') return;
       fireWebhook(btn, sourceRecordId);
     });
+
+    setBtnLabel(btn, sourceRecordId);
     return btn;
   }
 
@@ -208,18 +297,25 @@
   $(document)
     .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
     .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
-      setTimeout(syncRows, 400);
+      setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 400);
     });
 
   $(document)
     .off('knack-view-render.' + GATE_VIEW + EVENT_NS)
     .on('knack-view-render.' + GATE_VIEW + EVENT_NS, function () {
-      setTimeout(syncRows, 400);
+      setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 400);
+    });
+
+  $(document)
+    .off('knack-view-render.' + LINE_ITEM_VIEW + EVENT_NS)
+    .on('knack-view-render.' + LINE_ITEM_VIEW + EVENT_NS, function () {
+      buildSowIndex();
+      refreshAllBtnLabels();
     });
 
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
-      setTimeout(syncRows, 1200);
+      setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 1200);
     });
 })();
