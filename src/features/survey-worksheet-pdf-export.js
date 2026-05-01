@@ -338,9 +338,9 @@
       }
     }
 
-    // Append an "Additional Notes" space at the end of each L1
-    // (MDF/IDF) group so the tech can jot down anything that didn't
-    // fit the structured fields.
+    // After each L1 group header (MDF/IDF), insert a blank "Additional
+    // Notes" block so the tech can jot down anything for that location
+    // before the device cards start.
     out = insertL1NotesBlocks(out);
 
     return {
@@ -354,27 +354,20 @@
     };
   }
 
-  // Walks the row list and, after each L1 group's cards, appends
-  // a single {type:'l1-notes'} entry tagged with that L1's label.
-  // The renderer turns this into a blank "Additional Notes" block.
+  // Walks the row list and, immediately after each L1 group header,
+  // inserts a single {type:'l1-notes'} entry tagged with that L1's
+  // label. The renderer turns this into a fillable "Additional Notes"
+  // block — printed under the MDF/IDF header so the tech can capture
+  // location-level notes before the device cards begin.
   function insertL1NotesBlocks(rows) {
     var out = [];
-    var inL1 = false;
-    var currentL1 = '';
-    function flushNotes() {
-      if (!inL1) return;
-      out.push({ type: 'l1-notes', groupL1: currentL1 });
-    }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      if (r.type === 'group' && r.level === 1) {
-        flushNotes();
-        inL1 = true;
-        currentL1 = r.label;
-      }
       out.push(r);
+      if (r.type === 'group' && r.level === 1) {
+        out.push({ type: 'l1-notes', groupL1: r.label });
+      }
     }
-    flushNotes();
     return out;
   }
 
@@ -809,7 +802,10 @@
       { key: 'field_2455', label: 'Mounting Height',   kind: 'choices',
         options: ["Under 16'", "16' - 24'", "Over 24'"] },
       { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
-      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill' }
+      // Conduit Ft is always printed blank — the survey is the source
+      // of truth for this measurement, not whatever's already on the
+      // record.
+      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill', forceBlank: true }
     ],
     right: [
       // Yes = Existing Cabling, No = New Cabling
@@ -878,7 +874,7 @@
     return html.join('\n');
   }
 
-  // ── Additional Notes block (appended at the end of each L1 group) ──
+  // ── Additional Notes block (inserted directly under each L1 group header) ──
   function renderL1Notes(row) {
     var h = [];
     h.push('<section class="ws-card ws-card--notes">');
@@ -1115,8 +1111,10 @@
         h.push('</span>');
       } else if (spec.kind === 'fill') {
         // Value-or-blank-line: show the value if present, otherwise a
-        // bottom-ruled span wide enough to write on.
-        h.push('<span class="ws-detail-value ws-fill">' + esc(value) + '</span>');
+        // bottom-ruled span wide enough to write on. spec.forceBlank
+        // overrides the value and always renders an empty fillable line.
+        var fillVal = spec.forceBlank ? '' : value;
+        h.push('<span class="ws-detail-value ws-fill">' + esc(fillVal) + '</span>');
       } else {
         // Plain text (read-only data field)
         h.push('<span class="ws-detail-value">' + esc(value) + '</span>');
@@ -1507,7 +1505,7 @@
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
       '}',
       '',
-      '/* Additional Notes block appended at the end of each L1 group */',
+      '/* Additional Notes block inserted directly under each L1 group header */',
       '.ws-card--notes {',
       '  border: 1px dashed #94a3b8;',
       '  background: #fbfdff;',
