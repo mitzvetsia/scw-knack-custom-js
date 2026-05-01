@@ -366,16 +366,16 @@
       overlay.innerHTML =
         '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
           '<div class="scw-iui-body">' +
-            '<div class="scw-iui-msg">Import unique items?</div>' +
+            '<div class="scw-iui-msg">Add unique items?</div>' +
             '<div class="scw-iui-sub">' +
-              'Copy items from <strong>' + token +
-              '</strong> into the current SOW.' +
+              'Add items from <strong>' + token +
+              '</strong> to the current SOW.' +
               (showFull ? '<span class="scw-iui-source">' + fullLabel + '</span>' : '') +
             '</div>' +
           '</div>' +
           '<div class="scw-iui-footer">' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
-            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Add</button>' +
           '</div>' +
         '</div>';
 
@@ -385,7 +385,7 @@
 
       var checklist = renderItemChecklist(body, [{ token: '', items: items }],
         function (selectedIds) {
-          msgEl.textContent = 'Import ' + selectedIds.length +
+          msgEl.textContent = 'Add ' + selectedIds.length +
             ' unique item' + (selectedIds.length === 1 ? '' : 's') + '?';
           syncPrimary();
         });
@@ -396,9 +396,9 @@
           '<label class="scw-iui-opt">' +
             '<input type="checkbox" class="scw-iui-delete-toggle">' +
             '<span class="scw-iui-opt-label">' +
-              '<strong>Also delete ' + token + '</strong> after importing' +
+              '<strong>Also delete ' + token + '</strong> after adding' +
               '<span class="scw-iui-opt-hint">' +
-                'Removes the source SOW once its items have been copied.' +
+                'Removes the source SOW once its items have been added.' +
               '</span>' +
             '</span>' +
           '</label>');
@@ -417,15 +417,15 @@
         primaryBtn.disabled = selCount === 0;
         if (checkbox && checkbox.checked) {
           primaryBtn.classList.add('is-delete');
-          primaryBtn.textContent = 'Import & Delete';
+          primaryBtn.textContent = 'Add & Delete';
         } else {
           primaryBtn.classList.remove('is-delete');
-          primaryBtn.textContent = 'Import';
+          primaryBtn.textContent = 'Add';
         }
       }
 
       // Initial title (matches default all-selected state).
-      msgEl.textContent = 'Import ' + items.length +
+      msgEl.textContent = 'Add ' + items.length +
         ' unique item' + (items.length === 1 ? '' : 's') + '?';
       syncPrimary();
 
@@ -476,7 +476,7 @@
           '<div class="scw-iui-body">' +
             '<div class="scw-iui-msg">Delete ' + token + '?</div>' +
             '<div class="scw-iui-sub">' +
-              'There are no unique line items to import from <strong>' + token +
+              'There are no unique line items to add from <strong>' + token +
               '</strong>. Would you like to delete this SOW?' +
               (showFull ? '<span class="scw-iui-source">' + fullLabel + '</span>' : '') +
             '</div>' +
@@ -738,7 +738,7 @@
       labelSpan.textContent = 'Delete ' + token;
       btn.setAttribute('data-mode', 'delete-only');
       btn.classList.add('is-delete-only');
-      btn.title = 'No unique items to import. Delete ' + token + '.';
+      btn.title = 'No unique items to add. Delete ' + token + '.';
       setBtnIcon(btn, CLOSE_SVG);
     }
   }
@@ -882,14 +882,14 @@
           '<div class="scw-iui-body">' +
             '<div class="scw-iui-msg"></div>' +
             '<div class="scw-iui-sub">' +
-              'Items will be copied from <strong>' + sourceCount +
+              'Items will be added from <strong>' + sourceCount +
               ' alternative SOW' + (sourceCount === 1 ? '' : 's') +
-              '</strong> into the current SOW.' +
+              '</strong> to the current SOW.' +
             '</div>' +
           '</div>' +
           '<div class="scw-iui-footer">' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
-            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import All</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Add All</button>' +
           '</div>' +
         '</div>';
 
@@ -898,7 +898,7 @@
       var primaryBtn = overlay.querySelector('.scw-iui-btn--primary');
 
       var checklist = renderItemChecklist(body, groups, function (selectedIds) {
-        msgEl.textContent = 'Import ' + selectedIds.length +
+        msgEl.textContent = 'Add ' + selectedIds.length +
           ' unique item' + (selectedIds.length === 1 ? '' : 's') + '?';
         syncPrimary();
       });
@@ -914,7 +914,7 @@
             '<input type="checkbox" class="scw-iui-delete-toggle">' +
             '<span class="scw-iui-opt-label">' +
               '<strong>Also delete ' + deletableCount + ' eligible SOW' +
-                (deletableCount === 1 ? '' : 's') + '</strong> after importing' +
+                (deletableCount === 1 ? '' : 's') + '</strong> after adding' +
               '<span class="scw-iui-opt-hint">' +
                 'Removes source SOWs without a survey requested.' + blockedNote +
               '</span>' +
@@ -936,14 +936,14 @@
         primaryBtn.disabled = selCount === 0;
         if (checkbox && checkbox.checked) {
           primaryBtn.classList.add('is-delete');
-          primaryBtn.textContent = 'Import & Delete';
+          primaryBtn.textContent = 'Add & Delete';
         } else {
           primaryBtn.classList.remove('is-delete');
-          primaryBtn.textContent = 'Import All';
+          primaryBtn.textContent = 'Add All';
         }
       }
 
-      msgEl.textContent = 'Import ' + totalItems +
+      msgEl.textContent = 'Add ' + totalItems +
         ' unique item' + (totalItems === 1 ? '' : 's') + '?';
       syncPrimary();
 
