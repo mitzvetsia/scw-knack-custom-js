@@ -6,6 +6,33 @@
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';
 
+  // Views forced to 1000 records/page elsewhere in the codebase. The
+  // per-page navigator is meaningless on these views (everything fits in
+  // one page) — hide the pagination control on each so the UI doesn't
+  // display "Page 1 of 1" / orphan arrows. Kept as a single union list
+  // so there's exactly one place to update when another module starts
+  // forcing full pages.
+  const FORCED_FULL_PAGE_VIEWS = [
+    // change-record-limit.js
+    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896',
+    // import-unique-items-btn.js
+    'view_3913',
+    // bid-review (CFG.viewKey, sowItemsViewKey, bidPackagesViewKey)
+    'view_3680', 'view_3728', 'view_3573'
+  ];
+
+  (function injectHidePaginationCss() {
+    const ID = 'scw-hide-forced-full-page-pagination-css';
+    if (document.getElementById(ID)) return;
+    const sel = FORCED_FULL_PAGE_VIEWS
+      .map(v => '#' + v + ' .kn-pagination.level-right')
+      .join(',\n');
+    const s = document.createElement('style');
+    s.id = ID;
+    s.textContent = sel + ' { display: none !important; }';
+    document.head.appendChild(s);
+  })();
+
   VIEW_IDS.forEach((VIEW_ID) => {
     $(document)
       .off(`knack-view-render.${VIEW_ID}${EVENT_NS}`)
