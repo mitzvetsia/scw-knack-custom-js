@@ -1,6 +1,9 @@
 /*** FEATURE: Accordion Menu Button Injection ************************************
  *
- * Injects kn-menu action links as pill-buttons into KTL accordion headers.
+ * Injects kn-menu action links as pill-buttons inside KTL accordion bodies,
+ * mounted just above the inner view (table / list / form) so they appear
+ * directly under the accordion header when expanded. Buttons hide along
+ * with the body when the accordion is collapsed.
  *
  * ── How pairing works ────────────────────────────────────────────────────────
  *
@@ -108,11 +111,12 @@
       '.' + PREHIDE_CLASS + ' { display: none !important; }',
 
       '.scw-acc-actions {',
-      '  flex: 0 0 auto;',
-      '  display: inline-flex;',
+      '  display: flex;',
       '  align-items: center;',
-      '  gap: 6px;',
-      '  margin: 0 10px 0 0;',
+      '  justify-content: flex-end;',
+      '  gap: 8px;',
+      '  padding: 10px 0 12px;',
+      '  margin: 0;',
       '}',
 
       '.scw-acc-action-btn {',
@@ -417,12 +421,13 @@
     for (var i = 0; i < accordions.length; i++) {
       try {
         var accordion = accordions[i];
-        var header = accordion.querySelector('.scw-ktl-accordion__header');
-        if (!header) { skipped.noHeader++; continue; }
-        if (header.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
+        var body = accordion.querySelector('.scw-ktl-accordion__body');
+        if (!body) { skipped.noHeader++; continue; }
+        if (accordion.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
 
         // Find the inner view — the table/list/form that KTL wrapped
-        var innerView = accordion.querySelector('[id^="view_"]');
+        var innerView = body.querySelector('[id^="view_"]') ||
+                        accordion.querySelector('[id^="view_"]');
         var innerViewId = innerView ? innerView.id : null;
         if (!innerViewId) { skipped.noKeyword++; continue; }
 
@@ -563,21 +568,19 @@
           container.appendChild(btn);
         }
 
-        // Insert: icon | title | [buttons] | count | chevron
-        var chevron = header.querySelector('.scw-acc-chevron');
-        var countPill = header.querySelector('.scw-acc-count');
-        if (chevron) {
-          header.insertBefore(container, chevron);
-          if (countPill) header.insertBefore(countPill, chevron);
+        // Mount inside the accordion body, above the inner view, so buttons
+        // sit just under the header when the accordion is expanded.
+        if (innerView && innerView.parentNode === body) {
+          body.insertBefore(container, innerView);
         } else {
-          header.appendChild(container);
+          body.insertBefore(container, body.firstChild);
         }
 
         // Hide absorbed menus
         for (var h = 0; h < menuElements.length; h++) {
           menuElements[h].classList.add(HIDDEN_CLASS);
         }
-        header.setAttribute(INJECTED, '1');
+        accordion.setAttribute(INJECTED, '1');
         injected++;
       } catch (err) {
         console.error(LOG, 'Error processing accordion [' + i + ']:', err);
