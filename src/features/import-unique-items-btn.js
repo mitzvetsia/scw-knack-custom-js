@@ -30,7 +30,7 @@
   var ITEM_LABEL_FIELD = 'field_1950';  // Display label for a line item (added to view_3913)
   var SURVEY_FIELD     = 'field_2706';  // Yes/No: "Survey Requested?" on a SOW Header
   var BTN_MARKER     = 'scw-import-unique-items-btn';
-  var BTN_LABEL      = 'Import Unique Items';
+  var BTN_LABEL      = 'Add unique items';
   var EVENT_NS       = '.scwImportUniqueItems';
   var COL_CLASS      = 'scw-import-unique-items-col';
 
@@ -717,7 +717,8 @@
     btn.setAttribute('data-unique-count', String(count));
 
     if (count > 0) {
-      labelSpan.textContent = BTN_LABEL + ' (' + count + ')';
+      labelSpan.textContent = 'Add (' + count + ') unique item' +
+        (count === 1 ? '' : 's');
       btn.setAttribute('data-mode', 'import');
       btn.title = 'Copy ' + count + ' item' + (count === 1 ? '' : 's') +
         ' from ' + token + ' not already on the current SOW';
@@ -1061,9 +1062,11 @@
 
     var labelSpan = bar.querySelector('.scw-iui-bulkbar-label');
     var msgSpan   = bar.querySelector('.scw-iui-bulkbar-msg');
-    labelSpan.textContent = 'Import All Unique Items (' + agg.itemIds.length + ')';
+    var n = agg.itemIds.length;
+    labelSpan.textContent = 'Combine All SOWs — add (' + n + ') unique item' +
+      (n === 1 ? '' : 's');
     msgSpan.textContent =
-      agg.itemIds.length + ' unique item' + (agg.itemIds.length === 1 ? '' : 's') +
+      n + ' unique item' + (n === 1 ? '' : 's') +
       ' across ' + agg.sourceIds.length + ' SOW' + (agg.sourceIds.length === 1 ? '' : 's');
   }
 
