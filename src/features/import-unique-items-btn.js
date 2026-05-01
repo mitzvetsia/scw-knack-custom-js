@@ -426,8 +426,10 @@
   }
 
   // Union of unique item ids across every source SOW that has at least one
-  // unique item relative to the receiving SOW. Returns
-  //   { itemIds: [...], sourceIds: [...] }
+  // unique item relative to the receiving SOW. Splits contributing source
+  // SOWs into delete-eligible (no survey requested) vs. blocked (survey
+  // requested → cannot be auto-deleted). Returns
+  //   { itemIds, sourceIds, deletableSourceIds, blockedSourceIds }
   // or null if the index hasn't been built yet.
   function aggregateAllUnique(receivingSowId) {
     if (!sowToItems || !receivingSowId) return null;
@@ -435,6 +437,8 @@
     var seen = {};
     var itemIds = [];
     var sourceIds = [];
+    var deletableSourceIds = [];
+    var blockedSourceIds   = [];
     for (var sowId in sowToItems) {
       if (!Object.prototype.hasOwnProperty.call(sowToItems, sowId)) continue;
       if (sowId === receivingSowId) continue;
@@ -447,9 +451,18 @@
         itemIds.push(itemId);
         contributed = true;
       }
-      if (contributed) sourceIds.push(sowId);
+      if (contributed) {
+        sourceIds.push(sowId);
+        if (isSurveyRequested(sowId)) blockedSourceIds.push(sowId);
+        else                          deletableSourceIds.push(sowId);
+      }
     }
-    return { itemIds: itemIds, sourceIds: sourceIds };
+    return {
+      itemIds:            itemIds,
+      sourceIds:          sourceIds,
+      deletableSourceIds: deletableSourceIds,
+      blockedSourceIds:   blockedSourceIds
+    };
   }
 
   // Read field_2706 ("Survey Requested?") for a row in view_3869. Returns
@@ -581,12 +594,14 @@
       return;
     }
 
-    var uniqueItemIds = uniqueItemsFor(sourceRecordId, receivingRecordId) || [];
+    var uniqueItemIds   = uniqueItemsFor(sourceRecordId, receivingRecordId) || [];
+    var deleteSourceIds = deleteSourceAfterImport ? [sourceRecordId] : [];
     postWebhook(btn, {
       receivingRecordId:       receivingRecordId,
       sourceRecordId:          sourceRecordId,
       sourceRecordIds:         [sourceRecordId],
       uniqueItemIds:           uniqueItemIds,
+      deleteSourceIds:         deleteSourceIds,
       deleteSourceAfterImport: !!deleteSourceAfterImport,
       bulk:                    false,
       triggeredBy:             getTriggeredBy()
@@ -594,9 +609,9 @@
   }
 
   // Bulk import flow — fires the same webhook with the union of unique
-  // items across every alternative SOW. Never deletes source SOWs;
-  // sourceRecordId is null because there are multiple sources.
-  function fireBulkWebhook(btn) {
+  // items across every alternative SOW. Optionally deletes the
+  // delete-eligible source SOWs (those without a survey requested).
+  function fireBulkWebhook(btn, deleteEligibleSources) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('Import-unique-items webhook URL is not configured.');
@@ -612,12 +627,14 @@
       alert('No unique items to import.');
       return;
     }
+    var deleteSourceIds = deleteEligibleSources ? agg.deletableSourceIds : [];
     postWebhook(btn, {
       receivingRecordId:       receivingRecordId,
       sourceRecordId:          null,
       sourceRecordIds:         agg.sourceIds,
       uniqueItemIds:           agg.itemIds,
-      deleteSourceAfterImport: false,
+      deleteSourceIds:         deleteSourceIds,
+      deleteSourceAfterImport: deleteSourceIds.length > 0,
       bulk:                    true,
       triggeredBy:             getTriggeredBy()
     }, /*isBulk=*/true);
@@ -655,10 +672,41 @@
   }
 
   // ── Bulk modal ───────────────────────────────────────────
+  // Resolves with { action: 'cancel'|'import'|'import-delete' }.
   function showBulkConfirm(opts) {
     return new Promise(function (resolve) {
-      var itemCount   = opts.itemCount;
-      var sourceCount = opts.sourceCount;
+      var itemCount      = opts.itemCount;
+      var sourceCount    = opts.sourceCount;
+      var deletableCount = opts.deletableCount;
+      var blockedCount   = opts.blockedCount;
+      var canDelete      = deletableCount > 0;
+
+      var optionHtml = '';
+      if (canDelete) {
+        var blockedNote = blockedCount > 0
+          ? ' ' + blockedCount + ' SOW' + (blockedCount === 1 ? '' : 's') +
+            ' with a survey requested will be kept.'
+          : '';
+        optionHtml =
+          '<label class="scw-iui-opt">' +
+            '<input type="checkbox" class="scw-iui-delete-toggle">' +
+            '<span class="scw-iui-opt-label">' +
+              '<strong>Also delete ' + deletableCount + ' eligible SOW' +
+                (deletableCount === 1 ? '' : 's') + '</strong> after importing' +
+              '<span class="scw-iui-opt-hint">' +
+                'Removes source SOWs without a survey requested.' + blockedNote +
+              '</span>' +
+            '</span>' +
+          '</label>';
+      } else if (blockedCount > 0) {
+        optionHtml =
+          '<div class="scw-iui-note">' +
+            'All ' + blockedCount + ' source SOW' + (blockedCount === 1 ? '' : 's') +
+            ' ha' + (blockedCount === 1 ? 's' : 've') +
+            ' a survey requested and cannot be auto-deleted.' +
+          '</div>';
+      }
+
       var overlay = document.createElement('div');
       overlay.className = 'scw-iui-overlay';
       overlay.innerHTML =
@@ -669,17 +717,28 @@
             '<div class="scw-iui-sub">' +
               'Items will be copied from <strong>' + sourceCount +
               ' alternative SOW' + (sourceCount === 1 ? '' : 's') +
-              '</strong> into the current SOW.<br>' +
-              '<span class="scw-iui-source">' +
-                'Source SOWs are not modified or deleted.' +
-              '</span>' +
+              '</strong> into the current SOW.' +
             '</div>' +
+            optionHtml +
           '</div>' +
           '<div class="scw-iui-footer">' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import All</button>' +
           '</div>' +
         '</div>';
+
+      var checkbox   = overlay.querySelector('.scw-iui-delete-toggle');
+      var primaryBtn = overlay.querySelector('.scw-iui-btn--primary');
+
+      function syncPrimary() {
+        if (checkbox && checkbox.checked) {
+          primaryBtn.classList.add('is-delete');
+          primaryBtn.textContent = 'Import & Delete';
+        } else {
+          primaryBtn.classList.remove('is-delete');
+          primaryBtn.textContent = 'Import All';
+        }
+      }
 
       function close(answer) {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -688,19 +747,24 @@
       }
       function onKey(e) {
         if (e.key === 'Escape') close('cancel');
-        else if (e.key === 'Enter') close('import');
+        else if (e.key === 'Enter') {
+          close(checkbox && checkbox.checked ? 'import-delete' : 'import');
+        }
       }
+
+      if (checkbox) checkbox.addEventListener('change', syncPrimary);
       overlay.querySelector('.scw-iui-btn--cancel')
         .addEventListener('click', function () { close('cancel'); });
-      overlay.querySelector('.scw-iui-btn--primary')
-        .addEventListener('click', function () { close('import'); });
+      primaryBtn.addEventListener('click', function () {
+        close(checkbox && checkbox.checked ? 'import-delete' : 'import');
+      });
       overlay.addEventListener('click', function (e) {
         if (e.target === overlay) close('cancel');
       });
       document.addEventListener('keydown', onKey);
 
       document.body.appendChild(overlay);
-      overlay.querySelector('.scw-iui-btn--primary').focus();
+      primaryBtn.focus();
     });
   }
 
@@ -741,11 +805,13 @@
         var aggNow = rcvNow ? aggregateAllUnique(rcvNow) : null;
         if (!aggNow || !aggNow.itemIds.length) return;
         showBulkConfirm({
-          itemCount:   aggNow.itemIds.length,
-          sourceCount: aggNow.sourceIds.length
+          itemCount:      aggNow.itemIds.length,
+          sourceCount:    aggNow.sourceIds.length,
+          deletableCount: aggNow.deletableSourceIds.length,
+          blockedCount:   aggNow.blockedSourceIds.length
         }).then(function (res) {
-          if (res.action !== 'import') return;
-          fireBulkWebhook(btn);
+          if (res.action === 'cancel') return;
+          fireBulkWebhook(btn, res.action === 'import-delete');
         });
       });
 
