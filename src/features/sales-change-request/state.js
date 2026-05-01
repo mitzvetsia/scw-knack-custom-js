@@ -19,6 +19,13 @@
 
   // id → { rowId, displayLabel, productName, action, current, requested, changeNotes }
   var _pending  = {};
+  // id → 1   IDs the user has explicitly cleared/submitted. detectAddRecords
+  // skips these so a clear-all (or successful submit) isn't immediately
+  // undone by the next render's auto-detect pass. Persisted in sessionStorage
+  // alongside _pending. NOT round-tripped to Knack — survives within a tab,
+  // resets across sessions (which is the intended behaviour: a fresh tab
+  // re-detects from the current worksheet state).
+  var _dismissed = {};
   // recordId → { fieldKey: normalised value, _label, _product, _addCount }
   var _baseline = {};
   // true when field_2706 = "Yes" on proposalView
@@ -37,6 +44,33 @@
       var r = sessionStorage.getItem(CFG.storageKey);
       if (r) _pending = JSON.parse(r);
     } catch (e) {}
+  }
+  function ssaveDismissed() {
+    try {
+      sessionStorage.setItem(CFG.storageKey + '_dismissed',
+        JSON.stringify(_dismissed));
+    } catch (e) {}
+  }
+  function sloadDismissed() {
+    try {
+      var r = sessionStorage.getItem(CFG.storageKey + '_dismissed');
+      if (r) _dismissed = JSON.parse(r) || {};
+    } catch (e) {}
+  }
+  function dismissAll() {
+    var keys = Object.keys(_pending);
+    for (var i = 0; i < keys.length; i++) _dismissed[keys[i]] = 1;
+    ssaveDismissed();
+  }
+  function dismissIds(ids) {
+    if (!ids || !ids.length) return;
+    for (var i = 0; i < ids.length; i++) _dismissed[ids[i]] = 1;
+    ssaveDismissed();
+  }
+  function isDismissed(id) { return !!_dismissed[id]; }
+  function clearDismissed() {
+    _dismissed = {};
+    ssaveDismissed();
   }
 
   // ── Knack field persistence (field_2707 on SOW record) ──
@@ -235,6 +269,7 @@
   // ═══════════════════════════════════════════════════════════
 
   sload();
+  sloadDismissed();
 
   // Force-save to Knack on tab close so no changes are lost. Also flush
   // when there's a pending debounce timer even if _pending is empty —
@@ -274,6 +309,10 @@
   ns.setDraftRecordId    = setDraftRecordId;
   ns.detectSowRecordId   = detectSowRecordId;
   ns.rehydrateFromKnack  = rehydrateFromKnack;
+  ns.dismissAll          = dismissAll;
+  ns.dismissIds          = dismissIds;
+  ns.isDismissed         = isDismissed;
+  ns.clearDismissed      = clearDismissed;
 
   // Helpers (used by sibling modules)
   ns._h = {

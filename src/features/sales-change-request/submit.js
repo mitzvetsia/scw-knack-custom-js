@@ -64,6 +64,11 @@
   }
 
   function clearPending() {
+    // Capture current IDs into the dismissed set BEFORE deleting them, so
+    // detectAddRecords doesn't immediately re-create them on the next
+    // render (we're typically in Add mode here, which auto-flags any
+    // record with no associated survey items as an 'add').
+    if (ns.dismissAll) ns.dismissAll();
     var pending = S.pending();
     var keys = Object.keys(pending);
     for (var i = 0; i < keys.length; i++) delete pending[keys[i]];
