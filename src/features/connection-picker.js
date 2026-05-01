@@ -40,7 +40,7 @@
   var CLASS_PREFIX       = 'scw-cp';
   var STYLE_ID           = 'scw-connection-picker-css';
   var ITEM_THRESHOLD     = 20;   // below → single column
-  var ROWS_PER_COLUMN    = 30;
+  var ROWS_PER_COLUMN    = 20;
   var MAX_COLUMNS        = 3;
 
   // ── CSS ───────────────────────────────────────────────────────────
@@ -910,7 +910,10 @@
     var TARGET = cfg.TARGET;
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
-    var row = viewEl.querySelector('tr#' + recordId);
+    // CSS IDs that start with a digit aren't valid in selectors; ~60% of
+    // hex Knack record ids do. Use an attribute selector instead so the
+    // querySelector doesn't throw on those rows.
+    var row = viewEl.querySelector('tr[id="' + recordId + '"]');
     if (!row) return;
     // The clicked cell lives in the worksheet card's detail panel. Both
     // the pre-transform tr and the scw-ws-card are inside the view, so
