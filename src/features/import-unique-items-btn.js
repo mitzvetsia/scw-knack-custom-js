@@ -92,6 +92,36 @@
       '}' +
       '@keyframes scw-import-unique-spin { to { transform: rotate(360deg); } }' +
 
+      // ── Bulk-import bar ──
+      '.scw-iui-bulkbar {' +
+      '  display: flex; justify-content: flex-end; align-items: center;' +
+      '  gap: 10px; padding: 8px 0 12px;' +
+      '}' +
+      '.scw-iui-bulkbar-msg {' +
+      '  font: 12px/1.4 system-ui, -apple-system, sans-serif;' +
+      '  color: #6b7280;' +
+      '}' +
+      '.scw-iui-bulkbar-btn {' +
+      '  display: inline-flex; align-items: center; gap: 6px;' +
+      '  appearance: none; cursor: pointer;' +
+      '  padding: 8px 14px; border-radius: 6px;' +
+      '  font: 600 13px system-ui, sans-serif;' +
+      '  background: #163C6E; color: #fff; border: 1px solid #163C6E;' +
+      '  transition: background 0.15s, border-color 0.15s;' +
+      '}' +
+      '.scw-iui-bulkbar-btn:hover {' +
+      '  background: #0f2d55; border-color: #0f2d55;' +
+      '}' +
+      '.scw-iui-bulkbar-btn[disabled] {' +
+      '  background: #9ca3af; border-color: #9ca3af; cursor: default;' +
+      '}' +
+      '.scw-iui-bulkbar-btn.is-loading {' +
+      '  pointer-events: none; opacity: 0.7; cursor: wait;' +
+      '}' +
+      '.scw-iui-bulkbar-btn.is-loading svg {' +
+      '  animation: scw-import-unique-spin 0.8s linear infinite;' +
+      '}' +
+
       // ── Confirm modal ──
       '.scw-iui-overlay {' +
       '  position: fixed; inset: 0; z-index: 100000;' +
@@ -395,6 +425,33 @@
     return ids === null ? null : ids.length;
   }
 
+  // Union of unique item ids across every source SOW that has at least one
+  // unique item relative to the receiving SOW. Returns
+  //   { itemIds: [...], sourceIds: [...] }
+  // or null if the index hasn't been built yet.
+  function aggregateAllUnique(receivingSowId) {
+    if (!sowToItems || !receivingSowId) return null;
+    var rcv = sowToItems[receivingSowId] || {};
+    var seen = {};
+    var itemIds = [];
+    var sourceIds = [];
+    for (var sowId in sowToItems) {
+      if (!Object.prototype.hasOwnProperty.call(sowToItems, sowId)) continue;
+      if (sowId === receivingSowId) continue;
+      var items = sowToItems[sowId];
+      var contributed = false;
+      for (var itemId in items) {
+        if (!Object.prototype.hasOwnProperty.call(items, itemId)) continue;
+        if (rcv[itemId] || seen[itemId]) continue;
+        seen[itemId] = 1;
+        itemIds.push(itemId);
+        contributed = true;
+      }
+      if (contributed) sourceIds.push(sowId);
+    }
+    return { itemIds: itemIds, sourceIds: sourceIds };
+  }
+
   // Read field_2706 ("Survey Requested?") for a row in view_3869. Returns
   // true only when the value is explicitly Yes / true. Falls back to a DOM
   // scrape of the row when the model isn't yet populated.
@@ -502,6 +559,8 @@
     }
   }
 
+  // Per-row import / delete-only flow. sourceRecordId is required;
+  // deleteSourceAfterImport may be true.
   function fireWebhook(btn, sourceRecordId, deleteSourceAfterImport) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
@@ -523,33 +582,189 @@
     }
 
     var uniqueItemIds = uniqueItemsFor(sourceRecordId, receivingRecordId) || [];
+    postWebhook(btn, {
+      receivingRecordId:       receivingRecordId,
+      sourceRecordId:          sourceRecordId,
+      sourceRecordIds:         [sourceRecordId],
+      uniqueItemIds:           uniqueItemIds,
+      deleteSourceAfterImport: !!deleteSourceAfterImport,
+      bulk:                    false,
+      triggeredBy:             getTriggeredBy()
+    });
+  }
 
-    setBtnLoading(btn, true);
+  // Bulk import flow — fires the same webhook with the union of unique
+  // items across every alternative SOW. Never deletes source SOWs;
+  // sourceRecordId is null because there are multiple sources.
+  function fireBulkWebhook(btn) {
+    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK) || '';
+    if (!url || /PLACEHOLDER/.test(url)) {
+      alert('Import-unique-items webhook URL is not configured.');
+      return;
+    }
+    var receivingRecordId = getReceivingSowId();
+    if (!receivingRecordId) {
+      alert('Could not determine current SOW record ID.');
+      return;
+    }
+    var agg = aggregateAllUnique(receivingRecordId);
+    if (!agg || !agg.itemIds.length) {
+      alert('No unique items to import.');
+      return;
+    }
+    postWebhook(btn, {
+      receivingRecordId:       receivingRecordId,
+      sourceRecordId:          null,
+      sourceRecordIds:         agg.sourceIds,
+      uniqueItemIds:           agg.itemIds,
+      deleteSourceAfterImport: false,
+      bulk:                    true,
+      triggeredBy:             getTriggeredBy()
+    }, /*isBulk=*/true);
+  }
 
+  // Shared POST + response handling. `isBulk` only changes the loading
+  // visual treatment (the per-row buttons have their own spinner swap).
+  function postWebhook(btn, payload, isBulk) {
+    var url = SCW.CONFIG.MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK;
+    if (isBulk) {
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+    } else {
+      setBtnLoading(btn, true);
+    }
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        receivingRecordId:        receivingRecordId,
-        sourceRecordId:           sourceRecordId,
-        uniqueItemIds:            uniqueItemIds,
-        deleteSourceAfterImport:  !!deleteSourceAfterImport,
-        triggeredBy:              getTriggeredBy()
-      })
+      body: JSON.stringify(payload)
     }).then(function (resp) {
       return resp.json().catch(function () { return null; });
     }).then(function (data) {
       if (data && data.success) {
-        // Reload so the newly-imported items appear in the worksheet.
         window.location.reload();
         return;
       }
-      setBtnLoading(btn, false);
+      if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
+      else setBtnLoading(btn, false);
       alert((data && (data.error || data.message)) || 'Failed to import items.');
     }).catch(function (err) {
-      setBtnLoading(btn, false);
+      if (isBulk) { btn.classList.remove('is-loading'); btn.disabled = false; }
+      else setBtnLoading(btn, false);
       alert('Webhook error: ' + (err && err.message ? err.message : err));
     });
+  }
+
+  // ── Bulk modal ───────────────────────────────────────────
+  function showBulkConfirm(opts) {
+    return new Promise(function (resolve) {
+      var itemCount   = opts.itemCount;
+      var sourceCount = opts.sourceCount;
+      var overlay = document.createElement('div');
+      overlay.className = 'scw-iui-overlay';
+      overlay.innerHTML =
+        '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
+          '<div class="scw-iui-body">' +
+            '<div class="scw-iui-msg">Import ' + itemCount +
+              ' unique item' + (itemCount === 1 ? '' : 's') + '?</div>' +
+            '<div class="scw-iui-sub">' +
+              'Items will be copied from <strong>' + sourceCount +
+              ' alternative SOW' + (sourceCount === 1 ? '' : 's') +
+              '</strong> into the current SOW.<br>' +
+              '<span class="scw-iui-source">' +
+                'Source SOWs are not modified or deleted.' +
+              '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="scw-iui-footer">' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import All</button>' +
+          '</div>' +
+        '</div>';
+
+      function close(answer) {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        document.removeEventListener('keydown', onKey);
+        resolve({ action: answer });
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') close('cancel');
+        else if (e.key === 'Enter') close('import');
+      }
+      overlay.querySelector('.scw-iui-btn--cancel')
+        .addEventListener('click', function () { close('cancel'); });
+      overlay.querySelector('.scw-iui-btn--primary')
+        .addEventListener('click', function () { close('import'); });
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close('cancel');
+      });
+      document.addEventListener('keydown', onKey);
+
+      document.body.appendChild(overlay);
+      overlay.querySelector('.scw-iui-btn--primary').focus();
+    });
+  }
+
+  // ── Bulk bar ─────────────────────────────────────────────
+  var BULK_BAR_ID = 'scw-iui-bulkbar';
+
+  function syncBulkBar() {
+    var viewEl = document.getElementById(TARGET_VIEW);
+    if (!viewEl) return;
+    var rcv = getReceivingSowId();
+    var agg = rcv ? aggregateAllUnique(rcv) : null;
+
+    var bar = document.getElementById(BULK_BAR_ID);
+
+    // Hide bar entirely until we have an index and at least one unique item.
+    if (!agg || !agg.itemIds.length) {
+      if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+      return;
+    }
+
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = BULK_BAR_ID;
+      bar.className = 'scw-iui-bulkbar';
+      bar.innerHTML =
+        '<span class="scw-iui-bulkbar-msg"></span>' +
+        '<button type="button" class="scw-iui-bulkbar-btn">' +
+          '<span class="scw-iui-bulkbar-icon" style="display:inline-flex;align-items:center;">' +
+            DOWNLOAD_SVG +
+          '</span>' +
+          '<span class="scw-iui-bulkbar-label"></span>' +
+        '</button>';
+
+      var btn = bar.querySelector('.scw-iui-bulkbar-btn');
+      btn.addEventListener('click', function () {
+        if (btn.classList.contains('is-loading') || btn.disabled) return;
+        var rcvNow = getReceivingSowId();
+        var aggNow = rcvNow ? aggregateAllUnique(rcvNow) : null;
+        if (!aggNow || !aggNow.itemIds.length) return;
+        showBulkConfirm({
+          itemCount:   aggNow.itemIds.length,
+          sourceCount: aggNow.sourceIds.length
+        }).then(function (res) {
+          if (res.action !== 'import') return;
+          fireBulkWebhook(btn);
+        });
+      });
+
+      // Mount above the table — try the records-nav block first, then fall
+      // back to prepending into the view container.
+      var recordsNav = viewEl.querySelector('.kn-records-nav');
+      if (recordsNav && recordsNav.parentNode) {
+        recordsNav.parentNode.insertBefore(bar, recordsNav);
+      } else {
+        viewEl.insertBefore(bar, viewEl.firstChild);
+      }
+    }
+
+    var labelSpan = bar.querySelector('.scw-iui-bulkbar-label');
+    var msgSpan   = bar.querySelector('.scw-iui-bulkbar-msg');
+    labelSpan.textContent = 'Import All Unique Items (' + agg.itemIds.length + ')';
+    msgSpan.textContent =
+      agg.itemIds.length + ' unique item' + (agg.itemIds.length === 1 ? '' : 's') +
+      ' across ' + agg.sourceIds.length + ' SOW' + (agg.sourceIds.length === 1 ? '' : 's');
   }
 
   // ── Inject a button-cell into each data row ──────────────
@@ -647,16 +862,22 @@
   }
 
   // ── Bindings ─────────────────────────────────────────────
+  function syncAll() {
+    syncRows();
+    refreshAllBtnLabels();
+    syncBulkBar();
+  }
+
   $(document)
     .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
     .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
-      setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 400);
+      setTimeout(syncAll, 400);
     });
 
   $(document)
     .off('knack-view-render.' + GATE_VIEW + EVENT_NS)
     .on('knack-view-render.' + GATE_VIEW + EVENT_NS, function () {
-      setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 400);
+      setTimeout(syncAll, 400);
     });
 
   // Force view_3913 to load 1000 records/page so the SOW→items index covers
@@ -678,11 +899,12 @@
       if (!ensureFullPage(LINE_ITEM_VIEW)) return; // wait for re-render at 1000/page
       buildSowIndex();
       refreshAllBtnLabels();
+      syncBulkBar();
     });
 
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () {
-      setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 1200);
+      setTimeout(syncAll, 1200);
     });
 })();
