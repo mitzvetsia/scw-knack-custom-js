@@ -1247,29 +1247,6 @@
     });
   }
 
-  // Knack's inline editor opens its native popover on mousedown, not
-  // click — so a click-only intercept is too late and both modals end
-  // up visible. Bind the same handler to mousedown AND click in capture
-  // phase: mousedown is what suppresses Knack's popover; click is what
-  // actually opens our picker (so we don't fire the picker before the
-  // user has finished pressing). The mousedown branch only stops
-  // propagation; the click branch does the real work.
-  document.addEventListener('mousedown', function (e) {
-    if (!window.SCW.CONFIG.customConnectionPicker) return;
-    if (e.button !== undefined && e.button !== 0) return;
-    if (!e.target || !e.target.closest) return;
-    for (var vk in VIEW_CONFIGS) {
-      if (!Object.prototype.hasOwnProperty.call(VIEW_CONFIGS, vk)) continue;
-      var candidate = e.target.closest('td.' + VIEW_CONFIGS[vk].TARGET);
-      if (candidate && candidate.closest('#' + vk)) {
-        if (isCellLocked(candidate)) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return;
-      }
-    }
-  }, true);
-
   document.addEventListener('click', handleCellClick, true);
 
   // ── Public ────────────────────────────────────────────────────────
