@@ -41,7 +41,7 @@
   var STYLE_ID           = 'scw-connection-picker-css';
   var ITEM_THRESHOLD     = 20;   // below → single column
   var ROWS_PER_COLUMN    = 30;
-  var MAX_COLUMNS        = 6;
+  var MAX_COLUMNS        = 3;
 
   // ── CSS ───────────────────────────────────────────────────────────
   function injectStyles() {
@@ -101,11 +101,28 @@
       '  contain: layout style;',
       '}',
       P + '-group-label {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  gap: 12px;',
       '  font-size: 11px; font-weight: 700; color: #163C6E;',
       '  text-transform: uppercase; letter-spacing: 0.05em;',
       '  padding: 6px 0 4px;',
       '  border-bottom: 1px solid #e5e7eb;',
       '  margin-bottom: 4px;',
+      '}',
+      P + '-group-label-text {',
+      '  flex: 1; min-width: 0;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      P + '-group-toggle {',
+      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  cursor: pointer; flex: 0 0 auto;',
+      '  font-size: 10px; font-weight: 700; color: #163C6E;',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  user-select: none;',
+      '}',
+      P + '-group-toggle input[type="checkbox"] {',
+      '  width: 14px; height: 14px; cursor: pointer; accent-color: #163C6E;',
+      '  margin: 0;',
       '}',
 
       // Multi-column list inside each group
@@ -342,7 +359,30 @@
 
         var labelEl = document.createElement('div');
         labelEl.className = CLASS_PREFIX + '-group-label';
-        labelEl.textContent = group.label || '—';
+
+        var labelText = document.createElement('span');
+        labelText.className = CLASS_PREFIX + '-group-label-text';
+        labelText.textContent = group.label || '—';
+        labelEl.appendChild(labelText);
+
+        // Select-all toggle, only if the group has items.
+        var hasItems = (group.items || []).length > 0;
+        var toggleLbl, toggleInput;
+        if (hasItems) {
+          toggleLbl = document.createElement('label');
+          toggleLbl.className = CLASS_PREFIX + '-group-toggle';
+          toggleInput = document.createElement('input');
+          toggleInput.type = 'checkbox';
+          toggleInput.setAttribute('data-scw-group-toggle', '1');
+          toggleLbl.appendChild(toggleInput);
+          var toggleText = document.createElement('span');
+          toggleText.textContent = 'Select all';
+          toggleLbl.appendChild(toggleText);
+          // Don't let clicks on the toggle bubble to anything else.
+          toggleLbl.addEventListener('click', function (e) { e.stopPropagation(); });
+          labelEl.appendChild(toggleLbl);
+        }
+
         groupEl.appendChild(labelEl);
 
         var listEl = document.createElement('ul');
@@ -368,7 +408,45 @@
 
         reorderSelectedFirst(listEl);
         applyMultiColLayout(listEl);
+
+        // Wire the per-group select-all toggle now that listEl exists.
+        if (toggleInput) wireGroupToggle(toggleInput, listEl);
       }
+    }
+
+    // Per-group select-all: master checkbox controls every item in the
+    // group's list. Master shows indeterminate when only some items are
+    // selected, checked when all, unchecked when none.
+    function wireGroupToggle(masterCb, listEl) {
+      function syncMaster() {
+        var items = listEl.querySelectorAll('input[type="checkbox"]');
+        var total = items.length;
+        var checked = 0;
+        for (var i = 0; i < items.length; i++) if (items[i].checked) checked++;
+        masterCb.checked       = total > 0 && checked === total;
+        masterCb.indeterminate = checked > 0 && checked < total;
+      }
+      masterCb.addEventListener('change', function () {
+        var items = listEl.querySelectorAll('input[type="checkbox"]');
+        var nextState = masterCb.checked;   // browser already toggled it
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].checked !== nextState) {
+            items[i].checked = nextState;
+            // Fire a change event so other listeners (footer count,
+            // shift-click anchor reset, etc.) stay in sync.
+            items[i].dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+        masterCb.indeterminate = false;
+      });
+      // Keep the master in sync as the user toggles items individually.
+      listEl.addEventListener('change', function (e) {
+        if (e.target && e.target.matches('input[type="checkbox"]') &&
+            !e.target.hasAttribute('data-scw-group-toggle')) {
+          syncMaster();
+        }
+      });
+      syncMaster();
     }
     renderGroups(options.groups);
 
