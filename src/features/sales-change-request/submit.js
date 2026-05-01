@@ -67,7 +67,8 @@
     var pending = S.pending();
     var keys = Object.keys(pending);
     for (var i = 0; i < keys.length; i++) delete pending[keys[i]];
-    ns.persist();  // clears sessionStorage + writes empty to field_2707
+    ns.persist();          // clears sessionStorage immediately
+    ns.forceSaveDraft();   // bypass 3s debounce — write empty to field_2707 NOW
     if (ns.refresh) ns.refresh();
   }
 

@@ -236,9 +236,14 @@
 
   sload();
 
-  // Force-save to Knack on tab close so no changes are lost
+  // Force-save to Knack on tab close so no changes are lost. Also flush
+  // when there's a pending debounce timer even if _pending is empty —
+  // otherwise a 'Clear all' followed by a quick refresh leaves the
+  // cleared state unwritten and the next page load rehydrates the
+  // stale field value.
   window.addEventListener('beforeunload', function () {
-    if (Object.keys(_pending).length && _sowRecordId) {
+    if (!_sowRecordId) return;
+    if (_saveTimer || Object.keys(_pending).length) {
       forceSaveDraft();
     }
   });
