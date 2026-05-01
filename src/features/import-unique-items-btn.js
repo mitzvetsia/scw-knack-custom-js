@@ -42,6 +42,12 @@
     'stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
     '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
+  var CLOSE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/>' +
+    '<line x1="18" y1="6" x2="6" y2="18"/></svg>';
+
   var SPINNER_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
@@ -420,14 +426,19 @@
 
   function setBtnLoading(btn, loading) {
     if (!btn) return;
-    var iconSpan = btn.querySelector('.scw-import-unique-items-icon');
     if (loading) {
       btn.classList.add('is-loading');
-      if (iconSpan) iconSpan.innerHTML = SPINNER_SVG;
+      setBtnIcon(btn, SPINNER_SVG);
     } else {
       btn.classList.remove('is-loading');
-      if (iconSpan) iconSpan.innerHTML = DOWNLOAD_SVG;
+      setBtnIcon(btn,
+        btn.getAttribute('data-mode') === 'delete-only' ? CLOSE_SVG : DOWNLOAD_SVG);
     }
+  }
+
+  function setBtnIcon(btn, svg) {
+    var iconSpan = btn.querySelector('.scw-import-unique-items-icon');
+    if (iconSpan) iconSpan.innerHTML = svg;
   }
 
   function setBtnLabel(btn, sourceRecordId) {
@@ -447,6 +458,7 @@
       btn.removeAttribute('data-unique-count');
       btn.setAttribute('data-mode', 'pending');
       btn.title = 'Loading…';
+      setBtnIcon(btn, DOWNLOAD_SVG);
       return;
     }
 
@@ -457,21 +469,24 @@
       btn.setAttribute('data-mode', 'import');
       btn.title = 'Copy ' + count + ' item' + (count === 1 ? '' : 's') +
         ' from ' + token + ' not already on the current SOW';
+      setBtnIcon(btn, DOWNLOAD_SVG);
       return;
     }
 
     // count === 0
     var surveyed = isSurveyRequested(sourceRecordId, tr);
     if (surveyed) {
-      labelSpan.textContent = BTN_LABEL + ' (0)';
+      labelSpan.textContent = '0 unique · survey requested';
       btn.setAttribute('data-mode', 'disabled');
-      btn.title = 'No unique items to import, and a survey has already been ' +
-        'requested for this SOW — it cannot be deleted from here.';
+      btn.title = 'No unique items, and a survey has been requested — ' +
+        'this SOW cannot be deleted.';
+      setBtnIcon(btn, DOWNLOAD_SVG);
     } else {
       labelSpan.textContent = 'Delete ' + token;
       btn.setAttribute('data-mode', 'delete-only');
       btn.classList.add('is-delete-only');
       btn.title = 'No unique items to import. Delete ' + token + '.';
+      setBtnIcon(btn, CLOSE_SVG);
     }
   }
 
