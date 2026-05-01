@@ -557,6 +557,23 @@ tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-last-row td{
   border-bottom: 60px solid #fff !important;
 }
 
+/* Tight spacing inside the per-L1 footer cluster (Subtotal → Discount
+   → Total), matching the project-totals Equipment Subtotal cluster.
+   Excludes the project-totals block via :not(.scw-project-totals)
+   since those rows have their own spacing rules above. */
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--sub:not(.scw-project-totals) td,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc:not(.scw-project-totals) td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--sub:not(.scw-project-totals)
+  + tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row:not(.scw-project-totals) td,
+tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line--disc:not(.scw-project-totals)
+  + tr.scw-level-total-row.scw-subtotal--level-1.scw-l1-line-row:not(.scw-project-totals) td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
 tr.scw-level-total-row.scw-subtotal--level-1 .scw-l1-value {
   display: inline-block;
   min-width: 120px;
@@ -599,6 +616,39 @@ tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand .scw-l1-labe
 
 tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand .scw-l1-value {
   font-size: 23px !important;
+}
+
+/* Extra breathing room below Equipment Total and Installation Total. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-total td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--installation-total td {
+  border-bottom: 14px solid transparent !important;
+}
+
+/* Tight spacing between Proposal Discount and Grand Total —
+   Proposal Discount drops directly into the Grand Total visually. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount
+  + tr.scw-level-total-row.scw-project-totals.scw-project-totals--grand td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Tight spacing inside the Equipment Subtotal → Line Item Discounts →
+   Equipment Total cluster, mirroring Proposal Discount → Grand Total. */
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--line-item-discounts td {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal
+  + tr.scw-level-total-row.scw-project-totals td,
+tr.scw-level-total-row.scw-project-totals.scw-project-totals--line-item-discounts
+  + tr.scw-level-total-row.scw-project-totals td {
+  border-top: 0 !important;
+  padding-top: 0 !important;
 }
 
 
@@ -1647,9 +1697,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
     const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
-    const equipmentTotal = equipmentSubtotal - lineItemDiscounts - proposalDiscount;
+    // Proposal Discount is rendered AFTER Installation Total and applied
+    // only at the Grand Total. It is NOT subtracted from Equipment Total
+    // — equipment-side math stays equipmentSubtotal − lineItemDiscounts.
+    const equipmentTotal = equipmentSubtotal - lineItemDiscounts;
     const installationTotal = sumField(caches, $allDataRows, laborKey);
-    const grandTotal = equipmentTotal + installationTotal;
+    const grandTotal = equipmentTotal + installationTotal - proposalDiscount;
 
     const hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
@@ -1717,6 +1770,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         value: formatMoney(equipmentSubtotal),
         rowType: 'sub',
         isLast: false,
+        extraClass: 'scw-project-totals--equipment-subtotal',
       }));
 
       if (lineItemDiscounts !== 0) {
@@ -1725,15 +1779,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           value: '\u2013' + formatMoneyAbs(lineItemDiscounts),
           rowType: 'disc',
           isLast: false,
-        }));
-      }
-
-      if (proposalDiscount !== 0) {
-        rows.push(makeLineRow({
-          label: 'Proposal Discount',
-          value: '\u2013' + formatMoneyAbs(proposalDiscount),
-          rowType: 'disc',
-          isLast: false,
+          extraClass: 'scw-project-totals--line-item-discounts',
         }));
       }
     }
@@ -1743,6 +1789,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       value: formatMoney(equipmentTotal),
       rowType: 'final',
       isLast: false,
+      extraClass: 'scw-project-totals--equipment-total',
     }));
 
     rows.push(makeLineRow({
@@ -1750,7 +1797,21 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       value: formatMoney(installationTotal),
       rowType: 'final',
       isLast: false,
+      extraClass: 'scw-project-totals--installation-total',
     }));
+
+    // Proposal Discount sits BETWEEN Installation Total and Grand Total
+    // \u2014 it is a project-wide discount, not specifically a labor or
+    // equipment discount. Visually it reduces the Grand Total only.
+    if (proposalDiscount !== 0) {
+      rows.push(makeLineRow({
+        label: 'Proposal Discount',
+        value: '\u2013' + formatMoneyAbs(proposalDiscount),
+        rowType: 'disc',
+        isLast: false,
+        extraClass: 'scw-project-totals--proposal-discount',
+      }));
+    }
 
     rows.push(makeLineRow({
       label: 'Grand Total',
@@ -2527,6 +2588,35 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   Object.keys(CONFIG.views).forEach(bindForView);
+
+  // Catch-up pass: if the bundle finished loading AFTER Knack already
+  // emitted knack-records-render.view_XXXX (common on slow connections
+  // or large scenes), our handler missed the initial event entirely
+  // and the safety-nets inside it were never armed. For each configured
+  // view that's already rendered with data, trigger the event once so
+  // bindForView's handler runs.
+  Object.keys(CONFIG.views).forEach(function (viewId) {
+    var attempts = 0;
+    var maxAttempts = 20;          // ~6s total at 300ms cadence
+    var intervalMs = 300;
+    var iv = setInterval(function () {
+      attempts++;
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+      var rendered = view && view.model && view.model.data
+        && (Array.isArray(view.model.data) ? view.model.data.length
+                                            : (view.model.data.models && view.model.data.models.length));
+      var root = document.getElementById(viewId);
+      var hasDataRows = !!(root && root.querySelector('tbody tr[id]'));
+      var hasTotals = !!(root && root.querySelector('tbody tr.scw-level-total-row'));
+
+      if (rendered && hasDataRows && !hasTotals) {
+        $(document).trigger('knack-records-render.' + viewId, [view]);
+        clearInterval(iv);
+      } else if (hasTotals || attempts >= maxAttempts) {
+        clearInterval(iv);
+      }
+    }, intervalMs);
+  });
 
   // When view_3342 (detail view with field_2302) renders, refresh project totals
   $(document).on('knack-view-render.view_3342' + CONFIG.eventNs, function () {

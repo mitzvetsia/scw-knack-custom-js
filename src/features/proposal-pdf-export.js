@@ -129,6 +129,13 @@
     return div.innerHTML;
   }
 
+  function labelSlug(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
   function groupLabelText(tr) {
     var td = tr.querySelector('td:first-child');
     if (!td) return '';
@@ -917,7 +924,7 @@
         html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
         for (var fl = 0; fl < section.footer.lines.length; fl++) {
           var line = section.footer.lines[fl];
-          html.push('<div class="l1-footer-line l1-line--' + line.type + '">');
+          html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
           html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
           html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
           html.push('</div>');
@@ -1015,7 +1022,7 @@
       html.push('<div class="pt-title">' + esc(pt.title) + '</div>');
       for (var tl = 0; tl < pt.lines.length; tl++) {
         var tline = pt.lines[tl];
-        html.push('<div class="pt-line pt-line--' + tline.type + '">');
+        html.push('<div class="pt-line pt-line--' + tline.type + ' pt-line--' + labelSlug(tline.label) + '">');
         html.push('<span class="pt-label">' + esc(tline.label) + '</span>');
         html.push('<span class="pt-value">' + esc(tline.value) + '</span>');
         html.push('</div>');
@@ -1157,6 +1164,9 @@
       '.l1-line--disc .l1-footer-label, .l1-line--disc .l1-footer-value { color: orange; }',
       '.l1-line--final .l1-footer-label, .l1-line--final .l1-footer-value { color: #07467c; font-weight: 900; }',
       '.l1-line--final .l1-footer-value { font-size: 15px; }',
+      '/* Tight cluster: per-L1 Subtotal → Discount → Total */',
+      '.l1-line--sub, .l1-line--disc { padding-top: 0; padding-bottom: 0; }',
+      '.l1-line--sub + .l1-footer-line, .l1-line--disc + .l1-footer-line { padding-top: 0; }',
       '',
       '/* ── Project Totals ── */',
       '.project-totals {',
@@ -1178,6 +1188,14 @@
       '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
       '.pt-line--final:last-child .pt-label { font-size: 17px; }',
       '.pt-line--final:last-child .pt-value { font-size: 19px; }',
+      '/* Extra padding below Equipment Total and Installation Total */',
+      '.pt-line--equipment-total, .pt-line--installation-total { padding-bottom: 14px; }',
+      '/* Tight cluster: Equipment Subtotal → Line Item Discounts → Equipment Total */',
+      '.pt-line--equipment-subtotal, .pt-line--line-item-discounts { padding-top: 0; padding-bottom: 0; }',
+      '.pt-line--equipment-subtotal + .pt-line, .pt-line--line-item-discounts + .pt-line { padding-top: 0; }',
+      '/* Tight cluster: Proposal Discount → Grand Total */',
+      '.pt-line--proposal-discount { padding-bottom: 0; }',
+      '.pt-line--proposal-discount + .pt-line { padding-top: 0; }',
       '',
       '/* ── Recurring Services ── */',
       '.recurring-section { margin-top: 40px; }',
@@ -2116,21 +2134,34 @@
   // shape at the integration layer.
   //
   // Rules:
-  //   bucket "License"            -> invoiceItems.recurring (per-SKU,
-  //                                  aggregated by qty)
+  //   bucket "License"            -> invoiceItems.recurring (aggregated
+  //                                  by sku+name+unitPrice)
   //   bucket "Assumptions"        -> skipped entirely (no equipment, no
   //                                  labor — assumptions don't bill)
   //   bucket "Other Services"     -> labor lump only (no SKU, no
   //                                  equipment — it's all services)
-  //   anything else with SKU and
-  //     equipment value > 0       -> invoiceItems.equipment (per-SKU,
-  //                                  aggregated by qty)
+  //   anything else with SKU or
+  //     name AND equipment value > 0 -> invoiceItems.equipment
+  //                                  (aggregated by sku+name+unitPrice
+  //                                  so two prices on the same SKU stay
+  //                                  on separate invoice lines)
   //   any row's labor portion
   //     (except License/Assumptions) -> contributes to invoiceItems.labor
   //                                     lump
   //
+  // Aggregation key includes unitPrice so 2 Beacons at $2,831 and 4
+  // Beacons at $24.70 emit two distinct invoice lines instead of being
+  // collapsed into one with mismatched math.
+  //
+  // Output is sorted by Proposal Bucket Sort Order (field_2218) when
+  // available on the line-item record, else by bucket name then
+  // description. To get the exact proposal-bucket order, project
+  // field_2218 onto the snapshot view (view_3896) in Knack.
+  //
   // Field map (per the line-item view's _raw values):
   //   field_2219_raw[0].identifier  bucket name
+  //   field_2218_raw                bucket sort order (optional —
+  //                                 falls back to bucket name)
   //   field_1963_raw                SKU
   //   field_1958_raw                product display name
   //   field_2268_raw                equipment unit price AND per-row
@@ -2152,6 +2183,10 @@
     // whose first member has `field_2219_raw` (the bucket connection).
     // Works for the slim snapshot shape (cfg.jsonIncludeViews) and the
     // full shape, regardless of which view_id the line items live in.
+    // The snapshot view (view_3896) is set to 1000 rows/page in
+    // change-record-limit.js — DON'T fall back to view_3341 here:
+    // that view doesn't project field_2219/_1963/_1958/_2268, so its
+    // models are missing the bucket/sku/name/unit-price needed below.
     var lineItems = [];
     var keys = Object.keys(jsonSnapshot);
     for (var ki = 0; ki < keys.length; ki++) {
@@ -2186,20 +2221,32 @@
       var unitAmount = num(row.field_2268_raw);
       var equipmentVal = unitAmount;
       var laborVal = num(row.field_2028_raw);
+      // Bucket sort order from field_2218 if projected on the line-item
+      // record; otherwise fall back to bucket name (so the output is at
+      // least deterministic). Add field_2218 to view_3896 to get the
+      // exact proposal-bucket sort order. NOTE: field_2218 here is a
+      // plain numeric column (not a connection field), so we read the
+      // formatted value (`field_2218`), not `_raw`.
+      var bucketSortRaw = row.field_2218;
+      var bucketSort;
+      if (bucketSortRaw === undefined || bucketSortRaw === null || bucketSortRaw === '') {
+        bucketSort = Number.POSITIVE_INFINITY;
+      } else {
+        var bs = parseFloat(bucketSortRaw);
+        bucketSort = isNaN(bs) ? Number.POSITIVE_INFINITY : bs;
+      }
 
       if (/^license\b/i.test(bucket)) {
-        if (sku && equipmentVal > 0) {
-          // Aggregation key is sku + name, not sku alone — different
-          // products that share the same SKU value in Knack (data
-          // entry oversight) would otherwise merge into one invoice
-          // line with a unitPrice that doesn't match the lineTotal.
-          // Keep them separate; the consumer can decide whether to
-          // present them merged.
-          var recurringKey = sku + '␟' + name;
+        if ((sku || name) && equipmentVal > 0) {
+          // Aggregation key: bucket + sku + name + unitPrice. Same SKU
+          // at different prices (e.g. tiered pricing) yields separate
+          // invoice lines so qty × unitPrice always equals lineTotal.
+          var recurringKey = bucket + '␟' + sku + '␟' + name + '␟' + unitAmount;
           if (!recurringBySku[recurringKey]) {
             recurringBySku[recurringKey] = {
               sku: sku, description: name,
-              qty: 0, unitPrice: unitAmount, lineTotal: 0
+              qty: 0, unitPrice: unitAmount, lineTotal: 0,
+              _sortBucket: bucketSort, _sortLabel: (bucket + '|' + name)
             };
           }
           recurringBySku[recurringKey].qty += 1;
@@ -2212,12 +2259,13 @@
         continue;
       }
 
-      if (sku && equipmentVal > 0) {
-        var equipmentKey = sku + '␟' + name;
+      if ((sku || name) && equipmentVal > 0) {
+        var equipmentKey = bucket + '␟' + sku + '␟' + name + '␟' + unitAmount;
         if (!equipmentBySku[equipmentKey]) {
           equipmentBySku[equipmentKey] = {
             sku: sku, description: name,
-            qty: 0, unitPrice: unitAmount, lineTotal: 0
+            qty: 0, unitPrice: unitAmount, lineTotal: 0,
+            _sortBucket: bucketSort, _sortLabel: (bucket + '|' + name)
           };
         }
         equipmentBySku[equipmentKey].qty += 1;
@@ -2313,6 +2361,17 @@
           item.lineTotal = round2(item.qty * item.unitPrice);
         }
         out.push(item);
+      }
+      // Sort by proposal bucket sort order (field_2218), then bucket
+      // name, then product name. Items missing field_2218 fall to the
+      // bottom but stay grouped by bucket-name+description.
+      out.sort(function (a, b) {
+        if (a._sortBucket !== b._sortBucket) return a._sortBucket - b._sortBucket;
+        return (a._sortLabel || '').localeCompare(b._sortLabel || '');
+      });
+      for (var j = 0; j < out.length; j++) {
+        delete out[j]._sortBucket;
+        delete out[j]._sortLabel;
       }
       return out;
     }

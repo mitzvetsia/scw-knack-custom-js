@@ -304,6 +304,21 @@
       '  border: 1px solid #fca5a5;',
       '}',
 
+      '.scw-bid-review__toolbar {',
+      '  display: flex;',
+      '  justify-content: flex-end;',
+      '  gap: 8px;',
+      '  padding: 8px 4px;',
+      '  margin-bottom: 4px;',
+      '}',
+
+      '.scw-bid-review__btn--create-sow {',
+      '  background: #07467c;',
+      '  color: #fff;',
+      '  font-size: 13px;',
+      '  padding: 8px 14px;',
+      '}',
+
       '.scw-bid-review__btn--busy {',
       '  opacity: 0.5;',
       '  pointer-events: none;',
