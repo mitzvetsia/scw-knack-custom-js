@@ -54,8 +54,12 @@
       SCW.debug('[BidReview] Submitting action:', body);
     }
 
+    var webhookUrl = (payload.actionType === 'create_new_sow' && CFG.createNewSowWebhook)
+      ? CFG.createNewSowWebhook
+      : CFG.actionWebhook;
+
     SCW.knackAjax({
-      url:  CFG.actionWebhook,
+      url:  webhookUrl,
       type: 'POST',
       data: JSON.stringify(body),
       success: function (resp) {
