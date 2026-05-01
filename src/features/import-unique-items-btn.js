@@ -27,6 +27,7 @@
   var GATE_VIEW      = 'view_3827';   // SOW detail view on the same scene
   var LINE_ITEM_VIEW = 'view_3913';   // Hidden grid of all SOW line items on this project
   var SOW_CONN_FIELD = 'field_2154';  // SOW Header connection on a line item
+  var SURVEY_FIELD   = 'field_2706';  // Yes/No: "Survey Requested?" on a SOW Header
   var BTN_MARKER     = 'scw-import-unique-items-btn';
   var BTN_LABEL      = 'Import Unique Items';
   var EVENT_NS       = '.scwImportUniqueItems';
@@ -73,9 +74,15 @@
       '.' + BTN_MARKER + '.is-loading svg {' +
       '  animation: scw-import-unique-spin 0.8s linear infinite;' +
       '}' +
-      '.' + BTN_MARKER + '[data-unique-count="0"] {' +
+      '.' + BTN_MARKER + '[data-mode="disabled"] {' +
       '  pointer-events: none; opacity: 0.5; cursor: default;' +
       '  background: #6b7280; border-color: #6b7280;' +
+      '}' +
+      '.' + BTN_MARKER + '.is-delete-only {' +
+      '  background: #b91c1c; border-color: #991b1b;' +
+      '}' +
+      '.' + BTN_MARKER + '.is-delete-only:hover {' +
+      '  background: #991b1b; border-color: #7f1d1d;' +
       '}' +
       '@keyframes scw-import-unique-spin { to { transform: rotate(360deg); } }' +
 
@@ -126,6 +133,11 @@
       '.scw-iui-opt-hint {' +
       '  display: block; color: #6b7280; font-size: 12px;' +
       '  margin-top: 2px;' +
+      '}' +
+      '.scw-iui-note {' +
+      '  font-size: 12px; color: #6b7280; line-height: 1.45;' +
+      '  padding: 10px 12px; border-radius: 6px;' +
+      '  background: #f3f4f6; border: 1px solid #e5e7eb;' +
       '}' +
       '.scw-iui-footer {' +
       '  display: flex; justify-content: flex-end; gap: 8px;' +
@@ -180,10 +192,11 @@
   // Confirm modal. Resolves with {action: 'cancel'|'import'|'import-delete'}.
   function showImportConfirm(opts) {
     return new Promise(function (resolve) {
-      var count       = opts.count;
-      var token       = escapeHtml(opts.sourceToken || 'this SOW');
-      var fullLabel   = escapeHtml(opts.sourceFull || '');
-      var showFull    = fullLabel && fullLabel !== opts.sourceToken;
+      var count          = opts.count;
+      var token          = escapeHtml(opts.sourceToken || 'this SOW');
+      var fullLabel      = escapeHtml(opts.sourceFull || '');
+      var showFull       = fullLabel && fullLabel !== opts.sourceToken;
+      var allowDelete    = !!opts.allowDelete;
       var overlay = document.createElement('div');
       overlay.className = 'scw-iui-overlay';
       overlay.innerHTML =
@@ -196,15 +209,20 @@
               '</strong> into the current SOW.' +
               (showFull ? '<span class="scw-iui-source">' + fullLabel + '</span>' : '') +
             '</div>' +
-            '<label class="scw-iui-opt">' +
-              '<input type="checkbox" class="scw-iui-delete-toggle">' +
-              '<span class="scw-iui-opt-label">' +
-                '<strong>Also delete ' + token + '</strong> after importing' +
-                '<span class="scw-iui-opt-hint">' +
-                  'Removes the source SOW once its items have been copied.' +
-                '</span>' +
-              '</span>' +
-            '</label>' +
+            (allowDelete
+              ? '<label class="scw-iui-opt">' +
+                  '<input type="checkbox" class="scw-iui-delete-toggle">' +
+                  '<span class="scw-iui-opt-label">' +
+                    '<strong>Also delete ' + token + '</strong> after importing' +
+                    '<span class="scw-iui-opt-hint">' +
+                      'Removes the source SOW once its items have been copied.' +
+                    '</span>' +
+                  '</span>' +
+                '</label>'
+              : '<div class="scw-iui-note">' +
+                  'A survey has already been requested for ' + token + ', ' +
+                  'so it cannot be deleted from here.' +
+                '</div>') +
           '</div>' +
           '<div class="scw-iui-footer">' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
@@ -216,7 +234,7 @@
       var primaryBtn  = overlay.querySelector('.scw-iui-btn--primary');
 
       function syncPrimary() {
-        if (checkbox.checked) {
+        if (checkbox && checkbox.checked) {
           primaryBtn.classList.add('is-delete');
           primaryBtn.textContent = 'Import & Delete';
         } else {
@@ -233,15 +251,15 @@
       function onKey(e) {
         if (e.key === 'Escape') close('cancel');
         else if (e.key === 'Enter') {
-          close(checkbox.checked ? 'import-delete' : 'import');
+          close(checkbox && checkbox.checked ? 'import-delete' : 'import');
         }
       }
 
-      checkbox.addEventListener('change', syncPrimary);
+      if (checkbox) checkbox.addEventListener('change', syncPrimary);
       overlay.querySelector('.scw-iui-btn--cancel')
         .addEventListener('click', function () { close('cancel'); });
       primaryBtn.addEventListener('click', function () {
-        close(checkbox.checked ? 'import-delete' : 'import');
+        close(checkbox && checkbox.checked ? 'import-delete' : 'import');
       });
       overlay.addEventListener('click', function (e) {
         if (e.target === overlay) close('cancel');
@@ -250,6 +268,59 @@
 
       document.body.appendChild(overlay);
       primaryBtn.focus();
+    });
+  }
+
+  // Delete-only modal (count = 0 and survey not requested). Resolves with
+  // {action: 'cancel'|'delete'}.
+  function showDeleteConfirm(opts) {
+    return new Promise(function (resolve) {
+      var token     = escapeHtml(opts.sourceToken || 'this SOW');
+      var fullLabel = escapeHtml(opts.sourceFull || '');
+      var showFull  = fullLabel && fullLabel !== opts.sourceToken;
+      var overlay = document.createElement('div');
+      overlay.className = 'scw-iui-overlay';
+      overlay.innerHTML =
+        '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
+          '<div class="scw-iui-body">' +
+            '<div class="scw-iui-msg">Delete ' + token + '?</div>' +
+            '<div class="scw-iui-sub">' +
+              'There are no unique line items to import from <strong>' + token +
+              '</strong>. Would you like to delete this SOW?' +
+              (showFull ? '<span class="scw-iui-source">' + fullLabel + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="scw-iui-footer">' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--primary is-delete">Delete ' +
+              token + '</button>' +
+          '</div>' +
+        '</div>';
+
+      var primaryBtn = overlay.querySelector('.scw-iui-btn--primary');
+
+      function close(answer) {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        document.removeEventListener('keydown', onKey);
+        resolve({ action: answer });
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') close('cancel');
+        else if (e.key === 'Enter') close('delete');
+      }
+
+      overlay.querySelector('.scw-iui-btn--cancel')
+        .addEventListener('click', function () { close('cancel'); });
+      primaryBtn.addEventListener('click', function () { close('delete'); });
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close('cancel');
+      });
+      document.addEventListener('keydown', onKey);
+
+      document.body.appendChild(overlay);
+      // For destructive-only flow, focus Cancel so Enter doesn't auto-delete.
+      var cancelBtn = overlay.querySelector('.scw-iui-btn--cancel');
+      if (cancelBtn) cancelBtn.focus();
     });
   }
 
@@ -318,6 +389,35 @@
     return ids === null ? null : ids.length;
   }
 
+  // Read field_2706 ("Survey Requested?") for a row in view_3869. Returns
+  // true only when the value is explicitly Yes / true. Falls back to a DOM
+  // scrape of the row when the model isn't yet populated.
+  function isSurveyRequested(sourceSowId, tr) {
+    function truthy(v) {
+      if (v === true) return true;
+      var s = String(v == null ? '' : v).trim().toLowerCase();
+      return s === 'yes' || s === 'true' || s === '1';
+    }
+    try {
+      var v = Knack.views && Knack.views[TARGET_VIEW];
+      if (v && v.model && v.model.data && v.model.data.models) {
+        var models = v.model.data.models;
+        for (var i = 0; i < models.length; i++) {
+          var rec = models[i] && models[i].attributes;
+          if (!rec || rec.id !== sourceSowId) continue;
+          if (truthy(rec[SURVEY_FIELD])) return true;
+          if (truthy(rec[SURVEY_FIELD + '_raw'])) return true;
+          return false;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    if (tr) {
+      var cell = tr.querySelector('td.' + SURVEY_FIELD);
+      if (cell) return truthy(cell.textContent);
+    }
+    return false;
+  }
+
   function setBtnLoading(btn, loading) {
     if (!btn) return;
     var iconSpan = btn.querySelector('.scw-import-unique-items-icon');
@@ -333,19 +433,45 @@
   function setBtnLabel(btn, sourceRecordId) {
     var labelSpan = btn.querySelector('.scw-import-unique-items-label');
     if (!labelSpan) return;
-    var rcv = getReceivingSowId();
+    var rcv   = getReceivingSowId();
     var count = (rcv && sourceRecordId) ? uniqueCountFor(sourceRecordId, rcv) : null;
+    var tr    = btn.closest('tr[id]');
+    var label = getRowLabel(tr);
+    var token = label.token || 'this SOW';
+
+    btn.classList.remove('is-delete-only');
+
     if (count === null) {
+      // Index not built yet — show neutral pre-load label.
       labelSpan.textContent = BTN_LABEL;
       btn.removeAttribute('data-unique-count');
-      btn.title = 'Copy items from this SOW that are not already on the current SOW';
-    } else {
+      btn.setAttribute('data-mode', 'pending');
+      btn.title = 'Loading…';
+      return;
+    }
+
+    btn.setAttribute('data-unique-count', String(count));
+
+    if (count > 0) {
       labelSpan.textContent = BTN_LABEL + ' (' + count + ')';
-      btn.setAttribute('data-unique-count', String(count));
-      btn.title = count === 0
-        ? 'No unique items on this SOW — nothing to import'
-        : 'Copy ' + count + ' item' + (count === 1 ? '' : 's') +
-          ' from this SOW not already on the current SOW';
+      btn.setAttribute('data-mode', 'import');
+      btn.title = 'Copy ' + count + ' item' + (count === 1 ? '' : 's') +
+        ' from ' + token + ' not already on the current SOW';
+      return;
+    }
+
+    // count === 0
+    var surveyed = isSurveyRequested(sourceRecordId, tr);
+    if (surveyed) {
+      labelSpan.textContent = BTN_LABEL + ' (0)';
+      btn.setAttribute('data-mode', 'disabled');
+      btn.title = 'No unique items to import, and a survey has already been ' +
+        'requested for this SOW — it cannot be deleted from here.';
+    } else {
+      labelSpan.textContent = 'Delete ' + token;
+      btn.setAttribute('data-mode', 'delete-only');
+      btn.classList.add('is-delete-only');
+      btn.title = 'No unique items to import. Delete ' + token + '.';
     }
   }
 
@@ -433,14 +559,32 @@
       e.preventDefault();
       e.stopPropagation();
       if (btn.classList.contains('is-loading')) return;
-      if (btn.getAttribute('data-unique-count') === '0') return;
-      var tr = btn.closest('tr[id]');
-      var count = parseInt(btn.getAttribute('data-unique-count') || '0', 10);
-      var label = getRowLabel(tr);
+      var mode = btn.getAttribute('data-mode');
+      if (mode === 'disabled' || mode === 'pending') return;
+
+      var tr     = btn.closest('tr[id]');
+      var label  = getRowLabel(tr);
+      var rcv    = getReceivingSowId();
+      var ids    = uniqueItemsFor(sourceRecordId, rcv) || [];
+      var allowDelete = !isSurveyRequested(sourceRecordId, tr);
+
+      if (mode === 'delete-only') {
+        showDeleteConfirm({
+          sourceToken: label.token,
+          sourceFull:  label.full
+        }).then(function (res) {
+          if (res.action !== 'delete') return;
+          fireWebhook(btn, sourceRecordId, true);
+        });
+        return;
+      }
+
+      // mode === 'import'
       showImportConfirm({
-        count:       count,
+        count:       ids.length,
         sourceToken: label.token,
-        sourceFull:  label.full
+        sourceFull:  label.full,
+        allowDelete: allowDelete
       }).then(function (res) {
         if (res.action === 'cancel') return;
         fireWebhook(btn, sourceRecordId, res.action === 'import-delete');
