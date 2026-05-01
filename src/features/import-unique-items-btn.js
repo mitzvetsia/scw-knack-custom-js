@@ -43,18 +43,19 @@
     s.textContent =
       '#' + TARGET_VIEW + ' th.' + COL_CLASS + ',' +
       '#' + TARGET_VIEW + ' td.' + COL_CLASS + ' {' +
-      '  text-align: right; white-space: nowrap; padding: 4px 8px;' +
+      '  text-align: center; white-space: nowrap; padding: 4px 8px;' +
       '}' +
       '.' + BTN_MARKER + ' {' +
-      '  display: inline-flex; align-items: center; gap: 6px;' +
+      '  display: flex; align-items: center; justify-content: center; gap: 6px;' +
+      '  width: 100%;' +
       '  font-size: 12px; font-weight: 600;' +
-      '  padding: 5px 10px; border-radius: 5px;' +
-      '  background: #2563eb; color: #fff !important;' +
-      '  border: 1px solid #1d4ed8; cursor: pointer;' +
+      '  padding: 7px 10px; border-radius: 5px;' +
+      '  background: #163C6E; color: #fff !important;' +
+      '  border: 1px solid #163C6E; cursor: pointer;' +
       '  line-height: 1.2; white-space: nowrap;' +
       '  transition: background 0.15s;' +
       '}' +
-      '.' + BTN_MARKER + ':hover { background: #1d4ed8; }' +
+      '.' + BTN_MARKER + ':hover { background: #0f2d55; border-color: #0f2d55; }' +
       '.' + BTN_MARKER + '.is-loading {' +
       '  pointer-events: none; opacity: 0.7; cursor: wait;' +
       '}' +
