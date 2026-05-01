@@ -354,20 +354,32 @@
     };
   }
 
-  // Walks the row list and, immediately after each L1 group header,
-  // inserts a single {type:'l1-notes'} entry tagged with that L1's
-  // label. The renderer turns this into a fillable "Additional Notes"
-  // block — printed under the MDF/IDF header so the tech can capture
-  // location-level notes before the device cards begin.
+  // Walks the row list and inserts two notes blocks per L1 group:
+  //   - 'header' position: directly under the MDF/IDF header (for
+  //     location-level notes the tech captures before the device cards)
+  //   - 'tail'   position: at the end of the L1 group (catch-all for
+  //     anything that didn't fit a structured field)
   function insertL1NotesBlocks(rows) {
     var out = [];
+    var inL1 = false;
+    var currentL1 = '';
+    function flushTail() {
+      if (!inL1) return;
+      out.push({ type: 'l1-notes', position: 'tail', groupL1: currentL1 });
+    }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      out.push(r);
       if (r.type === 'group' && r.level === 1) {
-        out.push({ type: 'l1-notes', groupL1: r.label });
+        flushTail();
+        inL1 = true;
+        currentL1 = r.label;
+        out.push(r);
+        out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
+        continue;
       }
+      out.push(r);
     }
+    flushTail();
     return out;
   }
 
@@ -877,8 +889,9 @@
   // ── Additional Notes block (inserted directly under each L1 group header) ──
   function renderL1Notes(row) {
     var h = [];
+    var heading = (row && row.position === 'header') ? 'Notes' : 'Additional Notes';
     h.push('<section class="ws-card ws-card--notes">');
-    h.push('<div class="ws-notes-heading">Additional Notes');
+    h.push('<div class="ws-notes-heading">' + heading);
     if (row && row.groupL1) {
       h.push(' <span class="ws-notes-scope">\u2014 ' + esc(row.groupL1) + '</span>');
     }
