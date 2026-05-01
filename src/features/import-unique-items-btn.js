@@ -89,23 +89,52 @@
       '.scw-iui-card {' +
       '  background: #fff; border-radius: 10px;' +
       '  box-shadow: 0 18px 50px rgba(0,0,0,0.35);' +
-      '  padding: 22px 24px; min-width: 380px; max-width: 540px;' +
-      '  text-align: center;' +
+      '  width: 440px; max-width: calc(100vw - 32px);' +
+      '  overflow: hidden;' +
+      '}' +
+      '.scw-iui-body {' +
+      '  padding: 22px 24px 18px;' +
       '}' +
       '.scw-iui-msg {' +
-      '  font-size: 15px; font-weight: 700; color: #111827;' +
-      '  margin-bottom: 8px;' +
+      '  font-size: 16px; font-weight: 700; color: #111827;' +
+      '  margin: 0 0 6px;' +
       '}' +
       '.scw-iui-sub {' +
-      '  font-size: 13px; color: #4b5563; margin-bottom: 18px;' +
+      '  font-size: 13px; color: #4b5563; margin: 0 0 16px;' +
       '}' +
       '.scw-iui-sub strong { color: #111827; }' +
-      '.scw-iui-btns {' +
-      '  display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;' +
+      '.scw-iui-source {' +
+      '  display: block; margin-top: 4px; color: #6b7280;' +
+      '  font-size: 12px; word-break: break-word;' +
+      '}' +
+      '.scw-iui-opt {' +
+      '  display: flex; align-items: flex-start; gap: 10px;' +
+      '  padding: 12px 14px; border: 1px solid #e5e7eb;' +
+      '  border-radius: 8px; cursor: pointer;' +
+      '  background: #f9fafb; transition: background 0.15s, border-color 0.15s;' +
+      '}' +
+      '.scw-iui-opt:hover { background: #fef2f2; border-color: #fecaca; }' +
+      '.scw-iui-opt input {' +
+      '  margin: 2px 0 0; flex: 0 0 auto;' +
+      '  width: 16px; height: 16px; cursor: pointer;' +
+      '  accent-color: #b91c1c;' +
+      '}' +
+      '.scw-iui-opt-label {' +
+      '  font-size: 13px; color: #1f2937; line-height: 1.45;' +
+      '}' +
+      '.scw-iui-opt-label strong { color: #b91c1c; font-weight: 700; }' +
+      '.scw-iui-opt-hint {' +
+      '  display: block; color: #6b7280; font-size: 12px;' +
+      '  margin-top: 2px;' +
+      '}' +
+      '.scw-iui-footer {' +
+      '  display: flex; justify-content: flex-end; gap: 8px;' +
+      '  padding: 14px 20px;' +
+      '  background: #f9fafb; border-top: 1px solid #e5e7eb;' +
       '}' +
       '.scw-iui-btn {' +
       '  appearance: none; cursor: pointer;' +
-      '  padding: 9px 18px; border-radius: 6px;' +
+      '  padding: 9px 18px; border-radius: 6px; min-width: 96px;' +
       '  font: 600 13px system-ui, sans-serif;' +
       '  border: 1px solid transparent;' +
       '}' +
@@ -113,75 +142,114 @@
       '  background: #fff; color: #1f2937; border-color: #d1d5db;' +
       '}' +
       '.scw-iui-btn--cancel:hover { background: #f3f4f6; }' +
-      '.scw-iui-btn--delete {' +
-      '  background: #b91c1c; color: #fff; border-color: #991b1b;' +
-      '}' +
-      '.scw-iui-btn--delete:hover { background: #991b1b; }' +
       '.scw-iui-btn--primary {' +
       '  background: #163C6E; color: #fff; border-color: #163C6E;' +
       '}' +
-      '.scw-iui-btn--primary:hover { background: #0f2d55; border-color: #0f2d55; }';
+      '.scw-iui-btn--primary:hover { background: #0f2d55; border-color: #0f2d55; }' +
+      '.scw-iui-btn--primary.is-delete {' +
+      '  background: #b91c1c; border-color: #991b1b;' +
+      '}' +
+      '.scw-iui-btn--primary.is-delete:hover {' +
+      '  background: #991b1b; border-color: #7f1d1d;' +
+      '}';
     document.head.appendChild(s);
   })();
 
-  // Pull a human-readable label (e.g. "SW-1042") for a row in view_3869.
-  // Falls back to the record id when no label-bearing cell is found.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Returns { token, full }. token = "SW-####" if found in the row text,
+  // otherwise the first short cell. full = the verbose row label (for the
+  // smaller subtitle line).
   function getRowLabel(tr) {
-    if (!tr) return '';
+    if (!tr) return { token: '', full: '' };
+    var full = '';
     var cells = tr.querySelectorAll('td:not(.' + COL_CLASS + ')');
     for (var i = 0; i < cells.length; i++) {
-      var txt = (cells[i].textContent || '').trim();
-      if (txt && txt.length < 80) return txt;
+      var txt = (cells[i].textContent || '').trim().replace(/\s+/g, ' ');
+      if (txt && !full) full = txt;
+      var m = txt.match(/\bSW-\d+\b/);
+      if (m) return { token: m[0], full: full || txt };
     }
-    return tr.id || '';
+    return { token: full || tr.id || '', full: full };
   }
 
   // Confirm modal. Resolves with {action: 'cancel'|'import'|'import-delete'}.
   function showImportConfirm(opts) {
     return new Promise(function (resolve) {
       var count       = opts.count;
-      var sourceLabel = opts.sourceLabel || 'this SOW';
+      var token       = escapeHtml(opts.sourceToken || 'this SOW');
+      var fullLabel   = escapeHtml(opts.sourceFull || '');
+      var showFull    = fullLabel && fullLabel !== opts.sourceToken;
       var overlay = document.createElement('div');
       overlay.className = 'scw-iui-overlay';
       overlay.innerHTML =
         '<div class="scw-iui-card" role="alertdialog" aria-modal="true">' +
-          '<div class="scw-iui-msg">Import ' + count +
-            ' unique item' + (count === 1 ? '' : 's') + '?</div>' +
-          '<div class="scw-iui-sub">' +
-            'Items will be copied from <strong>' + sourceLabel +
-            '</strong> into the current SOW.<br>' +
-            'Do you also want to <strong>delete ' + sourceLabel +
-            '</strong> after importing?' +
+          '<div class="scw-iui-body">' +
+            '<div class="scw-iui-msg">Import ' + count +
+              ' unique item' + (count === 1 ? '' : 's') + '?</div>' +
+            '<div class="scw-iui-sub">' +
+              'Copy items from <strong>' + token +
+              '</strong> into the current SOW.' +
+              (showFull ? '<span class="scw-iui-source">' + fullLabel + '</span>' : '') +
+            '</div>' +
+            '<label class="scw-iui-opt">' +
+              '<input type="checkbox" class="scw-iui-delete-toggle">' +
+              '<span class="scw-iui-opt-label">' +
+                '<strong>Also delete ' + token + '</strong> after importing' +
+                '<span class="scw-iui-opt-hint">' +
+                  'Removes the source SOW once its items have been copied.' +
+                '</span>' +
+              '</span>' +
+            '</label>' +
           '</div>' +
-          '<div class="scw-iui-btns">' +
+          '<div class="scw-iui-footer">' +
             '<button type="button" class="scw-iui-btn scw-iui-btn--cancel">Cancel</button>' +
-            '<button type="button" class="scw-iui-btn scw-iui-btn--delete">Import &amp; Delete ' +
-              sourceLabel + '</button>' +
-            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import only</button>' +
+            '<button type="button" class="scw-iui-btn scw-iui-btn--primary">Import</button>' +
           '</div>' +
         '</div>';
+
+      var checkbox    = overlay.querySelector('.scw-iui-delete-toggle');
+      var primaryBtn  = overlay.querySelector('.scw-iui-btn--primary');
+
+      function syncPrimary() {
+        if (checkbox.checked) {
+          primaryBtn.classList.add('is-delete');
+          primaryBtn.textContent = 'Import & Delete';
+        } else {
+          primaryBtn.classList.remove('is-delete');
+          primaryBtn.textContent = 'Import';
+        }
+      }
 
       function close(answer) {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         document.removeEventListener('keydown', onKey);
         resolve({ action: answer });
       }
-      function onKey(e) { if (e.key === 'Escape') close('cancel'); }
+      function onKey(e) {
+        if (e.key === 'Escape') close('cancel');
+        else if (e.key === 'Enter') {
+          close(checkbox.checked ? 'import-delete' : 'import');
+        }
+      }
 
+      checkbox.addEventListener('change', syncPrimary);
       overlay.querySelector('.scw-iui-btn--cancel')
         .addEventListener('click', function () { close('cancel'); });
-      overlay.querySelector('.scw-iui-btn--delete')
-        .addEventListener('click', function () { close('import-delete'); });
-      overlay.querySelector('.scw-iui-btn--primary')
-        .addEventListener('click', function () { close('import'); });
+      primaryBtn.addEventListener('click', function () {
+        close(checkbox.checked ? 'import-delete' : 'import');
+      });
       overlay.addEventListener('click', function (e) {
         if (e.target === overlay) close('cancel');
       });
       document.addEventListener('keydown', onKey);
 
       document.body.appendChild(overlay);
-      var cancelBtn = overlay.querySelector('.scw-iui-btn--cancel');
-      if (cancelBtn) cancelBtn.focus();
+      primaryBtn.focus();
     });
   }
 
@@ -357,9 +425,11 @@
       if (btn.getAttribute('data-unique-count') === '0') return;
       var tr = btn.closest('tr[id]');
       var count = parseInt(btn.getAttribute('data-unique-count') || '0', 10);
+      var label = getRowLabel(tr);
       showImportConfirm({
         count:       count,
-        sourceLabel: getRowLabel(tr)
+        sourceToken: label.token,
+        sourceFull:  label.full
       }).then(function (res) {
         if (res.action === 'cancel') return;
         fireWebhook(btn, sourceRecordId, res.action === 'import-delete');
