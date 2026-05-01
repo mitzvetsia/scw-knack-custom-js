@@ -18,6 +18,8 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  {
   //     receivingRecordId:       <current SOW id>,
   //     sourceRecordId:          <row SOW id>,
+  //     uniqueItemIds:           [ <line item record ids on source SOW
+  //                                 NOT already on receiving SOW> ],
   //     deleteSourceAfterImport: <bool — user-confirmed in modal>,
   //     triggeredBy:             { id, name, email }
   //   }

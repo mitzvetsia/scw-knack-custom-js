@@ -297,17 +297,25 @@
     } catch (e) { /* ignore */ }
   }
 
-  // Count line items connected to sourceSowId that are NOT connected to receivingSowId.
-  function uniqueCountFor(sourceSowId, receivingSowId) {
+  // Line items connected to sourceSowId that are NOT connected to receivingSowId.
+  // Returns an array of record IDs (or null if the index hasn't been built yet).
+  function uniqueItemsFor(sourceSowId, receivingSowId) {
     if (!sowToItems) return null;
     var src = sowToItems[sourceSowId];
-    if (!src) return 0;
+    if (!src) return [];
     var rcv = sowToItems[receivingSowId] || {};
-    var n = 0;
+    var ids = [];
     for (var itemId in src) {
-      if (Object.prototype.hasOwnProperty.call(src, itemId) && !rcv[itemId]) n++;
+      if (Object.prototype.hasOwnProperty.call(src, itemId) && !rcv[itemId]) {
+        ids.push(itemId);
+      }
     }
-    return n;
+    return ids;
+  }
+
+  function uniqueCountFor(sourceSowId, receivingSowId) {
+    var ids = uniqueItemsFor(sourceSowId, receivingSowId);
+    return ids === null ? null : ids.length;
   }
 
   function setBtnLoading(btn, loading) {
@@ -373,6 +381,8 @@
       return;
     }
 
+    var uniqueItemIds = uniqueItemsFor(sourceRecordId, receivingRecordId) || [];
+
     setBtnLoading(btn, true);
 
     fetch(url, {
@@ -381,6 +391,7 @@
       body: JSON.stringify({
         receivingRecordId:        receivingRecordId,
         sourceRecordId:           sourceRecordId,
+        uniqueItemIds:            uniqueItemIds,
         deleteSourceAfterImport:  !!deleteSourceAfterImport,
         triggeredBy:              getTriggeredBy()
       })
