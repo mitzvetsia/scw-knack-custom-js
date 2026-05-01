@@ -306,9 +306,23 @@
       setTimeout(function () { syncRows(); refreshAllBtnLabels(); }, 400);
     });
 
+  // Force view_3913 to load 1000 records/page so the SOW→items index covers
+  // every line item on the project (default page size of 25 would truncate
+  // counts on larger projects). Re-fires render with the larger page; we
+  // build the index on the second render once limit==1000.
+  function ensureFullPage(viewKey) {
+    var $select = $('#' + viewKey + ' select[name="limit"]');
+    if ($select.length && $select.val() !== '1000') {
+      $select.val('1000').trigger('change');
+      return false;
+    }
+    return true;
+  }
+
   $(document)
     .off('knack-view-render.' + LINE_ITEM_VIEW + EVENT_NS)
     .on('knack-view-render.' + LINE_ITEM_VIEW + EVENT_NS, function () {
+      if (!ensureFullPage(LINE_ITEM_VIEW)) return; // wait for re-render at 1000/page
       buildSowIndex();
       refreshAllBtnLabels();
     });
