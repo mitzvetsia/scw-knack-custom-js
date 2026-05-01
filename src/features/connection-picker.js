@@ -1247,7 +1247,22 @@
     });
   }
 
-  document.addEventListener('click', handleCellClick, true);
+  // Bind once at module load, and re-bind on every relevant view render.
+  // Some scene/view re-renders on the survey scene appear to wipe our
+  // document-level click listener (root cause unclear — getEventListeners
+  // confirms ours is registered initially, but a bare-page click misses
+  // it until any other JS touches the document). Re-attaching on each
+  // view-render is cheap and idempotent (browsers dedupe identical
+  // listener+capture pairs on the same target), so this serves as a
+  // belt-and-suspenders safety net.
+  function bindCellClick() {
+    document.addEventListener('click', handleCellClick, true);
+  }
+  bindCellClick();
+  Object.keys(VIEW_CONFIGS).forEach(function (vk) {
+    $(document).on('knack-view-render.' + vk + '.scwConnPicker', bindCellClick);
+  });
+  $(document).on('knack-scene-render.any.scwConnPicker', bindCellClick);
 
   // ── Public ────────────────────────────────────────────────────────
   window.SCW.connectionPicker = {
