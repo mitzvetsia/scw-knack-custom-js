@@ -15,10 +15,15 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //             or:  { success: false, error: "<message>" }
   MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/ysbsl1qw19vdhc6f3hpk8barcfk79puu",
   // Fires on per-row "Import Unique Items" click in view_3869. Expects:
-  //   Request body:  { receivingRecordId: <current SOW id>, sourceRecordId: <row SOW id>, triggeredBy: {...} }
+  //   Request body:  {
+  //     receivingRecordId:       <current SOW id>,
+  //     sourceRecordId:          <row SOW id>,
+  //     deleteSourceAfterImport: <bool — user-confirmed in modal>,
+  //     triggeredBy:             { id, name, email }
+  //   }
   //   Response body: { success: true,  imported: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_IMPORT_UNIQUE_ITEMS",
+  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
