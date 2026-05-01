@@ -143,7 +143,7 @@
             warningCount:     { key: 'field_2454', type: 'warningChit' },
 
             mounting:         { key: 'field_2463', type: 'readOnly' },
-            connections:      { key: 'field_2380', type: 'readOnly' },
+            connections:      { key: 'field_2380', type: 'nativeEdit' },
             scwNotes:         { key: 'field_2418', type: 'readOnly' },
             surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true }
           },
