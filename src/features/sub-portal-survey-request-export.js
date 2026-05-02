@@ -397,11 +397,65 @@
     if (_pollActive) setButtonBusy(btn, 'Generating…');
   }
 
+  // ── Per-scene view-ID overrides ──
+  // The shared SCW.surveyWorksheetPdf module has hard-coded page-1 /
+  // cover-image / trailing-image view IDs for a different sub-portal
+  // scene. On scene_1140 the equivalent content lives in different
+  // views, so we override the lists here and prime the image cache for
+  // the cover-image view ourselves (the module's setupImagePreloads
+  // only listens to its own hard-coded view IDs).
+  var PAGE1_VIEWS = [
+    { viewId: 'view_3504' },                              // h1 client name + status
+    { viewId: 'view_3826' },                              // STATUS / REQ_ID / Clickup / dates
+    { viewId: 'view_3825' },                              // Address / Instructions / Other Notes
+    { viewId: 'view_3568', label: 'Survey Contact(s)' }   // POC name / phone / email
+  ];
+  var COVER_IMAGE_VIEWS    = [{ viewId: 'view_3531', label: 'Site Map(s)' }];
+  var TRAILING_IMAGE_VIEWS = [{ viewId: 'view_3530', label: 'Additional Photos' }];
+
+  function applySceneOverrides() {
+    var api = window.SCW && window.SCW.surveyWorksheetPdf;
+    if (!api || typeof api.configureForScene !== 'function') return;
+    api.configureForScene({
+      page1Views:         PAGE1_VIEWS,
+      coverImageViews:    COVER_IMAGE_VIEWS,
+      trailingImageViews: TRAILING_IMAGE_VIEWS
+    });
+  }
+
+  function primeImageCacheFor(cfg, isCover) {
+    var api = window.SCW && window.SCW.surveyWorksheetPdf;
+    if (!api || typeof api.refreshImageCache !== 'function') return;
+    var maxDim  = isCover ? 1400 : 600;
+    var quality = isCover ? 0.8  : 0.65;
+    api.refreshImageCache(cfg.viewId, cfg.label, maxDim, quality);
+  }
+
   // ── Bindings ──
 
   $(document)
     .off('knack-view-render.' + DETAIL_VIEW + EVENT_NS)
     .on('knack-view-render.' + DETAIL_VIEW + EVENT_NS, function () {
+      applySceneOverrides();
       setTimeout(injectButton, 80);
     });
+
+  // Prime the image caches whenever the cover / trailing image views
+  // render. Without this the html payload sent to Make has no images.
+  COVER_IMAGE_VIEWS.forEach(function (cfg) {
+    $(document)
+      .off('knack-view-render.' + cfg.viewId + EVENT_NS)
+      .on('knack-view-render.' + cfg.viewId + EVENT_NS, function () {
+        applySceneOverrides();   // ensure overrides are in place before priming
+        primeImageCacheFor(cfg, true);
+      });
+  });
+  TRAILING_IMAGE_VIEWS.forEach(function (cfg) {
+    $(document)
+      .off('knack-view-render.' + cfg.viewId + EVENT_NS)
+      .on('knack-view-render.' + cfg.viewId + EVENT_NS, function () {
+        applySceneOverrides();
+        primeImageCacheFor(cfg, false);
+      });
+  });
 })();

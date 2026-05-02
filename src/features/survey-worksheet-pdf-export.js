@@ -1748,6 +1748,21 @@
   // PUBLIC API
   // ══════════════════════════════════════════════════════════════
 
+  // Override the page-1 / cover-image / trailing-image view lists at
+  // runtime. Used by sub-portal-survey-request-export.js, where the
+  // survey lives on a scene that uses different view IDs than the
+  // ops-side worksheet. Pass `null`/omit to leave a list unchanged.
+  // Note: this only updates the constants used by scrape() and
+  // getImageSections(); it does NOT re-run setupImagePreloads() —
+  // callers are responsible for refreshing the image cache for any
+  // newly-added image views (use SCW.surveyWorksheetPdf.refreshImageCache).
+  function configureForScene(opts) {
+    if (!opts) return;
+    if (Array.isArray(opts.page1Views))         PAGE1_DETAIL_VIEWS  = opts.page1Views.slice();
+    if (Array.isArray(opts.coverImageViews))    COVER_IMAGE_VIEWS   = opts.coverImageViews.slice();
+    if (Array.isArray(opts.trailingImageViews)) TRAILING_IMAGE_VIEWS = opts.trailingImageViews.slice();
+  }
+
   window.SCW = window.SCW || {};
   window.SCW.surveyWorksheetPdf = {
     scrape: scrape,
@@ -1759,6 +1774,7 @@
     whenReady: whenReady,
     refreshImageCache: refreshImageCacheForView,
     getImagesForView: getImagesForView,
-    scrapePage1Cover: scrapePage1Cover
+    scrapePage1Cover: scrapePage1Cover,
+    configureForScene: configureForScene
   };
 })();
