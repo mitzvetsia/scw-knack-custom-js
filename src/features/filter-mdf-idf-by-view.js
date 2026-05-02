@@ -351,6 +351,10 @@
     var viewEl = td.closest('#' + CFG.TARGET_VIEW);
     if (!viewEl) return;
     if (!td.classList.contains('cell-edit')) return;
+    // KTL bulk-edit: when copy/paste mode is armed, KTL adds
+    // .bulkEditSelectSrc to cells so clicking selects the source rather
+    // than opening an editor. Don't hijack those clicks.
+    if (td.classList.contains('bulkEditSelectSrc')) return;
     var recordId = getRecordIdFromCell(td);
     if (!recordId) return;
     e.preventDefault();
