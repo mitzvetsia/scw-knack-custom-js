@@ -71,6 +71,22 @@
               ' grandparentId=' + (s.parentElement && s.parentElement.parentElement && s.parentElement.parentElement.id));
         }
       }
+      // Also dump open modal/popover containers + any input.kn-search inside
+      var modals = document.querySelectorAll(
+        '#cell-editor, .kn-modal, .ui-dialog, [role="dialog"], .kn-input-connection, .kn-input'
+      );
+      log('open modal/popover containers (' + modals.length + '):');
+      for (var m = 0; m < modals.length; m++) {
+        var node = modals[m];
+        var rect = node.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) continue;  // skip hidden
+        var html = node.outerHTML || '';
+        if (html.length > 400) html = html.slice(0, 400) + '…';
+        log('  modal[' + m + '] tag=' + node.tagName +
+            ' id=' + node.id +
+            ' classes=' + node.className +
+            ' html=' + html);
+      }
     }
     return null;
   }
