@@ -117,16 +117,16 @@
           connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
-          exterior:         { key: 'field_2372', type: 'chipStack' },
-          plenum:           { key: 'field_2371', type: 'readOnly' },
+          exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+          plenumChit:       { key: 'field_2371', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Plenum' },
           mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'labor', 'bid'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
+          right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         },
         bucketField: 'field_2366',
         // ── Override: used for all NON-camera/reader rows ──
