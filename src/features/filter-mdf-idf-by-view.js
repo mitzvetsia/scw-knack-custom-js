@@ -54,9 +54,24 @@
     if (sel && sel.options.length > 1) { log('select found via #connection-picker-chosen-' + CONFIG.TARGET_FIELD); return sel; }
     sel = document.querySelector('#cell-editor select.chzn-select');
     if (sel && sel.options.length > 1) { log('select found via #cell-editor fallback'); return sel; }
-    // Broader fallback: any select inside an open cell-editor or kn-form-row
     sel = document.querySelector('#cell-editor select, .kn-form-row select.chzn-select');
     if (sel && sel.options.length > 1) { log('select found via broad fallback'); return sel; }
+    // Diagnostic: dump every select on the page that could be a candidate
+    if (CONFIG.DEBUG) {
+      var all = document.querySelectorAll('select');
+      log('no select found; selects on page (' + all.length + '):');
+      for (var i = 0; i < all.length; i++) {
+        var s = all[i];
+        if (s.options && s.options.length > 1) {
+          log('  select[' + i + '] id=' + s.id +
+              ' name=' + s.name +
+              ' classes=' + s.className +
+              ' opts=' + s.options.length +
+              ' parentId=' + (s.parentElement && s.parentElement.id) +
+              ' grandparentId=' + (s.parentElement && s.parentElement.parentElement && s.parentElement.parentElement.id));
+        }
+      }
+    }
     return null;
   }
 
