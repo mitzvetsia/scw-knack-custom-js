@@ -1038,13 +1038,23 @@
   function renderImageCoverSection(section) {
     var h = [];
     var label = section.label || '';
+    // Inline style + width attribute on the <img> are harder for the
+    // PDF renderer to override than a stylesheet rule. Some PDF
+    // services wrap injected html inside a constraining container or
+    // strip class-level CSS, leaving the image at its intrinsic size.
+    // Forcing width here guarantees the image fills the page width.
+    var imgStyle = 'display:block; width:100%; max-width:100%; ' +
+                   'height:auto; margin:0 auto;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
       h.push('<section class="cover-page">');
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
-      h.push('<img class="cover-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || label) + '" />');
+      h.push('<img class="cover-img" width="780" ' +
+             'style="' + imgStyle + '" ' +
+             'src="' + esc(img.src) + '" ' +
+             'alt="' + esc(img.alt || label) + '" />');
       h.push('</section>');
     }
     return h.join('');
