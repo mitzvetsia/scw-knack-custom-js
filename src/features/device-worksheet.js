@@ -6294,21 +6294,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (del) {
           del.style.visibility = shouldHide ? 'hidden' : '';
         }
-        // Also disable the KTL bulk-edit row checkbox so this row can't
-        // be picked up by "Delete Selected: N". Uncheck it first in case
-        // it was already selected before the protection kicked in.
+        // Restore the bulk-edit checkbox if a previous render had blocked
+        // it. The per-row delete-link visibility above is sufficient
+        // protection against accidental delete; KTL's "Delete Selected"
+        // button is hidden separately at the view-config level on views
+        // where bulk-delete is forbidden, so we don't need to disable
+        // individual checkboxes (which also blocks Copy/Paste/Duplicate
+        // — those are useful even on rows where delete is disallowed).
         var cbCell = card.querySelector('.' + P + '-sum-check');
         var cb = cbCell ? cbCell.querySelector('input[type="checkbox"]') : null;
-        if (cb) {
-          if (shouldHide) {
-            cb.checked = false;
-            cb.disabled = true;
-            cb.setAttribute('data-scw-bulk-blocked', '1');
-            cbCell.style.visibility = 'hidden';
-            cbCell.title = 'Cannot delete — line item is on a survey';
-          } else if (cb.getAttribute('data-scw-bulk-blocked') === '1') {
-            cb.disabled = false;
-            cb.removeAttribute('data-scw-bulk-blocked');
+        if (cb && cb.getAttribute('data-scw-bulk-blocked') === '1') {
+          cb.disabled = false;
+          cb.removeAttribute('data-scw-bulk-blocked');
+          if (cbCell) {
             cbCell.style.visibility = '';
             cbCell.removeAttribute('title');
           }
