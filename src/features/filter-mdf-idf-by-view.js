@@ -19,7 +19,7 @@
     SOURCE_VIEW:    'view_3617',
     POLL_INTERVAL:  200,
     POLL_MAX:       6000,
-    DEBUG:          false
+    DEBUG:          true
   };
 
   var _pollTimer = null;
@@ -34,14 +34,15 @@
   function getAllowedIds() {
     if (typeof Knack === 'undefined' || !Knack.views) return null;
     var view = Knack.views[CONFIG.SOURCE_VIEW];
-    if (!view || !view.model) return null;
+    if (!view || !view.model) { log('view', CONFIG.SOURCE_VIEW, 'not loaded'); return null; }
     var records = (view.model.data && view.model.data.models) || view.model.models || [];
-    if (!records.length) return null;
+    if (!records.length) { log('view', CONFIG.SOURCE_VIEW, 'has no records'); return null; }
     var ids = {};
     for (var i = 0; i < records.length; i++) {
       var attrs = records[i].attributes || records[i];
       if (attrs && attrs.id) ids[attrs.id] = true;
     }
+    log('allowed ids:', Object.keys(ids));
     return ids;
   }
 
@@ -50,9 +51,12 @@
     var sel = document.querySelector(
       '#connection-picker-chosen-' + CONFIG.TARGET_FIELD + ' select'
     );
-    if (sel && sel.options.length > 1) return sel;
+    if (sel && sel.options.length > 1) { log('select found via #connection-picker-chosen-' + CONFIG.TARGET_FIELD); return sel; }
     sel = document.querySelector('#cell-editor select.chzn-select');
-    if (sel && sel.options.length > 1) return sel;
+    if (sel && sel.options.length > 1) { log('select found via #cell-editor fallback'); return sel; }
+    // Broader fallback: any select inside an open cell-editor or kn-form-row
+    sel = document.querySelector('#cell-editor select, .kn-form-row select.chzn-select');
+    if (sel && sel.options.length > 1) { log('select found via broad fallback'); return sel; }
     return null;
   }
 
