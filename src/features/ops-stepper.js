@@ -274,6 +274,7 @@
       modal: {
         title:       'Publish Quote as Final',
         intro:       'Publishing the final, fully-priced quote.',
+        notePrompt:  'Do you want to include a message with your submission?',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
         submitLabel: 'Publish',
         primaryMode: 'publish-and-notify'
@@ -402,6 +403,14 @@
       '}' +
       '.scw-ops-modal-intro {' +
       '  font-size: 13px; color: #4b5563; margin-bottom: 12px;' +
+      '}' +
+      /* Optional prompt above the note textarea — used on submission-
+         gated modals (e.g. "Do you want to include a message with your
+         submission?"). Smaller than the intro and tucked tight against
+         the textarea. */
+      '.scw-ops-modal-note-prompt {' +
+      '  font-size: 12.5px; font-weight: 600; color: #1f2937;' +
+      '  margin-top: 12px; margin-bottom: 4px;' +
       '}' +
       '.scw-ops-modal-textarea {' +
       '  width: 100%; box-sizing: border-box; min-height: 110px;' +
@@ -1057,19 +1066,32 @@
     // Note input — placed AFTER submission. When a submission group
     // exists, hide by default ("No" is the default selection) and
     // toggle visibility as the operator picks a real submit option.
+    // Optional `notePrompt` renders a small label above the textarea
+    // (e.g. "Do you want to include a message with your submission?")
+    // and shows/hides alongside the textarea.
+    var notePromptEl = null;
+    if (opts.notePrompt) {
+      notePromptEl = document.createElement('div');
+      notePromptEl.className = 'scw-ops-modal-note-prompt';
+      notePromptEl.textContent = opts.notePrompt;
+      card.appendChild(notePromptEl);
+    }
     card.appendChild(ta);
     card.appendChild(err);
 
     if (submissionGroup) {
+      if (notePromptEl) notePromptEl.style.display = 'none';
       ta.style.display = 'none';
       err.style.display = 'none';
       var toggleNoteVisibility = function () {
         var v = submissionGroup.getValue();
         if (v) {
+          if (notePromptEl) notePromptEl.style.display = '';
           ta.style.display = '';
           // focus only when transitioning from hidden→shown
           setTimeout(function () { try { ta.focus(); } catch (e) {} }, 0);
         } else {
+          if (notePromptEl) notePromptEl.style.display = 'none';
           ta.style.display = 'none';
           err.style.display = 'none';
         }
