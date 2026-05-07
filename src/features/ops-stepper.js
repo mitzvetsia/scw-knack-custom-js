@@ -997,12 +997,10 @@
     var ta = document.createElement('textarea');
     ta.className = 'scw-ops-modal-textarea';
     ta.placeholder = opts.placeholder || '';
-    card.appendChild(ta);
 
     var err = document.createElement('div');
     err.className = 'scw-ops-modal-error';
     err.style.display = 'none';
-    card.appendChild(err);
 
     // Build a single radio-group section (question + "no" default +
     // one entry per option). Returns { element, getValue } or null when
@@ -1039,6 +1037,7 @@
       var radios = wrap.querySelectorAll('input[type="radio"]');
       return {
         element: wrap,
+        radios:  radios,
         getValue: function () {
           for (var i = 0; i < radios.length; i++) {
             if (radios[i].checked) return radios[i].value || null;
@@ -1049,8 +1048,36 @@
     }
 
     // Submission options — also-submit-to-Sales / Second Set / no.
+    // Rendered ABOVE the note textarea so the operator picks a submit
+    // target first; the textarea then surfaces only when a real
+    // submission option is chosen (none-of-the-above hides it).
     var submissionGroup = buildRadioGroup(opts.submission);
     if (submissionGroup) card.appendChild(submissionGroup.element);
+
+    // Note input — placed AFTER submission. When a submission group
+    // exists, hide by default ("No" is the default selection) and
+    // toggle visibility as the operator picks a real submit option.
+    card.appendChild(ta);
+    card.appendChild(err);
+
+    if (submissionGroup) {
+      ta.style.display = 'none';
+      err.style.display = 'none';
+      var toggleNoteVisibility = function () {
+        var v = submissionGroup.getValue();
+        if (v) {
+          ta.style.display = '';
+          // focus only when transitioning from hidden→shown
+          setTimeout(function () { try { ta.focus(); } catch (e) {} }, 0);
+        } else {
+          ta.style.display = 'none';
+          err.style.display = 'none';
+        }
+      };
+      for (var rIdx = 0; rIdx < submissionGroup.radios.length; rIdx++) {
+        submissionGroup.radios[rIdx].addEventListener('change', toggleNoteVisibility);
+      }
+    }
 
     // ClickUp status — independent radio group, rendered beneath
     // submission. Selected value rides on ctx.clickupStatus.
