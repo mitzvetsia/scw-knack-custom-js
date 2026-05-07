@@ -4542,9 +4542,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         labelTd.classList.add(P + '-sum-label-cell');
         identity.appendChild(labelTd);
       }
-    } else if (!labelDesc && viewCfg.labelPlaceholder) {
+    } else if (!labelDesc && viewCfg.labelPlaceholder && !pgLayoutEarly.labelInProductGroup) {
       // Insert an invisible spacer matching the label cell's width
       // so that product + laborDescription align with rows that have a label.
+      // Skipped under labelInProductGroup mode: there the label rides
+      // inside the (fixed-width) product-group, so non-label rows are
+      // already aligned without any spacer in identity.
       var labelSpacer = document.createElement('span');
       labelSpacer.className = P + '-sum-label-cell';
       labelSpacer.style.visibility = 'hidden';
