@@ -79,10 +79,11 @@
       '  color: #94a3b8;',
       '}',
 
-      /* ── SOW status bar (lives inside the SOW header cell, row 2) ── */
+      /* ── SOW status bar (lives inside the SOW header cell, rowspan=2) ── */
       '.scw-bid-review__sow-status {',
       '  display: flex; flex-direction: column; gap: 8px;',
       '  align-items: stretch;',
+      '  height: 100%;',
       '}',
       /* The status bar sits inside a <td>, so reset any block-level
          padding / background from earlier iterations and let the cell
@@ -97,13 +98,16 @@
          columns badges. */
       'td.scw-bid-review__sow-header-cell {',
       '  vertical-align: top; padding: 8px 10px; min-width: 240px;',
+      '  height: 1px;',  // collapse to content baseline so child height:100% works
       '}',
+      /* Survey Costs / Margin — stacked vertically (one per line). */
       '.scw-bid-review__sow-metrics {',
-      '  display: flex; gap: 12px; flex-wrap: wrap;',
-      '  align-items: center;',
+      '  display: flex; flex-direction: column; gap: 4px;',
+      '  align-items: stretch;',
       '}',
       '.scw-bid-review__sow-metric {',
-      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  justify-content: space-between;',
       '  font: 600 12px/1.2 system-ui, sans-serif; color: #334155;',
       '}',
       '.scw-bid-review__sow-metric-label {',
@@ -136,7 +140,7 @@
       '.scw-bid-review__sow-status .scw-ops-pill:hover,',
       '.scw-bid-review__sow-status .scw-ops-pill:visited {',
       '  display: inline-flex; align-items: center; justify-content: center;',
-      '  align-self: stretch;',
+      '  align-self: stretch; margin-top: auto;',  // bottom-align via flex auto-margin
       '  padding: 4px 8px;',
       '  border: none; border-radius: 4px;',
       '  font: 600 11px/1.2 system-ui, sans-serif;',
@@ -158,6 +162,15 @@
          background and look out of place against the button. */
       '.scw-bid-review__sow-status .scw-ops-pill .scw-ops-info {',
       '  background: rgba(255,255,255,.2); color: #fff;',
+      '}',
+      /* "Add PM & Mobilization" button (lives inside the margin-low
+         warning) — stretched to full width of the warning box. The
+         ops-review-pill default sits left-aligned with max-content
+         width; override both. */
+      '.scw-bid-review__sow-status .scw-ops-margin-warning__btn {',
+      '  flex: 0 0 100%; max-width: none; margin-left: 0; width: 100%;',
+      '  justify-content: center; text-align: center;',
+      '  white-space: normal;',
       '}',
 
       /* ── table ─────────────────────────────────────────────── */

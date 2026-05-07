@@ -150,6 +150,11 @@
     // display). Sits in the same row as the bid-package status badges
     // so the SOW's affordances align with the bid columns'.
     var sowHeaderTd = el('td', 'scw-bid-review__header-detail-cell scw-bid-review__sow-header-cell');
+    // Span rows 2 + 3 so the SOW status bar can vertically distribute
+    // its content across the same height the bid columns use for badge
+    // (row 2) + action buttons (row 3) — lets the Preview Proposal pill
+    // bottom-align with the Sync-to-SOW button in the bid columns.
+    sowHeaderTd.setAttribute('rowspan', '2');
     var statusBar = buildSowStatusBar(sowGrid);
     if (statusBar) sowHeaderTd.appendChild(statusBar);
     r2.appendChild(sowHeaderTd);
@@ -196,7 +201,7 @@
     // ═══ ROW 3: Action buttons ═══
     var r3 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-actions');
     r3.appendChild(el('td', '')); // line item
-    r3.appendChild(el('td', '')); // sow
+    // SOW cell is rowspan=2 from row 2 — no separate cell here.
 
     for (var k = 0; k < sowGrid.packages.length; k++) {
       var pkg2 = sowGrid.packages[k];
