@@ -105,7 +105,7 @@
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
           label:            { key: 'field_2365', type: 'readOnly',   summary: true },
-          product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+          product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
@@ -135,7 +135,7 @@
           fields: {
             bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
             move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-            product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+            product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
             laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
             labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
             quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
@@ -155,14 +155,14 @@
         },
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
+            hideFields: ['field_2627', 'field_2463', 'field_2372', 'field_2371'],
             label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2379', 'field_2400', 'field_2399', 'field_2401'],
+            hideFields: ['field_2627', 'field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
@@ -5846,6 +5846,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         for (var lk = 0; lk < allTds.length; lk++) {
           allTds[lk].classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
           allTds[lk].classList.add(P + '-td-locked');
+        }
+      }
+
+      // ── view_3505: lock product (field_2627) when row is adopted to SOW ──
+      // Editable only if field_2404 (REL_sow line item) is blank AND the
+      // row isn't finalized (field_2551 = Yes — handled above).
+      if (!isLocked && viewCfg.viewId === 'view_3505') {
+        var sowItemTd = tr.querySelector('td.field_2404');
+        var sowItemSet = !!(sowItemTd && sowItemTd.querySelector('span[data-kn="connection-value"]'));
+        if (sowItemSet) {
+          var prodTd = tr.querySelector('td.field_2627');
+          if (prodTd) {
+            prodTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+            prodTd.classList.add(P + '-td-locked');
+          }
         }
       }
 
