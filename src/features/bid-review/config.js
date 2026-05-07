@@ -46,11 +46,10 @@
     // "Add to SOW" Make scenario is built. row_add_to_sow falls back to
     // CFG.actionWebhook if this is left blank.
     addToSowWebhook:        'https://hook.us1.make.com/PLACEHOLDER_ADD_TO_SOW',
-    // PLACEHOLDER — fired from the "Add Project Management & Mobilization
-    // line item" button inside the margin-low warning on each SOW
-    // section header. Payload: { actionType, sowId }. Replace with the
-    // real Make webhook once the scenario is built.
-    addPmMobilizationWebhook: 'https://hook.us1.make.com/PLACEHOLDER_ADD_PM_MOBILIZATION',
+    // Fired from the "Add Project Management & Mobilization line item"
+    // button inside the margin-low warning on each SOW section header.
+    // Payload: { actionType, sowId, surveyCosts, surveyCostsField }.
+    addPmMobilizationWebhook: 'https://hook.us1.make.com/o13w6vyvijxcl0u823g6pg96qtc6psc1',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',

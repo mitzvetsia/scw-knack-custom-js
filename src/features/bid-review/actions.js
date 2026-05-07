@@ -49,6 +49,12 @@
     if (payload.items)       body.items       = payload.items;
     if (payload.matchedSowItems)  body.matchedSowItems  = payload.matchedSowItems;
     if (payload.orphanBidRecords) body.orphanBidRecords = payload.orphanBidRecords;
+    // Survey-costs payload (PM-mobilization webhook). surveyCosts is
+    // numeric; surveyCostsRaw preserves the user's literal entry; null
+    // means the input was empty or non-numeric.
+    if (payload.surveyCosts !== undefined)      body.surveyCosts      = payload.surveyCosts;
+    if (payload.surveyCostsRaw !== undefined)   body.surveyCostsRaw   = payload.surveyCostsRaw;
+    if (payload.surveyCostsField)               body.surveyCostsField = payload.surveyCostsField;
 
     if (CFG.debug) {
       SCW.debug('[BidReview] Submitting action:', body);

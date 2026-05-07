@@ -208,10 +208,31 @@
       'Add a Project Management & Mobilization line item to ' + sowName + '?'
     )) return;
 
+    // Pull the current Survey Costs value from the input on the same
+    // SOW status bar — Make's scenario uses it to compute the new
+    // line-item amount. Numeric pass-through (no $ formatting).
+    var surveyCostsRaw = '';
+    var surveyCostsNum = null;
+    var input = document.querySelector(
+      '.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]' +
+      '[data-sow-id="' + sowId + '"]'
+    );
+    if (input) {
+      surveyCostsRaw = (input.value || '').trim();
+      var stripped = surveyCostsRaw.replace(/[^0-9.\-]/g, '');
+      if (stripped !== '') {
+        var n = parseFloat(stripped);
+        if (isFinite(n)) surveyCostsNum = n;
+      }
+    }
+
     setBusy(button, true);
     ns.submitAction({
-      actionType: 'add_pm_mobilization',
-      sowId:      sowId,
+      actionType:       'add_pm_mobilization',
+      sowId:            sowId,
+      surveyCosts:      surveyCostsNum,
+      surveyCostsRaw:   surveyCostsRaw,
+      surveyCostsField: CFG.surveyCostsField || '',
     }).done(function () {
       refreshSilently();
     }).always(function () {
