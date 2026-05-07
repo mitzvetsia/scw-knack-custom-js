@@ -126,7 +126,11 @@
           price:          cell.price,
           productDesc:    cell.productDesc,
           dropLength:     cell.bidDropLength,
-          conduit:        /^yes$/i.test(cell.bidConduit),
+          // Conduit is numeric feet (field_2368), NOT a yes/no flag —
+          // ship the raw value so it can be written to the SOW's
+          // numeric conduit field. The earlier /^yes$/i.test() coerced
+          // legitimate footage to false.
+          conduit:        cell.bidConduit,
           plenum:         /^yes$/i.test(cell.bidPlenum),
           dropPrefix:     cell.dropPrefix,
           dropNumber:     cell.dropNumber,
@@ -134,6 +138,11 @@
           limitQtyOne:      cell.limitQtyOne,
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
+          // Full bid record (every field_NNNN + field_NNNN_raw the view
+          // projects). Make scenarios should prefer .bidRecord.field_XXXX_raw
+          // for any field not enumerated above — including field_2374
+          // (bidMapConn / FLAG_map camera or reader connections).
+          bidRecord:      cell._rawRecord || null,
         });
       } else if (!row.sowItem && cell) {
         // NEW: create SOW item from bid data
@@ -153,7 +162,8 @@
           price:            cell.price,
           productDesc:      cell.productDesc,
           dropLength:       cell.bidDropLength,
-          conduit:          /^yes$/i.test(cell.bidConduit),
+          // Conduit is numeric feet (field_2368) — see updates branch.
+          conduit:          cell.bidConduit,
           plenum:           /^yes$/i.test(cell.bidPlenum),
           dropPrefix:       cell.dropPrefix,
           dropNumber:       cell.dropNumber,
