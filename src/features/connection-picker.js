@@ -40,8 +40,8 @@
   var CLASS_PREFIX       = 'scw-cp';
   var STYLE_ID           = 'scw-connection-picker-css';
   var ITEM_THRESHOLD     = 20;   // below → single column
-  var ROWS_PER_COLUMN    = 30;
-  var MAX_COLUMNS        = 6;
+  var ROWS_PER_COLUMN    = 20;
+  var MAX_COLUMNS        = 3;
 
   // ── CSS ───────────────────────────────────────────────────────────
   function injectStyles() {
@@ -101,11 +101,28 @@
       '  contain: layout style;',
       '}',
       P + '-group-label {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  gap: 12px;',
       '  font-size: 11px; font-weight: 700; color: #163C6E;',
       '  text-transform: uppercase; letter-spacing: 0.05em;',
       '  padding: 6px 0 4px;',
       '  border-bottom: 1px solid #e5e7eb;',
       '  margin-bottom: 4px;',
+      '}',
+      P + '-group-label-text {',
+      '  flex: 1; min-width: 0;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      P + '-group-toggle {',
+      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  cursor: pointer; flex: 0 0 auto;',
+      '  font-size: 10px; font-weight: 700; color: #163C6E;',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  user-select: none;',
+      '}',
+      P + '-group-toggle input[type="checkbox"] {',
+      '  width: 14px; height: 14px; cursor: pointer; accent-color: #163C6E;',
+      '  margin: 0;',
       '}',
 
       // Multi-column list inside each group
@@ -342,7 +359,30 @@
 
         var labelEl = document.createElement('div');
         labelEl.className = CLASS_PREFIX + '-group-label';
-        labelEl.textContent = group.label || '—';
+
+        var labelText = document.createElement('span');
+        labelText.className = CLASS_PREFIX + '-group-label-text';
+        labelText.textContent = group.label || '—';
+        labelEl.appendChild(labelText);
+
+        // Select-all toggle, only if the group has items.
+        var hasItems = (group.items || []).length > 0;
+        var toggleLbl, toggleInput;
+        if (hasItems) {
+          toggleLbl = document.createElement('label');
+          toggleLbl.className = CLASS_PREFIX + '-group-toggle';
+          toggleInput = document.createElement('input');
+          toggleInput.type = 'checkbox';
+          toggleInput.setAttribute('data-scw-group-toggle', '1');
+          toggleLbl.appendChild(toggleInput);
+          var toggleText = document.createElement('span');
+          toggleText.textContent = 'Select all';
+          toggleLbl.appendChild(toggleText);
+          // Don't let clicks on the toggle bubble to anything else.
+          toggleLbl.addEventListener('click', function (e) { e.stopPropagation(); });
+          labelEl.appendChild(toggleLbl);
+        }
+
         groupEl.appendChild(labelEl);
 
         var listEl = document.createElement('ul');
@@ -368,7 +408,45 @@
 
         reorderSelectedFirst(listEl);
         applyMultiColLayout(listEl);
+
+        // Wire the per-group select-all toggle now that listEl exists.
+        if (toggleInput) wireGroupToggle(toggleInput, listEl);
       }
+    }
+
+    // Per-group select-all: master checkbox controls every item in the
+    // group's list. Master shows indeterminate when only some items are
+    // selected, checked when all, unchecked when none.
+    function wireGroupToggle(masterCb, listEl) {
+      function syncMaster() {
+        var items = listEl.querySelectorAll('input[type="checkbox"]');
+        var total = items.length;
+        var checked = 0;
+        for (var i = 0; i < items.length; i++) if (items[i].checked) checked++;
+        masterCb.checked       = total > 0 && checked === total;
+        masterCb.indeterminate = checked > 0 && checked < total;
+      }
+      masterCb.addEventListener('change', function () {
+        var items = listEl.querySelectorAll('input[type="checkbox"]');
+        var nextState = masterCb.checked;   // browser already toggled it
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].checked !== nextState) {
+            items[i].checked = nextState;
+            // Fire a change event so other listeners (footer count,
+            // shift-click anchor reset, etc.) stay in sync.
+            items[i].dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+        masterCb.indeterminate = false;
+      });
+      // Keep the master in sync as the user toggles items individually.
+      listEl.addEventListener('change', function (e) {
+        if (e.target && e.target.matches('input[type="checkbox"]') &&
+            !e.target.hasAttribute('data-scw-group-toggle')) {
+          syncMaster();
+        }
+      });
+      syncMaster();
     }
     renderGroups(options.groups);
 
@@ -522,11 +600,50 @@
   // loaded model is strictly simpler and faster.
 
   var CAMERAS_BUCKET_ID       = '6481e5ba38f283002898113c';
+
+  // ── Per-view field-key map ────────────────────────────────────────
+  // Each entry tells the picker which field keys to use on each view.
+  // SOW line items (view_3586/view_3610) and Survey line items
+  // (view_3505) are different objects with different field keys but
+  // the same connection-picker semantics.
+  //
+  //   TARGET     — the multi-connection field the user is editing
+  //                (e.g. "Connected Devices")
+  //   RECIPROCAL — the back-connection field on each connected child
+  //                (read to detect "already-connected elsewhere")
+  //   BUCKET     — bucket classification field, used to filter to
+  //                cameras/readers candidates
+  //   GROUPING   — MDF/IDF connection (read for grouping the picker
+  //                list and written by mirror-connection-sync on save)
+  //   IDENTIFIER — human-readable label field for each candidate row
+  var VIEW_CONFIGS = {
+    view_3586: {
+      TARGET: 'field_1957', RECIPROCAL: 'field_2197',
+      BUCKET: 'field_2219', GROUPING: 'field_1946',
+      IDENTIFIER: 'field_1950'
+    },
+    view_3610: {
+      TARGET: 'field_1957', RECIPROCAL: 'field_2197',
+      BUCKET: 'field_2219', GROUPING: 'field_1946',
+      IDENTIFIER: 'field_1950'
+    },
+    view_3505: {
+      TARGET: 'field_2380', RECIPROCAL: 'field_2381',
+      BUCKET: 'field_2366', GROUPING: 'field_2375',
+      IDENTIFIER: 'field_2365'
+    }
+  };
+
+  function cfgFor(viewId) { return VIEW_CONFIGS[viewId] || null; }
+
+  // Backwards-compat aliases — most call sites read these constants
+  // directly. The functions below that need view-specific keys take a
+  // viewId parameter and resolve through cfgFor(); these globals are
+  // kept only for log strings / fallback paths.
   var BUCKET_FIELD            = 'field_2219';
   var RECIPROCAL_FIELD        = 'field_2197';
-  var SOW_CONNECTION_FIELD    = 'field_2154';
-  var GROUPING_FIELD          = 'field_1946';   // MDF/IDF connection on SOW line item
-  var IDENTIFIER_FIELD        = 'field_1950';   // Human label (E-001, RA-I-020, ...)
+  var GROUPING_FIELD          = 'field_1946';
+  var IDENTIFIER_FIELD        = 'field_1950';
 
   function getViewModels(viewId) {
     if (typeof Knack === 'undefined' || !Knack.views || !Knack.views[viewId]) return [];
@@ -548,9 +665,10 @@
   }
 
   function getCurrentlySelectedIds(viewId, recordId) {
+    var cfg = cfgFor(viewId);
     var attrs = readRecordAttrs(viewId, recordId);
-    if (!attrs) return [];
-    var raw = attrs[TARGET_FIELD + '_raw'];
+    if (!attrs || !cfg) return [];
+    var raw = attrs[cfg.TARGET + '_raw'];
     if (!Array.isArray(raw)) return [];
     var out = [];
     for (var i = 0; i < raw.length; i++) {
@@ -559,8 +677,8 @@
     return out;
   }
 
-  function attrsHaveBucket(attrs, bucketId) {
-    var raw = attrs[BUCKET_FIELD + '_raw'];
+  function attrsHaveBucket(attrs, bucketId, cfg) {
+    var raw = attrs[(cfg ? cfg.BUCKET : BUCKET_FIELD) + '_raw'];
     if (Array.isArray(raw)) {
       for (var i = 0; i < raw.length; i++) {
         if (raw[i] && raw[i].id === bucketId) return true;
@@ -571,8 +689,8 @@
     return false;
   }
 
-  function attrsReciprocalIsBlank(attrs) {
-    var raw = attrs[RECIPROCAL_FIELD + '_raw'];
+  function attrsReciprocalIsBlank(attrs, cfg) {
+    var raw = attrs[(cfg ? cfg.RECIPROCAL : RECIPROCAL_FIELD) + '_raw'];
     if (Array.isArray(raw)) return raw.length === 0;
     if (!raw) return true;
     if (typeof raw === 'object' && !raw.id) return true;
@@ -584,6 +702,7 @@
    *  record — those always stay visible so the user can uncheck them,
    *  even if their reciprocal is no longer blank. */
   function collectCandidates(viewId, selectedIdSet) {
+    var cfg = cfgFor(viewId);
     var records = getViewModels(viewId);
     var out = [];
     for (var i = 0; i < records.length; i++) {
@@ -591,9 +710,9 @@
       if (!entry) continue;
       var attrs = entry.attributes || entry;
       if (!attrs || !attrs.id) continue;
-      if (!attrsHaveBucket(attrs, CAMERAS_BUCKET_ID)) continue;
+      if (!attrsHaveBucket(attrs, CAMERAS_BUCKET_ID, cfg)) continue;
       var alreadySelected = !!(selectedIdSet && selectedIdSet[attrs.id]);
-      if (!alreadySelected && !attrsReciprocalIsBlank(attrs)) continue;
+      if (!alreadySelected && !attrsReciprocalIsBlank(attrs, cfg)) continue;
       out.push(attrs);
     }
     return out;
@@ -604,7 +723,9 @@
    *    - items within each group by identifier, same natural order
    *  Records with a blank MDF/IDF land in a trailing "Unassigned" group
    *  regardless of where it would fall alphabetically. */
-  function groupByMdfIdf(records, selectedIdSet) {
+  function groupByMdfIdf(records, selectedIdSet, cfg) {
+    var GFK = (cfg && cfg.GROUPING)   || GROUPING_FIELD;
+    var IFK = (cfg && cfg.IDENTIFIER) || IDENTIFIER_FIELD;
     var orderedLabels = [];
     var groupMap = {};  // label → { label, items }
     var UNASSIGNED_LABEL = 'Unassigned';
@@ -628,7 +749,7 @@
     }
 
     function identifierFor(attrs) {
-      var raw = attrs[IDENTIFIER_FIELD];
+      var raw = attrs[IFK];
       if (typeof raw === 'string' && raw.trim()) {
         return raw.replace(/<[^>]*>/g, '').trim();
       }
@@ -640,11 +761,11 @@
       var attrs = records[i];
       if (!attrs || !attrs.id) continue;
       var label = UNASSIGNED_LABEL;
-      var raw = attrs[GROUPING_FIELD + '_raw'];
+      var raw = attrs[GFK + '_raw'];
       if (Array.isArray(raw) && raw[0] && raw[0].identifier) {
         label = String(raw[0].identifier).trim() || UNASSIGNED_LABEL;
-      } else if (attrs[GROUPING_FIELD]) {
-        var stripped = String(attrs[GROUPING_FIELD]).replace(/<[^>]*>/g, '').trim();
+      } else if (attrs[GFK]) {
+        var stripped = String(attrs[GFK]).replace(/<[^>]*>/g, '').trim();
         if (stripped) label = stripped;
       }
       bucketFor(label).items.push({
@@ -680,12 +801,11 @@
   // configured VIEWS. Everything else (other fields, other views, locked
   // cells, non-left-click) falls through untouched to the normal handlers.
   //
-  // VIEWS hosts the same SOW-line-items shape across both the legacy
-  // worksheet (view_3586) and the new one (view_3610). Field keys are
-  // identical between them, so the picker just needs to know which
-  // view's DOM/model to read from for each click.
-  var VIEWS = ['view_3586', 'view_3610'];
-  var TARGET_FIELD = 'field_1957';
+  // The picker runs across multiple views with different shapes:
+  //   - view_3586 / view_3610  (SOW Line Items)  TARGET = field_1957
+  //   - view_3505              (Survey Line Items) TARGET = field_2380
+  // VIEW_CONFIGS (above) is the source of truth for per-view field keys.
+  var VIEWS = Object.keys(VIEW_CONFIGS);
   var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
 
   /** Find which configured view contains the given td (if any). */
@@ -731,10 +851,20 @@
     if (e.button !== undefined && e.button !== 0) return;      // left-click only
     if (!e.target || !e.target.closest) return;
 
-    var td = e.target.closest('td.' + TARGET_FIELD);
-    if (!td) return;
-    var viewId = findOwningView(td);
-    if (!viewId) return;
+    // Different views use different TARGET fields. Try each configured
+    // target class and stop at the first td that's also inside its
+    // matching view (so a stray td.field_1957 inside view_3505 — which
+    // shouldn't happen but guard anyway — doesn't get hijacked).
+    var td = null;
+    var viewId = null;
+    for (var vk in VIEW_CONFIGS) {
+      if (!Object.prototype.hasOwnProperty.call(VIEW_CONFIGS, vk)) continue;
+      var candidate = e.target.closest('td.' + VIEW_CONFIGS[vk].TARGET);
+      if (candidate && candidate.closest('#' + vk)) {
+        td = candidate; viewId = vk; break;
+      }
+    }
+    if (!td || !viewId) return;
     if (isCellLocked(td)) return;
 
     var recordId = getRecordIdFromCell(td);
@@ -775,17 +905,23 @@
    *    </td>
    *  When empty: just `&nbsp;` inside the col-N wrapper. */
   function repaintParentConnectionCell(viewId, recordId, resp) {
+    var cfg = cfgFor(viewId);
+    if (!cfg) return;
+    var TARGET = cfg.TARGET;
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
-    var row = viewEl.querySelector('tr#' + recordId);
+    // CSS IDs that start with a digit aren't valid in selectors; ~60% of
+    // hex Knack record ids do. Use an attribute selector instead so the
+    // querySelector doesn't throw on those rows.
+    var row = viewEl.querySelector('tr[id="' + recordId + '"]');
     if (!row) return;
     // The clicked cell lives in the worksheet card's detail panel. Both
-    // the pre-transform tr and the scw-ws-card are inside view_3586, so
-    // grab every field_1957 td under the recordId row's neighbourhood.
-    var tds = viewEl.querySelectorAll('td.' + TARGET_FIELD);
+    // the pre-transform tr and the scw-ws-card are inside the view, so
+    // grab every TARGET td under the recordId row's neighbourhood.
+    var tds = viewEl.querySelectorAll('td.' + TARGET);
     if (!tds.length) return;
 
-    var raw = resp && resp[TARGET_FIELD + '_raw'];
+    var raw = resp && resp[TARGET + '_raw'];
     if (!Array.isArray(raw)) raw = [];
 
     for (var i = 0; i < tds.length; i++) {
@@ -832,11 +968,13 @@
   /** Read the parent record's MDF/IDF group id, preferring the PUT
    *  response (freshest) and falling back to the Backbone model. */
   function readParentGroupId(viewId, R, parentId) {
-    var raw = R && R[GROUPING_FIELD + '_raw'];
+    var cfg = cfgFor(viewId);
+    var GFK = (cfg && cfg.GROUPING) || GROUPING_FIELD;
+    var raw = R && R[GFK + '_raw'];
     if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
     var attrs = readRecordAttrs(viewId, parentId);
     if (attrs) {
-      var rawM = attrs[GROUPING_FIELD + '_raw'];
+      var rawM = attrs[GFK + '_raw'];
       if (Array.isArray(rawM) && rawM[0] && rawM[0].id) return rawM[0].id;
     }
     return null;
@@ -846,11 +984,12 @@
    *  reciprocal/group should already match the parent. The mirror's
    *  applyDeterministicRegroup only PUTs added/removed children — the
    *  unchanged-but-still-connected set falls outside its diff. Running
-   *  this on every save guarantees a re-submit re-asserts field_2197 +
-   *  field_1946 across every connected child, even when nothing changed
-   *  at the parent. */
+   *  this on every save guarantees a re-submit re-asserts the per-view
+   *  reciprocal + grouping fields across every connected child, even
+   *  when nothing changed at the parent. */
   function fireRepairPuts(viewId, parentId, parentGroupId, childIds, onAllDone) {
-    if (!childIds || !childIds.length) {
+    var cfg = cfgFor(viewId);
+    if (!cfg || !childIds || !childIds.length) {
       if (typeof onAllDone === 'function') onAllDone();
       return;
     }
@@ -861,8 +1000,8 @@
     }
     for (var i = 0; i < childIds.length; i++) {
       var body = {};
-      if (parentGroupId) body[GROUPING_FIELD] = [parentGroupId];
-      body[RECIPROCAL_FIELD] = [parentId];
+      if (parentGroupId) body[cfg.GROUPING] = [parentGroupId];
+      body[cfg.RECIPROCAL] = [parentId];
       window.SCW.knackAjax({
         type: 'PUT',
         url: window.SCW.knackRecordUrl(viewId, childIds[i]),
@@ -885,19 +1024,25 @@
       if (typeof onDone === 'function') onDone(new Error('ajax helpers unavailable'));
       return;
     }
+    var cfg = cfgFor(viewId);
+    if (!cfg) {
+      console.error('[scw-cp] no VIEW_CONFIGS entry for ' + viewId + ' — cannot save');
+      if (typeof onDone === 'function') onDone(new Error('no cfg for view ' + viewId));
+      return;
+    }
 
     // Read parent's MDF/IDF group id from the model BEFORE the PUT.
-    // Knack's no-op PUT responses occasionally omit field_1946_raw,
-    // which would have left parentGroupId null and skipped the
-    // field_1946 portion of the repair + accessory cascade. The model
-    // always has it for an existing parent.
+    // Knack's no-op PUT responses occasionally omit GROUPING_raw, which
+    // would have left parentGroupId null and skipped the grouping
+    // portion of the repair + accessory cascade. The model always has
+    // it for an existing parent.
     var preGroupAttrs = readRecordAttrs(viewId, recordId);
-    var preGroupRaw = preGroupAttrs && preGroupAttrs[GROUPING_FIELD + '_raw'];
+    var preGroupRaw = preGroupAttrs && preGroupAttrs[cfg.GROUPING + '_raw'];
     var preGroupId = (Array.isArray(preGroupRaw) && preGroupRaw[0] && preGroupRaw[0].id)
       ? preGroupRaw[0].id : null;
 
     var body = {};
-    body[TARGET_FIELD] = selectedIds;
+    body[cfg.TARGET] = selectedIds;
     SCW.debug && SCW.debug('[scw-cp] saveSelection start',
       { viewId: viewId, recordId: recordId,
         selected: selectedIds.length, original: (originalIds || []).length,
@@ -913,7 +1058,7 @@
         // selection immediately (no visible "flash then populate").
         if (typeof window.SCW.syncKnackModel === 'function') {
           try {
-            window.SCW.syncKnackModel(viewId, recordId, resp, TARGET_FIELD, selectedIds);
+            window.SCW.syncKnackModel(viewId, recordId, resp, cfg.TARGET, selectedIds);
           } catch (e) { /* best-effort */ }
         }
 
@@ -947,7 +1092,7 @@
         SCW.debug && SCW.debug('[scw-cp] save success — stages dispatching',
           { stillSelected: stillSelected.length,
             parentGroupId: parentGroupId,
-            respHadGroup: !!(R && R[GROUPING_FIELD + '_raw']) });
+            respHadGroup: !!(R && R[cfg.GROUPING + '_raw']) });
 
         // ── Multi-stage completion gate ──────────────────────────
         // Why: every step below fires async PUTs. If the modal closes
@@ -1043,6 +1188,7 @@
   }
 
   function openPickerForRecord(viewId, recordId, td) {
+    var cfg = cfgFor(viewId);
     var selectedIds = getCurrentlySelectedIds(viewId, recordId);
     var selectedSet = {};
     for (var i = 0; i < selectedIds.length; i++) selectedSet[selectedIds[i]] = true;
@@ -1051,11 +1197,12 @@
     // network call — so we can build the grouped list before opening
     // the modal and skip the Loading… placeholder entirely.
     var candidates = collectCandidates(viewId, selectedSet);
-    var grouped = groupByMdfIdf(candidates, selectedSet);
+    var grouped = groupByMdfIdf(candidates, selectedSet, cfg);
 
     // Orphans: currently-selected items whose reciprocal is no longer
     // blank AND whose row is not on this view page. Preserve them so
     // the user can still uncheck.
+    var IFK = (cfg && cfg.IDENTIFIER) || IDENTIFIER_FIELD;
     var candidateById = {};
     for (var c = 0; c < candidates.length; c++) {
       candidateById[candidates[c].id] = true;
@@ -1067,7 +1214,7 @@
         var attrs = readRecordAttrs(viewId, sid) || {};
         orphans.push({
           id: sid,
-          identifier: (attrs[IDENTIFIER_FIELD] && String(attrs[IDENTIFIER_FIELD]).replace(/<[^>]*>/g, '').trim()) ||
+          identifier: (attrs[IFK] && String(attrs[IFK]).replace(/<[^>]*>/g, '').trim()) ||
                       attrs.identifier || sid,
           checked: true
         });
@@ -1100,7 +1247,22 @@
     });
   }
 
-  document.addEventListener('click', handleCellClick, true);
+  // Bind once at module load, and re-bind on every relevant view render.
+  // Some scene/view re-renders on the survey scene appear to wipe our
+  // document-level click listener (root cause unclear — getEventListeners
+  // confirms ours is registered initially, but a bare-page click misses
+  // it until any other JS touches the document). Re-attaching on each
+  // view-render is cheap and idempotent (browsers dedupe identical
+  // listener+capture pairs on the same target), so this serves as a
+  // belt-and-suspenders safety net.
+  function bindCellClick() {
+    document.addEventListener('click', handleCellClick, true);
+  }
+  bindCellClick();
+  Object.keys(VIEW_CONFIGS).forEach(function (vk) {
+    $(document).on('knack-view-render.' + vk + '.scwConnPicker', bindCellClick);
+  });
+  $(document).on('knack-scene-render.any.scwConnPicker', bindCellClick);
 
   // ── Public ────────────────────────────────────────────────────────
   window.SCW.connectionPicker = {

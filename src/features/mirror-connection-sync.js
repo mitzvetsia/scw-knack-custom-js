@@ -182,15 +182,45 @@
   //   - method-agnostic, request-body-only (no streaming response)
   //
   // Falls back to SCW.knackAjax if fetch() is unavailable for any reason.
+  //
+  // ── Reliability layer ────────────────────────────────────────────────
+  // Knack's REST API rate-limits at ~10 req/s and any burst beyond that
+  // returns 429s. A 13-child cascade therefore reliably loses a few
+  // PUTs without protection. Two layers on top of the raw helper:
+  //   1. Concurrency cap (MAX_CONCURRENT_PUTS) — never run more than N
+  //      at once. Excess requests queue and start as slots free up.
+  //   2. Retry-with-backoff on transient failures (429, 5xx, network
+  //      error). Up to MAX_PUT_ATTEMPTS attempts with exponential
+  //      delays + jitter. Permanent 4xx errors don't retry (no point).
   // ======================================================================
-  function knackPutKeepalive(url, body, onDone) {
+  var MAX_CONCURRENT_PUTS = 4;
+  var MAX_PUT_ATTEMPTS    = 4;
+  var BASE_BACKOFF_MS     = 350;
+
+  var _putQueue   = [];
+  var _putRunning = 0;
+
+  function isTransientPutError(err) {
+    var msg = (err && err.message) || '';
+    if (/PUT 429/.test(msg)) return true;
+    if (/PUT 5\d\d/.test(msg)) return true;
+    if (/PUT 408/.test(msg)) return true;     // request timeout
+    // fetch() rejects (network blip, connection reset, AbortError)
+    if (/network|fetch|abort|timeout/i.test(msg)) return true;
+    return false;
+  }
+
+  function knackPutKeepaliveOnce(url, body, onDone) {
     var hasFetch = typeof window.fetch === 'function';
     if (!hasFetch) {
       if (window.SCW && typeof window.SCW.knackAjax === 'function') {
         window.SCW.knackAjax({
           type: 'PUT', url: url, data: JSON.stringify(body), dataType: 'json',
           success: function (resp) { if (typeof onDone === 'function') onDone(null, resp); },
-          error:   function (xhr)  { if (typeof onDone === 'function') onDone(xhr || new Error('PUT failed')); }
+          error:   function (xhr)  {
+            var status = xhr && xhr.status;
+            if (typeof onDone === 'function') onDone(new Error('PUT ' + (status || 'failed')));
+          }
         });
         return;
       }
@@ -214,15 +244,62 @@
           if (typeof onDone === 'function') onDone(new Error('PUT ' + resp.status));
           return;
         }
-        // We don't actually need the parsed body for these PUTs — patchCard
-        // already updated the UI optimistically. Resolve as soon as the
-        // server acknowledges with 2xx.
         if (typeof onDone === 'function') onDone(null, resp);
       }).catch(function (err) {
         if (typeof onDone === 'function') onDone(err);
       });
     } catch (e) {
       if (typeof onDone === 'function') onDone(e);
+    }
+  }
+
+  function knackPutKeepaliveWithRetry(url, body, onDone) {
+    var attempt = 0;
+    function go() {
+      attempt++;
+      knackPutKeepaliveOnce(url, body, function (err, resp) {
+        if (!err) {
+          if (typeof onDone === 'function') onDone(null, resp);
+          return;
+        }
+        if (isTransientPutError(err) && attempt < MAX_PUT_ATTEMPTS) {
+          var delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1) +
+                      Math.floor(Math.random() * 250);
+          try {
+            console.warn('[scw-mirror-sync] transient PUT failure ' + url +
+              ' (' + (err && err.message) + ') — retry ' + attempt +
+              '/' + (MAX_PUT_ATTEMPTS - 1) + ' in ' + delay + 'ms');
+          } catch (e) { /* ignore */ }
+          setTimeout(go, delay);
+          return;
+        }
+        if (typeof onDone === 'function') onDone(err);
+      });
+    }
+    go();
+  }
+
+  // Concurrency-limited queue — funnels every PUT through here so we
+  // don't burst past Knack's rate limit on big cascades.
+  function knackPutKeepalive(url, body, onDone) {
+    _putQueue.push({ url: url, body: body, onDone: onDone });
+    drainPutQueue();
+  }
+
+  function drainPutQueue() {
+    while (_putRunning < MAX_CONCURRENT_PUTS && _putQueue.length) {
+      var task = _putQueue.shift();
+      _putRunning++;
+      knackPutKeepaliveWithRetry(task.url, task.body, function (err, resp) {
+        _putRunning--;
+        try {
+          if (typeof task.onDone === 'function') task.onDone(err, resp);
+        } finally {
+          // Defer to next tick so onDone callbacks (which may enqueue
+          // more PUTs of their own) run before we recheck the queue.
+          setTimeout(drainPutQueue, 0);
+        }
+      });
     }
   }
 

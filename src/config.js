@@ -14,11 +14,25 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true,  newSowId: "<hex>", newSowUrl: "<full URL>" }
   //             or:  { success: false, error: "<message>" }
   MAKE_DUPLICATE_SOW_WEBHOOK: "https://hook.us1.make.com/ysbsl1qw19vdhc6f3hpk8barcfk79puu",
-  // Fires on per-row "Import Unique Items" click in view_3869. Expects:
-  //   Request body:  { receivingRecordId: <current SOW id>, sourceRecordId: <row SOW id>, triggeredBy: {...} }
+  // Fires on "Import Unique Items" click in view_3869 (per-row OR the
+  // bulk bar above the grid). Expects:
+  //   Request body:  {
+  //     receivingRecordId:       <current SOW id>,
+  //     sourceRecordId:          <row SOW id> | null  (null in bulk mode),
+  //     sourceRecordIds:         [ <contributing SOW ids> ],
+  //     uniqueItemIds:           [ <line item record ids being imported —
+  //                                 already deduped, all NOT on receiving> ],
+  //     deleteSourceIds:         [ <SOW ids the user opted to delete after
+  //                                 import; subset of sourceRecordIds; only
+  //                                 SOWs WITHOUT field_2706 = Yes are ever
+  //                                 included> ],
+  //     deleteSourceAfterImport: <bool — true iff deleteSourceIds non-empty>,
+  //     bulk:                    <bool — true for the bulk bar>,
+  //     triggeredBy:             { id, name, email }
+  //   }
   //   Response body: { success: true,  imported: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_IMPORT_UNIQUE_ITEMS",
+  MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }

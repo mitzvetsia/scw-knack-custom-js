@@ -338,9 +338,9 @@
       }
     }
 
-    // Append an "Additional Notes" space at the end of each L1
-    // (MDF/IDF) group so the tech can jot down anything that didn't
-    // fit the structured fields.
+    // After each L1 group header (MDF/IDF), insert a blank "Additional
+    // Notes" block so the tech can jot down anything for that location
+    // before the device cards start.
     out = insertL1NotesBlocks(out);
 
     return {
@@ -354,27 +354,32 @@
     };
   }
 
-  // Walks the row list and, after each L1 group's cards, appends
-  // a single {type:'l1-notes'} entry tagged with that L1's label.
-  // The renderer turns this into a blank "Additional Notes" block.
+  // Walks the row list and inserts two notes blocks per L1 group:
+  //   - 'header' position: directly under the MDF/IDF header (for
+  //     location-level notes the tech captures before the device cards)
+  //   - 'tail'   position: at the end of the L1 group (catch-all for
+  //     anything that didn't fit a structured field)
   function insertL1NotesBlocks(rows) {
     var out = [];
     var inL1 = false;
     var currentL1 = '';
-    function flushNotes() {
+    function flushTail() {
       if (!inL1) return;
-      out.push({ type: 'l1-notes', groupL1: currentL1 });
+      out.push({ type: 'l1-notes', position: 'tail', groupL1: currentL1 });
     }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       if (r.type === 'group' && r.level === 1) {
-        flushNotes();
+        flushTail();
         inL1 = true;
         currentL1 = r.label;
+        out.push(r);
+        out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
+        continue;
       }
       out.push(r);
     }
-    flushNotes();
+    flushTail();
     return out;
   }
 
@@ -809,7 +814,10 @@
       { key: 'field_2455', label: 'Mounting Height',   kind: 'choices',
         options: ["Under 16'", "16' - 24'", "Over 24'"] },
       { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
-      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill' }
+      // Conduit Ft is always printed blank — the survey is the source
+      // of truth for this measurement, not whatever's already on the
+      // record.
+      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill', forceBlank: true }
     ],
     right: [
       // Yes = Existing Cabling, No = New Cabling
@@ -878,11 +886,12 @@
     return html.join('\n');
   }
 
-  // ── Additional Notes block (appended at the end of each L1 group) ──
+  // ── Additional Notes block (inserted directly under each L1 group header) ──
   function renderL1Notes(row) {
     var h = [];
+    var heading = (row && row.position === 'header') ? 'Notes' : 'Additional Notes';
     h.push('<section class="ws-card ws-card--notes">');
-    h.push('<div class="ws-notes-heading">Additional Notes');
+    h.push('<div class="ws-notes-heading">' + heading);
     if (row && row.groupL1) {
       h.push(' <span class="ws-notes-scope">\u2014 ' + esc(row.groupL1) + '</span>');
     }
@@ -1029,13 +1038,23 @@
   function renderImageCoverSection(section) {
     var h = [];
     var label = section.label || '';
+    // Inline style + width attribute on the <img> are harder for the
+    // PDF renderer to override than a stylesheet rule. Some PDF
+    // services wrap injected html inside a constraining container or
+    // strip class-level CSS, leaving the image at its intrinsic size.
+    // Forcing width here guarantees the image fills the page width.
+    var imgStyle = 'display:block; width:100%; max-width:100%; ' +
+                   'height:auto; margin:0 auto;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
       h.push('<section class="cover-page">');
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
-      h.push('<img class="cover-img" src="' + esc(img.src) + '" alt="' + esc(img.alt || label) + '" />');
+      h.push('<img class="cover-img" width="780" ' +
+             'style="' + imgStyle + '" ' +
+             'src="' + esc(img.src) + '" ' +
+             'alt="' + esc(img.alt || label) + '" />');
       h.push('</section>');
     }
     return h.join('');
@@ -1115,8 +1134,10 @@
         h.push('</span>');
       } else if (spec.kind === 'fill') {
         // Value-or-blank-line: show the value if present, otherwise a
-        // bottom-ruled span wide enough to write on.
-        h.push('<span class="ws-detail-value ws-fill">' + esc(value) + '</span>');
+        // bottom-ruled span wide enough to write on. spec.forceBlank
+        // overrides the value and always renders an empty fillable line.
+        var fillVal = spec.forceBlank ? '' : value;
+        h.push('<span class="ws-detail-value ws-fill">' + esc(fillVal) + '</span>');
       } else {
         // Plain text (read-only data field)
         h.push('<span class="ws-detail-value">' + esc(value) + '</span>');
@@ -1318,10 +1339,10 @@
       '.cover-img-wrap { display: none; }',
       '.cover-img {',
       '  display: block;',
-      '  width: 8in !important;',
-      '  height: 9.7in !important;',
-      '  max-width: none !important;',
-      '  max-height: none !important;',
+      '  width: 100% !important;',
+      '  height: auto !important;',
+      '  max-width: 8.05in !important;',
+      '  max-height: 9.7in !important;',
       '  object-fit: contain;',
       '  margin: 0 auto;',
       '  -webkit-print-color-adjust: exact;',
@@ -1507,7 +1528,7 @@
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
       '}',
       '',
-      '/* Additional Notes block appended at the end of each L1 group */',
+      '/* Additional Notes block inserted directly under each L1 group header */',
       '.ws-card--notes {',
       '  border: 1px dashed #94a3b8;',
       '  background: #fbfdff;',
@@ -1737,6 +1758,21 @@
   // PUBLIC API
   // ══════════════════════════════════════════════════════════════
 
+  // Override the page-1 / cover-image / trailing-image view lists at
+  // runtime. Used by sub-portal-survey-request-export.js, where the
+  // survey lives on a scene that uses different view IDs than the
+  // ops-side worksheet. Pass `null`/omit to leave a list unchanged.
+  // Note: this only updates the constants used by scrape() and
+  // getImageSections(); it does NOT re-run setupImagePreloads() —
+  // callers are responsible for refreshing the image cache for any
+  // newly-added image views (use SCW.surveyWorksheetPdf.refreshImageCache).
+  function configureForScene(opts) {
+    if (!opts) return;
+    if (Array.isArray(opts.page1Views))         PAGE1_DETAIL_VIEWS  = opts.page1Views.slice();
+    if (Array.isArray(opts.coverImageViews))    COVER_IMAGE_VIEWS   = opts.coverImageViews.slice();
+    if (Array.isArray(opts.trailingImageViews)) TRAILING_IMAGE_VIEWS = opts.trailingImageViews.slice();
+  }
+
   window.SCW = window.SCW || {};
   window.SCW.surveyWorksheetPdf = {
     scrape: scrape,
@@ -1748,6 +1784,7 @@
     whenReady: whenReady,
     refreshImageCache: refreshImageCacheForView,
     getImagesForView: getImagesForView,
-    scrapePage1Cover: scrapePage1Cover
+    scrapePage1Cover: scrapePage1Cover,
+    configureForScene: configureForScene
   };
 })();

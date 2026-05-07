@@ -205,30 +205,44 @@
   }
 
   // ── Inject / remove the button based on gate + presence ──
+  // Mounts inside the accordion BODY (above view_3869), matching the
+  // accordion-menu-inject pattern. Buttons live in the same spatial frame
+  // as the data they act on; hide automatically when the accordion
+  // collapses.
   function syncButton() {
     var targetEl = document.getElementById(TARGET_VIEW);
     if (!targetEl) return;
     var accordion = targetEl.closest('.scw-ktl-accordion');
     if (!accordion) return;
-    var header = accordion.querySelector('.scw-ktl-accordion__header');
-    if (!header) return;
+    var body = accordion.querySelector('.scw-ktl-accordion__body');
+    if (!body) return;
 
-    var existing = header.querySelector('.' + BTN_MARKER);
+    var existing = body.querySelector('.' + BTN_MARKER);
     var shouldShow = !!getGateFieldValue();
 
     if (!shouldShow) {
-      if (existing) existing.remove();
+      if (existing) {
+        var oldHost = existing.parentElement;
+        existing.remove();
+        // Tear down our action bar if it's now empty (don't clobber other
+        // tools' buttons that may share the same .scw-acc-actions host).
+        if (oldHost && oldHost.classList.contains('scw-acc-actions') &&
+            !oldHost.children.length) {
+          oldHost.remove();
+        }
+      }
       return;
     }
     if (existing) return;   // already injected, nothing to do
 
-    var actions = header.querySelector('.scw-acc-actions');
+    // Reuse an existing action-bar in this body if accordion-menu-inject
+    // already put one there; otherwise create our own.
+    var actions = body.querySelector(':scope > .scw-acc-actions');
     if (!actions) {
       actions = document.createElement('div');
       actions.className = 'scw-acc-actions';
-      var chevron = header.querySelector('.scw-acc-chevron');
-      if (chevron) header.insertBefore(actions, chevron);
-      else header.appendChild(actions);
+      if (targetEl.parentNode === body) body.insertBefore(actions, targetEl);
+      else body.insertBefore(actions, body.firstChild);
     }
 
     var btn = document.createElement('button');

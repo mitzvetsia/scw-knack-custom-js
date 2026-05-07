@@ -117,16 +117,16 @@
           connections:      { key: 'field_2381', type: 'readOnly' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
-          exterior:         { key: 'field_2372', type: 'chipStack' },
-          plenum:           { key: 'field_2371', type: 'readOnly' },
+          exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
+          plenumChit:       { key: 'field_2371', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Plenum' },
           mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'labor', 'bid'],
+        summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
+          right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         },
         bucketField: 'field_2366',
         // ── Override: used for all NON-camera/reader rows ──
@@ -143,7 +143,7 @@
             warningCount:     { key: 'field_2454', type: 'warningChit' },
 
             mounting:         { key: 'field_2463', type: 'readOnly' },
-            connections:      { key: 'field_2380', type: 'readOnly' },
+            connections:      { key: 'field_2380', type: 'nativeEdit' },
             scwNotes:         { key: 'field_2418', type: 'readOnly' },
             surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true }
           },
@@ -6294,21 +6294,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (del) {
           del.style.visibility = shouldHide ? 'hidden' : '';
         }
-        // Also disable the KTL bulk-edit row checkbox so this row can't
-        // be picked up by "Delete Selected: N". Uncheck it first in case
-        // it was already selected before the protection kicked in.
+        // Restore the bulk-edit checkbox if a previous render had blocked
+        // it. The per-row delete-link visibility above is sufficient
+        // protection against accidental delete; KTL's "Delete Selected"
+        // button is hidden separately at the view-config level on views
+        // where bulk-delete is forbidden, so we don't need to disable
+        // individual checkboxes (which also blocks Copy/Paste/Duplicate
+        // — those are useful even on rows where delete is disallowed).
         var cbCell = card.querySelector('.' + P + '-sum-check');
         var cb = cbCell ? cbCell.querySelector('input[type="checkbox"]') : null;
-        if (cb) {
-          if (shouldHide) {
-            cb.checked = false;
-            cb.disabled = true;
-            cb.setAttribute('data-scw-bulk-blocked', '1');
-            cbCell.style.visibility = 'hidden';
-            cbCell.title = 'Cannot delete — line item is on a survey';
-          } else if (cb.getAttribute('data-scw-bulk-blocked') === '1') {
-            cb.disabled = false;
-            cb.removeAttribute('data-scw-bulk-blocked');
+        if (cb && cb.getAttribute('data-scw-bulk-blocked') === '1') {
+          cb.disabled = false;
+          cb.removeAttribute('data-scw-bulk-blocked');
+          if (cbCell) {
             cbCell.style.visibility = '';
             cbCell.removeAttribute('title');
           }

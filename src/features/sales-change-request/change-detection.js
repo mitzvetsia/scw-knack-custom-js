@@ -280,6 +280,10 @@
       var base = baseline[id];
       if (!base) continue;
       if (pending[id]) continue;
+      // Skip records the user has explicitly cleared or already submitted —
+      // otherwise the next render re-creates them and a 'Clear all' looks
+      // like it did nothing.
+      if (ns.isDismissed && ns.isDismissed(id)) continue;
 
       // addCountField (field_2586) = "associated survey line items" count.
       // A row is an "add" change request ONLY when it has NO associated

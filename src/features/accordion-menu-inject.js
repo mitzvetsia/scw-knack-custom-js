@@ -1,6 +1,9 @@
 /*** FEATURE: Accordion Menu Button Injection ************************************
  *
- * Injects kn-menu action links as pill-buttons into KTL accordion headers.
+ * Injects kn-menu action links as pill-buttons inside KTL accordion bodies,
+ * mounted just above the inner view (table / list / form) so they appear
+ * directly under the accordion header when expanded. Buttons hide along
+ * with the body when the accordion is collapsed.
  *
  * ── How pairing works ────────────────────────────────────────────────────────
  *
@@ -108,59 +111,47 @@
       '.' + PREHIDE_CLASS + ' { display: none !important; }',
 
       '.scw-acc-actions {',
-      '  flex: 0 0 auto;',
-      '  display: inline-flex;',
+      '  display: flex;',
       '  align-items: center;',
-      '  gap: 6px;',
-      '  margin: 0 10px 0 0;',
+      '  justify-content: flex-end;',
+      '  gap: 8px;',
+      '  padding: 8px 0 12px;',
+      '  margin: 0;',
       '}',
 
+      // Matches the Import-Unique-Items bulk-bar button: 13px / 8px 14px,',
+      // SCW primary blue, 1px solid border, no shadow, no transform.',
       '.scw-acc-action-btn {',
       '  display: inline-flex;',
       '  align-items: center;',
-      '  gap: 4px;',
-      '  padding: 5px 12px;',
-      '  font-size: 11px;',
-      '  font-weight: 600;',
-      '  line-height: 1.4;',
+      '  justify-content: center;',
+      '  gap: 6px;',
+      '  padding: 8px 14px;',
+      '  font: 600 13px system-ui, -apple-system, sans-serif;',
+      '  line-height: 1.2;',
       '  color: #fff;',
-      '  background: var(--scw-accent, #295f91);',
-      '  border: none;',
+      '  background: #163C6E;',
+      '  border: 1px solid #163C6E;',
       '  border-radius: 6px;',
       '  cursor: pointer;',
       '  white-space: nowrap;',
       '  text-decoration: none !important;',
-      '  font-family: inherit;',
-      '  box-shadow: 0 1px 3px rgba(0,0,0,.15);',
-      '  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease;',
-      '  justify-content: center;',
+      '  transition: background 150ms ease, border-color 150ms ease;',
       '}',
 
       '.scw-acc-action-btn:hover {',
-      '  background: rgba(var(--scw-accent-rgb, 41,95,145), 0.85);',
-      '  box-shadow: 0 2px 6px rgba(0,0,0,.20);',
+      '  background: #0f2d55;',
+      '  border-color: #0f2d55;',
       '  color: #fff;',
       '  text-decoration: none !important;',
-      '  transform: translateY(-1px);',
-      '}',
-
-      '.scw-acc-action-btn:active {',
-      '  transform: translateY(0);',
-      '  box-shadow: 0 1px 2px rgba(0,0,0,.12);',
       '}',
 
       '.scw-acc-action-btn:focus-visible {',
-      '  outline: 2px solid var(--scw-accent, #295f91);',
+      '  outline: 2px solid #163C6E;',
       '  outline-offset: 1px;',
       '}',
 
-      '.scw-acc-action-btn svg {',
-      '  flex-shrink: 0;',
-      '  opacity: 0.85;',
-      '}',
-      '.scw-acc-action-btn:hover svg {',
-      '  opacity: 1;',
-      '}',
+      '.scw-acc-action-btn svg { flex-shrink: 0; }',
     ].join('\n');
 
     var el = document.createElement('style');
@@ -417,12 +408,13 @@
     for (var i = 0; i < accordions.length; i++) {
       try {
         var accordion = accordions[i];
-        var header = accordion.querySelector('.scw-ktl-accordion__header');
-        if (!header) { skipped.noHeader++; continue; }
-        if (header.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
+        var body = accordion.querySelector('.scw-ktl-accordion__body');
+        if (!body) { skipped.noHeader++; continue; }
+        if (accordion.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
 
         // Find the inner view — the table/list/form that KTL wrapped
-        var innerView = accordion.querySelector('[id^="view_"]');
+        var innerView = body.querySelector('[id^="view_"]') ||
+                        accordion.querySelector('[id^="view_"]');
         var innerViewId = innerView ? innerView.id : null;
         if (!innerViewId) { skipped.noKeyword++; continue; }
 
@@ -563,21 +555,19 @@
           container.appendChild(btn);
         }
 
-        // Insert: icon | title | [buttons] | count | chevron
-        var chevron = header.querySelector('.scw-acc-chevron');
-        var countPill = header.querySelector('.scw-acc-count');
-        if (chevron) {
-          header.insertBefore(container, chevron);
-          if (countPill) header.insertBefore(countPill, chevron);
+        // Mount inside the accordion body, above the inner view, so buttons
+        // sit just under the header when the accordion is expanded.
+        if (innerView && innerView.parentNode === body) {
+          body.insertBefore(container, innerView);
         } else {
-          header.appendChild(container);
+          body.insertBefore(container, body.firstChild);
         }
 
         // Hide absorbed menus
         for (var h = 0; h < menuElements.length; h++) {
           menuElements[h].classList.add(HIDDEN_CLASS);
         }
-        header.setAttribute(INJECTED, '1');
+        accordion.setAttribute(INJECTED, '1');
         injected++;
       } catch (err) {
         console.error(LOG, 'Error processing accordion [' + i + ']:', err);
