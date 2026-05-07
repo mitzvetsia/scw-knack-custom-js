@@ -899,7 +899,10 @@
     if (!viewKey || !sowId) return null;
     var view = document.getElementById(viewKey);
     if (!view) return null;
-    return view.querySelector('tbody tr#' + sowId) || null;
+    // Attribute selector — CSS id selectors (#abc) can't start with a
+    // digit without escaping, and Knack record ids are 24-hex strings
+    // that always start with a digit. tr[id="..."] sidesteps that.
+    return view.querySelector('tbody tr[id="' + sowId + '"]') || null;
   }
 
   function readRowFieldText(tr, fieldKey) {
