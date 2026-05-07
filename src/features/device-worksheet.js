@@ -97,7 +97,7 @@
       },
       {
         viewId: 'view_3505',
-        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true },
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: true },
         hideDeleteWhenFieldNotBlank: 'field_2404',
         // ── Main config: used for Cameras or Readers rows ──
         fields: {
