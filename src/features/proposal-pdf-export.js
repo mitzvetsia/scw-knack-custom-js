@@ -1581,7 +1581,7 @@
               plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
               scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
               scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
-              json: jsonSnapshot,
+              json: stripNonRawFields(jsonSnapshot),
               jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
               invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
               invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })()
@@ -2723,20 +2723,21 @@
       // proper JSON.stringify of the array so it can be stored verbatim
       // and parseJSON'd back to a structured array on the read side.
       scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
-      json:                  jsonSnapshot,
-      // Pre-stringified JSON snapshot — store this string verbatim in a
+      // JSON snapshot — pre-strips every `field_xxx` key that has a
+      // `field_xxx_raw` twin. The rendered-HTML version is purely display
+      // noise for downstream consumers and was the source of every
+      // HTML-quote round-trip corruption we've seen (Make's Parse JSON
+      // module choking on unescaped quotes inside connection-field HTML).
+      // The _raw versions are clean structured data ([{id, identifier}],
+      // numbers, booleans, etc.).
+      json:                  stripNonRawFields(jsonSnapshot),
+      // Pre-stringified twin of `json` — store this string verbatim in a
       // Knack plain-text/paragraph field (no Make-side stringify, no
       // re-encode). At read time, parseJSON(field_value) reconstitutes
       // the object exactly. Avoids the round-trip-corruption hazard
       // when Make's HTTP/Knack modules re-serialize an already-parsed
       // .json object — every step that re-encodes risks half-escaping
       // the HTML quotes inside connection-field values.
-      //
-      // Also pre-strips every `field_xxx` key that has a `field_xxx_raw`
-      // twin: the rendered-HTML version is purely display noise for
-      // downstream consumers, and was the source of every HTML-quote
-      // round-trip corruption we've seen. The _raw versions are clean
-      // structured data ([{id, identifier}], numbers, booleans, etc.).
       jsonString:            (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
       // Pre-categorized, billing-system-agnostic invoice line items.
       // Bundle owns the SKU vs labor vs license classification; Make
