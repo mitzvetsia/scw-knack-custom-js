@@ -5854,12 +5854,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       // row isn't finalized (field_2551 = Yes — handled above).
       if (!isLocked && viewCfg.viewId === 'view_3505') {
         var sowItemTd = tr.querySelector('td.field_2404');
-        var sowItemSet = !!(sowItemTd && sowItemTd.querySelector('span[data-kn="connection-value"]'));
+        var sowItemSet = false;
+        if (sowItemTd) {
+          if (sowItemTd.querySelector('span[data-kn="connection-value"]')) {
+            sowItemSet = true;
+          } else {
+            var sowText = (sowItemTd.textContent || '').replace(/ /g, '').trim();
+            if (sowText.length) sowItemSet = true;
+          }
+        }
         if (sowItemSet) {
           var prodTd = tr.querySelector('td.field_2627');
           if (prodTd) {
             prodTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
             prodTd.classList.add(P + '-td-locked');
+            prodTd.addEventListener('click', function (e) {
+              e.stopPropagation();
+              e.preventDefault();
+            }, true);
           }
         }
       }
