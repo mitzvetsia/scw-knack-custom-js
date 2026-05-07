@@ -3070,6 +3070,17 @@ td.${e}-sum-product--editable.bulkEditSelectSrc {
   cursor: cell !important;
   background-color: rgb(255, 253, 204) !important;
 }
+/* When the editable product cell is locked (row finalized or row already
+   adopted to SOW), strip the pill chrome so it reads as plain text. */
+td.${e}-sum-product--editable.${e}-td-locked,
+td.${e}-sum-product--editable.${e}-td-locked:hover {
+  border: none !important;
+  border-radius: 0;
+  background: transparent !important;
+  padding: 0;
+  min-height: 0;
+  cursor: default;
+}
 
 
 
