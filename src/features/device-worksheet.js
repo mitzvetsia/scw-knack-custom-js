@@ -573,12 +573,13 @@
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
-          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+          surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
         },
         summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
-          left:  ['connectedDevice', 'scwNotes'],
-          right: ['mountingHardware']
+          left:  ['mountingHardware', 'connectedDevice', 'scwNotes'],
+          right: ['surveyNotes']
         },
         syntheticGroupsPosition: 'bottom',
         bucketRules: {
@@ -611,12 +612,13 @@
             laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: '\u00a0', group: 'fill', multiline: true },
             connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
             mountingHardware: { key: 'field_1958', type: 'readOnly' },
-            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+            surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
           },
           summaryLayout: ['laborDescription', 'connectedDevice'],
           detailLayout: {
             left:  ['scwNotes'],
-            right: ['mountingHardware']
+            right: ['mountingHardware', 'surveyNotes']
           }
         }
       },
