@@ -233,8 +233,28 @@
       surveyCosts:      surveyCostsNum,
       surveyCostsRaw:   surveyCostsRaw,
       surveyCostsField: CFG.surveyCostsField || '',
-    }).done(function () {
-      refreshSilently();
+    }).done(function (resp) {
+      // Only refresh when Make confirmed it actually created the
+      // record. Make signals via {success: true} once the SOW Line
+      // Item write has committed.
+      if (!resp || resp.success !== true) {
+        if (CFG.debug) {
+          SCW.debug('[BidReview] add_pm_mobilization: webhook returned non-success', resp);
+        }
+        return;
+      }
+      // Force view_3728 (unbid SOW items) to refetch so the just-
+      // created PM line item lands in its model BEFORE refreshSilently
+      // rebuilds the comparison state. refreshSilently → loadRawData
+      // reads from the Knack model, so a stale model = missing row.
+      var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
+        sowItemsView.model.fetch().always(function () {
+          refreshSilently();
+        });
+      } else {
+        refreshSilently();
+      }
     }).always(function () {
       setBusy(button, false);
     });

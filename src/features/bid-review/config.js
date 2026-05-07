@@ -113,6 +113,8 @@
       sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
       sowDropLength:   'field_1965',   // drop length (SOW side)
       sowConduit:      'field_2035',   // conduit (SOW side)
+      sowInstallFee:   'field_2028',   // INSTALL FEE CALC_installation price extended
+      sowEquipmentTotal: 'field_2269', // CALC_LI_EQUIPMENT_extended price net
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -138,6 +140,8 @@
       laborDesc:       'field_2020',   // labor description
       qty:             'field_1964',   // quantity
       fee:             'field_2151',   // sub bid total / install fee
+      installFee:      'field_2028',   // INSTALL FEE CALC_installation price extended
+      equipmentTotal:  'field_2269',   // CALC_LI_EQUIPMENT_extended price net
       mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
       proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
       sortOrder:       'field_2218',   // sort order (same key)

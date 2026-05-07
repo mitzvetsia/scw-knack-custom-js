@@ -686,19 +686,45 @@
       // Badge moved to bid-package columns — label cell matches sowItem style
       labelTd.className = 'scw-bid-review__sow-cell';
       if (isCamReader && row.displayLabel) {
-        labelTd.textContent = row.displayLabel;
+        labelTd.appendChild(el('div', 'scw-bid-review__row-label', row.displayLabel));
       }
     } else if (row.sowItem) {
       labelTd.className = 'scw-bid-review__sow-cell';
       if (isCamReader && row.displayLabel) {
-        labelTd.textContent = row.displayLabel;
+        labelTd.appendChild(el('div', 'scw-bid-review__row-label', row.displayLabel));
       }
     } else {
       labelTd.className = 'scw-bid-review__sow-cell scw-bid-review__sow-cell--new';
       labelTd.appendChild(el('span', 'scw-bid-review__new-badge', 'NEW'));
       if (isCamReader && row.displayLabel) {
-        labelTd.appendChild(document.createElement('br'));
-        labelTd.appendChild(document.createTextNode(row.displayLabel));
+        labelTd.appendChild(el('div', 'scw-bid-review__row-label', row.displayLabel));
+      }
+    }
+
+    // Per-row totals — Equipment Total (field_2269) above Install Fee
+    // (field_2028). Render under the label so cameras get
+    //   E-001
+    //   Equip $375
+    //   Install $750
+    // and non-cam rows get the totals stacked on their own.
+    if (row.sowItem || row.noBid || row.surveyNoBid) {
+      if (row.sowEquipmentTotal || row.sowInstallFee) {
+        var totals = el('div', 'scw-bid-review__row-totals');
+        if (row.sowEquipmentTotal) {
+          var equipLine = el('div', 'scw-bid-review__row-total scw-bid-review__row-total--equip');
+          equipLine.appendChild(el('span', 'scw-bid-review__row-total-label', 'Equip'));
+          equipLine.appendChild(el('span', 'scw-bid-review__row-total-value',
+            formatCurrency(row.sowEquipmentTotal)));
+          totals.appendChild(equipLine);
+        }
+        if (row.sowInstallFee) {
+          var installLine = el('div', 'scw-bid-review__row-total scw-bid-review__row-total--install');
+          installLine.appendChild(el('span', 'scw-bid-review__row-total-label', 'Install'));
+          installLine.appendChild(el('span', 'scw-bid-review__row-total-value',
+            formatCurrency(row.sowInstallFee)));
+          totals.appendChild(installLine);
+        }
+        labelTd.appendChild(totals);
       }
     }
     tr.appendChild(labelTd);

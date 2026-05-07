@@ -312,6 +312,8 @@
       // SOW detail fields (from first record in the row)
       sowQty:          num(meta, FK.sowQty),
       sowFee:          num(meta, FK.sowFee),
+      sowInstallFee:   num(meta, FK.sowInstallFee),
+      sowEquipmentTotal: num(meta, FK.sowEquipmentTotal),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:    raw(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
@@ -534,6 +536,8 @@
           // SOW detail — populated from the SOW item record itself
           sowQty:          num(rec, SFK.qty),
           sowFee:          num(rec, SFK.fee),
+          sowInstallFee:   num(rec, SFK.installFee),
+          sowEquipmentTotal: num(rec, SFK.equipmentTotal),
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:    raw(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
