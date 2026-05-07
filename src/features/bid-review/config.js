@@ -18,22 +18,24 @@
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
     changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
-    // Source for the SOW section "Next Step" affordances (pill, margin
-    // warning, published-proposal block). Must be on scene_1155 (hidden
-    // is fine — we just scrape the rows). Each row's id IS the SOW
-    // record id. ops-review-pill renders the canonical UI on this view;
-    // we mirror by handing the matching <tr> to SCW.opsReview.buildBlockForRow.
-    nextStepViewKey:      'view_3325',
+    // Source view for the SOW section status bar — SOW records on
+    // scene_1155 carrying the same flag fields ops-review-pill reads
+    // (field_2723/2706/2728/2725/2736/2749 + the new 2750). Hidden in
+    // the layout is fine; we just scrape its rendered <tr>s.
+    nextStepViewKey:      'view_3918',
+    // Source view for the published-proposal block on scene_1155 —
+    // mirrors the role view_3885 plays for the ops list page. Same
+    // field projection (field_2658/2659/2665/2666/2681).
+    proposalSourceView:   'view_3920',
     // SOW record fields surfaced in the SOW section header.
     surveyCostsField:     'field_2750',  // INPUT_survey costs (editable)
     marginField:          'field_2749',  // SOW margin % (read-only display)
     // Write-target view for the Survey Costs input. Knack writes go
     // through a view (not a raw object_id endpoint) so the user's view
-    // permissions are respected. Falls back to nextStepViewKey if blank;
-    // either way the view must expose field_2750 as editable. Defaults
-    // to view_3325 since that's the source we already require on the
-    // page — works as long as the SOW grid is set to allow edits.
-    surveyCostsWriteView: 'view_3325',
+    // permissions are respected. Defaults to nextStepViewKey — the
+    // view must expose field_2750 as editable. If view_3918 is read-
+    // only, point this at a separate inline-edit grid on scene_1155.
+    surveyCostsWriteView: 'view_3918',
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',

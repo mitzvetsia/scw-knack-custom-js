@@ -455,10 +455,10 @@
   // were defined at the top of this file as PROPOSAL_NAME / etc. and
   // are passed through; the helper handles model-first / DOM-fallback
   // and Published-status filtering.
-  function buildProposalIndex() {
+  function buildProposalIndex(sourceViewOverride) {
     if (!window.SCW || !SCW.publishedQuoteInfo) return {};
     return SCW.publishedQuoteInfo.readById({
-      sourceView:  PROPOSAL_VIEW,
+      sourceView:  sourceViewOverride || PROPOSAL_VIEW,
       statusField: PROPOSAL_STATUS,
       nameField:   PROPOSAL_NAME,
       expField:    PROPOSAL_EXP,
@@ -896,7 +896,7 @@
     }
 
     if (opts.includeProposalBlock !== false && window.SCW && SCW.publishedQuoteInfo) {
-      var proposalIndex = buildProposalIndex();
+      var proposalIndex = buildProposalIndex(opts.proposalViewKey);
       if (proposalIndex && tr.id) {
         var proposal = proposalIndex[tr.id];
         if (proposal) {

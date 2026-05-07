@@ -922,6 +922,9 @@
 
     if (hasOpsBlock) {
       var opsBlock = SCW.opsReview.buildBlockForRow(tr, {
+        // Look up published proposals from the on-scene_1155 view rather
+        // than the ops-list default (view_3885), which isn't on this page.
+        proposalViewKey: CFG.proposalSourceView,
         marginButton: {
           label: 'Add Project Management & Mobilization line item',
           dataAttrs: {
