@@ -143,7 +143,16 @@
     // ═══ ROW 2: Details (status, name, links) ═══
     var r2 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-details');
     r2.appendChild(el('td', '')); // line item
-    r2.appendChild(el('td', '')); // sow
+
+    // SOW header detail cell — mirrors what view_3325 surfaces in its
+    // "Next Step" column (next-step pill, margin warning + optional PM
+    // button, published-proposal info, Survey Costs input, Margin
+    // display). Sits in the same row as the bid-package status badges
+    // so the SOW's affordances align with the bid columns'.
+    var sowHeaderTd = el('td', 'scw-bid-review__header-detail-cell scw-bid-review__sow-header-cell');
+    var statusBar = buildSowStatusBar(sowGrid);
+    if (statusBar) sowHeaderTd.appendChild(statusBar);
+    r2.appendChild(sowHeaderTd);
 
     for (var j = 0; j < sowGrid.packages.length; j++) {
       var pkg = sowGrid.packages[j];
@@ -987,13 +996,10 @@
       ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
     section.appendChild(header);
 
-    // SOW status bar \u2014 mirrors view_3325's "Next Step" column for this
-    // SOW (next-step pill, margin-low warning, published-proposal block)
-    // and adds inline Survey Costs input + Margin display. Only renders
-    // when the source view (CFG.nextStepViewKey, hidden on scene_1155)
-    // and the matching <tr> are present.
-    var statusBar = buildSowStatusBar(sowGrid);
-    if (statusBar) section.appendChild(statusBar);
+    // Status bar (next-step / Survey Costs / margin / proposal info) is
+    // rendered INSIDE the SOW column header cell (buildHeaderRows row 2),
+    // not above the table \u2014 keeps column symmetry with the bid packages
+    // (which surface their badge/name/buttons in the same header rows).
 
     // Collapsible body
     var body = el('div', 'scw-bid-review__sow-body');

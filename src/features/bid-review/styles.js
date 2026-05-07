@@ -79,24 +79,27 @@
       '  color: #94a3b8;',
       '}',
 
-      /* ── SOW status bar (under section header) ─────────────── */
+      /* ── SOW status bar (lives inside the SOW header cell, row 2) ── */
       '.scw-bid-review__sow-status {',
       '  display: flex; flex-direction: column; gap: 8px;',
-      '  padding: 10px 14px; background: #f8fafc;',
-      '  border-bottom: 1px solid #e2e8f0;',
+      '  align-items: stretch;',
       '}',
-      '.scw-bid-review__sow-section--collapsed .scw-bid-review__sow-status {',
-      '  display: none;',
-      '}',
-      /* Pill / proposal block colors come from ops-review-pill CSS,
-         but on this page the block sits in a normal flow div (not a
-         <td>), so reset whatever table-cell-specific spacing applied. */
+      /* The status bar sits inside a <td>, so reset any block-level
+         padding / background from earlier iterations and let the cell
+         own the framing. ops-review-pill CSS provides the inner block
+         layout (pill, margin warning, proposal block). */
       '.scw-bid-review__sow-status .scw-ops-block {',
       '  display: flex; flex-direction: column; gap: 6px;',
       '  align-items: flex-start;',
       '}',
+      /* SOW header cell — gives the status bar room to breathe. Vertical
+         alignment top so the bar starts at the same y-line as the bid
+         columns badges. */
+      'td.scw-bid-review__sow-header-cell {',
+      '  vertical-align: top; padding: 8px 10px; min-width: 240px;',
+      '}',
       '.scw-bid-review__sow-metrics {',
-      '  display: flex; gap: 18px; flex-wrap: wrap;',
+      '  display: flex; gap: 12px; flex-wrap: wrap;',
       '  align-items: center;',
       '}',
       '.scw-bid-review__sow-metric {',
