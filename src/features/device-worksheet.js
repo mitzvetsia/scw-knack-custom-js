@@ -383,6 +383,7 @@
             dropPrefix:       { key: 'field_2240', type: 'readOnly' },
             dropNumber:       { key: 'field_1951', type: 'directEdit' },
             dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
+            conduit:          { key: 'field_2035', type: 'directEdit',  feeTrigger: true },
             mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
             connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
             scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
@@ -398,7 +399,7 @@
           ],
           detailLayout: {
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-            right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+            right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes', 'selectedSubBid', 'subBidLock']
           }
         }
       },
