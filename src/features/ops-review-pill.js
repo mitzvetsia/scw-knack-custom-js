@@ -825,40 +825,34 @@
            String(d.getFullYear()).slice(-2);
   }
 
-  // ── Public: build a next-step DOM block for an arbitrary view_3325 row ──
-  // Used by other features (e.g. the bid-comparison SOW section header) to
-  // mirror the "Next Step" column without duplicating the resolve/pill/
-  // margin/published-proposal wiring. The caller passes the matching
-  // <tr> from view_3325; we read the same flag fields and build a fresh
-  // DOM block. Pending-state ("Processing X…") is honored so the bid
-  // page and the ops list agree on what's in flight.
-  //
-  // opts:
-  //   marginButton?: { label, dataAttrs? } — inject an action button
-  //                  inside the margin-low warning (used by bid-review
-  //                  to add the "Add PM & Mobilization" affordance).
-  //   includeProposalBlock?: boolean (default true)
-  function buildBlockForRow(tr, opts) {
-    opts = opts || {};
-    if (!tr) return null;
+  // ── Individual builders (composable from outside) ──
+  // Each returns a fresh DOM element OR null when the corresponding
+  // affordance doesn't apply. bid-review uses these to compose the
+  // SOW status bar in a different order from the ops-list default.
 
-    var container = document.createElement('div');
-    container.className = 'scw-ops-block';
+  /** Build the next-step pill (or the "Processing X…" pending pill).
+   *  Honors readPending → schedulePoll just like renderCell. */
+  function buildPillForRow(tr) {
+    if (!tr) return null;
 
     var step = resolveStep(tr);
     var note = readNote(tr);
 
-    // Pending-state short-circuit (mirrors renderCell). When ops-stepper
-    // has flagged this SOW as "in flight" and the resolved step still
-    // matches what's pending, render the grayed-out spinner pill instead
-    // of the live next-step pill.
     var pending = readPending(tr.id);
     if (pending) {
       var pendingStep = findStepById(pending.stepId);
       if (step && step.id === pending.stepId) {
-        renderPendingCell(container, pendingStep || step);
+        var pendingPill = document.createElement('span');
+        pendingPill.className = 'scw-ops-pill is-pending';
+        var spinner = document.createElement('span');
+        spinner.className = 'scw-ops-pending-spinner';
+        pendingPill.appendChild(spinner);
+        var pendingLabel = document.createElement('span');
+        pendingLabel.textContent = 'Processing ' +
+          (pendingStep ? pendingStep.label : 'action') + '…';
+        pendingPill.appendChild(pendingLabel);
         schedulePoll();
-        return container;
+        return pendingPill;
       }
       clearPending(tr.id);
     }
@@ -888,28 +882,57 @@
     arrow.textContent = '›';
     pill.appendChild(arrow);
 
-    container.appendChild(pill);
+    return pill;
+  }
 
+  /** Build the margin-low warning when applicable, or null. */
+  function buildMarginWarningForRow(tr, opts) {
+    if (!tr) return null;
+    opts = opts || {};
     var marginPct = readMarginPct(tr);
-    if (isFinite(marginPct) && marginPct < MARGIN_THRESHOLD) {
-      container.appendChild(buildMarginWarning(opts.marginButton));
-    }
+    if (!isFinite(marginPct) || marginPct >= MARGIN_THRESHOLD) return null;
+    return buildMarginWarning(opts.marginButton);
+  }
 
-    if (opts.includeProposalBlock !== false && window.SCW && SCW.publishedQuoteInfo) {
-      var proposalIndex = buildProposalIndex(opts.proposalViewKey);
-      if (proposalIndex && tr.id) {
-        var proposal = proposalIndex[tr.id];
-        if (proposal) {
-          var block = SCW.publishedQuoteInfo.buildBlock(proposal, { variant: 'compact' });
-          if (block) container.appendChild(block);
-        } else {
-          var emptyBlock = SCW.publishedQuoteInfo.buildBlock(null, {
-            variant: 'compact',
-            emptyText: 'No published quotes'
-          });
-          if (emptyBlock) container.appendChild(emptyBlock);
-        }
-      }
+  /** Build the published-proposal block (or "No published quotes"
+   *  placeholder) for this SOW. opts.proposalViewKey overrides the
+   *  default ops-list source view (view_3885). */
+  function buildProposalBlockForRow(tr, opts) {
+    if (!tr) return null;
+    opts = opts || {};
+    if (!window.SCW || !SCW.publishedQuoteInfo) return null;
+    var proposalIndex = buildProposalIndex(opts.proposalViewKey);
+    if (!proposalIndex || !tr.id) return null;
+    var proposal = proposalIndex[tr.id];
+    if (proposal) {
+      return SCW.publishedQuoteInfo.buildBlock(proposal, { variant: 'compact' });
+    }
+    return SCW.publishedQuoteInfo.buildBlock(null, {
+      variant: 'compact',
+      emptyText: 'No published quotes'
+    });
+  }
+
+  // ── Public: build a next-step DOM block for an arbitrary view_3325 row ──
+  // Default-order composer (pill → margin warning → proposal block).
+  // Callers wanting a different order should compose the individual
+  // builders above instead.
+  function buildBlockForRow(tr, opts) {
+    opts = opts || {};
+    if (!tr) return null;
+
+    var container = document.createElement('div');
+    container.className = 'scw-ops-block';
+
+    var pill = buildPillForRow(tr);
+    if (pill) container.appendChild(pill);
+
+    var warning = buildMarginWarningForRow(tr, opts);
+    if (warning) container.appendChild(warning);
+
+    if (opts.includeProposalBlock !== false) {
+      var block = buildProposalBlockForRow(tr, opts);
+      if (block) container.appendChild(block);
     }
 
     return container;
@@ -917,6 +940,9 @@
 
   window.SCW = window.SCW || {};
   SCW.opsReview = SCW.opsReview || {};
-  SCW.opsReview.autoRevertValidation = autoRevertValidation;
-  SCW.opsReview.buildBlockForRow      = buildBlockForRow;
+  SCW.opsReview.autoRevertValidation       = autoRevertValidation;
+  SCW.opsReview.buildBlockForRow           = buildBlockForRow;
+  SCW.opsReview.buildPillForRow            = buildPillForRow;
+  SCW.opsReview.buildMarginWarningForRow   = buildMarginWarningForRow;
+  SCW.opsReview.buildProposalBlockForRow   = buildProposalBlockForRow;
 })();

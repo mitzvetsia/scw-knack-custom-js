@@ -129,6 +129,36 @@
       '.scw-bid-review__sow-metric-input--saved {',
       '  background: #ecfdf5;',
       '}',
+      /* Preview-Proposal pill inside the SOW status bar — restyled to
+         match the .scw-bid-review__btn--adopt "Sync to SOW" button in
+         the bid columns (same font / padding / border-radius / color). */
+      '.scw-bid-review__sow-status .scw-ops-pill,',
+      '.scw-bid-review__sow-status .scw-ops-pill:hover,',
+      '.scw-bid-review__sow-status .scw-ops-pill:visited {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  align-self: stretch;',
+      '  padding: 4px 8px;',
+      '  border: none; border-radius: 4px;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  background: #0891b2; color: #fff !important;',
+      '  text-decoration: none; cursor: pointer;',
+      '  white-space: nowrap; min-height: 0; gap: 4px;',
+      '  transition: filter .15s;',
+      '}',
+      '.scw-bid-review__sow-status .scw-ops-pill:hover {',
+      '  filter: brightness(0.92);',
+      '}',
+      /* Pending-state ("Processing X…") variant — keep the busy look so
+         users still see the spinner instead of the action affordance. */
+      '.scw-bid-review__sow-status .scw-ops-pill.is-pending {',
+      '  background: #94a3b8; cursor: not-allowed;',
+      '}',
+      /* Hide the info-tooltip dot only when its data-scw-tip is empty —
+         otherwise the auto-revert note dot would inherit the dark teal
+         background and look out of place against the button. */
+      '.scw-bid-review__sow-status .scw-ops-pill .scw-ops-info {',
+      '  background: rgba(255,255,255,.2); color: #fff;',
+      '}',
 
       /* ── table ─────────────────────────────────────────────── */
       '.scw-bid-review__table {',

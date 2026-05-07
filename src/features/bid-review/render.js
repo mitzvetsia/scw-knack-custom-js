@@ -926,30 +926,21 @@
   function buildSowStatusBar(sowGrid) {
     var sowId = sowGrid.sowId;
     var tr = findNextStepRow(sowId);
-    var hasOpsBlock = tr && window.SCW && SCW.opsReview && SCW.opsReview.buildBlockForRow;
+    var ops = (window.SCW && SCW.opsReview) ? SCW.opsReview : null;
 
-    // Render even if view_3325 is missing — Survey Costs / margin
-    // display shouldn't depend on the next-step block being available.
     var bar = el('div', 'scw-bid-review__sow-status');
 
-    if (hasOpsBlock) {
-      var opsBlock = SCW.opsReview.buildBlockForRow(tr, {
-        // Look up published proposals from the on-scene_1155 view rather
-        // than the ops-list default (view_3885), which isn't on this page.
-        proposalViewKey: CFG.proposalSourceView,
-        marginButton: {
-          label: 'Add Project Management & Mobilization line item',
-          dataAttrs: {
-            'data-action':  'add_pm_mobilization',
-            'data-sow-id':  sowId,
-            'data-sow-name': sowGrid.sowName || ''
-          }
-        }
+    // 1. Published proposal block — final/gfe chip, quote number link,
+    //    expiration, PDF — same shape as the ops-list "Next Step" column
+    //    and the preview-proposal page.
+    if (tr && ops && ops.buildProposalBlockForRow) {
+      var proposalBlock = ops.buildProposalBlockForRow(tr, {
+        proposalViewKey: CFG.proposalSourceView
       });
-      if (opsBlock) bar.appendChild(opsBlock);
+      if (proposalBlock) bar.appendChild(proposalBlock);
     }
 
-    // Inline metrics row — Survey Costs (editable) + Margin (read-only).
+    // 2. Survey Costs (editable input) + Margin (read-only display).
     var metrics = el('div', 'scw-bid-review__sow-metrics');
 
     var surveyWrap = el('label', 'scw-bid-review__sow-metric');
@@ -972,6 +963,36 @@
     metrics.appendChild(marginWrap);
 
     bar.appendChild(metrics);
+
+    // 3. Margin-low warning + "Add PM & Mobilization line item" button.
+    if (tr && ops && ops.buildMarginWarningForRow) {
+      var warning = ops.buildMarginWarningForRow(tr, {
+        marginButton: {
+          label: 'Add Project Management & Mobilization line item',
+          dataAttrs: {
+            'data-action':  'add_pm_mobilization',
+            'data-sow-id':  sowId,
+            'data-sow-name': sowGrid.sowName || ''
+          }
+        }
+      });
+      if (warning) bar.appendChild(warning);
+    }
+
+    // 4. "Preview Proposal for Next Steps" — restyled to match the
+    //    Sync-to-SOW button in the bid columns (see CSS override on
+    //    .scw-bid-review__sow-status .scw-ops-pill).
+    if (tr && ops && ops.buildPillForRow) {
+      var pill = ops.buildPillForRow(tr);
+      if (pill) {
+        // Strip the ops-pill arrow chevron — Sync-to-SOW doesn't have
+        // one and we want pixel parity. The info-tooltip span (if any)
+        // stays on the pill so auto-revert notes still surface.
+        var arrowEl = pill.querySelector('.scw-ops-arrow');
+        if (arrowEl) arrowEl.remove();
+        bar.appendChild(pill);
+      }
+    }
 
     return bar;
   }
