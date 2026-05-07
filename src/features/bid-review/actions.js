@@ -59,6 +59,8 @@
       webhookUrl = CFG.createNewSowWebhook;
     } else if (payload.actionType === 'row_add_to_sow' && CFG.addToSowWebhook) {
       webhookUrl = CFG.addToSowWebhook;
+    } else if (payload.actionType === 'add_pm_mobilization' && CFG.addPmMobilizationWebhook) {
+      webhookUrl = CFG.addPmMobilizationWebhook;
     }
 
     SCW.knackAjax({
@@ -346,6 +348,7 @@
       case 'package_copy_to_sow':    return 'Copy to SOW requested';
       case 'package_create_sow':     return 'Create new SOW requested';
       case 'create_new_sow':         return 'New SOW (' + ((payload.matchedSowItems || []).length + (payload.orphanBidRecords || []).length) + ' items) requested';
+      case 'add_pm_mobilization':    return 'Add PM & Mobilization line item requested';
       case 'change_request':         return 'Change request (' + (payload.items ? payload.items.length : 0) + ' items)';
       default:                       return 'Action submitted';
     }

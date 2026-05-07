@@ -99,7 +99,8 @@
       // Match buttons, clickable cards, or overflow menu items
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]')
+        || e.target.closest('.scw-ops-margin-warning__btn[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -130,11 +131,91 @@
         }
       } else if (action === 'create_new_sow') {
         handleCreateNewSow(button);
+      } else if (action === 'add_pm_mobilization') {
+        handleAddPmMobilization(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
         handleRowAction(button, action);
       }
+    });
+
+    // Survey Costs input — save on blur. Lives on the SOW status bar
+    // (one input per SOW), writes back to the SOW record via Knack's
+    // records API. data-sow-id and data-field carry the target.
+    mount.addEventListener('change', function (e) {
+      var input = e.target.closest('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]');
+      if (input) handleSurveyCostsSave(input);
+    }, true);
+  }
+
+  // ── Survey Costs save (per-SOW, on blur) ────────────────────
+
+  function handleSurveyCostsSave(input) {
+    var sowId    = input.getAttribute('data-sow-id');
+    var fieldKey = input.getAttribute('data-field');
+    if (!sowId || !fieldKey) return;
+
+    var raw    = (input.value || '').trim();
+    var numStr = raw.replace(/[^0-9.\-]/g, '');
+    var num    = numStr === '' ? null : parseFloat(numStr);
+    if (num !== null && !isFinite(num)) return;
+
+    var writeView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      console.warn('[BidReview] Survey Costs save skipped — no write view configured');
+      return;
+    }
+
+    input.classList.remove('scw-bid-review__sow-metric-input--saved');
+    input.classList.add('scw-bid-review__sow-metric-input--saving');
+
+    var payload = {};
+    payload[fieldKey] = (num === null ? '' : num);
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        input.classList.remove('scw-bid-review__sow-metric-input--saving');
+        input.classList.add('scw-bid-review__sow-metric-input--saved');
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowId, resp, fieldKey, payload[fieldKey]);
+        }
+        // Refresh view_3325 so the next-step block + margin update.
+        try {
+          var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e2) { /* ignore */ }
+      },
+      error: function (xhr) {
+        input.classList.remove('scw-bid-review__sow-metric-input--saving');
+        if (CFG.debug) console.warn('[BidReview] Survey Costs save failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('Survey Costs save failed', 'error');
+      }
+    });
+  }
+
+  // ── Add PM & Mobilization line item (margin-low warning button) ──
+
+  function handleAddPmMobilization(button) {
+    var sowId   = button.getAttribute('data-sow-id');
+    var sowName = button.getAttribute('data-sow-name') || sowId;
+    if (!sowId) return;
+
+    if (!window.confirm(
+      'Add a Project Management & Mobilization line item to ' + sowName + '?'
+    )) return;
+
+    setBusy(button, true);
+    ns.submitAction({
+      actionType: 'add_pm_mobilization',
+      sowId:      sowId,
+    }).done(function () {
+      refreshSilently();
+    }).always(function () {
+      setBusy(button, false);
     });
   }
 
@@ -1391,6 +1472,16 @@
         // Re-render the matrix to pick up updated CR data from view_3818
         if (_state) refreshSilently();
       }, CFG.eventNs + 'Cr');
+    }
+
+    // Next-step source view — when view_3325 re-renders (e.g. after a
+    // Survey Costs save or an ops-stepper action elsewhere), re-render
+    // the SOW status bars so margin / next-step / proposal info refresh.
+    // Lightweight rerender — no data refetch on bid-review side.
+    if (CFG.nextStepViewKey) {
+      SCW.onViewRender(CFG.nextStepViewKey, function () {
+        if (_state && ns.rerender) ns.rerender();
+      }, CFG.eventNs + 'NextStep');
     }
   }
 

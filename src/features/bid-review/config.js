@@ -18,6 +18,22 @@
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
     changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
+    // Source for the SOW section "Next Step" affordances (pill, margin
+    // warning, published-proposal block). Must be on scene_1155 (hidden
+    // is fine — we just scrape the rows). Each row's id IS the SOW
+    // record id. ops-review-pill renders the canonical UI on this view;
+    // we mirror by handing the matching <tr> to SCW.opsReview.buildBlockForRow.
+    nextStepViewKey:      'view_3325',
+    // SOW record fields surfaced in the SOW section header.
+    surveyCostsField:     'field_2750',  // INPUT_survey costs (editable)
+    marginField:          'field_2749',  // SOW margin % (read-only display)
+    // Write-target view for the Survey Costs input. Knack writes go
+    // through a view (not a raw object_id endpoint) so the user's view
+    // permissions are respected. Falls back to nextStepViewKey if blank;
+    // either way the view must expose field_2750 as editable. Defaults
+    // to view_3325 since that's the source we already require on the
+    // page — works as long as the SOW grid is set to allow edits.
+    surveyCostsWriteView: 'view_3325',
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
@@ -28,6 +44,11 @@
     // "Add to SOW" Make scenario is built. row_add_to_sow falls back to
     // CFG.actionWebhook if this is left blank.
     addToSowWebhook:        'https://hook.us1.make.com/PLACEHOLDER_ADD_TO_SOW',
+    // PLACEHOLDER — fired from the "Add Project Management & Mobilization
+    // line item" button inside the margin-low warning on each SOW
+    // section header. Payload: { actionType, sowId }. Replace with the
+    // real Make webhook once the scenario is built.
+    addPmMobilizationWebhook: 'https://hook.us1.make.com/PLACEHOLDER_ADD_PM_MOBILIZATION',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',

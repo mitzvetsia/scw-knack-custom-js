@@ -192,6 +192,22 @@
       '.scw-ops-margin-warning svg {' +
       '  flex: 0 0 auto; margin-top: 1px; color: #b45309;' +
       '}' +
+      /* Allow the optional action button to wrap to its own line below
+         the svg+text without disturbing the existing row-1 layout. */
+      '.scw-ops-margin-warning { flex-wrap: wrap; }' +
+      /* Optional inline action button inside the margin-low warning —
+         used by bid-review to surface "Add PM & Mobilization line item". */
+      '.scw-ops-margin-warning__btn {' +
+      '  flex: 0 0 100%; align-self: flex-start;' +
+      '  margin: 4px 0 0 20px; padding: 4px 10px;' +
+      '  background: #b45309; color: #fff; border: none;' +
+      '  border-radius: 4px; font: 600 11px/1.2 system-ui, sans-serif;' +
+      '  cursor: pointer; white-space: nowrap; max-width: max-content;' +
+      '}' +
+      '.scw-ops-margin-warning__btn:hover { background: #92400e; }' +
+      '.scw-ops-margin-warning__btn:disabled {' +
+      '  opacity: 0.6; cursor: not-allowed; background: #b45309;' +
+      '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -372,7 +388,7 @@
     return n;
   }
 
-  function buildMarginWarning() {
+  function buildMarginWarning(extraButton) {
     var box = document.createElement('div');
     box.className = 'scw-ops-margin-warning';
     box.setAttribute('role', 'alert');
@@ -386,6 +402,24 @@
       '</svg>' +
       '<span></span>';
     box.querySelector('span').textContent = MARGIN_WARNING_MSG;
+
+    // Optional inline action button (e.g. "Add PM & Mobilization line item"
+    // on the bid-comparison page). The caller is responsible for wiring
+    // up the click handler — we just render the button with the supplied
+    // label and data-* attributes.
+    if (extraButton && extraButton.label) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'scw-ops-margin-warning__btn';
+      btn.textContent = extraButton.label;
+      if (extraButton.dataAttrs) {
+        var dKeys = Object.keys(extraButton.dataAttrs);
+        for (var di = 0; di < dKeys.length; di++) {
+          btn.setAttribute(dKeys[di], extraButton.dataAttrs[dKeys[di]]);
+        }
+      }
+      box.appendChild(btn);
+    }
     return box;
   }
 
@@ -791,7 +825,98 @@
            String(d.getFullYear()).slice(-2);
   }
 
+  // ── Public: build a next-step DOM block for an arbitrary view_3325 row ──
+  // Used by other features (e.g. the bid-comparison SOW section header) to
+  // mirror the "Next Step" column without duplicating the resolve/pill/
+  // margin/published-proposal wiring. The caller passes the matching
+  // <tr> from view_3325; we read the same flag fields and build a fresh
+  // DOM block. Pending-state ("Processing X…") is honored so the bid
+  // page and the ops list agree on what's in flight.
+  //
+  // opts:
+  //   marginButton?: { label, dataAttrs? } — inject an action button
+  //                  inside the margin-low warning (used by bid-review
+  //                  to add the "Add PM & Mobilization" affordance).
+  //   includeProposalBlock?: boolean (default true)
+  function buildBlockForRow(tr, opts) {
+    opts = opts || {};
+    if (!tr) return null;
+
+    var container = document.createElement('div');
+    container.className = 'scw-ops-block';
+
+    var step = resolveStep(tr);
+    var note = readNote(tr);
+
+    // Pending-state short-circuit (mirrors renderCell). When ops-stepper
+    // has flagged this SOW as "in flight" and the resolved step still
+    // matches what's pending, render the grayed-out spinner pill instead
+    // of the live next-step pill.
+    var pending = readPending(tr.id);
+    if (pending) {
+      var pendingStep = findStepById(pending.stepId);
+      if (step && step.id === pending.stepId) {
+        renderPendingCell(container, pendingStep || step);
+        schedulePoll();
+        return container;
+      }
+      clearPending(tr.id);
+    }
+
+    var pill = document.createElement('a');
+    pill.className = 'scw-ops-pill';
+    var href = getRowLink(tr);
+    if (href) pill.setAttribute('href', href);
+    pill.setAttribute('target', '_blank');
+    pill.setAttribute('rel', 'noopener');
+
+    var labelSpan = document.createElement('span');
+    labelSpan.textContent = 'Preview Proposal for Next Steps';
+    pill.appendChild(labelSpan);
+
+    if (note) {
+      pill.setAttribute('data-scw-tip', note);
+      var info = document.createElement('span');
+      info.className = 'scw-ops-info';
+      info.setAttribute('data-scw-tip', note);
+      info.textContent = 'i';
+      pill.appendChild(info);
+    }
+
+    var arrow = document.createElement('span');
+    arrow.className = 'scw-ops-arrow';
+    arrow.textContent = '›';
+    pill.appendChild(arrow);
+
+    container.appendChild(pill);
+
+    var marginPct = readMarginPct(tr);
+    if (isFinite(marginPct) && marginPct < MARGIN_THRESHOLD) {
+      container.appendChild(buildMarginWarning(opts.marginButton));
+    }
+
+    if (opts.includeProposalBlock !== false && window.SCW && SCW.publishedQuoteInfo) {
+      var proposalIndex = buildProposalIndex();
+      if (proposalIndex && tr.id) {
+        var proposal = proposalIndex[tr.id];
+        if (proposal) {
+          var block = SCW.publishedQuoteInfo.buildBlock(proposal, { variant: 'compact' });
+          if (block) container.appendChild(block);
+        } else {
+          var emptyBlock = SCW.publishedQuoteInfo.buildBlock(null, {
+            variant: 'compact',
+            emptyText: 'No published quotes'
+          });
+          if (emptyBlock) container.appendChild(emptyBlock);
+        }
+      }
+    }
+
+    return container;
+  }
+
   window.SCW = window.SCW || {};
   SCW.opsReview = SCW.opsReview || {};
   SCW.opsReview.autoRevertValidation = autoRevertValidation;
+  SCW.opsReview.buildBlockForRow      = buildBlockForRow;
 })();

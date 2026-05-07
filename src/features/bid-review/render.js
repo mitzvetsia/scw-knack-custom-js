@@ -881,6 +881,86 @@
 
   // ── render a single SOW grid ────────────────────────────────
 
+  // ── SOW status bar (next-step pill + Survey Costs + margin) ────
+  // Mirrors view_3325's "Next Step" column for one SOW. Three pieces:
+  //   1. Next-step block via SCW.opsReview.buildBlockForRow (pill,
+  //      margin-low warning + optional PM/Mobilization button, and the
+  //      published-proposal info block).
+  //   2. Survey Costs input (CFG.surveyCostsField) — editable text input
+  //      that PUTs back to the SOW record on blur via Knack's records
+  //      API. Reads the current value from the matching view_3325 row.
+  //   3. Margin display (CFG.marginField) — read-only text pulled from
+  //      the same row.
+  // Returns null when the source view (view_3325) isn't on the page or
+  // the row for this SOW can't be found.
+
+  function findNextStepRow(sowId) {
+    var viewKey = CFG.nextStepViewKey;
+    if (!viewKey || !sowId) return null;
+    var view = document.getElementById(viewKey);
+    if (!view) return null;
+    return view.querySelector('tbody tr#' + sowId) || null;
+  }
+
+  function readRowFieldText(tr, fieldKey) {
+    if (!tr || !fieldKey) return '';
+    var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
+    if (!td) return '';
+    var span = td.querySelector('span.col-1, span[class^="col-"]');
+    var src = span || td;
+    return (src.textContent || '').replace(/ /g, ' ').trim();
+  }
+
+  function buildSowStatusBar(sowGrid) {
+    var sowId = sowGrid.sowId;
+    var tr = findNextStepRow(sowId);
+    var hasOpsBlock = tr && window.SCW && SCW.opsReview && SCW.opsReview.buildBlockForRow;
+
+    // Render even if view_3325 is missing — Survey Costs / margin
+    // display shouldn't depend on the next-step block being available.
+    var bar = el('div', 'scw-bid-review__sow-status');
+
+    if (hasOpsBlock) {
+      var opsBlock = SCW.opsReview.buildBlockForRow(tr, {
+        marginButton: {
+          label: 'Add Project Management & Mobilization line item',
+          dataAttrs: {
+            'data-action':  'add_pm_mobilization',
+            'data-sow-id':  sowId,
+            'data-sow-name': sowGrid.sowName || ''
+          }
+        }
+      });
+      if (opsBlock) bar.appendChild(opsBlock);
+    }
+
+    // Inline metrics row — Survey Costs (editable) + Margin (read-only).
+    var metrics = el('div', 'scw-bid-review__sow-metrics');
+
+    var surveyWrap = el('label', 'scw-bid-review__sow-metric');
+    surveyWrap.appendChild(el('span', 'scw-bid-review__sow-metric-label', 'Survey Costs'));
+    var surveyInput = document.createElement('input');
+    surveyInput.type = 'text';
+    surveyInput.className = 'scw-bid-review__sow-metric-input';
+    surveyInput.setAttribute('data-action', 'sow_survey_costs');
+    surveyInput.setAttribute('data-sow-id', sowId);
+    surveyInput.setAttribute('data-field', CFG.surveyCostsField || '');
+    surveyInput.value = readRowFieldText(tr, CFG.surveyCostsField);
+    surveyInput.placeholder = '$0.00';
+    surveyWrap.appendChild(surveyInput);
+    metrics.appendChild(surveyWrap);
+
+    var marginWrap = el('div', 'scw-bid-review__sow-metric');
+    marginWrap.appendChild(el('span', 'scw-bid-review__sow-metric-label', 'Margin'));
+    var marginVal = readRowFieldText(tr, CFG.marginField);
+    marginWrap.appendChild(el('span', 'scw-bid-review__sow-metric-value', marginVal || '—'));
+    metrics.appendChild(marginWrap);
+
+    bar.appendChild(metrics);
+
+    return bar;
+  }
+
   function buildSowSection(sowGrid) {
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
@@ -900,6 +980,14 @@
       sowGrid.rows.length + ' line item' + (sowGrid.rows.length !== 1 ? 's' : '') +
       ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
     section.appendChild(header);
+
+    // SOW status bar \u2014 mirrors view_3325's "Next Step" column for this
+    // SOW (next-step pill, margin-low warning, published-proposal block)
+    // and adds inline Survey Costs input + Margin display. Only renders
+    // when the source view (CFG.nextStepViewKey, hidden on scene_1155)
+    // and the matching <tr> are present.
+    var statusBar = buildSowStatusBar(sowGrid);
+    if (statusBar) section.appendChild(statusBar);
 
     // Collapsible body
     var body = el('div', 'scw-bid-review__sow-body');
