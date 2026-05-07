@@ -97,7 +97,7 @@
       },
       {
         viewId: 'view_3505',
-        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr' },
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true },
         hideDeleteWhenFieldNotBlank: 'field_2404',
         // ── Main config: used for Cameras or Readers rows ──
         fields: {
@@ -1141,6 +1141,20 @@ td.${P}-sum-label-cell:hover {
   max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Combined-label mode: when the label cell sits INSIDE the product-group
+   (layout.labelInProductGroup), let it auto-size so it shares the
+   product-group's fixed width with the product. Caps at 90px so a long
+   label can't push the product out — anything longer truncates via the
+   inherited ellipsis rules. Used on view_3505 to align labor description
+   across cam/reader rows (which carry a label) and non-cam rows (which don't). */
+.${P}-product-group > td.${P}-sum-label-cell--in-product,
+.${P}-product-group > td.${P}-sum-label-cell--in-product:hover {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 90px !important;
+  flex: 0 0 auto;
 }
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
@@ -4513,13 +4527,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var labelDesc = fieldDesc(viewCfg, 'label');
-    if (labelDesc) {
+    var productDesc = fieldDesc(viewCfg, 'product');
+    var pgLayoutEarly = viewCfg.layout || {};
+    // Opt-in mode: tuck the label cell INSIDE the product-group so label +
+    // product share the product-group's fixed width. Used on view_3505 to
+    // align labor description across cam/reader rows (which carry a label)
+    // and non-cam rows (which don't), so labor desc starts at the same x.
+    var combineLabelWithProduct = !!(pgLayoutEarly.labelInProductGroup
+      && labelDesc && productDesc && productDesc.summary);
+
+    if (labelDesc && !combineLabelWithProduct) {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
         identity.appendChild(labelTd);
       }
-    } else if (viewCfg.labelPlaceholder) {
+    } else if (!labelDesc && viewCfg.labelPlaceholder) {
       // Insert an invisible spacer matching the label cell's width
       // so that product + laborDescription align with rows that have a label.
       var labelSpacer = document.createElement('span');
@@ -4529,7 +4552,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       identity.appendChild(labelSpacer);
     }
 
-    var productDesc = fieldDesc(viewCfg, 'product');
     if (productDesc && productDesc.summary) {
       var productTd = findCell(tr, productDesc.key, productDesc.columnIndex);
       if (productTd) {
@@ -4558,6 +4580,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           prodLabel.className = P + '-sum-label';
           prodLabel.innerHTML = '&nbsp;';
           productGroup.appendChild(prodLabel);
+        }
+
+        // Combined-label mode: prepend the label cell inside the product-group
+        // so they share the product-group's fixed width. CSS overrides the
+        // standalone label-cell sizing via the --in-product modifier.
+        if (combineLabelWithProduct) {
+          var combLabelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
+          if (combLabelTd) {
+            combLabelTd.classList.add(P + '-sum-label-cell');
+            combLabelTd.classList.add(P + '-sum-label-cell--in-product');
+            productGroup.appendChild(combLabelTd);
+          }
         }
 
         productTd.classList.add(P + '-sum-product');
