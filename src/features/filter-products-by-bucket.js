@@ -11,16 +11,26 @@
 
   var LOG_PREFIX = '[scwProdBucketFilter]';
 
+  // Per-view: which td holds the product connection cell, and which td
+  // carries the bucket-id used to filter the connection options.
+  // SOW line-item views (view_3456 / view_3586 / view_3610) use field_1949
+  // for the product and field_2219 for the bucket. Survey line-item views
+  // (view_3505) use field_2627 for the product and field_2366 for the
+  // proposal-bucket.
   var CONFIG = {
-    LINE_ITEM_BUCKET_FIELD: 'field_2219',
-    PRODUCT_CELL_FIELD: 'field_1949',
-    VIEWS: ['view_3456', 'view_3505', 'view_3586', 'view_3610'],
+    VIEWS: {
+      view_3456: { product: 'field_1949', bucket: 'field_2219' },
+      view_3505: { product: 'field_2627', bucket: 'field_2366' },
+      view_3586: { product: 'field_1949', bucket: 'field_2219' },
+      view_3610: { product: 'field_1949', bucket: 'field_2219' }
+    },
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,
     DEBUG: false
   };
 
   var _lastClickedTr = null;
+  var _lastViewCfg = null;
   var _pollTimer = null;
 
   function log() {
@@ -34,8 +44,9 @@
   }
 
   // ── READ BUCKET ID FROM A TABLE ROW ──────────────────────────
-  function readRowBucketId(tr) {
-    var cell = tr.querySelector('td.' + CONFIG.LINE_ITEM_BUCKET_FIELD);
+  function readRowBucketId(tr, viewCfg) {
+    var bucketField = viewCfg.bucket;
+    var cell = tr.querySelector('td.' + bucketField);
     if (cell) {
       var span = cell.querySelector('span[data-kn="connection-value"]');
       if (span) {
@@ -45,15 +56,16 @@
     }
     var recordId = tr.id;
     if (!recordId) return '';
-    for (var v = 0; v < CONFIG.VIEWS.length; v++) {
-      var view = Knack.views[CONFIG.VIEWS[v]];
+    var viewIds = Object.keys(CONFIG.VIEWS);
+    for (var v = 0; v < viewIds.length; v++) {
+      var view = Knack.views[viewIds[v]];
       if (!view || !view.model || !view.model.data) continue;
       var records = view.model.data.models || view.model.data;
       if (!records) continue;
       for (var i = 0; i < records.length; i++) {
         var attrs = records[i].attributes || records[i];
         if (attrs.id !== recordId) continue;
-        var raw = attrs[CONFIG.LINE_ITEM_BUCKET_FIELD + '_raw'];
+        var raw = attrs[bucketField + '_raw'];
         if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
         if (raw && raw.id) return raw.id;
         return '';
@@ -74,9 +86,9 @@
   }
 
   // ── FIND THE CHOSEN SELECT INSIDE THE POPOVER ────────────────
-  function findSelect() {
-    // The cell-editor form contains the select for field_1949
-    var select = document.querySelector('#connection-picker-chosen-' + CONFIG.PRODUCT_CELL_FIELD + ' select');
+  function findSelect(viewCfg) {
+    // The cell-editor form contains the select for the product field
+    var select = document.querySelector('#connection-picker-chosen-' + viewCfg.product + ' select');
     if (select && select.options.length > 1) return select;
 
     // Fallback: any select with chzn-select inside a cell-editor
@@ -89,12 +101,12 @@
   // ── FILTER THE SELECT OPTIONS + REFRESH CHOSEN ───────────────
   function tryFilter() {
     var map = getMap();
-    if (!map || !_lastClickedTr) return false;
+    if (!map || !_lastClickedTr || !_lastViewCfg) return false;
 
-    var bucketId = readRowBucketId(_lastClickedTr);
+    var bucketId = readRowBucketId(_lastClickedTr, _lastViewCfg);
     if (!bucketId) { log('No bucket on row'); return false; }
 
-    var select = findSelect();
+    var select = findSelect(_lastViewCfg);
     if (!select) { log('Select not found or not populated yet'); return false; }
 
     var opts = select.options;
@@ -165,18 +177,21 @@
 
   // ── CAPTURE CLICK ON PRODUCT CELL ────────────────────────────
   document.addEventListener('click', function (e) {
-    var td = e.target.closest
-      ? e.target.closest('td.' + CONFIG.PRODUCT_CELL_FIELD)
-      : null;
-    if (!td) return;
+    if (!e.target.closest) return;
 
-    var viewEl = td.closest('[id^="view_"]');
-    if (!viewEl || CONFIG.VIEWS.indexOf(viewEl.id) === -1) return;
+    var viewEl = e.target.closest('[id^="view_"]');
+    if (!viewEl) return;
+    var viewCfg = CONFIG.VIEWS[viewEl.id];
+    if (!viewCfg) return;
+
+    var td = e.target.closest('td.' + viewCfg.product);
+    if (!td) return;
 
     var tr = td.closest('tr');
     if (!tr || !tr.id) return;
 
     _lastClickedTr = tr;
+    _lastViewCfg = viewCfg;
     log('Product cell clicked in', viewEl.id, 'row', tr.id);
     startPolling();
   }, true);
