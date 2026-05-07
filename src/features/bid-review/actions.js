@@ -54,9 +54,12 @@
       SCW.debug('[BidReview] Submitting action:', body);
     }
 
-    var webhookUrl = (payload.actionType === 'create_new_sow' && CFG.createNewSowWebhook)
-      ? CFG.createNewSowWebhook
-      : CFG.actionWebhook;
+    var webhookUrl = CFG.actionWebhook;
+    if (payload.actionType === 'create_new_sow' && CFG.createNewSowWebhook) {
+      webhookUrl = CFG.createNewSowWebhook;
+    } else if (payload.actionType === 'row_add_to_sow' && CFG.addToSowWebhook) {
+      webhookUrl = CFG.addToSowWebhook;
+    }
 
     SCW.knackAjax({
       url:  webhookUrl,
@@ -318,6 +321,7 @@
     switch (payload.actionType) {
       case 'row_adopt':             return 'Row adopted';
       case 'row_create':            return 'SOW item creation requested';
+      case 'row_add_to_sow':        return 'Add to SOW requested';
       case 'row_skip':              return 'Row skipped';
       case 'package_adopt_all':      return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
       case 'package_create_missing': return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';

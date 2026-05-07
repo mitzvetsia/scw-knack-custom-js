@@ -24,6 +24,10 @@
     changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
     revisionResponseWebhook: 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
     createNewSowWebhook:    'https://hook.us1.make.com/v95pack6vgu3wlr2q7finnendy4ht5ax',
+    // PLACEHOLDER — replace with the real Make webhook URL once the
+    // "Add to SOW" Make scenario is built. row_add_to_sow falls back to
+    // CFG.actionWebhook if this is left blank.
+    addToSowWebhook:        'https://hook.us1.make.com/PLACEHOLDER_ADD_TO_SOW',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',

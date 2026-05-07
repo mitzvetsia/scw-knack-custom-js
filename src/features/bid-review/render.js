@@ -299,12 +299,19 @@
   /** diff class helper — appends --field-diff modifier when flagged */
   var DIFF_CLS = 'scw-bid-review__field-diff';
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
     if (!row.sowItem) {
+      // NEW row \u2014 no matching SOW item yet. Replace the "\u2014" placeholder
+      // with an "+ Add to SOW" button so the user can spawn a SOW record
+      // directly from this row (Make webhook, see CFG.addToSowWebhook).
       td.className += ' scw-bid-review__cell--missing';
-      td.textContent = '\u2014';
+      td.appendChild(btn('+ Add to SOW', 'create', {
+        'data-action': 'row_add_to_sow',
+        'data-row-id': row.id,
+        'data-sow-id': sowId || '',
+      }));
       return td;
     }
 
@@ -492,7 +499,6 @@
     var reviseChoices = [];
     var removeChoices = [];
     var addChoices    = [];
-    var createChoices = [];
     var pendingCards  = [];
 
     for (var ci = 0; ci < packages.length; ci++) {
@@ -509,13 +515,9 @@
         'data-vis-conn':    visibility.connDevice ? '1' : '0',
       };
 
-      // NEW items (no SOW match) — Create buttons
-      if (!row.sowItem && ccell) {
-        var createAttrs = { 'data-action': 'row_create' };
-        var cKeys = Object.keys(attrs);
-        for (var ck = 0; ck < cKeys.length; ck++) createAttrs[cKeys[ck]] = attrs[cKeys[ck]];
-        createChoices.push({ label: cpkg.name, attrs: createAttrs });
-      }
+      // NEW rows (no SOW match) get an "+ Add to SOW" button in the SOW
+      // column itself (see buildSowDetailCell) — the per-package "Create"
+      // option in this Sub Bid Revisions column was redundant and is gone.
 
       // Find pending item for this row+package (even without a bid cell,
       // for auto-created add-to-bid items from connection field selections)
@@ -591,9 +593,6 @@
 
     var menuRow = el('div', 'scw-bid-review__action-menus');
 
-    if (createChoices.length) {
-      menuRow.appendChild(buildOverflowMenu('Create', 'create', createChoices));
-    }
     if (reviseChoices.length) {
       menuRow.appendChild(buildOverflowMenu('Revise', 'revise', reviseChoices));
     }
@@ -727,7 +726,7 @@
     }
 
     // SOW detail cell — highlight cell + individual differing fields
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null, sowId);
     if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
