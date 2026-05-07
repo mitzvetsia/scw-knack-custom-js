@@ -719,7 +719,9 @@
         var siRec = sowItems[si2];
         if (!siRec.id) continue;
         sowItemLookup[siRec.id] = {
-          mdfIdf: connectionLabel(siRec, SFK.mdfIdf),
+          mdfIdf:         connectionLabel(siRec, SFK.mdfIdf),
+          installFee:     num(siRec, SFK.installFee),
+          equipmentTotal: num(siRec, SFK.equipmentTotal),
         };
       }
       if (CFG.debug) {
@@ -839,13 +841,22 @@
         rows.push(noBidRows[nb]);
       }
 
-      // Merge SOW MDF/IDF (field_1946) into rows from the SOW item lookup
+      // Merge SOW MDF/IDF (field_1946) and totals into rows from the SOW item lookup.
+      // view_3680 (bid records) does NOT project field_2028/field_2269 — those
+      // live on the SOW item record (view_3728). Pull them across via the
+      // relatedSowItem connection so matched rows get totals too.
       for (var mi2 = 0; mi2 < rows.length; mi2++) {
         var r2 = rows[mi2];
         if (r2.sowItem && sowItemLookup[r2.sowItem]) {
           var siData = sowItemLookup[r2.sowItem];
           if (siData.mdfIdf && !r2.sowMdfIdf) {
             r2.sowMdfIdf = siData.mdfIdf;
+          }
+          if (!r2.sowInstallFee && siData.installFee) {
+            r2.sowInstallFee = siData.installFee;
+          }
+          if (!r2.sowEquipmentTotal && siData.equipmentTotal) {
+            r2.sowEquipmentTotal = siData.equipmentTotal;
           }
         }
       }
