@@ -548,24 +548,24 @@
       '}',
 
       /* Per-row Equipment + Install fee totals stacked under the
-         row label. Small, muted; values right-aligned for column
-         feel. */
+         row label. Each total = bold label on one line, $ value on
+         the next. */
       '.scw-bid-review__row-totals {',
-      '  display: flex; flex-direction: column; gap: 1px;',
-      '  margin-top: 4px;',
+      '  display: flex; flex-direction: column; gap: 6px;',
+      '  margin-top: 6px;',
       '}',
       '.scw-bid-review__row-total {',
-      '  display: flex; justify-content: space-between; gap: 8px;',
-      '  font: 500 11px/1.3 system-ui, sans-serif;',
+      '  display: flex; flex-direction: column; gap: 0;',
+      '  font: 500 11px/1.25 system-ui, sans-serif;',
       '  color: #64748b;',
       '}',
       '.scw-bid-review__row-total-label {',
-      '  text-transform: uppercase; letter-spacing: 0.04em;',
-      '  font-size: 9.5px;',
+      '  font-weight: 700;',
+      '  color: #1e293b;',
       '}',
       '.scw-bid-review__row-total-value {',
       '  font-variant-numeric: tabular-nums;',
-      '  color: #1e293b; font-weight: 600;',
+      '  color: #1e293b;',
       '}',
 
       '.scw-bid-review__new-badge {',
