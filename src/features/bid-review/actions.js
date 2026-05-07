@@ -162,6 +162,12 @@
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
           displayLabel:     row.displayLabel,
+          // Full bid record with every field projected by view_3680
+          // (field_NNNN + field_NNNN_raw pairs). Keyed fields above are
+          // kept for backwards-compat with existing Make mappings; new
+          // mappings should prefer .bidRecord.field_NNNN_raw so any
+          // field added to the view shows up automatically here.
+          bidRecord:        cell._rawRecord || null,
         });
       } else if (row.sowItem && !cell) {
         // Removal: SOW item not covered by this bid package
