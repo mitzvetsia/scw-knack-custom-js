@@ -2117,9 +2117,14 @@
       for (var k = 0; k < keys.length; k++) {
         if (/_raw$/.test(keys[k])) hasRawTwin[keys[k].replace(/_raw$/, '')] = true;
       }
+      // Match plain field keys (`field_1234`) AND Knack's dot-notation
+      // equation/connection-projection keys (`field_1234.field_5678`,
+      // `field_1234.field_5678.field_9012`, etc.). Both shapes have a
+      // `_raw` twin and the non-raw shape is HTML, which breaks Make's
+      // Parse JSON when its inner quotes are mishandled in transit.
       for (var ki = 0; ki < keys.length; ki++) {
         var key = keys[ki];
-        if (/^field_\d+$/.test(key) && hasRawTwin[key]) continue;
+        if (/^field_\d+(\.field_\d+)*$/.test(key) && hasRawTwin[key]) continue;
         out[key] = stripNonRawFields(node[key]);
       }
       return out;
