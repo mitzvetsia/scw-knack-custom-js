@@ -26,7 +26,7 @@
           field2409: 'field_2409',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
-          conduit: 'field_2568',  // per-row conduit feet — summed into the L3 drop header
+          conduit: 'field_2368',  // per-row conduit feet — summed into the L3 drop header
         },
       },
     },
