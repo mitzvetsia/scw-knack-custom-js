@@ -269,7 +269,8 @@
             price:          cell.price,
             productDesc:    cell.productDesc,
             dropLength:     cell.bidDropLength,
-            conduit:        /^yes$/i.test(cell.bidConduit),
+            // Conduit is numeric feet (field_2368) — NOT a yes/no flag.
+            conduit:        cell.bidConduit,
             plenum:         /^yes$/i.test(cell.bidPlenum),
             dropPrefix:     cell.dropPrefix,
             dropNumber:     cell.dropNumber,
