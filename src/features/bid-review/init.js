@@ -1337,9 +1337,20 @@
           SCW.syncKnackModel(CFG.sowItemsViewKey, sowItemId, resp, fieldKey, remainingIds);
         }
         ns.renderToast('Line item disconnected from ' + sowName, 'success');
-        // Pull the bid-review pipeline so the row drops out of this
-        // SOW grid (and stays in any other SOW grid it's connected to).
-        if (ns.refresh) ns.refresh();
+        // Force view_3921 to refetch so the model picks up the new
+        // field_2154 value before the bid-review pipeline reads it.
+        // ns.refresh() alone uses the cached model — without a fetch
+        // first, the grid rebuilds from stale data and the row stays
+        // on this SOW even though the PUT succeeded. Same pattern
+        // used after Add PM & Mobilization (init.js:617).
+        var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+        if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
+          sowItemsView.model.fetch().always(function () {
+            if (ns.refresh) ns.refresh();
+          });
+        } else if (ns.refresh) {
+          ns.refresh();
+        }
       },
       error: function (xhr) {
         setBusy(button, false);
