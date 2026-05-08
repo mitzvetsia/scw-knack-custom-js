@@ -3762,6 +3762,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!view || !view.model) return;
       var m = view.model;
 
+      // Knack view-scoped PUTs wrap the record under a "record" key —
+      // unwrap so the field_NNNN scan below sees calc fields like
+      // field_2151 / field_2028 in the response.
+      if (resp && resp.record && typeof resp.record === 'object' && resp.record.id) {
+        resp = resp.record;
+      }
+
       // Find the Backbone record — try multiple paths
       var record = typeof m.get === 'function' ? m.get(recordId) : null;
       if (!record && m.data && typeof m.data.get === 'function') {
