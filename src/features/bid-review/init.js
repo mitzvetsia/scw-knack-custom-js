@@ -205,8 +205,13 @@
     // (one input per SOW), writes back to the SOW record via Knack's
     // records API. data-sow-id and data-field carry the target.
     mount.addEventListener('change', function (e) {
-      var input = e.target.closest('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]');
-      if (input) handleSurveyCostsSave(input);
+      var costsInput = e.target.closest('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]');
+      if (costsInput) { handleSurveyCostsSave(costsInput); return; }
+      // SOW Name input — sibling save path that PUTs raw text instead
+      // of stripping to a number, then echoes the new name into the
+      // section header so the visible title stays in sync.
+      var nameInput = e.target.closest('.scw-bid-review__sow-name-input[data-action="sow_name_update"]');
+      if (nameInput) handleSowNameSave(nameInput);
     }, true);
   }
 
@@ -362,6 +367,54 @@
     scheduleSilentRefresh);
 
   // ── Survey Costs save (per-SOW, on blur) ────────────────────
+
+  function handleSowNameSave(input) {
+    var sowId    = input.getAttribute('data-sow-id');
+    var fieldKey = input.getAttribute('data-field');
+    if (!sowId || !fieldKey) return;
+
+    var newName = (input.value || '').trim();
+
+    var writeView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      console.warn('[BidReview] SOW Name save skipped — no write view configured');
+      return;
+    }
+
+    input.classList.remove('scw-bid-review__sow-name-input--saved');
+    input.classList.add('scw-bid-review__sow-name-input--saving');
+
+    var payload = {};
+    payload[fieldKey] = newName;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        input.classList.remove('scw-bid-review__sow-name-input--saving');
+        input.classList.add('scw-bid-review__sow-name-input--saved');
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowId, resp, fieldKey, newName);
+        }
+        // Echo the new name into the matching SOW section's collapsible
+        // title so the header stays in sync without a full re-render.
+        var section = input.closest('.scw-bid-review__sow-section');
+        var titleText = section && section.querySelector('.scw-bid-review__sow-title-text');
+        if (titleText) titleText.textContent = newName;
+        // Refresh view_3325 / view_3918 so any other readers update.
+        try {
+          var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e2) { /* ignore */ }
+      },
+      error: function (xhr) {
+        input.classList.remove('scw-bid-review__sow-name-input--saving');
+        if (CFG.debug) console.warn('[BidReview] SOW Name save failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('SOW Name save failed', 'error');
+      }
+    });
+  }
 
   function handleSurveyCostsSave(input) {
     var sowId    = input.getAttribute('data-sow-id');

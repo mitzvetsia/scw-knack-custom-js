@@ -100,6 +100,29 @@
       '  vertical-align: top; padding: 8px 10px; min-width: 240px;',
       '  height: 1px;',  // collapse to content baseline so child height:100% works
       '}',
+      /* SOW Name — editable text input pinned at the top of the SOW
+         column header, above the proposal block + metrics. Stacks
+         label-on-top so the input gets the full available width. */
+      '.scw-bid-review__sow-name {',
+      '  display: flex; flex-direction: column; gap: 3px;',
+      '  margin-bottom: 8px;',
+      '}',
+      '.scw-bid-review__sow-name-label {',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  font: 700 10px/1 system-ui, sans-serif; color: #64748b;',
+      '}',
+      '.scw-bid-review__sow-name-input {',
+      '  width: 100%; padding: 5px 8px;',
+      '  border: 1px solid #cbd5e1; border-radius: 4px;',
+      '  font: 700 14px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '  background: #fff;',
+      '}',
+      '.scw-bid-review__sow-name-input:focus {',
+      '  outline: none; border-color: #0d9488;',
+      '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',
+      '}',
+      '.scw-bid-review__sow-name-input--saving { background: #fef3c7; }',
+      '.scw-bid-review__sow-name-input--saved  { background: #ecfdf5; }',
       /* Survey Costs / Margin — stacked vertically (one per line). */
       '.scw-bid-review__sow-metrics {',
       '  display: flex; flex-direction: column; gap: 4px;',

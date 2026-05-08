@@ -1358,6 +1358,25 @@
     var details = el('div', 'scw-bid-review__sow-status');
     var actions = el('div', 'scw-bid-review__sow-actions');
 
+    // 0. SOW Name (editable). Sits at the top of the SOW column header
+    //    so the name is visible and edit-in-place. Reads from view_3918
+    //    (CFG.nextStepViewKey) row's field_2126 cell, writes back via
+    //    Knack's records API on blur.
+    if (CFG.sowNameField) {
+      var nameWrap = el('div', 'scw-bid-review__sow-name');
+      nameWrap.appendChild(el('span', 'scw-bid-review__sow-name-label', 'SOW Name'));
+      var nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'scw-bid-review__sow-name-input';
+      nameInput.setAttribute('data-action', 'sow_name_update');
+      nameInput.setAttribute('data-sow-id', sowId);
+      nameInput.setAttribute('data-field', CFG.sowNameField);
+      nameInput.value = readRowFieldText(tr, CFG.sowNameField) || sowGrid.sowName || '';
+      nameInput.placeholder = 'SOW Name';
+      nameWrap.appendChild(nameInput);
+      details.appendChild(nameWrap);
+    }
+
     // 1. Published proposal block — final/gfe chip, quote number link,
     //    expiration, PDF — same shape as the ops-list "Next Step" column
     //    and the preview-proposal page.

@@ -33,11 +33,13 @@
     marginField:          'field_2749',  // SOW margin % (read-only display)
     subBidTotalField:     'field_2162',  // SOW sub-bid total (project-wide)
     projectMarginField:   'field_2158',  // SOW project margin % (input)
-    // Write-target view for the Survey Costs input. Knack writes go
-    // through a view (not a raw object_id endpoint) so the user's view
-    // permissions are respected. Defaults to nextStepViewKey — the
-    // view must expose field_2750 as editable. If view_3918 is read-
-    // only, point this at a separate inline-edit grid on scene_1155.
+    sowNameField:         'field_2126',  // SOW Name (editable text)
+    // Write-target view for the Survey Costs + SOW Name inputs. Knack
+    // writes go through a view (not a raw object_id endpoint) so the
+    // user's view permissions are respected. Defaults to
+    // nextStepViewKey — the view must expose field_2750 + field_2126
+    // as editable. If view_3918 is read-only, point this at a separate
+    // inline-edit grid on scene_1155.
     surveyCostsWriteView: 'view_3918',
 
     // ── Make webhooks ───────────────────────────────────────────
