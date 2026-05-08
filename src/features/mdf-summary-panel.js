@@ -120,6 +120,17 @@
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
       '  color: #1e3a8a; text-align: left;' +
       '}' +
+      // Bucket subtotal — between product rows and the grand Total in
+      // visual weight: tinted background, semi-bold, no top border so
+      // it reads as part of the bucket group rather than a separator.
+      '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
+      '  background: #f1f5f9; color: #334155;' +
+      '  font-weight: 600;' +
+      '  border-top: 1px solid #cbd5e1;' +
+      '}' +
+      '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
+      '  color: #334155; text-align: left; font-style: italic;' +
+      '}' +
       // Grand-summary wrapper — mounted above the kn-table so it sits
       // outside Knack's grouping/pagination machinery. Uses the same
       // .scw-mdf-summary-table renderer; only the chrome differs.
@@ -155,6 +166,14 @@
     if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) return raw[0].id;
     if (raw && typeof raw === 'object' && raw.id) return raw.id;
     return '';
+  }
+  function readBucketLabel(attrs) {
+    if (!attrs) return '';
+    var raw = attrs[FIELD_BUCKET + '_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].identifier || '';
+    if (raw && typeof raw === 'object' && raw.identifier) return raw.identifier;
+    // Fallback to the rendered value (HTML stripped) if _raw is absent.
+    return readVal(attrs, FIELD_BUCKET);
   }
   function readNum(v) {
     var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
@@ -214,6 +233,8 @@
           label:         label,
           count:         0,
           isCamReader:   false,
+          bucketId:      bucketId,
+          bucketLabel:   readBucketLabel(a),
           minBucketSort: Infinity,
           firstSeenIdx:  i,
           existCabling:  0, newCabling: 0,
@@ -223,6 +244,12 @@
           labels:        []
         };
         byProduct[label] = p;
+      }
+      // First non-empty bucket wins — handles rows where the bucket is
+      // missing on some records.
+      if (!p.bucketId && bucketId) {
+        p.bucketId = bucketId;
+        p.bucketLabel = readBucketLabel(a);
       }
 
       p.count++;
@@ -282,33 +309,95 @@
   }
 
   // ── Build the panel HTML ────────────────────────────────────
+  // Renders one product row, with optional cam/reader cells and
+  // optional sub-bid cell. Used for both data rows and subtotal rows.
+  function productRowHtml(p, opts) {
+    opts = opts || {};
+    var avgBid = p.subBidCount > 0 ? (p.subBidSum / p.subBidCount) : null;
+    var labelList = '';
+    if (!opts.isSubtotal && p.isCamReader && p.labels.length) {
+      var sorted = p.labels.slice().sort(function (a, b) {
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      });
+      labelList = '<span class="scw-mdf-label-list">' +
+        sorted.map(escapeHtml).join(', ') +
+        '</span>';
+    }
+    var cls = opts.isSubtotal ? ' class="scw-mdf-subtotal"' : '';
+    return '<tr' + cls + '>' +
+      '<td class="scw-mdf-product">' + escapeHtml(p.label) + labelList + '</td>' +
+      num(p.count) +
+      (p.isCamReader ? num(p.existCabling) : emptyCell()) +
+      (p.isCamReader ? num(p.newCabling)   : emptyCell()) +
+      (p.isCamReader ? num(p.exterior)     : emptyCell()) +
+      (p.isCamReader ? num(p.interior)     : emptyCell()) +
+      (p.isCamReader ? num(p.plenum)       : emptyCell()) +
+      (avgBid != null
+        ? '<td class="scw-mdf-num">' + fmtMoney(avgBid) + '</td>'
+        : emptyCell()) +
+    '</tr>';
+  }
+
+  // Sum the per-bucket subtotal struct from a slice of products. Avg
+  // sub bid is recomputed weighted (sum/count), not averaged-of-averages.
+  function bucketSubtotal(products, label) {
+    var st = {
+      label: label, count: 0, isCamReader: false,
+      existCabling: 0, newCabling: 0,
+      exterior: 0, interior: 0, plenum: 0,
+      subBidSum: 0, subBidCount: 0
+    };
+    for (var i = 0; i < products.length; i++) {
+      var p = products[i];
+      st.count        += p.count;
+      st.existCabling += p.existCabling;
+      st.newCabling   += p.newCabling;
+      st.exterior     += p.exterior;
+      st.interior     += p.interior;
+      st.plenum       += p.plenum;
+      st.subBidSum    += p.subBidSum;
+      st.subBidCount  += p.subBidCount;
+      if (p.isCamReader) st.isCamReader = true;
+    }
+    return st;
+  }
+
   function buildPanelHtml(data) {
     if (!data || !data.products.length) return '';
 
-    var rows = data.products.map(function (p) {
-      var avgBid = p.subBidCount > 0 ? (p.subBidSum / p.subBidCount) : null;
-      var labelList = '';
-      if (p.isCamReader && p.labels.length) {
-        var sorted = p.labels.slice().sort(function (a, b) {
-          return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
-        labelList = '<span class="scw-mdf-label-list">' +
-          sorted.map(escapeHtml).join(', ') +
-          '</span>';
+    // Walk products in their already-sorted order (by minBucketSort,
+    // then firstSeenIdx). Whenever the bucket changes, emit a subtotal
+    // row for the previous bucket. Only emit subtotals when there is
+    // more than one bucket present — a single-bucket panel just gets
+    // the grand Total at the bottom.
+    var groups = [];
+    var current = null;
+    for (var i = 0; i < data.products.length; i++) {
+      var p = data.products[i];
+      var key = p.bucketId || ('__sort_' + (isFinite(p.minBucketSort) ? p.minBucketSort : 'na'));
+      if (!current || current.key !== key) {
+        current = {
+          key:   key,
+          label: p.bucketLabel || 'Other',
+          items: []
+        };
+        groups.push(current);
       }
-      return '<tr>' +
-        '<td class="scw-mdf-product">' + escapeHtml(p.label) + labelList + '</td>' +
-        num(p.count) +
-        (p.isCamReader ? num(p.existCabling) : emptyCell()) +
-        (p.isCamReader ? num(p.newCabling)   : emptyCell()) +
-        (p.isCamReader ? num(p.exterior)     : emptyCell()) +
-        (p.isCamReader ? num(p.interior)     : emptyCell()) +
-        (p.isCamReader ? num(p.plenum)       : emptyCell()) +
-        (avgBid != null
-          ? '<td class="scw-mdf-num">' + fmtMoney(avgBid) + '</td>'
-          : emptyCell()) +
-      '</tr>';
-    }).join('');
+      current.items.push(p);
+    }
+
+    var emitSubtotals = groups.length > 1;
+    var rows = '';
+    for (var g = 0; g < groups.length; g++) {
+      var grp = groups[g];
+      for (var k = 0; k < grp.items.length; k++) {
+        rows += productRowHtml(grp.items[k]);
+      }
+      if (emitSubtotals) {
+        var st = bucketSubtotal(grp.items, 'Subtotal — ' + grp.label);
+        rows += productRowHtml(st, { isSubtotal: true });
+      }
+    }
 
     var t = data.totals;
     var totalRow = '<tr class="scw-mdf-total">' +
