@@ -209,7 +209,11 @@
       p.count++;
       totals.count++;
 
-      if (sortOrder > 0 && sortOrder < p.minBucketSort) p.minBucketSort = sortOrder;
+      // Use >= 0 (not > 0) — bucket sortOrder of 0 is legitimate
+      // (e.g. "Networking or Headend"). Excluding it left those products
+      // with minBucketSort = Infinity and dropped them to the bottom of
+      // the summary even though the data rows put them at the top.
+      if (sortOrder >= 0 && sortOrder < p.minBucketSort) p.minBucketSort = sortOrder;
 
       // Cabling / exterior / plenum — cam-or-reader bucket only.
       if (bucketId === CAM_READER_BUCKET) {
