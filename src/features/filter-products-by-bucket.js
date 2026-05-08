@@ -92,15 +92,28 @@
   }
 
   // ── FIND THE CHOSEN SELECT INSIDE THE POPOVER ────────────────
+  // Knack uses several DOM shapes for connection-field pickers depending
+  // on how/where the cell-editor was opened. Try them in order, falling
+  // back to "any select named field_XXXX inside a Knack cell-editor".
   function findSelect(viewCfg) {
-    // The cell-editor form contains the select for the product field
-    var select = document.querySelector('#connection-picker-chosen-' + viewCfg.product + ' select');
-    if (select && select.options.length > 1) return select;
-
-    // Fallback: any select with chzn-select inside a cell-editor
-    select = document.querySelector('#cell-editor select.chzn-select');
-    if (select && select.options.length > 1) return select;
-
+    var fk = viewCfg.product;
+    var SELECTORS = [
+      '#connection-picker-chosen-' + fk + ' select',
+      '#cell-editor select.chzn-select',
+      '#cell-editor select[name="' + fk + '"]',
+      '#cell-editor #' + fk,
+      '#cell-editor select#' + fk,
+      'select[name="' + fk + '"]',
+      '[id*="' + fk + '"] select.chzn-select',
+      '.kn-form-confirm select[name="' + fk + '"]'
+    ];
+    for (var i = 0; i < SELECTORS.length; i++) {
+      var sel = document.querySelector(SELECTORS[i]);
+      if (sel && sel.options && sel.options.length > 1) {
+        log('Select matched via:', SELECTORS[i], '— options:', sel.options.length);
+        return sel;
+      }
+    }
     return null;
   }
 
@@ -180,6 +193,22 @@
 
       if (elapsed >= CONFIG.POLL_MAX) {
         log('Timed out after', elapsed, 'ms');
+        // One-shot DOM diagnostic: dump every <select> on the page so we
+        // can spot which one is the picker and what its real selector is.
+        var allSelects = document.querySelectorAll('select');
+        log('All selects on page:', allSelects.length);
+        for (var s = 0; s < allSelects.length; s++) {
+          var el = allSelects[s];
+          if (!el.offsetParent && el.style.display === 'none') continue;
+          log(
+            '  select[' + s + ']',
+            'id=', el.id,
+            'name=', el.name,
+            'class=', el.className,
+            'options=', el.options ? el.options.length : 0,
+            'parent=', el.parentElement && (el.parentElement.id || el.parentElement.className)
+          );
+        }
         stopPolling();
       }
     }, CONFIG.POLL_INTERVAL);
