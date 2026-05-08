@@ -17,6 +17,7 @@
     sowItemsViewKey:   'view_3921',   // All SOW items (mirrors view_3610) — child pages on scene_1155 set up identically
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
+    docFilesViewKey:    'view_3926',  // DOC_files records (linked to SOWs / bid packages)
     changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
     // Source view for the SOW section status bar — SOW records on
     // scene_1155 carrying the same flag fields ops-review-pill reads

@@ -253,6 +253,13 @@
         td.appendChild(crLink);
       }
 
+      // Attached documents (DOC_files records connected to this bid
+      // package via field_2421).
+      var pkgDocsIdx = buildDocsIndex();
+      var pkgDocs = pkgDocsIdx.byBid[pkg.id];
+      var pkgDocsBlock = buildDocsBlock(pkgDocs, 'Documents');
+      if (pkgDocsBlock) td.appendChild(pkgDocsBlock);
+
       r2.appendChild(td);
     }
 
@@ -1215,6 +1222,104 @@
     return view.querySelector('tbody tr[id="' + sowId + '"]') || null;
   }
 
+  // ── DOC_files index (view_3926) ─────────────────────────────
+  // Each doc record can attach to a SOW (field_2143) and/or a bid
+  // package (field_2421). We scrape view_3926 once per render and
+  // build two lookups so the SOW status bar and bid column headers
+  // can surface their respective files.
+  //
+  // Connection cells follow Knack's standard shape:
+  //   <td class="field_2143" data-field-key="field_2143">
+  //     <span class="col-N">
+  //       <span class="<recordId>" data-kn="connection-value">SW-1099</span>
+  //     </span>
+  //   </td>
+  // The 24-hex `class` on the inner span is the connected record id
+  // (we ignore the display label entirely).
+  //
+  // Cached per render via _docsIndexCache; bid-review's pipeline
+  // resets this on each renderMatrix() call so post-mutation refreshes
+  // pick up new docs.
+  var _docsIndexCache = null;
+
+  function resetDocsIndex() { _docsIndexCache = null; }
+
+  function buildDocsIndex() {
+    if (_docsIndexCache) return _docsIndexCache;
+
+    var idx = { bySow: {}, byBid: {} };
+    var view = document.getElementById(CFG.docFilesViewKey);
+    if (!view) { _docsIndexCache = idx; return idx; }
+
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+
+      // Connected record ids: the inner span's class is the id.
+      var sowSpan = tr.querySelector('td.field_2143 span[data-kn="connection-value"]');
+      var bidSpan = tr.querySelector('td.field_2421 span[data-kn="connection-value"]');
+      var sowId = sowSpan ? (sowSpan.className || '').trim() : '';
+      var bidId = bidSpan ? (bidSpan.className || '').trim() : '';
+      if (!sowId && !bidId) continue;
+
+      // File link — field_68 carries an <a class="kn-view-asset"> with
+      // the asset URL + filename. If there's no anchor (e.g. the
+      // record holds an image in field_754 instead), skip — there's
+      // nothing actionable to link to.
+      var fileA = tr.querySelector('td.field_68 a.kn-view-asset, td.field_68 a');
+      if (!fileA) continue;
+
+      var doc = {
+        id:       tr.id,
+        docType:  readRowFieldText(tr, 'field_67'),
+        notes:    readRowFieldText(tr, 'field_588'),
+        fileName: (fileA.textContent || '').trim() || 'Document',
+        fileUrl:  fileA.getAttribute('href') || '',
+      };
+
+      if (sowId) {
+        if (!idx.bySow[sowId]) idx.bySow[sowId] = [];
+        idx.bySow[sowId].push(doc);
+      }
+      if (bidId) {
+        if (!idx.byBid[bidId]) idx.byBid[bidId] = [];
+        idx.byBid[bidId].push(doc);
+      }
+    }
+
+    _docsIndexCache = idx;
+    return idx;
+  }
+
+  function buildDocsBlock(docs, label) {
+    if (!docs || !docs.length) return null;
+    var wrap = el('div', 'scw-bid-review__docs');
+    if (label) wrap.appendChild(el('div', 'scw-bid-review__docs-label', label));
+    for (var i = 0; i < docs.length; i++) {
+      var d = docs[i];
+      var row = el('div', 'scw-bid-review__docs-item');
+      // Doc type chip — only render when present so plain "uncategorised"
+      // uploads don't get an empty pill.
+      if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
+      var a = document.createElement('a');
+      a.href = d.fileUrl;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.title = d.fileName;
+      a.className = 'scw-bid-review__docs-link';
+      a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+      a.appendChild(document.createTextNode(' ' + d.fileName));
+      row.appendChild(a);
+      if (d.notes) {
+        var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
+        nEl.title = d.notes;
+        row.appendChild(nEl);
+      }
+      wrap.appendChild(row);
+    }
+    return wrap;
+  }
+
   function readRowFieldText(tr, fieldKey) {
     if (!tr || !fieldKey) return '';
     var td = tr.querySelector('td.' + fieldKey + ', td[data-field-key="' + fieldKey + '"]');
@@ -1283,6 +1388,13 @@
     metrics.appendChild(marginWrap);
 
     details.appendChild(metrics);
+
+    // 2b. Attached documents (DOC_files records connected to this SOW
+    //     via field_2143). Filenames link to the Knack-hosted asset.
+    var docsIdx = buildDocsIndex();
+    var sowDocs = docsIdx.bySow[sowId];
+    var sowDocsBlock = buildDocsBlock(sowDocs, 'Documents');
+    if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
     // 3. Margin-low warning + recovery actions:
     //    a) Add PM & Mobilization (extra cost line item)
@@ -1528,6 +1640,10 @@
 
     // Preserve accordion state across re-renders
     var snap = snapshotAccordionState(mount);
+
+    // Drop the cached DOC_files index so the next docs lookup re-
+    // scrapes view_3926 (post-mutation refreshes need fresh data).
+    resetDocsIndex();
 
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';

@@ -39,6 +39,11 @@
     // index (and itemId → label map). change-record-limit pumps it
     // to 1000 rows/page so the index covers the whole project.
     'view_3913',
+    // 'view_3926' — DOC_files records connected to SOWs (field_2143)
+    // and bid packages (field_2421). Bid-review render scrapes this
+    // view to surface attached files in the SOW status bar and bid
+    // column headers.
+    'view_3926',
   ];
 
   if (document.getElementById(STYLE_ID)) return;
