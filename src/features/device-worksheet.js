@@ -3772,6 +3772,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var rawVal = (resp && resp[fieldKey + '_raw'] != null) ? resp[fieldKey + '_raw'] : value;
       attrs[fieldKey] = rawVal;
       attrs[fieldKey + '_raw'] = rawVal;
+
+      // Patch every other field from the response so calc/equation fields
+      // (e.g. field_2028 install fee, field_2269 equipment total) reflect
+      // the recalculated values without waiting for a view re-render.
+      if (resp && typeof resp === 'object') {
+        var respKeys = Object.keys(resp);
+        for (var rk = 0; rk < respKeys.length; rk++) {
+          var key = respKeys[rk];
+          if (!/^field_\d+(_raw)?$/.test(key)) continue;
+          if (key === fieldKey || key === fieldKey + '_raw') continue;
+          attrs[key] = resp[key];
+        }
+      }
     } catch (ex) {
       // Silently ignore — model sync is best-effort
     }
