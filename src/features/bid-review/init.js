@@ -96,6 +96,19 @@
     });
 
     mount.addEventListener('click', function (e) {
+      // Expandable row toggle (must run before button-action match so the
+      // row click only fires when nothing more specific intercepted it).
+      var rowTrigger = e.target.closest('.scw-bid-review__row--expandable');
+      if (rowTrigger
+        && !e.target.closest('.scw-bid-review__btn')
+        && !e.target.closest('.scw-bid-review__overflow')
+        && !e.target.closest('.scw-bid-review__overflow-item')
+        && !e.target.closest('a')
+        && !e.target.closest('input')) {
+        toggleRowExpand(rowTrigger);
+        return;
+      }
+
       // Match buttons, clickable cards, or overflow menu items
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
@@ -148,6 +161,89 @@
       if (input) handleSurveyCostsSave(input);
     }, true);
   }
+
+  // ── Expandable row → inject view_3728 worksheet card ─────────
+  // When a user clicks a sowItem row, find the matching wsTr that
+  // device-worksheet rendered in view_3728's tbody (id === sowItemId)
+  // and move it into a child tr under the bid review row.
+  //
+  // We move (not clone) so Knack's inline-edit handlers keep their
+  // model + record-id wiring. On view_3728 re-renders, device-worksheet
+  // rebuilds the wsTr fresh — the listener at the bottom of this
+  // section re-injects it for any rows still in the expanded set.
+
+  var _expandedSowItems = Object.create(null);
+
+  function toggleRowExpand(tr) {
+    var sowItemId = tr.getAttribute('data-sow-item-id');
+    if (!sowItemId) return;
+
+    var expandTr = tr.nextElementSibling;
+    var alreadyHasExpand = expandTr && expandTr.classList.contains('scw-bid-review__expand-row')
+      && expandTr.getAttribute('data-expand-for') === sowItemId;
+
+    if (alreadyHasExpand && expandTr.classList.contains('scw-bid-review__expand-row--open')) {
+      expandTr.classList.remove('scw-bid-review__expand-row--open');
+      tr.setAttribute('aria-expanded', 'false');
+      delete _expandedSowItems[sowItemId];
+      return;
+    }
+
+    if (!alreadyHasExpand) {
+      expandTr = document.createElement('tr');
+      expandTr.className = 'scw-bid-review__expand-row';
+      expandTr.setAttribute('data-expand-for', sowItemId);
+      var td = document.createElement('td');
+      td.className = 'scw-bid-review__expand-cell';
+      td.setAttribute('colspan', String(tr.children.length));
+      expandTr.appendChild(td);
+      tr.parentNode.insertBefore(expandTr, tr.nextSibling);
+    }
+
+    expandTr.classList.add('scw-bid-review__expand-row--open');
+    tr.setAttribute('aria-expanded', 'true');
+    _expandedSowItems[sowItemId] = true;
+    injectWorksheetCard(sowItemId, expandTr.firstElementChild);
+  }
+
+  function injectWorksheetCard(sowItemId, hostTd) {
+    if (!hostTd) return;
+    // device-worksheet renders wsTr inside view_3728's tbody with id=recordId
+    var wsTr = document.querySelector(
+      '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
+    );
+    if (!wsTr) {
+      hostTd.innerHTML = '<div class="scw-bid-review__expand-loading">Loading editor…</div>';
+      return;
+    }
+    // Move the entire wsTr into our cell. Wrap in a mini-table so the row
+    // renders correctly outside its original tbody.
+    hostTd.innerHTML = '';
+    var miniTable = document.createElement('table');
+    miniTable.className = 'scw-bid-review__expand-table';
+    var miniTbody = document.createElement('tbody');
+    miniTbody.appendChild(wsTr);
+    miniTable.appendChild(miniTbody);
+    hostTd.appendChild(miniTable);
+  }
+
+  function reattachExpandedCards() {
+    var ids = Object.keys(_expandedSowItems);
+    for (var i = 0; i < ids.length; i++) {
+      var sowItemId = ids[i];
+      var expandTr = document.querySelector(
+        '.scw-bid-review__expand-row[data-expand-for="' + sowItemId + '"].scw-bid-review__expand-row--open'
+      );
+      if (!expandTr) { delete _expandedSowItems[sowItemId]; continue; }
+      var hostTd = expandTr.firstElementChild;
+      if (hostTd) injectWorksheetCard(sowItemId, hostTd);
+    }
+  }
+
+  // Re-inject after view_3728 re-renders (every inline edit triggers a
+  // full re-render that rebuilds wsTrs).
+  $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
+    function () { setTimeout(reattachExpandedCards, 50); });
 
   // ── Survey Costs save (per-SOW, on blur) ────────────────────
 

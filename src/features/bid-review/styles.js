@@ -530,6 +530,46 @@
       '  background: #eff6ff;',
       '}',
 
+      /* Click-to-expand row: cursor + open-state highlight. */
+      '.scw-bid-review__row--expandable { cursor: pointer; }',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] td {',
+      '  background: #e0f2fe !important;',
+      '  border-bottom: 2px solid #0284c7;',
+      '}',
+
+      /* Expand-row: hidden until the parent row is open. The injected
+         worksheet card renders inside a mini-table so device-worksheet\'s
+         <tr.scw-ws-row> structure stays valid. */
+      '.scw-bid-review__expand-row { display: none; }',
+      '.scw-bid-review__expand-row--open { display: table-row; }',
+      '.scw-bid-review__expand-cell {',
+      '  padding: 0 !important;',
+      '  background: #f8fafc;',
+      '  border-bottom: 2px solid #0284c7;',
+      '}',
+      '.scw-bid-review__expand-table {',
+      '  width: 100%;',
+      '  border-collapse: collapse;',
+      '  background: #fff;',
+      '}',
+      '.scw-bid-review__expand-table > tbody > tr > td {',
+      '  padding: 0 !important;',
+      '  border: none !important;',
+      '}',
+      '.scw-bid-review__expand-loading {',
+      '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
+      '}',
+
+      /* Hide view_3728 section once bid review is on the page — the
+         comparison grid surfaces the same rows via expand-on-click. */
+      'body.scw-bid-review-active #view_3728 {',
+      '  display: none !important;',
+      '}',
+      'body.scw-bid-review-active .scw-ktl-accordion[data-view-key="view_3728"],',
+      'body.scw-bid-review-active div.scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3728"]) {',
+      '  display: none !important;',
+      '}',
+
       /* ── SOW cell ──────────────────────────────────────────── */
       '.scw-bid-review__sow-cell {',
       '  font-weight: 600;',

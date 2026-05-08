@@ -101,6 +101,9 @@
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
+    // Flag the body so view_3728's accordion hides via CSS while the
+    // bid review grid is on screen.
+    document.body.classList.add('scw-bid-review-active');
     var mount = document.querySelector(CFG.mountSelector);
     if (!mount) {
       mount = el('div');
@@ -674,9 +677,13 @@
     var rowClass = 'scw-bid-review__row';
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
+    if (row.sowItem) rowClass += ' scw-bid-review__row--expandable';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
-    if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
+    if (row.sowItem) {
+      tr.setAttribute('data-sow-item-id', row.sowItem);
+      tr.setAttribute('aria-expanded', 'false');
+    }
 
     // Line item label cell
     // Only show displayLabel (field_2365) for Camera / Reader buckets
