@@ -152,16 +152,22 @@
     }
 
     /* Hide view_3770 visually but keep it in the DOM
-       view_3887: mounting-hardware accessory view read by
-       mirror-connection-sync's MDF cascade. Must stay in the DOM/model
-       so findAccessoryIds + fireAccessoryPut can resolve records, but
-       should never be visible to the user.
+       view_3887: mounting-hardware accessory view (Build SOWs scene)
+       read by mirror-connection-sync's MDF cascade.
+       view_3927: mounting-hardware accessory view (bid-review
+       comparison-grid scene) — same role as view_3887, different
+       scene; cascadeAccessoryMdf scans its model for field_2464
+       back-connections to identify which mounting brackets ride along
+       when a camera/reader is regrouped.
+       Both must stay in the DOM/model so cascadeAccessoryMdf can
+       resolve records, but should never be visible to the user.
        view_3896: hidden data-only grid on scene_1096 used only to
        enrich the publish JSON payload (Make duplicates these records
        server-side). Listed in proposal-pdf-export.js cfg.skipViews
        so the rendered proposal doesn't include it. */
     #view_3770,
-    #view_3887 {
+    #view_3887,
+    #view_3927 {
       position: absolute !important;
       width: 1px !important;
       height: 1px !important;

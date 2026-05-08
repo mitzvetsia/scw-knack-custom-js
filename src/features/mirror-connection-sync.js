@@ -1352,13 +1352,17 @@
   // #bid-review-matrix; the connection-picker calls
   // silentRegroupView3921 on save so the reciprocal + grouping cascade
   // still fires.
+  //
+  // Mounting brackets on the comparison-grid scene live on view_3927
+  // (a hidden source view added so cascadeAccessoryMdf can read each
+  // bracket record's field_2464 back-connection from its model).
   createMirror({
     VIEW_ID:             'view_3921',
     TRIGGER_FIELD:       'field_1957',
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     ACCESSORIES_FIELD:        'field_1958',
-    ACCESSORIES_VIEW_ID:      'view_3888',
+    ACCESSORIES_VIEW_ID:      'view_3927',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
