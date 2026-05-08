@@ -2,9 +2,9 @@
 /**
  * Adds three buttons above any worksheet view that has L1 (MDF/IDF) group
  * accordions:
- *   • Expand all   → open every L1 group (card detail panels left as-is)
- *   • Summary only → open every L1 group, close every card detail panel
- *                    (only the summary row shows under each L1)
+ *   • Expand all   → open every L1 group (rows under each L1 visible)
+ *   • Summary only → open every L1 group, hide all rows under each L1
+ *                    except its scw-mdf-summary-row
  *   • Collapse all → close every L1 group (only group headers visible)
  *
  * L1 toggling mirrors group-collapse.js's class/state contract
@@ -13,19 +13,15 @@
  * reads on its next enhance pass. That way exclusive-accordion views
  * (view_3586/3610/3921) honour the bulk action instead of snapping back
  * to one-open-only on the next render.
- *
- * Card detail toggling mirrors device-worksheet.js's toggleDetail:
- * .scw-ws-detail.scw-ws-open, .scw-ws-chevron.scw-ws-expanded /
- * .scw-ws-collapsed, and .scw-ws-photo-wrap.scw-ws-photo-hidden.
  */
 (function () {
   'use strict';
 
-  var BTN_HOST_CLS = 'scw-ws-bulk-toggle';
-  var BOUND_ATTR   = 'data-scw-bulk-toggle-bound';
-  var L1_SEL = 'tr.kn-table-group.kn-group-level-1.scw-group-header';
+  var BTN_HOST_CLS  = 'scw-ws-bulk-toggle';
+  var BOUND_ATTR    = 'data-scw-bulk-toggle-bound';
+  var L1_SEL        = 'tr.kn-table-group.kn-group-level-1.scw-group-header';
+  var SUMMARY_CLASS = 'scw-mdf-summary-row';
 
-  // ── L1 ACCORDION STATE ──────────────────────────────────────────
   function getSceneId() {
     var bodyId = document.body.id || '';
     var m = bodyId.match(/scene_\d+/);
@@ -68,73 +64,36 @@
     return rows;
   }
 
-  function setAllL1(viewEl, expand) {
+  // mode: 'expand' | 'collapse' | 'summary'
+  function applyMode(viewEl, mode) {
     var headers = viewEl.querySelectorAll(L1_SEL);
     if (!headers.length) return;
     var sceneId = getSceneId();
     var viewId  = viewEl.id;
     var state   = loadState(sceneId, viewId);
+    var collapse = (mode === 'collapse');
 
     for (var i = 0; i < headers.length; i++) {
       var h = headers[i];
-      if (expand) h.classList.remove('scw-collapsed');
-      else        h.classList.add('scw-collapsed');
+      if (collapse) h.classList.add('scw-collapsed');
+      else          h.classList.remove('scw-collapsed');
 
-      state['L1:' + readL1Label(h)] = expand ? 0 : 1;
+      state['L1:' + readL1Label(h)] = collapse ? 1 : 0;
 
       var rows = rowsUntilNextL1(h);
-      var disp = expand ? '' : 'none';
       for (var j = 0; j < rows.length; j++) {
-        rows[j].style.display = disp;
+        var r = rows[j];
+        var show;
+        if (mode === 'expand') show = true;
+        else if (mode === 'collapse') show = false;
+        else show = !!(r.classList && r.classList.contains(SUMMARY_CLASS));
+        r.style.display = show ? '' : 'none';
       }
     }
 
     saveState(sceneId, viewId, state);
   }
 
-  // ── CARD DETAIL PANELS ──────────────────────────────────────────
-  function expandCard(tr) {
-    var detail = tr.querySelector('.scw-ws-detail');
-    if (!detail) return;
-    detail.classList.add('scw-ws-open');
-    var chevron = tr.querySelector('.scw-ws-chevron');
-    if (chevron) {
-      chevron.classList.remove('scw-ws-collapsed');
-      chevron.classList.add('scw-ws-expanded');
-    }
-    var photoWrap = tr.querySelector('.scw-ws-photo-wrap');
-    if (photoWrap) photoWrap.classList.remove('scw-ws-photo-hidden');
-  }
-
-  function collapseCard(tr) {
-    var detail = tr.querySelector('.scw-ws-detail');
-    if (!detail) return;
-    detail.classList.remove('scw-ws-open');
-    var chevron = tr.querySelector('.scw-ws-chevron');
-    if (chevron) {
-      chevron.classList.remove('scw-ws-expanded');
-      chevron.classList.add('scw-ws-collapsed');
-    }
-    // Match toggleDetail: keep the photo wrap visible when the row is
-    // flagged photo-always and has actual uploaded images. Otherwise
-    // hide it on collapse.
-    var photoWrap = tr.querySelector('.scw-ws-photo-wrap');
-    if (!photoWrap) return;
-    var keepPhoto = tr.hasAttribute('data-scw-photo-always');
-    var hasRealPhotos = keepPhoto &&
-      photoWrap.querySelector('.scw-inline-photo-card[data-photo-has-image="true"]');
-    if (!keepPhoto || !hasRealPhotos) {
-      photoWrap.classList.add('scw-ws-photo-hidden');
-    }
-  }
-
-  function setAllCards(viewEl, wantOpen) {
-    var rows = viewEl.querySelectorAll('tr.scw-ws-row');
-    var fn = wantOpen ? expandCard : collapseCard;
-    for (var i = 0; i < rows.length; i++) fn(rows[i]);
-  }
-
-  // ── BUTTONS ─────────────────────────────────────────────────────
   function buildBtn(label, onClick) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -166,14 +125,13 @@
     host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
 
     host.appendChild(buildBtn('Expand all', function () {
-      setAllL1(viewEl, true);
+      applyMode(viewEl, 'expand');
     }));
     host.appendChild(buildBtn('Summary only', function () {
-      setAllL1(viewEl, true);
-      setAllCards(viewEl, false);
+      applyMode(viewEl, 'summary');
     }));
     host.appendChild(buildBtn('Collapse all', function () {
-      setAllL1(viewEl, false);
+      applyMode(viewEl, 'collapse');
     }));
 
     nav.insertBefore(host, nav.firstChild);
