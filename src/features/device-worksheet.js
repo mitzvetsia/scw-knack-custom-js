@@ -3302,14 +3302,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var viewEl = document.getElementById(viewId);
-    if (!viewEl) return;
 
-    // Find the worksheet card for this record
-    var cards = viewEl.querySelectorAll('.' + P + '-card');
+    // Find the worksheet card for this record. Search the view\'s own
+    // tree first, then fall back to anywhere the wsTr might have been
+    // moved (e.g. bid-review\'s expand cell, where the row was relocated
+    // by SCW.bidReview but still belongs logically to this view).
     var card = null;
-    for (var ci = 0; ci < cards.length; ci++) {
-      var row = cards[ci].closest('tr');
-      if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+    if (viewEl) {
+      var cards = viewEl.querySelectorAll('.' + P + '-card');
+      for (var ci = 0; ci < cards.length; ci++) {
+        var row = cards[ci].closest('tr');
+        if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+      }
+    }
+    if (!card) {
+      var movedRow = document.querySelector(
+        'tr.' + WORKSHEET_ROW + '[id="' + recordId + '"][data-scw-view-id="' + viewId + '"]'
+      );
+      if (movedRow) card = movedRow.querySelector('.' + P + '-card');
     }
     if (!card) {
       SCW.debug('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
