@@ -56,9 +56,32 @@
   /** Silent refresh — re-fetches data and re-renders without the loading spinner. */
   var _silentRefreshRunning = false;
 
+  // Off-DOM cache of moved wsTrs — populated by refreshSilently right
+  // before it rebuilds the bid-review mount, drained by injectWorksheetCard
+  // when reopenExpandedRows fires. This is what makes panel state survive a
+  // refresh: direct-edit PUTs don\'t re-render view_3728 (so a fresh wsTr
+  // never gets built there), but the wsTr already in the expand cell has
+  // the user\'s changes — we just need to keep it alive across the rebuild.
+  var _preservedCards = {};
+
   function refreshSilently() {
     if (_silentRefreshRunning) return $.Deferred().resolve().promise();
     _silentRefreshRunning = true;
+
+    // Pluck every injected wsTr off the DOM and into the preserve cache
+    // BEFORE renderMatrix wipes the mount. Detaching is enough — the
+    // node stays in memory as long as we hold a reference.
+    var ids = Object.keys(_expandedSowItems);
+    for (var p = 0; p < ids.length; p++) {
+      var pid = ids[p];
+      var existing = document.querySelector(
+        '.scw-bid-review__expand-row[data-expand-for="' + pid + '"] tr.scw-ws-row[id="' + pid + '"]'
+      );
+      if (existing) {
+        existing.parentNode.removeChild(existing);
+        _preservedCards[pid] = existing;
+      }
+    }
 
     return ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
@@ -66,8 +89,6 @@
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
-      // Re-expand any rows the user had open before the refresh, then
-      // re-pull their wsTr from the freshly-rendered view_3728.
       reopenExpandedRows();
     }).fail(function (err) {
       if (CFG.debug) console.warn('[BidReview] Silent refresh failed:', err);
@@ -87,6 +108,9 @@
         toggleRowExpand(tr);
       }
     }
+    // Anything left in the cache had no destination row — drop it so
+    // we don\'t leak DOM across rebuilds.
+    _preservedCards = {};
   }
 
   // ── find a SOW grid from the current state ──────────────────
@@ -237,10 +261,18 @@
     // Already has a card from a previous expand — leave it. The view_3728
     // re-render listener handles refresh after edits.
     if (hostTd.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]')) return;
-    // device-worksheet renders wsTr inside view_3728's tbody with id=recordId
-    var wsTr = document.querySelector(
-      '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
-    );
+    // Prefer a wsTr we detached just before the silent refresh — that
+    // preserves the user\'s in-flight edits across the rebuild even when
+    // view_3728 didn\'t re-render (direct-edit PUTs bypass it).
+    var wsTr = _preservedCards[sowItemId];
+    if (wsTr) {
+      delete _preservedCards[sowItemId];
+    } else {
+      // device-worksheet renders wsTr inside view_3728's tbody with id=recordId
+      wsTr = document.querySelector(
+        '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
+      );
+    }
     if (!wsTr) {
       hostTd.innerHTML = '<div class="scw-bid-review__expand-loading">Loading editor…</div>';
       return;
