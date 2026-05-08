@@ -725,10 +725,6 @@
           laborDesc:       raw(siRec, SFK.laborDesc),
           qty:             num(siRec, SFK.qty),
           fee:             num(siRec, SFK.fee),
-          // Stored product NAME only (field_1958) — not the connection
-          // display label (field_1949) which appends the SKU and would
-          // mismatch the bid side\'s product name comparison.
-          productName:     raw(siRec, SFK.productName),
           existCabling:    raw(siRec, SFK.existCabling),
           plenum:           raw(siRec, SFK.plenum),
           exterior:        raw(siRec, SFK.exterior),
@@ -877,7 +873,6 @@
           r2.sowLaborDesc     = siData.laborDesc;
           r2.sowQty           = siData.qty;
           r2.sowFee           = siData.fee;
-          if (siData.productName) r2.sowProduct = siData.productName;
           r2.sowExistCabling  = siData.existCabling;
           r2.sowPlenum        = siData.plenum;
           r2.sowExterior      = siData.exterior;
