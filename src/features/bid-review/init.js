@@ -265,13 +265,18 @@
   // the new values. refreshSilently() rebuilds the grid then reopens
   // whichever rows were expanded, re-pulling their (now-rebuilt) wsTr
   // in the process.
+  //   - scw-record-saved             → fired by device-worksheet after
+  //                                    every direct-edit AJAX PUT (bypasses
+  //                                    knack-view-render entirely).
   //   - knack-view-render.view_3728  → fires on full view re-render
   //   - knack-cell-update.view_3728  → fires per-cell after Knack inline-edit
   var _refreshDebounce = null;
   function scheduleSilentRefresh() {
     if (_refreshDebounce) clearTimeout(_refreshDebounce);
-    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 150);
+    // 250ms gives syncKnackModel time to land before loadRawData reads it.
+    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 250);
   }
+  $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', scheduleSilentRefresh);
   $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
     scheduleSilentRefresh);
   $(document).on('knack-cell-update.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
