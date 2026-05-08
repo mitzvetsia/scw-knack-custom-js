@@ -68,6 +68,7 @@
       '}' +
       '.scw-mdf-summary-table {' +
       '  width: 100%;' +
+      '  table-layout: fixed;' +
       '  border-collapse: collapse;' +
       '  font: 400 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: #1e293b;' +
@@ -303,8 +304,23 @@
       emptyCell() +
     '</tr>';
 
+    // Fixed colgroup so every L1 summary table renders with the same
+    // column widths regardless of product-name length. Without this, a
+    // long product name in one group would push the numeric columns
+    // right while neighbouring groups stayed compact, and the panels
+    // wouldn't visually line up under each other.
     return '' +
       '<table class="scw-mdf-summary-table">' +
+        '<colgroup>' +
+          '<col style="width:42%">' +     // Product
+          '<col style="width:6%">' +      // Qty
+          '<col style="width:10%">' +     // Existing Cabling
+          '<col style="width:10%">' +     // New Cabling
+          '<col style="width:8%">' +      // Exterior
+          '<col style="width:8%">' +      // Interior
+          '<col style="width:6%">' +      // Plenum
+          '<col style="width:10%">' +     // Avg Sub Bid
+        '</colgroup>' +
         '<thead><tr>' +
           '<th class="scw-mdf-product-h">Product</th>' +
           '<th>Qty</th>' +
