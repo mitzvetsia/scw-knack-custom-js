@@ -2661,29 +2661,42 @@
     var statusDone = 0;
     var statusTotal = revs.length;
 
-    function onAllStatusUpdated() {
-      // 2. Fire webhook (fire-and-forget)
-      SCW.knackAjax({
-        url: REV_ACTION_WEBHOOK,
-        type: 'POST',
-        data: JSON.stringify(payload),
-      });
-
+    function fallbackLocalRefresh() {
       btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
-
-      // 3. Refresh view_3823 → triggers re-inject
       setTimeout(function () {
         if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
           Knack.views[CFG.revisionView].model.fetch();
         }
-        // Also directly re-inject after a delay to catch cases where
-        // model.fetch doesn't trigger knack-view-render
         setTimeout(function () {
           for (var t = 0; t < CFG.targetViews.length; t++) {
             inject(CFG.targetViews[t]);
           }
         }, 1500);
       }, 1000);
+    }
+
+    function onAllStatusUpdated() {
+      // Fire webhook + wait for the response. On { success: true }
+      // reload the page so every downstream view picks up the change
+      // in one swoop instead of polling individually. On any other
+      // outcome, fall back to the local re-inject path.
+      btn.textContent = action === 'accept' ? 'Accepting\u2026' : 'Rejecting\u2026';
+      SCW.knackAjax({
+        url: REV_ACTION_WEBHOOK,
+        type: 'POST',
+        data: JSON.stringify(payload),
+        success: function (resp) {
+          var ok = !!(resp && (resp.success === true ||
+            (typeof resp === 'string' && /"success"\s*:\s*true/.test(resp))));
+          if (ok) {
+            btn.textContent = action === 'accept' ? 'Accepted \u2713' : 'Rejected \u2713';
+            window.location.reload();
+            return;
+          }
+          fallbackLocalRefresh();
+        },
+        error: function () { fallbackLocalRefresh(); }
+      });
     }
 
     var statusData = {};
