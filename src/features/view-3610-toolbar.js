@@ -165,6 +165,54 @@
       // source of visual noise on the default-empty state.
       '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] #bulkOpsControlsDiv-' + VIEW_ID + '.scw-tb-bulk-empty {',
       '  display: none !important;',
+      '}',
+
+      // ── "Add to Scope" primary CTA ──
+      // .scw-acc-actions normally lives in the accordion body above
+      // view_3610. We re-parent the whole container into the toolbar so
+      // the primary action sits in its conventional top-right slot.
+      // Reskin the .scw-acc-action-btn children as filled-accent CTAs
+      // using the accordion’s own accent color so the visual identity
+      // ties back to the parent accordion.
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-actions {',
+      '  display: inline-flex !important;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  margin: 0 !important;',
+      '  padding: 0 !important;',
+      '}',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-action-btn {',
+      '  display: inline-flex !important;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  margin: 0 !important;',
+      '  min-width: 0 !important;',
+      '  padding: 7px 14px !important;',
+      '  background: #295F91 !important;',
+      '  color: #fff !important;',
+      '  border: 1px solid #1f4a73 !important;',
+      '  border-radius: 6px !important;',
+      '  font: 600 12px/1.2 system-ui, -apple-system, sans-serif !important;',
+      '  letter-spacing: 0 !important;',
+      '  text-transform: none !important;',
+      '  cursor: pointer;',
+      '  box-shadow: none !important;',
+      '  transition: background 100ms ease, border-color 100ms ease;',
+      '}',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-action-btn:hover {',
+      '  background: #1f4a73 !important;',
+      '  border-color: #163654 !important;',
+      '  color: #fff !important;',
+      '}',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-action-btn svg {',
+      '  width: 12px; height: 12px;',
+      '  stroke: currentColor;',
+      '}',
+      // Hide the now-empty accordion actions row when its children have
+      // been hoisted to the toolbar — leaves no visual residue above the
+      // table.
+      '.scw-ktl-accordion__body > .scw-acc-actions.scw-tb-hoisted {',
+      '  display: none !important;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -187,6 +235,18 @@
     var bulk = document.getElementById('bulkOpsControlsDiv-' + VIEW_ID);
     if (bulk && bulk.parentNode !== nav) {
       nav.appendChild(bulk);
+    }
+
+    // Pull the KTL accordion's .scw-acc-actions (which hosts the
+    // "Add to Scope" button) into the toolbar. It lives in
+    // .scw-ktl-accordion__body, as a sibling of #view_3610.
+    var accordion  = view.closest('.scw-ktl-accordion');
+    var accActions = accordion && accordion.querySelector(
+      '.scw-ktl-accordion__body > .scw-acc-actions'
+    );
+    if (accActions && accActions.parentNode !== nav) {
+      accActions.classList.add('scw-tb-hoisted');
+      nav.appendChild(accActions);
     }
 
     // Hide the bulk cluster when no rows are selected. KTL toggles
@@ -219,7 +279,8 @@
       '.kn-records-nav-summary',
       '.kn-pagination',
       '.kn-filters-nav',
-      '#bulkOpsControlsDiv-' + VIEW_ID
+      '#bulkOpsControlsDiv-' + VIEW_ID,
+      '.scw-acc-actions'
     ];
 
     // Inject the spring once — a flex-grow filler that pushes everything
