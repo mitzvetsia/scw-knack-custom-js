@@ -45,8 +45,23 @@
         // ("SITE SURVEY_requests"). Internal-only — it's the data
         // source for the alt-bid / update-bid survey picker, not
         // part of the customer-facing proposal.
-        view_3897: true
+        view_3897: true,
+        // Site maps + additional photos. Skipped from the natural
+        // grid scrape — they're appended to the END of the PDF in a
+        // dedicated image section instead (see appendImageViews).
+        view_3928: true,
+        view_3929: true
       },
+      // Image-attachment views appended to the END of the PDF (in
+      // order). Each entry: { viewId, label }. Site maps render first,
+      // additional photos second, each image on its own page with the
+      // section label on top. Files come from any field_<N>_raw on the
+      // record carrying { filename, url } / { public_url } — same
+      // shape Knack uses for every file-upload field.
+      appendImageViews: [
+        { viewId: 'view_3928', label: 'Site Maps' },
+        { viewId: 'view_3929', label: 'Additional Photos' }
+      ],
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
       // No header detail, no other grids — Make pipelines that
@@ -628,6 +643,92 @@
   // SCRAPE ALL VIEWS on a scene
   // ══════════════════════════════════════════════════════════════
 
+  // ── Append-image scrape ────────────────────────────────────
+  // Walk a Knack view's loaded model for every image-file attachment
+  // and return [{ src, alt, filename }] in record order. Used by
+  // scrape* paths that append cover pages of site maps / additional
+  // photos to the end of the PDF.
+
+  function isImageFile(file) {
+    if (!file) return false;
+    var name = String(file.filename || '').toLowerCase();
+    var type = String(file.type || '').toLowerCase();
+    if (type && type.indexOf('image/') === 0) return true;
+    return /\.(png|jpe?g|gif|webp|bmp)$/.test(name);
+  }
+
+  function extractAppendImageViewRecords(view) {
+    if (!view || !view.model) return [];
+    var data = view.model.data;
+    if (!data) return [];
+    if (Array.isArray(data)) {
+      return data.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+      });
+    }
+    if (data.models && Array.isArray(data.models)) {
+      return data.models.map(function (m) {
+        return typeof m.toJSON === 'function' ? m.toJSON() : (m.attributes || m);
+      });
+    }
+    return [];
+  }
+
+  function extractFilesFromRecord(record) {
+    var files = [];
+    if (!record) return files;
+    for (var key in record) {
+      if (!record.hasOwnProperty(key)) continue;
+      if (!/^field_\d+_raw$/.test(key)) continue;
+      var val = record[key];
+      if (!val) continue;
+      if (Array.isArray(val)) {
+        for (var i = 0; i < val.length; i++) {
+          var v = val[i];
+          if (v && v.filename && (v.url || v.public_url)) files.push(v);
+        }
+      } else if (val.filename && (val.url || val.public_url)) {
+        files.push(val);
+      }
+    }
+    return files;
+  }
+
+  function scrapeImagesFromView(viewId, label) {
+    var out = [];
+    if (typeof Knack === 'undefined' || !Knack.views) return out;
+    var view = Knack.views[viewId];
+    if (!view) return out;
+    var records = extractAppendImageViewRecords(view);
+    for (var r = 0; r < records.length; r++) {
+      var files = extractFilesFromRecord(records[r]);
+      for (var f = 0; f < files.length; f++) {
+        var file = files[f];
+        if (!isImageFile(file)) continue;
+        var url = file.url || file.public_url || '';
+        if (!url) continue;
+        out.push({
+          src: url,
+          filename: file.filename || '',
+          alt: file.filename || label || ''
+        });
+      }
+    }
+    return out;
+  }
+
+  function scrapeAppendImageSections(cfg) {
+    var sections = [];
+    if (!cfg.appendImageViews || !cfg.appendImageViews.length) return sections;
+    for (var i = 0; i < cfg.appendImageViews.length; i++) {
+      var entry = cfg.appendImageViews[i];
+      var images = scrapeImagesFromView(entry.viewId, entry.label);
+      if (!images.length) continue;
+      sections.push({ viewId: entry.viewId, label: entry.label, images: images });
+    }
+    return sections;
+  }
+
   function scrapeAllViews(cfg, opts) {
     opts = opts || {};
     var result = { views: [], sceneId: cfg.sceneId, type: cfg.payloadType || '' };
@@ -676,6 +777,11 @@
         break;
       }
     }
+
+    // Image attachments to append at the END of the rendered PDF
+    // (site maps, additional photos). buildPdfHtml emits a cover-page
+    // section per image after the project content + report views.
+    result.appendImageSections = scrapeAppendImageSections(cfg);
 
     // Stash the optional "Proposed Solution" narrative field on the
     // matching grid view. Pulled from the live DOM rather than from
@@ -1046,8 +1152,33 @@
       }
     }
 
+    // Append image attachments at the very end of the PDF — site
+    // maps first, additional photos second, each image full-page
+    // with the section label on top.
+    if (payload.appendImageSections && payload.appendImageSections.length) {
+      for (var ais = 0; ais < payload.appendImageSections.length; ais++) {
+        renderAppendImageSection(payload.appendImageSections[ais], html);
+      }
+    }
+
     html.push('</body></html>');
     return html.join('\n');
+  }
+
+  function renderAppendImageSection(section, html) {
+    if (!section || !section.images || !section.images.length) return;
+    var label = section.label || '';
+    for (var i = 0; i < section.images.length; i++) {
+      var img = section.images[i];
+      html.push('<section class="append-image-page">');
+      if (label) {
+        html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+      }
+      html.push('<img class="append-image" width="780" ' +
+                'src="' + esc(img.src) + '" ' +
+                'alt="' + esc(img.alt || label) + '" />');
+      html.push('</section>');
+    }
   }
 
   function hasSectionContent(section) {
@@ -1220,6 +1351,35 @@
       '.report-table-wrap .kn-table_summary td {',
       '  font-weight: 700; color: #07467c; border-top: 2px solid #07467c;',
       '  padding-top: 8px;',
+      '}',
+      '',
+      '/* ── Appended image sections (site maps, additional photos) ── */',
+      '/* Each image gets its own page. page-break-before:always on every',
+      '   page, including the first, so they always start fresh after the',
+      '   project content. The image is forced to fit the printable area',
+      '   via max width/height + object-fit:contain. */',
+      '.append-image-page {',
+      '  page-break-before: always;',
+      '  break-before: page;',
+      '  page-break-inside: avoid;',
+      '  break-inside: avoid;',
+      '  text-align: center;',
+      '  padding-top: 8px;',
+      '}',
+      '.append-image-title {',
+      '  font-size: 18px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 12px 0; padding-bottom: 6px;',
+      '  border-bottom: 3px solid #07467c;',
+      '  text-align: left;',
+      '}',
+      '.append-image {',
+      '  display: block;',
+      '  width: 100%;',
+      '  max-width: 100%;',
+      '  max-height: 9.5in;',
+      '  height: auto;',
+      '  margin: 0 auto;',
+      '  object-fit: contain;',
       '}',
     ].join('\n');
   }
