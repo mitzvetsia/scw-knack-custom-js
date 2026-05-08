@@ -218,6 +218,9 @@
     }
     // Move the entire wsTr into our cell. Wrap in a mini-table so the row
     // renders correctly outside its original tbody.
+    // group-collapse hides rows in collapsed L1 groups via inline display:none;
+    // strip that so the moved card is always visible.
+    wsTr.style.display = '';
     hostTd.innerHTML = '';
     var miniTable = document.createElement('table');
     miniTable.className = 'scw-bid-review__expand-table';
