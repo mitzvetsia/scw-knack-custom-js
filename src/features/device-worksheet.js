@@ -3854,8 +3854,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var wsTr = input.closest('tr.' + WORKSHEET_ROW);
     if (!wsTr) return;
     var recordId = getRecordId(wsTr);
-    var viewEl = input.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
+    // Prefer the source view id stamped on the wsTr — it survives the
+    // wsTr being moved out of its native view container (e.g. bid-
+    // review\'s expand cell). Fall back to the closest [id^="view_"].
+    var viewId = wsTr.getAttribute('data-scw-view-id');
+    if (!viewId) {
+      var viewEl = input.closest('[id^="view_"]');
+      viewId = viewEl ? viewEl.id : null;
+    }
     if (recordId && viewId) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
         function () {
@@ -5938,6 +5944,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
       wsTr.id = tr.id;
+      // Stamp the source view id so direct-edit save can resolve the
+      // right Knack view even after the wsTr is moved into another
+      // container (e.g. bid-review\'s expand cell).
+      wsTr.setAttribute('data-scw-view-id', viewCfg.viewId);
       tr.removeAttribute('id');
 
       if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);
