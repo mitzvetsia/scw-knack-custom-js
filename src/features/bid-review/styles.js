@@ -539,6 +539,13 @@
       '  position: relative;',
       '  background: #fff !important;',
       '}',
+      /* When the row is expanded the worksheet card below is the
+         source of truth for these fields — hide every duplicated
+         detail in the SOW cell except the product label so the user
+         doesn\'t see two stale-vs-fresh copies. */
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td.scw-bid-review__sow-detail > *:not(.scw-bid-review__cell-label) {',
+      '  display: none !important;',
+      '}',
       /* Top halo + outer side shadows. Side shadows match ws-card\'s
          left/right shadows but bumped 20% (0.315 → 0.378) so the left
          glow has a bit more presence than the panel\'s. */
