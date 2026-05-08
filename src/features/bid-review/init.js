@@ -57,20 +57,36 @@
   var _silentRefreshRunning = false;
 
   function refreshSilently() {
-    if (_silentRefreshRunning) return;
+    if (_silentRefreshRunning) return $.Deferred().resolve().promise();
     _silentRefreshRunning = true;
 
-    ns.loadRawData().then(function (raw) {
+    return ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
       ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
+      // Re-expand any rows the user had open before the refresh, then
+      // re-pull their wsTr from the freshly-rendered view_3728.
+      reopenExpandedRows();
     }).fail(function (err) {
       if (CFG.debug) console.warn('[BidReview] Silent refresh failed:', err);
     }).always(function () {
       _silentRefreshRunning = false;
     });
+  }
+
+  function reopenExpandedRows() {
+    var ids = Object.keys(_expandedSowItems);
+    for (var i = 0; i < ids.length; i++) {
+      var sowItemId = ids[i];
+      var tr = document.querySelector(
+        '.scw-bid-review__row[data-sow-item-id="' + sowItemId + '"]'
+      );
+      if (tr && tr.getAttribute('aria-expanded') !== 'true') {
+        toggleRowExpand(tr);
+      }
+    }
   }
 
   // ── find a SOW grid from the current state ──────────────────
@@ -243,23 +259,17 @@
     hostTd.appendChild(miniTable);
   }
 
-  function reattachExpandedCards() {
-    var ids = Object.keys(_expandedSowItems);
-    for (var i = 0; i < ids.length; i++) {
-      var sowItemId = ids[i];
-      var expandTr = document.querySelector(
-        '.scw-bid-review__expand-row[data-expand-for="' + sowItemId + '"].scw-bid-review__expand-row--open'
-      );
-      if (!expandTr) { delete _expandedSowItems[sowItemId]; continue; }
-      var hostTd = expandTr.firstElementChild;
-      if (hostTd) injectWorksheetCard(sowItemId, hostTd);
-    }
-  }
-
-  // Re-inject after view_3728 re-renders (every inline edit triggers a
-  // full re-render that rebuilds wsTrs).
+  // After every view_3728 re-render (each inline edit triggers one),
+  // run a silent refresh of the bid-review grid so cached totals like
+  // field_2028 / field_2269 in the SOW column reflect the new values.
+  // refreshSilently() rebuilds the grid then reopens whichever rows
+  // were expanded, re-pulling their (now-rebuilt) wsTr in the process.
+  var _refreshDebounce = null;
   $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
-    function () { setTimeout(reattachExpandedCards, 50); });
+    function () {
+      if (_refreshDebounce) clearTimeout(_refreshDebounce);
+      _refreshDebounce = setTimeout(function () { refreshSilently(); }, 150);
+    });
 
   // ── Survey Costs save (per-SOW, on blur) ────────────────────
 
