@@ -182,33 +182,38 @@
       }
 
       /* ══════════════════════════════════════════════════
-         L1 — Modern tinted accent style
-         Uses CSS custom properties set per-row in JS:
-           --scw-grp-accent      (hex colour)
-           --scw-grp-accent-rgb  (r, g, b)
+         L1 — Comparison-grid accordion style.
+         Flat slate background, solid #295f91 left accent border, no
+         per-row coloured tint, no font-size jump on expand. The
+         per-row --scw-grp-accent / --scw-grp-accent-rgb variables
+         are still set in JS but no longer drive the L1 visual.
          ══════════════════════════════════════════════════ */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header')} {
         font-size: 13px;
-        font-weight: 600 !important;
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.08) !important;
-        color: #1e293b !important;
+        font-weight: 700 !important;
+        background: #f1f5f9 !important;
+        color: #334155 !important;
         text-align: left !important;
         transition: background 180ms ease;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')},
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td *')} {
-        color: #1e293b !important;
+        color: #334155 !important;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
-        padding: 10px 14px 10px 10px !important;
-        border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15);
-        border-left: 4px solid var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
+        padding: 10px 14px 10px 12px !important;
+        background: #f1f5f9 !important;
+        border-bottom: 1px solid #cbd5e1;
+        border-left: 4px solid #295f91;
       }
 
       /* L1 hover */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover')} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.13) !important;
+        background: #e8edf3 !important;
         filter: none;
+      }
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover > td')} {
+        background: #e8edf3 !important;
       }
 
       /* L1 collapsed */
@@ -216,30 +221,34 @@
         font-size: 13px;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td')} {
-        border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.10);
+        border-bottom: 1px solid #cbd5e1;
       }
 
-      /* L1 expanded — stronger tint, larger text, no bottom border
-         (content flows directly beneath) */
+      /* L1 expanded — same calm slate, no font-size jump. */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)')} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15) !important;
-        font-size: 14px;
+        background: #f1f5f9 !important;
+        font-size: 13px;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
-        padding: 12px 10px !important;
-        border-bottom: none;
+        padding: 10px 14px 10px 12px !important;
+        border-bottom: 1px solid #cbd5e1;
         box-shadow: none;
       }
 
       /* ── Bridge: content rows beneath an expanded L1 ──
-         Continue the left accent border on the first content row
-         so the header and content feel like one unit.
-         Also replace the worksheet card's grey border-top with accent. */
+         Drop the accent left border on content rows — the comparison
+         grid look keeps the accent confined to the header itself.
+         Card's border-top reverts to a neutral slate. */
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td:first-child')} {
-        border-left: 4px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.30);
+        border-left: 4px solid transparent;
       }
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) .scw-ws-card')} {
-        border-top-color: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.25);
+        border-top-color: #e2e8f0;
+      }
+
+      /* Chevron tint to match the accent border */
+      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header .scw-collapse-icon')} {
+        color: #295f91 !important;
       }
 
       /* Vertical separation between stacked L1 rows */
