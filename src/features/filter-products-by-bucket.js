@@ -27,7 +27,7 @@
     },
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,
-    DEBUG: false
+    DEBUG: true
   };
 
   var _lastClickedTr = null;
@@ -52,11 +52,14 @@
       var span = cell.querySelector('span[data-kn="connection-value"]');
       if (span) {
         var id = (span.className || '').trim();
-        if (id) return id;
+        if (id) { log('Bucket from DOM cell:', bucketField, '→', id); return id; }
       }
+      log('Bucket cell present but no connection-value span:', bucketField);
+    } else {
+      log('No bucket cell in row DOM, will check Knack model. Field:', bucketField);
     }
     var recordId = tr.id;
-    if (!recordId) return '';
+    if (!recordId) { log('Row has no id, cannot fallback'); return ''; }
     var viewIds = Object.keys(CONFIG.VIEWS);
     for (var v = 0; v < viewIds.length; v++) {
       var view = Knack.views[viewIds[v]];
@@ -67,11 +70,13 @@
         var attrs = records[i].attributes || records[i];
         if (attrs.id !== recordId) continue;
         var raw = attrs[bucketField + '_raw'];
+        log('Found record', recordId, 'in', viewIds[v], '— ' + bucketField + '_raw =', raw);
         if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
         if (raw && raw.id) return raw.id;
         return '';
       }
     }
+    log('Record', recordId, 'not in any configured Knack view — cannot resolve bucket');
     return '';
   }
 
@@ -102,7 +107,8 @@
   // ── FILTER THE SELECT OPTIONS + REFRESH CHOSEN ───────────────
   function tryFilter() {
     var map = getMap();
-    if (!map || !_lastClickedTr || !_lastViewCfg) return false;
+    if (!map) { log('SCW.productBucketMap is missing/empty — cannot filter'); return false; }
+    if (!_lastClickedTr || !_lastViewCfg) return false;
 
     var bucketId = readRowBucketId(_lastClickedTr, _lastViewCfg);
     if (!bucketId) { log('No bucket on row'); return false; }
@@ -209,7 +215,12 @@
 
     _lastClickedTr = tr;
     _lastViewCfg = viewCfg;
-    log('Product cell clicked in', viewIdForLog, 'row', tr.id);
+    var map = getMap();
+    log(
+      'Product cell clicked in', viewIdForLog,
+      'row', tr.id,
+      '— productBucketMap entries:', map ? Object.keys(map).length : '(missing)'
+    );
     startPolling();
   }, true);
 
