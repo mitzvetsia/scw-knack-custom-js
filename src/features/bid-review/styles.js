@@ -539,16 +539,16 @@
       '  position: relative;',
       '  background: #fff !important;',
       '}',
-      /* Top halo + outer side shadows that match the panel\'s ws-card
-         shadows exactly (same blue, blur, spread, alpha) — so the left
-         glow on the cell flows continuously into the panel\'s left glow. */
+      /* Top halo + outer side shadows. Side shadows match ws-card\'s
+         left/right shadows but bumped 20% (0.315 → 0.378) so the left
+         glow has a bit more presence than the panel\'s. */
       '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1) {',
-      '  box-shadow: 0 -16px 20px -10px rgba(2, 132, 199, 0.385),',
-      '              -10px 14px 18px -10px rgba(2, 132, 199, 0.315);',
+      '  box-shadow: 0 -18px 22px -10px rgba(2, 132, 199, 0.46),',
+      '              -10px 14px 18px -10px rgba(2, 132, 199, 0.378);',
       '}',
       '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
-      '  box-shadow: 0 -16px 20px -10px rgba(2, 132, 199, 0.385),',
-      '              10px 14px 18px -10px rgba(2, 132, 199, 0.315);',
+      '  box-shadow: 0 -18px 22px -10px rgba(2, 132, 199, 0.46),',
+      '              10px 14px 18px -10px rgba(2, 132, 199, 0.378);',
       '}',
 
       /* Expand-row: hidden until the parent row is open. The injected

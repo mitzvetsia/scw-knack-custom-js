@@ -259,17 +259,23 @@
     hostTd.appendChild(miniTable);
   }
 
-  // After every view_3728 re-render (each inline edit triggers one),
-  // run a silent refresh of the bid-review grid so cached totals like
-  // field_2028 / field_2269 in the SOW column reflect the new values.
-  // refreshSilently() rebuilds the grid then reopens whichever rows
-  // were expanded, re-pulling their (now-rebuilt) wsTr in the process.
+  // After ANY edit on the SOW item (direct-edit save, Knack inline-edit,
+  // chip toggle, etc.), run a silent refresh of the bid-review grid so
+  // cached totals like field_2028 / field_2269 in the SOW column reflect
+  // the new values. refreshSilently() rebuilds the grid then reopens
+  // whichever rows were expanded, re-pulling their (now-rebuilt) wsTr
+  // in the process.
+  //   - knack-view-render.view_3728  → fires on full view re-render
+  //   - knack-cell-update.view_3728  → fires per-cell after Knack inline-edit
   var _refreshDebounce = null;
+  function scheduleSilentRefresh() {
+    if (_refreshDebounce) clearTimeout(_refreshDebounce);
+    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 150);
+  }
   $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
-    function () {
-      if (_refreshDebounce) clearTimeout(_refreshDebounce);
-      _refreshDebounce = setTimeout(function () { refreshSilently(); }, 150);
-    });
+    scheduleSilentRefresh);
+  $(document).on('knack-cell-update.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
+    scheduleSilentRefresh);
 
   // ── Survey Costs save (per-SOW, on blur) ────────────────────
 
