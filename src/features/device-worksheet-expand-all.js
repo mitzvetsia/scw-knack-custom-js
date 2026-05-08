@@ -1,16 +1,22 @@
-/*** DEVICE WORKSHEET — EXPAND/COLLAPSE ALL L1 GROUPS ***/
+/*** DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/
 /**
- * Adds two buttons above any worksheet view that has L1 (MDF/IDF) group
+ * Adds three buttons above any worksheet view that has L1 (MDF/IDF) group
  * accordions:
- *   • Expand all   → opens every L1 group
- *   • Collapse all → closes every L1 group (only group headers visible)
+ *   • Expand all   → open every L1 group (card detail panels left as-is)
+ *   • Summary only → open every L1 group, close every card detail panel
+ *                    (only the summary row shows under each L1)
+ *   • Collapse all → close every L1 group (only group headers visible)
  *
- * Operates by directly toggling group-collapse.js's class/state contract
+ * L1 toggling mirrors group-collapse.js's class/state contract
  * (.scw-collapsed on the header + display on rows up to the next L1) and
- * writing the resulting state to the same localStorage key group-collapse
+ * writes the resulting state to the same localStorage key group-collapse
  * reads on its next enhance pass. That way exclusive-accordion views
  * (view_3586/3610/3921) honour the bulk action instead of snapping back
  * to one-open-only on the next render.
+ *
+ * Card detail toggling mirrors device-worksheet.js's toggleDetail:
+ * .scw-ws-detail.scw-ws-open, .scw-ws-chevron.scw-ws-expanded /
+ * .scw-ws-collapsed, and .scw-ws-photo-wrap.scw-ws-photo-hidden.
  */
 (function () {
   'use strict';
@@ -19,6 +25,7 @@
   var BOUND_ATTR   = 'data-scw-bulk-toggle-bound';
   var L1_SEL = 'tr.kn-table-group.kn-group-level-1.scw-group-header';
 
+  // ── L1 ACCORDION STATE ──────────────────────────────────────────
   function getSceneId() {
     var bodyId = document.body.id || '';
     var m = bodyId.match(/scene_\d+/);
@@ -85,6 +92,49 @@
     saveState(sceneId, viewId, state);
   }
 
+  // ── CARD DETAIL PANELS ──────────────────────────────────────────
+  function expandCard(tr) {
+    var detail = tr.querySelector('.scw-ws-detail');
+    if (!detail) return;
+    detail.classList.add('scw-ws-open');
+    var chevron = tr.querySelector('.scw-ws-chevron');
+    if (chevron) {
+      chevron.classList.remove('scw-ws-collapsed');
+      chevron.classList.add('scw-ws-expanded');
+    }
+    var photoWrap = tr.querySelector('.scw-ws-photo-wrap');
+    if (photoWrap) photoWrap.classList.remove('scw-ws-photo-hidden');
+  }
+
+  function collapseCard(tr) {
+    var detail = tr.querySelector('.scw-ws-detail');
+    if (!detail) return;
+    detail.classList.remove('scw-ws-open');
+    var chevron = tr.querySelector('.scw-ws-chevron');
+    if (chevron) {
+      chevron.classList.remove('scw-ws-expanded');
+      chevron.classList.add('scw-ws-collapsed');
+    }
+    // Match toggleDetail: keep the photo wrap visible when the row is
+    // flagged photo-always and has actual uploaded images. Otherwise
+    // hide it on collapse.
+    var photoWrap = tr.querySelector('.scw-ws-photo-wrap');
+    if (!photoWrap) return;
+    var keepPhoto = tr.hasAttribute('data-scw-photo-always');
+    var hasRealPhotos = keepPhoto &&
+      photoWrap.querySelector('.scw-inline-photo-card[data-photo-has-image="true"]');
+    if (!keepPhoto || !hasRealPhotos) {
+      photoWrap.classList.add('scw-ws-photo-hidden');
+    }
+  }
+
+  function setAllCards(viewEl, wantOpen) {
+    var rows = viewEl.querySelectorAll('tr.scw-ws-row');
+    var fn = wantOpen ? expandCard : collapseCard;
+    for (var i = 0; i < rows.length; i++) fn(rows[i]);
+  }
+
+  // ── BUTTONS ─────────────────────────────────────────────────────
   function buildBtn(label, onClick) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -102,8 +152,6 @@
   function mount(viewEl) {
     if (!viewEl) return;
     if (viewEl.hasAttribute(BOUND_ATTR)) return;
-    // Only mount on views that have both worksheet rows and L1 group
-    // accordions. Plain grids without grouping are skipped.
     if (!viewEl.querySelector('tr.scw-ws-row')) return;
     if (!viewEl.querySelector(L1_SEL)) return;
 
@@ -119,6 +167,10 @@
 
     host.appendChild(buildBtn('Expand all', function () {
       setAllL1(viewEl, true);
+    }));
+    host.appendChild(buildBtn('Summary only', function () {
+      setAllL1(viewEl, true);
+      setAllCards(viewEl, false);
     }));
     host.appendChild(buildBtn('Collapse all', function () {
       setAllL1(viewEl, false);
@@ -146,4 +198,4 @@
   $(document).on('knack-view-render.any', scheduleScan);
   $(document).on('knack-scene-render.any', scheduleScan);
 })();
-/*** END DEVICE WORKSHEET — EXPAND/COLLAPSE ALL L1 GROUPS ***/
+/*** END DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/
