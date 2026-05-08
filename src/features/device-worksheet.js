@@ -4141,8 +4141,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var wsTr = chit.closest('tr.' + WORKSHEET_ROW);
     if (!wsTr) return;
     var recordId = getRecordId(wsTr);
-    var viewEl = chit.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
+    // Prefer the source view id stamped on the wsTr — survives the
+    // wsTr being moved (e.g. into bid-review's expand cell). Fall back
+    // to closest [id^="view_"] for native render contexts.
+    var viewId = wsTr.getAttribute('data-scw-view-id');
+    if (!viewId) {
+      var viewEl = chit.closest('[id^="view_"]');
+      viewId = viewEl ? viewEl.id : null;
+    }
     if (recordId && viewId) {
       saveRadioValue(viewId, recordId, fieldKey, newBool);
     }
