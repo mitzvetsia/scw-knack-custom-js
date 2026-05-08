@@ -377,7 +377,9 @@
     // Body — single form pre-filled with current values
     var body = el('div', 'scw-bid-cr-modal__body');
     body.appendChild(el('div', 'scw-bid-cr-modal__hint',
-      'Values are pre-filled from the current bid. Edit any field to request a change.'));
+      params.sourceFromSow
+        ? 'Values are pre-filled from the SOW. Edit any field to request the bidder match these values.'
+        : 'Values are pre-filled from the current bid. Edit any field to request a change.'));
 
     var inputs = {};
     for (var fi = 0; fi < FIELD_DEFS.length; fi++) {

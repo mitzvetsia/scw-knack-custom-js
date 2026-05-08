@@ -49,6 +49,28 @@
     return b;
   }
 
+  // ── cell-corner action button(s) ──────────────────────────────
+
+  /**
+   * Builds a small, absolutely positioned action button stack used in
+   * the top-right corner of the SOW + bid cells. `actions` is a list
+   * of { label, mod, attrs } where attrs become data-* on the button.
+   */
+  function buildCellActions(actions) {
+    var wrap = el('div', 'scw-bid-review__cell-actions');
+    for (var i = 0; i < actions.length; i++) {
+      var a = actions[i];
+      var b = el('button',
+        'scw-bid-review__cell-action scw-bid-review__cell-action--' + a.mod,
+        a.label);
+      b.type = 'button';
+      var keys = Object.keys(a.attrs);
+      for (var k = 0; k < keys.length; k++) b.setAttribute(keys[k], a.attrs[keys[k]]);
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+
   // ── overflow menu factory ─────────────────────────────────────
 
   /**
@@ -316,8 +338,40 @@
   /** diff class helper — appends --field-diff modifier when flagged */
   var DIFF_CLS = 'scw-bid-review__field-diff';
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId, packages) {
     var td = el('td', 'scw-bid-review__sow-detail');
+
+    // Top-right "Revise" — for matched SOW rows with at least one bid
+    // package, lets the user open a CR modal pre-filled from the SOW
+    // values (asks the bidder to match SOW). Multi-package rows get an
+    // overflow menu listing each package; single-package rows get a
+    // direct button.
+    if (row.sowItem && !row.noBid && !row.surveyNoBid && packages && packages.length) {
+      var attrsBase = function (pkgId) {
+        return {
+          'data-action':     'cell_request_change_from_sow',
+          'data-row-id':     row.id,
+          'data-package-id': pkgId,
+          'data-sow-id':     sowId || '',
+          'data-vis-qty':     qtyVisible ? '1' : '0',
+          'data-vis-cabling': cablingVisible ? '1' : '0',
+          'data-vis-conn':    connDevVisible ? '1' : '0',
+        };
+      };
+      if (packages.length === 1) {
+        td.appendChild(buildCellActions([
+          { label: 'Revise', mod: 'revise', attrs: attrsBase(packages[0].id) }
+        ]));
+      } else {
+        var choices = [];
+        for (var sci = 0; sci < packages.length; sci++) {
+          choices.push({ label: packages[sci].name, attrs: attrsBase(packages[sci].id) });
+        }
+        var overflow = buildOverflowMenu('Revise', 'revise', choices);
+        overflow.classList.add('scw-bid-review__cell-actions');
+        td.appendChild(overflow);
+      }
+    }
 
     if (!row.sowItem) {
       // NEW row \u2014 no matching SOW item yet. Replace the "\u2014" placeholder
@@ -411,13 +465,41 @@
 
   // ── data cell for a bid package column ──────────────────────
 
-  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs) {
+  function buildDataCell(cell, cablingVisible, connDevVisible, qtyVisible, diffs, opts) {
     var td = el('td');
 
     if (!cell) {
       td.className = 'scw-bid-review__cell--missing';
       td.textContent = '\u2014';
       return td;
+    }
+
+    // Top-right Revise + Remove buttons. `requireSubBid: No` rows
+    // (informational items) skip these so we don\'t prompt for changes
+    // on rows the bidder isn\'t actually pricing.
+    if (opts && opts.rowId && opts.pkgId && opts.sowId) {
+      var noSubBid = cell.requireSubBid && /^no$/i.test(String(cell.requireSubBid).trim());
+      if (!noSubBid) {
+        var baseAttrs = {
+          'data-row-id':      opts.rowId,
+          'data-package-id':  opts.pkgId,
+          'data-sow-id':      opts.sowId,
+          'data-vis-qty':     qtyVisible ? '1' : '0',
+          'data-vis-cabling': cablingVisible ? '1' : '0',
+          'data-vis-conn':    connDevVisible ? '1' : '0',
+        };
+        function withAction(act) {
+          var copy = {};
+          var bk = Object.keys(baseAttrs);
+          for (var bki = 0; bki < bk.length; bki++) copy[bk[bki]] = baseAttrs[bk[bki]];
+          copy['data-action'] = act;
+          return copy;
+        }
+        td.appendChild(buildCellActions([
+          { label: 'Revise', mod: 'revise', attrs: withAction('cell_request_change') },
+          { label: 'Remove', mod: 'remove', attrs: withAction('cell_remove_from_bid') },
+        ]));
+      }
     }
 
     if (cell.productName) {
@@ -512,9 +594,9 @@
 
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
 
-    // Collect eligible packages per action type
-    var reviseChoices = [];
-    var removeChoices = [];
+    // Collect eligible packages per action type. Revise + Remove
+    // moved into the cells; this pass only collects Add candidates
+    // (noBid rows) and any pending CR cards to surface here.
     var addChoices    = [];
     var pendingCards  = [];
 
@@ -554,28 +636,10 @@
         pendingCards.push(card);
       }
 
-      // Revise / Remove only apply when there's a bid cell
-      if (!ccell) continue;
-
-      // Skip packages where require sub bid = No
-      var noSubBid = ccell.requireSubBid && /^no$/i.test(String(ccell.requireSubBid).trim());
-      if (noSubBid) continue;
-
-      // Revise — only if no pending change yet
-      if (!pendingItem) {
-        var revAttrs = { 'data-action': 'cell_request_change' };
-        var rk = Object.keys(attrs);
-        for (var ri = 0; ri < rk.length; ri++) revAttrs[rk[ri]] = attrs[rk[ri]];
-        reviseChoices.push({ label: cpkg.name, attrs: revAttrs });
-      }
-
-      // Remove — only if not already a removal request
-      if (!pendingItem || !pendingItem.removeFromBid) {
-        var rmAttrs = { 'data-action': 'cell_remove_from_bid' };
-        var mk = Object.keys(attrs);
-        for (var mi = 0; mi < mk.length; mi++) rmAttrs[mk[mi]] = attrs[mk[mi]];
-        removeChoices.push({ label: cpkg.name, attrs: rmAttrs });
-      }
+      // Revise + Remove now live in the data cells (top-right action
+      // stack) — see buildDataCell + buildSowDetailCell. The right-
+      // side Sub Bid Revisions cell only carries pending CR cards and
+      // Add buttons (for noBid rows).
     }
 
     // No Bid / Survey No Bid rows — Add button (skip packages that already have a pending add)
@@ -610,12 +674,6 @@
 
     var menuRow = el('div', 'scw-bid-review__action-menus');
 
-    if (reviseChoices.length) {
-      menuRow.appendChild(buildOverflowMenu('Revise', 'revise', reviseChoices));
-    }
-    if (removeChoices.length) {
-      menuRow.appendChild(buildOverflowMenu('Remove', 'remove', removeChoices));
-    }
     if (addChoices.length) {
       menuRow.appendChild(buildOverflowMenu('Add', 'add', addChoices));
     }
@@ -773,7 +831,7 @@
     }
 
     // SOW detail cell — highlight cell + individual differing fields
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null, sowId);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null, sowId, packages);
     if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
@@ -784,7 +842,8 @@
       var pid = packages[i].id;
       var d   = diffsByPkg[pid];
       var dataTd = buildDataCell(
-        row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d
+        row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d,
+        { rowId: row.id, pkgId: pid, sowId: sowId }
       );
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');

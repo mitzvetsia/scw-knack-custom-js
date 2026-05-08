@@ -143,6 +143,7 @@
         && !e.target.closest('.scw-bid-review__btn')
         && !e.target.closest('.scw-bid-review__overflow')
         && !e.target.closest('.scw-bid-review__overflow-item')
+        && !e.target.closest('.scw-bid-review__cell-action')
         && !e.target.closest('a')
         && !e.target.closest('input')) {
         toggleRowExpand(rowTrigger);
@@ -153,6 +154,7 @@
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
         || e.target.closest('.scw-bid-review__overflow-item[data-action]')
+        || e.target.closest('.scw-bid-review__cell-action[data-action]')
         || e.target.closest('.scw-ops-margin-warning__btn[data-action]');
       if (!button) return;
 
@@ -167,6 +169,8 @@
 
       if (action === 'cell_request_change') {
         handleChangeRequest(button);
+      } else if (action === 'cell_request_change_from_sow') {
+        handleChangeRequest(button, { sourceFromSow: true });
       } else if (action === 'cell_remove_from_bid') {
         handleRemoveFromBid(button);
       } else if (action === 'cell_add_to_bid') {
@@ -821,8 +825,9 @@
 
   // ── change request (per-cell) ────────────────────────────────
 
-  function handleChangeRequest(button) {
+  function handleChangeRequest(button, opts) {
     if (!_state || !ns.changeRequests) return;
+    opts = opts || {};
 
     var rowId = button.getAttribute('data-row-id');
     var pkgId = button.getAttribute('data-package-id');
@@ -970,6 +975,34 @@
                   'connToOpts:', connToOpts.length);
     }
 
+    // SOW-source revisions reshape row.sow* into a cell-shape so the
+    // existing CR modal\'s prefill logic (cell[fd.key]) reads from the
+    // SOW item record. The CR still targets the bid cell — we\'re just
+    // asking the bidder to match SOW values.
+    var modalCell = cell;
+    if (opts.sourceFromSow) {
+      var rate = (row.sowQty > 0 && row.sowFee > 0) ? (row.sowFee / row.sowQty) : 0;
+      modalCell = {
+        id:               cell.id,
+        productName:      row.sowProduct || row.productName,
+        qty:              row.sowQty,
+        rate:             rate,
+        laborDesc:        row.sowLaborDesc,
+        bidExistCabling:  row.sowExistCabling,
+        bidPlenum:        row.sowPlenum,
+        bidExterior:      row.sowExterior,
+        bidDropLength:    row.sowDropLength,
+        bidConduit:       row.sowConduit,
+        bidConnDevice:    row.sowConnDevice || '',
+        bidConnDeviceIds: row.sowConnDeviceIds || [],
+        bidConnTo:        '',
+        bidConnToIds:     [],
+        bidMdfIdf:        row.sowMdfIdf || '',
+        bidMdfIdfIds:     [],
+        requireSubBid:    cell.requireSubBid,
+      };
+    }
+
     ns.changeRequests.open({
       rowId:        rowId,
       pkgId:        pkgId,
@@ -980,7 +1013,8 @@
       sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
-      cell:         cell,
+      cell:         modalCell,
+      sourceFromSow: !!opts.sourceFromSow,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
       visibility: {
