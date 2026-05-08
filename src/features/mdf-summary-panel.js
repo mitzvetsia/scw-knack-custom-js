@@ -38,6 +38,7 @@
   // products that don't carry these fields the values just don't
   // contribute, so the summary degrades gracefully.
   var FIELD_PRODUCT   = 'field_1949';   // product label
+  var FIELD_LABEL     = 'field_1950';   // device label (cam/reader rows)
   var FIELD_BUCKET    = 'field_2219';   // proposal bucket (connection id)
   var FIELD_SORT      = 'field_2218';   // bucket sort order on the row
   var FIELD_CABLING   = 'field_2461';   // existing cabling Y/N
@@ -95,6 +96,13 @@
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-product {' +
       '  color: #07467c; font-weight: 600;' +
+      '}' +
+      '.scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
+      '  display: block;' +
+      '  margin-top: 4px;' +
+      '  font: 400 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
+      '  color: #475569;' +
+      '  word-break: break-word;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
@@ -188,10 +196,12 @@
           count:         0,
           isCamReader:   false,
           minBucketSort: Infinity,
+          firstSeenIdx:  i,
           existCabling:  0, newCabling: 0,
           exterior:      0, interior:   0,
           plenum:        0,
-          subBidSum:     0, subBidCount: 0
+          subBidSum:     0, subBidCount: 0,
+          labels:        []
         };
         byProduct[label] = p;
       }
@@ -204,6 +214,9 @@
       // Cabling / exterior / plenum — cam-or-reader bucket only.
       if (bucketId === CAM_READER_BUCKET) {
         p.isCamReader = true;
+
+        var devLabel = readVal(a, FIELD_LABEL);
+        if (devLabel) p.labels.push(devLabel);
 
         var cab = readVal(a, FIELD_CABLING);
         if (cab !== '') {
@@ -230,14 +243,16 @@
       }
     }
 
-    // Sort products by min bucket sortOrder (matches the grid's row
-    // order), then alphabetical by label as a tiebreaker.
+    // Sort products by min bucket sortOrder (field_2218 — the same
+    // proposal-bucket sort order used to order data rows in the grid),
+    // then by first-seen row index so the tiebreaker mirrors the
+    // visible grid order rather than reverting to alphabetic.
     var products = Object.keys(byProduct).map(function (k) { return byProduct[k]; });
     products.sort(function (a, b) {
       var ao = isFinite(a.minBucketSort) ? a.minBucketSort : 1e9;
       var bo = isFinite(b.minBucketSort) ? b.minBucketSort : 1e9;
       if (ao !== bo) return ao - bo;
-      return a.label.localeCompare(b.label);
+      return a.firstSeenIdx - b.firstSeenIdx;
     });
 
     return { products: products, totals: totals };
@@ -249,8 +264,17 @@
 
     var rows = data.products.map(function (p) {
       var avgBid = p.subBidCount > 0 ? (p.subBidSum / p.subBidCount) : null;
+      var labelList = '';
+      if (p.isCamReader && p.labels.length) {
+        var sorted = p.labels.slice().sort(function (a, b) {
+          return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        labelList = '<span class="scw-mdf-label-list">' +
+          sorted.map(escapeHtml).join(', ') +
+          '</span>';
+      }
       return '<tr>' +
-        '<td class="scw-mdf-product">' + escapeHtml(p.label) + '</td>' +
+        '<td class="scw-mdf-product">' + escapeHtml(p.label) + labelList + '</td>' +
         num(p.count) +
         (p.isCamReader ? num(p.existCabling) : emptyCell()) +
         (p.isCamReader ? num(p.newCabling)   : emptyCell()) +
