@@ -690,10 +690,17 @@
   // fires — recompute so the summary reflects the new value.
   $(document).on('scw-record-saved' + NS, schedule);
 
-  // sow-filter-pills toggles the .scw-conn-filter-hidden class on
-  // rows. Watch the tbody for that class change so the summary
-  // refreshes when the user picks a SOW filter pill. MutationObserver
-  // on the tbody attributes catches both add and remove.
+  // Primary refresh trigger after a SOW filter pill click — sow-filter-
+  // pills.js dispatches this CustomEvent from applyFilter(). Direct
+  // event > tbody MutationObserver because Knack frequently rebuilds
+  // the tbody, leaving observers attached to detached elements.
+  document.addEventListener('scw-conn-filter-changed', function (e) {
+    if (e && e.detail && e.detail.viewId === TARGET_VIEW) schedule();
+  });
+
+  // Fallback: MutationObserver on tbody for filter-class changes that
+  // didn't go through the event path (DevTools, future callers, etc.).
+  // Re-bound on every view render since Knack may have replaced tbody.
   function bindFilterObserver() {
     var view = document.getElementById(TARGET_VIEW);
     if (!view) return;
