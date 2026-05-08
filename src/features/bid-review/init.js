@@ -409,15 +409,16 @@
 
   // ── Bump project margin (margin-low warning button) ──
   //
-  // Writes field_2158 directly on the SOW record so the margin-low
-  // recalculation picks up the new value. Reuses the same write-view
-  // (CFG.nextStepViewKey) that Survey Costs goes through.
+  // view_3923 is a FORM rendering field_2158 as an editable input.
+  // Click flow: set the input via .val + change (so Knack\'s internal
+  // model syncs), submit the form, reload the page once Knack fires
+  // its update-record event (or after a 3s timeout fallback).
+  var MARGIN_FORM_VIEW = 'view_3923';
+
   function handleSetProjectMargin(button) {
-    var sowId    = button.getAttribute('data-sow-id');
-    var fieldKey = button.getAttribute('data-margin-field') || CFG.projectMarginField;
     var marginVal = parseFloat(button.getAttribute('data-margin-value'));
     var marginPct = button.getAttribute('data-margin-pct') || '';
-    if (!sowId || !fieldKey || !isFinite(marginVal)) return;
+    if (!isFinite(marginVal)) return;
 
     if (!window.confirm(
       'Bump project margin to ' + marginPct + '% on this SOW?'
@@ -425,36 +426,48 @@
 
     setBusy(button, true);
 
-    var writeView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
-    if (!writeView || !SCW.knackRecordUrl) {
-      console.warn('[BidReview] set_project_margin skipped — no write view configured');
+    var $input = $('#' + MARGIN_FORM_VIEW + '-' + (CFG.projectMarginField || 'field_2158'));
+    if (!$input.length) {
+      console.warn('[BidReview] ' + MARGIN_FORM_VIEW + ' margin input not found');
+      ns.renderToast('Margin form not on page — cannot update', 'error');
       setBusy(button, false);
       return;
     }
 
-    var payload = {};
-    payload[fieldKey] = marginVal;
+    // Knack percent fields render as whole-number input (e.g. user
+    // types 13.5 → stored as 0.135). Always write the percent value
+    // here. The change event keeps Knack\'s form model in sync.
+    var pctNum = parseFloat(marginPct);
+    if (!isFinite(pctNum)) pctNum = marginVal * 100;
+    $input.val(pctNum.toFixed(2)).trigger('change');
 
-    SCW.knackAjax({
-      url:  SCW.knackRecordUrl(writeView, sowId),
-      type: 'PUT',
-      data: JSON.stringify(payload),
-      success: function (resp) {
-        if (typeof SCW.syncKnackModel === 'function') {
-          SCW.syncKnackModel(writeView, sowId, resp, fieldKey, marginVal);
-        }
-        try {
-          var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
-          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-        } catch (e) {}
-        ns.renderToast('Project margin set to ' + marginPct + '%', 'success');
-        refreshSilently();
-      },
-      error: function (xhr) {
-        console.warn('[BidReview] set_project_margin failed', xhr && xhr.responseText);
-        ns.renderToast('Margin update failed', 'error');
+    // Reload once Knack confirms the form submission. Bind both
+    // record-update + record-create namespaces (Knack uses one or the
+    // other depending on the form mode); whichever fires first wins.
+    var reloaded = false;
+    function done() {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    }
+    $(document).one('knack-record-update.' + MARGIN_FORM_VIEW, done);
+    $(document).one('knack-form-submit.' + MARGIN_FORM_VIEW, done);
+    // Safety net — if no event fires within 6s, reload anyway so the
+    // user isn\'t stranded.
+    setTimeout(done, 6000);
+
+    // Submit the form. Knack's submit binding lives on the form\'s
+    // own submit button; clicking it triggers validation + Knack\'s
+    // internal save flow.
+    var $form = $('#' + MARGIN_FORM_VIEW + ' form');
+    if ($form.length) {
+      $form.find('button[type="submit"], input[type="submit"]').first().trigger('click');
+      if (!$form.find('button[type="submit"], input[type="submit"]').length) {
+        $form.trigger('submit');
       }
-    }).always(function () { setBusy(button, false); });
+    } else {
+      console.warn('[BidReview] ' + MARGIN_FORM_VIEW + ' form not found');
+    }
   }
 
   // ── Add PM & Mobilization line item (margin-low warning button) ──
