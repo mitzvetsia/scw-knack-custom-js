@@ -390,7 +390,20 @@
   function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId, packages, diffsByPkg) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
-    // Top-right "Revise bid to match →" — only for the packages whose
+    // Lazy-built top-right action stack. "Revise bid to match" goes on
+    // top (only when there are mismatches), "Disconnect from SOW" sits
+    // below. One stack so the two buttons line up cleanly in the same
+    // corner instead of fighting over different anchor points.
+    var topRightStack = null;
+    function getTopRightStack() {
+      if (!topRightStack) {
+        topRightStack = el('div', 'scw-bid-review__cell-actions');
+        td.appendChild(topRightStack);
+      }
+      return topRightStack;
+    }
+
+    // Top entry: Revise bid to match — only for the packages whose
     // bid actually differs from the SOW. If every bid matches, the
     // button has nothing to ask for so we hide it entirely.
     if (row.sowItem && !row.noBid && !row.surveyNoBid && packages && packages.length) {
@@ -413,18 +426,22 @@
           };
         };
         var matchLabel = 'Revise bid to match →';
+        var rStack = getTopRightStack();
         if (mismatched.length === 1) {
-          td.appendChild(buildCellActions([
-            { label: matchLabel, mod: 'revise', attrs: attrsBase(mismatched[0].id) }
-          ]));
+          var attrsR = attrsBase(mismatched[0].id);
+          var rBtn = el('button',
+            'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
+            matchLabel);
+          rBtn.type = 'button';
+          var rKeys = Object.keys(attrsR);
+          for (var rk = 0; rk < rKeys.length; rk++) rBtn.setAttribute(rKeys[rk], attrsR[rKeys[rk]]);
+          rStack.appendChild(rBtn);
         } else {
           var choices = [];
           for (var sci = 0; sci < mismatched.length; sci++) {
             choices.push({ label: mismatched[sci].name, attrs: attrsBase(mismatched[sci].id) });
           }
-          var overflow = buildOverflowMenu(matchLabel, 'revise', choices);
-          overflow.classList.add('scw-bid-review__cell-actions');
-          td.appendChild(overflow);
+          rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
         }
       }
     }
@@ -442,12 +459,12 @@
       return td;
     }
 
-    // "Disconnect from SOW" — removes this SOW's id from the SOW item
-    // record's field_2154 connection (leaving any other connected SOWs
-    // intact). Only offered when the row is actually on this SOW
-    // (row.sowItem present); the line item itself is NOT deleted.
+    // Bottom entry of the top-right stack: Disconnect from SOW. Removes
+    // this SOW's id from the SOW item record's field_2154 connection
+    // (leaving any other connected SOWs intact). The line item itself
+    // is NOT deleted.
     if (row.sowItem && sowId) {
-      var disconnectActions = el('div', 'scw-bid-review__cell-actions scw-bid-review__cell-actions--bottom-right');
+      var dStack = getTopRightStack();
       var dBtn = el('button',
         'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
         'Disconnect from SOW');
@@ -456,8 +473,7 @@
       dBtn.setAttribute('data-row-id',  row.id);
       dBtn.setAttribute('data-sow-id',  sowId);
       dBtn.setAttribute('data-sow-item-id', row.sowItem);
-      disconnectActions.appendChild(dBtn);
-      td.appendChild(disconnectActions);
+      dStack.appendChild(dBtn);
     }
 
     if (row.sowProduct) {

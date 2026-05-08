@@ -46,7 +46,7 @@
   var FIELD_CABLING   = 'field_2461';   // existing cabling Y/N
   var FIELD_EXTERIOR  = 'field_1984';   // exterior Y/N
   var FIELD_PLENUM    = 'field_1983';   // plenum Y/N
-  var FIELD_SUBBID    = 'field_2150';   // sub bid amount
+  var FIELD_SUBBID    = 'field_2151';   // sub bid total per row (summed in the Total Sub Bid column)
 
   // Bucket id for cameras OR readers — only rows in this bucket
   // contribute to cabling / exterior / plenum aggregations.
@@ -369,7 +369,7 @@
   // that bucket's head row.
   function productRowHtml(p, opts) {
     opts = opts || {};
-    var avgBid = p.subBidCount > 0 ? (p.subBidSum / p.subBidCount) : null;
+    var totalBid = p.subBidCount > 0 ? p.subBidSum : null;
     var labelList = '';
     if (!opts.isSubtotal && p.isCamReader && p.labels.length) {
       var sorted = p.labels.slice().sort(function (a, b) {
@@ -392,14 +392,13 @@
       (showCR ? num(p.interior)     : blankCell()) +
       (showCR ? num(p.plenum)       : blankCell()) +
       num(p.count) +
-      (avgBid != null
-        ? '<td class="scw-mdf-num">' + fmtMoney(avgBid) + '</td>'
+      (totalBid != null
+        ? '<td class="scw-mdf-num">' + fmtMoney(totalBid) + '</td>'
         : blankCell()) +
     '</tr>';
   }
 
-  // Sum the per-bucket subtotal struct from a slice of products. Avg
-  // sub bid is recomputed weighted (sum/count), not averaged-of-averages.
+  // Sum the per-bucket subtotal struct from a slice of products.
   function bucketSubtotal(products, label) {
     var st = {
       label: label, count: 0, isCamReader: false,
@@ -490,11 +489,12 @@
       }
     }
 
-    // Total: only Qty and weighted Avg Sub Bid. Cabling/exterior/etc
-    // are left blank — those metrics are camera-or-reader-specific and
-    // don't make sense on a project-wide grand total line.
+    // Total: only Qty and Total Sub Bid (sum of field_2151 across every
+    // contributing row). Cabling/exterior/etc are blank — those metrics
+    // are camera-or-reader-specific and don't make sense on a project-
+    // wide grand total line.
     var t = data.totals;
-    var grandAvg = t.subBidCount > 0 ? (t.subBidSum / t.subBidCount) : null;
+    var grandTotal = t.subBidCount > 0 ? t.subBidSum : null;
     var totalRow = '<tr class="scw-mdf-total">' +
       '<td class="scw-mdf-product">Total</td>' +
       blankCell() +
@@ -503,8 +503,8 @@
       blankCell() +
       blankCell() +
       num(t.count) +
-      (grandAvg != null
-        ? '<td class="scw-mdf-num">' + fmtMoney(grandAvg) + '</td>'
+      (grandTotal != null
+        ? '<td class="scw-mdf-num">' + fmtMoney(grandTotal) + '</td>'
         : blankCell()) +
     '</tr>';
 
@@ -535,7 +535,7 @@
           '<th class="scw-mdf-product-h">Product</th>' +
           '<th colspan="5"></th>' +
           '<th>Qty</th>' +
-          '<th>Avg Sub Bid</th>' +
+          '<th>Total Sub Bid</th>' +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>';

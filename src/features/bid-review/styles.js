@@ -1042,8 +1042,7 @@
       '  vertical-align: top;',
       '  font-size: 12px;',
       '  position: relative;',
-      '  padding-right: 160px;', /* room for the "Revise bid to match →" button */
-      '  padding-bottom: 32px;',  /* room for the bottom-right "Disconnect from SOW" button */
+      '  padding-right: 160px;', /* room for the top-right Revise + Disconnect stack */
       '}',
       /* Bid package data cells share the same top-right action zone.
          Drop :not(:last-child) — when the Sub Bid Revisions column is
@@ -1065,16 +1064,6 @@
       '  gap: 4px;',
       '  align-items: flex-end;',
       '  z-index: 2;',
-      '}',
-      /* Bottom-right action stack — Disconnect from SOW. Pinned to the
-         opposite corner of the cell so it never collides with the
-         top-right Revise stack. */
-      '.scw-bid-review__cell-actions--bottom-right {',
-      '  top: auto;',
-      '  bottom: 6px;',
-      '  right: 6px;',
-      '  left: auto;',
-      '  align-items: flex-end;',
       '}',
       '.scw-bid-review__cell-action {',
       '  appearance: none;',
