@@ -646,15 +646,11 @@
       '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
       '}',
 
-      /* Hide view_3921 section once bid review is on the page — the
-         comparison grid surfaces the same rows via expand-on-click. */
-      'body.scw-bid-review-active #view_3921 {',
-      '  display: none !important;',
-      '}',
-      'body.scw-bid-review-active .scw-ktl-accordion[data-view-key="view_3921"],',
-      'body.scw-bid-review-active div.scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3921"]) {',
-      '  display: none !important;',
-      '}',
+      /* view_3921 (SOW line items) is shown alongside the bid review
+         grid for diagnostic / inspection purposes. The grid still
+         expands rows by moving worksheet cards out of view_3921, so
+         leaving the source view visible can briefly show empty cells
+         while a card is on loan. */
 
       /* ── SOW cell ──────────────────────────────────────────── */
       '.scw-bid-review__sow-cell {',
