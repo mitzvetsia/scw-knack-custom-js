@@ -133,13 +133,23 @@
       '  text-align: left !important;' +
       '  border-bottom: 1px solid #1e293b;' +
       '}' +
-      // Visual gap between bucket sections — a sliver of the panel
-      // background shows through on top of every bucket-head except the
-      // first. Cheaper than a spacer row and doesn't fight colspan.
-      '.scw-mdf-summary-table tr.scw-mdf-bucket-head + tr td,' +
-      '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
-      '  /* keep adjacency rules clean */' +
+      // Camera-or-Reader band carries inline column labels for the
+      // cabling/exterior/interior/plenum block. The label cell stays
+      // big-and-left like other bucket heads; the column-label cells
+      // are smaller, centered, and tighter so they read as headers
+      // rather than as section titles.
+      '.scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
+      '  font: 700 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      '  text-align: center !important;' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.04em;' +
+      '  padding: 7px 4px !important;' +
+      '  white-space: normal;' +
+      '  color: #cbd5e1 !important;' +
       '}' +
+      // Visual gap between bucket sections — a sliver of the panel
+      // background shows through above every bucket-head except the
+      // first. Cheaper than a spacer row and doesn't fight colspan.
       '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
       '  border-top: 6px solid #f8fafc;' +
       '}' +
@@ -233,8 +243,8 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
-  function emptyCell() {
-    return '<td class="scw-mdf-empty">—</td>';
+  function blankCell() {
+    return '<td></td>';
   }
   function num(n) {
     return '<td class="scw-mdf-num">' + n + '</td>';
@@ -254,7 +264,8 @@
     var byProduct = {};
     var totals = {
       count: 0, existCabling: 0, newCabling: 0,
-      exterior: 0, interior: 0, plenum: 0
+      exterior: 0, interior: 0, plenum: 0,
+      subBidSum: 0, subBidCount: 0
     };
 
     for (var i = 0; i < attrsList.length; i++) {
@@ -324,11 +335,14 @@
         }
       }
 
-      // Sub bid — by product, regardless of bucket.
+      // Sub bid — by product, regardless of bucket. Tracked on totals
+      // too so the Total row can show a weighted average.
       var bid = readNum(readVal(a, FIELD_SUBBID));
       if (bid > 0) {
         p.subBidSum   += bid;
         p.subBidCount += 1;
+        totals.subBidSum   += bid;
+        totals.subBidCount += 1;
       }
     }
 
@@ -348,8 +362,11 @@
   }
 
   // ── Build the panel HTML ────────────────────────────────────
-  // Renders one product row, with optional cam/reader cells and
-  // optional sub-bid cell. Used for both data rows and subtotal rows.
+  // Column order: Product, ExistCabling, NewCabling, Exterior, Interior,
+  // Plenum, Qty, Avg Sub Bid. Cabling/exterior/plenum cells stay blank
+  // for non-cam/reader rows (no "—" placeholder) — those metrics only
+  // apply to the Camera or Reader bucket and the column labels live on
+  // that bucket's head row.
   function productRowHtml(p, opts) {
     opts = opts || {};
     var avgBid = p.subBidCount > 0 ? (p.subBidSum / p.subBidCount) : null;
@@ -363,17 +380,21 @@
         '</span>';
     }
     var cls = opts.isSubtotal ? ' class="scw-mdf-subtotal"' : '';
+    // Cam/reader-only metrics show on cam/reader product rows AND on
+    // the cam/reader bucket subtotal (opts.bucketIsCR). For everything
+    // else those columns are empty.
+    var showCR = opts.isSubtotal ? !!opts.bucketIsCR : p.isCamReader;
     return '<tr' + cls + '>' +
       '<td class="scw-mdf-product">' + escapeHtml(p.label) + labelList + '</td>' +
+      (showCR ? num(p.existCabling) : blankCell()) +
+      (showCR ? num(p.newCabling)   : blankCell()) +
+      (showCR ? num(p.exterior)     : blankCell()) +
+      (showCR ? num(p.interior)     : blankCell()) +
+      (showCR ? num(p.plenum)       : blankCell()) +
       num(p.count) +
-      (p.isCamReader ? num(p.existCabling) : emptyCell()) +
-      (p.isCamReader ? num(p.newCabling)   : emptyCell()) +
-      (p.isCamReader ? num(p.exterior)     : emptyCell()) +
-      (p.isCamReader ? num(p.interior)     : emptyCell()) +
-      (p.isCamReader ? num(p.plenum)       : emptyCell()) +
       (avgBid != null
         ? '<td class="scw-mdf-num">' + fmtMoney(avgBid) + '</td>'
-        : emptyCell()) +
+        : blankCell()) +
     '</tr>';
   }
 
@@ -425,34 +446,66 @@
       current.items.push(p);
     }
 
-    var emitSections = groups.length > 1;
+    // Emit a bucket-head row when:
+    //   (a) multiple buckets are present (visual separator), or
+    //   (b) this is the Camera or Reader bucket — its band carries the
+    //       cabling/exterior/interior/plenum column labels, since those
+    //       metrics only apply to that bucket and don't belong in the
+    //       table-wide thead.
+    var hasMultipleBuckets = groups.length > 1;
     var rows = '';
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
-      if (emitSections) {
+      var isCR = grp.key === CAM_READER_BUCKET;
+
+      if (isCR) {
+        // Camera-or-Reader band: bucket name in the Product column,
+        // per-column labels in the cabling/exterior/interior/plenum
+        // columns. Right-side Qty + Avg Sub Bid columns left blank
+        // (their labels live in the table thead).
+        rows +=
+          '<tr class="scw-mdf-bucket-head scw-mdf-bucket-head--cr">' +
+            '<td class="scw-mdf-bh-label">' + escapeHtml(grp.label) + '</td>' +
+            '<td class="scw-mdf-bh-col">Existing<br>Cabling</td>' +
+            '<td class="scw-mdf-bh-col">New<br>Cabling</td>' +
+            '<td class="scw-mdf-bh-col">Exterior</td>' +
+            '<td class="scw-mdf-bh-col">Interior</td>' +
+            '<td class="scw-mdf-bh-col">Plenum</td>' +
+            '<td></td>' +
+            '<td></td>' +
+          '</tr>';
+      } else if (hasMultipleBuckets) {
         rows += '<tr class="scw-mdf-bucket-head">' +
           '<td colspan="8">' + escapeHtml(grp.label) + '</td>' +
         '</tr>';
       }
+
       for (var k = 0; k < grp.items.length; k++) {
         rows += productRowHtml(grp.items[k]);
       }
-      if (emitSections) {
+
+      if (hasMultipleBuckets) {
         var st = bucketSubtotal(grp.items, 'Subtotal');
-        rows += productRowHtml(st, { isSubtotal: true });
+        rows += productRowHtml(st, { isSubtotal: true, bucketIsCR: isCR });
       }
     }
 
+    // Total: only Qty and weighted Avg Sub Bid. Cabling/exterior/etc
+    // are left blank — those metrics are camera-or-reader-specific and
+    // don't make sense on a project-wide grand total line.
     var t = data.totals;
+    var grandAvg = t.subBidCount > 0 ? (t.subBidSum / t.subBidCount) : null;
     var totalRow = '<tr class="scw-mdf-total">' +
       '<td class="scw-mdf-product">Total</td>' +
+      blankCell() +
+      blankCell() +
+      blankCell() +
+      blankCell() +
+      blankCell() +
       num(t.count) +
-      num(t.existCabling) +
-      num(t.newCabling) +
-      num(t.exterior) +
-      num(t.interior) +
-      num(t.plenum) +
-      emptyCell() +
+      (grandAvg != null
+        ? '<td class="scw-mdf-num">' + fmtMoney(grandAvg) + '</td>'
+        : blankCell()) +
     '</tr>';
 
     // Fixed colgroup so every L1 summary table renders with the same
@@ -460,26 +513,28 @@
     // long product name in one group would push the numeric columns
     // right while neighbouring groups stayed compact, and the panels
     // wouldn't visually line up under each other.
+    //
+    // Column order: Product, ExistCabling, NewCabling, Exterior,
+    // Interior, Plenum, Qty, AvgSubBid. Qty + AvgSubBid live last
+    // because they're the only two columns that apply to every row;
+    // the cabling/exterior/etc block sits in the middle and is empty
+    // for non-cam/reader rows.
     return '' +
       '<table class="scw-mdf-summary-table">' +
         '<colgroup>' +
           '<col style="width:42%">' +     // Product
-          '<col style="width:6%">' +      // Qty
           '<col style="width:10%">' +     // Existing Cabling
           '<col style="width:10%">' +     // New Cabling
           '<col style="width:8%">' +      // Exterior
           '<col style="width:8%">' +      // Interior
           '<col style="width:6%">' +      // Plenum
+          '<col style="width:6%">' +      // Qty
           '<col style="width:10%">' +     // Avg Sub Bid
         '</colgroup>' +
         '<thead><tr>' +
           '<th class="scw-mdf-product-h">Product</th>' +
+          '<th colspan="5"></th>' +
           '<th>Qty</th>' +
-          '<th>Existing<br>Cabling</th>' +
-          '<th>New<br>Cabling</th>' +
-          '<th>Exterior</th>' +
-          '<th>Interior</th>' +
-          '<th>Plenum</th>' +
           '<th>Avg Sub Bid</th>' +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
