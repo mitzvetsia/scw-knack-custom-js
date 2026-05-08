@@ -209,18 +209,15 @@
     r2.appendChild(el('td', '')); // line item
 
     // SOW header detail cell — mirrors what view_3325 surfaces in its
-    // "Next Step" column (next-step pill, margin warning + optional PM
-    // button, published-proposal info, Survey Costs input, Margin
-    // display). Sits in the same row as the bid-package status badges
-    // so the SOW's affordances align with the bid columns'.
+    // "Next Step" column. Split into two rows now: r2 carries the
+    // descriptive content (proposal block + Survey Costs/Margin
+    // metrics), r3 carries the action buttons (margin-low warning
+    // stack + Preview Proposal pill). This matches the bid columns'
+    // shape — badge/name in r2, action stack in r3 — so all action
+    // buttons across SOW + bid columns line up vertically.
+    var sowParts = buildSowStatusBar(sowGrid);
     var sowHeaderTd = el('td', 'scw-bid-review__header-detail-cell scw-bid-review__sow-header-cell');
-    // Span rows 2 + 3 so the SOW status bar can vertically distribute
-    // its content across the same height the bid columns use for badge
-    // (row 2) + action buttons (row 3) — lets the Preview Proposal pill
-    // bottom-align with the Sync-to-SOW button in the bid columns.
-    sowHeaderTd.setAttribute('rowspan', '2');
-    var statusBar = buildSowStatusBar(sowGrid);
-    if (statusBar) sowHeaderTd.appendChild(statusBar);
+    if (sowParts && sowParts.details) sowHeaderTd.appendChild(sowParts.details);
     r2.appendChild(sowHeaderTd);
 
     for (var j = 0; j < sowGrid.packages.length; j++) {
@@ -265,7 +262,13 @@
     // ═══ ROW 3: Action buttons ═══
     var r3 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-actions');
     r3.appendChild(el('td', '')); // line item
-    // SOW cell is rowspan=2 from row 2 — no separate cell here.
+
+    // SOW action cell — sits in the same column as the SOW detail cell
+    // in r2, holds the margin-low warning button stack + Preview
+    // Proposal pill. Mirrors the bid-column header-action-cell.
+    var sowActionTd = el('td', 'scw-bid-review__header-action-cell scw-bid-review__sow-action-cell');
+    if (sowParts && sowParts.actions) sowActionTd.appendChild(sowParts.actions);
+    r3.appendChild(sowActionTd);
 
     for (var k = 0; k < sowGrid.packages.length; k++) {
       var pkg2 = sowGrid.packages[k];
@@ -1098,12 +1101,18 @@
     return (src.textContent || '').replace(/ /g, ' ').trim();
   }
 
+  // Returns { details, actions } so the caller can mount the two
+  // halves into r2 + r3 of the header — mirrors the bid-column shape
+  // (badges/name in r2, action buttons in r3).
+  //   details: published proposal block + Survey Costs / Margin metrics
+  //   actions: margin-low warning button stack + Preview Proposal pill
   function buildSowStatusBar(sowGrid) {
     var sowId = sowGrid.sowId;
     var tr = findNextStepRow(sowId);
     var ops = (window.SCW && SCW.opsReview) ? SCW.opsReview : null;
 
-    var bar = el('div', 'scw-bid-review__sow-status');
+    var details = el('div', 'scw-bid-review__sow-status');
+    var actions = el('div', 'scw-bid-review__sow-actions');
 
     // 1. Published proposal block — final/gfe chip, quote number link,
     //    expiration, PDF — same shape as the ops-list "Next Step" column
@@ -1124,7 +1133,7 @@
           pdfA.classList.add('scw-bid-review__pq-pdf-icon');
           nameDiv.appendChild(pdfA);
         }
-        bar.appendChild(proposalBlock);
+        details.appendChild(proposalBlock);
       }
     }
 
@@ -1150,7 +1159,7 @@
     marginWrap.appendChild(el('span', 'scw-bid-review__sow-metric-value', marginVal || '—'));
     metrics.appendChild(marginWrap);
 
-    bar.appendChild(metrics);
+    details.appendChild(metrics);
 
     // 3. Margin-low warning + recovery actions:
     //    a) Add PM & Mobilization (extra cost line item)
@@ -1191,7 +1200,7 @@
       }
 
       var warning = ops.buildMarginWarningForRow(tr, { marginButton: marginButtons });
-      if (warning) bar.appendChild(warning);
+      if (warning) actions.appendChild(warning);
     }
 
     // 4. "Preview Proposal for Next Steps" — restyled to match the
@@ -1205,11 +1214,11 @@
         // stays on the pill so auto-revert notes still surface.
         var arrowEl = pill.querySelector('.scw-ops-arrow');
         if (arrowEl) arrowEl.remove();
-        bar.appendChild(pill);
+        actions.appendChild(pill);
       }
     }
 
-    return bar;
+    return { details: details, actions: actions };
   }
 
   function buildSowSection(sowGrid) {
