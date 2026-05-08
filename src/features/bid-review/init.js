@@ -445,12 +445,16 @@
       return;
     }
 
-    // Knack percent fields render as whole-number input (e.g. user
-    // types 13.5 → stored as 0.135). Always write the percent value
-    // here. The change event keeps Knack\'s form model in sync.
-    var pctNum = parseFloat(marginPct);
-    if (!isFinite(pctNum)) pctNum = marginVal * 100;
-    $input.val(pctNum.toFixed(2)).trigger('change');
+    // field_2158 is a percent field that expects the decimal form
+    // (0.1710, not 17.10). data-margin-value is already the decimal;
+    // fall back to dividing the percent by 100 if it\'s missing.
+    var decNum = isFinite(marginVal) ? marginVal : (parseFloat(marginPct) / 100);
+    if (!isFinite(decNum)) {
+      console.warn('[BidReview] invalid margin value', marginVal, marginPct);
+      setBusy(button, false);
+      return;
+    }
+    $input.val(decNum.toFixed(4)).trigger('change');
 
     // Reload once Knack confirms the form submission. Bind both
     // record-update + record-create namespaces (Knack uses one or the
