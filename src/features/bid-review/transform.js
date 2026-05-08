@@ -725,9 +725,12 @@
           laborDesc:       raw(siRec, SFK.laborDesc),
           qty:             num(siRec, SFK.qty),
           fee:             num(siRec, SFK.fee),
-          product:         connectionLabel(siRec, SFK.product),
+          // Stored product NAME only (field_1958) — not the connection
+          // display label (field_1949) which appends the SKU and would
+          // mismatch the bid side\'s product name comparison.
+          productName:     raw(siRec, SFK.productName),
           existCabling:    raw(siRec, SFK.existCabling),
-          plenum:          raw(siRec, SFK.plenum),
+          plenum:           raw(siRec, SFK.plenum),
           exterior:        raw(siRec, SFK.exterior),
           dropLength:      raw(siRec, SFK.dropLength),
           conduit:         raw(siRec, SFK.conduit),
@@ -864,21 +867,17 @@
           if (siData.mdfIdf && !r2.sowMdfIdf) {
             r2.sowMdfIdf = siData.mdfIdf;
           }
-          if (!r2.sowInstallFee && siData.installFee) {
-            r2.sowInstallFee = siData.installFee;
-          }
-          if (!r2.sowEquipmentTotal && siData.equipmentTotal) {
-            r2.sowEquipmentTotal = siData.equipmentTotal;
-          }
           // Always prefer the SOW item record\'s editable fields over the
           // bid record\'s projected display copies — view_3680\'s connection
           // projections don\'t track edits made to the connected SOW item
           // until view_3680 itself re-fetches, so the displayed row would
           // otherwise stay stale after an inline panel edit.
+          r2.sowInstallFee    = siData.installFee;
+          r2.sowEquipmentTotal = siData.equipmentTotal;
           r2.sowLaborDesc     = siData.laborDesc;
           r2.sowQty           = siData.qty;
           r2.sowFee           = siData.fee;
-          r2.sowProduct       = siData.product || r2.sowProduct;
+          if (siData.productName) r2.sowProduct = siData.productName;
           r2.sowExistCabling  = siData.existCabling;
           r2.sowPlenum        = siData.plenum;
           r2.sowExterior      = siData.exterior;
