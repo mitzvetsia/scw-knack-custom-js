@@ -39,6 +39,7 @@
   // products that don't carry these fields the values just don't
   // contribute, so the summary degrades gracefully.
   var FIELD_PRODUCT   = 'field_1949';   // product label
+  var FIELD_QTY       = 'field_1964';   // quantity per row
   var FIELD_LABEL     = 'field_1950';   // device label (cam/reader rows)
   var FIELD_BUCKET    = 'field_2219';   // proposal bucket (connection id)
   var FIELD_SORT      = 'field_2218';   // bucket sort order on the row
@@ -252,8 +253,11 @@
         p.bucketLabel = readBucketLabel(a);
       }
 
-      p.count++;
-      totals.count++;
+      // Qty column sums field_1964 (per-row quantity), not record count.
+      // Rows with a missing/zero qty contribute 0.
+      var qty = readNum(readVal(a, FIELD_QTY));
+      p.count       += qty;
+      totals.count  += qty;
 
       // Use >= 0 (not > 0) — bucket sortOrder of 0 is legitimate
       // (e.g. "Networking or Headend"). Excluding it left those products
