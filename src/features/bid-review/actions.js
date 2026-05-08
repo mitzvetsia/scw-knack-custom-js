@@ -221,7 +221,7 @@
    *   view_3680 — bid review records (CFG.viewKey). Row.cellsByPackage[*]
    *               and row._rawRecord carry the full record with every
    *               field projected by that view.
-   *   view_3728 — unbid SOW line items (CFG.sowItemsViewKey). Used to
+   *   view_3921 — unbid SOW line items (CFG.sowItemsViewKey). Used to
    *               build "no bid" rows; row._rawRecord carries the full
    *               record with every field projected by that view.
    *
@@ -314,7 +314,7 @@
             sowMapConn:      row.sowMapConn,
             sowMdfIdf:       row.sowMdfIdf,
             // Every field on the source record (view_3680 bid record OR
-            // view_3728 unbid SOW item, depending on which view this row
+            // view_3921 unbid SOW item, depending on which view this row
             // came from). Includes the field_NNNN and field_NNNN_raw
             // pair for every column projected by the source view.
             sourceRecord:    row._rawRecord || null,

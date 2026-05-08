@@ -59,7 +59,7 @@
   // Off-DOM cache of moved wsTrs — populated by refreshSilently right
   // before it rebuilds the bid-review mount, drained by injectWorksheetCard
   // when reopenExpandedRows fires. This is what makes panel state survive a
-  // refresh: direct-edit PUTs don\'t re-render view_3728 (so a fresh wsTr
+  // refresh: direct-edit PUTs don\'t re-render view_3921 (so a fresh wsTr
   // never gets built there), but the wsTr already in the expand cell has
   // the user\'s changes — we just need to keep it alive across the rebuild.
   var _preservedCards = {};
@@ -202,13 +202,13 @@
     }, true);
   }
 
-  // ── Expandable row → inject view_3728 worksheet card ─────────
+  // ── Expandable row → inject view_3921 worksheet card ─────────
   // When a user clicks a sowItem row, find the matching wsTr that
-  // device-worksheet rendered in view_3728's tbody (id === sowItemId)
+  // device-worksheet rendered in view_3921's tbody (id === sowItemId)
   // and move it into a child tr under the bid review row.
   //
   // We move (not clone) so Knack's inline-edit handlers keep their
-  // model + record-id wiring. On view_3728 re-renders, device-worksheet
+  // model + record-id wiring. On view_3921 re-renders, device-worksheet
   // rebuilds the wsTr fresh — the listener at the bottom of this
   // section re-injects it for any rows still in the expanded set.
 
@@ -228,10 +228,10 @@
       // so without this the user\'s typing never reaches the save path.
       var focused = expandTr.querySelector(':focus');
       if (focused && typeof focused.blur === 'function') focused.blur();
-      // Park the wsTr back in view_3728\'s tbody so the next reopen can
+      // Park the wsTr back in view_3921\'s tbody so the next reopen can
       // find it. Otherwise it lives inside the closed expand-row, gets
       // wiped on the next silent refresh, and reopening shows
-      // "Loading editor…" forever (view_3728 never re-renders to
+      // "Loading editor…" forever (view_3921 never re-renders to
       // recreate the wsTr because direct-edit PUTs bypass it).
       var wsTr = expandTr.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]');
       if (wsTr) {
@@ -274,17 +274,17 @@
 
   function injectWorksheetCard(sowItemId, hostTd) {
     if (!hostTd) return;
-    // Already has a card from a previous expand — leave it. The view_3728
+    // Already has a card from a previous expand — leave it. The view_3921
     // re-render listener handles refresh after edits.
     if (hostTd.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]')) return;
     // Prefer a wsTr we detached just before the silent refresh — that
     // preserves the user\'s in-flight edits across the rebuild even when
-    // view_3728 didn\'t re-render (direct-edit PUTs bypass it).
+    // view_3921 didn\'t re-render (direct-edit PUTs bypass it).
     var wsTr = _preservedCards[sowItemId];
     if (wsTr) {
       delete _preservedCards[sowItemId];
     } else {
-      // device-worksheet renders wsTr inside view_3728's tbody with id=recordId
+      // device-worksheet renders wsTr inside view_3921's tbody with id=recordId
       wsTr = document.querySelector(
         '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
       );
@@ -316,8 +316,8 @@
   //   - scw-record-saved             → fired by device-worksheet after
   //                                    every direct-edit AJAX PUT (bypasses
   //                                    knack-view-render entirely).
-  //   - knack-view-render.view_3728  → fires on full view re-render
-  //   - knack-cell-update.view_3728  → fires per-cell after Knack inline-edit
+  //   - knack-view-render.view_3921  → fires on full view re-render
+  //   - knack-cell-update.view_3921  → fires per-cell after Knack inline-edit
   var _refreshDebounce = null;
   function scheduleSilentRefresh() {
     if (_refreshDebounce) clearTimeout(_refreshDebounce);
@@ -424,7 +424,7 @@
         }
         return;
       }
-      // Force view_3728 (unbid SOW items) to refetch so the just-
+      // Force view_3921 (unbid SOW items) to refetch so the just-
       // created PM line item lands in its model BEFORE refreshSilently
       // rebuilds the comparison state. refreshSilently → loadRawData
       // reads from the Knack model, so a stale model = missing row.
@@ -1603,7 +1603,7 @@
   //
   // The matrix depends on three Knack views:
   //   view_3680  — bid records (primary)
-  //   view_3728  — unbid SOW items (noBid rows)
+  //   view_3921  — unbid SOW items (noBid rows)
   //   view_3573  — bid packages (PDF links)
   //
   // On first page load the secondary views may not have rendered

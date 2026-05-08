@@ -101,7 +101,7 @@
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
-    // Flag the body so view_3728's accordion hides via CSS while the
+    // Flag the body so view_3921's accordion hides via CSS while the
     // bid review grid is on screen.
     document.body.classList.add('scw-bid-review-active');
     var mount = document.querySelector(CFG.mountSelector);

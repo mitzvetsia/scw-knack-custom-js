@@ -2556,7 +2556,7 @@
       var sowRaw = surveyRec.field_2404_raw;
       var sowId = Array.isArray(sowRaw) && sowRaw.length ? sowRaw[0].id : null;
       if (sowId) {
-        // SOW items might be on a view on this page (view_3728-ish) — not guaranteed
+        // SOW items might be on a view on this page (view_3921-ish) — not guaranteed
         // Fall back to reading SOW fields from the survey record itself (they're connected)
       }
     }

@@ -1386,7 +1386,7 @@
     if (!pkg) return null;
 
     // Build lookup: bid cell ID → row ID (survey item ID from view_3680)
-    // and set of known SOW item IDs (noBid items from view_3728)
+    // and set of known SOW item IDs (noBid items from view_3921)
     var cellToRow = {};   // bidRecordId → rowId
     var sowIdSet  = {};   // rowId for ADD/noBid items
     for (var pi = 0; pi < pkg.items.length; pi++) {
@@ -1478,7 +1478,7 @@
         }
       }
 
-      // Classify connection IDs into survey (view_3680) vs SOW (view_3728)
+      // Classify connection IDs into survey (view_3680) vs SOW (view_3921)
       // Survey items use bid cell IDs → translate to row IDs via cellToRow
       // SOW items already use their own record IDs
       function classifyConnIds(allIds, addIds) {
@@ -1488,7 +1488,7 @@
         for (var j = 0; j < allIds.length; j++) {
           var cid = allIds[j];
           if (addSet[cid] || sowIdSet[cid]) {
-            // SOW/noBid item (view_3728) — ID is already the SOW item ID
+            // SOW/noBid item (view_3921) — ID is already the SOW item ID
             sow.push(cid);
           } else {
             // Survey item (view_3680) — translate bid cell ID to row ID

@@ -132,7 +132,7 @@
       crBidPackage:    'field_2689',   // REL_bid package (on CR records — differs from field_2415)
     },
 
-    // ── SOW item fields (view_3728 — different keys than bid records) ──
+    // ── SOW item fields (view_3921 — different keys than bid records) ──
     sowItemFieldKeys: {
       sow:             'field_2154',   // REL_SOW (same key as bid records)
       product:         'field_1949',   // product connection (display label)

@@ -144,7 +144,7 @@
   /**
    * loadRawData() → jQuery.Deferred → { records: [], sowItems: [] }
    *
-   * Loads bid records from view_3680 and unbid SOW items from view_3728.
+   * Loads bid records from view_3680 and unbid SOW items from view_3921.
    */
   ns.loadRawData = function loadRawData() {
     var bidPromise     = loadView(CFG.viewKey);

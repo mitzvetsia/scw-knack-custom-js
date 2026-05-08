@@ -500,10 +500,10 @@
     return ids;
   }
 
-  // ── build "NO BID" rows from unbid SOW items (view_3728) ────
+  // ── build "NO BID" rows from unbid SOW items (view_3921) ────
 
   /**
-   * Convert SOW item records (from view_3728) into NO BID rows.
+   * Convert SOW item records (from view_3921) into NO BID rows.
    * These use DIFFERENT field keys than bid records.
    * Returns rows keyed by SOW id: { sowId: [row, ...] }
    */
@@ -552,7 +552,7 @@
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
-          // Full raw view_3728 record (every field) for downstream payloads
+          // Full raw view_3921 record (every field) for downstream payloads
           _rawRecord:      rec,
         });
       }
@@ -680,7 +680,7 @@
    * buildState(records, sowItems, bidPackages) → state
    *
    * @param {Array} records     — bid records from view_3680
-   * @param {Array} sowItems    — unbid SOW items from view_3728
+   * @param {Array} sowItems    — unbid SOW items from view_3921
    * @param {Array} bidPackages — bid package records from view_3573
    * Returns:
    *   {
@@ -787,7 +787,7 @@
     }
     delete sowBuckets['__no_sow__'];
 
-    // Build NO BID rows from view_3728 SOW items
+    // Build NO BID rows from view_3921 SOW items
     var noBidBySow = buildNoBidRows(sowItems || []);
 
     if (CFG.debug && Object.keys(noBidBySow).length) {
@@ -854,7 +854,7 @@
 
       // Merge SOW MDF/IDF (field_1946) and totals into rows from the SOW item lookup.
       // view_3680 (bid records) does NOT project field_2028/field_2269 — those
-      // live on the SOW item record (view_3728). Pull them across via the
+      // live on the SOW item record (view_3921). Pull them across via the
       // relatedSowItem connection so matched rows get totals too.
       for (var mi2 = 0; mi2 < rows.length; mi2++) {
         var r2 = rows[mi2];
