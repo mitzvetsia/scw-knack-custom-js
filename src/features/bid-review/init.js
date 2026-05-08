@@ -190,6 +190,8 @@
         handleCreateNewSow(button);
       } else if (action === 'add_pm_mobilization') {
         handleAddPmMobilization(button);
+      } else if (action === 'set_project_margin') {
+        handleSetProjectMargin(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
@@ -403,6 +405,56 @@
         ns.renderToast('Survey Costs save failed', 'error');
       }
     });
+  }
+
+  // ── Bump project margin (margin-low warning button) ──
+  //
+  // Writes field_2158 directly on the SOW record so the margin-low
+  // recalculation picks up the new value. Reuses the same write-view
+  // (CFG.nextStepViewKey) that Survey Costs goes through.
+  function handleSetProjectMargin(button) {
+    var sowId    = button.getAttribute('data-sow-id');
+    var fieldKey = button.getAttribute('data-margin-field') || CFG.projectMarginField;
+    var marginVal = parseFloat(button.getAttribute('data-margin-value'));
+    var marginPct = button.getAttribute('data-margin-pct') || '';
+    if (!sowId || !fieldKey || !isFinite(marginVal)) return;
+
+    if (!window.confirm(
+      'Bump project margin to ' + marginPct + '% on this SOW?'
+    )) return;
+
+    setBusy(button, true);
+
+    var writeView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      console.warn('[BidReview] set_project_margin skipped — no write view configured');
+      setBusy(button, false);
+      return;
+    }
+
+    var payload = {};
+    payload[fieldKey] = marginVal;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowId, resp, fieldKey, marginVal);
+        }
+        try {
+          var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) {}
+        ns.renderToast('Project margin set to ' + marginPct + '%', 'success');
+        refreshSilently();
+      },
+      error: function (xhr) {
+        console.warn('[BidReview] set_project_margin failed', xhr && xhr.responseText);
+        ns.renderToast('Margin update failed', 'error');
+      }
+    }).always(function () { setBusy(button, false); });
   }
 
   // ── Add PM & Mobilization line item (margin-low warning button) ──

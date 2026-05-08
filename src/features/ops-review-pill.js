@@ -403,19 +403,22 @@
       '<span></span>';
     box.querySelector('span').textContent = MARGIN_WARNING_MSG;
 
-    // Optional inline action button (e.g. "Add PM & Mobilization line item"
-    // on the bid-comparison page). The caller is responsible for wiring
-    // up the click handler — we just render the button with the supplied
-    // label and data-* attributes.
-    if (extraButton && extraButton.label) {
+    // Optional inline action button(s) — pass a single { label, dataAttrs }
+    // object or an array of them. The caller is responsible for wiring up
+    // the click handlers; we just render the buttons with the supplied
+    // label + data-* attributes.
+    var buttons = extraButton ? (Array.isArray(extraButton) ? extraButton : [extraButton]) : [];
+    for (var bi = 0; bi < buttons.length; bi++) {
+      var bcfg = buttons[bi];
+      if (!bcfg || !bcfg.label) continue;
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'scw-ops-margin-warning__btn';
-      btn.textContent = extraButton.label;
-      if (extraButton.dataAttrs) {
-        var dKeys = Object.keys(extraButton.dataAttrs);
+      btn.textContent = bcfg.label;
+      if (bcfg.dataAttrs) {
+        var dKeys = Object.keys(bcfg.dataAttrs);
         for (var di = 0; di < dKeys.length; di++) {
-          btn.setAttribute(dKeys[di], extraButton.dataAttrs[dKeys[di]]);
+          btn.setAttribute(dKeys[di], bcfg.dataAttrs[dKeys[di]]);
         }
       }
       box.appendChild(btn);

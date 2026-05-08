@@ -1094,18 +1094,43 @@
 
     bar.appendChild(metrics);
 
-    // 3. Margin-low warning + "Add PM & Mobilization line item" button.
+    // 3. Margin-low warning + recovery actions:
+    //    a) Add PM & Mobilization (extra cost line item)
+    //    b) Bump project margin to a value that keeps the effective
+    //       margin (after survey costs) at the 12% target.
     if (tr && ops && ops.buildMarginWarningForRow) {
-      var warning = ops.buildMarginWarningForRow(tr, {
-        marginButton: {
-          label: 'Add Project Management & Mobilization line item',
-          dataAttrs: {
-            'data-action':  'add_pm_mobilization',
-            'data-sow-id':  sowId,
-            'data-sow-name': sowGrid.sowName || ''
-          }
+      var marginButtons = [{
+        label: 'Add Project Management & Mobilization line item',
+        dataAttrs: {
+          'data-action':  'add_pm_mobilization',
+          'data-sow-id':  sowId,
+          'data-sow-name': sowGrid.sowName || ''
         }
-      });
+      }];
+
+      // Compute the margin needed so:
+      //   (newInstallFee - subBidTotal - surveyCosts) / newInstallFee = 12%
+      //   newInstallFee = subBidTotal × (1 + newMargin)
+      // Solving: newMargin = (0.12 × subBidTotal + surveyCosts) / (0.88 × subBidTotal)
+      var EFFECTIVE_TARGET = 0.12;
+      var subBidTotal  = parseFloat(readRowFieldText(tr, CFG.subBidTotalField).replace(/[$,]/g, '')) || 0;
+      var surveyCosts  = parseFloat(readRowFieldText(tr, CFG.surveyCostsField).replace(/[$,]/g, '')) || 0;
+      if (subBidTotal > 0) {
+        var newMargin = (EFFECTIVE_TARGET * subBidTotal + surveyCosts) / ((1 - EFFECTIVE_TARGET) * subBidTotal);
+        var newMarginPct = Math.ceil(newMargin * 1000) / 10; // round up to nearest 0.1%
+        marginButtons.push({
+          label: 'Increase project margin to ' + newMarginPct.toFixed(1) + '%',
+          dataAttrs: {
+            'data-action':       'set_project_margin',
+            'data-sow-id':       sowId,
+            'data-margin-value': String(newMargin),
+            'data-margin-pct':   newMarginPct.toFixed(1),
+            'data-margin-field': CFG.projectMarginField || ''
+          }
+        });
+      }
+
+      var warning = ops.buildMarginWarningForRow(tr, { marginButton: marginButtons });
       if (warning) bar.appendChild(warning);
     }
 
