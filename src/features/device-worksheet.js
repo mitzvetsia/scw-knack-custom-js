@@ -4131,9 +4131,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var srcTd = chit.closest('td[data-scw-cabling-src]')
              || chit.parentNode.querySelector('td[data-scw-cabling-src]');
     if (srcTd) {
-      var hiddenSpan = srcTd.querySelector('.' + P + '-chit-value')
-                    || srcTd.querySelector('span[style*="display"]');
-      if (hiddenSpan) hiddenSpan.textContent = newBool;
+      // Update the inner chip-stack bool-chip (if present — view_3505\'s
+      // exterior cell for example) so its data-value stays the truth
+      // for subsequent reads. The plain "Yes"/"No" span fallback
+      // covers tds without chip-stack rendering.
+      var innerBoolChip = srcTd.querySelector('.scw-bool-chip[data-field="' + fieldKey + '"]');
+      if (innerBoolChip) {
+        innerBoolChip.setAttribute('data-value', newBool.toLowerCase());
+        innerBoolChip.classList.remove('is-yes', 'is-no');
+        innerBoolChip.classList.add(newBool === 'Yes' ? 'is-yes' : 'is-no');
+      } else {
+        var hiddenSpan = srcTd.querySelector('.' + P + '-chit-value')
+                      || srcTd.querySelector('span[style*="display"]');
+        if (hiddenSpan) hiddenSpan.textContent = newBool;
+      }
       srcTd.setAttribute('data-value', newBool);
     }
 
@@ -4438,8 +4449,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       case 'toggleChit':
         if (!td) break;
-        var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
-        var isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        // Prefer an inner .scw-bool-chip[data-field=fieldKey] when present
+        // \u2014 that\'s the chip-stack renderer\'s authoritative value. On
+        // view_3505 the same <td.field_2372> hosts both Exterior AND
+        // Plenum chips, so td.textContent reads "ExteriorPlenum" and
+        // the plain yes/true match fails, leaving the chit gray even
+        // when the field actually is Yes.
+        var innerChip = td.querySelector('.scw-bool-chip[data-field="' + desc.key + '"]');
+        var isChitYes;
+        if (innerChip) {
+          var dv = (innerChip.getAttribute('data-value') || '').trim().toLowerCase();
+          isChitYes = (dv === 'yes' || dv === 'true');
+        } else {
+          var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+          isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        }
         // Skip rendering entirely when showOnlyIfYes and value is not yes
         if (desc.showOnlyIfYes && !isChitYes) break;
         var chit = document.createElement('span');
