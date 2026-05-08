@@ -1280,6 +1280,23 @@
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
+  // view_3921 (SOW Line Items source for the bid-review comparison
+  // grid). Same SOW Line Items object as view_3586/3610, same field
+  // keys, same regroup semantics. The bid-review feature edits
+  // field_1957 through worksheet cards moved out of #view_3921 into
+  // #bid-review-matrix; the connection-picker calls
+  // silentRegroupView3921 on save so the reciprocal + grouping cascade
+  // still fires.
+  createMirror({
+    VIEW_ID:             'view_3921',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    ACCESSORIES_FIELD:   'field_1958',
+    ACCESSORIES_VIEW_ID: 'view_3888',
+    PUBLIC_API_NAME:     'silentRegroupView3921'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};

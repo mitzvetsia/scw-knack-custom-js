@@ -627,6 +627,17 @@
       BUCKET: 'field_2219', GROUPING: 'field_1946',
       IDENTIFIER: 'field_1950'
     },
+    // view_3921 (SOW Line Items) is the source view the bid-review
+    // comparison grid edits through. The bid-review feature physically
+    // moves worksheet cards out of #view_3921 into #bid-review-matrix
+    // on row expand, so findOwningView() also falls back to the wsTr's
+    // data-scw-view-id attribute so the picker keeps firing on adopted
+    // cards. Same SOW Line Items object as view_3586/3610.
+    view_3921: {
+      TARGET: 'field_1957', RECIPROCAL: 'field_2197',
+      BUCKET: 'field_2219', GROUPING: 'field_1946',
+      IDENTIFIER: 'field_1950'
+    },
     view_3505: {
       TARGET: 'field_2380', RECIPROCAL: 'field_2381',
       BUCKET: 'field_2366', GROUPING: 'field_2375',
@@ -808,11 +819,20 @@
   var VIEWS = Object.keys(VIEW_CONFIGS);
   var RECORD_ID_RE = /^[0-9a-f]{24}$/i;
 
-  /** Find which configured view contains the given td (if any). */
+  /** Find which configured view contains the given td (if any).
+   *  Falls back to the closest wsTr's data-scw-view-id attribute when
+   *  no DOM ancestor matches a configured view id — bid-review's
+   *  expand panel physically moves wsTrs out of #view_3921 into
+   *  #bid-review-matrix, so the ancestor-id check alone misses them. */
   function findOwningView(td) {
     if (!td || !td.closest) return null;
     for (var i = 0; i < VIEWS.length; i++) {
       if (td.closest('#' + VIEWS[i])) return VIEWS[i];
+    }
+    var wsTr = td.closest('tr.scw-ws-row[data-scw-view-id]');
+    if (wsTr) {
+      var vid = wsTr.getAttribute('data-scw-view-id');
+      if (vid && VIEW_CONFIGS[vid]) return vid;
     }
     return null;
   }
@@ -855,12 +875,22 @@
     // target class and stop at the first td that's also inside its
     // matching view (so a stray td.field_1957 inside view_3505 — which
     // shouldn't happen but guard anyway — doesn't get hijacked).
+    //
+    // Fallback: when no view ancestor matches but the td is inside a
+    // wsTr carrying data-scw-view-id, trust that — the bid-review
+    // comparison grid moves worksheet cards out of #view_3921 into
+    // #bid-review-matrix, so the ancestor check alone would miss them.
     var td = null;
     var viewId = null;
     for (var vk in VIEW_CONFIGS) {
       if (!Object.prototype.hasOwnProperty.call(VIEW_CONFIGS, vk)) continue;
       var candidate = e.target.closest('td.' + VIEW_CONFIGS[vk].TARGET);
-      if (candidate && candidate.closest('#' + vk)) {
+      if (!candidate) continue;
+      if (candidate.closest('#' + vk)) {
+        td = candidate; viewId = vk; break;
+      }
+      var wsTr = candidate.closest('tr.scw-ws-row[data-scw-view-id="' + vk + '"]');
+      if (wsTr) {
         td = candidate; viewId = vk; break;
       }
     }
@@ -892,6 +922,18 @@
   // boolean-chips.js comment — that path silently fails in the worksheet
   // context where device-worksheet has restructured the rows. Direct PUT
   // is the pattern every other SCW device-worksheet writer uses today.
+  /** Gather every TARGET td hosted by the given wsTrs. The td may
+   *  live in the wsTr itself or in any descendant — worksheet cards
+   *  put the connection cell inside the detail panel. */
+  function collectTargetTds(wsTrs, TARGET) {
+    var out = [];
+    for (var i = 0; i < wsTrs.length; i++) {
+      var inner = wsTrs[i].querySelectorAll('td.' + TARGET);
+      for (var j = 0; j < inner.length; j++) out.push(inner[j]);
+    }
+    return out;
+  }
+
   /** Repaint the parent row's field_1957 cell from the PUT response.
    *  patchCardFromResponse skips this field because it's `nativeEdit`
    *  in the view_3586/view_3610 configs — readOnly/directEdit fields
@@ -908,17 +950,23 @@
     var cfg = cfgFor(viewId);
     if (!cfg) return;
     var TARGET = cfg.TARGET;
-    var viewEl = document.getElementById(viewId);
-    if (!viewEl) return;
-    // CSS IDs that start with a digit aren't valid in selectors; ~60% of
-    // hex Knack record ids do. Use an attribute selector instead so the
-    // querySelector doesn't throw on those rows.
-    var row = viewEl.querySelector('tr[id="' + recordId + '"]');
-    if (!row) return;
-    // The clicked cell lives in the worksheet card's detail panel. Both
-    // the pre-transform tr and the scw-ws-card are inside the view, so
-    // grab every TARGET td under the recordId row's neighbourhood.
-    var tds = viewEl.querySelectorAll('td.' + TARGET);
+    // Anchor on the wsTr (matched by record id + data-scw-view-id) and
+    // search document-wide. The bid-review comparison grid physically
+    // moves wsTrs out of their source view (#view_3921) into
+    // #bid-review-matrix, so a viewEl-scoped query would miss them.
+    var wsTrs = document.querySelectorAll(
+      'tr.scw-ws-row[id="' + recordId + '"][data-scw-view-id="' + viewId + '"]'
+    );
+    if (!wsTrs.length) {
+      // Fallback to the source view scope for rows that haven't been
+      // through device-worksheet's transform yet (flat-view edge case).
+      var viewEl = document.getElementById(viewId);
+      if (!viewEl) return;
+      if (!viewEl.querySelector('tr[id="' + recordId + '"]')) return;
+    }
+    var tds = wsTrs.length
+      ? collectTargetTds(wsTrs, TARGET)
+      : document.getElementById(viewId).querySelectorAll('td.' + TARGET);
     if (!tds.length) return;
 
     var raw = resp && resp[TARGET + '_raw'];
