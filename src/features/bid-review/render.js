@@ -435,6 +435,24 @@
       return td;
     }
 
+    // "Disconnect from SOW" — removes this SOW's id from the SOW item
+    // record's field_2154 connection (leaving any other connected SOWs
+    // intact). Only offered when the row is actually on this SOW
+    // (row.sowItem present); the line item itself is NOT deleted.
+    if (row.sowItem && sowId) {
+      var disconnectActions = el('div', 'scw-bid-review__cell-actions scw-bid-review__cell-actions--bottom-left');
+      var dBtn = el('button',
+        'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
+        'Disconnect from SOW');
+      dBtn.type = 'button';
+      dBtn.setAttribute('data-action',  'cell_disconnect_from_sow');
+      dBtn.setAttribute('data-row-id',  row.id);
+      dBtn.setAttribute('data-sow-id',  sowId);
+      dBtn.setAttribute('data-sow-item-id', row.sowItem);
+      disconnectActions.appendChild(dBtn);
+      td.appendChild(disconnectActions);
+    }
+
     if (row.sowProduct) {
       var prodEl = el('div', 'scw-bid-review__cell-label', row.sowProduct);
       if (diffs && diffs.product) prodEl.classList.add(DIFF_CLS);

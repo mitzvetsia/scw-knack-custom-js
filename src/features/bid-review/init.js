@@ -173,6 +173,8 @@
         handleChangeRequest(button, { sourceFromSow: true });
       } else if (action === 'cell_remove_from_bid') {
         handleRemoveFromBid(button);
+      } else if (action === 'cell_disconnect_from_sow') {
+        handleDisconnectFromSow(button);
       } else if (action === 'cell_add_to_bid') {
         handleAddToBid(button);
       } else if (action === 'cr_submit') {
@@ -1242,6 +1244,108 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
+    });
+  }
+
+  // ── disconnect from SOW (per-row, on SOW detail cell) ──────
+  //
+  // Removes this SOW's id from the SOW Line Item's field_2154
+  // connection (the SOW connection is multi-value — a single line
+  // item can be on 1+ SOWs). The line item itself is NOT deleted; if
+  // it's connected to other SOWs, it stays on those.
+  //
+  // Read path: Knack.views[view_3921].model lookup by record id →
+  // field_2154_raw (array of {id, identifier}). Filter out the
+  // current sowId. PUT the remaining ids to view_3921 via
+  // SCW.knackAjax / SCW.knackRecordUrl. SCW.syncKnackModel keeps the
+  // local model in sync so the silent refresh sees the new value.
+
+  function handleDisconnectFromSow(button) {
+    var rowId      = button.getAttribute('data-row-id');
+    var sowId      = button.getAttribute('data-sow-id');
+    var sowItemId  = button.getAttribute('data-sow-item-id');
+    if (!sowId || !sowItemId) return;
+
+    var grid = findSowGrid(sowId);
+    var row  = null;
+    if (grid) {
+      for (var i = 0; i < grid.rows.length; i++) {
+        if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+      }
+    }
+    var sowName  = (grid && grid.sowName)        || 'this SOW';
+    var itemName = (row && (row.displayLabel || row.productName)) || 'this line item';
+
+    if (!window.confirm(
+      'Disconnect ' + itemName + ' from ' + sowName + '?\n\n' +
+      'The line item itself will NOT be deleted. It will stay on any other ' +
+      'SOWs it is connected to. Only the link between this line item and ' +
+      sowName + ' is being removed.'
+    )) return;
+
+    var view = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+    var model = view && view.model && view.model.data && view.model.data.models;
+    var record = null;
+    if (model) {
+      for (var mi = 0; mi < model.length; mi++) {
+        if (model[mi].id === sowItemId) { record = model[mi]; break; }
+      }
+    }
+    if (!record) {
+      ns.renderToast('Could not locate SOW line item record on the page', 'error');
+      return;
+    }
+
+    var attrs = record.attributes || {};
+    var raw = attrs[CFG.fieldKeys.sow + '_raw'];
+    var currentIds = [];
+    if (Array.isArray(raw)) {
+      for (var ri = 0; ri < raw.length; ri++) {
+        if (raw[ri] && raw[ri].id) currentIds.push(raw[ri].id);
+      }
+    }
+    if (!currentIds.length) {
+      ns.renderToast('No SOW connection found on this line item', 'error');
+      return;
+    }
+
+    var remainingIds = [];
+    for (var ci = 0; ci < currentIds.length; ci++) {
+      if (currentIds[ci] !== sowId) remainingIds.push(currentIds[ci]);
+    }
+    if (remainingIds.length === currentIds.length) {
+      // SOW id wasn't on the record — UI is out of sync but the
+      // user's intent is already satisfied. Refresh and bail.
+      ns.renderToast('Line item was already disconnected from this SOW', 'info');
+      ns.refresh && ns.refresh();
+      return;
+    }
+
+    setBusy(button, true);
+
+    var fieldKey = CFG.fieldKeys.sow; // field_2154
+    var payload = {};
+    payload[fieldKey] = remainingIds; // empty array clears the connection
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, sowItemId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        setBusy(button, false);
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(CFG.sowItemsViewKey, sowItemId, resp, fieldKey, remainingIds);
+        }
+        ns.renderToast('Line item disconnected from ' + sowName, 'success');
+        // Pull the bid-review pipeline so the row drops out of this
+        // SOW grid (and stays in any other SOW grid it's connected to).
+        if (ns.refresh) ns.refresh();
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        if (CFG.debug) console.warn('[BidReview] Disconnect from SOW failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('Disconnect failed — please try again', 'error');
+      }
     });
   }
 
