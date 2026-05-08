@@ -32,6 +32,7 @@
   var STYLE_ID    = 'scw-mdf-summary-css';
   var NS          = '.scwMdfSummary';
   var ROW_CLASS   = 'scw-mdf-summary-row';
+  var GRAND_CLASS = 'scw-mdf-grand-summary';
 
   // Field keys used in the aggregation. These line up with the cam/
   // reader bucketOverride on view_3610 (see device-worksheet.js); for
@@ -118,6 +119,23 @@
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
       '  color: #1e3a8a; text-align: left;' +
+      '}' +
+      // Grand-summary wrapper — mounted above the kn-table so it sits
+      // outside Knack's grouping/pagination machinery. Uses the same
+      // .scw-mdf-summary-table renderer; only the chrome differs.
+      '.' + GRAND_CLASS + ' {' +
+      '  margin: 8px 0 12px;' +
+      '  padding: 10px 14px;' +
+      '  background: #f1f5f9;' +
+      '  border: 1px solid #cbd5e1;' +
+      '  border-radius: 4px;' +
+      '}' +
+      '.' + GRAND_CLASS + ' .scw-mdf-grand-title {' +
+      '  font: 700 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
+      '  color: #475569;' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.06em;' +
+      '  margin-bottom: 6px;' +
       '}';
     document.head.appendChild(s);
   }
@@ -371,6 +389,7 @@
     var rows = Array.prototype.slice.call(tbody.children);
     var currentL1 = null;
     var currentList = [];
+    var grandList = [];
 
     function flush(_l1, _list) {
       if (!_l1 || !_list.length) return;
@@ -418,9 +437,40 @@
         tr.id && attrsById[tr.id]
       ) {
         currentList.push(attrsById[tr.id]);
+        // Skip rows that belong to a synthetic L1 ("Project Wide
+        // Services" / "Project Wide Assumptions") — same exclusion the
+        // per-L1 flush() applies, so the grand totals match the sum of
+        // the visible per-L1 panels.
+        if (!currentL1 || !currentL1.classList.contains('scw-synthetic-group')) {
+          grandList.push(attrsById[tr.id]);
+        }
       }
     }
     flush(currentL1, currentList);
+
+    renderGrand(view, grandList);
+  }
+
+  function renderGrand(view, list) {
+    var prev = view.querySelector('.' + GRAND_CLASS);
+    if (prev) prev.remove();
+    if (!list.length) return;
+
+    var html = buildPanelHtml(aggregate(list));
+    if (!html) return;
+
+    var wrap = document.createElement('div');
+    wrap.className = GRAND_CLASS;
+    wrap.innerHTML =
+      '<div class="scw-mdf-grand-title">Summary — All Groups</div>' + html;
+
+    // Mount just above the kn-table so the grand summary sits outside
+    // Knack's grouping/pagination machinery (and isn't toggled by
+    // group-collapse).
+    var table = view.querySelector('table.kn-table');
+    if (table && table.parentNode) {
+      table.parentNode.insertBefore(wrap, table);
+    }
   }
 
   injectStyles();
