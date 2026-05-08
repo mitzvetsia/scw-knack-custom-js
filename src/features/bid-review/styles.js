@@ -534,13 +534,16 @@
          the SOW columns (cells 1+2) that visually continues the panel\'s
          shadow above the row, so the data row + panel read as one unit. */
       '.scw-bid-review__row--expandable { cursor: pointer; }',
-      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1) {',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1),',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
       '  position: relative;',
+      '  background: #fff !important;',
+      '}',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1) {',
       '  box-shadow: 0 -16px 20px -10px rgba(2, 132, 199, 0.385),',
       '              -10px -14px 18px -10px rgba(2, 132, 199, 0.315);',
       '}',
       '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
-      '  position: relative;',
       '  box-shadow: 0 -16px 20px -10px rgba(2, 132, 199, 0.385),',
       '              10px -14px 18px -10px rgba(2, 132, 199, 0.315);',
       '}',
