@@ -407,6 +407,7 @@
         viewId: 'view_3586',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         stackedSummary: false,
+        photoAlwaysVisible: true,
         hideDeleteWhenCountGtZero: 'field_2586',
         fields: {
           // ── Summary row ──
