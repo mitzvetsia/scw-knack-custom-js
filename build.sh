@@ -88,6 +88,7 @@ cat \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/device-worksheet-expand-all.js \
+  src/features/view-3610-toolbar.js \
   src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
   src/features/sales-change-request/state.js \
