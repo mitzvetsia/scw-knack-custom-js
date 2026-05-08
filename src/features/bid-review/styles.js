@@ -530,20 +530,19 @@
       '  background: #eff6ff;',
       '}',
 
-      /* Click-to-expand row: cursor + open-state highlight. The blue
-         frame scopes to the SOW side only (cols 1+2) so it\'s visually
-         clear we\'re editing the SOW line item, not the survey row. */
+      /* Click-to-expand row: cursor + a soft blue drop-shadow halo on
+         the SOW columns (cells 1+2) that visually continues the panel\'s
+         shadow above the row, so the data row + panel read as one unit. */
       '.scw-bid-review__row--expandable { cursor: pointer; }',
-      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1),',
-      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
-      '  background: #e0f2fe !important;',
-      '  border-top: 2px solid #0284c7;',
-      '}',
       '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1) {',
-      '  border-left: 2px solid #0284c7;',
+      '  position: relative;',
+      '  box-shadow: 0 -16px 20px -10px rgba(2, 132, 199, 0.385),',
+      '              -10px -14px 18px -10px rgba(2, 132, 199, 0.315);',
       '}',
       '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
-      '  border-right: 2px solid #0284c7;',
+      '  position: relative;',
+      '  box-shadow: 0 -16px 20px -10px rgba(2, 132, 199, 0.385),',
+      '              10px -14px 18px -10px rgba(2, 132, 199, 0.315);',
       '}',
 
       /* Expand-row: hidden until the parent row is open. The injected
@@ -557,10 +556,13 @@
       '  border: none !important;',
       '}',
       /* Push the panel up to overlap with the data row above; square top
-         corners + rounded bottom so it reads as integrated. */
+         corners + rounded bottom so it reads as integrated. Drop the
+         worksheet card\'s default 1px border — the blue shadow alone
+         frames the panel. */
       '.scw-bid-review__expand-cell .scw-ws-card {',
       '  margin-top: -5px;',
       '  border-radius: 0 0 8px 8px !important;',
+      '  border: none !important;',
       '}',
       /* Sink the bid + actions cells of the expanded data row so the
          lifted panel above casts an inset shadow into them. */
@@ -578,9 +580,9 @@
          below + to the sides — never on top. */
       '.scw-bid-review__expand-cell .scw-ws-card:has(.scw-ws-open),',
       '.scw-bid-review__expand-cell .scw-ws-card {',
-      '  box-shadow: 0 16px 20px -10px rgba(2, 132, 199, 0.55),',
-      '              -10px 14px 18px -10px rgba(2, 132, 199, 0.45),',
-      '              10px 14px 18px -10px rgba(2, 132, 199, 0.45) !important;',
+      '  box-shadow: 0 16px 20px -10px rgba(2, 132, 199, 0.385),',
+      '              -10px 14px 18px -10px rgba(2, 132, 199, 0.315),',
+      '              10px 14px 18px -10px rgba(2, 132, 199, 0.315) !important;',
       '}',
       '.scw-bid-review__expand-table > tbody > tr > td {',
       '  padding: 0 !important;',
