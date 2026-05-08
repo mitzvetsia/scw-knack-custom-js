@@ -221,11 +221,30 @@
   // ── DOM consolidation pass ──────────────────────────────
   // Idempotent: safe to run on every mutation tick. Only rearranges, never
   // creates new controls.
+  //
+  // IMPORTANT: disconnects the MutationObserver for the duration of the
+  // pass and reconnects at the end. Without this guard, the appendChild
+  // reorder calls below generate childList mutations that re-fire our
+  // own observer ~80ms later, producing a continuous mutation loop at
+  // ~10Hz. That churn breaks click-event delivery on the controls we
+  // re-parent (Expand/Summary/Collapse, Add to Scope) because their
+  // host elements are constantly being detached-and-reattached.
   function consolidate() {
     var view = document.getElementById(VIEW_ID);
     if (!view) return;
     var nav = view.querySelector('.kn-records-nav');
     if (!nav) return;
+
+    var ourObs = view[OBS_KEY];
+    if (ourObs) ourObs.disconnect();
+    try {
+      consolidateInner(view, nav);
+    } finally {
+      if (ourObs) ourObs.observe(view, { childList: true, subtree: true });
+    }
+  }
+
+  function consolidateInner(view, nav) {
 
     // Mark the nav as managed so our scoped CSS engages.
     if (!nav.hasAttribute(BAR_ATTR)) nav.setAttribute(BAR_ATTR, '1');
@@ -291,9 +310,22 @@
       nav.appendChild(spring);
     }
 
+    // Position-aware reorder: only call insertBefore when an element is
+    // not already in its target slot. Unconditional appendChild (even on
+    // a node that's already last child) generates a childList mutation
+    // record, which would re-fire our observer and produce a churn loop
+    // — and even with the disconnect guard, gratuitous mutations are
+    // wasted work.
+    var prev = null;
     for (var i = 0; i < orderSelectors.length; i++) {
       var el = nav.querySelector(orderSelectors[i]);
-      if (el) nav.appendChild(el);
+      if (!el) continue;
+      var expectedAfter = prev ? prev.nextElementSibling : nav.firstElementChild;
+      if (el !== expectedAfter) {
+        // el is not where it should be — move it into position.
+        nav.insertBefore(el, expectedAfter);
+      }
+      prev = el;
     }
   }
 
