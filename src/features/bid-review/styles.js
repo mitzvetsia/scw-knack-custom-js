@@ -226,12 +226,11 @@
       '}',
 
       /* When a SOW has no pending CRs, no noBid/surveyNoBid rows, and
-         no header submit buttons, the entire Sub Bid Revisions column
-         collapses so the SOW + Bid columns can reclaim its width.
-         Toggled per-table by buildSowSection at render time. */
-      '.scw-bid-review__table--no-cr .scw-bid-review__cr-col {',
-      '  display: none !important;',
-      '}',
+         no header submit buttons, the .cr-col cells are physically
+         removed from the DOM by buildSowSection — see the comment
+         there. The .scw-bid-review__table--no-cr class is left on the
+         table as a hook for any other code that wants to reason
+         about the collapsed-column state. */
       '.scw-bid-review__header-titles th.scw-bid-review__sow-detail-header {',
       '  text-align: center !important;',
       '  font-size: 12px !important;',

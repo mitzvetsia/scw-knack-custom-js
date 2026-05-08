@@ -1258,10 +1258,28 @@
 
       // Sub Bid Revisions column collapses when there's nothing to show
       // for this SOW — no pending CRs in any cell, no Add buttons (no
-      // noBid / surveyNoBid rows), no header CR submit buttons. Lets
-      // the SOW + Bid columns reclaim the horizontal space the empty
-      // column was eating.
+      // noBid / surveyNoBid rows), no header CR submit buttons.
+      //
+      // Physical removal (not display:none): with table-layout: fixed
+      // the column's cells stay in the table grid even when hidden,
+      // claiming their slice of the remaining width. Removing the
+      // cells outright drops the column from the grid so the SOW +
+      // Bid columns reflow into the freed space.
       if (!tableHasCrContent(table)) {
+        var crCells = table.querySelectorAll('.scw-bid-review__cr-col');
+        for (var k = 0; k < crCells.length; k++) {
+          crCells[k].parentNode.removeChild(crCells[k]);
+        }
+        // Group + subgroup header rows colspan over the full table
+        // width; decrement by 1 so they don't overshoot.
+        var groupTds = table.querySelectorAll(
+          'tr.scw-bid-review__group-header > td[colspan],' +
+          'tr.scw-bid-review__subgroup-header > td[colspan]'
+        );
+        for (var g = 0; g < groupTds.length; g++) {
+          var cs = parseInt(groupTds[g].getAttribute('colspan'), 10);
+          if (isFinite(cs) && cs > 1) groupTds[g].setAttribute('colspan', String(cs - 1));
+        }
         table.classList.add('scw-bid-review__table--no-cr');
       }
 
