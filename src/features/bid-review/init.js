@@ -193,10 +193,22 @@
       expandTr = document.createElement('tr');
       expandTr.className = 'scw-bid-review__expand-row';
       expandTr.setAttribute('data-expand-for', sowItemId);
+      // Split the row into two cells so the blue frame visually scopes to
+      // the SOW side only. First two td columns of the data row are the
+      // label + SOW detail; the rest are bid columns + actions.
+      var totalCols = tr.children.length;
+      var sowSpan = Math.min(2, totalCols);
+      var rightSpan = Math.max(0, totalCols - sowSpan);
       var td = document.createElement('td');
       td.className = 'scw-bid-review__expand-cell';
-      td.setAttribute('colspan', String(tr.children.length));
+      td.setAttribute('colspan', String(sowSpan));
       expandTr.appendChild(td);
+      if (rightSpan > 0) {
+        var spacer = document.createElement('td');
+        spacer.className = 'scw-bid-review__expand-spacer';
+        spacer.setAttribute('colspan', String(rightSpan));
+        expandTr.appendChild(spacer);
+      }
       tr.parentNode.insertBefore(expandTr, tr.nextSibling);
     }
 
@@ -204,6 +216,16 @@
     tr.setAttribute('aria-expanded', 'true');
     _expandedSowItems[sowItemId] = true;
     injectWorksheetCard(sowItemId, expandTr.firstElementChild);
+    // Force the worksheet detail panel open so users see the full editor,
+    // not just the summary header. The delegated click handler in
+    // device-worksheet.js calls toggleDetail() which adds .scw-ws-open
+    // to the detail wrapper.
+    var hostTd = expandTr.firstElementChild;
+    var toggleZone = hostTd && hostTd.querySelector('.scw-ws-toggle-zone');
+    var detail = hostTd && hostTd.querySelector('.scw-ws-detail');
+    if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
+      toggleZone.click();
+    }
   }
 
   function injectWorksheetCard(sowItemId, hostTd) {

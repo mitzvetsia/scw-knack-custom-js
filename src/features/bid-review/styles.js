@@ -530,11 +530,20 @@
       '  background: #eff6ff;',
       '}',
 
-      /* Click-to-expand row: cursor + open-state highlight. */
+      /* Click-to-expand row: cursor + open-state highlight. The blue
+         frame scopes to the SOW side only (cols 1+2) so it\'s visually
+         clear we\'re editing the SOW line item, not the survey row. */
       '.scw-bid-review__row--expandable { cursor: pointer; }',
-      '.scw-bid-review__row--expandable[aria-expanded="true"] td {',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1),',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
       '  background: #e0f2fe !important;',
-      '  border-bottom: 2px solid #0284c7;',
+      '  border-top: 2px solid #0284c7;',
+      '}',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1) {',
+      '  border-left: 2px solid #0284c7;',
+      '}',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
+      '  border-right: 2px solid #0284c7;',
       '}',
 
       /* Expand-row: hidden until the parent row is open. The injected
@@ -545,7 +554,14 @@
       '.scw-bid-review__expand-cell {',
       '  padding: 0 !important;',
       '  background: #f8fafc;',
+      '  border-left: 2px solid #0284c7;',
+      '  border-right: 2px solid #0284c7;',
       '  border-bottom: 2px solid #0284c7;',
+      '}',
+      '.scw-bid-review__expand-spacer {',
+      '  padding: 0 !important;',
+      '  background: transparent;',
+      '  border: none !important;',
       '}',
       '.scw-bid-review__expand-table {',
       '  width: 100%;',
