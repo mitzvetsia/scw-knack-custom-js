@@ -447,7 +447,7 @@
     // intact). Only offered when the row is actually on this SOW
     // (row.sowItem present); the line item itself is NOT deleted.
     if (row.sowItem && sowId) {
-      var disconnectActions = el('div', 'scw-bid-review__cell-actions scw-bid-review__cell-actions--bottom-left');
+      var disconnectActions = el('div', 'scw-bid-review__cell-actions scw-bid-review__cell-actions--bottom-right');
       var dBtn = el('button',
         'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
         'Disconnect from SOW');

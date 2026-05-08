@@ -1043,10 +1043,15 @@
       '  font-size: 12px;',
       '  position: relative;',
       '  padding-right: 160px;', /* room for the "Revise bid to match →" button */
-      '  padding-bottom: 32px;',  /* room for the bottom-left "Disconnect from SOW" button */
+      '  padding-bottom: 32px;',  /* room for the bottom-right "Disconnect from SOW" button */
       '}',
-      /* Bid package data cells share the same top-right action zone. */
-      '.scw-bid-review__row > td:nth-child(n+3):not(:last-child) {',
+      /* Bid package data cells share the same top-right action zone.
+         Drop :not(:last-child) — when the Sub Bid Revisions column is
+         physically removed (no pending CRs / Add buttons), the last bid
+         td becomes the row\'s last child and would lose position:
+         relative, sending its absolute Revise/Remove buttons up to the
+         document body. */
+      '.scw-bid-review__row > td:nth-child(n+3) {',
       '  position: relative;',
       '  padding-right: 78px;',
       '}',
@@ -1061,14 +1066,15 @@
       '  align-items: flex-end;',
       '  z-index: 2;',
       '}',
-      /* Bottom-left action stack — Disconnect from SOW. Positioned
-         away from the Revise stack so the two never collide. */
-      '.scw-bid-review__cell-actions--bottom-left {',
+      /* Bottom-right action stack — Disconnect from SOW. Pinned to the
+         opposite corner of the cell so it never collides with the
+         top-right Revise stack. */
+      '.scw-bid-review__cell-actions--bottom-right {',
       '  top: auto;',
-      '  right: auto;',
       '  bottom: 6px;',
-      '  left: 6px;',
-      '  align-items: flex-start;',
+      '  right: 6px;',
+      '  left: auto;',
+      '  align-items: flex-end;',
       '}',
       '.scw-bid-review__cell-action {',
       '  appearance: none;',
