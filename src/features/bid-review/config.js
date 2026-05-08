@@ -14,7 +14,7 @@
     // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
-    sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
+    sowItemsViewKey:   'view_3921',   // All SOW items (mirrors view_3610) — child pages on scene_1155 set up identically
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
     changeRequestViewKey: 'view_3818', // Change request records (pending count + link)

@@ -18,7 +18,7 @@
     // import-unique-items-btn.js
     'view_3913',
     // bid-review (CFG.viewKey, sowItemsViewKey, bidPackagesViewKey)
-    'view_3680', 'view_3728', 'view_3573'
+    'view_3680', 'view_3921', 'view_3573'
   ];
 
   (function injectHidePaginationCss() {

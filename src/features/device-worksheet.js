@@ -285,7 +285,7 @@
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
-        viewIds: ['view_3610', 'view_3728'],
+        viewIds: ['view_3610', 'view_3921'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──

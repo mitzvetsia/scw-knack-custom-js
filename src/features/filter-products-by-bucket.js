@@ -23,7 +23,7 @@
       view_3505: { product: 'field_2627', bucket: 'field_2366' },
       view_3586: { product: 'field_1949', bucket: 'field_2219' },
       view_3610: { product: 'field_1949', bucket: 'field_2219' },
-      view_3728: { product: 'field_1949', bucket: 'field_2219' }
+      view_3921: { product: 'field_1949', bucket: 'field_2219' }
     },
     POLL_INTERVAL: 200,
     POLL_MAX: 6000,

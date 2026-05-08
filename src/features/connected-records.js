@@ -34,7 +34,7 @@
         // expand panel can render the mounting-hardware widget; URLs
         // resolve through getBuildSowBasePath\'s review-bids fallback
         // and open in a new tab.
-        parentViewId: 'view_3728',
+        parentViewId: 'view_3921',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
         addSlug: 'add-accessory-line-item',
@@ -350,6 +350,7 @@
     var hash = window.location.hash || '';
     var patterns = [
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
@@ -357,15 +358,7 @@
       var match = hash.match(patterns[i]);
       if (match) return match[1];
     }
-    // review-bids fallback — rewrite to build-sow so the mounting-hw
-    // child pages exist; isOnReviewBids() then forces new-tab open.
-    var rb = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/);
-    if (rb) return rb[1].replace('/review-bids/', '/build-sow/');
     return '';
-  }
-
-  function isOnReviewBids() {
-    return /team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\//.test(window.location.hash || '');
   }
 
   /**
@@ -787,10 +780,6 @@
         if (itemHref) {
           linkEl = document.createElement('a');
           linkEl.href = itemHref;
-          if (isOnReviewBids()) {
-            linkEl.target = '_blank';
-            linkEl.rel = 'noopener';
-          }
         } else {
           linkEl = document.createElement('span');
         }
@@ -834,10 +823,6 @@
       addBtn.className = 'scw-cr-add';
       addBtn.textContent = '+ Add';
       addBtn.href = addUrl;
-      if (isOnReviewBids()) {
-        addBtn.target = '_blank';
-        addBtn.rel = 'noopener';
-      }
       valueDiv.appendChild(addBtn);
     }
 

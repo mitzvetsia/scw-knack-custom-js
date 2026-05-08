@@ -605,13 +605,13 @@
       '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
       '}',
 
-      /* Hide view_3728 section once bid review is on the page — the
+      /* Hide view_3921 section once bid review is on the page — the
          comparison grid surfaces the same rows via expand-on-click. */
-      'body.scw-bid-review-active #view_3728 {',
+      'body.scw-bid-review-active #view_3921 {',
       '  display: none !important;',
       '}',
-      'body.scw-bid-review-active .scw-ktl-accordion[data-view-key="view_3728"],',
-      'body.scw-bid-review-active div.scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3728"]) {',
+      'body.scw-bid-review-active .scw-ktl-accordion[data-view-key="view_3921"],',
+      'body.scw-bid-review-active div.scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3921"]) {',
       '  display: none !important;',
       '}',
 
