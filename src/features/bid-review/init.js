@@ -294,7 +294,30 @@
       );
     }
     if (!wsTr) {
+      // wsTr was missing from both preserve cache and view_3921 — likely a
+      // race between Knack tearing down the view\'s tbody and device-
+      // worksheet rebuilding the wsTrs. Retry by polling for up to ~3s.
       hostTd.innerHTML = '<div class="scw-bid-review__expand-loading">Loading editor…</div>';
+      var attempts = 0;
+      var poll = setInterval(function () {
+        attempts++;
+        var found = document.querySelector(
+          '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
+        );
+        if (found) {
+          clearInterval(poll);
+          // Re-run inject so the move + display:none strip happens too.
+          injectWorksheetCard(sowItemId, hostTd);
+        } else if (attempts >= 30) {
+          clearInterval(poll);
+          // Last-ditch: kick view_3921 to re-fetch + re-render so
+          // device-worksheet rebuilds the wsTr.
+          var v = Knack.views && Knack.views[CFG.sowItemsViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') {
+            v.model.fetch();
+          }
+        }
+      }, 100);
       return;
     }
     // Move the entire wsTr into our cell. Wrap in a mini-table so the row
