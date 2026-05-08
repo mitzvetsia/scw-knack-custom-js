@@ -511,7 +511,26 @@
       var match = hash.match(patterns[i]);
       if (match) return match[1];
     }
+    // review-bids fallback: rewrite the segment so the link points at
+    // the equivalent build-sow page (which has the add-photo / edit-
+    // photo child pages). isOnReviewBids() then forces new-tab open
+    // so the user stays on the comparison grid.
+    var rb = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/);
+    if (rb) return rb[1].replace('/review-bids/', '/build-sow/');
     return '';
+  }
+
+  function isOnReviewBids() {
+    return /team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\//.test(window.location.hash || '');
+  }
+
+  function navigateToHash(hashPath) {
+    if (!hashPath) return;
+    if (isOnReviewBids()) {
+      window.open('#' + hashPath, '_blank');
+    } else {
+      window.location.hash = hashPath;
+    }
   }
 
   // Views that use the build-sow URL structure instead of survey
@@ -937,7 +956,7 @@
       (function (lid, vid) {
         addBtn.addEventListener('click', function () {
           var h = addPhotoHash(lid, vid);
-          if (h) window.location.hash = h;
+          if (h) navigateToHash(h);
         });
       })(lineItemId, viewId);
 
@@ -978,7 +997,7 @@
             (function (rid, vid) {
               imgEl.addEventListener('click', function () {
                 var h = editPhotoHash(rid, vid);
-                if (h) window.location.hash = h;
+                if (h) navigateToHash(h);
               });
             })(photo.id, viewId);
             card.appendChild(imgEl);
@@ -996,7 +1015,7 @@
             (function (rid, vid) {
               empty.addEventListener('click', function () {
                 var h = editPhotoHash(rid, vid);
-                if (h) window.location.hash = h;
+                if (h) navigateToHash(h);
               });
             })(photo.id, viewId);
             card.appendChild(empty);

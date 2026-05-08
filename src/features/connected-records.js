@@ -29,6 +29,21 @@
         parentConnectionField: 'field_2464'
       },
       {
+        // Same SOW Line Items source as view_3610. We surface this
+        // config so the worksheet card injected into the bid-review
+        // expand panel can render the mounting-hardware widget; URLs
+        // resolve through getBuildSowBasePath\'s review-bids fallback
+        // and open in a new tab.
+        parentViewId: 'view_3728',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
         parentViewId: 'view_3586',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
@@ -342,7 +357,15 @@
       var match = hash.match(patterns[i]);
       if (match) return match[1];
     }
+    // review-bids fallback — rewrite to build-sow so the mounting-hw
+    // child pages exist; isOnReviewBids() then forces new-tab open.
+    var rb = hash.match(/(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/);
+    if (rb) return rb[1].replace('/review-bids/', '/build-sow/');
     return '';
+  }
+
+  function isOnReviewBids() {
+    return /team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\//.test(window.location.hash || '');
   }
 
   /**
@@ -764,6 +787,10 @@
         if (itemHref) {
           linkEl = document.createElement('a');
           linkEl.href = itemHref;
+          if (isOnReviewBids()) {
+            linkEl.target = '_blank';
+            linkEl.rel = 'noopener';
+          }
         } else {
           linkEl = document.createElement('span');
         }
@@ -807,6 +834,10 @@
       addBtn.className = 'scw-cr-add';
       addBtn.textContent = '+ Add';
       addBtn.href = addUrl;
+      if (isOnReviewBids()) {
+        addBtn.target = '_blank';
+        addBtn.rel = 'noopener';
+      }
       valueDiv.appendChild(addBtn);
     }
 
