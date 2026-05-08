@@ -122,7 +122,25 @@
       '  border: 1px solid #cbd5e1; border-radius: 4px;',
       '  font: 500 12px/1.2 system-ui, sans-serif; color: #0f172a;',
       '  background: #fff;',
+      '  text-align: right;',
       '}',
+      /* Drop the published-quote-info top divider when it lives in
+         the bid-review SOW status bar. */
+      '.scw-bid-review__sow-status .scw-pq-info--compact {',
+      '  border-top: none !important;',
+      '  margin-top: 0;',
+      '  padding-top: 0;',
+      '}',
+      /* PDF icon now rides next to the quote name link. Hide the
+         filename text leftover from published-quote-info\'s default
+         render, keep just the icon. */
+      '.scw-bid-review__sow-status .scw-pq-pdf {',
+      '  display: inline-flex; align-items: center;',
+      '  margin-left: 6px; vertical-align: middle;',
+      '  color: #163C6E; opacity: 0.85;',
+      '  font-size: 0;', /* hides any trailing text node */
+      '}',
+      '.scw-bid-review__sow-status .scw-pq-pdf:hover { opacity: 1; }',
       '.scw-bid-review__sow-metric-input:focus {',
       '  outline: none; border-color: #0d9488;',
       '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',

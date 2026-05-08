@@ -30,6 +30,15 @@
     return stripHtml(v);
   }
 
+  /** Same as raw() but preserves the original HTML markup. Use for
+   *  rich-text fields where bold / line breaks should render through. */
+  function rawHtml(record, key) {
+    var v = record[key];
+    if (v == null) return '';
+    if (typeof v === 'object' && v.raw != null) return String(v.raw).trim();
+    return String(v).trim();
+  }
+
   function num(record, key) {
     var s = raw(record, key).replace(/[$,]/g, '');
     var n = parseFloat(s);
@@ -261,7 +270,7 @@
           labor:           num(rec, FK.labor),
           rate:            num(rec, FK.rate),
           qty:             num(rec, FK.qty),
-          laborDesc:       raw(rec, FK.laborDesc),
+          laborDesc:       rawHtml(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
@@ -315,7 +324,7 @@
       sowInstallFee:   num(meta, FK.sowInstallFee),
       sowEquipmentTotal: num(meta, FK.sowEquipmentTotal),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
-      sowLaborDesc:    raw(meta, FK.sowLaborDesc),
+      sowLaborDesc:    rawHtml(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
       sowPlenum:       raw(meta, FK.sowPlenum),
       sowExterior:     raw(meta, FK.sowExterior),
@@ -539,7 +548,7 @@
           sowInstallFee:   num(rec, SFK.installFee),
           sowEquipmentTotal: num(rec, SFK.equipmentTotal),
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
-          sowLaborDesc:    raw(rec, SFK.laborDesc),
+          sowLaborDesc:    rawHtml(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
           sowPlenum:       raw(rec, SFK.plenum),
           sowExterior:     raw(rec, SFK.exterior),
@@ -722,7 +731,7 @@
           mdfIdf:          connectionLabel(siRec, SFK.mdfIdf),
           installFee:      num(siRec, SFK.installFee),
           equipmentTotal:  num(siRec, SFK.equipmentTotal),
-          laborDesc:       raw(siRec, SFK.laborDesc),
+          laborDesc:       rawHtml(siRec, SFK.laborDesc),
           qty:             num(siRec, SFK.qty),
           fee:             num(siRec, SFK.fee),
           existCabling:    raw(siRec, SFK.existCabling),

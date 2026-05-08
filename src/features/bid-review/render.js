@@ -411,7 +411,10 @@
     if (row.sowLaborDesc) {
       var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
       ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
-      ldEl.appendChild(document.createTextNode(row.sowLaborDesc));
+      var ldVal = document.createElement('span');
+      ldVal.className = 'scw-bid-review__cell-labor-desc-value';
+      ldVal.innerHTML = row.sowLaborDesc;
+      ldEl.appendChild(ldVal);
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -526,7 +529,10 @@
     if (cell.laborDesc) {
       var ldEl = el('div', 'scw-bid-review__cell-labor-desc');
       ldEl.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
-      ldEl.appendChild(document.createTextNode(cell.laborDesc));
+      var ldVal = document.createElement('span');
+      ldVal.className = 'scw-bid-review__cell-labor-desc-value';
+      ldVal.innerHTML = cell.laborDesc;
+      ldEl.appendChild(ldVal);
       if (diffs && diffs.laborDesc) ldEl.classList.add(DIFF_CLS);
       td.appendChild(ldEl);
     }
@@ -696,10 +702,17 @@
     // No SOW item or no bid cell — nothing to compare
     if (!row.sowItem || !cell) return null;
 
-    // Normalize for comparison: lowercase, trim
+    // Normalize for comparison: strip HTML, collapse whitespace,
+    // lowercase, trim. Labor desc fields can carry rich-text markup
+    // (bold, line breaks) that\'s visually meaningful but shouldn\'t
+    // flip the mismatch flag if the spoken text matches.
     function norm(v) {
       if (v == null) return '';
-      return String(v).toLowerCase().trim();
+      return String(v)
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .toLowerCase()
+        .trim();
     }
 
     var m = {
@@ -1034,7 +1047,20 @@
       var proposalBlock = ops.buildProposalBlockForRow(tr, {
         proposalViewKey: CFG.proposalSourceView
       });
-      if (proposalBlock) bar.appendChild(proposalBlock);
+      if (proposalBlock) {
+        // Inline the PDF link next to the quote name + swap its icon
+        // for the same paper SVG the bid-column status row uses, so the
+        // SOW + bid columns visually mirror each other.
+        var pdfA = proposalBlock.querySelector('.scw-pq-pdf');
+        var nameDiv = proposalBlock.querySelector('.scw-pq-name');
+        if (pdfA && nameDiv) {
+          pdfA.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+          pdfA.title = pdfA.title || 'View PDF';
+          pdfA.classList.add('scw-bid-review__pq-pdf-icon');
+          nameDiv.appendChild(pdfA);
+        }
+        bar.appendChild(proposalBlock);
+      }
     }
 
     // 2. Survey Costs (editable input) + Margin (read-only display).
