@@ -19,7 +19,12 @@
 
   var BTN_HOST_CLS  = 'scw-ws-bulk-toggle';
   var BOUND_ATTR    = 'data-scw-bulk-toggle-bound';
-  var L1_SEL        = 'tr.kn-table-group.kn-group-level-1.scw-group-header';
+  // Native Knack classes only — DO NOT include scw-group-header here,
+  // that's added by group-collapse.js's enhance pass which can run
+  // after device-worksheet finishes. If we required it, mount() would
+  // bail on every retry until group-collapse caught up, and on slow
+  // scenes the buttons would never appear.
+  var L1_SEL        = 'tr.kn-table-group.kn-group-level-1';
   var SUMMARY_CLASS = 'scw-mdf-summary-row';
 
   function getSceneId() {
