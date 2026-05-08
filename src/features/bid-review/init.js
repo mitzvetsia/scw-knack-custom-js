@@ -456,20 +456,88 @@
     }
     $input.val(decNum.toFixed(4)).trigger('change');
 
-    // Reload once Knack confirms the form submission. Bind both
-    // record-update + record-create namespaces (Knack uses one or the
-    // other depending on the form mode); whichever fires first wins.
-    var reloaded = false;
-    function done() {
-      if (reloaded) return;
-      reloaded = true;
-      window.location.reload();
+    // Block-the-world overlay. The earlier version only changed the
+    // button text — the rest of the page stayed interactive, so a
+    // colleague clicking elsewhere or hitting refresh while the PUT
+    // was in flight could abort the save and the safety-net reload
+    // would still fire, leaving the SOW with the old margin. The
+    // overlay covers the page during save, blocks pointer + keyboard
+    // events, and shows what's happening.
+    var overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;inset:0;z-index:100002;' +
+      'background:rgba(15,23,42,.55);' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'font:600 15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;' +
+      'color:#1e293b;';
+    var modal = document.createElement('div');
+    modal.style.cssText =
+      'background:#fff;padding:20px 28px;border-radius:6px;' +
+      'box-shadow:0 10px 30px rgba(0,0,0,.25);min-width:280px;text-align:center;';
+    modal.innerHTML =
+      '<div style="font-size:13px;color:#64748b;text-transform:uppercase;' +
+      'letter-spacing:.05em;margin-bottom:8px;">Updating SOW</div>' +
+      '<div>Setting project margin to ' + escapeHtmlInline(marginPct) + '%…</div>' +
+      '<div style="margin-top:10px;font:400 12px/1.4 system-ui;color:#64748b;">' +
+      'Please don’t refresh or navigate away.</div>';
+    overlay.appendChild(modal);
+    // Swallow clicks and keyboard so a stray click can't dismiss the
+    // form or trigger another action mid-save.
+    overlay.addEventListener('click',    function (e) { e.stopPropagation(); e.preventDefault(); });
+    overlay.addEventListener('keydown',  function (e) { e.stopPropagation(); e.preventDefault(); });
+    document.body.appendChild(overlay);
+
+    // Discourage navigation during the save. Modern browsers ignore
+    // the custom message but still show their generic confirm prompt.
+    function beforeUnload(e) {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
     }
-    $(document).one('knack-record-update.' + MARGIN_FORM_VIEW, done);
-    $(document).one('knack-form-submit.' + MARGIN_FORM_VIEW, done);
-    // Safety net — if no event fires within 6s, reload anyway so the
-    // user isn\'t stranded.
-    setTimeout(done, 6000);
+    window.addEventListener('beforeunload', beforeUnload);
+
+    var done = false;
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      window.removeEventListener('beforeunload', beforeUnload);
+      $(document).off('knack-record-update.' + MARGIN_FORM_VIEW + 'BumpMargin');
+      $(document).off('knack-form-submit.'   + MARGIN_FORM_VIEW + 'BumpMargin');
+      $(document).off('knack-form-submit-error.' + MARGIN_FORM_VIEW + 'BumpMargin');
+      if (ok) {
+        // Knack's record-update fires AFTER the PUT response, so by
+        // here the margin is persisted. Reload to show the new value.
+        window.location.reload();
+      } else {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        setBusy(button, false);
+        ns.renderToast('Margin update failed — please try again', 'error');
+      }
+    }
+
+    // record-update is the only event that proves the PUT succeeded.
+    // form-submit fires before the AJAX, so don't treat it as a
+    // success signal — only use it to extend the watchdog if needed.
+    $(document).on(
+      'knack-record-update.' + MARGIN_FORM_VIEW + 'BumpMargin',
+      function () { finish(true); }
+    );
+    $(document).on(
+      'knack-form-submit-error.' + MARGIN_FORM_VIEW + 'BumpMargin',
+      function () { finish(false); }
+    );
+
+    // Safety net — bumped from 6s to 25s. The previous 6s timeout was
+    // tight enough that on a slow connection the reload could fire
+    // mid-PUT, leaving the form save aborted. 25s is generous enough
+    // to cover slow networks while still rescuing the user if Knack
+    // never fires record-update for some reason.
+    setTimeout(function () {
+      if (!done) {
+        console.warn('[BidReview] margin update watchdog fired — reloading');
+        finish(true);
+      }
+    }, 25000);
 
     // Submit the form. Knack's submit binding lives on the form\'s
     // own submit button; clicking it triggers validation + Knack\'s
@@ -484,7 +552,14 @@
       }
     } else {
       console.warn('[BidReview] ' + MARGIN_FORM_VIEW + ' form not found');
+      finish(false);
     }
+  }
+
+  function escapeHtmlInline(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   // ── Add PM & Mobilization line item (margin-low warning button) ──
