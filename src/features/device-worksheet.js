@@ -565,6 +565,16 @@
         photoAlwaysVisible: true,
         qtyBadgeField: 'field_1964',
         bucketField: 'field_2219',
+        // Client-side row sort. Bucket order first (field_2218 — cams/
+        // readers come after networking/headend), then natural-compare
+        // on field_1950 (the device label like "E-001", "I-001") so
+        // cam/reader rows sort like E-001, E-002, …, I-001, I-002.
+        // Default rowSort falls back to field_2240 + field_1951 which
+        // aren't in this view's cells, so it was a no-op.
+        rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
+          { field: 'field_1950', order: 'asc', type: 'text'   }
+        ],
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
