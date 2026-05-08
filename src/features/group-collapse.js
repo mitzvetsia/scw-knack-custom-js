@@ -50,6 +50,7 @@
     // the viewport. Starts all-collapsed so the user picks where to work.
     view_3586: { exclusive: true },
     view_3610: { exclusive: true },
+    view_3728: { exclusive: true },
   };
 
   // Views to SKIP — group-collapse will NOT enhance these views.
