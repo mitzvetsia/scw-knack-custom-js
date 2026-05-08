@@ -952,7 +952,10 @@
 
   // ── collapsible group header row ─────────────────────────────
 
-  function buildGroupHeader(label, level, colSpan, rowCount) {
+  function buildGroupHeader(group, colSpan, rowCount) {
+    var label   = group.label;
+    var mdfIdfId = group.mdfIdfId || '';
+
     var tr = el('tr', 'scw-bid-review__group-header');
     tr.setAttribute('role', 'button');
     tr.setAttribute('tabindex', '0');
@@ -977,10 +980,38 @@
       inner.appendChild(el('span', 'scw-bid-review__grp-count', String(rowCount)));
     }
 
+    // Info button — only when we have an mdfIdfId we can look up in
+    // view_3822. Click toggles a detail row beneath the header showing
+    // photos (field_771), Survey Notes (field_2457), SCW Notes
+    // (field_1643). stopPropagation so the click doesn't also fire the
+    // accordion collapse handler on the row itself.
+    if (mdfIdfId) {
+      var infoBtn = el('button', 'scw-bid-review__grp-info-btn');
+      infoBtn.type = 'button';
+      infoBtn.setAttribute('aria-label', 'Show headend details');
+      infoBtn.setAttribute('title', 'Headend details');
+      infoBtn.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+        'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<circle cx="12" cy="12" r="10"/>' +
+        '<line x1="12" y1="16" x2="12" y2="12"/>' +
+        '<line x1="12" y1="8" x2="12.01" y2="8"/>' +
+        '</svg>' +
+        '<span class="scw-bid-review__grp-info-label">Details</span>';
+      infoBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        toggleL1DetailRow(tr, mdfIdfId, colSpan, infoBtn);
+      });
+      inner.appendChild(infoBtn);
+    }
+
     td.appendChild(inner);
     tr.appendChild(td);
 
-    // Toggle: hide/show sibling rows until next group header
+    // Toggle: hide/show sibling rows until next group header. The
+    // detail row (if open) collapses with the rest of the group.
     tr.addEventListener('click', function () {
       var expanded = tr.getAttribute('aria-expanded') === 'true';
       tr.setAttribute('aria-expanded', String(!expanded));
@@ -1005,6 +1036,115 @@
     return tr;
   }
 
+  // ── L1 detail row (photos + Survey Notes + SCW Notes) ───────
+  // Source: view_3822 (mdfIdfViewKey). Reads field_771 (photos),
+  // field_2457 (survey notes), field_1643 (SCW notes) for the MDF/IDF
+  // record matching mdfIdfId. Built lazily on first toggle, cached on
+  // the L1 header tr after that.
+
+  function toggleL1DetailRow(headerTr, mdfIdfId, colSpan, infoBtn) {
+    // Cached row already in the DOM right after the header? Toggle
+    // visibility instead of rebuilding.
+    var next = headerTr.nextElementSibling;
+    if (next && next.classList.contains('scw-bid-review__l1-detail-row')) {
+      var hidden = next.style.display === 'none';
+      next.style.display = hidden ? '' : 'none';
+      infoBtn.classList.toggle('scw-bid-review__grp-info-btn--active', hidden);
+      return;
+    }
+    var detail = buildL1DetailRow(mdfIdfId, colSpan);
+    headerTr.parentNode.insertBefore(detail, headerTr.nextSibling);
+    infoBtn.classList.add('scw-bid-review__grp-info-btn--active');
+  }
+
+  function buildL1DetailRow(mdfIdfId, colSpan) {
+    var tr = el('tr', 'scw-bid-review__l1-detail-row');
+    var td = el('td', 'scw-bid-review__l1-detail-cell');
+    td.setAttribute('colspan', colSpan);
+
+    var view = document.getElementById(CFG.mdfIdfViewKey);
+    var sourceTr = view ? view.querySelector('tbody tr[id="' + mdfIdfId + '"]') : null;
+
+    var wrap = el('div', 'scw-bid-review__l1-detail-wrap');
+
+    if (!sourceTr) {
+      wrap.appendChild(el('div', 'scw-bid-review__l1-detail-empty',
+        'Headend details unavailable — view_' + CFG.mdfIdfViewKey + ' not on the page.'));
+      td.appendChild(wrap);
+      tr.appendChild(td);
+      return tr;
+    }
+
+    // Photos (field_771) — gallery thumb strip from connection-value
+    // spans. Each img carries data-kn-img-gallery with the full-size
+    // URL; we surface that as the link target so clicks open the full
+    // image in a new tab.
+    var photoCell = null;
+    var cells = sourceTr.getElementsByTagName('td');
+    for (var ci = 0; ci < cells.length; ci++) {
+      if (cells[ci].getAttribute('data-field-key') === 'field_771') {
+        photoCell = cells[ci]; break;
+      }
+    }
+    var imgUrls = [];
+    if (photoCell) {
+      var imgSpans = photoCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var si = 0; si < imgSpans.length; si++) {
+        var img = imgSpans[si].querySelector('img[data-kn-img-gallery], img');
+        if (!img) continue;
+        var url = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
+        if (url) imgUrls.push(url);
+      }
+    }
+    if (imgUrls.length) {
+      var photoSection = el('div', 'scw-bid-review__l1-detail-section');
+      photoSection.appendChild(el('div', 'scw-bid-review__l1-detail-label', 'Photos'));
+      var photoStrip = el('div', 'scw-bid-review__l1-detail-photos');
+      for (var pi = 0; pi < imgUrls.length; pi++) {
+        var a = document.createElement('a');
+        a.href = imgUrls[pi];
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'scw-bid-review__l1-detail-photo';
+        var thumb = document.createElement('img');
+        thumb.src = imgUrls[pi];
+        thumb.alt = '';
+        thumb.loading = 'lazy';
+        a.appendChild(thumb);
+        photoStrip.appendChild(a);
+      }
+      photoSection.appendChild(photoStrip);
+      wrap.appendChild(photoSection);
+    }
+
+    // Survey Notes (field_2457)
+    var surveyText = readRowFieldText(sourceTr, 'field_2457');
+    if (surveyText) {
+      var s1 = el('div', 'scw-bid-review__l1-detail-section');
+      s1.appendChild(el('div', 'scw-bid-review__l1-detail-label', 'Survey Notes'));
+      s1.appendChild(el('div', 'scw-bid-review__l1-detail-text', surveyText));
+      wrap.appendChild(s1);
+    }
+
+    // SCW Notes (field_1643)
+    var scwText = readRowFieldText(sourceTr, 'field_1643');
+    if (scwText) {
+      var s2 = el('div', 'scw-bid-review__l1-detail-section');
+      s2.appendChild(el('div', 'scw-bid-review__l1-detail-label', 'SCW Notes'));
+      s2.appendChild(el('div', 'scw-bid-review__l1-detail-text', scwText));
+      wrap.appendChild(s2);
+    }
+
+    if (!wrap.children.length) {
+      wrap.appendChild(el('div', 'scw-bid-review__l1-detail-empty',
+        'No photos or notes on file for this headend.'));
+    }
+
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    return tr;
+  }
+
   // ── assemble rows from grouped state ────────────────────────
 
   function buildBodyRows(groups, packages, colSpan, sowId) {
@@ -1022,7 +1162,7 @@
       }
 
       if (group.label) {
-        frag.appendChild(buildGroupHeader(group.label, group.level, colSpan, totalRows));
+        frag.appendChild(buildGroupHeader(group, colSpan, totalRows));
       }
 
       // Subgroups (proposalBucket within mdfIdf)

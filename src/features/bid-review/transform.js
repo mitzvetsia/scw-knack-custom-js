@@ -399,6 +399,14 @@
     for (var gi = 0; gi < mdfOrder.length; gi++) {
       var mdfKey  = mdfOrder[gi];
       var mdfRows = mdfMap[mdfKey];
+      // First non-empty mdfIdfId we see for this label — used by the
+      // L1 group header's expandable detail panel to look up the
+      // matching MDF/IDF record (photos, survey notes, SCW notes).
+      var mdfIdfId = '';
+      for (var fi = 0; fi < mdfRows.length; fi++) {
+        var ids = mdfRows[fi].mdfIdfIds;
+        if (ids && ids.length && ids[0]) { mdfIdfId = ids[0]; break; }
+      }
 
       // Sub-grouping within this mdfIdf: proposalBucket
       var hasBucket = false;
@@ -448,6 +456,7 @@
         groups.push({
           key:       mdfKey,
           label:     mdfKey,
+          mdfIdfId:  mdfIdfId,
           level:     1,
           rows:      [],
           subgroups: subgroups,
@@ -460,6 +469,7 @@
         groups.push({
           key:       mdfKey,
           label:     mdfKey,
+          mdfIdfId:  mdfIdfId,
           level:     1,
           rows:      mdfRows,
           subgroups: [],
