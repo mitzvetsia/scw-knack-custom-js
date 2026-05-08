@@ -561,8 +561,13 @@
       '  width: 100%;',
       '  border-collapse: collapse;',
       '  background: #fff;',
-      '  box-shadow: 0 6px 12px -2px rgba(2, 132, 199, 0.45),',
-      '              0 3px 6px -2px rgba(2, 132, 199, 0.30);',
+      '}',
+      /* Tint the worksheet card\'s expanded drop shadow blue (overrides
+         device-worksheet\'s default black/gray shadow). */
+      '.scw-bid-review__expand-cell .scw-ws-card:has(.scw-ws-open),',
+      '.scw-bid-review__expand-cell .scw-ws-card {',
+      '  box-shadow: 0 6px 12px -2px rgba(2, 132, 199, 0.55),',
+      '              0 3px 6px -2px rgba(2, 132, 199, 0.35) !important;',
       '}',
       '.scw-bid-review__expand-table > tbody > tr > td {',
       '  padding: 0 !important;',
