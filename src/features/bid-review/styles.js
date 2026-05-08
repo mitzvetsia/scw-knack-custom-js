@@ -847,6 +847,23 @@
       '.scw-bid-review__cell-action--revise:hover {',
       '  background: #f0f9ff; border-color: #38bdf8;',
       '}',
+      /* Match SOW = ask the bidder to align to the SOW. Distinct
+         color (teal) vs the bid-side blue Revise so the user can see
+         at a glance which direction the request flows. */
+      '.scw-bid-review__cell-action--match-sow {',
+      '  color: #0f766e;',
+      '  border-color: #99f6e4;',
+      '  background: #f0fdfa;',
+      '}',
+      '.scw-bid-review__cell-action--match-sow:hover {',
+      '  background: #ccfbf1; border-color: #14b8a6;',
+      '}',
+      /* Same teal treatment when Match SOW is rendered as an overflow */
+      '.scw-bid-review__cell-actions .scw-bid-review__overflow-trigger--match-sow {',
+      '  color: #0f766e;',
+      '  border-color: #99f6e4;',
+      '  background: #f0fdfa;',
+      '}',
       '.scw-bid-review__cell-action--remove {',
       '  color: #b91c1c;',
       '  border-color: #fecaca;',

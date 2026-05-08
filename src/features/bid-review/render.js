@@ -360,14 +360,14 @@
       };
       if (packages.length === 1) {
         td.appendChild(buildCellActions([
-          { label: 'Revise', mod: 'revise', attrs: attrsBase(packages[0].id) }
+          { label: 'Match SOW', mod: 'match-sow', attrs: attrsBase(packages[0].id) }
         ]));
       } else {
         var choices = [];
         for (var sci = 0; sci < packages.length; sci++) {
           choices.push({ label: packages[sci].name, attrs: attrsBase(packages[sci].id) });
         }
-        var overflow = buildOverflowMenu('Revise', 'revise', choices);
+        var overflow = buildOverflowMenu('Match SOW', 'match-sow', choices);
         overflow.classList.add('scw-bid-review__cell-actions');
         td.appendChild(overflow);
       }

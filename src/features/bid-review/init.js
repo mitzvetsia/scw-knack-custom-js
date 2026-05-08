@@ -1014,6 +1014,11 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         modalCell,
+      // Always pass the real bid record as bidCell — the modal\'s
+      // change-detection logic compares form values against it. When
+      // sourceFromSow, modalCell holds SOW values and bidCell keeps
+      // the bid values so the diff reads correctly.
+      bidCell:      cell,
       sourceFromSow: !!opts.sourceFromSow,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
