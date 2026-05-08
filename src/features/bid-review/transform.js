@@ -31,8 +31,16 @@
   }
 
   /** Same as raw() but preserves the original HTML markup. Use for
-   *  rich-text fields where bold / line breaks should render through. */
+   *  rich-text fields where bold / line breaks should render through.
+   *  Knack typically holds the HTML version under <key>_raw and
+   *  renders a cleaned display string at record[key], so check _raw
+   *  first. */
   function rawHtml(record, key) {
+    var rawV = record[key + '_raw'];
+    if (rawV != null) {
+      if (typeof rawV === 'object' && rawV.raw != null) return String(rawV.raw).trim();
+      if (typeof rawV === 'string') return rawV.trim();
+    }
     var v = record[key];
     if (v == null) return '';
     if (typeof v === 'object' && v.raw != null) return String(v.raw).trim();
