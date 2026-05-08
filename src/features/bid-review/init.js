@@ -426,8 +426,19 @@
 
     setBusy(button, true);
 
-    var $input = $('#' + MARGIN_FORM_VIEW + '-' + (CFG.projectMarginField || 'field_2158'));
-    if (!$input.length) {
+    // Knack inconsistently prefixes form-input ids with the view key.
+    // For field_2158 on view_3923 the actual rendered id is plain
+    // `field_2158` (no view prefix), while sibling selects DO get the
+    // `view_3923-field_2159` form. Scope the lookup to the view
+    // container and try every shape Knack might produce.
+    var marginFieldKey = CFG.projectMarginField || 'field_2158';
+    var $view = $('#' + MARGIN_FORM_VIEW);
+    var $input = $view.find(
+      '#' + MARGIN_FORM_VIEW + '-' + marginFieldKey + ',' +
+      '#' + marginFieldKey + ',' +
+      'input[name="' + marginFieldKey + '"]'
+    ).first();
+    if (!$view.length || !$input.length) {
       console.warn('[BidReview] ' + MARGIN_FORM_VIEW + ' margin input not found');
       ns.renderToast('Margin form not on page — cannot update', 'error');
       setBusy(button, false);
@@ -459,10 +470,12 @@
     // Submit the form. Knack's submit binding lives on the form\'s
     // own submit button; clicking it triggers validation + Knack\'s
     // internal save flow.
-    var $form = $('#' + MARGIN_FORM_VIEW + ' form');
+    var $form = $view.find('form').first();
     if ($form.length) {
-      $form.find('button[type="submit"], input[type="submit"]').first().trigger('click');
-      if (!$form.find('button[type="submit"], input[type="submit"]').length) {
+      var $submit = $form.find('button[type="submit"], input[type="submit"]').first();
+      if ($submit.length) {
+        $submit.trigger('click');
+      } else {
         $form.trigger('submit');
       }
     } else {
