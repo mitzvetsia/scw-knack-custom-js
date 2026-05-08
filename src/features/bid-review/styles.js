@@ -116,6 +116,7 @@
       '  border: 1px solid #cbd5e1; border-radius: 4px;',
       '  font: 700 14px/1.2 system-ui, sans-serif; color: #0f172a;',
       '  background: #fff;',
+      '  text-align: center;',
       '}',
       '.scw-bid-review__sow-name-input:focus {',
       '  outline: none; border-color: #0d9488;',
