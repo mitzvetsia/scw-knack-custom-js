@@ -224,6 +224,14 @@
       '.scw-bid-review__pkg-header,',
       '.scw-bid-review__actions-header {',
       '}',
+
+      /* When a SOW has no pending CRs, no noBid/surveyNoBid rows, and
+         no header submit buttons, the entire Sub Bid Revisions column
+         collapses so the SOW + Bid columns can reclaim its width.
+         Toggled per-table by buildSowSection at render time. */
+      '.scw-bid-review__table--no-cr .scw-bid-review__cr-col {',
+      '  display: none !important;',
+      '}',
       '.scw-bid-review__header-titles th.scw-bid-review__sow-detail-header {',
       '  text-align: center !important;',
       '  font-size: 12px !important;',

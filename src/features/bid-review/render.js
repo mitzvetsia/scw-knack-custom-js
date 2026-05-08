@@ -201,7 +201,7 @@
         pkgSubBidTotals[sowGrid.packages[i].id]
       ));
     }
-    r1.appendChild(el('th', 'scw-bid-review__actions-header', 'Sub Bid Revisions'));
+    r1.appendChild(el('th', 'scw-bid-review__actions-header scw-bid-review__cr-col', 'Sub Bid Revisions'));
     rows.push(r1);
 
     // ═══ ROW 2: Details (status, name, links) ═══
@@ -259,7 +259,7 @@
       r2.appendChild(td);
     }
 
-    r2.appendChild(el('td', '')); // CR column
+    r2.appendChild(el('td', 'scw-bid-review__cr-col')); // CR column
     rows.push(r2);
 
     // ═══ ROW 3: Action buttons ═══
@@ -288,7 +288,7 @@
     }
 
     // CR column buttons
-    var crTd = el('td', 'scw-bid-review__header-action-cell');
+    var crTd = el('td', 'scw-bid-review__header-action-cell scw-bid-review__cr-col');
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
     var pkgIds = Object.keys(pending);
     for (var si = 0; si < pkgIds.length; si++) {
@@ -638,10 +638,29 @@
     return td;
   }
 
+  // Look at every cell tagged with .scw-bid-review__cr-col and decide
+  // whether any of them carries renderable content. Header r1 always
+  // has the title text (the th has its own children), so check for
+  // body-row action cells with non-empty .scw-bid-review__row-actions
+  // wraps OR a header-action-cell with submit buttons.
+  function tableHasCrContent(table) {
+    var actionWraps = table.querySelectorAll('.scw-bid-review__cr-col .scw-bid-review__row-actions');
+    for (var i = 0; i < actionWraps.length; i++) {
+      if (actionWraps[i].children.length > 0) return true;
+    }
+    var headerCells = table.querySelectorAll('th.scw-bid-review__cr-col, td.scw-bid-review__header-action-cell.scw-bid-review__cr-col');
+    for (var j = 0; j < headerCells.length; j++) {
+      // The r1 title cell carries text; ignore it. We only count
+      // header cells with element children (i.e. submit buttons).
+      if (headerCells[j].children.length > 0) return true;
+    }
+    return false;
+  }
+
   // ── row actions cell ────────────────────────────────────────
 
   function buildRowActionsCell(row, packages, sowId, visibility) {
-    var td = el('td');
+    var td = el('td', 'scw-bid-review__cr-col');
     var wrap = el('div', 'scw-bid-review__row-actions');
 
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
@@ -1236,6 +1255,15 @@
       var tbody = document.createElement('tbody');
       tbody.appendChild(buildBodyRows(sowGrid.groups, sowGrid.packages, sowGrid.columnCount, sowGrid.sowId));
       table.appendChild(tbody);
+
+      // Sub Bid Revisions column collapses when there's nothing to show
+      // for this SOW — no pending CRs in any cell, no Add buttons (no
+      // noBid / surveyNoBid rows), no header CR submit buttons. Lets
+      // the SOW + Bid columns reclaim the horizontal space the empty
+      // column was eating.
+      if (!tableHasCrContent(table)) {
+        table.classList.add('scw-bid-review__table--no-cr');
+      }
 
       body.appendChild(table);
     }
