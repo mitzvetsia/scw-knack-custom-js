@@ -954,7 +954,6 @@
 
   function buildGroupHeader(group, colSpan, rowCount) {
     var label   = group.label;
-    var mdfIdfId = group.mdfIdfId || '';
 
     var tr = el('tr', 'scw-bid-review__group-header');
     tr.setAttribute('role', 'button');
@@ -980,38 +979,11 @@
       inner.appendChild(el('span', 'scw-bid-review__grp-count', String(rowCount)));
     }
 
-    // Info button — only when we have an mdfIdfId we can look up in
-    // view_3822. Click toggles a detail row beneath the header showing
-    // photos (field_771), Survey Notes (field_2457), SCW Notes
-    // (field_1643). stopPropagation so the click doesn't also fire the
-    // accordion collapse handler on the row itself.
-    if (mdfIdfId) {
-      var infoBtn = el('button', 'scw-bid-review__grp-info-btn');
-      infoBtn.type = 'button';
-      infoBtn.setAttribute('aria-label', 'Show headend details');
-      infoBtn.setAttribute('title', 'Headend details');
-      infoBtn.innerHTML =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
-        'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-        '<circle cx="12" cy="12" r="10"/>' +
-        '<line x1="12" y1="16" x2="12" y2="12"/>' +
-        '<line x1="12" y1="8" x2="12.01" y2="8"/>' +
-        '</svg>' +
-        '<span class="scw-bid-review__grp-info-label">Details</span>';
-      infoBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        e.preventDefault();
-        toggleL1DetailRow(tr, mdfIdfId, colSpan, infoBtn);
-      });
-      inner.appendChild(infoBtn);
-    }
-
     td.appendChild(inner);
     tr.appendChild(td);
 
     // Toggle: hide/show sibling rows until next group header. The
-    // detail row (if open) collapses with the rest of the group.
+    // detail row (if present) collapses with the rest of the group.
     tr.addEventListener('click', function () {
       var expanded = tr.getAttribute('aria-expanded') === 'true';
       tr.setAttribute('aria-expanded', String(!expanded));
@@ -1037,43 +1009,22 @@
   }
 
   // ── L1 detail row (photos + Survey Notes + SCW Notes) ───────
-  // Source: view_3822 (mdfIdfViewKey). Reads field_771 (photos),
-  // field_2457 (survey notes), field_1643 (SCW notes) for the MDF/IDF
-  // record matching mdfIdfId. Built lazily on first toggle, cached on
-  // the L1 header tr after that.
-
-  function toggleL1DetailRow(headerTr, mdfIdfId, colSpan, infoBtn) {
-    // Cached row already in the DOM right after the header? Toggle
-    // visibility instead of rebuilding.
-    var next = headerTr.nextElementSibling;
-    if (next && next.classList.contains('scw-bid-review__l1-detail-row')) {
-      var hidden = next.style.display === 'none';
-      next.style.display = hidden ? '' : 'none';
-      infoBtn.classList.toggle('scw-bid-review__grp-info-btn--active', hidden);
-      return;
-    }
-    var detail = buildL1DetailRow(mdfIdfId, colSpan);
-    headerTr.parentNode.insertBefore(detail, headerTr.nextSibling);
-    infoBtn.classList.add('scw-bid-review__grp-info-btn--active');
-  }
+  // Source: view_3822 (mdfIdfViewKey). Auto-rendered right after each
+  // L1 group header by buildBodyRows so the details are visible
+  // whenever the group is expanded — no separate toggle. Reads
+  // field_771 (photos), field_2457 (survey notes), field_1643 (SCW
+  // notes) for the MDF/IDF record matching mdfIdfId. Returns null
+  // when the source row isn't on the page or has no surfacable
+  // content (we don't want a blank row).
 
   function buildL1DetailRow(mdfIdfId, colSpan) {
-    var tr = el('tr', 'scw-bid-review__l1-detail-row');
-    var td = el('td', 'scw-bid-review__l1-detail-cell');
-    td.setAttribute('colspan', colSpan);
-
     var view = document.getElementById(CFG.mdfIdfViewKey);
     var sourceTr = view ? view.querySelector('tbody tr[id="' + mdfIdfId + '"]') : null;
+    // No source data on the page → don't add an empty row at all.
+    // (Callers check for null before appending to the fragment.)
+    if (!sourceTr) return null;
 
     var wrap = el('div', 'scw-bid-review__l1-detail-wrap');
-
-    if (!sourceTr) {
-      wrap.appendChild(el('div', 'scw-bid-review__l1-detail-empty',
-        'Headend details unavailable — view_' + CFG.mdfIdfViewKey + ' not on the page.'));
-      td.appendChild(wrap);
-      tr.appendChild(td);
-      return tr;
-    }
 
     // Photos (field_771) — gallery thumb strip from connection-value
     // spans. Each img carries data-kn-img-gallery with the full-size
@@ -1135,11 +1086,13 @@
       wrap.appendChild(s2);
     }
 
-    if (!wrap.children.length) {
-      wrap.appendChild(el('div', 'scw-bid-review__l1-detail-empty',
-        'No photos or notes on file for this headend.'));
-    }
+    // Nothing to show for this headend — skip the row entirely so the
+    // user doesn't see an empty band beneath every group with no data.
+    if (!wrap.children.length) return null;
 
+    var tr = el('tr', 'scw-bid-review__l1-detail-row');
+    var td = el('td', 'scw-bid-review__l1-detail-cell');
+    td.setAttribute('colspan', colSpan);
     td.appendChild(wrap);
     tr.appendChild(td);
     return tr;
@@ -1163,6 +1116,18 @@
 
       if (group.label) {
         frag.appendChild(buildGroupHeader(group, colSpan, totalRows));
+        // Auto-mount the headend detail row immediately under the L1
+        // header so it's visible whenever the group is expanded
+        // (default state). The accordion toggle on the header walks
+        // siblings up to the next group header — the detail row is a
+        // sibling, so it collapses with the rest of the group.
+        // buildL1DetailRow returns null when the source row is missing
+        // or has no surfacable content (no photos, no notes), keeping
+        // the table free of empty rows.
+        if (group.mdfIdfId) {
+          var detail = buildL1DetailRow(group.mdfIdfId, colSpan);
+          if (detail) frag.appendChild(detail);
+        }
       }
 
       // Subgroups (proposalBucket within mdfIdf)
@@ -1419,11 +1384,13 @@
         for (var k = 0; k < crCells.length; k++) {
           crCells[k].parentNode.removeChild(crCells[k]);
         }
-        // Group + subgroup header rows colspan over the full table
-        // width; decrement by 1 so they don't overshoot.
+        // Group / subgroup header rows AND the auto-mounted L1 detail
+        // rows colspan over the full table width; decrement by 1 so
+        // they don't overshoot.
         var groupTds = table.querySelectorAll(
           'tr.scw-bid-review__group-header > td[colspan],' +
-          'tr.scw-bid-review__subgroup-header > td[colspan]'
+          'tr.scw-bid-review__subgroup-header > td[colspan],' +
+          'tr.scw-bid-review__l1-detail-row > td[colspan]'
         );
         for (var g = 0; g < groupTds.length; g++) {
           var cs = parseInt(groupTds[g].getAttribute('colspan'), 10);

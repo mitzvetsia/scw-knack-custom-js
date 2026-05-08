@@ -185,10 +185,71 @@
          warning) — stretched to full width of the warning box. The
          ops-review-pill default sits left-aligned with max-content
          width; override both. */
-      '.scw-bid-review__sow-status .scw-ops-margin-warning__btn {',
+      '.scw-bid-review__sow-status .scw-ops-margin-warning__btn,',
+      '.scw-bid-review__sow-actions .scw-ops-margin-warning__btn {',
       '  flex: 0 0 100%; max-width: none; margin-left: 0; width: 100%;',
       '  justify-content: center; text-align: center;',
       '  white-space: normal;',
+      '}',
+
+      /* SOW action cell (r3) — bottom-aligned column of full-width
+         buttons that visually mirror the bid-column .scw-bid-review__btn
+         buttons (Sync to SOW etc.). Margin-warning, Preview Proposal
+         pill, and any nested buttons stack vertically; the bottom of
+         the stack aligns with the bottom of the cell so they line up
+         horizontally with the bid-column action buttons. */
+      '.scw-bid-review__sow-action-cell {',
+      '  text-align: center;',
+      '  vertical-align: bottom;',
+      '}',
+      '.scw-bid-review__sow-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '  width: 100%;',
+      '}',
+      /* Stretch every direct child to full width. */
+      '.scw-bid-review__sow-actions > * {',
+      '  width: 100%;',
+      '}',
+      /* Preview Proposal pill — match .scw-bid-review__btn font/padding
+         and force full width regardless of inline ops-pill styles. */
+      '.scw-bid-review__sow-actions .scw-ops-pill,',
+      '.scw-bid-review__sow-actions .scw-ops-pill:hover,',
+      '.scw-bid-review__sow-actions .scw-ops-pill:visited {',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  width: 100%;',
+      '  padding: 4px 8px;',
+      '  border: none; border-radius: 4px;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  background: #0891b2; color: #fff !important;',
+      '  text-decoration: none; cursor: pointer;',
+      '  white-space: nowrap; min-height: 0; gap: 4px;',
+      '  transition: filter .15s;',
+      '  margin: 3px 0 0 0;',
+      '}',
+      '.scw-bid-review__sow-actions .scw-ops-pill:hover {',
+      '  filter: brightness(0.92);',
+      '}',
+      '.scw-bid-review__sow-actions .scw-ops-pill.is-pending {',
+      '  background: #94a3b8; cursor: not-allowed;',
+      '}',
+      '.scw-bid-review__sow-actions .scw-ops-pill .scw-ops-info {',
+      '  background: rgba(255,255,255,.2); color: #fff;',
+      '}',
+      /* Margin-low warning block inside the actions cell — strip its
+         outer padding so it aligns flush with the pill above/below. */
+      '.scw-bid-review__sow-actions .scw-ops-margin-warning {',
+      '  width: 100%;',
+      '  margin: 0;',
+      '}',
+      /* Any nested btn inside the warning matches the bid-column btn
+         font + padding. */
+      '.scw-bid-review__sow-actions .scw-ops-margin-warning__btn,',
+      '.scw-bid-review__sow-actions button {',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  padding: 4px 8px;',
+      '  border-radius: 4px;',
       '}',
 
       /* ── table ─────────────────────────────────────────────── */
@@ -532,41 +593,12 @@
       '  color: #295f91;',
       '}',
 
-      /* L1 group "Details" toggle button — opens an expandable row
-         with headend photos + Survey/SCW notes. Sits flush right
-         inside the L1 header inner flex. */
-      '.scw-bid-review__grp-info-btn {',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  gap: 4px;',
-      '  margin-left: auto;',
-      '  padding: 3px 8px;',
-      '  font-size: 11px;',
-      '  font-weight: 600;',
-      '  color: #295f91;',
-      '  background: transparent;',
-      '  border: 1px solid rgba(41, 95, 145, 0.30);',
-      '  border-radius: 4px;',
-      '  cursor: pointer;',
-      '  transition: background 120ms ease, color 120ms ease;',
-      '}',
-      '.scw-bid-review__grp-info-btn:hover {',
-      '  background: rgba(41, 95, 145, 0.10);',
-      '}',
-      '.scw-bid-review__grp-info-btn--active {',
-      '  background: #295f91;',
-      '  color: #fff;',
-      '  border-color: #295f91;',
-      '}',
-      '.scw-bid-review__grp-info-btn svg {',
-      '  width: 12px;',
-      '  height: 12px;',
-      '  flex: 0 0 auto;',
-      '}',
-
-      /* Expandable detail row beneath an L1 group header — shows
+      /* Auto-mounted detail row beneath an L1 group header — shows
          photos (field_771) + Survey Notes (field_2457) + SCW Notes
-         (field_1643) for the matching MDF/IDF record in view_3822. */
+         (field_1643) for the matching MDF/IDF record in view_3822.
+         The row is built only when at least one of those fields has
+         data. The accordion toggle on the L1 header walks siblings
+         and hides this row along with the rest of the group. */
       '.scw-bid-review__l1-detail-row > td {',
       '  background: #f8fafc;',
       '  border-bottom: 1px solid #cbd5e1;',
@@ -577,6 +609,7 @@
       '  display: flex;',
       '  flex-wrap: wrap;',
       '  gap: 18px;',
+      '  align-items: flex-start;',
       '}',
       '.scw-bid-review__l1-detail-section {',
       '  flex: 1 1 280px;',
@@ -602,26 +635,38 @@
       '  color: #94a3b8;',
       '  font-style: italic;',
       '}',
+      /* Photo strip — matches the natural-width / capped-height
+         look-and-feel of the inline-photo-row strip used on device
+         worksheets (see inline-photo-row.js). Photos render at their
+         natural aspect ratio with a 200px height cap, wrap onto
+         multiple lines, and click through to the full-size image
+         in a new tab. */
       '.scw-bid-review__l1-detail-photos {',
       '  display: flex;',
       '  flex-wrap: wrap;',
-      '  gap: 6px;',
+      '  gap: 8px;',
       '}',
       '.scw-bid-review__l1-detail-photo {',
       '  display: block;',
-      '  width: 72px;',
-      '  height: 72px;',
-      '  border-radius: 4px;',
-      '  overflow: hidden;',
-      '  border: 1px solid #cbd5e1;',
-      '  background: #fff;',
       '  flex: 0 0 auto;',
+      '  border-radius: 6px;',
+      '  border: 1px solid #ddd;',
+      '  background: #fff;',
+      '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
+      '  transition: transform 120ms ease, box-shadow 120ms ease;',
+      '  overflow: hidden;',
       '}',
-      '.scw-bid-review__l1-detail-photo img {',
-      '  width: 100%;',
-      '  height: 100%;',
-      '  object-fit: cover;',
+      '.scw-bid-review__l1-detail-photo:hover {',
+      '  transform: scale(1.03);',
+      '  box-shadow: 0 3px 12px rgba(0,0,0,.15);',
+      '}',
+      /* Override Knack default ".kn-content img { max-width: 100% }". */
+      '.scw-bid-review__l1-detail-photo img,',
+      '.kn-content .scw-bid-review__l1-detail-photo img {',
       '  display: block;',
+      '  width: auto;',
+      '  height: 200px;',
+      '  max-width: none;',
       '}',
 
       /* ── subgroup headers (proposalBucket within mdfIdf) ──── */
