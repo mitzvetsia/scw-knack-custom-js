@@ -17,15 +17,17 @@
 (function () {
   'use strict';
 
-  var BTN_HOST_CLS  = 'scw-ws-bulk-toggle';
-  var BOUND_ATTR    = 'data-scw-bulk-toggle-bound';
+  var BTN_HOST_CLS    = 'scw-ws-bulk-toggle';
+  var BOUND_ATTR      = 'data-scw-bulk-toggle-bound';
+  var OBS_KEY         = '__scwBulkToggleObs';
+  var SUMMARY_STATE   = 'data-scw-summary-state';
   // Native Knack classes only — DO NOT include scw-group-header here,
   // that's added by group-collapse.js's enhance pass which can run
   // after device-worksheet finishes. If we required it, mount() would
   // bail on every retry until group-collapse caught up, and on slow
   // scenes the buttons would never appear.
-  var L1_SEL        = 'tr.kn-table-group.kn-group-level-1';
-  var SUMMARY_CLASS = 'scw-mdf-summary-row';
+  var L1_SEL          = 'tr.kn-table-group.kn-group-level-1';
+  var SUMMARY_CLASS   = 'scw-mdf-summary-row';
 
   function getSceneId() {
     var bodyId = document.body.id || '';
@@ -83,6 +85,13 @@
       if (collapse) h.classList.add('scw-collapsed');
       else          h.classList.remove('scw-collapsed');
 
+      // Tag headers in summary state so the click interceptor can
+      // convert the next click into an expand instead of letting
+      // group-collapse fully collapse the group from a partially-open
+      // state.
+      if (mode === 'summary') h.setAttribute(SUMMARY_STATE, '1');
+      else                    h.removeAttribute(SUMMARY_STATE);
+
       state['L1:' + readL1Label(h)] = collapse ? 1 : 0;
 
       var rows = rowsUntilNextL1(h);
@@ -96,6 +105,23 @@
       }
     }
 
+    saveState(sceneId, viewId, state);
+  }
+
+  // Expand a single L1 group (used by the summary-state click
+  // interceptor). Mirrors applyMode's expand branch but scoped to one
+  // header so we don't blow away other groups' state.
+  function expandOneGroup(viewEl, header) {
+    header.classList.remove('scw-collapsed');
+    header.removeAttribute(SUMMARY_STATE);
+    var rows = rowsUntilNextL1(header);
+    for (var j = 0; j < rows.length; j++) {
+      rows[j].style.display = '';
+    }
+    var sceneId = getSceneId();
+    var viewId  = viewEl.id;
+    var state   = loadState(sceneId, viewId);
+    state['L1:' + readL1Label(header)] = 0;
     saveState(sceneId, viewId, state);
   }
 
@@ -114,13 +140,13 @@
   }
 
   function mount(viewEl) {
-    if (!viewEl) return;
-    if (viewEl.hasAttribute(BOUND_ATTR)) return;
-    if (!viewEl.querySelector('tr.scw-ws-row')) return;
-    if (!viewEl.querySelector(L1_SEL)) return;
+    if (!viewEl) return false;
+    if (viewEl.hasAttribute(BOUND_ATTR)) return true;
+    if (!viewEl.querySelector('tr.scw-ws-row')) return false;
+    if (!viewEl.querySelector(L1_SEL)) return false;
 
     var nav = viewEl.querySelector('.kn-records-nav');
-    if (!nav) return;
+    if (!nav) return false;
 
     var existing = nav.querySelector('.' + BTN_HOST_CLS);
     if (existing) existing.remove();
@@ -141,42 +167,78 @@
 
     nav.insertBefore(host, nav.firstChild);
     viewEl.setAttribute(BOUND_ATTR, '1');
+
+    // Capture-phase click interceptor: when an L1 header is in
+    // summary state, the user's intent on click is "show me the rest"
+    // (expand). Without this, group-collapse's bubble-phase handler
+    // would read .scw-collapsed=false and collapse the group entirely,
+    // hiding the summary row too. stopPropagation on the capture-phase
+    // event prevents the bubble-phase handler from firing.
+    viewEl.addEventListener('click', function (e) {
+      var t = e.target;
+      var header = null;
+      while (t && t !== viewEl) {
+        if (t.nodeType === 1 &&
+            t.classList.contains('kn-table-group') &&
+            t.classList.contains('kn-group-level-1')) {
+          header = t; break;
+        }
+        t = t.parentNode;
+      }
+      if (!header) return;
+      if (header.getAttribute(SUMMARY_STATE) !== '1') return;
+      e.stopPropagation();
+      e.preventDefault();
+      expandOneGroup(viewEl, header);
+    }, true);
+
+    return true;
   }
 
-  // Scan unbound views and try to mount on each. Trivially cheap: the
-  // selector skips already-bound views, and mount() returns early
-  // unless tr.scw-ws-row + L1 group rows are both present.
+  // Per-view observer: watches the view's subtree and retries mount
+  // whenever the DOM mutates. Disconnects itself once mount succeeds.
+  // Replaces the older timer-based retry — deterministic on slow
+  // first-loads where 250/1200/3000ms checks could miss the window
+  // between Knack rendering the view shell and device-worksheet
+  // finishing its row transform.
+  function attachObserver(viewEl) {
+    if (viewEl[OBS_KEY]) return;
+    if (mount(viewEl)) return;
+
+    var debounce = null;
+    var obs = new MutationObserver(function () {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(function () {
+        if (mount(viewEl)) {
+          obs.disconnect();
+          viewEl[OBS_KEY] = null;
+        }
+      }, 50);
+    });
+    obs.observe(viewEl, { childList: true, subtree: true });
+    viewEl[OBS_KEY] = obs;
+  }
+
   function runScan() {
-    var views = document.querySelectorAll(
-      '.kn-view[id^="view_"]:not([' + BOUND_ATTR + '])'
-    );
-    for (var i = 0; i < views.length; i++) mount(views[i]);
+    var views = document.querySelectorAll('.kn-view[id^="view_"]');
+    for (var i = 0; i < views.length; i++) {
+      var v = views[i];
+      if (v.hasAttribute(BOUND_ATTR)) continue;
+      attachObserver(v);
+    }
   }
 
-  // Debounced scheduler. knack-view-render fires before
-  // device-worksheet's transformView and group-collapse's enhance, so a
-  // single fast scan can land before tr.scw-ws-row or the L1 group
-  // headers exist. Schedule a few retries to cover the lifecycle:
-  //   250ms — typical case
-  //   1200ms — slower scenes / coordinated post-edit restore
-  //   3000ms — last-resort safety net
-  // Plus an immediate run on scw-worksheet-ready (device-worksheet's
-  // own completion signal) which deterministically catches the moment
-  // worksheet rows are in the DOM.
-  var scanTimers = [];
-  function clearTimers() {
-    for (var i = 0; i < scanTimers.length; i++) clearTimeout(scanTimers[i]);
-    scanTimers.length = 0;
-  }
-  function scheduleScan() {
-    clearTimers();
-    scanTimers.push(setTimeout(runScan, 250));
-    scanTimers.push(setTimeout(runScan, 1200));
-    scanTimers.push(setTimeout(runScan, 3000));
-  }
-
-  $(document).on('knack-view-render.any', scheduleScan);
-  $(document).on('knack-scene-render.any', scheduleScan);
+  $(document).on('knack-view-render.any', runScan);
+  $(document).on('knack-scene-render.any', runScan);
   document.addEventListener('scw-worksheet-ready', runScan);
+
+  // First-load entry point: the script can load after the initial
+  // scene render has already fired. Run an immediate scan so we don't
+  // wait for the next render event.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runScan);
+  } else {
+    runScan();
+  }
 })();
 /*** END DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/
