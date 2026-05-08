@@ -121,24 +121,31 @@
     var hidden = 0;
     var shown = 0;
     var total = 0;
+    var shownLabels = [];
+    var hiddenLabels = [];
 
     for (var i = 0; i < opts.length; i++) {
       var val = opts[i].value;
       if (!val || !hexPattern.test(val)) continue;  // skip placeholder
       total++;
+      var label = (opts[i].textContent || '').trim();
 
       if (!productMatchesBucket(val, bucketId)) {
         opts[i].disabled = true;
         opts[i].style.display = 'none';
         opts[i].setAttribute('data-scw-hidden', '1');
         hidden++;
+        if (hiddenLabels.length < 10) hiddenLabels.push(label + ' (' + val + ')');
       } else {
         opts[i].disabled = false;
         opts[i].style.display = '';
         opts[i].removeAttribute('data-scw-hidden');
         shown++;
+        shownLabels.push(label + ' (' + val + ')');
       }
     }
+    log('Shown products (' + shown + '):', shownLabels);
+    log('First few hidden:', hiddenLabels);
 
     if (total === 0) {
       log('Select has', opts.length, 'options but none with hex IDs — still loading?');
@@ -223,6 +230,61 @@
     );
     startPolling();
   }, true);
+
+  // ── CONSOLE DEBUG HELPERS ─────────────────────────────────────
+  // Usage from DevTools:
+  //   SCW.debugProductsForBucket('6481e5ba38f283002898113c')
+  //     → logs every product whose map entry contains this bucket
+  //   SCW.debugBucketsForProduct('<24-hex product id>')
+  //     → logs every bucket that product is mapped to
+  //   SCW.debugProductBucketMapSummary()
+  //     → counts: products in map, products with no buckets, etc.
+  window.SCW = window.SCW || {};
+
+  window.SCW.debugProductsForBucket = function (bucketId) {
+    var map = getMap();
+    if (!map) { console.log('No SCW.productBucketMap'); return; }
+    if (!bucketId) { console.log('Pass a 24-hex bucket id'); return; }
+    var hits = [];
+    var pids = Object.keys(map);
+    for (var i = 0; i < pids.length; i++) {
+      var pid = pids[i];
+      var buckets = map[pid] || [];
+      for (var b = 0; b < buckets.length; b++) {
+        if (buckets[b] === bucketId) { hits.push(pid); break; }
+      }
+    }
+    console.log('Products mapped to bucket', bucketId + ':', hits.length);
+    console.log(hits);
+    return hits;
+  };
+
+  window.SCW.debugBucketsForProduct = function (productId) {
+    var map = getMap();
+    if (!map) { console.log('No SCW.productBucketMap'); return; }
+    var entry = map[productId];
+    console.log('Buckets for product', productId + ':', entry || '(not in map)');
+    return entry || null;
+  };
+
+  window.SCW.debugProductBucketMapSummary = function () {
+    var map = getMap();
+    if (!map) { console.log('No SCW.productBucketMap'); return; }
+    var pids = Object.keys(map);
+    var noBucket = 0;
+    var bucketCounts = {};
+    for (var i = 0; i < pids.length; i++) {
+      var bs = map[pids[i]] || [];
+      if (!bs.length) noBucket++;
+      for (var j = 0; j < bs.length; j++) {
+        bucketCounts[bs[j]] = (bucketCounts[bs[j]] || 0) + 1;
+      }
+    }
+    console.log('Products in map:', pids.length);
+    console.log('Products with empty bucket list:', noBucket);
+    console.log('Buckets seen:', Object.keys(bucketCounts).length);
+    console.table(bucketCounts);
+  };
 
   log('Module loaded, waiting for SCW.productBucketMap');
 })();
