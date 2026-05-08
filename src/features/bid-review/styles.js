@@ -552,9 +552,20 @@
       '.scw-bid-review__expand-row { display: none; }',
       '.scw-bid-review__expand-row--open { display: table-row; }',
       '.scw-bid-review__expand-cell {',
-      '  padding: 8px 0 12px !important;',
+      '  padding: 0 0 12px !important;',
       '  background: transparent;',
       '  border: none !important;',
+      '}',
+      /* Push the panel up to overlap with the data row above; square top
+         corners + rounded bottom so it reads as integrated. */
+      '.scw-bid-review__expand-cell .scw-ws-card {',
+      '  margin-top: -10px;',
+      '  border-radius: 0 0 8px 8px !important;',
+      '}',
+      /* Sink the bid + actions cells of the expanded data row so the
+         lifted panel above casts an inset shadow into them. */
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(n+3) {',
+      '  box-shadow: inset 0 -8px 10px -6px rgba(2, 132, 199, 0.45);',
       '}',
       '.scw-bid-review__expand-table {',
       '  width: 100%;',
@@ -562,11 +573,13 @@
       '  background: #fff;',
       '}',
       /* Tint the worksheet card\'s expanded drop shadow blue (overrides
-         device-worksheet\'s default black/gray shadow). */
+         device-worksheet\'s default black/gray shadow). Y-offset is
+         positive so the shadow falls only below + sides of the panel,
+         not on top — the panel reads as connected to the row above. */
       '.scw-bid-review__expand-cell .scw-ws-card:has(.scw-ws-open),',
       '.scw-bid-review__expand-cell .scw-ws-card {',
-      '  box-shadow: 0 6px 12px -2px rgba(2, 132, 199, 0.55),',
-      '              0 3px 6px -2px rgba(2, 132, 199, 0.35) !important;',
+      '  box-shadow: 8px 8px 14px -4px rgba(2, 132, 199, 0.50),',
+      '              -8px 8px 14px -4px rgba(2, 132, 199, 0.50) !important;',
       '}',
       '.scw-bid-review__expand-table > tbody > tr > td {',
       '  padding: 0 !important;',
