@@ -26,6 +26,7 @@
           field2409: 'field_2409',
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
+          conduit: 'field_2368',  // per-row conduit feet — summed into the L3 drop header
         },
       },
     },
@@ -1053,6 +1054,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return items.map((it) => escapeHtml(it.text)).join(', ');
   }
 
+  // Sum conduit feet (ctx.keys.conduit) across the rows under an L3 drop
+  // header. Used to append an "approximately XX' of conduit included"
+  // note after the concatenated camera list. Returns 0 when the field
+  // isn't configured for the view or no row has a non-zero value.
+  function sumConduitFeet(ctx, caches, $rows) {
+    if (!ctx.keys?.conduit) return 0;
+    let total = 0;
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const raw = getRowCellText(caches, rows[i], ctx.keys.conduit);
+      if (!raw) continue;
+      const n = parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
+      if (Number.isFinite(n)) total += n;
+    }
+    return total;
+  }
+
   // ============================================================
   // FEATURE: Field2409 injection (L3)
   // ============================================================
@@ -1094,9 +1112,19 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const labelCell = $groupRow[0].querySelector('td:first-child');
     if (!labelCell) return;
 
-    // Strip previously injected camera wrapper to avoid nesting on re-runs
+    // Strip previously injected camera wrapper to avoid nesting on re-runs.
+    // Conduit note must be removed FIRST: it's an <i> tag, and the
+    // sanitizer's allow-list is <br>/<b>-only — if the <i> survives the
+    // unwrap below, its text gets sanitized to plain text in baseHtml
+    // and we end up with duplicate conduit copy on each re-render.
     const prevConcat = labelCell.querySelector('.scw-concat-cameras');
     if (prevConcat) {
+      const condI = prevConcat.querySelector('.scw-concat-conduit');
+      if (condI) {
+        const prevCondBr = condI.previousElementSibling;
+        if (prevCondBr && prevCondBr.tagName === 'BR') prevCondBr.remove();
+        condI.remove();
+      }
       const camB = prevConcat.querySelector('b');
       if (camB) { const prevBr = camB.previousElementSibling; if (prevBr && prevBr.tagName === 'BR') prevBr.remove(); camB.remove(); }
       while (prevConcat.firstChild) prevConcat.parentNode.insertBefore(prevConcat.firstChild, prevConcat);
@@ -1113,10 +1141,21 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       baseHtml = sanitizeAllowOnlyBrAndB(decodeEntities(labelCell.innerHTML || ''));
     }
 
+    // Conduit total across the drops under this L3 header — only rendered
+    // when at least one row reports a non-zero conduit-feet value. Sits
+    // inside .scw-concat-cameras so the strip-on-re-run logic above
+    // cleans it up alongside the camera list. Tagged .scw-concat-conduit
+    // so the strip can find and remove it specifically.
+    const conduitTotal = sumConduitFeet(ctx, caches, $rowsToSum);
+    const conduitNote = conduitTotal > 0
+      ? `<br /><i class="scw-concat-conduit" style="color:#6b7280;">approximately ${Math.round(conduitTotal)}' of conduit included</i>`
+      : '';
+
     const composed =
       `<div class="scw-concat-cameras">` +
       `${sanitizeAllowOnlyBrAndB(decodeEntities(baseHtml))}` +
       `<br /><b style="color:orange;"> (${cameraListHtml})</b>` +
+      conduitNote +
       `</div>`;
 
     labelCell.innerHTML = composed;

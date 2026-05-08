@@ -49,14 +49,25 @@
     if (payload.items)       body.items       = payload.items;
     if (payload.matchedSowItems)  body.matchedSowItems  = payload.matchedSowItems;
     if (payload.orphanBidRecords) body.orphanBidRecords = payload.orphanBidRecords;
+    // Survey-costs payload (PM-mobilization webhook). surveyCosts is
+    // numeric; surveyCostsRaw preserves the user's literal entry; null
+    // means the input was empty or non-numeric.
+    if (payload.surveyCosts !== undefined)      body.surveyCosts      = payload.surveyCosts;
+    if (payload.surveyCostsRaw !== undefined)   body.surveyCostsRaw   = payload.surveyCostsRaw;
+    if (payload.surveyCostsField)               body.surveyCostsField = payload.surveyCostsField;
 
     if (CFG.debug) {
       SCW.debug('[BidReview] Submitting action:', body);
     }
 
-    var webhookUrl = (payload.actionType === 'create_new_sow' && CFG.createNewSowWebhook)
-      ? CFG.createNewSowWebhook
-      : CFG.actionWebhook;
+    var webhookUrl = CFG.actionWebhook;
+    if (payload.actionType === 'create_new_sow' && CFG.createNewSowWebhook) {
+      webhookUrl = CFG.createNewSowWebhook;
+    } else if (payload.actionType === 'row_add_to_sow' && CFG.addToSowWebhook) {
+      webhookUrl = CFG.addToSowWebhook;
+    } else if (payload.actionType === 'add_pm_mobilization' && CFG.addPmMobilizationWebhook) {
+      webhookUrl = CFG.addPmMobilizationWebhook;
+    }
 
     SCW.knackAjax({
       url:  webhookUrl,
@@ -123,7 +134,11 @@
           price:          cell.price,
           productDesc:    cell.productDesc,
           dropLength:     cell.bidDropLength,
-          conduit:        /^yes$/i.test(cell.bidConduit),
+          // Conduit is numeric feet (field_2368), NOT a yes/no flag —
+          // ship the raw value so it can be written to the SOW's
+          // numeric conduit field. The earlier /^yes$/i.test() coerced
+          // legitimate footage to false.
+          conduit:        cell.bidConduit,
           plenum:         /^yes$/i.test(cell.bidPlenum),
           dropPrefix:     cell.dropPrefix,
           dropNumber:     cell.dropNumber,
@@ -131,6 +146,11 @@
           limitQtyOne:      cell.limitQtyOne,
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
+          // Full bid record (every field_NNNN + field_NNNN_raw the view
+          // projects). Make scenarios should prefer .bidRecord.field_XXXX_raw
+          // for any field not enumerated above — including field_2374
+          // (bidMapConn / FLAG_map camera or reader connections).
+          bidRecord:      cell._rawRecord || null,
         });
       } else if (!row.sowItem && cell) {
         // NEW: create SOW item from bid data
@@ -150,7 +170,8 @@
           price:            cell.price,
           productDesc:      cell.productDesc,
           dropLength:       cell.bidDropLength,
-          conduit:          /^yes$/i.test(cell.bidConduit),
+          // Conduit is numeric feet (field_2368) — see updates branch.
+          conduit:          cell.bidConduit,
           plenum:           /^yes$/i.test(cell.bidPlenum),
           dropPrefix:       cell.dropPrefix,
           dropNumber:       cell.dropNumber,
@@ -159,6 +180,12 @@
           proposalBucket:   cell.proposalBucketId,
           mdfIdf:           cell.mdfIdfId,
           displayLabel:     row.displayLabel,
+          // Full bid record with every field projected by view_3680
+          // (field_NNNN + field_NNNN_raw pairs). Keyed fields above are
+          // kept for backwards-compat with existing Make mappings; new
+          // mappings should prefer .bidRecord.field_NNNN_raw so any
+          // field added to the view shows up automatically here.
+          bidRecord:        cell._rawRecord || null,
         });
       } else if (row.sowItem && !cell) {
         // Removal: SOW item not covered by this bid package
@@ -194,7 +221,7 @@
    *   view_3680 — bid review records (CFG.viewKey). Row.cellsByPackage[*]
    *               and row._rawRecord carry the full record with every
    *               field projected by that view.
-   *   view_3728 — unbid SOW line items (CFG.sowItemsViewKey). Used to
+   *   view_3921 — unbid SOW line items (CFG.sowItemsViewKey). Used to
    *               build "no bid" rows; row._rawRecord carries the full
    *               record with every field projected by that view.
    *
@@ -250,7 +277,8 @@
             price:          cell.price,
             productDesc:    cell.productDesc,
             dropLength:     cell.bidDropLength,
-            conduit:        /^yes$/i.test(cell.bidConduit),
+            // Conduit is numeric feet (field_2368) — NOT a yes/no flag.
+            conduit:        cell.bidConduit,
             plenum:         /^yes$/i.test(cell.bidPlenum),
             dropPrefix:     cell.dropPrefix,
             dropNumber:     cell.dropNumber,
@@ -286,7 +314,7 @@
             sowMapConn:      row.sowMapConn,
             sowMdfIdf:       row.sowMdfIdf,
             // Every field on the source record (view_3680 bid record OR
-            // view_3728 unbid SOW item, depending on which view this row
+            // view_3921 unbid SOW item, depending on which view this row
             // came from). Includes the field_NNNN and field_NNNN_raw
             // pair for every column projected by the source view.
             sourceRecord:    row._rawRecord || null,
@@ -318,6 +346,7 @@
     switch (payload.actionType) {
       case 'row_adopt':             return 'Row adopted';
       case 'row_create':            return 'SOW item creation requested';
+      case 'row_add_to_sow':        return 'Add to SOW requested';
       case 'row_skip':              return 'Row skipped';
       case 'package_adopt_all':      return 'Adopt All (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
       case 'package_create_missing': return 'Create Missing (' + (payload.rowIds ? payload.rowIds.length : 0) + ' rows)';
@@ -325,6 +354,7 @@
       case 'package_copy_to_sow':    return 'Copy to SOW requested';
       case 'package_create_sow':     return 'Create new SOW requested';
       case 'create_new_sow':         return 'New SOW (' + ((payload.matchedSowItems || []).length + (payload.orphanBidRecords || []).length) + ' items) requested';
+      case 'add_pm_mobilization':    return 'Add PM & Mobilization line item requested';
       case 'change_request':         return 'Change request (' + (payload.items ? payload.items.length : 0) + ' items)';
       default:                       return 'Action submitted';
     }

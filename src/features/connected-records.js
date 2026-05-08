@@ -29,6 +29,21 @@
         parentConnectionField: 'field_2464'
       },
       {
+        // Same SOW Line Items source as view_3610. We surface this
+        // config so the worksheet card injected into the bid-review
+        // expand panel can render the mounting-hardware widget; URLs
+        // resolve through getBuildSowBasePath\'s review-bids fallback
+        // and open in a new tab.
+        parentViewId: 'view_3921',
+        connectionField: 'field_1958',
+        label: 'Mounting\nHardware',
+        addSlug: 'add-accessory-line-item',
+        editSlug: 'edit-scope-line-item2',
+        itemSlug: 'edit-accessory-line-item2',
+        warningField: 'field_2244',
+        parentConnectionField: 'field_2464'
+      },
+      {
         parentViewId: 'view_3586',
         connectionField: 'field_1958',
         label: 'Mounting\nHardware',
@@ -335,6 +350,7 @@
     var hash = window.location.hash || '';
     var patterns = [
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
       /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];

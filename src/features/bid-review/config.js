@@ -14,16 +14,47 @@
     // ── Knack scene / view ──────────────────────────────────
     sceneKey:          'scene_1155',
     viewKey:           'view_3680',
-    sowItemsViewKey:   'view_3728',   // SOW items with no associated bid
+    sowItemsViewKey:   'view_3921',   // All SOW items (mirrors view_3610) — child pages on scene_1155 set up identically
     bidPackagesViewKey: 'view_3573',  // Bid package records (has PDF field)
     mdfIdfViewKey:      'view_3822',  // MDF/IDF location records (connection options)
+    docFilesViewKey:    'view_3926',  // DOC_files records (linked to SOWs / bid packages)
     changeRequestViewKey: 'view_3818', // Change request records (pending count + link)
+    // Source view for the SOW section status bar — SOW records on
+    // scene_1155 carrying the same flag fields ops-review-pill reads
+    // (field_2723/2706/2728/2725/2736/2749 + the new 2750). Hidden in
+    // the layout is fine; we just scrape its rendered <tr>s.
+    nextStepViewKey:      'view_3918',
+    // Source view for the published-proposal block on scene_1155 —
+    // mirrors the role view_3885 plays for the ops list page. Same
+    // field projection (field_2658/2659/2665/2666/2681).
+    proposalSourceView:   'view_3920',
+    // SOW record fields surfaced in the SOW section header.
+    surveyCostsField:     'field_2750',  // INPUT_survey costs (editable)
+    marginField:          'field_2749',  // SOW margin % (read-only display)
+    subBidTotalField:     'field_2162',  // SOW sub-bid total (project-wide)
+    projectMarginField:   'field_2158',  // SOW project margin % (input)
+    sowNameField:         'field_2126',  // SOW Name (editable text)
+    // Write-target view for the Survey Costs + SOW Name inputs. Knack
+    // writes go through a view (not a raw object_id endpoint) so the
+    // user's view permissions are respected. Defaults to
+    // nextStepViewKey — the view must expose field_2750 + field_2126
+    // as editable. If view_3918 is read-only, point this at a separate
+    // inline-edit grid on scene_1155.
+    surveyCostsWriteView: 'view_3918',
 
     // ── Make webhooks ───────────────────────────────────────────
     actionWebhook:          'https://hook.us1.make.com/68ctc26m41uqijftkd66ny6m53r1l9sv',
     changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
     revisionResponseWebhook: 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
     createNewSowWebhook:    'https://hook.us1.make.com/v95pack6vgu3wlr2q7finnendy4ht5ax',
+    // PLACEHOLDER — replace with the real Make webhook URL once the
+    // "Add to SOW" Make scenario is built. row_add_to_sow falls back to
+    // CFG.actionWebhook if this is left blank.
+    addToSowWebhook:        'https://hook.us1.make.com/PLACEHOLDER_ADD_TO_SOW',
+    // Fired from the "Add Project Management & Mobilization line item"
+    // button inside the margin-low warning on each SOW section header.
+    // Payload: { actionType, sowId, surveyCosts, surveyCostsField }.
+    addPmMobilizationWebhook: 'https://hook.us1.make.com/o13w6vyvijxcl0u823g6pg96qtc6psc1',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
@@ -87,6 +118,8 @@
       sowExterior:     'field_1984',   // BOOL_exterior (SOW side)
       sowDropLength:   'field_1965',   // drop length (SOW side)
       sowConduit:      'field_2035',   // conduit (SOW side)
+      sowInstallFee:   'field_2028',   // INSTALL FEE CALC_installation price extended
+      sowEquipmentTotal: 'field_2269', // CALC_LI_EQUIPMENT_extended price net
 
       // SOW connection (can have 1–2 connected records per line item)
       sow:             'field_2154',   // REL_SOW (connection — columns)
@@ -104,7 +137,7 @@
       crBidPackage:    'field_2689',   // REL_bid package (on CR records — differs from field_2415)
     },
 
-    // ── SOW item fields (view_3728 — different keys than bid records) ──
+    // ── SOW item fields (view_3921 — different keys than bid records) ──
     sowItemFieldKeys: {
       sow:             'field_2154',   // REL_SOW (same key as bid records)
       product:         'field_1949',   // product connection (display label)
@@ -112,6 +145,8 @@
       laborDesc:       'field_2020',   // labor description
       qty:             'field_1964',   // quantity
       fee:             'field_2151',   // sub bid total / install fee
+      installFee:      'field_2028',   // INSTALL FEE CALC_installation price extended
+      equipmentTotal:  'field_2269',   // CALC_LI_EQUIPMENT_extended price net
       mdfIdf:          'field_1946',   // MDF/IDF location (NOTE: differs from bid field_2375)
       proposalBucket:  'field_2219',   // proposal bucket (NOTE: differs from bid field_2366)
       sortOrder:       'field_2218',   // sort order (same key)

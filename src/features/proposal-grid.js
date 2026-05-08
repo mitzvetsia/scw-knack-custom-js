@@ -1914,12 +1914,24 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const labor = sumField(caches, $rowsToSum, laborKey);
     const subtotalL2 = hardware + labor;
 
-    // Empty the qty cell (no qty roll-up across mixed product types in
-    // the bucket — see CSS comment above). Using empty() keeps the
-    // <td> in place so its aliceblue background still paints between
-    // the label and cost cells; visibility:hidden would have hidden
-    // the cell box and left a white gap.
-    $row.find(`td.${qtyKey}`).empty();
+    // Default behaviour: empty the qty cell. No qty roll-up makes sense
+    // across mixed product types in most buckets (see CSS comment
+    // above). Using empty() keeps the <td> in place so its aliceblue
+    // background still paints between the label and cost cells;
+    // visibility:hidden would have hidden the cell box and left a
+    // white gap.
+    //
+    // Cameras/Readers exception: the bucket's contextKey is 'drop' and
+    // every L3 group inside is a uniform device-count sum. Total
+    // device count IS meaningful there (and matches the eye-test of
+    // adding up the L3 header qtys), so we surface it on the subtotal
+    // row instead of blanking it out. Other buckets stay blank.
+    const isCamerasReadersBucket = contextKey === 'drop';
+    if (isCamerasReadersBucket) {
+      $row.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
+    } else {
+      $row.find(`td.${qtyKey}`).empty();
+    }
     $row.find(`td.${costKey}`).html(`<strong>${escapeHtml(formatMoney(subtotalL2))}</strong>`);
     $row.find(`td.${hardwareKey},td.${laborKey}`).empty();
 

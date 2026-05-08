@@ -79,6 +79,269 @@
       '  color: #94a3b8;',
       '}',
 
+      /* ── SOW status bar (lives inside the SOW header cell, rowspan=2) ── */
+      '.scw-bid-review__sow-status {',
+      '  display: flex; flex-direction: column; gap: 8px;',
+      '  align-items: stretch;',
+      '  height: 100%;',
+      '}',
+      /* The status bar sits inside a <td>, so reset any block-level
+         padding / background from earlier iterations and let the cell
+         own the framing. ops-review-pill CSS provides the inner block
+         layout (pill, margin warning, proposal block). */
+      '.scw-bid-review__sow-status .scw-ops-block {',
+      '  display: flex; flex-direction: column; gap: 6px;',
+      '  align-items: flex-start;',
+      '}',
+      /* SOW header cell — gives the status bar room to breathe. Vertical
+         alignment top so the bar starts at the same y-line as the bid
+         columns badges. */
+      'td.scw-bid-review__sow-header-cell {',
+      '  vertical-align: top; padding: 8px 10px; min-width: 240px;',
+      '  height: 1px;',  // collapse to content baseline so child height:100% works
+      '}',
+      /* SOW Name — editable text input pinned at the top of the SOW
+         column header, above the proposal block + metrics. Stacks
+         label-on-top so the input gets the full available width. */
+      '.scw-bid-review__sow-name {',
+      '  display: flex; flex-direction: column; gap: 3px;',
+      '  margin-bottom: 8px;',
+      '}',
+      '.scw-bid-review__sow-name-label {',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  font: 700 10px/1 system-ui, sans-serif; color: #64748b;',
+      '}',
+      '.scw-bid-review__sow-name-input {',
+      '  width: 100%; padding: 5px 8px;',
+      '  border: 1px solid #cbd5e1; border-radius: 4px;',
+      '  font: 700 14px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '  background: #fff;',
+      '  text-align: center;',
+      '}',
+      '.scw-bid-review__sow-name-input:focus {',
+      '  outline: none; border-color: #0d9488;',
+      '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',
+      '}',
+      '.scw-bid-review__sow-name-input--saving { background: #fef3c7; }',
+      '.scw-bid-review__sow-name-input--saved  { background: #ecfdf5; }',
+      /* Survey Costs / Margin — stacked vertically (one per line). */
+      '.scw-bid-review__sow-metrics {',
+      '  display: flex; flex-direction: column; gap: 4px;',
+      '  align-items: stretch;',
+      '}',
+      '.scw-bid-review__sow-metric {',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  justify-content: space-between;',
+      '  font: 600 12px/1.2 system-ui, sans-serif; color: #334155;',
+      '}',
+      '.scw-bid-review__sow-metric-label {',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  font-size: 10.5px; color: #64748b;',
+      '}',
+      '.scw-bid-review__sow-metric-value {',
+      '  font-size: 13px; color: #0f172a;',
+      '}',
+      '.scw-bid-review__sow-metric-input {',
+      '  width: 110px; padding: 4px 6px;',
+      '  border: 1px solid #cbd5e1; border-radius: 4px;',
+      '  font: 500 12px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '  background: #fff;',
+      '  text-align: right;',
+      '}',
+      /* Drop the published-quote-info top divider when it lives in
+         the bid-review SOW status bar. */
+      '.scw-bid-review__sow-status .scw-pq-info--compact {',
+      '  border-top: none !important;',
+      '  margin-top: 0;',
+      '  padding-top: 0;',
+      '}',
+      /* PDF icon now rides next to the quote name link. Hide the
+         filename text leftover from published-quote-info\'s default
+         render, keep just the icon. */
+      '.scw-bid-review__sow-status .scw-pq-pdf {',
+      '  display: inline-flex; align-items: center;',
+      '  margin-left: 6px; vertical-align: middle;',
+      '  color: #163C6E; opacity: 0.85;',
+      '  font-size: 0;', /* hides any trailing text node */
+      '}',
+      '.scw-bid-review__sow-status .scw-pq-pdf:hover { opacity: 1; }',
+      '.scw-bid-review__sow-metric-input:focus {',
+      '  outline: none; border-color: #0d9488;',
+      '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',
+      '}',
+      '.scw-bid-review__sow-metric-input--saving {',
+      '  background: #fef3c7;',
+      '}',
+      '.scw-bid-review__sow-metric-input--saved {',
+      '  background: #ecfdf5;',
+      '}',
+      /* Preview-Proposal pill inside the SOW status bar — restyled to
+         match the .scw-bid-review__btn--adopt "Sync to SOW" button in
+         the bid columns (same font / padding / border-radius / color). */
+      '.scw-bid-review__sow-status .scw-ops-pill,',
+      '.scw-bid-review__sow-status .scw-ops-pill:hover,',
+      '.scw-bid-review__sow-status .scw-ops-pill:visited {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  align-self: stretch; margin-top: auto;',  // bottom-align via flex auto-margin
+      '  padding: 4px 8px;',
+      '  border: none; border-radius: 4px;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  background: #0891b2; color: #fff !important;',
+      '  text-decoration: none; cursor: pointer;',
+      '  white-space: nowrap; min-height: 0; gap: 4px;',
+      '  transition: filter .15s;',
+      '}',
+      '.scw-bid-review__sow-status .scw-ops-pill:hover {',
+      '  filter: brightness(0.92);',
+      '}',
+      /* Pending-state ("Processing X…") variant — keep the busy look so
+         users still see the spinner instead of the action affordance. */
+      '.scw-bid-review__sow-status .scw-ops-pill.is-pending {',
+      '  background: #94a3b8; cursor: not-allowed;',
+      '}',
+      /* Hide the info-tooltip dot only when its data-scw-tip is empty —
+         otherwise the auto-revert note dot would inherit the dark teal
+         background and look out of place against the button. */
+      '.scw-bid-review__sow-status .scw-ops-pill .scw-ops-info {',
+      '  background: rgba(255,255,255,.2); color: #fff;',
+      '}',
+      /* DOC_files attached to this SOW or bid package (view_3926).
+         Compact list with a small label, doc-type chip, file-icon
+         link, and optional notes. Same shape in both the SOW status
+         bar and bid column headers so the visual language matches. */
+      '.scw-bid-review__docs {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '  margin-top: 6px;',
+      '  padding-top: 6px;',
+      '  border-top: 1px dashed #cbd5e1;',
+      '}',
+      '.scw-bid-review__docs-label {',
+      '  font-size: 9.5px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.06em;',
+      '  color: #64748b;',
+      '}',
+      '.scw-bid-review__docs-item {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 6px;',
+      '  font-size: 11px;',
+      '  color: #1e293b;',
+      '}',
+      '.scw-bid-review__docs-type {',
+      '  display: inline-block;',
+      '  flex: 0 0 auto;',
+      '  padding: 1px 6px;',
+      '  font-size: 10px;',
+      '  font-weight: 600;',
+      '  border-radius: 3px;',
+      '  background: #e2e8f0;',
+      '  color: #334155;',
+      '}',
+      '.scw-bid-review__docs-link {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 3px;',
+      '  flex: 1 1 auto;',
+      '  min-width: 0;',
+      '  color: #295f91;',
+      '  text-decoration: none;',
+      '  white-space: nowrap;',
+      '  overflow: hidden;',
+      '  text-overflow: ellipsis;',
+      '}',
+      '.scw-bid-review__docs-link:hover {',
+      '  text-decoration: underline;',
+      '}',
+      '.scw-bid-review__docs-link svg {',
+      '  flex: 0 0 auto;',
+      '  opacity: 0.7;',
+      '}',
+      '.scw-bid-review__docs-notes {',
+      '  flex: 0 0 auto;',
+      '  font-size: 10px;',
+      '  color: #94a3b8;',
+      '  font-style: italic;',
+      '  max-width: 120px;',
+      '  white-space: nowrap;',
+      '  overflow: hidden;',
+      '  text-overflow: ellipsis;',
+      '}',
+
+      /* "Add PM & Mobilization" button (lives inside the margin-low
+         warning) — stretched to full width of the warning box. The
+         ops-review-pill default sits left-aligned with max-content
+         width; override both. */
+      '.scw-bid-review__sow-status .scw-ops-margin-warning__btn,',
+      '.scw-bid-review__sow-actions .scw-ops-margin-warning__btn {',
+      '  flex: 0 0 100%; max-width: none; margin-left: 0; width: 100%;',
+      '  justify-content: center; text-align: center;',
+      '  white-space: normal;',
+      '}',
+
+      /* SOW action cell (r3) — bottom-aligned column of full-width
+         buttons that visually mirror the bid-column .scw-bid-review__btn
+         buttons (Sync to SOW etc.). Margin-warning, Preview Proposal
+         pill, and any nested buttons stack vertically; the bottom of
+         the stack aligns with the bottom of the cell so they line up
+         horizontally with the bid-column action buttons. */
+      '.scw-bid-review__sow-action-cell {',
+      '  text-align: center;',
+      '  vertical-align: bottom;',
+      '}',
+      '.scw-bid-review__sow-actions {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 3px;',
+      '  width: 100%;',
+      '}',
+      /* Stretch every direct child to full width. */
+      '.scw-bid-review__sow-actions > * {',
+      '  width: 100%;',
+      '}',
+      /* Preview Proposal pill — match .scw-bid-review__btn font/padding
+         and force full width regardless of inline ops-pill styles. */
+      '.scw-bid-review__sow-actions .scw-ops-pill,',
+      '.scw-bid-review__sow-actions .scw-ops-pill:hover,',
+      '.scw-bid-review__sow-actions .scw-ops-pill:visited {',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  width: 100%;',
+      '  padding: 4px 8px;',
+      '  border: none; border-radius: 4px;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  background: #0891b2; color: #fff !important;',
+      '  text-decoration: none; cursor: pointer;',
+      '  white-space: nowrap; min-height: 0; gap: 4px;',
+      '  transition: filter .15s;',
+      '  margin: 3px 0 0 0;',
+      '}',
+      '.scw-bid-review__sow-actions .scw-ops-pill:hover {',
+      '  filter: brightness(0.92);',
+      '}',
+      '.scw-bid-review__sow-actions .scw-ops-pill.is-pending {',
+      '  background: #94a3b8; cursor: not-allowed;',
+      '}',
+      '.scw-bid-review__sow-actions .scw-ops-pill .scw-ops-info {',
+      '  background: rgba(255,255,255,.2); color: #fff;',
+      '}',
+      /* Margin-low warning block inside the actions cell — strip its
+         outer padding so it aligns flush with the pill above/below. */
+      '.scw-bid-review__sow-actions .scw-ops-margin-warning {',
+      '  width: 100%;',
+      '  margin: 0;',
+      '}',
+      /* Any nested btn inside the warning matches the bid-column btn
+         font + padding. */
+      '.scw-bid-review__sow-actions .scw-ops-margin-warning__btn,',
+      '.scw-bid-review__sow-actions button {',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  padding: 4px 8px;',
+      '  border-radius: 4px;',
+      '}',
+
       /* ── table ─────────────────────────────────────────────── */
       '.scw-bid-review__table {',
       '  width: 100%;',
@@ -112,6 +375,13 @@
       '.scw-bid-review__pkg-header,',
       '.scw-bid-review__actions-header {',
       '}',
+
+      /* When a SOW has no pending CRs, no noBid/surveyNoBid rows, and
+         no header submit buttons, the .cr-col cells are physically
+         removed from the DOM by buildSowSection — see the comment
+         there. The .scw-bid-review__table--no-cr class is left on the
+         table as a hook for any other code that wants to reason
+         about the collapsed-column state. */
       '.scw-bid-review__header-titles th.scw-bid-review__sow-detail-header {',
       '  text-align: center !important;',
       '  font-size: 12px !important;',
@@ -138,6 +408,21 @@
       '  padding-top: 10px;',
       '  border-bottom: none;',
       '}',
+      '.scw-bid-review__col-title-total {',
+      '  font-size: 11px !important;',
+      '  font-weight: 500 !important;',
+      '  text-transform: none !important;',
+      '  letter-spacing: 0 !important;',
+      '  color: #64748b;',
+      '  margin-top: 2px;',
+      '}',
+      '.scw-bid-review__col-title-total-label {',
+      '  color: #94a3b8;',
+      '}',
+      '.scw-bid-review__col-title-total-value {',
+      '  color: #334155;',
+      '  font-weight: 600 !important;',
+      '}',
       '.scw-bid-review__header-details td {',
       '  font-size: 11px;',
       '  color: #64748b;',
@@ -145,6 +430,7 @@
       '  padding-top: 0;',
       '}',
       '.scw-bid-review__header-actions td {',
+      '  padding-top: 14px;',     /* breathing room above the action stack */
       '  padding-bottom: 8px;',
       '}',
       '.scw-bid-review__header-detail-cell {',
@@ -152,11 +438,19 @@
       '}',
       '.scw-bid-review__header-action-cell {',
       '  text-align: center;',
+      '  vertical-align: bottom;',
       '}',
       '.scw-bid-review__header-action-cell .scw-bid-review__btn {',
       '  display: block;',
       '  width: 100%;',
       '  margin: 3px 0;',
+      '}',
+      /* Bid-column header detail cell sits above the actions cell —
+         pin the badge + bid-name to the top so the actions stay
+         flush at the bottom regardless of how tall the SOW status
+         column makes the row. */
+      '.scw-bid-review__header-details .scw-bid-review__header-detail-cell:not(.scw-bid-review__sow-header-cell) {',
+      '  vertical-align: top;',
       '}',
       '.scw-bid-review__col-status {',
       '  font-size: 10px;',
@@ -390,6 +684,82 @@
       '  color: #295f91;',
       '}',
 
+      /* Auto-mounted detail row beneath an L1 group header — shows
+         photos (field_771) + Survey Notes (field_2457) + SCW Notes
+         (field_1643) for the matching MDF/IDF record in view_3822.
+         The row is built only when at least one of those fields has
+         data. The accordion toggle on the L1 header walks siblings
+         and hides this row along with the rest of the group. */
+      '.scw-bid-review__l1-detail-row > td {',
+      '  background: #f8fafc;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '  padding: 0;',
+      '}',
+      '.scw-bid-review__l1-detail-wrap {',
+      '  padding: 14px 18px;',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 18px;',
+      '  align-items: flex-start;',
+      '}',
+      '.scw-bid-review__l1-detail-section {',
+      '  flex: 1 1 280px;',
+      '  min-width: 0;',
+      '}',
+      '.scw-bid-review__l1-detail-label {',
+      '  font-size: 10px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.06em;',
+      '  color: #64748b;',
+      '  margin-bottom: 6px;',
+      '}',
+      '.scw-bid-review__l1-detail-text {',
+      '  font-size: 12px;',
+      '  line-height: 1.5;',
+      '  color: #1e293b;',
+      '  white-space: pre-wrap;',
+      '  word-break: break-word;',
+      '}',
+      '.scw-bid-review__l1-detail-empty {',
+      '  font-size: 12px;',
+      '  color: #94a3b8;',
+      '  font-style: italic;',
+      '}',
+      /* Photo strip — matches the natural-width / capped-height
+         look-and-feel of the inline-photo-row strip used on device
+         worksheets (see inline-photo-row.js). Photos render at their
+         natural aspect ratio with a 200px height cap, wrap onto
+         multiple lines, and click through to the full-size image
+         in a new tab. */
+      '.scw-bid-review__l1-detail-photos {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 8px;',
+      '}',
+      '.scw-bid-review__l1-detail-photo {',
+      '  display: block;',
+      '  flex: 0 0 auto;',
+      '  border-radius: 6px;',
+      '  border: 1px solid #ddd;',
+      '  background: #fff;',
+      '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
+      '  transition: transform 120ms ease, box-shadow 120ms ease;',
+      '  overflow: hidden;',
+      '}',
+      '.scw-bid-review__l1-detail-photo:hover {',
+      '  transform: scale(1.03);',
+      '  box-shadow: 0 3px 12px rgba(0,0,0,.15);',
+      '}',
+      /* Override Knack default ".kn-content img { max-width: 100% }". */
+      '.scw-bid-review__l1-detail-photo img,',
+      '.kn-content .scw-bid-review__l1-detail-photo img {',
+      '  display: block;',
+      '  width: auto;',
+      '  height: 200px;',
+      '  max-width: none;',
+      '}',
+
       /* ── subgroup headers (proposalBucket within mdfIdf) ──── */
       '.scw-bid-review__subgroup-header td {',
       '  background: #f8fafc;',
@@ -436,6 +806,87 @@
       '  background: #eff6ff;',
       '}',
 
+      /* Click-to-expand row: cursor + a soft blue drop-shadow halo on
+         the SOW columns (cells 1+2) that visually continues the panel\'s
+         shadow above the row, so the data row + panel read as one unit. */
+      '.scw-bid-review__row--expandable { cursor: pointer; }',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1),',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
+      '  position: relative;',
+      '  background: #fff !important;',
+      '}',
+      /* When the row is expanded the worksheet card below is the
+         source of truth for these fields — hide every duplicated
+         detail in the SOW cell except the product label so the user
+         doesn\'t see two stale-vs-fresh copies. */
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td.scw-bid-review__sow-detail > *:not(.scw-bid-review__cell-label) {',
+      '  display: none !important;',
+      '}',
+      /* Top halo + outer side shadows. Side shadows match ws-card\'s
+         left/right shadows but bumped 20% (0.315 → 0.378) so the left
+         glow has a bit more presence than the panel\'s. */
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(1) {',
+      '  box-shadow: 0 -18px 22px -10px rgba(2, 132, 199, 0.46),',
+      '              -10px 14px 18px -10px rgba(2, 132, 199, 0.378);',
+      '}',
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(2) {',
+      '  box-shadow: 0 -18px 22px -10px rgba(2, 132, 199, 0.46),',
+      '              10px 14px 18px -10px rgba(2, 132, 199, 0.378);',
+      '}',
+
+      /* Expand-row: hidden until the parent row is open. The injected
+         worksheet card renders inside a mini-table so device-worksheet\'s
+         <tr.scw-ws-row> structure stays valid. */
+      '.scw-bid-review__expand-row { display: none; }',
+      '.scw-bid-review__expand-row--open { display: table-row; }',
+      '.scw-bid-review__expand-cell {',
+      '  padding: 0 0 12px !important;',
+      '  background: transparent;',
+      '  border: none !important;',
+      '}',
+      /* Push the panel up to overlap with the data row above; square top
+         corners + rounded bottom so it reads as integrated. Drop the
+         worksheet card\'s default 1px border — the blue shadow alone
+         frames the panel. */
+      '.scw-bid-review__expand-cell .scw-ws-card {',
+      '  margin-top: -5px;',
+      '  border-radius: 0 0 8px 8px !important;',
+      '  border: none !important;',
+      '}',
+      /* Sink the bid + actions cells of the expanded data row so the
+         lifted panel above casts an inset shadow into them. */
+      '.scw-bid-review__row--expandable[aria-expanded="true"] > td:nth-child(n+3) {',
+      '  box-shadow: inset 0 -8px 10px -6px rgba(2, 132, 199, 0.45);',
+      '}',
+      '.scw-bid-review__expand-table {',
+      '  width: 100%;',
+      '  border-collapse: collapse;',
+      '  background: #fff;',
+      '}',
+      /* Tint the worksheet card\'s expanded drop shadow blue (overrides
+         device-worksheet\'s default black/gray shadow). Big positive
+         y-offset combined with negative spread keeps the shadow strictly
+         below + to the sides — never on top. */
+      '.scw-bid-review__expand-cell .scw-ws-card:has(.scw-ws-open),',
+      '.scw-bid-review__expand-cell .scw-ws-card {',
+      '  box-shadow: 0 16px 20px -10px rgba(2, 132, 199, 0.385),',
+      '              -10px 14px 18px -10px rgba(2, 132, 199, 0.315),',
+      '              10px 14px 18px -10px rgba(2, 132, 199, 0.315) !important;',
+      '}',
+      '.scw-bid-review__expand-table > tbody > tr > td {',
+      '  padding: 0 !important;',
+      '  border: none !important;',
+      '}',
+      '.scw-bid-review__expand-loading {',
+      '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
+      '}',
+
+      /* view_3921 (SOW line items) is shown alongside the bid review
+         grid for diagnostic / inspection purposes. The grid still
+         expands rows by moving worksheet cards out of view_3921, so
+         leaving the source view visible can briefly show empty cells
+         while a card is on loan. */
+
       /* ── SOW cell ──────────────────────────────────────────── */
       '.scw-bid-review__sow-cell {',
       '  font-weight: 600;',
@@ -444,6 +895,33 @@
 
       '.scw-bid-review__sow-cell--new {',
       '  font-weight: 600;',
+      '  color: #1e293b;',
+      '}',
+
+      /* Row label (E-001 etc.) — block-level so the totals stack
+         beneath it cleanly. */
+      '.scw-bid-review__row-label {',
+      '  font-weight: 600; color: #1e293b;',
+      '}',
+
+      /* Per-row Equipment + Install fee totals stacked under the
+         row label. Each total = bold label on one line, $ value on
+         the next. */
+      '.scw-bid-review__row-totals {',
+      '  display: flex; flex-direction: column; gap: 6px;',
+      '  margin-top: 6px;',
+      '}',
+      '.scw-bid-review__row-total {',
+      '  display: flex; flex-direction: column; gap: 0;',
+      '  font: 500 11px/1.25 system-ui, sans-serif;',
+      '  color: #64748b;',
+      '}',
+      '.scw-bid-review__row-total-label {',
+      '  font-weight: 700;',
+      '  color: #1e293b;',
+      '}',
+      '.scw-bid-review__row-total-value {',
+      '  font-variant-numeric: tabular-nums;',
       '  color: #1e293b;',
       '}',
 
@@ -587,6 +1065,53 @@
       '.scw-bid-review__sow-detail {',
       '  vertical-align: top;',
       '  font-size: 12px;',
+      '  position: relative;',
+      '  padding-right: 160px;', /* room for the top-right Revise + Disconnect stack */
+      '}',
+      /* Bid package data cells share the same top-right action zone.
+         Drop :not(:last-child) — when the Sub Bid Revisions column is
+         physically removed (no pending CRs / Add buttons), the last bid
+         td becomes the row\'s last child and would lose position:
+         relative, sending its absolute Revise/Remove buttons up to the
+         document body. */
+      '.scw-bid-review__row > td:nth-child(n+3) {',
+      '  position: relative;',
+      '  padding-right: 78px;',
+      '}',
+      /* Top-right action stack — Revise (SOW + bid) and Remove (bid). */
+      '.scw-bid-review__cell-actions {',
+      '  position: absolute;',
+      '  top: 6px;',
+      '  right: 6px;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 4px;',
+      '  align-items: flex-end;',
+      '  z-index: 2;',
+      '}',
+      '.scw-bid-review__cell-action {',
+      '  appearance: none;',
+      '  border: 1px solid;',
+      '  border-radius: 4px;',
+      '  background: #fff;',
+      '  font: 600 10.5px/1 system-ui, sans-serif;',
+      '  padding: 3px 7px;',
+      '  cursor: pointer;',
+      '  letter-spacing: 0.02em;',
+      '}',
+      '.scw-bid-review__cell-action--revise {',
+      '  color: #0369a1;',
+      '  border-color: #bae6fd;',
+      '}',
+      '.scw-bid-review__cell-action--revise:hover {',
+      '  background: #f0f9ff; border-color: #38bdf8;',
+      '}',
+      '.scw-bid-review__cell-action--remove {',
+      '  color: #b91c1c;',
+      '  border-color: #fecaca;',
+      '}',
+      '.scw-bid-review__cell-action--remove:hover {',
+      '  background: #fef2f2; border-color: #f87171;',
       '}',
 
       /* ── cabling chips ────────────────────────────────────────── */

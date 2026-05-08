@@ -148,6 +148,15 @@
       '.scw-srv-row-label .scw-srv-row-product {',
       '  display: block; font-weight: 400; font-size: 12px; color: #6b7280; margin-top: 2px;',
       '}',
+      // "NEW" badge — shown on the row label when the survey line item
+      // has no SOW Line Item connection (field_2404 blank), i.e. the
+      // surveyor flagged something the SOW doesn't yet have.
+      '.scw-srv-new-badge {',
+      '  display: inline-block; background: #166534; color: #fff;',
+      '  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;',
+      '  padding: 2px 6px; border-radius: 4px; margin-right: 6px;',
+      '  vertical-align: middle;',
+      '}',
       '.scw-srv-table thead .scw-srv-row-label { background: #f9fafb; z-index: 3; }',
       // Group accordion — dark blue header that's clickable to
       // collapse/expand all rows tagged with the same data-group.
@@ -623,32 +632,47 @@
     var sowLiByGroup = {};          // groupId -> [sowLiIds]
 
     var UNASSIGNED_KEY = '__unassigned__';
+    // Synthetic-row prefix for Survey Line Items that have no SOW Line
+    // Item connection (field_2404 blank). These are "NEW" items the
+    // surveyor flagged that the SOW doesn't yet contain. Each gets its
+    // own row keyed by the survey line item id (no SOW pivot to merge
+    // on, so two subs marking the "same" missing item produce two rows).
+    var NEW_PREFIX = '__new__:';
 
     for (var i = 0; i < lineItems.length; i++) {
       var a = attrsOf(lineItems[i]);
       var sliId     = a.id;
       var sowLiId   = connId(a, FIELD_SOW_LI);
       var surveyId  = connId(a, FIELD_SURVEY);
-      if (!sowLiId || !surveyId) continue;
+      if (!surveyId) continue; // need a column to land in
 
       var slTr = rowDomById[sliId] || null;
+      var rowKey = sowLiId || (NEW_PREFIX + sliId);
+      var isNewRow = !sowLiId;
 
-      if (!cells[sowLiId]) cells[sowLiId] = {};
-      cells[sowLiId][surveyId] = {
+      if (!cells[rowKey]) cells[rowKey] = {};
+      cells[rowKey][surveyId] = {
         surveyLineItemId: sliId,
         attrs:            a,
         tr:               slTr
       };
 
-      if (!sowLiSeen[sowLiId]) {
-        sowLiSeen[sowLiId] = true;
-        sowLiLabel[sowLiId] = connLabel(a, FIELD_SOW_LI) || sowLiId;
-        sowLiProduct[sowLiId] = connLabel(a, FIELD_PRODUCT);
+      if (!sowLiSeen[rowKey]) {
+        sowLiSeen[rowKey] = true;
+        if (isNewRow) {
+          // No SOW LI to read a label from — fall back to the survey
+          // line item's own display label / product name.
+          sowLiLabel[rowKey] = a.field_2365 || connLabel(a, FIELD_PRODUCT) || sliId;
+          sowLiProduct[rowKey] = connLabel(a, FIELD_PRODUCT) || '';
+        } else {
+          sowLiLabel[rowKey] = connLabel(a, FIELD_SOW_LI) || rowKey;
+          sowLiProduct[rowKey] = connLabel(a, FIELD_PRODUCT);
+        }
         // Sort key: read from the first-seen Survey Line Item row for
-        // this SOW LI. All survey rows for the same SOW LI share the
-        // same sort order (it lives on the proposal-bucket join), so
-        // any one of them is fine.
-        sowLiSortKey[sowLiId] = readSortOrder(slTr);
+        // this SOW LI (or this orphan). All survey rows for the same
+        // SOW LI share the same sort order (it lives on the
+        // proposal-bucket join), so any one of them is fine.
+        sowLiSortKey[rowKey] = readSortOrder(slTr);
 
         var grpId = connId(a, FIELD_MDF_IDF) || UNASSIGNED_KEY;
         if (!groupSeen[grpId]) {
@@ -659,7 +683,7 @@
             ? 'Unassigned'
             : (connLabel(a, FIELD_MDF_IDF) || grpId);
         }
-        sowLiByGroup[grpId].push(sowLiId);
+        sowLiByGroup[grpId].push(rowKey);
       }
     }
 
@@ -753,8 +777,10 @@
       }
 
       sowLiByGroup[grpId].forEach(function (sowLiId) {
+        var isNewRow = sowLiId.indexOf(NEW_PREFIX) === 0;
         html.push('<tr data-group="' + escapeAttr(grpAttrId) + '">');
         html.push('<td class="scw-srv-row-label">' +
+          (isNewRow ? '<span class="scw-srv-new-badge">NEW</span>' : '') +
           escapeHtml(sowLiLabel[sowLiId]) +
           (sowLiProduct[sowLiId]
             ? '<span class="scw-srv-row-product">' + escapeHtml(sowLiProduct[sowLiId]) + '</span>'

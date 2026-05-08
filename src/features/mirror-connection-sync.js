@@ -349,8 +349,15 @@
     // the camera's mounting-hardware accessories (which live on
     // ACCESSORIES_VIEW_ID and need to share the camera's MDF for grouping
     // and totals to render correctly).
-    var ACCESSORIES_FIELD   = config.ACCESSORIES_FIELD   || null;
-    var ACCESSORIES_VIEW_ID = config.ACCESSORIES_VIEW_ID || null;
+    //
+    // ACCESSORIES_PARENT_FIELD is the back-connection on each accessory
+    // pointing to its parent camera/reader. Reading it from the
+    // accessory view's model is the source-of-truth lookup; the older
+    // DOM scrape of the parent's td.<ACCESSORIES_FIELD> stays as a
+    // fallback for views where the accessory view's model isn't loaded.
+    var ACCESSORIES_FIELD        = config.ACCESSORIES_FIELD        || null;
+    var ACCESSORIES_VIEW_ID      = config.ACCESSORIES_VIEW_ID      || null;
+    var ACCESSORIES_PARENT_FIELD = config.ACCESSORIES_PARENT_FIELD || null;
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
@@ -490,6 +497,48 @@
       }
     }
     return '';
+  }
+
+  /** Look up accessory ids whose ACCESSORIES_PARENT_FIELD back-
+   *  connection points at parentId, by walking the accessory view's
+   *  Backbone model. Source-of-truth lookup — independent of which
+   *  fields the parent's view projects in its column set, and picks
+   *  up accessories the parent's td.<ACCESSORIES_FIELD> cell may not
+   *  list (e.g. when ACCESSORIES_FIELD isn't surfaced on this view). */
+  function findAccessoryIdsFromAccessoryModel(parentId) {
+    if (!ACCESSORIES_VIEW_ID || !ACCESSORIES_PARENT_FIELD || !parentId) return [];
+    var out = [];
+    try {
+      var v = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
+      var models = v && v.model && ((v.model.data && v.model.data.models) || v.model.models);
+      if (!models) return out;
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i] && (models[i].attributes || models[i]);
+        if (!attrs || !attrs.id) continue;
+        var raw = attrs[ACCESSORIES_PARENT_FIELD + '_raw'];
+        var match = false;
+        if (Array.isArray(raw)) {
+          for (var j = 0; j < raw.length; j++) {
+            if (raw[j] && raw[j].id === parentId) { match = true; break; }
+          }
+        } else if (raw && typeof raw === 'object' && raw.id === parentId) {
+          match = true;
+        }
+        if (match && out.indexOf(attrs.id) === -1) out.push(attrs.id);
+      }
+    } catch (e) { /* best-effort */ }
+    return out;
+  }
+
+  /** Resolve the accessory ids attached to a given parent. Prefer the
+   *  accessory model's back-connection lookup (source of truth); fall
+   *  back to scraping the parent's td.<ACCESSORIES_FIELD> when the
+   *  back-connection field isn't configured or the accessory view's
+   *  model isn't loaded. */
+  function findAccessoryIdsForParent(parentId) {
+    var ids = findAccessoryIdsFromAccessoryModel(parentId);
+    if (ids.length) return ids;
+    return findAccessoryIds(parentId);
   }
 
   /** Scrape the accessory record ids connected to a given child via
@@ -925,10 +974,13 @@
     // match the parent's MDF. Removed children keep their MDF, so their
     // accessories don't move either.
     var accessoryPuts = []; // [{ accId, mdfId }]
-    if (ACCESSORIES_FIELD && ACCESSORIES_VIEW_ID && rGroupId && added.length) {
+    if (ACCESSORIES_VIEW_ID && rGroupId && added.length) {
+      var seenAccIds = {};
       for (var ax = 0; ax < added.length; ax++) {
-        var accIds = findAccessoryIds(added[ax]);
+        var accIds = findAccessoryIdsForParent(added[ax]);
         for (var ay = 0; ay < accIds.length; ay++) {
+          if (seenAccIds[accIds[ay]]) continue;
+          seenAccIds[accIds[ay]] = true;
           accessoryPuts.push({ accId: accIds[ay], mdfId: rGroupId });
         }
       }
@@ -1110,7 +1162,7 @@
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
     function (event, view, record) {
       try {
-        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID) return;
+        if (!ACCESSORIES_VIEW_ID) return;
         if (!record || !record.id) return;
         if (ownPuts[record.id]) return;
 
@@ -1138,10 +1190,10 @@
         }
         var parentGroupId = parentGroupRaw[0].id;
 
-        var accIds = findAccessoryIds(record.id);
+        var accIds = findAccessoryIdsForParent(record.id);
         if (!accIds.length) return;
 
-        log('inverse cascade: field_2197 on ' + record.id +
+        log('inverse cascade: ' + CONNECTIONS_FIELD + ' on ' + record.id +
             ' → cascade ' + accIds.length + ' accessory MDF PUT(s) to ' + parentGroupId);
         for (var i = 0; i < accIds.length; i++) {
           fireAccessoryPut(accIds[i], parentGroupId);
@@ -1192,23 +1244,30 @@
       applyPlanToDom: applyPlanToDom,
       findRowsPointingTo: findRowsPointingTo,
       findL1HeaderBefore: findL1HeaderBefore,
-      /** Cascade GROUPING_FIELD = [mdfId] to every accessory connected
-       *  to each child via ACCESSORIES_FIELD. Used by the connection
-       *  picker on resubmit so still-connected children get their
-       *  accessories' MDF refreshed even when the parent's selection
-       *  didn't change (the regroup diff returns empty in that case
-       *  and the built-in accessory cascade only fires for `added`
-       *  children). onAllDone fires after every accessory PUT settles. */
+      /** Cascade GROUPING_FIELD = [mdfId] to every accessory whose
+       *  ACCESSORIES_PARENT_FIELD points back at any of the given
+       *  parent ids. Source-of-truth lookup is the accessory view's
+       *  model (preferred) with a fallback to scraping the parent's
+       *  td.<ACCESSORIES_FIELD>. Used by the connection picker on
+       *  resubmit so still-connected children get their accessories'
+       *  MDF refreshed even when the parent's selection didn't change
+       *  (the regroup diff returns empty in that case and the built-in
+       *  accessory cascade only fires for `added` children). onAllDone
+       *  fires after every accessory PUT settles. */
       cascadeAccessoryMdf: function (childIds, mdfId, onAllDone) {
-        if (!ACCESSORIES_FIELD || !ACCESSORIES_VIEW_ID || !mdfId ||
-            !childIds || !childIds.length) {
+        if (!ACCESSORIES_VIEW_ID || !mdfId || !childIds || !childIds.length) {
           if (typeof onAllDone === 'function') onAllDone();
           return;
         }
         var queue = [];
+        var seenAcc = {};
         for (var i = 0; i < childIds.length; i++) {
-          var accIds = findAccessoryIds(childIds[i]);
-          for (var j = 0; j < accIds.length; j++) queue.push(accIds[j]);
+          var accIds = findAccessoryIdsForParent(childIds[i]);
+          for (var j = 0; j < accIds.length; j++) {
+            if (seenAcc[accIds[j]]) continue;
+            seenAcc[accIds[j]] = true;
+            queue.push(accIds[j]);
+          }
         }
         if (!queue.length) {
           if (typeof onAllDone === 'function') onAllDone();
@@ -1257,11 +1316,16 @@
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     // Cascade MDF/IDF down to mounting-hardware accessories
-    // (field_1958 connections live on view_3887). When a camera/reader
-    // moves to a new MDF as part of a regroup, every accessory on it
-    // gets the same MDF write so they group with their parent.
-    ACCESSORIES_FIELD:   'field_1958',
-    ACCESSORIES_VIEW_ID: 'view_3887',
+    // (mounting-box SOW line items). field_1958 is the parent's
+    // forward-listing connection (DOM scrape fallback); field_2464 is
+    // the accessory's own back-connection to its parent — the source
+    // of truth queried from the accessory view's model. When a
+    // camera/reader moves to a new MDF as part of a regroup, every
+    // accessory whose field_2464 points at it gets the same MDF
+    // write so they group with their parent.
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_3887',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
     PUBLIC_API_NAME:     'silentRegroupView3586'
   });
 
@@ -1273,11 +1337,34 @@
     TRIGGER_FIELD:       'field_1957',
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
-    ACCESSORIES_FIELD:   'field_1958',
     // Same accessory cascade as view_3586, but the accessory records on
     // this scene live on view_3888 instead of view_3887.
-    ACCESSORIES_VIEW_ID: 'view_3888',
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_3888',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
     PUBLIC_API_NAME:     'silentRegroupView3610'
+  });
+
+  // view_3921 (SOW Line Items source for the bid-review comparison
+  // grid). Same SOW Line Items object as view_3586/3610, same field
+  // keys, same regroup semantics. The bid-review feature edits
+  // field_1957 through worksheet cards moved out of #view_3921 into
+  // #bid-review-matrix; the connection-picker calls
+  // silentRegroupView3921 on save so the reciprocal + grouping cascade
+  // still fires.
+  //
+  // Mounting brackets on the comparison-grid scene live on view_3927
+  // (a hidden source view added so cascadeAccessoryMdf can read each
+  // bracket record's field_2464 back-connection from its model).
+  createMirror({
+    VIEW_ID:             'view_3921',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_3927',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
+    PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
   // Backward-compat alias for any lingering DevTools snippets that

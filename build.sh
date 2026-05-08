@@ -19,6 +19,7 @@ cat \
   src/features/modal-scroll-restore.js \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
+  src/features/hide-data-source-views.js \
   src/features/scene-tweaks.js \
   src/features/percent-field-format.js \
   src/features/inline-form-recompose.js \
@@ -86,6 +87,7 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/device-worksheet-expand-all.js \
   src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
   src/features/sales-change-request/state.js \

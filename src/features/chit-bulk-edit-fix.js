@@ -29,10 +29,12 @@
   // type. Boolean values for these get coerced into "Yes" / "No"
   // strings before the request ships.
   var CHIT_FIELDS = {
-    field_2370: true,   // Existing cabling (view_3559 / view_3577)
-    field_2461: true,   // Existing cabling (view_3505 / view_3313 / view_3610 / etc.)
-    field_1984: true,   // Exterior
-    field_1983: true,   // Plenum
+    field_2370: true,   // Existing cabling (view_3505 / survey side)
+    field_2371: true,   // Plenum         (view_3505 / survey side)
+    field_2372: true,   // Exterior       (view_3505 / survey side)
+    field_2461: true,   // Existing cabling (view_3313 / view_3610 / SOW side)
+    field_1984: true,   // Exterior         (SOW side)
+    field_1983: true,   // Plenum           (SOW side)
     field_2634: true    // Lock Record
   };
 

@@ -332,6 +332,12 @@
     closeModal();
 
     var cell = params.cell || {};
+    // When sourceFromSow, params.cell is the SOW-shaped object used to
+    // PREFILL the form, but the "what changed?" diff still has to run
+    // against the actual bid cell — otherwise a user opening from the
+    // SOW side and submitting unchanged hits "no changes detected"
+    // even though the SOW values genuinely differ from the bid.
+    var bidCell = params.bidCell || params.cell || {};
     var vis  = params.visibility || {};
     var existing = findPendingItem(params.pkgId, params.rowId);
 
@@ -351,10 +357,16 @@
         SCW.debug('[BidReview CR] ' + keys[ck] + ':', connRecords[keys[ck]].length, 'options');
       }
     }
-    buildModal(params, cell, vis, existing, connRecords);
+    buildModal(params, cell, vis, existing, connRecords, bidCell);
   }
 
-  function buildModal(params, cell, vis, existing, connRecords) {
+  function buildModal(params, cell, vis, existing, connRecords, bidCell) {
+    // bidCell is the diff baseline (what the bidder currently has).
+    // When the modal was opened normally, it equals `cell`. When opened
+    // from the SOW side, `cell` carries the SOW values for prefill while
+    // `bidCell` keeps the actual bid values so the unchanged-form check
+    // and the requested{} payload reflect the real delta vs the bid.
+    bidCell = bidCell || cell;
     var overlay = el('div', 'scw-bid-cr-overlay');
     overlay.id = OVERLAY_ID;
     overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
@@ -365,7 +377,9 @@
     var header = el('div', 'scw-bid-cr-modal__header');
     var hLeft = el('div');
     hLeft.appendChild(el('div', 'scw-bid-cr-modal__title',
-      existing ? 'Edit Change Request' : 'Request Change'));
+      existing
+        ? 'Edit Change Request'
+        : (params.sourceFromSow ? 'Request bidder match the SOW' : 'Request Change')));
     hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
       params.pkgName + ' \u2014 ' + (params.displayLabel || params.productName || 'Item')));
     header.appendChild(hLeft);
@@ -377,7 +391,9 @@
     // Body — single form pre-filled with current values
     var body = el('div', 'scw-bid-cr-modal__body');
     body.appendChild(el('div', 'scw-bid-cr-modal__hint',
-      'Values are pre-filled from the current bid. Edit any field to request a change.'));
+      params.sourceFromSow
+        ? 'Pre-filled from the SOW. Submit as-is to ask the bidder to match these values, or edit any field first.'
+        : 'Values are pre-filled from the current bid. Edit any field to request a change.'));
 
     var inputs = {};
     for (var fi = 0; fi < FIELD_DEFS.length; fi++) {
@@ -549,7 +565,7 @@
             var radioContainer = inputs[d.key];
             var checkedRadio = radioContainer.querySelector('input[type="radio"]:checked');
             var selVal = checkedRadio ? checkedRadio.value : '';
-            var origIds = cell[d.idsKey] || [];
+            var origIds = bidCell[d.idsKey] || [];
             var origId = origIds.length ? origIds[0] : '';
             if (selVal !== origId) {
               var rbLbl = checkedRadio ? radioContainer.querySelector('label[for="' + checkedRadio.id + '"]') : null;
@@ -578,7 +594,7 @@
             var cbs = container.querySelectorAll('input[type="checkbox"]');
             var selIds = [], labels = [];
             var origIdSet = {};
-            var origIds = cell[d.idsKey] || [];
+            var origIds = bidCell[d.idsKey] || [];
             for (var oii = 0; oii < origIds.length; oii++) origIdSet[origIds[oii]] = true;
             var connAddIds = [], connChangeIds = [];
             for (var si = 0; si < cbs.length; si++) {
@@ -614,10 +630,10 @@
           }
         } else {
           var v = (inputs[d.key].value || '').trim();
-          var orig = hasValue(cell[d.key]) ? String(cell[d.key]) : '';
+          var orig = hasValue(bidCell[d.key]) ? String(bidCell[d.key]) : '';
           if (d.type === 'number') {
             var nv = v ? parseFloat(v) : 0;
-            var no = cell[d.key] || 0;
+            var no = bidCell[d.key] || 0;
             if (nv !== no) { requested[d.key] = nv; hasChange = true; }
           } else {
             if (v !== orig) { requested[d.key] = v; hasChange = true; }
@@ -1386,7 +1402,7 @@
     if (!pkg) return null;
 
     // Build lookup: bid cell ID → row ID (survey item ID from view_3680)
-    // and set of known SOW item IDs (noBid items from view_3728)
+    // and set of known SOW item IDs (noBid items from view_3921)
     var cellToRow = {};   // bidRecordId → rowId
     var sowIdSet  = {};   // rowId for ADD/noBid items
     for (var pi = 0; pi < pkg.items.length; pi++) {
@@ -1478,7 +1494,7 @@
         }
       }
 
-      // Classify connection IDs into survey (view_3680) vs SOW (view_3728)
+      // Classify connection IDs into survey (view_3680) vs SOW (view_3921)
       // Survey items use bid cell IDs → translate to row IDs via cellToRow
       // SOW items already use their own record IDs
       function classifyConnIds(allIds, addIds) {
@@ -1488,7 +1504,7 @@
         for (var j = 0; j < allIds.length; j++) {
           var cid = allIds[j];
           if (addSet[cid] || sowIdSet[cid]) {
-            // SOW/noBid item (view_3728) — ID is already the SOW item ID
+            // SOW/noBid item (view_3921) — ID is already the SOW item ID
             sow.push(cid);
           } else {
             // Survey item (view_3680) — translate bid cell ID to row ID

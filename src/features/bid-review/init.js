@@ -56,21 +56,61 @@
   /** Silent refresh — re-fetches data and re-renders without the loading spinner. */
   var _silentRefreshRunning = false;
 
+  // Off-DOM cache of moved wsTrs — populated by refreshSilently right
+  // before it rebuilds the bid-review mount, drained by injectWorksheetCard
+  // when reopenExpandedRows fires. This is what makes panel state survive a
+  // refresh: direct-edit PUTs don\'t re-render view_3921 (so a fresh wsTr
+  // never gets built there), but the wsTr already in the expand cell has
+  // the user\'s changes — we just need to keep it alive across the rebuild.
+  var _preservedCards = {};
+
   function refreshSilently() {
-    if (_silentRefreshRunning) return;
+    if (_silentRefreshRunning) return $.Deferred().resolve().promise();
     _silentRefreshRunning = true;
 
-    ns.loadRawData().then(function (raw) {
+    // Pluck every injected wsTr off the DOM and into the preserve cache
+    // BEFORE renderMatrix wipes the mount. Detaching is enough — the
+    // node stays in memory as long as we hold a reference.
+    var ids = Object.keys(_expandedSowItems);
+    for (var p = 0; p < ids.length; p++) {
+      var pid = ids[p];
+      var existing = document.querySelector(
+        '.scw-bid-review__expand-row[data-expand-for="' + pid + '"] tr.scw-ws-row[id="' + pid + '"]'
+      );
+      if (existing) {
+        existing.parentNode.removeChild(existing);
+        _preservedCards[pid] = existing;
+      }
+    }
+
+    return ns.loadRawData().then(function (raw) {
       _state = ns.buildState(raw.records, raw.sowItems || [], raw.bidPackages || []);
       ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
       attachClickHandler(mount);
+      reopenExpandedRows();
     }).fail(function (err) {
       if (CFG.debug) console.warn('[BidReview] Silent refresh failed:', err);
     }).always(function () {
       _silentRefreshRunning = false;
     });
+  }
+
+  function reopenExpandedRows() {
+    var ids = Object.keys(_expandedSowItems);
+    for (var i = 0; i < ids.length; i++) {
+      var sowItemId = ids[i];
+      var tr = document.querySelector(
+        '.scw-bid-review__row[data-sow-item-id="' + sowItemId + '"]'
+      );
+      if (tr && tr.getAttribute('aria-expanded') !== 'true') {
+        toggleRowExpand(tr);
+      }
+    }
+    // Anything left in the cache had no destination row — drop it so
+    // we don\'t leak DOM across rebuilds.
+    _preservedCards = {};
   }
 
   // ── find a SOW grid from the current state ──────────────────
@@ -96,10 +136,26 @@
     });
 
     mount.addEventListener('click', function (e) {
+      // Expandable row toggle (must run before button-action match so the
+      // row click only fires when nothing more specific intercepted it).
+      var rowTrigger = e.target.closest('.scw-bid-review__row--expandable');
+      if (rowTrigger
+        && !e.target.closest('.scw-bid-review__btn')
+        && !e.target.closest('.scw-bid-review__overflow')
+        && !e.target.closest('.scw-bid-review__overflow-item')
+        && !e.target.closest('.scw-bid-review__cell-action')
+        && !e.target.closest('a')
+        && !e.target.closest('input')) {
+        toggleRowExpand(rowTrigger);
+        return;
+      }
+
       // Match buttons, clickable cards, or overflow menu items
       var button = e.target.closest('.scw-bid-review__btn')
         || e.target.closest('.scw-bid-cr-card[data-action]')
-        || e.target.closest('.scw-bid-review__overflow-item[data-action]');
+        || e.target.closest('.scw-bid-review__overflow-item[data-action]')
+        || e.target.closest('.scw-bid-review__cell-action[data-action]')
+        || e.target.closest('.scw-ops-margin-warning__btn[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -113,8 +169,12 @@
 
       if (action === 'cell_request_change') {
         handleChangeRequest(button);
+      } else if (action === 'cell_request_change_from_sow') {
+        handleChangeRequest(button, { sourceFromSow: true });
       } else if (action === 'cell_remove_from_bid') {
         handleRemoveFromBid(button);
+      } else if (action === 'cell_disconnect_from_sow') {
+        handleDisconnectFromSow(button);
       } else if (action === 'cell_add_to_bid') {
         handleAddToBid(button);
       } else if (action === 'cr_submit') {
@@ -130,11 +190,493 @@
         }
       } else if (action === 'create_new_sow') {
         handleCreateNewSow(button);
+      } else if (action === 'add_pm_mobilization') {
+        handleAddPmMobilization(button);
+      } else if (action === 'set_project_margin') {
+        handleSetProjectMargin(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
         handleRowAction(button, action);
       }
+    });
+
+    // Survey Costs input — save on blur. Lives on the SOW status bar
+    // (one input per SOW), writes back to the SOW record via Knack's
+    // records API. data-sow-id and data-field carry the target.
+    mount.addEventListener('change', function (e) {
+      var costsInput = e.target.closest('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]');
+      if (costsInput) { handleSurveyCostsSave(costsInput); return; }
+      // SOW Name input — sibling save path that PUTs raw text instead
+      // of stripping to a number, then echoes the new name into the
+      // section header so the visible title stays in sync.
+      var nameInput = e.target.closest('.scw-bid-review__sow-name-input[data-action="sow_name_update"]');
+      if (nameInput) handleSowNameSave(nameInput);
+    }, true);
+  }
+
+  // ── Expandable row → inject view_3921 worksheet card ─────────
+  // When a user clicks a sowItem row, find the matching wsTr that
+  // device-worksheet rendered in view_3921's tbody (id === sowItemId)
+  // and move it into a child tr under the bid review row.
+  //
+  // We move (not clone) so Knack's inline-edit handlers keep their
+  // model + record-id wiring. On view_3921 re-renders, device-worksheet
+  // rebuilds the wsTr fresh — the listener at the bottom of this
+  // section re-injects it for any rows still in the expanded set.
+
+  var _expandedSowItems = Object.create(null);
+
+  function toggleRowExpand(tr) {
+    var sowItemId = tr.getAttribute('data-sow-item-id');
+    if (!sowItemId) return;
+
+    var expandTr = tr.nextElementSibling;
+    var alreadyHasExpand = expandTr && expandTr.classList.contains('scw-bid-review__expand-row')
+      && expandTr.getAttribute('data-expand-for') === sowItemId;
+
+    if (alreadyHasExpand && expandTr.classList.contains('scw-bid-review__expand-row--open')) {
+      // Commit any in-flight inline edit before collapsing — clicking the
+      // row to close doesn\'t blur the focused textarea/input on its own,
+      // so without this the user\'s typing never reaches the save path.
+      var focused = expandTr.querySelector(':focus');
+      if (focused && typeof focused.blur === 'function') focused.blur();
+      // Park the wsTr back in view_3921\'s tbody so the next reopen can
+      // find it. Otherwise it lives inside the closed expand-row, gets
+      // wiped on the next silent refresh, and reopening shows
+      // "Loading editor…" forever (view_3921 never re-renders to
+      // recreate the wsTr because direct-edit PUTs bypass it).
+      var wsTr = expandTr.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]');
+      if (wsTr) {
+        var sowView = document.getElementById(CFG.sowItemsViewKey);
+        var sowTbody = sowView ? sowView.querySelector('table.kn-table-table tbody') : null;
+        if (sowTbody) sowTbody.appendChild(wsTr);
+      }
+      expandTr.classList.remove('scw-bid-review__expand-row--open');
+      tr.setAttribute('aria-expanded', 'false');
+      delete _expandedSowItems[sowItemId];
+      return;
+    }
+
+    if (!alreadyHasExpand) {
+      expandTr = document.createElement('tr');
+      expandTr.className = 'scw-bid-review__expand-row';
+      expandTr.setAttribute('data-expand-for', sowItemId);
+      var td = document.createElement('td');
+      td.className = 'scw-bid-review__expand-cell';
+      td.setAttribute('colspan', String(tr.children.length));
+      expandTr.appendChild(td);
+      tr.parentNode.insertBefore(expandTr, tr.nextSibling);
+    }
+
+    expandTr.classList.add('scw-bid-review__expand-row--open');
+    tr.setAttribute('aria-expanded', 'true');
+    _expandedSowItems[sowItemId] = true;
+    injectWorksheetCard(sowItemId, expandTr.firstElementChild);
+    // Force the worksheet detail panel open so users see the full editor,
+    // not just the summary header. The delegated click handler in
+    // device-worksheet.js calls toggleDetail() which adds .scw-ws-open
+    // to the detail wrapper.
+    var hostTd = expandTr.firstElementChild;
+    var toggleZone = hostTd && hostTd.querySelector('.scw-ws-toggle-zone');
+    var detail = hostTd && hostTd.querySelector('.scw-ws-detail');
+    if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
+      toggleZone.click();
+    }
+  }
+
+  function injectWorksheetCard(sowItemId, hostTd) {
+    if (!hostTd) return;
+    // Already has a card from a previous expand — leave it. The view_3921
+    // re-render listener handles refresh after edits.
+    if (hostTd.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]')) return;
+    // Prefer a wsTr we detached just before the silent refresh — that
+    // preserves the user\'s in-flight edits across the rebuild even when
+    // view_3921 didn\'t re-render (direct-edit PUTs bypass it).
+    var wsTr = _preservedCards[sowItemId];
+    if (wsTr) {
+      delete _preservedCards[sowItemId];
+    } else {
+      // device-worksheet renders wsTr inside view_3921's tbody with id=recordId
+      wsTr = document.querySelector(
+        '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
+      );
+    }
+    if (!wsTr) {
+      // wsTr was missing from both preserve cache and view_3921 — likely a
+      // race between Knack tearing down the view\'s tbody and device-
+      // worksheet rebuilding the wsTrs. Retry by polling for up to ~3s.
+      hostTd.innerHTML = '<div class="scw-bid-review__expand-loading">Loading editor…</div>';
+      var attempts = 0;
+      var poll = setInterval(function () {
+        attempts++;
+        var found = document.querySelector(
+          '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
+        );
+        if (found) {
+          clearInterval(poll);
+          // Re-run inject so the move + display:none strip happens too.
+          injectWorksheetCard(sowItemId, hostTd);
+        } else if (attempts >= 30) {
+          clearInterval(poll);
+          // Last-ditch: kick view_3921 to re-fetch + re-render so
+          // device-worksheet rebuilds the wsTr.
+          var v = Knack.views && Knack.views[CFG.sowItemsViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') {
+            v.model.fetch();
+          }
+        }
+      }, 100);
+      return;
+    }
+    // Move the entire wsTr into our cell. Wrap in a mini-table so the row
+    // renders correctly outside its original tbody.
+    // group-collapse hides rows in collapsed L1 groups via inline display:none;
+    // strip that so the moved card is always visible.
+    wsTr.style.display = '';
+    hostTd.innerHTML = '';
+    var miniTable = document.createElement('table');
+    miniTable.className = 'scw-bid-review__expand-table';
+    var miniTbody = document.createElement('tbody');
+    miniTbody.appendChild(wsTr);
+    miniTable.appendChild(miniTbody);
+    hostTd.appendChild(miniTable);
+  }
+
+  // After ANY edit on the SOW item (direct-edit save, Knack inline-edit,
+  // chip toggle, etc.), run a silent refresh of the bid-review grid so
+  // cached totals like field_2028 / field_2269 in the SOW column reflect
+  // the new values. refreshSilently() rebuilds the grid then reopens
+  // whichever rows were expanded, re-pulling their (now-rebuilt) wsTr
+  // in the process.
+  //   - scw-record-saved             → fired by device-worksheet after
+  //                                    every direct-edit AJAX PUT (bypasses
+  //                                    knack-view-render entirely).
+  //   - knack-view-render.view_3921  → fires on full view re-render
+  //   - knack-cell-update.view_3921  → fires per-cell after Knack inline-edit
+  var _refreshDebounce = null;
+  function scheduleSilentRefresh() {
+    if (_refreshDebounce) clearTimeout(_refreshDebounce);
+    // 250ms gives syncKnackModel time to land before loadRawData reads it.
+    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 250);
+  }
+  $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', scheduleSilentRefresh);
+  $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
+    scheduleSilentRefresh);
+  $(document).on('knack-cell-update.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
+    scheduleSilentRefresh);
+
+  // ── Survey Costs save (per-SOW, on blur) ────────────────────
+
+  function handleSowNameSave(input) {
+    var sowId    = input.getAttribute('data-sow-id');
+    var fieldKey = input.getAttribute('data-field');
+    if (!sowId || !fieldKey) return;
+
+    var newName = (input.value || '').trim();
+
+    var writeView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      console.warn('[BidReview] SOW Name save skipped — no write view configured');
+      return;
+    }
+
+    input.classList.remove('scw-bid-review__sow-name-input--saved');
+    input.classList.add('scw-bid-review__sow-name-input--saving');
+
+    var payload = {};
+    payload[fieldKey] = newName;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        input.classList.remove('scw-bid-review__sow-name-input--saving');
+        input.classList.add('scw-bid-review__sow-name-input--saved');
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowId, resp, fieldKey, newName);
+        }
+        // Echo the new name into the matching SOW section's collapsible
+        // title so the header stays in sync without a full re-render.
+        var section = input.closest('.scw-bid-review__sow-section');
+        var titleText = section && section.querySelector('.scw-bid-review__sow-title-text');
+        if (titleText) titleText.textContent = newName;
+        // Refresh view_3325 / view_3918 so any other readers update.
+        try {
+          var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e2) { /* ignore */ }
+      },
+      error: function (xhr) {
+        input.classList.remove('scw-bid-review__sow-name-input--saving');
+        if (CFG.debug) console.warn('[BidReview] SOW Name save failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('SOW Name save failed', 'error');
+      }
+    });
+  }
+
+  function handleSurveyCostsSave(input) {
+    var sowId    = input.getAttribute('data-sow-id');
+    var fieldKey = input.getAttribute('data-field');
+    if (!sowId || !fieldKey) return;
+
+    var raw    = (input.value || '').trim();
+    var numStr = raw.replace(/[^0-9.\-]/g, '');
+    var num    = numStr === '' ? null : parseFloat(numStr);
+    if (num !== null && !isFinite(num)) return;
+
+    var writeView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      console.warn('[BidReview] Survey Costs save skipped — no write view configured');
+      return;
+    }
+
+    input.classList.remove('scw-bid-review__sow-metric-input--saved');
+    input.classList.add('scw-bid-review__sow-metric-input--saving');
+
+    var payload = {};
+    payload[fieldKey] = (num === null ? '' : num);
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, sowId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        input.classList.remove('scw-bid-review__sow-metric-input--saving');
+        input.classList.add('scw-bid-review__sow-metric-input--saved');
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(writeView, sowId, resp, fieldKey, payload[fieldKey]);
+        }
+        // Refresh view_3325 so the next-step block + margin update.
+        try {
+          var v = Knack && Knack.views && Knack.views[CFG.nextStepViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e2) { /* ignore */ }
+      },
+      error: function (xhr) {
+        input.classList.remove('scw-bid-review__sow-metric-input--saving');
+        if (CFG.debug) console.warn('[BidReview] Survey Costs save failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('Survey Costs save failed', 'error');
+      }
+    });
+  }
+
+  // ── Bump project margin (margin-low warning button) ──
+  //
+  // view_3923 is a FORM rendering field_2158 as an editable input.
+  // Click flow: set the input via .val + change (so Knack\'s internal
+  // model syncs), submit the form, reload the page once Knack fires
+  // its update-record event (or after a 3s timeout fallback).
+  var MARGIN_FORM_VIEW = 'view_3923';
+
+  function handleSetProjectMargin(button) {
+    var marginVal = parseFloat(button.getAttribute('data-margin-value'));
+    var marginPct = button.getAttribute('data-margin-pct') || '';
+    if (!isFinite(marginVal)) return;
+
+    if (!window.confirm(
+      'Bump project margin to ' + marginPct + '% on this SOW?'
+    )) return;
+
+    setBusy(button, true);
+
+    // Knack inconsistently prefixes form-input ids with the view key.
+    // For field_2158 on view_3923 the actual rendered id is plain
+    // `field_2158` (no view prefix), while sibling selects DO get the
+    // `view_3923-field_2159` form. Scope the lookup to the view
+    // container and try every shape Knack might produce.
+    var marginFieldKey = CFG.projectMarginField || 'field_2158';
+    var $view = $('#' + MARGIN_FORM_VIEW);
+    var $input = $view.find(
+      '#' + MARGIN_FORM_VIEW + '-' + marginFieldKey + ',' +
+      '#' + marginFieldKey + ',' +
+      'input[name="' + marginFieldKey + '"]'
+    ).first();
+    if (!$view.length || !$input.length) {
+      console.warn('[BidReview] ' + MARGIN_FORM_VIEW + ' margin input not found');
+      ns.renderToast('Margin form not on page — cannot update', 'error');
+      setBusy(button, false);
+      return;
+    }
+
+    // field_2158 is a percent field that expects the decimal form
+    // (0.1710, not 17.10). data-margin-value is already the decimal;
+    // fall back to dividing the percent by 100 if it\'s missing.
+    var decNum = isFinite(marginVal) ? marginVal : (parseFloat(marginPct) / 100);
+    if (!isFinite(decNum)) {
+      console.warn('[BidReview] invalid margin value', marginVal, marginPct);
+      setBusy(button, false);
+      return;
+    }
+    $input.val(decNum.toFixed(4)).trigger('change');
+
+    // Block-the-world overlay. The earlier version only changed the
+    // button text — the rest of the page stayed interactive, so a
+    // colleague clicking elsewhere or hitting refresh while the PUT
+    // was in flight could abort the save and the safety-net reload
+    // would still fire, leaving the SOW with the old margin. The
+    // overlay covers the page during save, blocks pointer + keyboard
+    // events, and shows what's happening.
+    var overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;inset:0;z-index:100002;' +
+      'background:rgba(15,23,42,.55);' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'font:600 15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;' +
+      'color:#1e293b;';
+    var modal = document.createElement('div');
+    modal.style.cssText =
+      'background:#fff;padding:20px 28px;border-radius:6px;' +
+      'box-shadow:0 10px 30px rgba(0,0,0,.25);min-width:280px;text-align:center;';
+    modal.innerHTML =
+      '<div style="font-size:13px;color:#64748b;text-transform:uppercase;' +
+      'letter-spacing:.05em;margin-bottom:8px;">Updating SOW</div>' +
+      '<div>Setting project margin to ' + escapeHtmlInline(marginPct) + '%…</div>' +
+      '<div style="margin-top:10px;font:400 12px/1.4 system-ui;color:#64748b;">' +
+      'Please don’t refresh or navigate away.</div>';
+    overlay.appendChild(modal);
+    // Swallow clicks and keyboard so a stray click can't dismiss the
+    // form or trigger another action mid-save.
+    overlay.addEventListener('click',    function (e) { e.stopPropagation(); e.preventDefault(); });
+    overlay.addEventListener('keydown',  function (e) { e.stopPropagation(); e.preventDefault(); });
+    document.body.appendChild(overlay);
+
+    // Discourage navigation during the save. Modern browsers ignore
+    // the custom message but still show their generic confirm prompt.
+    function beforeUnload(e) {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+    window.addEventListener('beforeunload', beforeUnload);
+
+    var done = false;
+    function finish(ok) {
+      if (done) return;
+      done = true;
+      window.removeEventListener('beforeunload', beforeUnload);
+      $(document).off('knack-record-update.' + MARGIN_FORM_VIEW + 'BumpMargin');
+      $(document).off('knack-form-submit.'   + MARGIN_FORM_VIEW + 'BumpMargin');
+      $(document).off('knack-form-submit-error.' + MARGIN_FORM_VIEW + 'BumpMargin');
+      if (ok) {
+        // Knack's record-update fires AFTER the PUT response, so by
+        // here the margin is persisted. Reload to show the new value.
+        window.location.reload();
+      } else {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        setBusy(button, false);
+        ns.renderToast('Margin update failed — please try again', 'error');
+      }
+    }
+
+    // record-update is the only event that proves the PUT succeeded.
+    // form-submit fires before the AJAX, so don't treat it as a
+    // success signal — only use it to extend the watchdog if needed.
+    $(document).on(
+      'knack-record-update.' + MARGIN_FORM_VIEW + 'BumpMargin',
+      function () { finish(true); }
+    );
+    $(document).on(
+      'knack-form-submit-error.' + MARGIN_FORM_VIEW + 'BumpMargin',
+      function () { finish(false); }
+    );
+
+    // Safety net — bumped from 6s to 25s. The previous 6s timeout was
+    // tight enough that on a slow connection the reload could fire
+    // mid-PUT, leaving the form save aborted. 25s is generous enough
+    // to cover slow networks while still rescuing the user if Knack
+    // never fires record-update for some reason.
+    setTimeout(function () {
+      if (!done) {
+        console.warn('[BidReview] margin update watchdog fired — reloading');
+        finish(true);
+      }
+    }, 25000);
+
+    // Submit the form. Knack's submit binding lives on the form\'s
+    // own submit button; clicking it triggers validation + Knack\'s
+    // internal save flow.
+    var $form = $view.find('form').first();
+    if ($form.length) {
+      var $submit = $form.find('button[type="submit"], input[type="submit"]').first();
+      if ($submit.length) {
+        $submit.trigger('click');
+      } else {
+        $form.trigger('submit');
+      }
+    } else {
+      console.warn('[BidReview] ' + MARGIN_FORM_VIEW + ' form not found');
+      finish(false);
+    }
+  }
+
+  function escapeHtmlInline(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Add PM & Mobilization line item (margin-low warning button) ──
+
+  function handleAddPmMobilization(button) {
+    var sowId   = button.getAttribute('data-sow-id');
+    var sowName = button.getAttribute('data-sow-name') || sowId;
+    if (!sowId) return;
+
+    if (!window.confirm(
+      'Add a Project Management & Mobilization line item to ' + sowName + '?'
+    )) return;
+
+    // Pull the current Survey Costs value from the input on the same
+    // SOW status bar — Make's scenario uses it to compute the new
+    // line-item amount. Numeric pass-through (no $ formatting).
+    var surveyCostsRaw = '';
+    var surveyCostsNum = null;
+    var input = document.querySelector(
+      '.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]' +
+      '[data-sow-id="' + sowId + '"]'
+    );
+    if (input) {
+      surveyCostsRaw = (input.value || '').trim();
+      var stripped = surveyCostsRaw.replace(/[^0-9.\-]/g, '');
+      if (stripped !== '') {
+        var n = parseFloat(stripped);
+        if (isFinite(n)) surveyCostsNum = n;
+      }
+    }
+
+    setBusy(button, true);
+    ns.submitAction({
+      actionType:       'add_pm_mobilization',
+      sowId:            sowId,
+      surveyCosts:      surveyCostsNum,
+      surveyCostsRaw:   surveyCostsRaw,
+      surveyCostsField: CFG.surveyCostsField || '',
+    }).done(function (resp) {
+      // Only refresh when Make confirmed it actually created the
+      // record. Make signals via {success: true} once the SOW Line
+      // Item write has committed.
+      if (!resp || resp.success !== true) {
+        if (CFG.debug) {
+          SCW.debug('[BidReview] add_pm_mobilization: webhook returned non-success', resp);
+        }
+        return;
+      }
+      // Force view_3921 (unbid SOW items) to refetch so the just-
+      // created PM line item lands in its model BEFORE refreshSilently
+      // rebuilds the comparison state. refreshSilently → loadRawData
+      // reads from the Knack model, so a stale model = missing row.
+      var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
+        sowItemsView.model.fetch().always(function () {
+          refreshSilently();
+        });
+      } else {
+        refreshSilently();
+      }
+    }).always(function () {
+      setBusy(button, false);
     });
   }
 
@@ -518,8 +1060,9 @@
 
   // ── change request (per-cell) ────────────────────────────────
 
-  function handleChangeRequest(button) {
+  function handleChangeRequest(button, opts) {
     if (!_state || !ns.changeRequests) return;
+    opts = opts || {};
 
     var rowId = button.getAttribute('data-row-id');
     var pkgId = button.getAttribute('data-package-id');
@@ -667,6 +1210,34 @@
                   'connToOpts:', connToOpts.length);
     }
 
+    // SOW-source revisions reshape row.sow* into a cell-shape so the
+    // existing CR modal\'s prefill logic (cell[fd.key]) reads from the
+    // SOW item record. The CR still targets the bid cell — we\'re just
+    // asking the bidder to match SOW values.
+    var modalCell = cell;
+    if (opts.sourceFromSow) {
+      var rate = (row.sowQty > 0 && row.sowFee > 0) ? (row.sowFee / row.sowQty) : 0;
+      modalCell = {
+        id:               cell.id,
+        productName:      row.sowProduct || row.productName,
+        qty:              row.sowQty,
+        rate:             rate,
+        laborDesc:        row.sowLaborDesc,
+        bidExistCabling:  row.sowExistCabling,
+        bidPlenum:        row.sowPlenum,
+        bidExterior:      row.sowExterior,
+        bidDropLength:    row.sowDropLength,
+        bidConduit:       row.sowConduit,
+        bidConnDevice:    row.sowConnDevice || '',
+        bidConnDeviceIds: row.sowConnDeviceIds || [],
+        bidConnTo:        '',
+        bidConnToIds:     [],
+        bidMdfIdf:        row.sowMdfIdf || '',
+        bidMdfIdfIds:     [],
+        requireSubBid:    cell.requireSubBid,
+      };
+    }
+
     ns.changeRequests.open({
       rowId:        rowId,
       pkgId:        pkgId,
@@ -677,7 +1248,13 @@
       sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
       productName:  row.productName,
-      cell:         cell,
+      cell:         modalCell,
+      // Always pass the real bid record as bidCell — the modal\'s
+      // change-detection logic compares form values against it. When
+      // sourceFromSow, modalCell holds SOW values and bidCell keeps
+      // the bid values so the diff reads correctly.
+      bidCell:      cell,
+      sourceFromSow: !!opts.sourceFromSow,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
       visibility: {
@@ -720,6 +1297,119 @@
       displayLabel: row.displayLabel,
       productName:  row.productName,
       cell:         cell,
+    });
+  }
+
+  // ── disconnect from SOW (per-row, on SOW detail cell) ──────
+  //
+  // Removes this SOW's id from the SOW Line Item's field_2154
+  // connection (the SOW connection is multi-value — a single line
+  // item can be on 1+ SOWs). The line item itself is NOT deleted; if
+  // it's connected to other SOWs, it stays on those.
+  //
+  // Read path: Knack.views[view_3921].model lookup by record id →
+  // field_2154_raw (array of {id, identifier}). Filter out the
+  // current sowId. PUT the remaining ids to view_3921 via
+  // SCW.knackAjax / SCW.knackRecordUrl. SCW.syncKnackModel keeps the
+  // local model in sync so the silent refresh sees the new value.
+
+  function handleDisconnectFromSow(button) {
+    var rowId      = button.getAttribute('data-row-id');
+    var sowId      = button.getAttribute('data-sow-id');
+    var sowItemId  = button.getAttribute('data-sow-item-id');
+    if (!sowId || !sowItemId) return;
+
+    var grid = findSowGrid(sowId);
+    var row  = null;
+    if (grid) {
+      for (var i = 0; i < grid.rows.length; i++) {
+        if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+      }
+    }
+    var sowName  = (grid && grid.sowName)        || 'this SOW';
+    var itemName = (row && (row.displayLabel || row.productName)) || 'this line item';
+
+    if (!window.confirm(
+      'Disconnect ' + itemName + ' from ' + sowName + '?\n\n' +
+      'The line item itself will NOT be deleted. It will stay on any other ' +
+      'SOWs it is connected to. Only the link between this line item and ' +
+      sowName + ' is being removed.'
+    )) return;
+
+    var view = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+    var model = view && view.model && view.model.data && view.model.data.models;
+    var record = null;
+    if (model) {
+      for (var mi = 0; mi < model.length; mi++) {
+        if (model[mi].id === sowItemId) { record = model[mi]; break; }
+      }
+    }
+    if (!record) {
+      ns.renderToast('Could not locate SOW line item record on the page', 'error');
+      return;
+    }
+
+    var attrs = record.attributes || {};
+    var raw = attrs[CFG.fieldKeys.sow + '_raw'];
+    var currentIds = [];
+    if (Array.isArray(raw)) {
+      for (var ri = 0; ri < raw.length; ri++) {
+        if (raw[ri] && raw[ri].id) currentIds.push(raw[ri].id);
+      }
+    }
+    if (!currentIds.length) {
+      ns.renderToast('No SOW connection found on this line item', 'error');
+      return;
+    }
+
+    var remainingIds = [];
+    for (var ci = 0; ci < currentIds.length; ci++) {
+      if (currentIds[ci] !== sowId) remainingIds.push(currentIds[ci]);
+    }
+    if (remainingIds.length === currentIds.length) {
+      // SOW id wasn't on the record — UI is out of sync but the
+      // user's intent is already satisfied. Refresh and bail.
+      ns.renderToast('Line item was already disconnected from this SOW', 'info');
+      ns.refresh && ns.refresh();
+      return;
+    }
+
+    setBusy(button, true);
+
+    var fieldKey = CFG.fieldKeys.sow; // field_2154
+    var payload = {};
+    payload[fieldKey] = remainingIds; // empty array clears the connection
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, sowItemId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        setBusy(button, false);
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(CFG.sowItemsViewKey, sowItemId, resp, fieldKey, remainingIds);
+        }
+        ns.renderToast('Line item disconnected from ' + sowName, 'success');
+        // Force view_3921 to refetch so the model picks up the new
+        // field_2154 value before the bid-review pipeline reads it.
+        // ns.refresh() alone uses the cached model — without a fetch
+        // first, the grid rebuilds from stale data and the row stays
+        // on this SOW even though the PUT succeeded. Same pattern
+        // used after Add PM & Mobilization (init.js:617).
+        var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+        if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
+          sowItemsView.model.fetch().always(function () {
+            if (ns.refresh) ns.refresh();
+          });
+        } else if (ns.refresh) {
+          ns.refresh();
+        }
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        if (CFG.debug) console.warn('[BidReview] Disconnect from SOW failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('Disconnect failed — please try again', 'error');
+      }
     });
   }
 
@@ -1300,7 +1990,7 @@
   //
   // The matrix depends on three Knack views:
   //   view_3680  — bid records (primary)
-  //   view_3728  — unbid SOW items (noBid rows)
+  //   view_3921  — unbid SOW items (noBid rows)
   //   view_3573  — bid packages (PDF links)
   //
   // On first page load the secondary views may not have rendered
@@ -1391,6 +2081,16 @@
         // Re-render the matrix to pick up updated CR data from view_3818
         if (_state) refreshSilently();
       }, CFG.eventNs + 'Cr');
+    }
+
+    // Next-step source view — when view_3325 re-renders (e.g. after a
+    // Survey Costs save or an ops-stepper action elsewhere), re-render
+    // the SOW status bars so margin / next-step / proposal info refresh.
+    // Lightweight rerender — no data refetch on bid-review side.
+    if (CFG.nextStepViewKey) {
+      SCW.onViewRender(CFG.nextStepViewKey, function () {
+        if (_state && ns.rerender) ns.rerender();
+      }, CFG.eventNs + 'NextStep');
     }
   }
 

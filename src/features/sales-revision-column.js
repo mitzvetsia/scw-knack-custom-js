@@ -710,7 +710,7 @@
     field_2197: 'field_2381',  // connected to (connection)
   };
 
-  var SOW_VIEW = 'view_3728';
+  var SOW_VIEW = 'view_3921';
   var SURVEY_VIEW = 'view_3680';
 
   function applyRevisionToRecords(sowItemId, revJson, revLineItemId, btn) {

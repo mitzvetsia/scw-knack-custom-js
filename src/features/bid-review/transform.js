@@ -30,6 +30,29 @@
     return stripHtml(v);
   }
 
+  /** Same as raw() but preserves the original HTML markup. Use for
+   *  rich-text fields where bold / line breaks should render through.
+   *  Knack inconsistently stores the HTML version: sometimes under
+   *  record[key] (the display value), sometimes under <key>_raw,
+   *  depending on the field type. Pick whichever side actually
+   *  contains HTML tags; if neither does, fall back to whichever is
+   *  defined. */
+  function rawHtml(record, key) {
+    function asStr(v) {
+      if (v == null) return null;
+      if (typeof v === 'string') return v.trim();
+      if (typeof v === 'object' && v.raw != null) return String(v.raw).trim();
+      return null;
+    }
+    var dispStr = asStr(record[key]);
+    var rawStr  = asStr(record[key + '_raw']);
+    var dispHasTags = dispStr && /<[a-z]/i.test(dispStr);
+    var rawHasTags  = rawStr  && /<[a-z]/i.test(rawStr);
+    if (dispHasTags) return dispStr;
+    if (rawHasTags)  return rawStr;
+    return dispStr || rawStr || '';
+  }
+
   function num(record, key) {
     var s = raw(record, key).replace(/[$,]/g, '');
     var n = parseFloat(s);
@@ -261,7 +284,7 @@
           labor:           num(rec, FK.labor),
           rate:            num(rec, FK.rate),
           qty:             num(rec, FK.qty),
-          laborDesc:       raw(rec, FK.laborDesc),
+          laborDesc:       rawHtml(rec, FK.laborDesc),
           productName:     raw(rec, FK.productName),
           notes:           raw(rec, FK.notes),
           bidExistCabling: raw(rec, FK.bidExistCabling),
@@ -312,8 +335,10 @@
       // SOW detail fields (from first record in the row)
       sowQty:          num(meta, FK.sowQty),
       sowFee:          num(meta, FK.sowFee),
+      sowInstallFee:   num(meta, FK.sowInstallFee),
+      sowEquipmentTotal: num(meta, FK.sowEquipmentTotal),
       sowProduct:      connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
-      sowLaborDesc:    raw(meta, FK.sowLaborDesc),
+      sowLaborDesc:    rawHtml(meta, FK.sowLaborDesc),
       sowExistCabling: raw(meta, FK.sowExistCabling),
       sowPlenum:       raw(meta, FK.sowPlenum),
       sowExterior:     raw(meta, FK.sowExterior),
@@ -374,6 +399,14 @@
     for (var gi = 0; gi < mdfOrder.length; gi++) {
       var mdfKey  = mdfOrder[gi];
       var mdfRows = mdfMap[mdfKey];
+      // First non-empty mdfIdfId we see for this label — used by the
+      // L1 group header's expandable detail panel to look up the
+      // matching MDF/IDF record (photos, survey notes, SCW notes).
+      var mdfIdfId = '';
+      for (var fi = 0; fi < mdfRows.length; fi++) {
+        var ids = mdfRows[fi].mdfIdfIds;
+        if (ids && ids.length && ids[0]) { mdfIdfId = ids[0]; break; }
+      }
 
       // Sub-grouping within this mdfIdf: proposalBucket
       var hasBucket = false;
@@ -423,6 +456,7 @@
         groups.push({
           key:       mdfKey,
           label:     mdfKey,
+          mdfIdfId:  mdfIdfId,
           level:     1,
           rows:      [],
           subgroups: subgroups,
@@ -435,6 +469,7 @@
         groups.push({
           key:       mdfKey,
           label:     mdfKey,
+          mdfIdfId:  mdfIdfId,
           level:     1,
           rows:      mdfRows,
           subgroups: [],
@@ -498,10 +533,10 @@
     return ids;
   }
 
-  // ── build "NO BID" rows from unbid SOW items (view_3728) ────
+  // ── build "NO BID" rows from unbid SOW items (view_3921) ────
 
   /**
-   * Convert SOW item records (from view_3728) into NO BID rows.
+   * Convert SOW item records (from view_3921) into NO BID rows.
    * These use DIFFERENT field keys than bid records.
    * Returns rows keyed by SOW id: { sowId: [row, ...] }
    */
@@ -534,8 +569,10 @@
           // SOW detail — populated from the SOW item record itself
           sowQty:          num(rec, SFK.qty),
           sowFee:          num(rec, SFK.fee),
+          sowInstallFee:   num(rec, SFK.installFee),
+          sowEquipmentTotal: num(rec, SFK.equipmentTotal),
           sowProduct:      connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
-          sowLaborDesc:    raw(rec, SFK.laborDesc),
+          sowLaborDesc:    rawHtml(rec, SFK.laborDesc),
           sowExistCabling: raw(rec, SFK.existCabling),
           sowPlenum:       raw(rec, SFK.plenum),
           sowExterior:     raw(rec, SFK.exterior),
@@ -548,7 +585,7 @@
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
-          // Full raw view_3728 record (every field) for downstream payloads
+          // Full raw view_3921 record (every field) for downstream payloads
           _rawRecord:      rec,
         });
       }
@@ -676,7 +713,7 @@
    * buildState(records, sowItems, bidPackages) → state
    *
    * @param {Array} records     — bid records from view_3680
-   * @param {Array} sowItems    — unbid SOW items from view_3728
+   * @param {Array} sowItems    — unbid SOW items from view_3921
    * @param {Array} bidPackages — bid package records from view_3573
    * Returns:
    *   {
@@ -715,7 +752,20 @@
         var siRec = sowItems[si2];
         if (!siRec.id) continue;
         sowItemLookup[siRec.id] = {
-          mdfIdf: connectionLabel(siRec, SFK.mdfIdf),
+          mdfIdf:          connectionLabel(siRec, SFK.mdfIdf),
+          installFee:      num(siRec, SFK.installFee),
+          equipmentTotal:  num(siRec, SFK.equipmentTotal),
+          laborDesc:       rawHtml(siRec, SFK.laborDesc),
+          qty:             num(siRec, SFK.qty),
+          fee:             num(siRec, SFK.fee),
+          existCabling:    raw(siRec, SFK.existCabling),
+          plenum:           raw(siRec, SFK.plenum),
+          exterior:        raw(siRec, SFK.exterior),
+          dropLength:      raw(siRec, SFK.dropLength),
+          conduit:         raw(siRec, SFK.conduit),
+          connDevice:      connectionLabelsAll(siRec, SFK.connDevice),
+          connDeviceIds:   connectionIdsAll(siRec, SFK.connDevice),
+          mapConn:         raw(siRec, SFK.mapConn),
         };
       }
       if (CFG.debug) {
@@ -770,7 +820,7 @@
     }
     delete sowBuckets['__no_sow__'];
 
-    // Build NO BID rows from view_3728 SOW items
+    // Build NO BID rows from view_3921 SOW items
     var noBidBySow = buildNoBidRows(sowItems || []);
 
     if (CFG.debug && Object.keys(noBidBySow).length) {
@@ -835,7 +885,10 @@
         rows.push(noBidRows[nb]);
       }
 
-      // Merge SOW MDF/IDF (field_1946) into rows from the SOW item lookup
+      // Merge SOW MDF/IDF (field_1946) and totals into rows from the SOW item lookup.
+      // view_3680 (bid records) does NOT project field_2028/field_2269 — those
+      // live on the SOW item record (view_3921). Pull them across via the
+      // relatedSowItem connection so matched rows get totals too.
       for (var mi2 = 0; mi2 < rows.length; mi2++) {
         var r2 = rows[mi2];
         if (r2.sowItem && sowItemLookup[r2.sowItem]) {
@@ -843,6 +896,24 @@
           if (siData.mdfIdf && !r2.sowMdfIdf) {
             r2.sowMdfIdf = siData.mdfIdf;
           }
+          // Always prefer the SOW item record\'s editable fields over the
+          // bid record\'s projected display copies — view_3680\'s connection
+          // projections don\'t track edits made to the connected SOW item
+          // until view_3680 itself re-fetches, so the displayed row would
+          // otherwise stay stale after an inline panel edit.
+          r2.sowInstallFee    = siData.installFee;
+          r2.sowEquipmentTotal = siData.equipmentTotal;
+          r2.sowLaborDesc     = siData.laborDesc;
+          r2.sowQty           = siData.qty;
+          r2.sowFee           = siData.fee;
+          r2.sowExistCabling  = siData.existCabling;
+          r2.sowPlenum        = siData.plenum;
+          r2.sowExterior      = siData.exterior;
+          r2.sowDropLength    = siData.dropLength;
+          r2.sowConduit       = siData.conduit;
+          r2.sowConnDevice    = siData.connDevice;
+          r2.sowConnDeviceIds = siData.connDeviceIds;
+          r2.sowMapConn       = siData.mapConn;
         }
       }
 

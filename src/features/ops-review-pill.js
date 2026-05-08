@@ -192,6 +192,22 @@
       '.scw-ops-margin-warning svg {' +
       '  flex: 0 0 auto; margin-top: 1px; color: #b45309;' +
       '}' +
+      /* Allow the optional action button to wrap to its own line below
+         the svg+text without disturbing the existing row-1 layout. */
+      '.scw-ops-margin-warning { flex-wrap: wrap; }' +
+      /* Optional inline action button inside the margin-low warning —
+         used by bid-review to surface "Add PM & Mobilization line item". */
+      '.scw-ops-margin-warning__btn {' +
+      '  flex: 0 0 100%; align-self: flex-start;' +
+      '  margin: 4px 0 0 20px; padding: 4px 10px;' +
+      '  background: #b45309; color: #fff; border: none;' +
+      '  border-radius: 4px; font: 600 11px/1.2 system-ui, sans-serif;' +
+      '  cursor: pointer; white-space: nowrap; max-width: max-content;' +
+      '}' +
+      '.scw-ops-margin-warning__btn:hover { background: #92400e; }' +
+      '.scw-ops-margin-warning__btn:disabled {' +
+      '  opacity: 0.6; cursor: not-allowed; background: #b45309;' +
+      '}' +
 
       /* Suppress Knack inline-edit popup on this cell. */
       'td[' + PROCESSED + '] .kn-edit-col,' +
@@ -372,7 +388,7 @@
     return n;
   }
 
-  function buildMarginWarning() {
+  function buildMarginWarning(extraButton) {
     var box = document.createElement('div');
     box.className = 'scw-ops-margin-warning';
     box.setAttribute('role', 'alert');
@@ -386,6 +402,27 @@
       '</svg>' +
       '<span></span>';
     box.querySelector('span').textContent = MARGIN_WARNING_MSG;
+
+    // Optional inline action button(s) — pass a single { label, dataAttrs }
+    // object or an array of them. The caller is responsible for wiring up
+    // the click handlers; we just render the buttons with the supplied
+    // label + data-* attributes.
+    var buttons = extraButton ? (Array.isArray(extraButton) ? extraButton : [extraButton]) : [];
+    for (var bi = 0; bi < buttons.length; bi++) {
+      var bcfg = buttons[bi];
+      if (!bcfg || !bcfg.label) continue;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'scw-ops-margin-warning__btn';
+      btn.textContent = bcfg.label;
+      if (bcfg.dataAttrs) {
+        var dKeys = Object.keys(bcfg.dataAttrs);
+        for (var di = 0; di < dKeys.length; di++) {
+          btn.setAttribute(dKeys[di], bcfg.dataAttrs[dKeys[di]]);
+        }
+      }
+      box.appendChild(btn);
+    }
     return box;
   }
 
@@ -421,10 +458,10 @@
   // were defined at the top of this file as PROPOSAL_NAME / etc. and
   // are passed through; the helper handles model-first / DOM-fallback
   // and Published-status filtering.
-  function buildProposalIndex() {
+  function buildProposalIndex(sourceViewOverride) {
     if (!window.SCW || !SCW.publishedQuoteInfo) return {};
     return SCW.publishedQuoteInfo.readById({
-      sourceView:  PROPOSAL_VIEW,
+      sourceView:  sourceViewOverride || PROPOSAL_VIEW,
       statusField: PROPOSAL_STATUS,
       nameField:   PROPOSAL_NAME,
       expField:    PROPOSAL_EXP,
@@ -791,7 +828,124 @@
            String(d.getFullYear()).slice(-2);
   }
 
+  // ── Individual builders (composable from outside) ──
+  // Each returns a fresh DOM element OR null when the corresponding
+  // affordance doesn't apply. bid-review uses these to compose the
+  // SOW status bar in a different order from the ops-list default.
+
+  /** Build the next-step pill (or the "Processing X…" pending pill).
+   *  Honors readPending → schedulePoll just like renderCell. */
+  function buildPillForRow(tr) {
+    if (!tr) return null;
+
+    var step = resolveStep(tr);
+    var note = readNote(tr);
+
+    var pending = readPending(tr.id);
+    if (pending) {
+      var pendingStep = findStepById(pending.stepId);
+      if (step && step.id === pending.stepId) {
+        var pendingPill = document.createElement('span');
+        pendingPill.className = 'scw-ops-pill is-pending';
+        var spinner = document.createElement('span');
+        spinner.className = 'scw-ops-pending-spinner';
+        pendingPill.appendChild(spinner);
+        var pendingLabel = document.createElement('span');
+        pendingLabel.textContent = 'Processing ' +
+          (pendingStep ? pendingStep.label : 'action') + '…';
+        pendingPill.appendChild(pendingLabel);
+        schedulePoll();
+        return pendingPill;
+      }
+      clearPending(tr.id);
+    }
+
+    var pill = document.createElement('a');
+    pill.className = 'scw-ops-pill';
+    var href = getRowLink(tr);
+    if (href) pill.setAttribute('href', href);
+    pill.setAttribute('target', '_blank');
+    pill.setAttribute('rel', 'noopener');
+
+    var labelSpan = document.createElement('span');
+    labelSpan.textContent = 'Preview Proposal for Next Steps';
+    pill.appendChild(labelSpan);
+
+    if (note) {
+      pill.setAttribute('data-scw-tip', note);
+      var info = document.createElement('span');
+      info.className = 'scw-ops-info';
+      info.setAttribute('data-scw-tip', note);
+      info.textContent = 'i';
+      pill.appendChild(info);
+    }
+
+    var arrow = document.createElement('span');
+    arrow.className = 'scw-ops-arrow';
+    arrow.textContent = '›';
+    pill.appendChild(arrow);
+
+    return pill;
+  }
+
+  /** Build the margin-low warning when applicable, or null. */
+  function buildMarginWarningForRow(tr, opts) {
+    if (!tr) return null;
+    opts = opts || {};
+    var marginPct = readMarginPct(tr);
+    if (!isFinite(marginPct) || marginPct >= MARGIN_THRESHOLD) return null;
+    return buildMarginWarning(opts.marginButton);
+  }
+
+  /** Build the published-proposal block (or "No published quotes"
+   *  placeholder) for this SOW. opts.proposalViewKey overrides the
+   *  default ops-list source view (view_3885). */
+  function buildProposalBlockForRow(tr, opts) {
+    if (!tr) return null;
+    opts = opts || {};
+    if (!window.SCW || !SCW.publishedQuoteInfo) return null;
+    var proposalIndex = buildProposalIndex(opts.proposalViewKey);
+    if (!proposalIndex || !tr.id) return null;
+    var proposal = proposalIndex[tr.id];
+    if (proposal) {
+      return SCW.publishedQuoteInfo.buildBlock(proposal, { variant: 'compact' });
+    }
+    return SCW.publishedQuoteInfo.buildBlock(null, {
+      variant: 'compact',
+      emptyText: 'No published quotes'
+    });
+  }
+
+  // ── Public: build a next-step DOM block for an arbitrary view_3325 row ──
+  // Default-order composer (pill → margin warning → proposal block).
+  // Callers wanting a different order should compose the individual
+  // builders above instead.
+  function buildBlockForRow(tr, opts) {
+    opts = opts || {};
+    if (!tr) return null;
+
+    var container = document.createElement('div');
+    container.className = 'scw-ops-block';
+
+    var pill = buildPillForRow(tr);
+    if (pill) container.appendChild(pill);
+
+    var warning = buildMarginWarningForRow(tr, opts);
+    if (warning) container.appendChild(warning);
+
+    if (opts.includeProposalBlock !== false) {
+      var block = buildProposalBlockForRow(tr, opts);
+      if (block) container.appendChild(block);
+    }
+
+    return container;
+  }
+
   window.SCW = window.SCW || {};
   SCW.opsReview = SCW.opsReview || {};
-  SCW.opsReview.autoRevertValidation = autoRevertValidation;
+  SCW.opsReview.autoRevertValidation       = autoRevertValidation;
+  SCW.opsReview.buildBlockForRow           = buildBlockForRow;
+  SCW.opsReview.buildPillForRow            = buildPillForRow;
+  SCW.opsReview.buildMarginWarningForRow   = buildMarginWarningForRow;
+  SCW.opsReview.buildProposalBlockForRow   = buildProposalBlockForRow;
 })();

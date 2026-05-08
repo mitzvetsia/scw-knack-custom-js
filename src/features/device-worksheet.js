@@ -97,7 +97,7 @@
       },
       {
         viewId: 'view_3505',
-        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr' },
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: true },
         hideDeleteWhenFieldNotBlank: 'field_2404',
         // ── Main config: used for Cameras or Readers rows ──
         fields: {
@@ -105,7 +105,7 @@
           bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
           move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
           label:            { key: 'field_2365', type: 'readOnly',   summary: true },
-          product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+          product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
           laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
           existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
           labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
@@ -135,7 +135,7 @@
           fields: {
             bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
             move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-            product:          { key: 'field_2379', type: 'readOnly',   summary: true, productStyle: true, columnIndex: 3 },
+            product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
             laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
             labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
             quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
@@ -155,14 +155,14 @@
         },
         bucketRules: {
           '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2379', 'field_2463', 'field_2372', 'field_2371'],
+            hideFields: ['field_2627', 'field_2463', 'field_2372', 'field_2371'],
             label: '+fee',
             descLabel: 'Service',
             hideProduct: true,
             rowClass: 'scw-row--services',
           },
           '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2379', 'field_2400', 'field_2399', 'field_2401'],
+            hideFields: ['field_2627', 'field_2400', 'field_2399', 'field_2401'],
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
@@ -285,7 +285,7 @@
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
-        viewIds: ['view_3610'],
+        viewIds: ['view_3610', 'view_3921'],
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         fields: {
           // ── Summary row ──
@@ -383,6 +383,7 @@
             dropPrefix:       { key: 'field_2240', type: 'readOnly' },
             dropNumber:       { key: 'field_1951', type: 'directEdit' },
             dropLength:       { key: 'field_1965', type: 'directEdit',  feeTrigger: true },
+            conduit:          { key: 'field_2035', type: 'directEdit',  feeTrigger: true },
             mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
             connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
             scwNotes:         { key: 'field_1953', type: 'directEdit',  notes: true },
@@ -398,7 +399,7 @@
           ],
           detailLayout: {
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-            right: ['connectedDevice', 'dropLength', 'scwNotes', 'selectedSubBid', 'subBidLock']
+            right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes', 'selectedSubBid', 'subBidLock']
           }
         }
       },
@@ -406,6 +407,7 @@
         viewId: 'view_3586',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
         stackedSummary: false,
+        photoAlwaysVisible: true,
         hideDeleteWhenCountGtZero: 'field_2586',
         fields: {
           // ── Summary row ──
@@ -563,6 +565,16 @@
         photoAlwaysVisible: true,
         qtyBadgeField: 'field_1964',
         bucketField: 'field_2219',
+        // Client-side row sort. Bucket order first (field_2218 — cams/
+        // readers come after networking/headend), then natural-compare
+        // on field_1950 (the device label like "E-001", "I-001") so
+        // cam/reader rows sort like E-001, E-002, …, I-001, I-002.
+        // Default rowSort falls back to field_2240 + field_1951 which
+        // aren't in this view's cells, so it was a no-op.
+        rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
+          { field: 'field_1950', order: 'asc', type: 'text'   }
+        ],
         fields: {
           // ── Summary row ──
           label:            { key: 'field_1950', type: 'readOnly',    summary: true },
@@ -573,12 +585,13 @@
           // ── Detail panel ──
           connectedDevice:  { key: 'field_2197', type: 'readOnly' },
           mountingHardware: { key: 'field_1958', type: 'readOnly' },
-          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+          surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
         },
         summaryLayout: ['laborDescription', 'existingCabling'],
         detailLayout: {
-          left:  ['connectedDevice', 'scwNotes'],
-          right: ['mountingHardware']
+          left:  ['mountingHardware', 'connectedDevice', 'scwNotes'],
+          right: ['surveyNotes']
         },
         syntheticGroupsPosition: 'bottom',
         bucketRules: {
@@ -611,12 +624,13 @@
             laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: '\u00a0', group: 'fill', multiline: true },
             connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
             mountingHardware: { key: 'field_1958', type: 'readOnly' },
-            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true }
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+            surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
           },
           summaryLayout: ['laborDescription', 'connectedDevice'],
           detailLayout: {
             left:  ['scwNotes'],
-            right: ['mountingHardware']
+            right: ['mountingHardware', 'surveyNotes']
           }
         }
       },
@@ -1139,6 +1153,20 @@ td.${P}-sum-label-cell:hover {
   max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Combined-label mode: when the label cell sits INSIDE the product-group
+   (layout.labelInProductGroup), let it auto-size so it shares the
+   product-group's fixed width with the product. Caps at 90px so a long
+   label can't push the product out — anything longer truncates via the
+   inherited ellipsis rules. Used on view_3505 to align labor description
+   across cam/reader rows (which carry a label) and non-cam rows (which don't). */
+.${P}-product-group > td.${P}-sum-label-cell--in-product,
+.${P}-product-group > td.${P}-sum-label-cell--in-product:hover {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 90px !important;
+  flex: 0 0 auto;
 }
 
 /* Product td in summary — fixed width so labor desc and right fields align vertically */
@@ -1949,6 +1977,17 @@ td.${P}-sum-product--editable.bulkEditSelectSrc {
   outline-offset: 1px;
   cursor: cell !important;
   background-color: rgb(255, 253, 204) !important;
+}
+/* When the editable product cell is locked (row finalized or row already
+   adopted to SOW), strip the pill chrome so it reads as plain text. */
+td.${P}-sum-product--editable.${P}-td-locked,
+td.${P}-sum-product--editable.${P}-td-locked:hover {
+  border: none !important;
+  border-radius: 0;
+  background: transparent !important;
+  padding: 0;
+  min-height: 0;
+  cursor: default;
 }
 
 
@@ -3274,14 +3313,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var viewEl = document.getElementById(viewId);
-    if (!viewEl) return;
 
-    // Find the worksheet card for this record
-    var cards = viewEl.querySelectorAll('.' + P + '-card');
+    // Find the worksheet card for this record. Search the view\'s own
+    // tree first, then fall back to anywhere the wsTr might have been
+    // moved (e.g. bid-review\'s expand cell, where the row was relocated
+    // by SCW.bidReview but still belongs logically to this view).
     var card = null;
-    for (var ci = 0; ci < cards.length; ci++) {
-      var row = cards[ci].closest('tr');
-      if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+    if (viewEl) {
+      var cards = viewEl.querySelectorAll('.' + P + '-card');
+      for (var ci = 0; ci < cards.length; ci++) {
+        var row = cards[ci].closest('tr');
+        if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+      }
+    }
+    if (!card) {
+      var movedRow = document.querySelector(
+        'tr.' + WORKSHEET_ROW + '[id="' + recordId + '"][data-scw-view-id="' + viewId + '"]'
+      );
+      if (movedRow) card = movedRow.querySelector('.' + P + '-card');
     }
     if (!card) {
       SCW.debug('[scw-ws] patchCard: no card found for ' + recordId + ' in ' + viewId);
@@ -3724,6 +3773,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (!view || !view.model) return;
       var m = view.model;
 
+      // Knack view-scoped PUTs wrap the record under a "record" key —
+      // unwrap so the field_NNNN scan below sees calc fields like
+      // field_2151 / field_2028 in the response.
+      if (resp && resp.record && typeof resp.record === 'object' && resp.record.id) {
+        resp = resp.record;
+      }
+
       // Find the Backbone record — try multiple paths
       var record = typeof m.get === 'function' ? m.get(recordId) : null;
       if (!record && m.data && typeof m.data.get === 'function') {
@@ -3744,6 +3800,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var rawVal = (resp && resp[fieldKey + '_raw'] != null) ? resp[fieldKey + '_raw'] : value;
       attrs[fieldKey] = rawVal;
       attrs[fieldKey + '_raw'] = rawVal;
+
+      // Patch every other field from the response so calc/equation fields
+      // (e.g. field_2028 install fee, field_2269 equipment total) reflect
+      // the recalculated values without waiting for a view re-render.
+      if (resp && typeof resp === 'object') {
+        var respKeys = Object.keys(resp);
+        for (var rk = 0; rk < respKeys.length; rk++) {
+          var key = respKeys[rk];
+          if (!/^field_\d+(_raw)?$/.test(key)) continue;
+          if (key === fieldKey || key === fieldKey + '_raw') continue;
+          attrs[key] = resp[key];
+        }
+      }
     } catch (ex) {
       // Silently ignore — model sync is best-effort
     }
@@ -3826,8 +3895,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var wsTr = input.closest('tr.' + WORKSHEET_ROW);
     if (!wsTr) return;
     var recordId = getRecordId(wsTr);
-    var viewEl = input.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
+    // Prefer the source view id stamped on the wsTr — it survives the
+    // wsTr being moved out of its native view container (e.g. bid-
+    // review\'s expand cell). Fall back to the closest [id^="view_"].
+    var viewId = wsTr.getAttribute('data-scw-view-id');
+    if (!viewId) {
+      var viewEl = input.closest('[id^="view_"]');
+      viewId = viewEl ? viewEl.id : null;
+    }
     if (recordId && viewId) {
       saveDirectEditValue(viewId, recordId, fieldKey, newValue,
         function () {
@@ -4067,9 +4142,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var srcTd = chit.closest('td[data-scw-cabling-src]')
              || chit.parentNode.querySelector('td[data-scw-cabling-src]');
     if (srcTd) {
-      var hiddenSpan = srcTd.querySelector('.' + P + '-chit-value')
-                    || srcTd.querySelector('span[style*="display"]');
-      if (hiddenSpan) hiddenSpan.textContent = newBool;
+      // Update the inner chip-stack bool-chip (if present — view_3505\'s
+      // exterior cell for example) so its data-value stays the truth
+      // for subsequent reads. The plain "Yes"/"No" span fallback
+      // covers tds without chip-stack rendering.
+      var innerBoolChip = srcTd.querySelector('.scw-bool-chip[data-field="' + fieldKey + '"]');
+      if (innerBoolChip) {
+        innerBoolChip.setAttribute('data-value', newBool.toLowerCase());
+        innerBoolChip.classList.remove('is-yes', 'is-no');
+        innerBoolChip.classList.add(newBool === 'Yes' ? 'is-yes' : 'is-no');
+      } else {
+        var hiddenSpan = srcTd.querySelector('.' + P + '-chit-value')
+                      || srcTd.querySelector('span[style*="display"]');
+        if (hiddenSpan) hiddenSpan.textContent = newBool;
+      }
       srcTd.setAttribute('data-value', newBool);
     }
 
@@ -4077,8 +4163,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var wsTr = chit.closest('tr.' + WORKSHEET_ROW);
     if (!wsTr) return;
     var recordId = getRecordId(wsTr);
-    var viewEl = chit.closest('[id^="view_"]');
-    var viewId = viewEl ? viewEl.id : null;
+    // Prefer the source view id stamped on the wsTr — survives the
+    // wsTr being moved (e.g. into bid-review's expand cell). Fall back
+    // to closest [id^="view_"] for native render contexts.
+    var viewId = wsTr.getAttribute('data-scw-view-id');
+    if (!viewId) {
+      var viewEl = chit.closest('[id^="view_"]');
+      viewId = viewEl ? viewEl.id : null;
+    }
     if (recordId && viewId) {
       saveRadioValue(viewId, recordId, fieldKey, newBool);
     }
@@ -4368,8 +4460,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
       case 'toggleChit':
         if (!td) break;
-        var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
-        var isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        // Prefer an inner .scw-bool-chip[data-field=fieldKey] when present
+        // \u2014 that\'s the chip-stack renderer\'s authoritative value. On
+        // view_3505 the same <td.field_2372> hosts both Exterior AND
+        // Plenum chips, so td.textContent reads "ExteriorPlenum" and
+        // the plain yes/true match fails, leaving the chit gray even
+        // when the field actually is Yes.
+        var innerChip = td.querySelector('.scw-bool-chip[data-field="' + desc.key + '"]');
+        var isChitYes;
+        if (innerChip) {
+          var dv = (innerChip.getAttribute('data-value') || '').trim().toLowerCase();
+          isChitYes = (dv === 'yes' || dv === 'true');
+        } else {
+          var chitVal = (td.textContent || '').replace(/[\u00a0\s]/g, '').trim().toLowerCase();
+          isChitYes = (chitVal === 'yes' || chitVal === 'true');
+        }
         // Skip rendering entirely when showOnlyIfYes and value is not yes
         if (desc.showOnlyIfYes && !isChitYes) break;
         var chit = document.createElement('span');
@@ -4511,15 +4616,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
 
     var labelDesc = fieldDesc(viewCfg, 'label');
-    if (labelDesc) {
+    var productDesc = fieldDesc(viewCfg, 'product');
+    var pgLayoutEarly = viewCfg.layout || {};
+    // Opt-in mode: tuck the label cell INSIDE the product-group so label +
+    // product share the product-group's fixed width. Used on view_3505 to
+    // align labor description across cam/reader rows (which carry a label)
+    // and non-cam rows (which don't), so labor desc starts at the same x.
+    var combineLabelWithProduct = !!(pgLayoutEarly.labelInProductGroup
+      && labelDesc && productDesc && productDesc.summary);
+
+    if (labelDesc && !combineLabelWithProduct) {
       var labelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
       if (labelTd) {
         labelTd.classList.add(P + '-sum-label-cell');
         identity.appendChild(labelTd);
       }
-    } else if (viewCfg.labelPlaceholder) {
+    } else if (!labelDesc && viewCfg.labelPlaceholder && !pgLayoutEarly.labelInProductGroup) {
       // Insert an invisible spacer matching the label cell's width
       // so that product + laborDescription align with rows that have a label.
+      // Skipped under labelInProductGroup mode: there the label rides
+      // inside the (fixed-width) product-group, so non-label rows are
+      // already aligned without any spacer in identity.
       var labelSpacer = document.createElement('span');
       labelSpacer.className = P + '-sum-label-cell';
       labelSpacer.style.visibility = 'hidden';
@@ -4527,7 +4644,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       identity.appendChild(labelSpacer);
     }
 
-    var productDesc = fieldDesc(viewCfg, 'product');
     if (productDesc && productDesc.summary) {
       var productTd = findCell(tr, productDesc.key, productDesc.columnIndex);
       if (productTd) {
@@ -4556,6 +4672,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           prodLabel.className = P + '-sum-label';
           prodLabel.innerHTML = '&nbsp;';
           productGroup.appendChild(prodLabel);
+        }
+
+        // Combined-label mode: prepend the label cell inside the product-group
+        // so they share the product-group's fixed width. CSS overrides the
+        // standalone label-cell sizing via the --in-product modifier.
+        if (combineLabelWithProduct) {
+          var combLabelTd = findCell(tr, labelDesc.key, labelDesc.columnIndex);
+          if (combLabelTd) {
+            combLabelTd.classList.add(P + '-sum-label-cell');
+            combLabelTd.classList.add(P + '-sum-label-cell--in-product');
+            productGroup.appendChild(combLabelTd);
+          }
         }
 
         productTd.classList.add(P + '-sum-product');
@@ -5809,6 +5937,33 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
 
+      // ── view_3505: lock product (field_2627) when row is adopted to SOW ──
+      // Editable only if field_2404 (REL_sow line item) is blank AND the
+      // row isn't finalized (field_2551 = Yes — handled above).
+      if (!isLocked && viewCfg.viewId === 'view_3505') {
+        var sowItemTd = tr.querySelector('td.field_2404');
+        var sowItemSet = false;
+        if (sowItemTd) {
+          if (sowItemTd.querySelector('span[data-kn="connection-value"]')) {
+            sowItemSet = true;
+          } else {
+            var sowText = (sowItemTd.textContent || '').replace(/ /g, '').trim();
+            if (sowText.length) sowItemSet = true;
+          }
+        }
+        if (sowItemSet) {
+          var prodTd = tr.querySelector('td.field_2627');
+          if (prodTd) {
+            prodTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
+            prodTd.classList.add(P + '-td-locked');
+            prodTd.addEventListener('click', function (e) {
+              e.stopPropagation();
+              e.preventDefault();
+            }, true);
+          }
+        }
+      }
+
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
         card.classList.add(P + '-locked');
@@ -5860,6 +6015,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var wsTr = document.createElement('tr');
       wsTr.className = WORKSHEET_ROW;
       wsTr.id = tr.id;
+      // Stamp the source view id so direct-edit save can resolve the
+      // right Knack view even after the wsTr is moved into another
+      // container (e.g. bid-review\'s expand cell).
+      wsTr.setAttribute('data-scw-view-id', viewCfg.viewId);
       tr.removeAttribute('id');
 
       if (entry.bucketCls) wsTr.classList.add(entry.bucketCls);

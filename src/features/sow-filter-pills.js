@@ -290,6 +290,16 @@
       }
       grp.tr.classList.toggle(HIDE_CLS, !anyVisible);
     }
+
+    // Notify downstream features (mdf-summary-panel, etc.) that the
+    // filter changed. MutationObservers on tbody are flaky after Knack
+    // rebuilds the view DOM, so we dispatch an explicit event that
+    // listeners can hook without depending on observer survival.
+    try {
+      document.dispatchEvent(new CustomEvent('scw-conn-filter-changed', {
+        detail: { viewId: target.viewId, selectedId: selectedId || null }
+      }));
+    } catch (e) { /* ignore */ }
   }
 
   // ── Pill strip render ───────────────────────────────────
