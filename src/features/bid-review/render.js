@@ -155,12 +155,51 @@
     var colCount = 2 + sowGrid.packages.length + 1; // line item + sow + packages + CR
 
     // ═══ ROW 1: Column titles ═══
+    // Each SOW + Bid column shows a totals summary below its title:
+    //   SOW · Install Total = Σ row.sowInstallFee
+    //   Bid · Sub Bid Total = Σ cell.labor for that package
+    var sowInstallTotal = 0;
+    var pkgSubBidTotals = {};
+    for (var ti = 0; ti < sowGrid.packages.length; ti++) {
+      pkgSubBidTotals[sowGrid.packages[ti].id] = 0;
+    }
+    for (var ri = 0; ri < sowGrid.rows.length; ri++) {
+      var tRow = sowGrid.rows[ri];
+      if (tRow.sowInstallFee) sowInstallTotal += Number(tRow.sowInstallFee) || 0;
+      if (tRow.cellsByPackage) {
+        for (var pid in pkgSubBidTotals) {
+          var tCell = tRow.cellsByPackage[pid];
+          if (tCell && tCell.labor) {
+            pkgSubBidTotals[pid] += Number(tCell.labor) || 0;
+          }
+        }
+      }
+    }
+
+    function buildTitleCell(cls, title, totalLabel, totalVal) {
+      var th = el('th', cls);
+      th.appendChild(el('div', 'scw-bid-review__col-title-text', title));
+      if (totalLabel) {
+        var sub = el('div', 'scw-bid-review__col-title-total');
+        sub.appendChild(el('span', 'scw-bid-review__col-title-total-label', totalLabel));
+        sub.appendChild(document.createTextNode(' '));
+        sub.appendChild(el('span', 'scw-bid-review__col-title-total-value', formatCurrency(totalVal || 0)));
+        th.appendChild(sub);
+      }
+      return th;
+    }
+
     var r1 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-titles');
     r1.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
     // Sales Revisions column injected externally — leave gap
-    r1.appendChild(el('th', 'scw-bid-review__sow-detail-header', 'SOW'));
+    r1.appendChild(buildTitleCell(
+      'scw-bid-review__sow-detail-header', 'SOW', 'Install Total:', sowInstallTotal
+    ));
     for (var i = 0; i < sowGrid.packages.length; i++) {
-      r1.appendChild(el('th', 'scw-bid-review__pkg-header', 'Bid'));
+      r1.appendChild(buildTitleCell(
+        'scw-bid-review__pkg-header', 'Bid', 'Sub Bid Total:',
+        pkgSubBidTotals[sowGrid.packages[i].id]
+      ));
     }
     r1.appendChild(el('th', 'scw-bid-review__actions-header', 'Sub Bid Revisions'));
     rows.push(r1);
@@ -1108,15 +1147,17 @@
         }
       }];
 
-      // Compute the margin needed so:
-      //   (newInstallFee - subBidTotal - surveyCosts) / newInstallFee = 12%
-      //   newInstallFee = subBidTotal × (1 + newMargin)
-      // Solving: newMargin = (0.12 × subBidTotal + surveyCosts) / (0.88 × subBidTotal)
+      // Knack stores field_2158 as gross margin (price-cost)/price, so:
+      //   installFee     = subBidTotal / (1 - margin)
+      //   effective gross = (installFee - subBidTotal - surveyCosts) / installFee
+      //                   = margin - surveyCosts × (1 - margin) / subBidTotal
+      // Solve for margin given a 12% effective target:
+      //   margin = (0.12 × subBidTotal + surveyCosts) / (subBidTotal + surveyCosts)
       var EFFECTIVE_TARGET = 0.12;
       var subBidTotal  = parseFloat(readRowFieldText(tr, CFG.subBidTotalField).replace(/[$,]/g, '')) || 0;
       var surveyCosts  = parseFloat(readRowFieldText(tr, CFG.surveyCostsField).replace(/[$,]/g, '')) || 0;
       if (subBidTotal > 0) {
-        var newMargin = (EFFECTIVE_TARGET * subBidTotal + surveyCosts) / ((1 - EFFECTIVE_TARGET) * subBidTotal);
+        var newMargin = (EFFECTIVE_TARGET * subBidTotal + surveyCosts) / (subBidTotal + surveyCosts);
         var newMarginPct = Math.ceil(newMargin * 1000) / 10; // round up to nearest 0.1%
         marginButtons.push({
           label: 'Increase project margin to ' + newMarginPct.toFixed(1) + '%',
