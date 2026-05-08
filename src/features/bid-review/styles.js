@@ -406,6 +406,7 @@
       '  padding-top: 0;',
       '}',
       '.scw-bid-review__header-actions td {',
+      '  padding-top: 14px;',     /* breathing room above the action stack */
       '  padding-bottom: 8px;',
       '}',
       '.scw-bid-review__header-detail-cell {',
