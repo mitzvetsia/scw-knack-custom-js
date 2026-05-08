@@ -18,7 +18,7 @@
   'use strict';
 
   var BTN_HOST_CLS    = 'scw-ws-bulk-toggle';
-  var BOUND_ATTR      = 'data-scw-bulk-toggle-bound';
+  var CLICK_BOUND_KEY = '__scwBulkClickBound';
   var OBS_KEY         = '__scwBulkToggleObs';
   var SUMMARY_STATE   = 'data-scw-summary-state';
   // Native Knack classes only — DO NOT include scw-group-header here,
@@ -139,41 +139,12 @@
     return b;
   }
 
-  function mount(viewEl) {
-    if (!viewEl) return false;
-    if (viewEl.hasAttribute(BOUND_ATTR)) return true;
-    if (!viewEl.querySelector('tr.scw-ws-row')) return false;
-    if (!viewEl.querySelector(L1_SEL)) return false;
-
-    var nav = viewEl.querySelector('.kn-records-nav');
-    if (!nav) return false;
-
-    var existing = nav.querySelector('.' + BTN_HOST_CLS);
-    if (existing) existing.remove();
-
-    var host = document.createElement('div');
-    host.className = BTN_HOST_CLS;
-    host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
-
-    host.appendChild(buildBtn('Expand all', function () {
-      applyMode(viewEl, 'expand');
-    }));
-    host.appendChild(buildBtn('Summary only', function () {
-      applyMode(viewEl, 'summary');
-    }));
-    host.appendChild(buildBtn('Collapse all', function () {
-      applyMode(viewEl, 'collapse');
-    }));
-
-    nav.insertBefore(host, nav.firstChild);
-    viewEl.setAttribute(BOUND_ATTR, '1');
-
-    // Capture-phase click interceptor: when an L1 header is in
-    // summary state, the user's intent on click is "show me the rest"
-    // (expand). Without this, group-collapse's bubble-phase handler
-    // would read .scw-collapsed=false and collapse the group entirely,
-    // hiding the summary row too. stopPropagation on the capture-phase
-    // event prevents the bubble-phase handler from firing.
+  // Bind the capture-phase click interceptor for summary-state clicks.
+  // Lives on the viewEl, which Knack reuses across re-renders, so we
+  // only need to bind it once per view element.
+  function bindSummaryClickInterceptor(viewEl) {
+    if (viewEl[CLICK_BOUND_KEY]) return;
+    viewEl[CLICK_BOUND_KEY] = true;
     viewEl.addEventListener('click', function (e) {
       var t = e.target;
       var header = null;
@@ -191,29 +162,62 @@
       e.preventDefault();
       expandOneGroup(viewEl, header);
     }, true);
+  }
 
+  // Idempotent mount: callable on every observer tick. Returns true
+  // when the buttons are present in the current DOM (whether we just
+  // built them or they were already there), false when prerequisites
+  // aren't ready yet so the observer keeps watching.
+  //
+  // Knack re-renders frequently wipe the inner view DOM (kn-records-nav
+  // included) without replacing the outer #view_xxxx element. We must
+  // re-attach the buttons on every such wipe — hence no "already done"
+  // attribute guard. The cost is one querySelector per mutation tick.
+  function mount(viewEl) {
+    if (!viewEl) return false;
+    if (!viewEl.querySelector('tr.scw-ws-row')) return false;
+    if (!viewEl.querySelector(L1_SEL)) return false;
+
+    var nav = viewEl.querySelector('.kn-records-nav');
+    if (!nav) return false;
+
+    // Already present in the live DOM — nothing to do. (We bind the
+    // click interceptor below regardless, but it self-dedupes.)
+    var existing = nav.querySelector('.' + BTN_HOST_CLS);
+    if (!existing) {
+      var host = document.createElement('div');
+      host.className = BTN_HOST_CLS;
+      host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
+
+      host.appendChild(buildBtn('Expand all', function () {
+        applyMode(viewEl, 'expand');
+      }));
+      host.appendChild(buildBtn('Summary only', function () {
+        applyMode(viewEl, 'summary');
+      }));
+      host.appendChild(buildBtn('Collapse all', function () {
+        applyMode(viewEl, 'collapse');
+      }));
+
+      nav.insertBefore(host, nav.firstChild);
+    }
+
+    bindSummaryClickInterceptor(viewEl);
     return true;
   }
 
-  // Per-view observer: watches the view's subtree and retries mount
-  // whenever the DOM mutates. Disconnects itself once mount succeeds.
-  // Replaces the older timer-based retry — deterministic on slow
-  // first-loads where 250/1200/3000ms checks could miss the window
-  // between Knack rendering the view shell and device-worksheet
-  // finishing its row transform.
+  // Per-view observer: watches the view's subtree and re-runs mount on
+  // every mutation. Stays attached for the life of the view so the
+  // buttons survive Knack's inner-DOM rebuilds (filter changes, edit
+  // saves, sort changes, anything that re-paints the kn-records-nav).
   function attachObserver(viewEl) {
     if (viewEl[OBS_KEY]) return;
-    if (mount(viewEl)) return;
+    mount(viewEl);
 
     var debounce = null;
     var obs = new MutationObserver(function () {
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(function () {
-        if (mount(viewEl)) {
-          obs.disconnect();
-          viewEl[OBS_KEY] = null;
-        }
-      }, 50);
+      debounce = setTimeout(function () { mount(viewEl); }, 50);
     });
     obs.observe(viewEl, { childList: true, subtree: true });
     viewEl[OBS_KEY] = obs;
@@ -222,9 +226,7 @@
   function runScan() {
     var views = document.querySelectorAll('.kn-view[id^="view_"]');
     for (var i = 0; i < views.length; i++) {
-      var v = views[i];
-      if (v.hasAttribute(BOUND_ATTR)) continue;
-      attachObserver(v);
+      attachObserver(views[i]);
     }
   }
 

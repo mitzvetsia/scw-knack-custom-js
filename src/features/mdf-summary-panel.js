@@ -74,6 +74,10 @@
       '  border-collapse: collapse;' +
       '  font: 400 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: #1e293b;' +
+      '  background: #ffffff;' +
+      '  border: 1px solid #cbd5e1;' +
+      '  border-radius: 4px;' +
+      '  overflow: hidden;' +
       '}' +
       // !important on the alignment rules — Knack's .kn-table td
       // selector has the same specificity (0,2,0) as ours and may load
@@ -87,10 +91,10 @@
       '}' +
       '.scw-mdf-summary-table th {' +
       '  font-size: 10px; font-weight: 700;' +
-      '  color: #64748b;' +
+      '  color: #475569;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
-      '  background: #eef2f7;' +
-      '  border-bottom: 1px solid #cbd5e1;' +
+      '  background: #e2e8f0;' +
+      '  border-bottom: 2px solid #94a3b8;' +
       '  white-space: nowrap;' +
       '}' +
       '.scw-mdf-summary-table th.scw-mdf-product-h,' +
@@ -98,13 +102,14 @@
       '  text-align: left !important;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-product {' +
-      '  color: #07467c; font-weight: 600;' +
+      '  color: #1e293b; font-weight: 500;' +
+      '  padding-left: 22px !important;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
       '  display: block;' +
       '  margin-top: 4px;' +
       '  font: 400 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: #475569;' +
+      '  color: #64748b;' +
       '  word-break: break-word;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-num {' +
@@ -113,24 +118,54 @@
       '.scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: #cbd5e1;' +
       '}' +
+      // Bucket section heading — the leading row of each bucket group.
+      // Solid slate band with all-caps label spanning the full width;
+      // doubles as the visual separator between buckets so the eye can
+      // skim "Networking → Other Equipment → Camera or Reader" without
+      // hunting for italicized subtotals.
+      '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
+      '  background: #334155 !important;' +
+      '  color: #f1f5f9 !important;' +
+      '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.08em;' +
+      '  padding: 7px 14px !important;' +
+      '  text-align: left !important;' +
+      '  border-bottom: 1px solid #1e293b;' +
+      '}' +
+      // Visual gap between bucket sections — a sliver of the panel
+      // background shows through on top of every bucket-head except the
+      // first. Cheaper than a spacer row and doesn't fight colspan.
+      '.scw-mdf-summary-table tr.scw-mdf-bucket-head + tr td,' +
+      '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
+      '  /* keep adjacency rules clean */' +
+      '}' +
+      '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
+      '  border-top: 6px solid #f8fafc;' +
+      '}' +
+      // Bucket subtotal — semi-bold, light slate band; pairs visually
+      // with the dark bucket-head above and clearly closes the section.
+      '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
+      '  background: #e2e8f0; color: #0f172a;' +
+      '  font-weight: 700;' +
+      '  border-top: 1px solid #94a3b8;' +
+      '  border-bottom: 1px solid #94a3b8;' +
+      '}' +
+      '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
+      '  color: #0f172a; text-align: left; padding-left: 22px !important;' +
+      '}' +
+      // Grand Total — strongest visual weight: deep blue band, white
+      // text, no border bleed. Always the bottom anchor of the panel.
       '.scw-mdf-summary-table tr.scw-mdf-total td {' +
-      '  background: #e0e7ff; color: #1e3a8a;' +
-      '  font-weight: 700; border-top: 2px solid #94a3b8;' +
+      '  background: #1e3a8a; color: #ffffff;' +
+      '  font-weight: 800; font-size: 12.5px;' +
+      '  border-top: 2px solid #1e3a8a;' +
       '  border-bottom: none;' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
-      '  color: #1e3a8a; text-align: left;' +
-      '}' +
-      // Bucket subtotal — between product rows and the grand Total in
-      // visual weight: tinted background, semi-bold, no top border so
-      // it reads as part of the bucket group rather than a separator.
-      '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
-      '  background: #f1f5f9; color: #334155;' +
-      '  font-weight: 600;' +
-      '  border-top: 1px solid #cbd5e1;' +
-      '}' +
-      '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
-      '  color: #334155; text-align: left; font-style: italic;' +
+      '  color: #ffffff; text-align: left;' +
+      '  text-transform: uppercase; letter-spacing: 0.05em;' +
+      '  padding-left: 14px !important;' +
       '}' +
       // Grand-summary wrapper — mounted above the kn-table so it sits
       // outside Knack's grouping/pagination machinery. Uses the same
@@ -390,15 +425,20 @@
       current.items.push(p);
     }
 
-    var emitSubtotals = groups.length > 1;
+    var emitSections = groups.length > 1;
     var rows = '';
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
+      if (emitSections) {
+        rows += '<tr class="scw-mdf-bucket-head">' +
+          '<td colspan="8">' + escapeHtml(grp.label) + '</td>' +
+        '</tr>';
+      }
       for (var k = 0; k < grp.items.length; k++) {
         rows += productRowHtml(grp.items[k]);
       }
-      if (emitSubtotals) {
-        var st = bucketSubtotal(grp.items, 'Subtotal — ' + grp.label);
+      if (emitSections) {
+        var st = bucketSubtotal(grp.items, 'Subtotal');
         rows += productRowHtml(st, { isSubtotal: true });
       }
     }
