@@ -338,39 +338,45 @@
   /** diff class helper — appends --field-diff modifier when flagged */
   var DIFF_CLS = 'scw-bid-review__field-diff';
 
-  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId, packages) {
+  function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId, packages, diffsByPkg) {
     var td = el('td', 'scw-bid-review__sow-detail');
 
-    // Top-right "Revise" — for matched SOW rows with at least one bid
-    // package, lets the user open a CR modal pre-filled from the SOW
-    // values (asks the bidder to match SOW). Multi-package rows get an
-    // overflow menu listing each package; single-package rows get a
-    // direct button.
+    // Top-right "Revise bid to match →" — only for the packages whose
+    // bid actually differs from the SOW. If every bid matches, the
+    // button has nothing to ask for so we hide it entirely.
     if (row.sowItem && !row.noBid && !row.surveyNoBid && packages && packages.length) {
-      var attrsBase = function (pkgId) {
-        return {
-          'data-action':     'cell_request_change_from_sow',
-          'data-row-id':     row.id,
-          'data-package-id': pkgId,
-          'data-sow-id':     sowId || '',
-          'data-vis-qty':     qtyVisible ? '1' : '0',
-          'data-vis-cabling': cablingVisible ? '1' : '0',
-          'data-vis-conn':    connDevVisible ? '1' : '0',
+      var mismatched = [];
+      for (var mpi = 0; mpi < packages.length; mpi++) {
+        var pInfo = diffsByPkg && diffsByPkg[packages[mpi].id];
+        if (pInfo && pInfo.any) mismatched.push(packages[mpi]);
+      }
+
+      if (mismatched.length) {
+        var attrsBase = function (pkgId) {
+          return {
+            'data-action':     'cell_request_change_from_sow',
+            'data-row-id':     row.id,
+            'data-package-id': pkgId,
+            'data-sow-id':     sowId || '',
+            'data-vis-qty':     qtyVisible ? '1' : '0',
+            'data-vis-cabling': cablingVisible ? '1' : '0',
+            'data-vis-conn':    connDevVisible ? '1' : '0',
+          };
         };
-      };
-      var matchLabel = 'Revise bid to match →';
-      if (packages.length === 1) {
-        td.appendChild(buildCellActions([
-          { label: matchLabel, mod: 'revise', attrs: attrsBase(packages[0].id) }
-        ]));
-      } else {
-        var choices = [];
-        for (var sci = 0; sci < packages.length; sci++) {
-          choices.push({ label: packages[sci].name, attrs: attrsBase(packages[sci].id) });
+        var matchLabel = 'Revise bid to match →';
+        if (mismatched.length === 1) {
+          td.appendChild(buildCellActions([
+            { label: matchLabel, mod: 'revise', attrs: attrsBase(mismatched[0].id) }
+          ]));
+        } else {
+          var choices = [];
+          for (var sci = 0; sci < mismatched.length; sci++) {
+            choices.push({ label: mismatched[sci].name, attrs: attrsBase(mismatched[sci].id) });
+          }
+          var overflow = buildOverflowMenu(matchLabel, 'revise', choices);
+          overflow.classList.add('scw-bid-review__cell-actions');
+          td.appendChild(overflow);
         }
-        var overflow = buildOverflowMenu(matchLabel, 'revise', choices);
-        overflow.classList.add('scw-bid-review__cell-actions');
-        td.appendChild(overflow);
       }
     }
 
@@ -845,7 +851,7 @@
     }
 
     // SOW detail cell — highlight cell + individual differing fields
-    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null, sowId, packages);
+    var sowTd = buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, sowDiffs.any ? sowDiffs : null, sowId, packages, diffsByPkg);
     if (sowDiffs.any) {
       sowTd.classList.add('scw-bid-review__cell--mismatch');
     }
