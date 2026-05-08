@@ -208,6 +208,9 @@
 
   function injectWorksheetCard(sowItemId, hostTd) {
     if (!hostTd) return;
+    // Already has a card from a previous expand — leave it. The view_3728
+    // re-render listener handles refresh after edits.
+    if (hostTd.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]')) return;
     // device-worksheet renders wsTr inside view_3728's tbody with id=recordId
     var wsTr = document.querySelector(
       '#' + CFG.sowItemsViewKey + ' tr.scw-ws-row[id="' + sowItemId + '"]'
