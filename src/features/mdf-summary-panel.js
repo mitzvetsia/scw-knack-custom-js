@@ -388,8 +388,12 @@
       } else if (tr.classList.contains('kn-table-group')) {
         // L2 group rows roll into the parent L1 totals.
       } else if (
-        !tr.classList.contains('kn-table-totals') &&
-        !tr.classList.contains(ROW_CLASS) &&
+        // Only count the visible card rows. The original Knack data row
+        // (tr[data-scw-worksheet]) and inserted photo row share the
+        // record id, so without this filter every record was walked
+        // multiple times — doubling counts/labels and corrupting the
+        // firstSeenIdx ordering used by aggregate's sort.
+        tr.classList.contains('scw-ws-row') &&
         !tr.classList.contains(FILTER_HIDDEN_CLASS) &&
         tr.id && attrsById[tr.id]
       ) {

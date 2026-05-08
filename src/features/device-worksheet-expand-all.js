@@ -138,22 +138,40 @@
     viewEl.setAttribute(BOUND_ATTR, '1');
   }
 
-  // One debounced scan per render burst, scoped to views that aren't
-  // already bound. Avoids re-querying the whole DOM on every individual
-  // knack-view-render.
-  var scanTimer = 0;
+  // Scan unbound views and try to mount on each. Trivially cheap: the
+  // selector skips already-bound views, and mount() returns early
+  // unless tr.scw-ws-row + L1 group rows are both present.
+  function runScan() {
+    var views = document.querySelectorAll(
+      '.kn-view[id^="view_"]:not([' + BOUND_ATTR + '])'
+    );
+    for (var i = 0; i < views.length; i++) mount(views[i]);
+  }
+
+  // Debounced scheduler. knack-view-render fires before
+  // device-worksheet's transformView and group-collapse's enhance, so a
+  // single fast scan can land before tr.scw-ws-row or the L1 group
+  // headers exist. Schedule a few retries to cover the lifecycle:
+  //   250ms — typical case
+  //   1200ms — slower scenes / coordinated post-edit restore
+  //   3000ms — last-resort safety net
+  // Plus an immediate run on scw-worksheet-ready (device-worksheet's
+  // own completion signal) which deterministically catches the moment
+  // worksheet rows are in the DOM.
+  var scanTimers = [];
+  function clearTimers() {
+    for (var i = 0; i < scanTimers.length; i++) clearTimeout(scanTimers[i]);
+    scanTimers.length = 0;
+  }
   function scheduleScan() {
-    if (scanTimer) return;
-    scanTimer = setTimeout(function () {
-      scanTimer = 0;
-      var views = document.querySelectorAll(
-        '.kn-view[id^="view_"]:not([' + BOUND_ATTR + '])'
-      );
-      for (var i = 0; i < views.length; i++) mount(views[i]);
-    }, 250);
+    clearTimers();
+    scanTimers.push(setTimeout(runScan, 250));
+    scanTimers.push(setTimeout(runScan, 1200));
+    scanTimers.push(setTimeout(runScan, 3000));
   }
 
   $(document).on('knack-view-render.any', scheduleScan);
   $(document).on('knack-scene-render.any', scheduleScan);
+  document.addEventListener('scw-worksheet-ready', runScan);
 })();
 /*** END DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/
