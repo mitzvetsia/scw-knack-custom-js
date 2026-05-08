@@ -32,19 +32,25 @@
 
   /** Same as raw() but preserves the original HTML markup. Use for
    *  rich-text fields where bold / line breaks should render through.
-   *  Knack typically holds the HTML version under <key>_raw and
-   *  renders a cleaned display string at record[key], so check _raw
-   *  first. */
+   *  Knack inconsistently stores the HTML version: sometimes under
+   *  record[key] (the display value), sometimes under <key>_raw,
+   *  depending on the field type. Pick whichever side actually
+   *  contains HTML tags; if neither does, fall back to whichever is
+   *  defined. */
   function rawHtml(record, key) {
-    var rawV = record[key + '_raw'];
-    if (rawV != null) {
-      if (typeof rawV === 'object' && rawV.raw != null) return String(rawV.raw).trim();
-      if (typeof rawV === 'string') return rawV.trim();
+    function asStr(v) {
+      if (v == null) return null;
+      if (typeof v === 'string') return v.trim();
+      if (typeof v === 'object' && v.raw != null) return String(v.raw).trim();
+      return null;
     }
-    var v = record[key];
-    if (v == null) return '';
-    if (typeof v === 'object' && v.raw != null) return String(v.raw).trim();
-    return String(v).trim();
+    var dispStr = asStr(record[key]);
+    var rawStr  = asStr(record[key + '_raw']);
+    var dispHasTags = dispStr && /<[a-z]/i.test(dispStr);
+    var rawHasTags  = rawStr  && /<[a-z]/i.test(rawStr);
+    if (dispHasTags) return dispStr;
+    if (rawHasTags)  return rawStr;
+    return dispStr || rawStr || '';
   }
 
   function num(record, key) {
