@@ -264,11 +264,19 @@
       '}',
       '.scw-bid-review__header-action-cell {',
       '  text-align: center;',
+      '  vertical-align: bottom;',
       '}',
       '.scw-bid-review__header-action-cell .scw-bid-review__btn {',
       '  display: block;',
       '  width: 100%;',
       '  margin: 3px 0;',
+      '}',
+      /* Bid-column header detail cell sits above the actions cell —
+         pin the badge + bid-name to the top so the actions stay
+         flush at the bottom regardless of how tall the SOW status
+         column makes the row. */
+      '.scw-bid-review__header-details .scw-bid-review__header-detail-cell:not(.scw-bid-review__sow-header-cell) {',
+      '  vertical-align: top;',
       '}',
       '.scw-bid-review__col-status {',
       '  font-size: 10px;',
@@ -812,7 +820,7 @@
       '  vertical-align: top;',
       '  font-size: 12px;',
       '  position: relative;',
-      '  padding-right: 78px;', /* room for the top-right Revise button(s) */
+      '  padding-right: 160px;', /* room for the "Revise bid to match →" button */
       '}',
       /* Bid package data cells share the same top-right action zone. */
       '.scw-bid-review__row > td:nth-child(n+3):not(:last-child) {',
@@ -846,23 +854,6 @@
       '}',
       '.scw-bid-review__cell-action--revise:hover {',
       '  background: #f0f9ff; border-color: #38bdf8;',
-      '}',
-      /* Match SOW = ask the bidder to align to the SOW. Distinct
-         color (teal) vs the bid-side blue Revise so the user can see
-         at a glance which direction the request flows. */
-      '.scw-bid-review__cell-action--match-sow {',
-      '  color: #0f766e;',
-      '  border-color: #99f6e4;',
-      '  background: #f0fdfa;',
-      '}',
-      '.scw-bid-review__cell-action--match-sow:hover {',
-      '  background: #ccfbf1; border-color: #14b8a6;',
-      '}',
-      /* Same teal treatment when Match SOW is rendered as an overflow */
-      '.scw-bid-review__cell-actions .scw-bid-review__overflow-trigger--match-sow {',
-      '  color: #0f766e;',
-      '  border-color: #99f6e4;',
-      '  background: #f0fdfa;',
       '}',
       '.scw-bid-review__cell-action--remove {',
       '  color: #b91c1c;',
