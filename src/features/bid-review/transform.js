@@ -719,11 +719,21 @@
         var siRec = sowItems[si2];
         if (!siRec.id) continue;
         sowItemLookup[siRec.id] = {
-          mdfIdf:         connectionLabel(siRec, SFK.mdfIdf),
-          installFee:     num(siRec, SFK.installFee),
-          equipmentTotal: num(siRec, SFK.equipmentTotal),
-          laborDesc:      raw(siRec, SFK.laborDesc),
-          qty:            num(siRec, SFK.qty),
+          mdfIdf:          connectionLabel(siRec, SFK.mdfIdf),
+          installFee:      num(siRec, SFK.installFee),
+          equipmentTotal:  num(siRec, SFK.equipmentTotal),
+          laborDesc:       raw(siRec, SFK.laborDesc),
+          qty:             num(siRec, SFK.qty),
+          fee:             num(siRec, SFK.fee),
+          product:         connectionLabel(siRec, SFK.product),
+          existCabling:    raw(siRec, SFK.existCabling),
+          plenum:          raw(siRec, SFK.plenum),
+          exterior:        raw(siRec, SFK.exterior),
+          dropLength:      raw(siRec, SFK.dropLength),
+          conduit:         raw(siRec, SFK.conduit),
+          connDevice:      connectionLabelsAll(siRec, SFK.connDevice),
+          connDeviceIds:   connectionIdsAll(siRec, SFK.connDevice),
+          mapConn:         raw(siRec, SFK.mapConn),
         };
       }
       if (CFG.debug) {
@@ -860,12 +870,23 @@
           if (!r2.sowEquipmentTotal && siData.equipmentTotal) {
             r2.sowEquipmentTotal = siData.equipmentTotal;
           }
-          // Labor desc + qty: always prefer the SOW item record (field_2020
-          // / field_1964 — the actual editable source) over the bid record\'s
-          // projected display field (field_2019), which doesn\'t pick up a
-          // connected SOW edit until view_3680 itself re-fetches.
-          if (siData.laborDesc) r2.sowLaborDesc = siData.laborDesc;
-          if (siData.qty)       r2.sowQty      = siData.qty;
+          // Always prefer the SOW item record\'s editable fields over the
+          // bid record\'s projected display copies — view_3680\'s connection
+          // projections don\'t track edits made to the connected SOW item
+          // until view_3680 itself re-fetches, so the displayed row would
+          // otherwise stay stale after an inline panel edit.
+          r2.sowLaborDesc     = siData.laborDesc;
+          r2.sowQty           = siData.qty;
+          r2.sowFee           = siData.fee;
+          r2.sowProduct       = siData.product || r2.sowProduct;
+          r2.sowExistCabling  = siData.existCabling;
+          r2.sowPlenum        = siData.plenum;
+          r2.sowExterior      = siData.exterior;
+          r2.sowDropLength    = siData.dropLength;
+          r2.sowConduit       = siData.conduit;
+          r2.sowConnDevice    = siData.connDevice;
+          r2.sowConnDeviceIds = siData.connDeviceIds;
+          r2.sowMapConn       = siData.mapConn;
         }
       }
 
