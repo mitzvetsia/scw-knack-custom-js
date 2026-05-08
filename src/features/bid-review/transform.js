@@ -722,6 +722,8 @@
           mdfIdf:         connectionLabel(siRec, SFK.mdfIdf),
           installFee:     num(siRec, SFK.installFee),
           equipmentTotal: num(siRec, SFK.equipmentTotal),
+          laborDesc:      raw(siRec, SFK.laborDesc),
+          qty:            num(siRec, SFK.qty),
         };
       }
       if (CFG.debug) {
@@ -858,6 +860,12 @@
           if (!r2.sowEquipmentTotal && siData.equipmentTotal) {
             r2.sowEquipmentTotal = siData.equipmentTotal;
           }
+          // Labor desc + qty: always prefer the SOW item record (field_2020
+          // / field_1964 — the actual editable source) over the bid record\'s
+          // projected display field (field_2019), which doesn\'t pick up a
+          // connected SOW edit until view_3680 itself re-fetches.
+          if (siData.laborDesc) r2.sowLaborDesc = siData.laborDesc;
+          if (siData.qty)       r2.sowQty      = siData.qty;
         }
       }
 

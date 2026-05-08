@@ -225,11 +225,20 @@
     if (alreadyHasExpand && expandTr.classList.contains('scw-bid-review__expand-row--open')) {
       // Commit any in-flight inline edit before collapsing — clicking the
       // row to close doesn\'t blur the focused textarea/input on its own,
-      // so without this the user\'s typing never reaches the save path
-      // and the SOW row reads stale when reopened or when the cell\'s
-      // hidden duplicate shows again.
+      // so without this the user\'s typing never reaches the save path.
       var focused = expandTr.querySelector(':focus');
       if (focused && typeof focused.blur === 'function') focused.blur();
+      // Park the wsTr back in view_3728\'s tbody so the next reopen can
+      // find it. Otherwise it lives inside the closed expand-row, gets
+      // wiped on the next silent refresh, and reopening shows
+      // "Loading editor…" forever (view_3728 never re-renders to
+      // recreate the wsTr because direct-edit PUTs bypass it).
+      var wsTr = expandTr.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]');
+      if (wsTr) {
+        var sowView = document.getElementById(CFG.sowItemsViewKey);
+        var sowTbody = sowView ? sowView.querySelector('table.kn-table-table tbody') : null;
+        if (sowTbody) sowTbody.appendChild(wsTr);
+      }
       expandTr.classList.remove('scw-bid-review__expand-row--open');
       tr.setAttribute('aria-expanded', 'false');
       delete _expandedSowItems[sowItemId];
