@@ -193,22 +193,10 @@
       expandTr = document.createElement('tr');
       expandTr.className = 'scw-bid-review__expand-row';
       expandTr.setAttribute('data-expand-for', sowItemId);
-      // Split the row into two cells so the blue frame visually scopes to
-      // the SOW side only. First two td columns of the data row are the
-      // label + SOW detail; the rest are bid columns + actions.
-      var totalCols = tr.children.length;
-      var sowSpan = Math.min(2, totalCols);
-      var rightSpan = Math.max(0, totalCols - sowSpan);
       var td = document.createElement('td');
       td.className = 'scw-bid-review__expand-cell';
-      td.setAttribute('colspan', String(sowSpan));
+      td.setAttribute('colspan', String(tr.children.length));
       expandTr.appendChild(td);
-      if (rightSpan > 0) {
-        var spacer = document.createElement('td');
-        spacer.className = 'scw-bid-review__expand-spacer';
-        spacer.setAttribute('colspan', String(rightSpan));
-        expandTr.appendChild(spacer);
-      }
       tr.parentNode.insertBefore(expandTr, tr.nextSibling);
     }
 
