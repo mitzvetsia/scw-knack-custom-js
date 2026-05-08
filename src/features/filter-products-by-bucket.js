@@ -180,9 +180,25 @@
   document.addEventListener('click', function (e) {
     if (!e.target.closest) return;
 
+    // Standard path: clicked cell lives inside a Knack view container.
     var viewEl = e.target.closest('[id^="view_"]');
-    if (!viewEl) return;
-    var viewCfg = CONFIG.VIEWS[viewEl.id];
+    var viewCfg = viewEl ? CONFIG.VIEWS[viewEl.id] : null;
+    var viewIdForLog = viewEl ? viewEl.id : '';
+
+    // Bid-review path: the bid comparison grid mounts at
+    // #bid-review-matrix (outside any #view_XXXX), and expands rows by
+    // moving worksheet cards (tr.scw-ws-row) out of #view_3921 into
+    // its own table. Clicks inside that moved card never see a
+    // [id^="view_"] ancestor — so re-anchor to view_3921's config
+    // (field_1949 product / field_2219 bucket) when we detect either
+    // the matrix container or a transplanted worksheet row.
+    if (!viewCfg && (
+      e.target.closest('#bid-review-matrix') ||
+      e.target.closest('tr.scw-ws-row')
+    )) {
+      viewCfg = CONFIG.VIEWS.view_3921;
+      viewIdForLog = 'view_3921 (via bid-review-matrix)';
+    }
     if (!viewCfg) return;
 
     var td = e.target.closest('td.' + viewCfg.product);
@@ -193,7 +209,7 @@
 
     _lastClickedTr = tr;
     _lastViewCfg = viewCfg;
-    log('Product cell clicked in', viewEl.id, 'row', tr.id);
+    log('Product cell clicked in', viewIdForLog, 'row', tr.id);
     startPolling();
   }, true);
 
