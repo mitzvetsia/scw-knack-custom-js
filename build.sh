@@ -19,6 +19,7 @@ cat \
   src/features/modal-scroll-restore.js \
   src/features/ktl-hide-show-state.js \
   src/features/global-styles.js \
+  src/features/hide-data-source-views.js \
   src/features/scene-tweaks.js \
   src/features/percent-field-format.js \
   src/features/inline-form-recompose.js \
