@@ -1,31 +1,88 @@
-/*** DEVICE WORKSHEET — EXPAND/COLLAPSE ALL ***/
+/*** DEVICE WORKSHEET — EXPAND/COLLAPSE ALL L1 GROUPS ***/
 /**
- * Adds two buttons above any view that hosts device-worksheet cards:
- *   • Expand all   → opens every card's detail panel
- *   • Summary only → closes every card's detail (only the summary row stays)
+ * Adds two buttons above any worksheet view that has L1 (MDF/IDF) group
+ * accordions:
+ *   • Expand all   → opens every L1 group
+ *   • Collapse all → closes every L1 group (only group headers visible)
  *
- * Implementation: triggers the existing per-card toggle by clicking the
- * .scw-ws-toggle-zone on each .scw-ws-row whose current state doesn't
- * match the target. That reuses device-worksheet's toggleDetail logic,
- * including its photo-row coordination, instead of duplicating it.
+ * Operates by directly toggling group-collapse.js's class/state contract
+ * (.scw-collapsed on the header + display on rows up to the next L1) and
+ * writing the resulting state to the same localStorage key group-collapse
+ * reads on its next enhance pass. That way exclusive-accordion views
+ * (view_3586/3610/3921) honour the bulk action instead of snapping back
+ * to one-open-only on the next render.
  */
 (function () {
   'use strict';
 
   var BTN_HOST_CLS = 'scw-ws-bulk-toggle';
-  var BOUND_ATTR  = 'data-scw-bulk-toggle-bound';
+  var BOUND_ATTR   = 'data-scw-bulk-toggle-bound';
+  var L1_SEL = 'tr.kn-table-group.kn-group-level-1.scw-group-header';
 
-  function setAll(viewEl, wantOpen) {
-    var rows = viewEl.querySelectorAll('tr.scw-ws-row');
-    for (var i = 0; i < rows.length; i++) {
-      var tr = rows[i];
-      var detail = tr.querySelector('.scw-ws-detail');
-      if (!detail) continue;
-      var isOpen = detail.classList.contains('scw-ws-open');
-      if (isOpen === wantOpen) continue;
-      var zone = tr.querySelector('.scw-ws-toggle-zone');
-      if (zone) zone.click();
+  function getSceneId() {
+    var bodyId = document.body.id || '';
+    var m = bodyId.match(/scene_\d+/);
+    return m ? m[0] : null;
+  }
+
+  function stateKey(sceneId, viewId) {
+    return 'scw:collapse:' + sceneId + ':' + viewId;
+  }
+
+  function loadState(sceneId, viewId) {
+    try { return JSON.parse(localStorage.getItem(stateKey(sceneId, viewId)) || '{}'); }
+    catch (e) { return {}; }
+  }
+
+  function saveState(sceneId, viewId, state) {
+    try { localStorage.setItem(stateKey(sceneId, viewId), JSON.stringify(state)); }
+    catch (e) {}
+  }
+
+  // Mirror group-collapse.js's getRowLabelText: textContent minus the
+  // injected chevron and badge wrappers, whitespace collapsed.
+  function readL1Label(header) {
+    var clone = header.cloneNode(true);
+    var strip = clone.querySelectorAll('.scw-collapse-icon, .scw-group-badges');
+    for (var i = 0; i < strip.length; i++) {
+      strip[i].parentNode.removeChild(strip[i]);
     }
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function rowsUntilNextL1(header) {
+    var rows = [];
+    var node = header.nextElementSibling;
+    while (node) {
+      if (node.classList && node.classList.contains('kn-group-level-1')) break;
+      rows.push(node);
+      node = node.nextElementSibling;
+    }
+    return rows;
+  }
+
+  function setAllL1(viewEl, expand) {
+    var headers = viewEl.querySelectorAll(L1_SEL);
+    if (!headers.length) return;
+    var sceneId = getSceneId();
+    var viewId  = viewEl.id;
+    var state   = loadState(sceneId, viewId);
+
+    for (var i = 0; i < headers.length; i++) {
+      var h = headers[i];
+      if (expand) h.classList.remove('scw-collapsed');
+      else        h.classList.add('scw-collapsed');
+
+      state['L1:' + readL1Label(h)] = expand ? 0 : 1;
+
+      var rows = rowsUntilNextL1(h);
+      var disp = expand ? '' : 'none';
+      for (var j = 0; j < rows.length; j++) {
+        rows[j].style.display = disp;
+      }
+    }
+
+    saveState(sceneId, viewId, state);
   }
 
   function buildBtn(label, onClick) {
@@ -36,6 +93,7 @@
     b.style.marginRight = '6px';
     b.addEventListener('click', function (e) {
       e.preventDefault();
+      e.stopPropagation();
       onClick();
     });
     return b;
@@ -44,12 +102,14 @@
   function mount(viewEl) {
     if (!viewEl) return;
     if (viewEl.hasAttribute(BOUND_ATTR)) return;
+    // Only mount on views that have both worksheet rows and L1 group
+    // accordions. Plain grids without grouping are skipped.
     if (!viewEl.querySelector('tr.scw-ws-row')) return;
+    if (!viewEl.querySelector(L1_SEL)) return;
 
     var nav = viewEl.querySelector('.kn-records-nav');
     if (!nav) return;
 
-    // Don't double-inject if a previous render left our host behind.
     var existing = nav.querySelector('.' + BTN_HOST_CLS);
     if (existing) existing.remove();
 
@@ -58,32 +118,32 @@
     host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
 
     host.appendChild(buildBtn('Expand all', function () {
-      setAll(viewEl, true);
+      setAllL1(viewEl, true);
     }));
-    host.appendChild(buildBtn('Summary only', function () {
-      setAll(viewEl, false);
+    host.appendChild(buildBtn('Collapse all', function () {
+      setAllL1(viewEl, false);
     }));
 
-    // Insert at the top of kn-records-nav so the buttons sit alongside
-    // the existing per-page / filter controls.
     nav.insertBefore(host, nav.firstChild);
-
     viewEl.setAttribute(BOUND_ATTR, '1');
   }
 
-  function scan() {
-    var views = document.querySelectorAll('[id^="view_"]');
-    for (var i = 0; i < views.length; i++) mount(views[i]);
+  // One debounced scan per render burst, scoped to views that aren't
+  // already bound. Avoids re-querying the whole DOM on every individual
+  // knack-view-render.
+  var scanTimer = 0;
+  function scheduleScan() {
+    if (scanTimer) return;
+    scanTimer = setTimeout(function () {
+      scanTimer = 0;
+      var views = document.querySelectorAll(
+        '.kn-view[id^="view_"]:not([' + BOUND_ATTR + '])'
+      );
+      for (var i = 0; i < views.length; i++) mount(views[i]);
+    }, 250);
   }
 
-  // Run once on each scene render and on any view render — device-worksheet
-  // builds wsTrs after its own knack-view-render handler, so we wait one
-  // tick to let that pass complete before scanning.
-  $(document).on('knack-view-render.any', function () {
-    setTimeout(scan, 50);
-  });
-  $(document).on('knack-scene-render.any', function () {
-    setTimeout(scan, 50);
-  });
+  $(document).on('knack-view-render.any', scheduleScan);
+  $(document).on('knack-scene-render.any', scheduleScan);
 })();
-/*** END DEVICE WORKSHEET — EXPAND/COLLAPSE ALL ***/
+/*** END DEVICE WORKSHEET — EXPAND/COLLAPSE ALL L1 GROUPS ***/
