@@ -3,7 +3,7 @@
   'use strict';
 
   /* ── KTL hide/show button color palette ── */
-  const KTL_DEFAULT_COLOR = '#295f91';
+  const KTL_DEFAULT_COLOR = 'var(--scw-accent)';
 
   /* Per-view colour overrides are now driven by the _hsvcolor= keyword
      in each view's description.  See extract-hsv-color.js.              */
@@ -15,7 +15,7 @@
 
     /* H1 headings */
     h1:not(.kn-title) {
-      color: #07467c;
+      color: var(--scw-navy);
       font-weight: 800;
       margin-bottom: 0.5em;
       margin-top: 55px;
@@ -27,7 +27,7 @@
     /* H2 headings */
     h2:not(.kn-title) {
       font-weight: 800 !important;
-      color: #07467c !important;
+      color: var(--scw-navy) !important;
       font-size: 20px !important;
       margin-top: 30px !important;
     }
@@ -62,7 +62,7 @@
       width: 100%;
       font-weight: 600;
       font-size: 14px !important;
-      color: #fff;
+      color: var(--scw-surface-base);
       background-color: ${KTL_DEFAULT_COLOR};
       border-radius: 0 !important;
       padding: 10px 40px 10px 14px !important;
@@ -193,7 +193,7 @@
       margin: 6px 0 2px;
       font-size: 13px;
       line-height: 1.45;
-      color: #1e3a5f !important;
+      color: var(--scw-accent-deep) !important;
     }
     .kn-instructions p,
     .kn-description p {

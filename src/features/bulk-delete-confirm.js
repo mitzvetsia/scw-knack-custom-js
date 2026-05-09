@@ -40,7 +40,7 @@
       '  font: 13px/1.4 system-ui, -apple-system, sans-serif;',
       '}',
       '.scw-bdc-card {',
-      '  background: #fff; border-radius: 10px;',
+      '  background: var(--scw-surface-base); border-radius: 10px;',
       '  box-shadow: 0 18px 50px rgba(0,0,0,0.35);',
       '  padding: 22px 24px; min-width: 360px; max-width: 520px;',
       '  text-align: center;',
@@ -49,11 +49,11 @@
       '  font-size: 30px; margin-bottom: 8px;',
       '}',
       '.scw-bdc-msg {',
-      '  font-size: 15px; font-weight: 700; color: #111827;',
+      '  font-size: 15px; font-weight: 700; color: var(--scw-text-emphasis);',
       '  margin-bottom: 6px;',
       '}',
       '.scw-bdc-sub {',
-      '  font-size: 13px; color: #4b5563; margin-bottom: 18px;',
+      '  font-size: 13px; color: var(--scw-text-caption); margin-bottom: 18px;',
       '}',
       '.scw-bdc-btns {',
       '  display: flex; justify-content: center; gap: 8px;',
@@ -65,13 +65,13 @@
       '  border: 1px solid transparent;',
       '}',
       '.scw-bdc-btn--cancel {',
-      '  background: #fff; color: #1f2937; border-color: #d1d5db;',
+      '  background: var(--scw-surface-base); color: var(--scw-text-default); border-color: var(--scw-border-default);',
       '}',
-      '.scw-bdc-btn--cancel:hover { background: #f3f4f6; }',
+      '.scw-bdc-btn--cancel:hover { background: var(--scw-surface-muted); }',
       '.scw-bdc-btn--confirm {',
-      '  background: #b91c1c; color: #fff; border-color: #991b1b;',
+      '  background: var(--scw-danger-strong); color: var(--scw-surface-base); border-color: var(--scw-danger-deep);',
       '}',
-      '.scw-bdc-btn--confirm:hover { background: #991b1b; }'
+      '.scw-bdc-btn--confirm:hover { background: var(--scw-danger-deep); }'
     ].join('\n');
     document.head.appendChild(s);
   }

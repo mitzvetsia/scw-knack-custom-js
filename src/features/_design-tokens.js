@@ -41,22 +41,32 @@
     '  --scw-surface-base:   #ffffff;',
     '  --scw-surface-subtle: #f8fafc;', /* slate-50 — toolbar / summary panel bg */
     '  --scw-surface-muted:  #f1f5f9;', /* slate-100 — hover state */
-    '  --scw-surface-strong: #0f4c75;', /* navy — summary table headers, totals */
 
     // Borders
-    '  --scw-border-subtle:  #e2e8f0;',
-    '  --scw-border-default: #cbd5e1;',
-    '  --scw-border-strong:  #94a3b8;',
+    '  --scw-border-subtle:  #e2e8f0;', /* slate-200 */
+    '  --scw-border-default: #cbd5e1;', /* slate-300 */
+    '  --scw-border-strong:  #94a3b8;', /* slate-400 */
 
-    // Text
-    '  --scw-text-default:    #1e293b;',
-    '  --scw-text-muted:      #64748b;',
-    '  --scw-text-subtle:     #94a3b8;',
-    '  --scw-text-on-accent:  #ffffff;',
+    // Text — full slate scale matches bid-review (the visual target).
+    // Pick the lightest shade that still has enough contrast for the
+    // role: emphasis for headings/totals, default for primary body,
+    // body/caption for secondary, muted/subtle for auxiliary text.
+    '  --scw-text-emphasis: #0f172a;', /* slate-900 — headings, totals */
+    '  --scw-text-default:  #1e293b;', /* slate-800 — primary body */
+    '  --scw-text-body:     #334155;', /* slate-700 — secondary body */
+    '  --scw-text-caption:  #475569;', /* slate-600 — captions, labels */
+    '  --scw-text-muted:    #64748b;', /* slate-500 — auxiliary */
+    '  --scw-text-subtle:   #94a3b8;', /* slate-400 — least prominent */
+    '  --scw-text-on-accent: #ffffff;',
 
-    // Brand — the SCW blue used by the KTL accordion header accent.
-    // Anything that wants to feel like a primary CTA or a brand surface
-    // pulls from this triplet.
+    // Brand navy — the SCW dark navy (#0f4c75). Used for both surfaces
+    // (summary table headers, totals) AND text (group L2 labels, heading
+    // colour). One token, dual use; CSS context determines which.
+    '  --scw-navy:          #0f4c75;',
+
+    // Brand accent — the SCW blue used by the KTL accordion header
+    // accent. Anything that wants to feel like a primary CTA or a brand
+    // surface pulls from this triplet.
     '  --scw-accent:        #295F91;',
     '  --scw-accent-strong: #1f4a73;', /* hover */
     '  --scw-accent-deep:   #163654;', /* active / pressed */
@@ -64,13 +74,16 @@
     // Semantic — reserved for status. Per CLAUDE.md, never use red for
     // warnings (reserve red for errors / destructive actions); amber
     // is the warning colour everywhere. Each semantic role gets a
-    // -strong variant for hover/active states, mirroring the brand
-    // accent triplet.
-    '  --scw-info:        #0891b2;', /* cyan — neutral info / SOW filter */
-    '  --scw-info-strong: #0e7490;',
-    '  --scw-success:     #16a34a;',
-    '  --scw-warning:     #b45309;', /* amber */
-    '  --scw-danger:      #b91c1c;',
+    // -strong variant for hover, mirroring the brand accent triplet.
+    // Danger is a full triplet so destructive primaries (delete buttons)
+    // can layer hover/active states without re-declaring.
+    '  --scw-info:          #0891b2;', /* cyan-600 */
+    '  --scw-info-strong:   #0e7490;', /* cyan-700 */
+    '  --scw-success:       #16a34a;', /* green-600 */
+    '  --scw-warning:       #b45309;', /* amber-700 */
+    '  --scw-danger:        #dc2626;', /* red-600 — bid-review primary */
+    '  --scw-danger-strong: #b91c1c;', /* red-700 — hover */
+    '  --scw-danger-deep:   #991b1b;', /* red-800 — active */
 
     // L1 group accent — the colour painted on collapsible L1 group
     // headers (MDF/IDF rows on worksheet grids). Default is the

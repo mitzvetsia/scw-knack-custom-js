@@ -57,7 +57,7 @@
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
       '.' + STRIP_CLS + '__label {',
-      '  font-weight: 600; color: var(--scw-text-muted); margin-right: 4px;',
+      '  font-weight: 600; color: var(--scw-text-caption); margin-right: 4px;',
       '  letter-spacing: 0.02em; text-transform: uppercase; font-size: 11px;',
       '}',
       // Pill base
@@ -89,7 +89,7 @@
       '.' + STRIP_CLS + '__count {',
       '  display: inline-flex; align-items: center; justify-content: center;',
       '  min-width: 18px; padding: 0 5px;',
-      '  background: rgba(15, 23, 42, 0.08); color: var(--scw-text-muted);',
+      '  background: rgba(15, 23, 42, 0.08); color: var(--scw-text-caption);',
       '  border-radius: 9px; font-size: 11px; font-weight: 600;',
       '}',
       '.' + STRIP_CLS + '__pill.is-active .' + STRIP_CLS + '__count {',

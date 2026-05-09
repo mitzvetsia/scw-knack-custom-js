@@ -63,19 +63,19 @@
     s.id = STYLE_ID;
     s.textContent =
       'tr.' + ROW_CLASS + ' > td {' +
-      '  background: #f8fafc;' +
+      '  background: var(--scw-surface-subtle);' +
       '  padding: 10px 14px;' +
-      '  border-top: 1px solid #e2e8f0;' +
-      '  border-bottom: 1px solid #e2e8f0;' +
+      '  border-top: 1px solid var(--scw-border-subtle);' +
+      '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '}' +
       '.scw-mdf-summary-table {' +
       '  width: 100%;' +
       '  table-layout: fixed;' +
       '  border-collapse: collapse;' +
       '  font: 400 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: #1e293b;' +
-      '  background: #ffffff;' +
-      '  border: 1px solid #cbd5e1;' +
+      '  color: var(--scw-text-default);' +
+      '  background: var(--scw-surface-base);' +
+      '  border: 1px solid var(--scw-border-default);' +
       '  border-radius: 4px;' +
       '  overflow: hidden;' +
       '}' +
@@ -86,15 +86,15 @@
       '.scw-mdf-summary-table td {' +
       '  padding: 5px 10px !important;' +
       '  text-align: center !important;' +
-      '  border-bottom: 1px solid #e2e8f0;' +
+      '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '  vertical-align: middle !important;' +
       '}' +
       '.scw-mdf-summary-table th {' +
       '  font-size: 10px; font-weight: 700;' +
-      '  color: #475569;' +
+      '  color: var(--scw-text-caption);' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
-      '  background: #e2e8f0;' +
-      '  border-bottom: 2px solid #94a3b8;' +
+      '  background: var(--scw-border-subtle);' +
+      '  border-bottom: 2px solid var(--scw-border-strong);' +
       '  white-space: nowrap;' +
       '}' +
       '.scw-mdf-summary-table th.scw-mdf-product-h,' +
@@ -102,21 +102,21 @@
       '  text-align: left !important;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-product {' +
-      '  color: #1e293b; font-weight: 500;' +
+      '  color: var(--scw-text-default); font-weight: 500;' +
       '  padding-left: 22px !important;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
       '  display: block;' +
       '  margin-top: 4px;' +
       '  font: 400 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: #64748b;' +
+      '  color: var(--scw-text-muted);' +
       '  word-break: break-word;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
       '}' +
       '.scw-mdf-summary-table td.scw-mdf-empty {' +
-      '  color: #cbd5e1;' +
+      '  color: var(--scw-border-default);' +
       '}' +
       // Bucket section heading — the leading row of each bucket group.
       // Solid slate band with all-caps label spanning the full width;
@@ -124,14 +124,14 @@
       // skim "Networking → Other Equipment → Camera or Reader" without
       // hunting for italicized subtotals.
       '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
-      '  background: #334155 !important;' +
-      '  color: #f1f5f9 !important;' +
+      '  background: var(--scw-text-body) !important;' +
+      '  color: var(--scw-surface-muted) !important;' +
       '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.08em;' +
       '  padding: 7px 14px !important;' +
       '  text-align: left !important;' +
-      '  border-bottom: 1px solid #1e293b;' +
+      '  border-bottom: 1px solid var(--scw-text-default);' +
       '}' +
       // Camera-or-Reader band carries inline column labels for the
       // cabling/exterior/interior/plenum block. The label cell stays
@@ -145,35 +145,35 @@
       '  letter-spacing: 0.04em;' +
       '  padding: 7px 4px !important;' +
       '  white-space: normal;' +
-      '  color: #cbd5e1 !important;' +
+      '  color: var(--scw-border-default) !important;' +
       '}' +
       // Visual gap between bucket sections — a sliver of the panel
       // background shows through above every bucket-head except the
       // first. Cheaper than a spacer row and doesn't fight colspan.
       '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
-      '  border-top: 6px solid #f8fafc;' +
+      '  border-top: 6px solid var(--scw-surface-subtle);' +
       '}' +
       // Bucket subtotal — semi-bold, light slate band; pairs visually
       // with the dark bucket-head above and clearly closes the section.
       '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
-      '  background: #e2e8f0; color: #0f172a;' +
+      '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
       '  font-weight: 700;' +
-      '  border-top: 1px solid #94a3b8;' +
-      '  border-bottom: 1px solid #94a3b8;' +
+      '  border-top: 1px solid var(--scw-border-strong);' +
+      '  border-bottom: 1px solid var(--scw-border-strong);' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
-      '  color: #0f172a; text-align: left; padding-left: 22px !important;' +
+      '  color: var(--scw-text-emphasis); text-align: left; padding-left: 22px !important;' +
       '}' +
       // Grand Total — strongest visual weight: deep blue band, white
       // text, no border bleed. Always the bottom anchor of the panel.
       '.scw-mdf-summary-table tr.scw-mdf-total td {' +
-      '  background: #1e3a8a; color: #ffffff;' +
+      '  background: #1e3a8a; color: var(--scw-surface-base);' +
       '  font-weight: 800; font-size: 12.5px;' +
       '  border-top: 2px solid #1e3a8a;' +
       '  border-bottom: none;' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
-      '  color: #ffffff; text-align: left;' +
+      '  color: var(--scw-surface-base); text-align: left;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
       '}' +
@@ -183,13 +183,13 @@
       '.' + GRAND_CLASS + ' {' +
       '  margin: 8px 0 12px;' +
       '  padding: 10px 14px;' +
-      '  background: #f1f5f9;' +
-      '  border: 1px solid #cbd5e1;' +
+      '  background: var(--scw-surface-muted);' +
+      '  border: 1px solid var(--scw-border-default);' +
       '  border-radius: 4px;' +
       '}' +
       '.' + GRAND_CLASS + ' .scw-mdf-grand-title {' +
       '  font: 700 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: #475569;' +
+      '  color: var(--scw-text-caption);' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.06em;' +
       '  margin-bottom: 6px;' +
