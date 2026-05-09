@@ -90,6 +90,22 @@
     return FIELD_MAPS[key] || FIELD_MAPS['default'];
   }
 
+  // Explicit opt-in — only views listed below (or aliased to one) get
+  // summary panels. Auto-detection by tr.scw-ws-row is too broad: it
+  // matches MDF/IDF views (view_3617), photo views, and other sibling
+  // worksheet-shaped views whose schemas don't map to the summary
+  // aggregation. Rendering an empty "(no product)/Total: 0" panel on
+  // those views is best-case useless and worst-case interferes with
+  // Knack's render cycle.
+  //
+  // To enable a new view: add it to FIELD_MAPS (with its schema) or
+  // FIELD_ALIASES (sharing another view's schema).
+  function isSupportedView(viewId) {
+    return Object.prototype.hasOwnProperty.call(FIELD_MAPS, viewId) ||
+           Object.prototype.hasOwnProperty.call(FIELD_ALIASES, viewId) ||
+           viewId === 'view_3610' || viewId === 'view_3921';
+  }
+
   // Bucket id for cameras OR readers — only rows in this bucket
   // contribute to cabling / exterior / plenum aggregations.
   var CAM_READER_BUCKET = '6481e5ba38f283002898113c';
@@ -601,6 +617,9 @@
 
   // ── Transform ───────────────────────────────────────────────
   function transform(viewId) {
+    // Hard gate: only run on views we've explicitly mapped. See
+    // isSupportedView() comment for the why.
+    if (!isSupportedView(viewId)) return;
     var view = document.getElementById(viewId);
     if (!view) return;
     // No-op if this view isn't a worksheet view (no scw-ws-row marker).
@@ -727,6 +746,7 @@
 
   function schedule(viewId) {
     if (!viewId) return;
+    if (!isSupportedView(viewId)) return;
     var state = _attached[viewId] || (_attached[viewId] = { timer: null });
     if (state.timer) clearTimeout(state.timer);
     state.timer = setTimeout(function () {
@@ -797,6 +817,7 @@
       var v = views[i];
       if (!v.querySelector('tr.scw-ws-row')) continue;
       var vid = v.id;
+      if (!isSupportedView(vid)) continue;
       schedule(vid);
       // IIFE captures vid in the timer closure — without it, the loop
       // variable would be the last view\'s id by the time the timer fires.
