@@ -39,19 +39,56 @@
   var ROW_CLASS   = 'scw-mdf-summary-row';
   var GRAND_CLASS = 'scw-mdf-grand-summary';
 
-  // Field keys used in the aggregation. These line up with the cam/
-  // reader bucketOverride on view_3610 (see device-worksheet.js); for
-  // products that don't carry these fields the values just don't
-  // contribute, so the summary degrades gracefully.
-  var FIELD_PRODUCT   = 'field_1949';   // product label
-  var FIELD_QTY       = 'field_1964';   // quantity per row
-  var FIELD_LABEL     = 'field_1950';   // device label (cam/reader rows)
-  var FIELD_BUCKET    = 'field_2219';   // proposal bucket (connection id)
-  var FIELD_SORT      = 'field_2218';   // bucket sort order on the row
-  var FIELD_CABLING   = 'field_2461';   // existing cabling Y/N
-  var FIELD_EXTERIOR  = 'field_1984';   // exterior Y/N
-  var FIELD_PLENUM    = 'field_1983';   // plenum Y/N
-  var FIELD_SUBBID    = 'field_2151';   // sub bid total per row (summed in the Total Sub Bid column)
+  // ── Per-view field maps ─────────────────────────────────
+  // The default targets SOW Line Items (view_3610 family). Other
+  // worksheet objects need their own entry — same role shape, different
+  // field keys. The bucket record IDs below (CAM_READER_BUCKET) are the
+  // SAME across all worksheet objects because they reference the same
+  // Proposal Bucket records — only the field keys vary.
+  //
+  // To add a new worksheet view: inspect a row's data attributes (or
+  // grep the view\'s table headers in DevTools) and map each role to
+  // the appropriate field key on that object. Views that already map
+  // 1:1 to one of the entries below should reuse it via FIELD_ALIASES.
+  var FIELD_MAPS = {
+    // SOW Line Items — view_3610 / view_3921 family.
+    'default': {
+      product:  'field_1949',  // product label (full SKU)
+      qty:      'field_1964',  // quantity per row
+      label:    'field_1950',  // device label (cam/reader rows: E-001, I-002, ...)
+      bucket:   'field_2219',  // proposal bucket connection
+      sort:     'field_2218',  // bucket sort order (same field on every worksheet)
+      cabling:  'field_2461',  // existing cabling Y/N
+      exterior: 'field_1984',  // exterior Y/N
+      plenum:   'field_1983',  // plenum Y/N
+      subbid:   'field_2151'   // sub bid total per row
+    },
+    // Survey Line Items — subcontractor portal (view_3505 + family).
+    'view_3505': {
+      product:  'field_2627',
+      qty:      'field_2399',
+      label:    'field_2365',
+      bucket:   'field_2366',
+      sort:     'field_2218',
+      cabling:  'field_2370',
+      exterior: 'field_2372',
+      plenum:   'field_2371',
+      subbid:   'field_2401'
+    }
+  };
+
+  // Views that share another view\'s schema. Add an alias here instead
+  // of duplicating the field map.
+  var FIELD_ALIASES = {
+    // Subcontractor-portal sibling views (haven\'t yet been DOM-inspected;
+    // add one when confirmed):
+    // 'view_3559': 'view_3505',
+  };
+
+  function fieldsFor(viewId) {
+    var key = FIELD_ALIASES[viewId] || viewId;
+    return FIELD_MAPS[key] || FIELD_MAPS['default'];
+  }
 
   // Bucket id for cameras OR readers — only rows in this bucket
   // contribute to cabling / exterior / plenum aggregations.
@@ -211,20 +248,20 @@
     if (v == null) return '';
     return String(v).replace(/<[^>]*>/g, '').trim();
   }
-  function readBucketId(attrs) {
+  function readBucketId(attrs, fields) {
     if (!attrs) return '';
-    var raw = attrs[FIELD_BUCKET + '_raw'];
+    var raw = attrs[fields.bucket + '_raw'];
     if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) return raw[0].id;
     if (raw && typeof raw === 'object' && raw.id) return raw.id;
     return '';
   }
-  function readBucketLabel(attrs) {
+  function readBucketLabel(attrs, fields) {
     if (!attrs) return '';
-    var raw = attrs[FIELD_BUCKET + '_raw'];
+    var raw = attrs[fields.bucket + '_raw'];
     if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].identifier || '';
     if (raw && typeof raw === 'object' && raw.identifier) return raw.identifier;
     // Fallback to the rendered value (HTML stripped) if _raw is absent.
-    return readVal(attrs, FIELD_BUCKET);
+    return readVal(attrs, fields.bucket);
   }
   function readNum(v) {
     var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
@@ -265,7 +302,7 @@
   //     ],
   //     totals: { count, existCabling, newCabling, exterior, interior, plenum }
   //   }
-  function aggregate(attrsList) {
+  function aggregate(attrsList, fields) {
     var byProduct = {};
     var totals = {
       count: 0, existCabling: 0, newCabling: 0,
@@ -275,9 +312,9 @@
 
     for (var i = 0; i < attrsList.length; i++) {
       var a = attrsList[i];
-      var label = readVal(a, FIELD_PRODUCT) || '(no product)';
-      var bucketId = readBucketId(a);
-      var sortOrder = readNum(readVal(a, FIELD_SORT));
+      var label = readVal(a, fields.product) || '(no product)';
+      var bucketId = readBucketId(a, fields);
+      var sortOrder = readNum(readVal(a, fields.sort));
 
       var p = byProduct[label];
       if (!p) {
@@ -286,7 +323,7 @@
           count:         0,
           isCamReader:   false,
           bucketId:      bucketId,
-          bucketLabel:   readBucketLabel(a),
+          bucketLabel:   readBucketLabel(a, fields),
           minBucketSort: Infinity,
           firstSeenIdx:  i,
           existCabling:  0, newCabling: 0,
@@ -301,12 +338,12 @@
       // missing on some records.
       if (!p.bucketId && bucketId) {
         p.bucketId = bucketId;
-        p.bucketLabel = readBucketLabel(a);
+        p.bucketLabel = readBucketLabel(a, fields);
       }
 
-      // Qty column sums field_1964 (per-row quantity), not record count.
-      // Rows with a missing/zero qty contribute 0.
-      var qty = readNum(readVal(a, FIELD_QTY));
+      // Qty column sums the per-row quantity, not record count. Rows
+      // with a missing/zero qty contribute 0.
+      var qty = readNum(readVal(a, fields.qty));
       p.count       += qty;
       totals.count  += qty;
 
@@ -320,29 +357,29 @@
       if (bucketId === CAM_READER_BUCKET) {
         p.isCamReader = true;
 
-        var devLabel = readVal(a, FIELD_LABEL);
+        var devLabel = readVal(a, fields.label);
         if (devLabel) p.labels.push(devLabel);
 
-        var cab = readVal(a, FIELD_CABLING);
+        var cab = readVal(a, fields.cabling);
         if (cab !== '') {
           if (isYes(cab)) { p.existCabling++; totals.existCabling++; }
           else            { p.newCabling++;   totals.newCabling++; }
         }
 
-        var ext = readVal(a, FIELD_EXTERIOR);
+        var ext = readVal(a, fields.exterior);
         if (ext !== '') {
           if (isYes(ext)) { p.exterior++; totals.exterior++; }
           else            { p.interior++; totals.interior++; }
         }
 
-        if (isYes(readVal(a, FIELD_PLENUM))) {
+        if (isYes(readVal(a, fields.plenum))) {
           p.plenum++; totals.plenum++;
         }
       }
 
       // Sub bid — by product, regardless of bucket. Tracked on totals
       // too so the Total row can show a weighted average.
-      var bid = readNum(readVal(a, FIELD_SUBBID));
+      var bid = readNum(readVal(a, fields.subbid));
       if (bid > 0) {
         p.subBidSum   += bid;
         p.subBidCount += 1;
@@ -579,6 +616,12 @@
     var attrsById = buildAttrsLookup(viewId);
     if (!Object.keys(attrsById).length) return;
 
+    // Resolve the field map for this view once. Each worksheet object
+    // (SOW Line Items, Survey Line Items, etc.) has its own field keys
+    // for the same logical role — see FIELD_MAPS at the top of the
+    // file. aggregate() reads them via this object.
+    var fields = fieldsFor(viewId);
+
     var sampleRow = tbody.querySelector('tr:not(.' + ROW_CLASS + ')');
     var colCount = sampleRow ? sampleRow.children.length : 99;
 
@@ -593,7 +636,7 @@
       // "Project Wide Assumptions") — those rows aren't part of an
       // MDF/IDF, so the summary doesn't make sense for them.
       if (_l1.classList.contains('scw-synthetic-group')) return;
-      var data = aggregate(_list);
+      var data = aggregate(_list, fields);
       var html = buildPanelHtml(data);
       if (!html) return;
       var summaryRow = document.createElement('tr');
@@ -644,15 +687,15 @@
     }
     flush(currentL1, currentList);
 
-    renderGrand(view, grandList);
+    renderGrand(view, grandList, fields);
   }
 
-  function renderGrand(view, list) {
+  function renderGrand(view, list, fields) {
     var prev = view.querySelector('.' + GRAND_CLASS);
     if (prev) prev.remove();
     if (!list.length) return;
 
-    var html = buildPanelHtml(aggregate(list));
+    var html = buildPanelHtml(aggregate(list, fields));
     if (!html) return;
 
     var wrap = document.createElement('div');
