@@ -63,11 +63,14 @@
 
     // Semantic — reserved for status. Per CLAUDE.md, never use red for
     // warnings (reserve red for errors / destructive actions); amber
-    // is the warning colour everywhere.
-    '  --scw-info:    #0891b2;', /* cyan — neutral info / SOW filter */
-    '  --scw-success: #16a34a;',
-    '  --scw-warning: #b45309;', /* amber */
-    '  --scw-danger:  #b91c1c;',
+    // is the warning colour everywhere. Each semantic role gets a
+    // -strong variant for hover/active states, mirroring the brand
+    // accent triplet.
+    '  --scw-info:        #0891b2;', /* cyan — neutral info / SOW filter */
+    '  --scw-info-strong: #0e7490;',
+    '  --scw-success:     #16a34a;',
+    '  --scw-warning:     #b45309;', /* amber */
+    '  --scw-danger:      #b91c1c;',
 
     // L1 group accent — the colour painted on collapsible L1 group
     // headers (MDF/IDF rows on worksheet grids). Default is the
