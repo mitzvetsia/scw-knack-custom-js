@@ -1,9 +1,15 @@
-/*** FEATURE: Per-L1-group summary panel on view_3610 ***/
+/*** FEATURE: Per-L1-group summary panel on every device-worksheet view *******/
 /**
- * For each MDF/IDF L1 group on the SOW Line Items grid (view_3610),
- * inject a small details-panel <tr> right after the group header. The
- * panel renders a compact grid summarizing the rows under the group
- * by PRODUCT, with a totals row at the bottom.
+ * For each MDF/IDF L1 group on a device-worksheet grid, inject a small
+ * details-panel <tr> right after the group header. The panel renders a
+ * compact grid summarizing the rows under the group by PRODUCT, with a
+ * totals row at the bottom. Plus a single "grand summary" panel above
+ * the table aggregating every visible row.
+ *
+ * Auto-targets every view that renders worksheet card rows
+ * (tr.scw-ws-row), the same canonical marker as
+ * device-worksheet-toolbar.js. New worksheet views get summaries
+ * without per-view configuration.
  *
  * Columns:
  *   Product | Qty | Cabling Existing | Cabling New | Exterior | Interior | Plenum | Avg Sub Bid
@@ -28,7 +34,6 @@
 (function () {
   'use strict';
 
-  var TARGET_VIEW = 'view_3610';
   var STYLE_ID    = 'scw-mdf-summary-css';
   var NS          = '.scwMdfSummary';
   var ROW_CLASS   = 'scw-mdf-summary-row';
@@ -541,10 +546,10 @@
       '</table>';
   }
 
-  function buildAttrsLookup() {
+  function buildAttrsLookup(viewId) {
     var idx = {};
     try {
-      var v = window.Knack && Knack.views && Knack.views[TARGET_VIEW];
+      var v = window.Knack && Knack.views && Knack.views[viewId];
       var models = v && v.model && v.model.data && v.model.data.models;
       if (models) {
         for (var i = 0; i < models.length; i++) {
@@ -558,9 +563,12 @@
   }
 
   // ── Transform ───────────────────────────────────────────────
-  function transform() {
-    var view = document.getElementById(TARGET_VIEW);
+  function transform(viewId) {
+    var view = document.getElementById(viewId);
     if (!view) return;
+    // No-op if this view isn't a worksheet view (no scw-ws-row marker).
+    // Cheap guard — keeps this safe to call from any-view event handlers.
+    if (!view.querySelector('tr.scw-ws-row')) return;
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody) return;
 
@@ -568,7 +576,7 @@
     var prev = tbody.querySelectorAll('tr.' + ROW_CLASS);
     for (var p = 0; p < prev.length; p++) prev[p].remove();
 
-    var attrsById = buildAttrsLookup();
+    var attrsById = buildAttrsLookup(viewId);
     if (!Object.keys(attrsById).length) return;
 
     var sampleRow = tbody.querySelector('tr:not(.' + ROW_CLASS + ')');
@@ -667,46 +675,64 @@
   // succession (knack-view-render + scw-worksheet-ready, filter
   // changes, edit saves) and we want them to collapse into one DOM
   // update.
-  var _t = null;
-  function schedule() {
-    if (_t) clearTimeout(_t);
-    _t = setTimeout(function () { _t = null; transform(); }, 120);
+  // ── Per-view registry ───────────────────────────────────
+  // Each device-worksheet view we\'ve seen gets its own debounce timer
+  // here; without a registry, schedule() collisions across views would
+  // drop transforms (the second schedule clears the first view\'s timer
+  // before it fires). Keys are added lazily on first schedule().
+  var _attached = {};
+
+  function schedule(viewId) {
+    if (!viewId) return;
+    var state = _attached[viewId] || (_attached[viewId] = { timer: null });
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = setTimeout(function () {
+      state.timer = null;
+      transform(viewId);
+    }, 120);
   }
 
-  if (window.SCW && SCW.onViewRender) {
-    SCW.onViewRender(TARGET_VIEW, schedule, NS);
-  } else {
-    $(document)
-      .off('knack-view-render.' + TARGET_VIEW + NS)
-      .on('knack-view-render.' + TARGET_VIEW + NS, schedule);
-  }
+  // ── Bindings (multi-view) ───────────────────────────────
+  // We can\'t use SCW.onViewRender(viewId, ...) because the set of
+  // worksheet views isn\'t known ahead of time — it\'s discovered from
+  // DOM markers. Bind to .any and dispatch by viewId. transform()
+  // self-guards on tr.scw-ws-row presence, so non-worksheet views that
+  // sneak through the event filters cost a single querySelector.
+  $(document)
+    .off('knack-view-render.any' + NS)
+    .on('knack-view-render.any' + NS, function (e, view) {
+      if (view && view.key) schedule(view.key);
+    });
 
   // device-worksheet emits this after its row transform completes.
   document.addEventListener('scw-worksheet-ready', function (e) {
-    if (e && e.detail && e.detail.viewId === TARGET_VIEW) schedule();
+    if (e && e.detail && e.detail.viewId) schedule(e.detail.viewId);
   });
 
   // After inline edits the cell is patched and a record-saved event
-  // fires — recompute so the summary reflects the new value.
-  $(document).on('scw-record-saved' + NS, schedule);
+  // fires. The event doesn\'t carry a viewId, so refresh every attached
+  // view — each schedule() is debounced 120ms so we coalesce.
+  $(document).on('scw-record-saved' + NS, function () {
+    Object.keys(_attached).forEach(schedule);
+  });
 
   // Primary refresh trigger after a SOW filter pill click — sow-filter-
   // pills.js dispatches this CustomEvent from applyFilter(). Direct
   // event > tbody MutationObserver because Knack frequently rebuilds
   // the tbody, leaving observers attached to detached elements.
   document.addEventListener('scw-conn-filter-changed', function (e) {
-    if (e && e.detail && e.detail.viewId === TARGET_VIEW) schedule();
+    if (e && e.detail && e.detail.viewId) schedule(e.detail.viewId);
   });
 
   // Fallback: MutationObserver on tbody for filter-class changes that
   // didn't go through the event path (DevTools, future callers, etc.).
   // Re-bound on every view render since Knack may have replaced tbody.
-  function bindFilterObserver() {
-    var view = document.getElementById(TARGET_VIEW);
+  function bindFilterObserver(viewId) {
+    var view = document.getElementById(viewId);
     if (!view) return;
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody || tbody.__scwMdfFilterObs) return;
-    var mo = new MutationObserver(function () { schedule(); });
+    var mo = new MutationObserver(function () { schedule(viewId); });
     mo.observe(tbody, {
       subtree:    true,
       attributes: true,
@@ -714,12 +740,27 @@
     });
     tbody.__scwMdfFilterObs = mo;
   }
-  $(document).on('knack-view-render.' + TARGET_VIEW + NS + 'Obs', function () {
-    setTimeout(bindFilterObserver, 200);
+  $(document).on('knack-view-render.any' + NS + 'Obs', function (e, view) {
+    var viewId = view && view.key;
+    if (viewId) setTimeout(function () { bindFilterObserver(viewId); }, 200);
   });
 
-  if (document.getElementById(TARGET_VIEW)) {
-    schedule();
-    setTimeout(bindFilterObserver, 500);
+  // Initial scan — script can load after the first scene render fired.
+  // Discover every worksheet view in the current DOM and kick off both
+  // the transform and the tbody filter observer for each.
+  function initialScan() {
+    var views = document.querySelectorAll('.kn-view[id^="view_"]');
+    for (var i = 0; i < views.length; i++) {
+      var v = views[i];
+      if (!v.querySelector('tr.scw-ws-row')) continue;
+      var vid = v.id;
+      schedule(vid);
+      // IIFE captures vid in the timer closure — without it, the loop
+      // variable would be the last view\'s id by the time the timer fires.
+      setTimeout((function (id) {
+        return function () { bindFilterObserver(id); };
+      })(vid), 500);
+    }
   }
+  initialScan();
 })();
