@@ -30,12 +30,18 @@
   // Record count badge: list view IDs to enable
   const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
 
-  // Per-view background color overrides (keys = view IDs)
+  // Per-view configuration. `theme` is a named preset defined in
+  // _design-tokens.js — it sets a `data-scw-l1-theme` attribute on the
+  // view container, which CSS uses to retone --scw-grp-accent and
+  // --scw-grp-accent-rgb within that subtree. Adding a new colour:
+  // append a [data-scw-l1-theme="..."] block to _design-tokens.js, then
+  // reference it here by name. Mixing in flags like `exclusive` and
+  // `defaultOpen` is fine.
   const VIEW_OVERRIDES = {
-    view_3374: { L1bg: '#124E85' },
-    view_3325: { L1bg: '#124E85' },
-    view_3331: { L1bg: '#124E85' },
-    view_3475: { L1bg: '#5F6B7A' },
+    view_3374: { theme: 'sow-blue' },
+    view_3325: { theme: 'sow-blue' },
+    view_3331: { theme: 'sow-blue' },
+    view_3475: { theme: 'slate' },
     view_3596: { defaultOpen: true },
     // Device worksheet views — groups default expanded
     view_3512: { defaultOpen: true },
@@ -83,21 +89,10 @@
     } catch {}
   }
 
-  // ======================
-  // COLOR HELPERS
-  // ======================
-  /** Convert a hex colour string to [r, g, b]. */
-  function hexToRgb(hex) {
-    hex = hex.replace(/^#/, '');
-    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
-    // Handle rgba(r,g,b,a) format
-    var rgbaMatch = hex.match && hex.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (rgbaMatch) return [+rgbaMatch[1], +rgbaMatch[2], +rgbaMatch[3]];
-    var n = parseInt(hex, 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  }
-
-  // Default L1 accent colour (orange)
+  // L1 accent fallback used in CSS var() second arguments. The real
+  // value comes from _design-tokens.js (--scw-grp-accent at :root, or
+  // a per-view theme via [data-scw-l1-theme=...]). This literal is the
+  // belt-and-suspenders default if the tokens file failed to load.
   var DEFAULT_L1_ACCENT = '#ed8326';
 
   // SVG chevron icon matching the KTL accordion language
@@ -359,30 +354,9 @@
         border: 1px solid rgba(7,70,124,.15);
       }
 
-      /* ── Per-view accent overrides via CSS custom properties ──
-         (Set inline on each L1 tr in JS; static overrides kept for
-          view-scoped CSS specificity as a fallback.) */
-      ${Object.entries(VIEW_OVERRIDES).map(([viewId, o]) => {
-        var parts = [];
-        if (o.L1bg) {
-          var rgb = hexToRgb(o.L1bg);
-          parts.push(
-            '#' + viewId + ' .kn-table-group.kn-group-level-1.scw-group-header {' +
-            ' --scw-grp-accent: ' + o.L1bg + ';' +
-            ' --scw-grp-accent-rgb: ' + rgb.join(',') + '; }'
-          );
-        }
-        if (o.L2bg) {
-          parts.push('#' + viewId + ' .kn-table-group.kn-group-level-2.scw-group-header { background-color: ' + o.L2bg + ' !important; }');
-        }
-        if (o.L2color) {
-          parts.push(
-            '#' + viewId + ' .kn-table-group.kn-group-level-2.scw-group-header > td,' +
-            '#' + viewId + ' .kn-table-group.kn-group-level-2.scw-group-header > td * { color: ' + o.L2color + ' !important; }'
-          );
-        }
-        return parts.length ? '/* Per-view overrides: ' + viewId + ' */\n' + parts.join('\n') : '';
-      }).join('\n')}
+      /* Per-view L1 accent variation is handled by the token system —
+         see VIEW_OVERRIDES below + _design-tokens.js. The 9-rule
+         coupling that used to live here is gone. */
     `;
 
     const style = document.createElement('style');
@@ -623,6 +597,20 @@
 
       $view.addClass('scw-group-collapse-enabled');
 
+      // Apply the named L1 theme to the view container, if any. CSS
+      // selectors on [data-scw-l1-theme="..."] in _design-tokens.js
+      // shadow --scw-grp-accent and --scw-grp-accent-rgb within this
+      // subtree, which retones the entire L1 system (background,
+      // border, hover, chevron, bridge, badge) — no per-row JS needed.
+      var viewCfg = VIEW_OVERRIDES[viewId];
+      if (viewCfg && viewCfg.theme) {
+        if ($view.attr('data-scw-l1-theme') !== viewCfg.theme) {
+          $view.attr('data-scw-l1-theme', viewCfg.theme);
+        }
+      } else if ($view.attr('data-scw-l1-theme')) {
+        $view.removeAttr('data-scw-l1-theme');
+      }
+
       // Cache record count per view (count once, exclude group headers and totals)
       if (!(viewId in viewRecordCounts)) {
         var allTr = $view.find('table tbody tr').length;
@@ -650,14 +638,9 @@
 
       const level = getGroupLevel($tr);
 
-      // Set CSS custom properties for L1 accent colour
-      if (level === 1) {
-        var overrides = VIEW_OVERRIDES[viewId];
-        var accent = (overrides && overrides.L1bg) || DEFAULT_L1_ACCENT;
-        var rgb = hexToRgb(accent);
-        this.style.setProperty('--scw-grp-accent', accent);
-        this.style.setProperty('--scw-grp-accent-rgb', rgb.join(','));
-      }
+      // L1 accent variables come from the cascade — :root default in
+      // _design-tokens.js, optionally shadowed by data-scw-l1-theme
+      // on the view container (set above). No per-row inline styles.
 
       ensureBadges($tr, viewId);
 
