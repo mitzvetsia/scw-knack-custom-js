@@ -1,48 +1,60 @@
-/*** FEATURE: view_3610 unified toolbar (Phase 1 — consolidation) **************
+/*** FEATURE: device-worksheet unified toolbar ********************************
  *
  * Coordinator that gathers the four independently-mounted control strips
- * above view_3610 ("Scope of Work Line Items") into a single horizontal
- * command bar. Each underlying feature still owns its own DOM and
- * bindings — this file only restructures and re-skins:
+ * above any device-worksheet view into a single horizontal command bar.
+ * Each underlying feature still owns its own DOM and bindings — this
+ * file only restructures and re-skins:
  *
  *   • device-worksheet-expand-all.js  → mode segmented control
- *   • sow-filter-pills.js              → SOW filter pills
+ *   • sow-filter-pills.js              → SOW filter pills (when mounted)
  *   • bulk-delete-confirm.js / KTL    → Delete / Copy / Paste
+ *   • accordion-menu-inject.js         → "Add to Scope" / similar primary CTAs
  *   • Knack native                    → "Showing N of N" + Add filters
  *
  * Layout (single row, wraps on narrow screens):
  *
- *   ┌────────────────────────────────────────────────────────────────┐
- *   │ [Expand|Summary|Collapse]  SOW pills  | filters/count | bulk-ops │
- *   └────────────────────────────────────────────────────────────────┘
+ *   ┌────────────────────────────────────────────────────────────────────┐
+ *   │ [Expand|Summary|Collapse]  pills  | filters/count | bulk-ops | CTA │
+ *   └────────────────────────────────────────────────────────────────────┘
+ *
+ * Auto-targets every device-worksheet view: detection is presence of
+ * `tr.scw-ws-row` in the view, the same canonical marker used by
+ * device-worksheet-expand-all.js. New worksheet views get the toolbar
+ * automatically — no per-view configuration here.
  *
  * The MutationObserver is necessary because the contributing features
- * mount their DOM at staggered times (some on knack-view-render + 200ms,
- * some on knack-cell-update, KTL on its own cadence). Every time
- * .kn-records-nav's children change we re-flatten + re-order so the bar
- * looks coherent regardless of which feature painted last.
- *
- * Visual language matches the design tokens we'll formalize in Phase 2
- * (Known Issue #9): slate-on-white surfaces, single primary accent.
+ * mount their DOM at staggered times. Every time `.kn-records-nav`'s
+ * children change we re-flatten + re-order so the bar looks coherent
+ * regardless of which feature painted last. The observer is disconnected
+ * during each consolidate pass to break the self-mutation loop that
+ * appendChild reorder generates.
  ******************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW_ID  = 'view_3610';
-  var STYLE_ID = 'scw-view-3610-toolbar-css';
-  var OBS_KEY  = '__scwView3610ToolbarObs';
+  var STYLE_ID = 'scw-ws-toolbar-css';
+  var OBS_KEY  = '__scwWsToolbarObs';
   var BAR_ATTR = 'data-scw-toolbar';
 
+  // Canonical marker for device-worksheet views. Identical to the
+  // detection in device-worksheet-expand-all.js so the toolbar attaches
+  // to exactly the same set of views as the mode buttons.
+  var WS_ROW_SEL = 'tr.scw-ws-row';
+
   // ── Styles ──────────────────────────────────────────────
+  // Every selector below is scoped to .kn-records-nav[data-scw-toolbar]
+  // (the attribute we set on each consolidated nav). Without that scope
+  // the rules would leak to non-worksheet views — the previous version
+  // was scoped to #view_3610 to prevent that, but moving the scope to
+  // the attribute lets us generalise without redefining 12 selectors per
+  // new view.
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
       // ── Unified toolbar shell ──
-      // Override Knack's default block layout for .kn-records-nav so all
-      // child strips collapse onto one wrapping row.
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] {',
+      '.kn-records-nav[' + BAR_ATTR + '] {',
       '  display: flex !important;',
       '  flex-wrap: wrap;',
       '  align-items: center;',
@@ -54,21 +66,10 @@
       '  border-radius: 8px;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
-
       // Stray <br>s and standalone whitespace nodes Knack/KTL inject
       // between strips — collapse them so flex gap controls spacing.
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] > br {',
+      '.kn-records-nav[' + BAR_ATTR + '] > br {',
       '  display: none;',
-      '}',
-
-      // ── Slot dividers ──
-      // Vertical hairlines between logical groups, painted via the
-      // .scw-tb-sep separator element we inject between slots.
-      '.scw-tb-sep {',
-      '  flex: 0 0 1px;',
-      '  align-self: stretch;',
-      '  background: var(--scw-border-subtle);',
-      '  margin: 2px 2px;',
       '}',
 
       // Push everything after .scw-tb-spring to the right edge of the bar.
@@ -79,8 +80,9 @@
 
       // ── Mode segmented control ──
       // .scw-ws-bulk-toggle is the host built by device-worksheet-expand-all.js.
-      // Reskin its three .kn-button children as a single segmented control.
-      '#' + VIEW_ID + ' .scw-ws-bulk-toggle {',
+      // Reskin its three .kn-button children as a single segmented control —
+      // but only when the host lives inside our consolidated toolbar.
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle {',
       '  display: inline-flex !important;',
       '  gap: 0 !important;',
       '  margin: 0 !important;',
@@ -89,7 +91,7 @@
       '  overflow: hidden;',
       '  background: var(--scw-surface-base);',
       '}',
-      '#' + VIEW_ID + ' .scw-ws-bulk-toggle button.kn-button {',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle button.kn-button {',
       '  margin: 0 !important;',
       '  border: 0 !important;',
       '  border-right: 1px solid var(--scw-border-subtle) !important;',
@@ -106,18 +108,20 @@
       '  height: auto !important;',
       '  transition: background 100ms ease, color 100ms ease;',
       '}',
-      '#' + VIEW_ID + ' .scw-ws-bulk-toggle button.kn-button:last-child {',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle button.kn-button:last-child {',
       '  border-right: 0 !important;',
       '}',
-      '#' + VIEW_ID + ' .scw-ws-bulk-toggle button.kn-button:hover {',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle button.kn-button:hover {',
       '  background: var(--scw-surface-muted) !important;',
       '  color: var(--scw-text-default) !important;',
       '}',
 
       // ── SOW filter pills (inline, no card) ──
-      // sow-filter-pills.js paints its own f8fafc card; suppress that
-      // since the toolbar shell already provides the surface.
-      '#' + VIEW_ID + ' .scw-conn-filter-strip {',
+      // sow-filter-pills.js paints its own surface-subtle card; suppress
+      // that within the toolbar since the shell already provides the
+      // surface. The pill strip retains its card style on any view that
+      // doesn\'t have a consolidated toolbar.
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-conn-filter-strip {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '  background: transparent !important;',
@@ -126,19 +130,16 @@
       '}',
 
       // ── Knack native filter / pagination block ──
-      // The .kn-records-nav by default also contains "Showing 1-92 of 92"
-      // + the "Add filters" anchor + sort/save icons. Tighten margins so
-      // they sit cleanly on the row.
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] .kn-pagination,',
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary,',
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav {',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-pagination,',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary,',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '  display: inline-flex !important;',
       '  align-items: center;',
       '  gap: 8px;',
       '}',
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary {',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary {',
       '  color: var(--scw-text-muted);',
       '  font-size: 11px;',
       '  font-weight: 600;',
@@ -147,10 +148,9 @@
       '}',
 
       // ── Bulk-ops cluster ──
-      // bulk-delete-confirm.js's CSS already justify-end's the cluster
-      // when it's its own row. Once we reparent it into the toolbar we
-      // want it to sit naturally — no forced flex-end.
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] #bulkOpsControlsDiv-' + VIEW_ID + ' {',
+      // Generic id-prefix selector so this rule covers every view\'s KTL
+      // bulk-ops div (`bulkOpsControlsDiv-view_XXXX`) without enumeration.
+      '.kn-records-nav[' + BAR_ATTR + '] [id^="bulkOpsControlsDiv-"] {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '  display: inline-flex !important;',
@@ -158,22 +158,18 @@
       '  align-items: center;',
       '  gap: 6px;',
       '}',
-
       // Hide the bulk-ops cluster outright when nothing is selected — the
       // KTL buttons are all :disabled in that state, so the row reads as
-      // dead space. Showing them only when actionable removes a major
-      // source of visual noise on the default-empty state.
-      '#' + VIEW_ID + ' .kn-records-nav[' + BAR_ATTR + '] #bulkOpsControlsDiv-' + VIEW_ID + '.scw-tb-bulk-empty {',
+      // dead space.
+      '.kn-records-nav[' + BAR_ATTR + '] [id^="bulkOpsControlsDiv-"].scw-tb-bulk-empty {',
       '  display: none !important;',
       '}',
 
-      // ── "Add to Scope" primary CTA ──
-      // .scw-acc-actions normally lives in the accordion body above
-      // view_3610. We re-parent the whole container into the toolbar so
-      // the primary action sits in its conventional top-right slot.
-      // Reskin the .scw-acc-action-btn children as filled-accent CTAs
-      // using the accordion’s own accent color so the visual identity
-      // ties back to the parent accordion.
+      // ── Primary CTA ("Add to Scope" and similar accordion actions) ──
+      // The .scw-acc-actions container normally lives in the parent KTL
+      // accordion body. We re-parent the whole container into the toolbar
+      // so the primary action sits in its conventional top-right slot.
+      // Filled-accent CTA using the brand accent triplet.
       '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-actions {',
       '  display: inline-flex !important;',
       '  align-items: center;',
@@ -218,48 +214,53 @@
     document.head.appendChild(s);
   }
 
+  // ── Detection ───────────────────────────────────────────
+  function isWorksheetView(viewEl) {
+    return !!(viewEl && viewEl.querySelector && viewEl.querySelector(WS_ROW_SEL));
+  }
+
   // ── DOM consolidation pass ──────────────────────────────
-  // Idempotent: safe to run on every mutation tick. Only rearranges, never
-  // creates new controls.
+  // Idempotent: safe to run on every mutation tick. Only rearranges,
+  // never creates new controls.
   //
-  // IMPORTANT: disconnects the MutationObserver for the duration of the
-  // pass and reconnects at the end. Without this guard, the appendChild
-  // reorder calls below generate childList mutations that re-fire our
-  // own observer ~80ms later, producing a continuous mutation loop at
+  // IMPORTANT: disconnects this view\'s MutationObserver for the duration
+  // of the pass and reconnects at the end. Without this guard, the
+  // insertBefore calls below generate childList mutations that re-fire
+  // the observer ~80ms later, producing a continuous mutation loop at
   // ~10Hz. That churn breaks click-event delivery on the controls we
-  // re-parent (Expand/Summary/Collapse, Add to Scope) because their
-  // host elements are constantly being detached-and-reattached.
-  function consolidate() {
-    var view = document.getElementById(VIEW_ID);
-    if (!view) return;
-    var nav = view.querySelector('.kn-records-nav');
+  // re-parent (Expand/Summary/Collapse, Add to Scope) because their host
+  // elements are constantly being detached-and-reattached.
+  function consolidate(viewEl) {
+    if (!viewEl) return;
+    var nav = viewEl.querySelector('.kn-records-nav');
     if (!nav) return;
 
-    var ourObs = view[OBS_KEY];
+    var ourObs = viewEl[OBS_KEY];
     if (ourObs) ourObs.disconnect();
     try {
-      consolidateInner(view, nav);
+      consolidateInner(viewEl, nav);
     } finally {
-      if (ourObs) ourObs.observe(view, { childList: true, subtree: true });
+      if (ourObs) ourObs.observe(viewEl, { childList: true, subtree: true });
     }
   }
 
-  function consolidateInner(view, nav) {
+  function consolidateInner(viewEl, nav) {
+    var viewId = viewEl.id;
 
     // Mark the nav as managed so our scoped CSS engages.
     if (!nav.hasAttribute(BAR_ATTR)) nav.setAttribute(BAR_ATTR, '1');
 
     // Pull the KTL bulk-ops cluster into the toolbar (it normally lives
     // as a sibling of .kn-records-nav).
-    var bulk = document.getElementById('bulkOpsControlsDiv-' + VIEW_ID);
+    var bulk = document.getElementById('bulkOpsControlsDiv-' + viewId);
     if (bulk && bulk.parentNode !== nav) {
       nav.appendChild(bulk);
     }
 
-    // Pull the KTL accordion's .scw-acc-actions (which hosts the
-    // "Add to Scope" button) into the toolbar. It lives in
-    // .scw-ktl-accordion__body, as a sibling of #view_3610.
-    var accordion  = view.closest('.scw-ktl-accordion');
+    // Pull the parent KTL accordion\'s .scw-acc-actions (which hosts
+    // "Add to Scope" / similar primary CTAs) into the toolbar. It lives
+    // in .scw-ktl-accordion__body, as a sibling of this view.
+    var accordion  = viewEl.closest('.scw-ktl-accordion');
     var accActions = accordion && accordion.querySelector(
       '.scw-ktl-accordion__body > .scw-acc-actions'
     );
@@ -286,11 +287,8 @@
     //   3. spring (push remainder right)
     //   4. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
     //   5. Knack filter controls       (.kn-filters-nav)
-    //   6. Bulk-ops cluster            (#bulkOpsControlsDiv-view_3610)
-    //
-    // Strategy: append children in order. appendChild moves an existing
-    // node (no clone), so this re-orders without destroying state or
-    // listeners on the contributing features' DOM.
+    //   6. Bulk-ops cluster            ([id^="bulkOpsControlsDiv-"])
+    //   7. Primary CTA                 (.scw-acc-actions)
     var orderSelectors = [
       '.scw-ws-bulk-toggle',
       '.scw-conn-filter-strip',
@@ -298,12 +296,11 @@
       '.kn-records-nav-summary',
       '.kn-pagination',
       '.kn-filters-nav',
-      '#bulkOpsControlsDiv-' + VIEW_ID,
+      '#bulkOpsControlsDiv-' + viewId,
       '.scw-acc-actions'
     ];
 
-    // Inject the spring once — a flex-grow filler that pushes everything
-    // after it to the right of the bar.
+    // Inject the spring once.
     if (!nav.querySelector('.scw-tb-spring')) {
       var spring = document.createElement('span');
       spring.className = 'scw-tb-spring';
@@ -312,59 +309,57 @@
 
     // Position-aware reorder: only call insertBefore when an element is
     // not already in its target slot. Unconditional appendChild (even on
-    // a node that's already last child) generates a childList mutation
-    // record, which would re-fire our observer and produce a churn loop
-    // — and even with the disconnect guard, gratuitous mutations are
-    // wasted work.
+    // a node that\'s already last child) generates a childList mutation
+    // record — wasted work even with the disconnect guard.
     var prev = null;
     for (var i = 0; i < orderSelectors.length; i++) {
       var el = nav.querySelector(orderSelectors[i]);
       if (!el) continue;
       var expectedAfter = prev ? prev.nextElementSibling : nav.firstElementChild;
       if (el !== expectedAfter) {
-        // el is not where it should be — move it into position.
         nav.insertBefore(el, expectedAfter);
       }
       prev = el;
     }
   }
 
-  // ── Observer ────────────────────────────────────────────
-  // Each contributing feature mounts its DOM at slightly different
-  // times. A single observer on the view container runs consolidate()
-  // whenever .kn-records-nav's subtree changes.
-  function attachObserver() {
-    var view = document.getElementById(VIEW_ID);
-    if (!view) return;
-    if (view[OBS_KEY]) return;
+  // ── Per-view observer ───────────────────────────────────
+  function attachToView(viewEl) {
+    if (!viewEl || viewEl[OBS_KEY]) return;
+    if (!isWorksheetView(viewEl)) return;
 
-    consolidate();
+    consolidate(viewEl);
 
     var debounce = null;
     var obs = new MutationObserver(function () {
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(consolidate, 80);
+      debounce = setTimeout(function () { consolidate(viewEl); }, 80);
     });
-    obs.observe(view, { childList: true, subtree: true });
-    view[OBS_KEY] = obs;
+    obs.observe(viewEl, { childList: true, subtree: true });
+    viewEl[OBS_KEY] = obs;
+  }
+
+  // ── Discovery ───────────────────────────────────────────
+  // Scan every Knack view on the page; attach to any that qualifies as
+  // a device-worksheet view. Cheap to call repeatedly because
+  // attachToView early-returns on already-attached views.
+  function scan() {
+    var views = document.querySelectorAll('.kn-view[id^="view_"]');
+    for (var i = 0; i < views.length; i++) {
+      attachToView(views[i]);
+    }
   }
 
   // ── Bindings ────────────────────────────────────────────
   injectStyles();
 
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW_ID, function () {
-      // 300ms — sit just behind sow-filter-pills (200ms) and
-      // device-worksheet-expand-all (immediate) so both have mounted
-      // before our first consolidation pass.
-      setTimeout(attachObserver, 300);
-    }, 'scwView3610Toolbar');
-  }
+  $(document).on('knack-view-render.any', scan);
+  $(document).on('knack-scene-render.any', scan);
 
-  // First-load entry point — script can load after the initial scene
-  // render fired, so try once on load too.
-  if (document.getElementById(VIEW_ID)) {
-    setTimeout(attachObserver, 300);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scan);
+  } else {
+    scan();
   }
 })();
-/*** END FEATURE: view_3610 unified toolbar ***/
+/*** END FEATURE: device-worksheet unified toolbar ****************************/
