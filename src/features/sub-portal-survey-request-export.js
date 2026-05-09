@@ -325,15 +325,6 @@
       return;
     }
 
-    // Diagnostic — surface the payload sizes so we can see what's
-    // actually being sent. Remove once the regression is confirmed
-    // resolved.
-    console.log('[SCW sub-portal survey export] payload',
-      'recordId=' + payload.recordId,
-      'rowCount=' + payload.rowCount,
-      'htmlLen=' + (payload.html ? payload.html.length : 0),
-      'hasApi=' + !!(window.SCW && window.SCW.surveyWorksheetPdf));
-
     setButtonBusy(btn, 'Sending…');
 
     $.ajax({

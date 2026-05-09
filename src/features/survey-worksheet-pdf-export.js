@@ -283,7 +283,13 @@
     var title = buildSurveyTitle(page1Sections);
     var surveyId = getPage1FieldValue(SURVEY_ID_FIELD);
 
-    var tbody = root.querySelector('table tbody');
+    // Scope to Knack's standard table class — `table tbody` was
+    // ambiguous once mdf-summary-panel started injecting its own
+    // `<table class="scw-mdf-summary-table">` above the worksheet
+    // table inside .kn-table-wrapper. querySelector returns the first
+    // match in DOM order, so the unspecific selector was grabbing the
+    // summary's tbody (no scw-ws-row cards) and walking zero rows.
+    var tbody = root.querySelector('table.kn-table-table tbody');
     if (!tbody) {
       return {
         viewId: viewId,
