@@ -529,18 +529,28 @@
         var notes    = txt(notesCell);
         if (!camId && !product) continue;
 
-        // Pick the highest-resolution available image (img has both
-        // a thumb src and a data-kn-img-gallery original) — full
-        // resolution renders crisper at print scale.
+        // Pick the THUMBNAIL src, NOT data-kn-img-gallery (which
+        // points at the full original — typically 3–12 MB per camera
+        // photo). With 85 cameras, originals balloon the PDF to
+        // 50+ MB. Knack's thumb_14 variant is ~300-500px wide and
+        // 50-150 KB per image — still crisp at our 160px print
+        // display size, but ~50× smaller per image and ~10× smaller
+        // for the whole PDF.
         var photoSrcs = [];
         for (var p = 0; p < photoEls.length; p++) {
-          var fullSrc = photoEls[p].getAttribute('data-kn-img-gallery') ||
-                        photoEls[p].getAttribute('src') || '';
-          if (fullSrc) photoSrcs.push(fullSrc);
+          var src = photoEls[p].getAttribute('src') || '';
+          if (src && src.indexOf('thumb') === -1 && src.indexOf('original') !== -1) {
+            // Defensive: if some other module rewrote src to the
+            // original, derive the thumb_14 sibling URL.
+            src = src.replace('/original/', '/thumb_14/');
+          }
+          if (src) photoSrcs.push(src);
         }
+        // width hint helps renderers that respect HTML attrs decide
+        // not to embed the asset at higher-than-display resolution.
         var photoHtml = photoSrcs.length
           ? photoSrcs.slice(0, 2).map(function (src) {
-              return '<img src="' + escapeAttr(src) + '" alt="">';
+              return '<img src="' + escapeAttr(src) + '" width="160" alt="">';
             }).join('')
           : '<div class="laf-camera__photo-empty">No photo</div>';
 
