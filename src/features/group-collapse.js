@@ -150,12 +150,12 @@
         transform: rotate(-90deg);
       }
 
-      /* ── L1 chevron colours ── */
+      /* ── L1 chevron colour — neutral slate, no per-view accent ── */
       ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-collapse-icon')} {
-        color: var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
+        color: #475569;
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header:hover .scw-collapse-icon')} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.10);
+        background: rgba(71, 85, 105, 0.10);
       }
 
       /* ── L2 chevron colours ── */
@@ -199,7 +199,6 @@
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td')} {
         padding: 10px 12px !important;
         border-bottom: 1px solid #cbd5e1;
-        border-left: 4px solid var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
       }
 
       /* L1 hover — slightly darker slate, no accent wash */
@@ -217,18 +216,6 @@
       ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td')} {
         border-bottom: 1px solid #cbd5e1;
         box-shadow: none;
-      }
-
-      /* ── Bridge: content rows beneath an expanded L1 ──
-         Continue the left accent border on the first content row
-         (and retint the worksheet card's top border) so the
-         header and content read as one unit. Kept at a low
-         opacity so the accent doesn't dominate the page. */
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td:first-child')} {
-        border-left: 4px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.30);
-      }
-      ${s('.scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) .scw-ws-card')} {
-        border-top-color: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.25);
       }
 
       /* Vertical separation between stacked L1 rows */
@@ -338,9 +325,9 @@
         border-radius: 10px;
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-1.scw-group-header .scw-record-count')} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.14);
-        color: var(--scw-grp-accent, ${DEFAULT_L1_ACCENT});
-        border: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.22);
+        background: rgba(71, 85, 105, 0.10);
+        color: #475569;
+        border: 1px solid rgba(71, 85, 105, 0.20);
       }
       ${s('.scw-group-collapse-enabled tr.kn-group-level-2.scw-group-header .scw-record-count')} {
         background: rgba(7,70,124,.08);

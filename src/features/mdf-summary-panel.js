@@ -177,10 +177,7 @@
       '  color: var(--scw-border-default);' +
       '}' +
       // Bucket section heading — light slate band with dark text.
-      // Carries an L1-accent left border so the summary visually nests
-      // inside whatever group it belongs to (orange L1 → orange edge,
-      // slate L1 → slate edge). Falls back to slate-300 outside any
-      // themed group. Much quieter than the previous dark navy bands.
+      // Neutral chrome, no per-view accent stripe.
       '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
       '  background: var(--scw-surface-muted) !important;' +
       '  color: var(--scw-text-body) !important;' +
@@ -189,7 +186,6 @@
       '  letter-spacing: 0.08em;' +
       '  padding: 7px 14px !important;' +
       '  text-align: left !important;' +
-      '  border-left: 3px solid var(--scw-grp-accent, var(--scw-border-strong));' +
       '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '}' +
       // Camera-or-Reader band carries inline column labels for the
@@ -222,13 +218,11 @@
       '  color: var(--scw-text-emphasis); text-align: left; padding-left: 22px !important;' +
       '}' +
       // Grand Total — quiet bottom anchor. Slate-100 background, dark
-      // emphasis text, thick accent top-border in the L1 theme color.
-      // Replaces the previous deep-navy block that competed with every
-      // other rectangle on the page.
+      // emphasis text, thick neutral slate top-border.
       '.scw-mdf-summary-table tr.scw-mdf-total td {' +
       '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
       '  font-weight: 800; font-size: 12.5px;' +
-      '  border-top: 2px solid var(--scw-grp-accent, var(--scw-accent));' +
+      '  border-top: 2px solid var(--scw-border-strong);' +
       '  border-bottom: none;' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
