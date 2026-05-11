@@ -62,9 +62,8 @@
 
       '.' + SUBPANEL_CLS + ' {',
       '  border-top: 1px dashed #e2e8f0;',
-      '  padding-top: 10px;',
+      '  padding: 10px 12px 6px;',
       '  margin-top: 10px;',
-      '  grid-column: 1 / -1;',   /* span the full sections grid */
       '}',
       '.' + SUBPANEL_CLS + '-title {',
       '  font-size: 11px;',
@@ -180,11 +179,10 @@
     if (prior) prior.parentNode.removeChild(prior);
     if (!configs || !configs.length) return;
 
-    // Try a few mount points in order of preference so we degrade
-    // gracefully against future device-worksheet structural changes.
+    // Mount into .scw-ws-detail (full card width). NOT .scw-ws-sections —
+    // that's the 2-column grid for left/right and would constrain us.
     var mount =
-      wsTr.querySelector('.scw-ws-sections') ||
-      wsTr.querySelector('.scw-ws-detail')   ||
+      wsTr.querySelector('.scw-ws-detail') ||
       wsTr.querySelector('.scw-ws-card');
     if (!mount) return;
 
@@ -262,39 +260,79 @@
     }
   }
 
+  // Set true while we're writing our own DOM so the MutationObserver
+  // doesn't re-fire merge() in response to our own injections.
+  var _selfMutating = false;
+  // Hash of (configs + wsRow ids) from the last successful merge —
+  // skip work when nothing changed.
+  var _lastHash = '';
+
+  function computeHash(index, wsRows) {
+    var keys = Object.keys(index).sort();
+    var parts = [];
+    for (var k = 0; k < keys.length; k++) {
+      var lid = keys[k];
+      parts.push(lid);
+      var arr = index[lid];
+      for (var a = 0; a < arr.length; a++) {
+        var cfg = arr[a];
+        parts.push(cfg.id);
+        for (var f = 0; f < FIELDS.length; f++) {
+          var v = cfg.fields[FIELDS[f].key];
+          parts.push(v ? v.text : '');
+        }
+      }
+    }
+    for (var w = 0; w < wsRows.length; w++) parts.push(wsRows[w].id);
+    return parts.join('|');
+  }
+
   /** Merge configs into every install worksheet card. */
   function merge() {
-    var index = buildConfigIndex();
     var wsRows = document.querySelectorAll(
       'tr.scw-ws-row[data-scw-view-id="' + INSTALL_VIEW + '"]'
     );
     if (!wsRows.length) return;
-    for (var i = 0; i < wsRows.length; i++) {
-      var wsTr = wsRows[i];
-      injectSubpanel(wsTr, index[wsTr.id] || []);
+    var index = buildConfigIndex();
+    var hash = computeHash(index, wsRows);
+    if (hash === _lastHash) return;
+    _lastHash = hash;
+
+    _selfMutating = true;
+    try {
+      for (var i = 0; i < wsRows.length; i++) {
+        injectSubpanel(wsRows[i], index[wsRows[i].id] || []);
+      }
+    } finally {
+      // Defer clearing so the observer ignores the microtask batch
+      // emitted by our DOM writes above.
+      setTimeout(function () { _selfMutating = false; }, 0);
     }
   }
 
-  /** Run merge at staggered delays — covers either view rendering late. */
-  function scheduleMerges() {
-    setTimeout(merge,  50);
-    setTimeout(merge, 250);
-    setTimeout(merge, 750);
-    setTimeout(merge, 2000);
-  }
+  /** Reset the hash so the next merge() rebuilds even if data is unchanged. */
+  function invalidate() { _lastHash = ''; }
 
-  /** Watch view_3915 for any DOM rebuild and re-merge. Idempotent. */
+  /** Watch only the install-view tbody (row add/remove). Anything deeper
+   *  is our own work and is ignored via _selfMutating. */
   function installMutationObserver() {
     var installView = document.getElementById(INSTALL_VIEW);
     if (!installView || installView.__scwInstallObs) return;
+    var tbody = installView.querySelector('table tbody');
+    if (!tbody) return;
     installView.__scwInstallObs = true;
     var pending = false;
     var obs = new MutationObserver(function () {
-      if (pending) return;
+      if (_selfMutating || pending) return;
       pending = true;
-      setTimeout(function () { pending = false; merge(); }, 150);
+      setTimeout(function () {
+        pending = false;
+        // Row set may have changed — re-evaluate.
+        invalidate();
+        merge();
+      }, 150);
     });
-    obs.observe(installView, { childList: true, subtree: true });
+    obs.observe(tbody, { childList: true });
   }
 
   // ── Init ────────────────────────────────────────────────────────
@@ -304,12 +342,16 @@
 
     window.SCW.onViewRender(INSTALL_VIEW, function () {
       ensureToggleButton();
+      // tbody is re-built; row set may have changed.
+      invalidate();
       installMutationObserver();
-      scheduleMerges();
+      setTimeout(merge, 50);
     }, 'scwInstallConfig');
 
     window.SCW.onViewRender(CONFIG_VIEW, function () {
-      scheduleMerges();
+      // Config data may have changed after an inline edit.
+      invalidate();
+      setTimeout(merge, 50);
     }, 'scwInstallConfig');
   }
 
