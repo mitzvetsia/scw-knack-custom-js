@@ -189,9 +189,9 @@
           product:          { key: 'field_2790', type: 'readOnly',   summary: true, productStyle: true },
           // TODO: confirm field_2825's actual Knack dropdown option list — guesses below.
           installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
-          existingCabling:  { key: 'field_2807', type: 'toggleChit', summary: true },
-          exteriorChit:     { key: 'field_2805', type: 'toggleChit', summary: true, chitLabel: 'Exterior' },
-          plenumChit:       { key: 'field_2806', type: 'toggleChit', summary: true, chitLabel: 'Plenum' },
+          existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling' },
+          exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior' },
+          plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum' },
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
@@ -204,10 +204,10 @@
           dropLength:       { key: 'field_2804', type: 'readOnly' },
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
-        summaryLayout: ['existingCabling', 'exteriorChit', 'plenumChit', 'installStatus'],
+        summaryLayout: ['installStatus'],
         detailLayout: {
           left:  ['mounting', 'networkingDevice', 'connectedDevice', 'laborDescription'],
-          right: ['dropLength', 'conduitFeet', 'scwNotes']
+          right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'scwNotes']
         },
         bucketField: 'field_2822',
         // ── Override: used for all NON-camera/reader rows
