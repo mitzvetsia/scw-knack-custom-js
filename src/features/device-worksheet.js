@@ -189,9 +189,9 @@
           product:          { key: 'field_2790', type: 'readOnly',   summary: true, productStyle: true },
           // TODO: confirm field_2825's actual Knack dropdown option list — guesses below.
           installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
-          existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling' },
-          exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior' },
-          plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum' },
+          existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling', showWhenFieldIsYes: 'field_2807' },
+          exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior',         showWhenFieldIsYes: 'field_2805' },
+          plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
