@@ -54,16 +54,22 @@
     s.id = STYLE_ID;
     s.textContent = [
       // ── Unified toolbar shell ──
+      // Transparent — the toolbar already lives inside the parent KTL
+      // accordion card. Adding another bordered/filled rectangle here
+      // stacks a third "card within a card" against the summary panel
+      // and the data grid below. Border-bottom is the only chrome we
+      // keep, so the toolbar still reads as a distinct strip.
       '.kn-records-nav[' + BAR_ATTR + '] {',
       '  display: flex !important;',
       '  flex-wrap: wrap;',
       '  align-items: center;',
       '  gap: 10px 12px;',
-      '  padding: 8px 10px;',
-      '  margin: 0 0 12px;',
-      '  background: var(--scw-surface-subtle);',
-      '  border: 1px solid var(--scw-border-subtle);',
-      '  border-radius: 8px;',
+      '  padding: 6px 2px 10px;',
+      '  margin: 0 0 10px;',
+      '  background: transparent;',
+      '  border: 0;',
+      '  border-bottom: 1px solid var(--scw-border-subtle);',
+      '  border-radius: 0;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
       // Stray <br>s and standalone whitespace nodes Knack/KTL inject

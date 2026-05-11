@@ -176,26 +176,25 @@
       '.scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: var(--scw-border-default);' +
       '}' +
-      // Bucket section heading — the leading row of each bucket group.
-      // Solid slate band with all-caps label spanning the full width;
-      // doubles as the visual separator between buckets so the eye can
-      // skim "Networking → Other Equipment → Camera or Reader" without
-      // hunting for italicized subtotals.
+      // Bucket section heading — light slate band with dark text.
+      // Carries an L1-accent left border so the summary visually nests
+      // inside whatever group it belongs to (orange L1 → orange edge,
+      // slate L1 → slate edge). Falls back to slate-300 outside any
+      // themed group. Much quieter than the previous dark navy bands.
       '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
-      '  background: var(--scw-text-body) !important;' +
-      '  color: var(--scw-surface-muted) !important;' +
+      '  background: var(--scw-surface-muted) !important;' +
+      '  color: var(--scw-text-body) !important;' +
       '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.08em;' +
       '  padding: 7px 14px !important;' +
       '  text-align: left !important;' +
-      '  border-bottom: 1px solid var(--scw-text-default);' +
+      '  border-left: 3px solid var(--scw-grp-accent, var(--scw-border-strong));' +
+      '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '}' +
       // Camera-or-Reader band carries inline column labels for the
-      // cabling/exterior/interior/plenum block. The label cell stays
-      // big-and-left like other bucket heads; the column-label cells
-      // are smaller, centered, and tighter so they read as headers
-      // rather than as section titles.
+      // cabling/exterior/interior/plenum block. Smaller centered headers
+      // — same band background as the bucket-head, muted text.
       '.scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
       '  font: 700 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-align: center !important;' +
@@ -203,54 +202,56 @@
       '  letter-spacing: 0.04em;' +
       '  padding: 7px 4px !important;' +
       '  white-space: normal;' +
-      '  color: var(--scw-border-default) !important;' +
+      '  color: var(--scw-text-caption) !important;' +
+      '  border-left: 0 !important;' +
       '}' +
       // Visual gap between bucket sections — a sliver of the panel
       // background shows through above every bucket-head except the
-      // first. Cheaper than a spacer row and doesn't fight colspan.
+      // first. Reduced from 6px to 4px since the band itself is lighter.
       '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
-      '  border-top: 6px solid var(--scw-surface-subtle);' +
+      '  border-top: 4px solid var(--scw-surface-base);' +
       '}' +
-      // Bucket subtotal — semi-bold, light slate band; pairs visually
-      // with the dark bucket-head above and clearly closes the section.
+      // Bucket subtotal — slate-100 band with emphasis text.
       '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
       '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
       '  font-weight: 700;' +
-      '  border-top: 1px solid var(--scw-border-strong);' +
-      '  border-bottom: 1px solid var(--scw-border-strong);' +
+      '  border-top: 1px solid var(--scw-border-default);' +
+      '  border-bottom: 1px solid var(--scw-border-default);' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
       '  color: var(--scw-text-emphasis); text-align: left; padding-left: 22px !important;' +
       '}' +
-      // Grand Total — strongest visual weight: deep blue band, white
-      // text, no border bleed. Always the bottom anchor of the panel.
+      // Grand Total — quiet bottom anchor. Slate-100 background, dark
+      // emphasis text, thick accent top-border in the L1 theme color.
+      // Replaces the previous deep-navy block that competed with every
+      // other rectangle on the page.
       '.scw-mdf-summary-table tr.scw-mdf-total td {' +
-      '  background: #1e3a8a; color: var(--scw-surface-base);' +
+      '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
       '  font-weight: 800; font-size: 12.5px;' +
-      '  border-top: 2px solid #1e3a8a;' +
+      '  border-top: 2px solid var(--scw-grp-accent, var(--scw-accent));' +
       '  border-bottom: none;' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
-      '  color: var(--scw-surface-base); text-align: left;' +
+      '  color: var(--scw-text-emphasis); text-align: left;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
       '}' +
-      // Grand-summary wrapper — mounted above the kn-table so it sits
-      // outside Knack's grouping/pagination machinery. Uses the same
-      // .scw-mdf-summary-table renderer; only the chrome differs.
+      // Grand-summary wrapper — transparent now. Lives directly on the
+      // page background (or whatever surface its parent provides) so it
+      // doesn\'t stack a "card within a card" against the toolbar above
+      // and the L1 group headers below.
       '.' + GRAND_CLASS + ' {' +
-      '  margin: 8px 0 12px;' +
-      '  padding: 10px 14px;' +
-      '  background: var(--scw-surface-muted);' +
-      '  border: 1px solid var(--scw-border-default);' +
-      '  border-radius: 4px;' +
+      '  margin: 4px 0 14px;' +
+      '  padding: 0;' +
+      '  background: transparent;' +
+      '  border: 0;' +
       '}' +
       '.' + GRAND_CLASS + ' .scw-mdf-grand-title {' +
-      '  font: 700 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: var(--scw-text-caption);' +
+      '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
+      '  color: var(--scw-text-muted);' +
       '  text-transform: uppercase;' +
-      '  letter-spacing: 0.06em;' +
-      '  margin-bottom: 6px;' +
+      '  letter-spacing: 0.08em;' +
+      '  margin: 0 0 6px 2px;' +
       '}';
     document.head.appendChild(s);
   }

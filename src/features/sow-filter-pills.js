@@ -74,12 +74,16 @@
       '.' + STRIP_CLS + '__pill:hover {',
       '  background: var(--scw-surface-muted); border-color: var(--scw-border-strong);',
       '}',
-      // Active pill — primary teal, matches the ops-review pill language
+      // Active pill — brand accent slate-blue, matches the "Add to
+      // Scope" CTA so the active state reads as "this filter is on" in
+      // the same language as the page\'s primary action. Cyan/teal read
+      // as a notification badge in this context and competed with the
+      // rest of the brand chrome.
       '.' + STRIP_CLS + '__pill.is-active {',
-      '  background: var(--scw-info); border-color: var(--scw-info-strong); color: var(--scw-surface-base);',
+      '  background: var(--scw-accent); border-color: var(--scw-accent-strong); color: var(--scw-surface-base);',
       '}',
       '.' + STRIP_CLS + '__pill.is-active:hover {',
-      '  background: var(--scw-info-strong);',
+      '  background: var(--scw-accent-strong);',
       '}',
       // "All" pill — slightly different so it reads as a reset
       '.' + STRIP_CLS + '__pill--all:not(.is-active) {',
