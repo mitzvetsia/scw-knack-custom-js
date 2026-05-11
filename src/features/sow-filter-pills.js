@@ -194,7 +194,12 @@
   function indexRows(target) {
     var view = document.getElementById(target.viewId);
     if (!view) return null;
-    var tbody = view.querySelector('table tbody');
+    // Scope to the data grid's tbody specifically — mdf-summary-panel
+    // injects its own <table class="scw-mdf-summary-table"> above
+    // table.kn-table, so an unscoped `table tbody` selector matches
+    // the summary panel first and the filter would target the wrong
+    // rows (and find no scw-ws-row card rows).
+    var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody) return null;
 
     var ID_RE = /^[a-f0-9]{24}$/i;
