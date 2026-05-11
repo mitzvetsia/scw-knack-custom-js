@@ -320,22 +320,55 @@
     // and external stylesheet refs — what a PDF renderer actually needs.
     var fullHtml = buildStandaloneHtml(sceneClone);
 
+    // Scrape sanity metadata — sent alongside the html so Make can see
+    // at-a-glance whether the scrape captured everything, even when the
+    // html field is too long to inspect directly in the Make UI.
+    var sceneBodyHtml  = sceneClone.outerHTML;
+    var viewCount      = sceneClone.querySelectorAll('.kn-view').length;
+    var rowCount       = sceneClone.querySelectorAll('tr').length;
+    var imgCount       = sceneClone.querySelectorAll('img').length;
+    var tableCount     = sceneClone.querySelectorAll('table').length;
+    var styleTagCount  = (fullHtml.match(/<style\b/g) || []).length;
+    var linkTagCount   = (fullHtml.match(/<link\b/g)  || []).length;
+
     var payload = {
       stepId:         'generate-sow-pdf',
       sourceRecordId: sowId,
       html:           fullHtml,
+      // ── Sanity metadata: surface scrape coverage in Make without
+      //    having to scroll through the html string. If these numbers
+      //    look wrong (e.g. viewCount: 0, rowCount: 0), the scrape
+      //    grabbed the page before Knack finished rendering — reload
+      //    and try again.
       htmlBytes:      fullHtml.length,
+      bodyBytes:      sceneBodyHtml.length,
+      viewCount:      viewCount,
+      tableCount:     tableCount,
+      rowCount:       rowCount,
+      imgCount:       imgCount,
+      styleTagCount:  styleTagCount,
+      linkTagCount:   linkTagCount,
       pageTitle:      document.title || '',
       pageUrl:        window.location.href,
       triggeredBy:    getTriggeredBy()
     };
 
     // eslint-disable-next-line no-console
-    console.log('[SCW SOW PDF] sending payload', {
-      sowId: sowId,
-      htmlBytes: fullHtml.length,
-      url: webhook
+    console.log('[SCW SOW PDF] scrape summary', {
+      sowId:      sowId,
+      htmlBytes:  fullHtml.length,
+      bodyBytes:  sceneBodyHtml.length,
+      viewCount:  viewCount,
+      tableCount: tableCount,
+      rowCount:   rowCount,
+      imgCount:   imgCount,
+      url:        webhook
     });
+    // Stash the full HTML on window so you can grab it from DevTools:
+    //   copy(window.__scwSowPdfLastHtml)
+    // → pastes the exact document we sent to Make into your clipboard,
+    //   ready to drop into a .html file or paste into any renderer.
+    try { window.__scwSowPdfLastHtml = fullHtml; } catch (e) { /* ignore */ }
 
     $.ajax({
       url:         webhook,
