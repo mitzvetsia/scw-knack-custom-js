@@ -80,8 +80,26 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   }
   //   Response body: ignored (fire-and-forget).
   MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u",
-  // Fires on the "Generate SOW PDF" stepper action on scene_833 (the SOW
-  // detail page).
+  // Fires on stepper actions on scene_833 (the SOW detail page).
+  // The same webhook URL is reused across step variants — Make
+  // branches on `payload.stepId` to decide which downstream PDF
+  // template to render and where to deposit the file.
+  //
+  // Current stepIds:
+  //   • 'generate-sow-pdf'                — the dense landscape SOW PDF.
+  //                                         payload.html is the live
+  //                                         scene wrapped in a complete
+  //                                         standalone document plus
+  //                                         the print stylesheet.
+  //   • 'generate-location-approval-pdf'  — the customer-facing
+  //                                         camera-mounting approval
+  //                                         form. payload.html is a
+  //                                         purpose-built portrait
+  //                                         document with sign-off
+  //                                         gutter per camera, equipment
+  //                                         table, and project
+  //                                         assumptions panel. Same
+  //                                         source data as the SOW.
   //
   // Sent as application/json — identical wire format to the
   // publish-proposals webhook in ops-stepper.js. Make's webhook

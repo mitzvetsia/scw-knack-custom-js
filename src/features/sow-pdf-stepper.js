@@ -94,34 +94,34 @@
       '#' + HOST_ID + ' .scw-step-sub {',
       '  font-size: 12px; color: #475569;',
       '}',
-      // ── Pending / busy ──
-      '#' + HOST_ID + '.is-busy .scw-step-action {',
+      // ── Pending / busy (per-step) ──
+      '#' + HOST_ID + ' .scw-step-action.is-busy {',
       '  cursor: progress;',
       '  background: rgba(41,95,145,0.04);',
       '  border-color: var(--scw-step-accent);',
       '}',
-      '#' + HOST_ID + '.is-busy .scw-step-icon svg {',
+      '#' + HOST_ID + ' .scw-step-action.is-busy .scw-step-icon svg {',
       '  animation: scw-sow-spin 0.9s linear infinite;',
       '}',
       '@keyframes scw-sow-spin { to { transform: rotate(360deg); } }',
-      // ── Completed (success) ──
-      '#' + HOST_ID + '.is-done .scw-step-action {',
+      // ── Completed (success, per-step) ──
+      '#' + HOST_ID + ' .scw-step-action.is-done {',
       '  --scw-step-accent: #16a34a;',
       '  cursor: default;',
       '  background: rgba(22,163,74,0.06);',
       '  border-color: #16a34a;',
       '}',
-      '#' + HOST_ID + '.is-done .scw-step-action:hover { background: rgba(22,163,74,0.06); }',
-      '#' + HOST_ID + '.is-done .scw-step-icon {',
+      '#' + HOST_ID + ' .scw-step-action.is-done:hover { background: rgba(22,163,74,0.06); }',
+      '#' + HOST_ID + ' .scw-step-action.is-done .scw-step-icon {',
       '  background: rgba(22,163,74,0.14); color: #16a34a;',
       '}',
-      // ── Error ──
-      '#' + HOST_ID + '.is-error .scw-step-action {',
+      // ── Error (per-step) ──
+      '#' + HOST_ID + ' .scw-step-action.is-error {',
       '  --scw-step-accent: #b45309;',
       '  background: rgba(180,83,9,0.04);',
       '  border-color: #d97706;',
       '}',
-      '#' + HOST_ID + '.is-error .scw-step-icon {',
+      '#' + HOST_ID + ' .scw-step-action.is-error .scw-step-icon {',
       '  background: rgba(180,83,9,0.14); color: #b45309;',
       '}'
     ].join('\n');
@@ -135,6 +135,11 @@
     '<polyline points="14 2 14 8 20 8"/>' +
     '<line x1="12" y1="18" x2="12" y2="12"/>' +
     '<polyline points="9 15 12 12 15 15"/>' +
+    '</svg>';
+  var ICON_CAMERA =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
+    '<circle cx="12" cy="13" r="4"/>' +
     '</svg>';
   var ICON_SPIN =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -151,9 +156,58 @@
     '<line x1="12" y1="17" x2="12.01" y2="17"/>' +
     '</svg>';
 
+  // ── Step config — registry of all stepper actions ───────────
+  // Each step is independent: its own card, its own state (idle /
+  // busy / done / error), its own htmlBuilder. To add a new step,
+  // append an entry here and write the htmlBuilder.
+  var STEPS = [
+    {
+      id:        'generate-sow-pdf',
+      title:     'Generate SOW PDF',
+      sub:       'Convert this Scope of Work to a PDF.',
+      icon:      ICON_PDF,
+      busyTitle: 'Generating SOW PDF…',
+      busySub:   'Sending the page to PDF generation.',
+      doneTitle: 'SOW sent for PDF generation',
+      doneSub:   'Make is rendering the PDF and depositing it shortly.',
+      buildHtml: function (scene) {
+        // Clone the scene, strip the stepper card from the clone (it
+        // shouldn\'t appear in the rendered PDF), then wrap the markup
+        // in a complete standalone HTML document.
+        var clone = scene.cloneNode(true);
+        var inClone = clone.querySelector('#' + HOST_ID);
+        if (inClone && inClone.parentNode) inClone.parentNode.removeChild(inClone);
+        return buildStandaloneHtml(clone);
+      },
+      lastHtmlVar: '__scwSowPdfLastHtml'
+    },
+    {
+      id:        'generate-location-approval-pdf',
+      title:     'Generate Location Approval Form',
+      sub:       'Build the customer-facing camera-mounting approval PDF.',
+      icon:      ICON_CAMERA,
+      busyTitle: 'Generating Location Approval Form…',
+      busySub:   'Sending the page to PDF generation.',
+      doneTitle: 'Location Approval Form sent for PDF generation',
+      doneSub:   'Make is rendering the PDF and depositing it shortly.',
+      buildHtml: function (scene) {
+        return buildLocationApprovalHtml(scene);
+      },
+      lastHtmlVar: '__scwLocationApprovalLastHtml'
+    }
+  ];
+
+  function findStep(stepId) {
+    for (var i = 0; i < STEPS.length; i++) {
+      if (STEPS[i].id === stepId) return STEPS[i];
+    }
+    return null;
+  }
+
   // ── Mount ───────────────────────────────────────────────────
-  // Top of scene: insert before the first existing view group so it sits
-  // above the logo + project header block.
+  // Top of scene: insert before the first existing view group so it
+  // sits above the logo + project header block. Renders one card per
+  // STEPS entry.
   function mount() {
     var scene = document.getElementById('kn-' + SCENE_ID);
     if (!scene) return;
@@ -161,39 +215,54 @@
 
     var host = document.createElement('div');
     host.id = HOST_ID;
-    host.innerHTML =
-      '<div class="scw-step-action" role="button" tabindex="0" data-step="generate-sow-pdf">' +
-      '  <span class="scw-step-icon">' + ICON_PDF + '</span>' +
-      '  <span class="scw-step-body">' +
-      '    <span class="scw-step-title">Generate SOW PDF</span>' +
-      '    <span class="scw-step-sub">Convert this Scope of Work to a PDF.</span>' +
-      '  </span>' +
-      '</div>';
+    host.innerHTML = STEPS.map(function (step) {
+      return (
+        '<div class="scw-step-action" role="button" tabindex="0" ' +
+             'data-step="' + escapeAttr(step.id) + '">' +
+        '  <span class="scw-step-icon">' + step.icon + '</span>' +
+        '  <span class="scw-step-body">' +
+        '    <span class="scw-step-title">' + escapeHtml(step.title) + '</span>' +
+        '    <span class="scw-step-sub">'   + escapeHtml(step.sub)   + '</span>' +
+        '  </span>' +
+        '</div>'
+      );
+    }).join('');
 
     scene.insertBefore(host, scene.firstChild);
 
-    var btn = host.querySelector('.scw-step-action');
-    btn.addEventListener('click', onClick);
-    btn.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+    Array.prototype.forEach.call(host.querySelectorAll('.scw-step-action'), function (btn) {
+      btn.addEventListener('click', function (e) {
+        var stepId = e.currentTarget.getAttribute('data-step');
+        runStep(stepId);
+      });
+      btn.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          var stepId = e.currentTarget.getAttribute('data-step');
+          runStep(stepId);
+        }
+      });
     });
   }
 
-  // ── State transitions ───────────────────────────────────────
-  function setState(state, title, sub) {
+  // ── State transitions (per step card) ───────────────────────
+  function setState(stepId, state, title, sub) {
     var host = document.getElementById(HOST_ID);
     if (!host) return;
-    host.classList.remove('is-busy', 'is-done', 'is-error');
-    if (state) host.classList.add(state);
+    var btn = host.querySelector('[data-step="' + stepId + '"]');
+    if (!btn) return;
+    btn.classList.remove('is-busy', 'is-done', 'is-error');
+    if (state) btn.classList.add(state);
 
-    var iconEl = host.querySelector('.scw-step-icon');
-    var titleEl = host.querySelector('.scw-step-title');
-    var subEl  = host.querySelector('.scw-step-sub');
+    var step = findStep(stepId);
+    var iconEl  = btn.querySelector('.scw-step-icon');
+    var titleEl = btn.querySelector('.scw-step-title');
+    var subEl   = btn.querySelector('.scw-step-sub');
     if (iconEl) {
       iconEl.innerHTML =
         state === 'is-busy'  ? ICON_SPIN  :
         state === 'is-done'  ? ICON_CHECK :
-        state === 'is-error' ? ICON_WARN  : ICON_PDF;
+        state === 'is-error' ? ICON_WARN  : (step ? step.icon : ICON_PDF);
     }
     if (titleEl && title) titleEl.textContent = title;
     if (subEl   && sub)   subEl.textContent   = sub;
@@ -415,68 +484,465 @@
       .replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   }
 
+  // ── Location Approval Form HTML builder ─────────────────────
+  // Same source data as the SOW PDF, different layout. Scrapes the
+  // live scene for project header, cameras, equipment, services, and
+  // assumptions; builds a fresh standalone HTML document tuned for
+  // the customer-facing approval workflow:
+  //   • compact project header on every page (title, project,
+  //     proposal)
+  //   • "Approved By" signature box + instructional callout (page 1)
+  //   • per-camera row with an "Initials" gutter the customer signs
+  //     off in
+  //   • equipment, services, and assumptions sections at the back
+  //
+  // Layout is intentionally portrait (matches the reference PDF the
+  // customer is used to seeing). All CSS is inline in the generated
+  // doc — we don't pull Knack's stylesheets — so the output renders
+  // identically in any HTML→PDF service.
+  function buildLocationApprovalHtml(scene) {
+    function txt(el) { return el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : ''; }
+
+    // ── Project header ───────────────────────────────────────
+    var projectName = txt(scene.querySelector('#view_998 .field_666 .kn-detail-body'));
+    var projectTitle = txt(scene.querySelector('#view_998 .field_683 .kn-detail-body'));
+    var proposal    = txt(scene.querySelector('#view_998 .field_874 .kn-detail-body'));
+    var address     = (scene.querySelector('#view_998 .field_22 .kn-detail-body span span') ||
+                       scene.querySelector('#view_998 .field_22 .kn-detail-body'));
+    var addressHtml = address ? address.innerHTML : '';
+
+    // ── Cameras (view_2292) ──────────────────────────────────
+    var cameraRowsHtml = '';
+    var cameraCount = 0;
+    var camTbody = scene.querySelector('#view_2292 table tbody');
+    if (camTbody) {
+      var camRows = camTbody.querySelectorAll('tr');
+      for (var i = 0; i < camRows.length; i++) {
+        var tr = camRows[i];
+        var idCell    = tr.querySelector('td.field_71');
+        var prodCell  = tr.querySelector('td.field_1485');
+        var notesCell = tr.querySelector('td.field_32');
+        var photoEls  = tr.querySelectorAll('td[class*="field_771"] img');
+
+        var camId    = txt(idCell);
+        var product  = txt(prodCell);
+        var notes    = txt(notesCell);
+        if (!camId && !product) continue;
+
+        // Pick the highest-resolution available image (img has both
+        // a thumb src and a data-kn-img-gallery original) — full
+        // resolution renders crisper at print scale.
+        var photoSrcs = [];
+        for (var p = 0; p < photoEls.length; p++) {
+          var fullSrc = photoEls[p].getAttribute('data-kn-img-gallery') ||
+                        photoEls[p].getAttribute('src') || '';
+          if (fullSrc) photoSrcs.push(fullSrc);
+        }
+        var photoHtml = photoSrcs.length
+          ? photoSrcs.slice(0, 2).map(function (src) {
+              return '<img src="' + escapeAttr(src) + '" alt="">';
+            }).join('')
+          : '<div class="laf-camera__photo-empty">No photo</div>';
+
+        cameraRowsHtml +=
+          '<div class="laf-camera-row">' +
+          '  <div class="laf-camera__initials">' +
+          '    <div class="laf-camera__initials-label">Initials</div>' +
+          '  </div>' +
+          '  <div class="laf-camera__content">' +
+          '    <div class="laf-camera__id">' + escapeHtml(camId) + '</div>' +
+          '    <div class="laf-camera__product">' + escapeHtml(product) + '</div>' +
+          '    <div class="laf-camera__photo">' + photoHtml + '</div>' +
+          '    <div class="laf-camera__notes">' +
+                  (notes ? escapeHtml(notes) : '<span class="laf-muted">General coverage</span>') +
+          '    </div>' +
+          '  </div>' +
+          '</div>';
+        cameraCount++;
+      }
+    }
+
+    // ── NVR + headend networking equipment (view_2294) ───────
+    var headendRowsHtml = '';
+    var headendTbody = scene.querySelector('#view_2294 table tbody');
+    if (headendTbody) {
+      var hRows = headendTbody.querySelectorAll('tr');
+      for (var hi = 0; hi < hRows.length; hi++) {
+        var hRow = hRows[hi];
+        var hProd  = txt(hRow.querySelector('td.field_1491'));
+        var hLoc   = txt(hRow.querySelector('td.field_30'));
+        var hNotes = txt(hRow.querySelector('td.field_121'));
+        if (!hProd) continue;
+        headendRowsHtml +=
+          '<tr>' +
+          '<td>' + escapeHtml(hProd)  + '</td>' +
+          '<td>' + escapeHtml(hLoc)   + '</td>' +
+          '<td>' + escapeHtml(hNotes) + '</td>' +
+          '</tr>';
+      }
+    }
+
+    // ── Other equipment (view_2296) ──────────────────────────
+    var equipRowsHtml = '';
+    var equipTbody = scene.querySelector('#view_2296 table tbody');
+    if (equipTbody) {
+      var eRows = equipTbody.querySelectorAll('tr');
+      for (var ei = 0; ei < eRows.length; ei++) {
+        var eRow = eRows[ei];
+        var eProd  = txt(eRow.querySelector('td.field_1497'));
+        var eQty   = txt(eRow.querySelector('td.field_1500'));
+        var eNotes = txt(eRow.querySelector('td.field_129'));
+        if (!eProd) continue;
+        equipRowsHtml +=
+          '<tr>' +
+          '<td>' + escapeHtml(eProd)  + '</td>' +
+          '<td class="laf-num">' + escapeHtml(eQty) + '</td>' +
+          '<td>' + escapeHtml(eNotes) + '</td>' +
+          '</tr>';
+      }
+    }
+
+    // ── Service descriptions (cabling / mounting / NVR provisioning) ──
+    function pickHtml(sel) {
+      var el = scene.querySelector(sel);
+      return el ? el.innerHTML : '';
+    }
+    var cablingHtml   = pickHtml('#view_2803 .field_1710 .kn-detail-body span');
+    var mountingHtml  = pickHtml('#view_2804 .field_1709 .kn-detail-body span');
+    var nvrProvHtml   = pickHtml('#view_2802 .field_1711 .kn-detail-body span');
+
+    // ── Additional / "Other" services bulleted list (view_2809) ──
+    var otherServicesHtml = '';
+    var addlTbody = scene.querySelector('#view_2809 table tbody');
+    if (addlTbody) {
+      var addlRows = addlTbody.querySelectorAll('tr td.field_1715');
+      for (var ai = 0; ai < addlRows.length; ai++) {
+        otherServicesHtml += addlRows[ai].innerHTML;
+      }
+    }
+
+    // ── Project Assumptions (view_2810 field_1210, hidden in DOM) ──
+    var assumptionsHtml = '';
+    var asEl = scene.querySelector('#view_2810 .field_1210 .kn-detail-body');
+    if (asEl) assumptionsHtml = asEl.innerHTML;
+
+    // ── Assemble the final document ──────────────────────────
+    var html = [];
+    html.push('<!DOCTYPE html>');
+    html.push('<html lang="en"><head>');
+    html.push('<meta charset="utf-8">');
+    html.push('<base href="' + window.location.origin + '/">');
+    html.push('<title>Location Approval Form — ' + escapeHtml(projectName) + '</title>');
+    html.push('<style>');
+    html.push(buildLafCss());
+    html.push('</style>');
+    html.push('</head><body>');
+
+    // ── Page header (repeats on every page via running header) ──
+    html.push('<header class="laf-header">');
+    html.push('  <div class="laf-header__text">');
+    html.push('    <h1>Location Approval Form</h1>');
+    html.push('    <div class="laf-header__project">' + escapeHtml(projectName) + '</div>');
+    if (proposal) {
+      html.push('    <div class="laf-header__proposal">Proposal: ' + escapeHtml(proposal) + '</div>');
+    }
+    html.push('  </div>');
+    html.push('  <div class="laf-header__logo">');
+    html.push('    <img src="https://www.getscw.com/pub/media/logo/stores/1/logo-scw.jpeg" alt="SCW">');
+    html.push('  </div>');
+    html.push('</header>');
+
+    // ── Approval signature block + instructional callout (page 1 only) ──
+    html.push('<section class="laf-approval">');
+    html.push('  <div class="laf-approval__signbox">');
+    html.push('    <div class="laf-approval__signbox-header">Approved By</div>');
+    html.push('    <div class="laf-approval__sign-fields">');
+    html.push('      <div class="laf-approval__sign-row"></div>');
+    html.push('      <div class="laf-approval__sign-label">Name</div>');
+    html.push('      <div class="laf-approval__sign-row"></div>');
+    html.push('      <div class="laf-approval__sign-label">Title</div>');
+    html.push('      <div class="laf-approval__sign-row-half">');
+    html.push('        <div>');
+    html.push('          <div class="laf-approval__sign-row"></div>');
+    html.push('          <div class="laf-approval__sign-label">Signature</div>');
+    html.push('        </div>');
+    html.push('        <div>');
+    html.push('          <div class="laf-approval__sign-row"></div>');
+    html.push('          <div class="laf-approval__sign-label">Date</div>');
+    html.push('        </div>');
+    html.push('      </div>');
+    html.push('    </div>');
+    html.push('  </div>');
+    html.push('  <div class="laf-approval__callout">');
+    html.push('    <p>Please initial to approve each camera location. Changes to camera location after approval may incur additional charges.</p>');
+    html.push('    <p>Unless otherwise indicated, all cameras will be mounted on an electrical mounting box flush with the mounting surface.</p>');
+    html.push('  </div>');
+    html.push('</section>');
+
+    // ── Cameras ──────────────────────────────────────────────
+    if (cameraRowsHtml) {
+      html.push('<section class="laf-section laf-cameras">');
+      html.push('  <h2 class="laf-section__title">Camera Locations</h2>');
+      html.push(cameraRowsHtml);
+      html.push('</section>');
+    }
+
+    // ── Headend / networking equipment ───────────────────────
+    if (headendRowsHtml) {
+      html.push('<section class="laf-section">');
+      html.push('  <h2 class="laf-section__title">Headend &amp; Networking Equipment</h2>');
+      html.push('  <table class="laf-table">');
+      html.push('    <thead><tr><th>Product</th><th>Location</th><th>Notes</th></tr></thead>');
+      html.push('    <tbody>' + headendRowsHtml + '</tbody>');
+      html.push('  </table>');
+      html.push('</section>');
+    }
+
+    // ── Other equipment ──────────────────────────────────────
+    if (equipRowsHtml) {
+      html.push('<section class="laf-section">');
+      html.push('  <h2 class="laf-section__title">Equipment</h2>');
+      html.push('  <table class="laf-table">');
+      html.push('    <thead><tr><th>Product</th><th class="laf-num">Qty</th><th>Notes</th></tr></thead>');
+      html.push('    <tbody>' + equipRowsHtml + '</tbody>');
+      html.push('  </table>');
+      html.push('</section>');
+    }
+
+    // ── Installation services (cabling / mounting / NVR provisioning) ──
+    var hasInstallText = !!(cablingHtml || mountingHtml || nvrProvHtml);
+    if (hasInstallText) {
+      html.push('<section class="laf-section">');
+      html.push('  <h2 class="laf-section__title">Installation Services</h2>');
+      if (cablingHtml)  { html.push('<h3 class="laf-section__sub">Cabling</h3>'         + cablingHtml); }
+      if (mountingHtml) { html.push('<h3 class="laf-section__sub">Camera Mounting</h3>' + mountingHtml); }
+      if (nvrProvHtml)  { html.push('<h3 class="laf-section__sub">NVR Provisioning &amp; Networking</h3>' + nvrProvHtml); }
+      html.push('</section>');
+    }
+
+    if (otherServicesHtml) {
+      html.push('<section class="laf-section">');
+      html.push('  <h2 class="laf-section__title">Other Services</h2>');
+      html.push('  <div class="laf-other-services">' + otherServicesHtml + '</div>');
+      html.push('</section>');
+    }
+
+    // ── Project Assumptions ──────────────────────────────────
+    if (assumptionsHtml) {
+      html.push('<section class="laf-section laf-assumptions">');
+      html.push('  <h2 class="laf-section__title">Project Assumptions</h2>');
+      html.push('  <div class="laf-assumptions__body">' + assumptionsHtml + '</div>');
+      html.push('</section>');
+    }
+
+    html.push('</body></html>');
+
+    // Stash count for debug.
+    try { window.__scwLastLafCameraCount = cameraCount; } catch (e) { /* ignore */ }
+
+    return html.join('\n');
+  }
+
+  function buildLafCss() {
+    return [
+      '@page { size: letter portrait; margin: 0.45in 0.5in; }',
+      '* { box-sizing: border-box; }',
+      'html, body {',
+      '  margin: 0; padding: 0;',
+      '  font: 11px/1.45 -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '  color: #1e293b; background: #ffffff;',
+      '}',
+      // Header
+      '.laf-header {',
+      '  display: flex; align-items: flex-start; justify-content: space-between;',
+      '  gap: 24px; padding-bottom: 10px;',
+      '  border-bottom: 1px solid #cbd5e1; margin-bottom: 14px;',
+      '}',
+      '.laf-header h1 { font-size: 26px; color: #295F91; margin: 0 0 4px; font-weight: 700; }',
+      '.laf-header__project { font-size: 14px; color: #1e293b; font-weight: 700; }',
+      '.laf-header__proposal { font-size: 11px; color: #64748b; margin-top: 2px; }',
+      '.laf-header__logo img { height: 42px; width: auto; }',
+      // Approval block
+      '.laf-approval {',
+      '  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;',
+      '  margin-bottom: 16px; page-break-inside: avoid; break-inside: avoid;',
+      '}',
+      '.laf-approval__signbox {',
+      '  border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden;',
+      '  background: #ffffff;',
+      '}',
+      '.laf-approval__signbox-header {',
+      '  background: #eff6ff; padding: 8px 14px;',
+      '  font-weight: 700; text-align: center; color: #1e293b;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '}',
+      '.laf-approval__sign-fields { padding: 22px 22px 12px; }',
+      '.laf-approval__sign-row {',
+      '  border-bottom: 1px solid #475569;',
+      '  height: 24px; margin-top: 14px;',
+      '}',
+      '.laf-approval__sign-label {',
+      '  text-align: center; font-size: 10px; color: #64748b;',
+      '  margin-top: 2px;',
+      '}',
+      '.laf-approval__sign-row-half { display: flex; gap: 24px; }',
+      '.laf-approval__sign-row-half > div { flex: 1; }',
+      '.laf-approval__callout {',
+      '  background: #fef3e7; padding: 18px 22px; border-radius: 4px;',
+      '}',
+      '.laf-approval__callout p {',
+      '  color: #295F91; font-size: 12px; margin: 0 0 10px;',
+      '}',
+      '.laf-approval__callout p:last-child { margin-bottom: 0; }',
+      // Section chrome
+      '.laf-section { margin: 14px 0; }',
+      '.laf-section__title {',
+      '  font-size: 18px; color: #295F91; margin: 0 0 8px;',
+      '  font-weight: 700;',
+      '}',
+      '.laf-section__sub {',
+      '  font-size: 13px; color: #1e293b; margin: 8px 0 4px; font-weight: 700;',
+      '}',
+      '.laf-section p, .laf-section ul, .laf-section li {',
+      '  font-size: 11px; line-height: 1.45;',
+      '}',
+      '.laf-section ul { margin: 4px 0 8px 20px; padding: 0; }',
+      // Camera row
+      '.laf-camera-row {',
+      '  display: grid; grid-template-columns: 110px 1fr;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '  page-break-inside: avoid; break-inside: avoid;',
+      '}',
+      '.laf-camera-row:nth-child(odd)  { background: #ffffff; }',
+      '.laf-camera-row:nth-child(even) { background: #f8fafc; }',
+      '.laf-camera__initials {',
+      '  background: #e2e8f0; border-right: 1px solid #cbd5e1;',
+      '  padding: 12px 8px; min-height: 130px;',
+      '}',
+      '.laf-camera__initials-label {',
+      '  text-align: center; font-weight: 700; color: #475569;',
+      '  font-size: 11px; padding: 4px 0;',
+      '  border-bottom: 1px solid #94a3b8;',
+      '}',
+      '.laf-camera__content {',
+      '  display: grid;',
+      '  grid-template-columns: 70px minmax(0, 1.2fr) 170px minmax(0, 1.6fr);',
+      '  gap: 14px; align-items: start;',
+      '  padding: 12px 14px;',
+      '}',
+      '.laf-camera__id { font-weight: 700; color: #1e293b; font-size: 12px; }',
+      '.laf-camera__product { color: #475569; font-size: 11px; }',
+      '.laf-camera__photo img {',
+      '  display: block; max-width: 160px; max-height: 120px;',
+      '  width: auto; height: auto; object-fit: cover;',
+      '  border: 1px solid #cbd5e1; border-radius: 2px;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.laf-camera__photo-empty {',
+      '  width: 160px; height: 100px;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  border: 1px dashed #cbd5e1; color: #94a3b8;',
+      '  font-size: 10px; border-radius: 2px;',
+      '}',
+      '.laf-camera__notes { color: #475569; font-size: 11px; line-height: 1.4; }',
+      '.laf-muted { color: #94a3b8; font-style: italic; }',
+      // Tables
+      '.laf-table {',
+      '  width: 100%; border-collapse: collapse; margin: 4px 0 8px;',
+      '  font-size: 11px;',
+      '}',
+      '.laf-table thead th {',
+      '  background: #f1f5f9; color: #1e293b;',
+      '  font-size: 11px; font-weight: 700;',
+      '  padding: 6px 10px; text-align: left;',
+      '  border-bottom: 1px solid #cbd5e1;',
+      '}',
+      '.laf-table tbody td {',
+      '  padding: 5px 10px; vertical-align: top;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '}',
+      '.laf-table tbody tr:nth-child(even) td { background: #fafbfc; }',
+      '.laf-table .laf-num { text-align: right; width: 60px; }',
+      // Other services list
+      '.laf-other-services ul { margin: 4px 0 4px 20px; padding: 0; }',
+      '.laf-other-services li { margin: 3px 0; font-size: 11px; }',
+      // Assumptions panel
+      '.laf-assumptions {',
+      '  background: #eff6ff; border: 1px solid #bfdbfe;',
+      '  border-radius: 4px; padding: 14px 18px;',
+      '  page-break-inside: avoid; break-inside: avoid;',
+      '}',
+      '.laf-assumptions .laf-section__title { margin-top: 0; }',
+      '.laf-assumptions ul { margin: 6px 0 0 20px; padding: 0; }',
+      '.laf-assumptions li { margin: 3px 0; font-size: 11px; }'
+    ].join('\n');
+  }
+
   // ── Click handler — scrape + POST ───────────────────────────
-  function onClick() {
+  function runStep(stepId) {
+    var step = findStep(stepId);
+    if (!step) return;
+
     var host = document.getElementById(HOST_ID);
-    if (!host || host.classList.contains('is-busy') || host.classList.contains('is-done')) return;
+    if (!host) return;
+    var btn = host.querySelector('[data-step="' + stepId + '"]');
+    if (!btn) return;
+    if (btn.classList.contains('is-busy') || btn.classList.contains('is-done')) return;
 
     var sowId = getSowId();
     if (!sowId) {
-      setState('is-error', 'Could not identify SOW', 'No SOW id in the page URL. Try reloading.');
+      setState(stepId, 'is-error', 'Could not identify SOW', 'No SOW id in the page URL. Try reloading.');
       return;
     }
 
     var scene = document.getElementById('kn-' + SCENE_ID);
     if (!scene) {
-      setState('is-error', 'Page not ready', 'Scope of Work content has not loaded yet.');
+      setState(stepId, 'is-error', 'Page not ready', 'Scope of Work content has not loaded yet.');
       return;
-    }
-
-    setState('is-busy', 'Generating SOW PDF…', 'Sending the page to PDF generation.');
-
-    // Scrape: use the entire scene container's HTML so Make receives the
-    // rendered, styled content — including all tables, photos, and the
-    // header detail block. We exclude the stepper itself so it doesn't
-    // appear in the generated PDF.
-    var sceneClone = scene.cloneNode(true);
-    var stepperInClone = sceneClone.querySelector('#' + HOST_ID);
-    if (stepperInClone && stepperInClone.parentNode) {
-      stepperInClone.parentNode.removeChild(stepperInClone);
     }
 
     var webhook = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_GENERATE_SOW_PDF_WEBHOOK) || '';
     if (!webhook) {
-      setState('is-error', 'Webhook not configured', 'MAKE_GENERATE_SOW_PDF_WEBHOOK is empty in config.js.');
+      setState(stepId, 'is-error', 'Webhook not configured', 'MAKE_GENERATE_SOW_PDF_WEBHOOK is empty in config.js.');
       return;
     }
 
-    // Build a complete, standalone HTML document with embedded styles
-    // and external stylesheet refs — what a PDF renderer actually needs.
-    var fullHtml = buildStandaloneHtml(sceneClone);
+    setState(stepId, 'is-busy', step.busyTitle, step.busySub);
 
-    // Scrape sanity metadata — sent alongside the html so Make can see
-    // at-a-glance whether the scrape captured everything, even when the
-    // html field is too long to inspect directly in the Make UI.
-    var sceneBodyHtml  = sceneClone.outerHTML;
-    var viewCount      = sceneClone.querySelectorAll('.kn-view').length;
-    var rowCount       = sceneClone.querySelectorAll('tr').length;
-    var imgCount       = sceneClone.querySelectorAll('img').length;
-    var tableCount     = sceneClone.querySelectorAll('table').length;
-    var styleTagCount  = (fullHtml.match(/<style\b/g) || []).length;
-    var linkTagCount   = (fullHtml.match(/<link\b/g)  || []).length;
+    // Build the HTML for whichever step we\'re running. Each step\'s
+    // htmlBuilder owns its own scrape strategy and returns a complete
+    // standalone <!DOCTYPE html>…</html> document.
+    var fullHtml;
+    try {
+      fullHtml = step.buildHtml(scene);
+    } catch (e) {
+      console.error('[SCW SOW PDF] buildHtml threw for ' + stepId, e);
+      setState(stepId, 'is-error', 'Could not build PDF document',
+        e && e.message ? e.message : 'Unknown error during HTML construction.');
+      return;
+    }
+    if (!fullHtml || typeof fullHtml !== 'string') {
+      setState(stepId, 'is-error', 'Empty document', 'HTML builder returned no content.');
+      return;
+    }
+
+    // Scrape sanity metadata for the JSON payload (lets Make see
+    // coverage at a glance without inspecting the full html string).
+    var imgCount       = (fullHtml.match(/<img\b/gi)   || []).length;
+    var rowCount       = (fullHtml.match(/<tr\b/gi)    || []).length;
+    var tableCount     = (fullHtml.match(/<table\b/gi) || []).length;
+    var styleTagCount  = (fullHtml.match(/<style\b/g)  || []).length;
+    var linkTagCount   = (fullHtml.match(/<link\b/g)   || []).length;
 
     var payload = {
-      stepId:         'generate-sow-pdf',
+      stepId:         stepId,
       sourceRecordId: sowId,
       html:           fullHtml,
       // ── Sanity metadata: surface scrape coverage in Make without
       //    having to scroll through the html string. If these numbers
-      //    look wrong (e.g. viewCount: 0, rowCount: 0), the scrape
-      //    grabbed the page before Knack finished rendering — reload
-      //    and try again.
+      //    look wrong (e.g. rowCount: 0), the scrape grabbed the page
+      //    before Knack finished rendering — reload and try again.
       htmlBytes:      fullHtml.length,
-      bodyBytes:      sceneBodyHtml.length,
-      viewCount:      viewCount,
       tableCount:     tableCount,
       rowCount:       rowCount,
       imgCount:       imgCount,
@@ -489,20 +955,20 @@
 
     // eslint-disable-next-line no-console
     console.log('[SCW SOW PDF] scrape summary', {
+      stepId:     stepId,
       sowId:      sowId,
       htmlBytes:  fullHtml.length,
-      bodyBytes:  sceneBodyHtml.length,
-      viewCount:  viewCount,
       tableCount: tableCount,
       rowCount:   rowCount,
       imgCount:   imgCount,
       url:        webhook
     });
     // Stash the full HTML on window so you can grab it from DevTools:
-    //   copy(window.__scwSowPdfLastHtml)
+    //   copy(window.__scwSowPdfLastHtml)            ← SOW build
+    //   copy(window.__scwLocationApprovalLastHtml)  ← LAF build
     // → pastes the exact document we sent to Make into your clipboard,
     //   ready to drop into a .html file or paste into any renderer.
-    try { window.__scwSowPdfLastHtml = fullHtml; } catch (e) { /* ignore */ }
+    try { window[step.lastHtmlVar] = fullHtml; } catch (e) { /* ignore */ }
 
     // ──────────────────────────────────────────────────────────
     // POST as application/json — same wire format ops-stepper.js
@@ -511,10 +977,9 @@
     // with real " and real newlines — pipe it straight into the PDF
     // converter, no JSON Parse / Unescape step needed.
     //
-    // If a previous version of this webhook was configured against a
-    // different shape (e.g. multipart), open it in Make and click
-    // "Redetermine data structure" so {{1.html}} reappears as a
-    // first-class field.
+    // Make branches on payload.stepId to decide which downstream
+    // path to run (SOW PDF vs Location Approval Form vs anything we
+    // add later) and where to deposit the rendered file.
     // ──────────────────────────────────────────────────────────
     fetch(webhook, {
       method:  'POST',
@@ -523,11 +988,9 @@
     })
       .then(function (resp) {
         if (resp.ok) {
-          setState('is-done',
-            'SOW sent for PDF generation',
-            'Make is rendering the PDF and depositing it shortly.');
+          setState(stepId, 'is-done', step.doneTitle, step.doneSub);
         } else {
-          setState('is-error',
+          setState(stepId, 'is-error',
             'PDF generation failed',
             'Webhook returned ' + resp.status + '. Try again.');
         }
@@ -535,9 +998,7 @@
       .catch(function () {
         // CORS / no-response: webhook fired and Make is handling the
         // deposit out-of-band. Treat as success.
-        setState('is-done',
-          'SOW sent for PDF generation',
-          'Make is rendering the PDF and depositing it shortly.');
+        setState(stepId, 'is-done', step.doneTitle, step.doneSub);
       });
   }
 
