@@ -187,21 +187,26 @@
           // ── Summary row ──
           label:            { key: 'field_2819', type: 'readOnly',   summary: true },
           product:          { key: 'field_2790', type: 'readOnly',   summary: true, productStyle: true },
-          installStatus:    { key: 'field_2825', type: 'directEdit', summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+          // TODO: confirm field_2825's actual Knack dropdown option list — guesses below.
+          installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
           existingCabling:  { key: 'field_2807', type: 'toggleChit', summary: true },
           exteriorChit:     { key: 'field_2805', type: 'toggleChit', summary: true, chitLabel: 'Exterior' },
           plenumChit:       { key: 'field_2806', type: 'toggleChit', summary: true, chitLabel: 'Plenum' },
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
+          // Networking topology — only meaningful when the product maps
+          // camera/reader connections (field_2795 = Yes).
+          networkingDevice: { key: 'field_2820', type: 'readOnly', label: 'Connected devices', showWhenFieldIsYes: 'field_2795' },
+          connectedDevice:  { key: 'field_2821', type: 'readOnly', label: 'Connected to',      showWhenFieldIsYes: 'field_2795' },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
-          dropLength:       { key: 'field_2804', type: 'directEdit' },
-          conduitFeet:      { key: 'field_2803', type: 'directEdit' }
+          dropLength:       { key: 'field_2804', type: 'readOnly' },
+          conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
         summaryLayout: ['existingCabling', 'exteriorChit', 'plenumChit', 'installStatus'],
         detailLayout: {
-          left:  ['mounting', 'laborDescription'],
+          left:  ['mounting', 'networkingDevice', 'connectedDevice', 'laborDescription'],
           right: ['dropLength', 'conduitFeet', 'scwNotes']
         },
         bucketField: 'field_2822',
@@ -211,11 +216,14 @@
           keepBuckets: ['6481e5ba38f283002898113c'],   // Camera or Reader
           fields: {
             product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
-            installStatus:    { key: 'field_2825', type: 'directEdit', summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+            // Mounting-hardware label / per-piece tag.  Knack Builder needs to
+            // expose field_2853 as a column on view_3915 for this to render.
+            hardwareLabel:    { key: 'field_2853', type: 'readOnly', summary: true, label: 'Hardware', group: 'fill' },
+            installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true }
           },
-          summaryLayout: ['laborDescription', 'installStatus'],
+          summaryLayout: ['hardwareLabel', 'laborDescription', 'installStatus'],
           detailLayout: {
             left:  [],
             right: ['scwNotes']
@@ -226,6 +234,7 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
+            hideFields: ['field_2853'],                       // no hardware label on assumption rows
             rowClass: 'scw-row--assumptions',
           },
           '594a94536877675816984cb9': {                       // Mounting Hardware
