@@ -249,16 +249,150 @@
       parts.push('<style>' + css + '</style>');
     }
 
-    // Print-friendly tweaks: drop the app shell chrome (header / nav /
-    // mobile menu) that the scraped scene doesn't include but which
-    // would still take up page space if any wrapper rules cascade.
+    // Print-specific overrides — appended LAST so they win against any
+    // upstream rule that bled in from the live page. Goals:
+    //   • landscape letter with tight margins → more content per page
+    //   • smaller base font / tighter line-height → text density up
+    //   • cap thumbnail width → camera table fits 5-7 rows per page
+    //     instead of 2
+    //   • tighten table cell padding everywhere
+    //   • hide pagination / filter / sort / bulk-ops chrome — data
+    //     stays, controls go away
+    //   • prevent row splits across pages
     parts.push(
       '<style>' +
-      '  body { background: #ffffff !important; margin: 0; padding: 16px; }' +
+      // ── Page geometry ──────────────────────────────────────
+      '  @page { size: letter landscape; margin: 0.3in 0.35in; }' +
+      '  html, body {' +
+      '    background: #ffffff !important;' +
+      '    margin: 0; padding: 0;' +
+      '    font: 10.5px/1.35 -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;' +
+      '    color: #111827;' +
+      '  }' +
+      '  body { padding: 4px 6px; }' +
+
+      // ── App shell — gone (no nav / header / popovers in the PDF) ──
       '  #kn-app-header, #kn-mobile-menu, #kn-popover, #kn-overlay,' +
-      '  .kn-info-bar, #knack-logo a { display: none !important; }' +
-      '  .kn-scene { display: block !important; }' +
-      '  @page { size: letter; margin: 0.5in; }' +
+      '  .kn-info-bar, #knack-logo a, #kn-loading-spinner,' +
+      '  .kn-back-link, .ktlAddonsDiv, .bulkOpsControlsDiv {' +
+      '    display: none !important;' +
+      '  }' +
+
+      // ── Page-level chrome we never want in the PDF ──────────
+      '  .kn-records-nav, .kn-pagination, .kn-entries-summary,' +
+      '  .kn-filters, .kn-filters-nav, .kn-add-filter,' +
+      '  .filterCtrlDiv, .filterDiv, .kn-filter-rule,' +
+      '  .js-filter-menu, .kn-select, .level { display: none !important; }' +
+
+      // ── In-cell controls (sort arrows, edit-link columns) ───
+      '  .kn-sort .icon, .scw-sort-hint, .fa-sort-amount-asc,' +
+      '  .fa-sort-amount-desc { display: none !important; }' +
+      '  .kn-table-link, th.kn-table-link {' +
+      '    display: none !important;' +
+      '  }' +
+      // Sort links should look like plain text headers — no underline,
+      // no hover color, no pointer.
+      '  th .kn-sort, th .kn-sort a, th a { color: inherit !important; text-decoration: none !important; cursor: default !important; }' +
+
+      // ── Typography for top-of-page identity ─────────────────
+      // Drop the giant H1 / H2 sizes the live page uses — we have a
+      // tiny page and don\'t need 36px headings.
+      '  h1 { font-size: 18px !important; margin: 0 0 4px !important; }' +
+      '  h2 { font-size: 14px !important; margin: 10px 0 4px !important; color: #0f4c75 !important; }' +
+      '  h3 { font-size: 12px !important; margin: 8px 0 4px !important; color: #0f4c75 !important; }' +
+      '  p  { margin: 4px 0 !important; }' +
+      '  ul { margin: 4px 0 4px 18px !important; padding: 0 !important; }' +
+      '  li { margin: 1px 0 !important; }' +
+      '  hr { margin: 6px 0 !important; border: 0; border-top: 1px solid #cbd5e1; }' +
+
+      // ── Project header card ─────────────────────────────────
+      '  #view_998 section.columns { display: flex !important; gap: 16px; align-items: flex-start; }' +
+      '  #view_998 .kn-details-column { flex: 1 1 0 !important; min-width: 0; }' +
+      '  #view_998 .kn-detail-label { font-size: 9px !important; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }' +
+      '  #view_998 .kn-detail-body { font-size: 11px !important; padding: 1px 0 !important; }' +
+      '  #view_998 h1 { font-size: 16px !important; color: #0f4c75 !important; }' +
+      '  #view_998 h2 { font-size: 12px !important; color: #334155 !important; margin: 0 0 2px !important; }' +
+
+      // ── Tables — uniform compact density ────────────────────
+      '  table.kn-table { width: 100% !important; border-collapse: collapse !important; margin: 4px 0 8px !important; font-size: 10px !important; }' +
+      '  table.kn-table thead th {' +
+      '    background: #f1f5f9 !important; color: #0f172a !important;' +
+      '    font-size: 9.5px !important; font-weight: 700 !important;' +
+      '    text-transform: uppercase; letter-spacing: 0.03em;' +
+      '    padding: 4px 6px !important; border-bottom: 1px solid #cbd5e1 !important;' +
+      '    text-align: left;' +
+      '  }' +
+      '  table.kn-table tbody td {' +
+      '    padding: 3px 6px !important; vertical-align: top !important;' +
+      '    border-bottom: 1px solid #e2e8f0 !important;' +
+      '    font-size: 10px !important;' +
+      '    word-break: break-word;' +
+      '  }' +
+      '  table.kn-table tbody tr {' +
+      '    page-break-inside: avoid; break-inside: avoid;' +
+      '  }' +
+      '  table.kn-table tbody tr:nth-child(even) td {' +
+      '    background: #fafbfc !important;' +
+      '  }' +
+
+      // ── Camera table specifically (view_2292) ───────────────
+      // Cap photo column width so we get 5–7 rows per page instead
+      // of the 2 we get when every thumbnail is 300px wide.
+      '  #view_2292 table { table-layout: fixed; }' +
+      '  #view_2292 th.field_71,  #view_2292 td.field_71  { width: 7%; }' +
+      '  #view_2292 th.field_1485, #view_2292 td.field_1485 { width: 22%; }' +
+      '  #view_2292 th.field_32,  #view_2292 td.field_32  { width: 38%; }' +
+      '  #view_2292 th.field_409, #view_2292 td.field_409 { width: 8%; text-align: center; }' +
+      '  #view_2292 th[class*="field_771"], #view_2292 td[class*="field_771"] { width: 25%; }' +
+      '  #view_2292 td[class*="field_771"] img {' +
+      '    max-width: 140px !important; max-height: 100px !important;' +
+      '    width: auto !important; height: auto !important;' +
+      '    margin: 1px 4px 1px 0 !important;' +
+      '    object-fit: cover;' +
+      '    border: 1px solid #e2e8f0;' +
+      '  }' +
+      '  #view_2292 td[class*="field_771"] br { display: none; }' +
+
+      // ── NVR + Other Equipment + Services tables ─────────────
+      // No images — let columns reflow naturally.
+      '  #view_2294 table, #view_2296 table, #view_2809 table, #view_2299 table,' +
+      '  #view_2391 table {' +
+      '    table-layout: auto;' +
+      '  }' +
+      // Hide selection checkboxes (data already in DOM, control unneeded).
+      '  th.ktlCheckboxHeaderCell, td.ktlCheckboxCell { display: none !important; }' +
+
+      // ── Cabling + Camera Mounting summary blocks ────────────
+      '  #view_2803 section.columns, #view_2804 section.columns {' +
+      '    display: flex !important; gap: 16px; align-items: flex-start;' +
+      '    page-break-inside: avoid; break-inside: avoid;' +
+      '  }' +
+      '  #view_2803 .kn-detail-body p, #view_2804 .kn-detail-body p { font-size: 10.5px !important; }' +
+      '  #view_2803 .kn-detail-label, #view_2804 .kn-detail-label { font-size: 11px !important; }' +
+
+      // ── Documents — show image at reasonable size ───────────
+      '  #view_2299 td.field_754 img {' +
+      '    max-width: 100% !important; max-height: 5in !important;' +
+      '    height: auto !important;' +
+      '  }' +
+
+      // ── Logo header ─────────────────────────────────────────
+      '  #view_2308 img { max-height: 38px !important; width: auto !important; }' +
+      '  #view_2291 h3 { color: #0f4c75 !important; font-size: 16px !important; }' +
+
+      // ── Footer license band ─────────────────────────────────
+      '  #view_2811 p { font-size: 9px !important; color: #64748b !important; text-align: center; }' +
+
+      // ── Hide stepper card itself (defensive — already removed' +
+      //    from sceneClone, but if anything sneaks through, kill it
+      //    via CSS too).
+      '  #scw-sow-pdf-stepper { display: none !important; }' +
+
+      // ── Break hints ─────────────────────────────────────────
+      // Major section starts shouldn\'t orphan their heading at the
+      // bottom of a page.
+      '  h2, h3 { page-break-after: avoid; break-after: avoid; }' +
+      '}'.slice(0, 0) + // (no-op, keeps the rule list flat)
       '</style>'
     );
 
