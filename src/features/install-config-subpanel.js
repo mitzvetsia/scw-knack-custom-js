@@ -60,10 +60,11 @@
       '  display: none !important;',
       '}',
 
+      /* Match .scw-ws-section padding so the camera-config left edge
+         lines up with the detail-panel field labels above. */
       '.' + SUBPANEL_CLS + ' {',
       '  border-top: 1px dashed #e2e8f0;',
-      '  padding: 10px 12px 6px;',
-      '  margin-top: 10px;',
+      '  padding: 14px 20px 14px 70px;',
       '}',
       '.' + SUBPANEL_CLS + '-title {',
       '  font-size: 11px;',
