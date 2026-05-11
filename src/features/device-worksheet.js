@@ -195,19 +195,20 @@
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
-          // Networking topology — render on Camera/Reader rows whenever
-          // the cells have values.  bucketOverride excludes these for
-          // mounting-hardware / assumption rows.
-          networkingDevice: { key: 'field_2820', type: 'readOnly', label: 'Connected devices', skipEmpty: true },
-          connectedDevice:  { key: 'field_2821', type: 'readOnly', label: 'Connected to',      skipEmpty: true },
+          // Networking topology — same pattern as view_3505/view_3313
+          // (readOnly + summary, gated on the product's "map connections"
+          // flag).  field_2820 is the canonical connected-devices field;
+          // field_2821 is the reverse-direction lookup.
+          connectedDevices: { key: 'field_2820', type: 'readOnly', summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2796' },
+          connectedTo:      { key: 'field_2821', type: 'readOnly', summary: true, label: 'Connected To',      showWhenFieldIsYes: 'field_2796' },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
-        summaryLayout: ['installStatus'],
+        summaryLayout: ['connectedDevices', 'connectedTo', 'installStatus'],
         detailLayout: {
-          left:  ['mounting', 'networkingDevice', 'connectedDevice', 'laborDescription'],
+          left:  ['mounting', 'laborDescription'],
           right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'scwNotes']
         },
         bucketField: 'field_2822',
