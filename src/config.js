@@ -79,5 +79,20 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     triggeredBy:    { id, name, email }
   //   }
   //   Response body: ignored (fire-and-forget).
-  MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u"
+  MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u",
+  // Fires on the "Generate SOW PDF" stepper action on scene_833 (the SOW
+  // detail page). Payload is the full scraped HTML of the rendered SOW
+  // page plus identifying fields. Make handles HTML → PDF rendering and
+  // deposits the file into the appropriate Knack record / external store.
+  //   Request body:  {
+  //     stepId:         'generate-sow-pdf',
+  //     sourceRecordId: <SOW record id from URL hash>,
+  //     html:           <document.documentElement.outerHTML of the page>,
+  //     pageTitle:      <document.title>,
+  //     pageUrl:        <window.location.href>,
+  //     triggeredBy:    { id, name, email }
+  //   }
+  //   Response body: { success: true, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  MAKE_GENERATE_SOW_PDF_WEBHOOK: "https://hook.us1.make.com/tyrrisxjgai5hufsl722lcdsewiw9ryz"
 };
