@@ -175,6 +175,70 @@
         ]
       },
       {
+        // ── INSTALL line items (Implementation page, scene_1311) ──
+        // Mirrors view_3505's bucketing: Camera/Reader rows get the full
+        // install card; Mounting Hardware + Assumptions get simpler rows.
+        // Field map mirrors the SOW/Survey worksheet concepts so the UI
+        // is recognizable to anyone who's used the survey/SOW pages.
+        viewId: 'view_3915',
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: false },
+        // ── Main config: used for Camera or Reader rows ──
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_2819', type: 'readOnly',   summary: true },
+          product:          { key: 'field_2790', type: 'readOnly',   summary: true, productStyle: true },
+          installStatus:    { key: 'field_2825', type: 'directEdit', summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+          existingCabling:  { key: 'field_2807', type: 'toggleChit', summary: true },
+          exteriorChit:     { key: 'field_2805', type: 'toggleChit', summary: true, chitLabel: 'Exterior' },
+          plenumChit:       { key: 'field_2806', type: 'toggleChit', summary: true, chitLabel: 'Plenum' },
+
+          // ── Detail panel ──
+          mounting:         { key: 'field_2818', type: 'readOnly' },
+          laborDescription: { key: 'field_2809', type: 'readOnly' },
+          scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
+          dropLength:       { key: 'field_2804', type: 'directEdit' },
+          conduitFeet:      { key: 'field_2803', type: 'directEdit' }
+        },
+        summaryLayout: ['existingCabling', 'exteriorChit', 'plenumChit', 'installStatus'],
+        detailLayout: {
+          left:  ['mounting', 'laborDescription'],
+          right: ['dropLength', 'conduitFeet', 'scwNotes']
+        },
+        bucketField: 'field_2822',
+        // ── Override: used for all NON-camera/reader rows
+        //    (Assumptions, Mounting Hardware) ──
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // Camera or Reader
+          fields: {
+            product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
+            installStatus:    { key: 'field_2825', type: 'directEdit', summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+            laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
+            scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true }
+          },
+          summaryLayout: ['laborDescription', 'installStatus'],
+          detailLayout: {
+            left:  [],
+            right: ['scwNotes']
+          }
+        },
+        bucketRules: {
+          '697b7a023a31502ec68b3303': {                       // Assumptions
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            rowClass: 'scw-row--assumptions',
+          },
+          '594a94536877675816984cb9': {                       // Mounting Hardware
+            label: 'HARDWARE',
+            descLabel: 'Mounting Hardware',
+            rowClass: 'scw-row--mounting-hw',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
+      },
+      {
         viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
         layout: { labelWidth: '400px' },
         fields: {

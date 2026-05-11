@@ -30,7 +30,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617', 'view_3921', 'view_3800', 'view_3803'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617', 'view_3915', 'view_3921', 'view_3800', 'view_3803'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -57,6 +57,7 @@
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
     'view_3610': 'add-photo-to-sow-line-item',
+    'view_3915': 'add-photo-to-install-line-item',
     'view_3921': 'add-photo-to-sow-line-item',
     'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
@@ -457,7 +458,15 @@
       '#view_3586 th.field_2446,',
       '#view_3586 td.field_2446,',
       '#view_3586 th.field_2447,',
-      '#view_3586 td.field_2447 {',
+      '#view_3586 td.field_2447,',
+      '#view_3915 th.field_114,',
+      '#view_3915 td.field_114,',
+      '#view_3915 th.field_2445,',
+      '#view_3915 td.field_2445,',
+      '#view_3915 th.field_2446,',
+      '#view_3915 td.field_2446,',
+      '#view_3915 th.field_2447,',
+      '#view_3915 td.field_2447 {',
       '  display: none !important;',
       '}'
     ].join('\n');
