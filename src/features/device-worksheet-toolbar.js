@@ -353,13 +353,24 @@
   // ── Bindings ────────────────────────────────────────────
   injectStyles();
 
-  $(document).on('knack-view-render.any', scan);
-  $(document).on('knack-scene-render.any', scan);
+  // device-worksheet.js builds tr.scw-ws-row inside a setTimeout(~150ms)
+  // after knack-view-render fires, so a synchronous scan on view-render
+  // sees no wsRows and isWorksheetView returns false. Re-scan at 250ms
+  // and 600ms to catch the row insertion regardless of which feature
+  // wins the render race.
+  function scanWithRetries() {
+    scan();
+    setTimeout(scan, 250);
+    setTimeout(scan, 600);
+  }
+
+  $(document).on('knack-view-render.any', scanWithRetries);
+  $(document).on('knack-scene-render.any', scanWithRetries);
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scan);
+    document.addEventListener('DOMContentLoaded', scanWithRetries);
   } else {
-    scan();
+    scanWithRetries();
   }
 })();
 /*** END FEATURE: device-worksheet unified toolbar ****************************/
