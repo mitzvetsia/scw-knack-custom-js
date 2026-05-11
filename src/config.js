@@ -81,27 +81,50 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: ignored (fire-and-forget).
   MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u",
   // Fires on the "Generate SOW PDF" stepper action on scene_833 (the SOW
-  // detail page). The `html` field is a COMPLETE STANDALONE HTML
-  // DOCUMENT — <!DOCTYPE html><html><head>…</head><body>…</body></html>
-  // — with all the page's <link rel="stylesheet"> tags re-emitted
-  // (Knack core CSS, Font Awesome, Google Fonts, etc.) plus every
-  // inline <style> block from the live page (where every SCW feature
-  // injects its rules). A <base href> is set so relative asset URLs
-  // (images, etc.) resolve back to the Knack origin.
+  // detail page).
   //
-  // Pipe `payload.html` directly into your HTML→PDF renderer (DocRaptor,
-  // API2PDF, Puppeteer service, etc.) — no extra wrapping needed.
+  // Sent as multipart/form-data (NOT JSON) so that the `html` field
+  // arrives at Make as a raw string with real quotes and real newlines.
+  // Earlier JSON wrapping caused Make to store `1.html` as a JSON-
+  // escaped string (every `"` → `\"`, every newline → `\n`); the
+  // HTML→PDF module then rendered the literal escape sequences instead
+  // of the document, producing a blank PDF.
   //
-  //   Request body:  {
-  //     stepId:         'generate-sow-pdf',
-  //     sourceRecordId: <SOW record id from URL hash>,
-  //     html:           <full standalone HTML document, see above>,
-  //     htmlBytes:      <number — length of html string, for sanity check>,
-  //     pageTitle:      <document.title>,
-  //     pageUrl:        <window.location.href>,
-  //     triggeredBy:    { id, name, email }
-  //   }
+  // Pipe `{{1.html}}` directly into your HTML→PDF renderer (DocRaptor,
+  // API2PDF, etc.) — no JSON parser, no extra unescaping needed.
+  //
+  // The `html` field is a COMPLETE STANDALONE HTML DOCUMENT —
+  // <!DOCTYPE html><html><head>…</head><body>…</body></html> — with
+  // every `<link rel="stylesheet">` from the live page re-emitted
+  // (Knack core CSS, Font Awesome, Google Fonts) plus every inline
+  // `<style>` block (where every SCW feature injects its rules), plus
+  // a `<base href>` so relative asset URLs resolve back to Knack.
+  //
+  //   Request body (multipart/form-data fields):
+  //     stepId:           'generate-sow-pdf'
+  //     sourceRecordId:   <SOW record id from URL hash>
+  //     html:             <full standalone HTML document, see above>
+  //     htmlBytes:        <length of html string, sanity check>
+  //     bodyBytes:        <length of just the scraped scene>
+  //     viewCount:        <# of .kn-view elements in the scrape>
+  //     tableCount:       <# of <table> elements>
+  //     rowCount:         <# of <tr> elements>
+  //     imgCount:         <# of <img> elements>
+  //     styleTagCount:    <# of <style> tags in the html>
+  //     linkTagCount:     <# of <link> tags in the html>
+  //     pageTitle:        <document.title>
+  //     pageUrl:          <window.location.href>
+  //     triggeredById:    <Knack user id>
+  //     triggeredByName:  <Knack user display name>
+  //     triggeredByEmail: <Knack user email>
+  //
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
+  //
+  // ⚠️  Image auth caveat: <img src> tags point at Knack's S3 with
+  // presigned URLs that require the browser's Knack session. A
+  // headless renderer in Make WILL get 403s on those images. Either
+  // strip images, swap to a public mirror, or proxy through a module
+  // that re-uploads them server-side before rendering.
   MAKE_GENERATE_SOW_PDF_WEBHOOK: "https://hook.us1.make.com/tyrrisxjgai5hufsl722lcdsewiw9ryz"
 };

@@ -370,11 +370,46 @@
     //   ready to drop into a .html file or paste into any renderer.
     try { window.__scwSowPdfLastHtml = fullHtml; } catch (e) { /* ignore */ }
 
+    // ──────────────────────────────────────────────────────────
+    // POST as multipart/form-data, NOT application/json.
+    //
+    // Why: when this was wrapped as a JSON object {html: "<...>"},
+    // Make stored `1.html` as a JSON-escaped string (every `"` became
+    // `\"`, every newline became `\n`). Piping that into Make's
+    // HTML→PDF module fed the escaped string in as-is, producing a
+    // PDF rendered from the literal text `\"en\">\n\n\n` instead of
+    // from `<html lang="en">` + actual newlines.
+    //
+    // multipart/form-data avoids the JSON-escape layer entirely.
+    // Each form field arrives at Make as its own first-class value;
+    // `{{1.html}}` is the raw HTML string ready to pipe into the
+    // PDF converter, no parsing/unescaping needed.
+    // ──────────────────────────────────────────────────────────
+    var fd = new FormData();
+    fd.append('stepId',         'generate-sow-pdf');
+    fd.append('sourceRecordId', sowId);
+    fd.append('html',           fullHtml);
+    fd.append('htmlBytes',      String(fullHtml.length));
+    fd.append('bodyBytes',      String(sceneBodyHtml.length));
+    fd.append('viewCount',      String(viewCount));
+    fd.append('tableCount',     String(tableCount));
+    fd.append('rowCount',       String(rowCount));
+    fd.append('imgCount',       String(imgCount));
+    fd.append('styleTagCount',  String(styleTagCount));
+    fd.append('linkTagCount',   String(linkTagCount));
+    fd.append('pageTitle',      document.title || '');
+    fd.append('pageUrl',        window.location.href);
+    var tb = getTriggeredBy();
+    fd.append('triggeredById',    tb.id);
+    fd.append('triggeredByName',  tb.name);
+    fd.append('triggeredByEmail', tb.email);
+
     $.ajax({
       url:         webhook,
       method:      'POST',
-      contentType: 'application/json',
-      data:        JSON.stringify(payload),
+      data:        fd,
+      processData: false, // don't let jQuery turn FormData into a query string
+      contentType: false, // let the browser set the multipart boundary
       timeout:     60000
     })
       .done(function (resp) {
