@@ -158,14 +158,17 @@
 
   // ── Step config — registry of all stepper actions ───────────
   // Each step is independent: its own card, its own state (idle /
-  // busy / done / error), its own htmlBuilder. To add a new step,
-  // append an entry here and write the htmlBuilder.
+  // busy / done / error), its own htmlBuilder. `fileNamePrefix`
+  // becomes "<prefix>_<field_874 value>" in the payload so Make
+  // can name the deposited PDF without having to recompute it.
+  // To add a new step, append an entry here and write the htmlBuilder.
   var STEPS = [
     {
       id:        'generate-sow-pdf',
       title:     'Generate SOW PDF',
       sub:       'Convert this Scope of Work to a PDF.',
       icon:      ICON_PDF,
+      fileNamePrefix: 'SOW',
       busyTitle: 'Generating SOW PDF…',
       busySub:   'Sending the page to PDF generation.',
       doneTitle: 'SOW sent for PDF generation',
@@ -186,6 +189,7 @@
       title:     'Generate Location Approval Form',
       sub:       'Build the customer-facing camera-mounting approval PDF.',
       icon:      ICON_CAMERA,
+      fileNamePrefix: 'Location Approval Form',
       busyTitle: 'Generating Location Approval Form…',
       busySub:   'Sending the page to PDF generation.',
       doneTitle: 'Location Approval Form sent for PDF generation',
@@ -944,9 +948,18 @@
     var styleTagCount  = (fullHtml.match(/<style\b/g)  || []).length;
     var linkTagCount   = (fullHtml.match(/<link\b/g)   || []).length;
 
+    // ── Proposal name from field_874 ───────────────────────────
+    // Used to build the deposited PDF\'s file name. Scrape the live
+    // scene (always rendered by the time the user clicks).
+    var proposalNameEl = scene.querySelector('#view_998 .field_874 .kn-detail-body');
+    var proposalName   = proposalNameEl ? (proposalNameEl.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    var fileName       = step.fileNamePrefix + (proposalName ? '_' + proposalName : '');
+
     var payload = {
       stepId:         stepId,
       sourceRecordId: sowId,
+      fileName:       fileName,
+      proposalName:   proposalName,
       html:           fullHtml,
       // ── Sanity metadata: surface scrape coverage in Make without
       //    having to scroll through the html string. If these numbers
